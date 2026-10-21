@@ -96,7 +96,12 @@ public sealed partial class WorkspaceViewModel
     public IReadOnlyList<ProgramPairRow> SelectionPrograms => [.. ProgramsOfSelection().Take(ProgramPairsNamed).Select(pair =>
     {
         string counts = RelationshipCount(pair.Relationships) + " · " + Spoken.Count(pair.Records, "record");
-        return new ProgramPairRow(pair.Joined, counts, pair.Spoken + ": " + counts.Replace(" · ", ", ", StringComparison.Ordinal));
+        string other = string.Equals(pair.First.Key, selectedGroupKey, StringComparison.Ordinal) ? pair.Second.Key : pair.First.Key;
+        return new ProgramPairRow(pair.Joined, counts, pair.Spoken + ": " + counts.Replace(" · ", ", ", StringComparison.Ordinal))
+        {
+            OtherKey = other,
+            Itself = string.Equals(other, selectedGroupKey, StringComparison.Ordinal),
+        };
     })];
 
     /// <summary>How many more programs the selected program's processes talked with than the inspector names.</summary>
@@ -110,14 +115,65 @@ public sealed partial class WorkspaceViewModel
     /// <summary>The heading over them, saying under a brush that they are the whole session's.</summary>
     public string ProgramsHeading => "Relationships by program" + (appliedInterval is null ? string.Empty : " · whole session");
 
-    /// <summary>All of it as a screen reader hears it, who connected said in words.</summary>
-    public string SpokenSelectionPrograms => SelectionPrograms is { Count: > 0 } rows
-        ? ProgramsHeading.Replace(" · ", ", over the ", StringComparison.Ordinal) + ": "
-            + string.Join("; ", rows.Select(row => row.Spoken)) + (ShowsProgramsMore ? "; " + ProgramsMore : string.Empty)
-        : string.Empty;
+    /// <summary>
+    /// The list as a screen reader names it: what it holds and what Enter on a row does. Each row says itself whole as the
+    /// keyboard reaches it, who connected said in words.
+    /// </summary>
+    public string ProgramsListName => ProgramsHeading.Replace(" · ", ", over the ", StringComparison.Ordinal)
+        + "; Enter on one chooses the program at its other end";
 
     /// <summary>Whether the inspector names the programs the selected program's processes talked with.</summary>
     public bool ShowsPrograms => SelectionPrograms.Count > 0;
+
+    /// <summary>
+    /// Chooses the program at the other end of one of the selected program's pairs, as choosing its ranked row does, so
+    /// which programs talked with which can be walked a pair at a time: its own pairs are then listed, and
+    /// <see cref="ComeBackFromProgram"/> chooses again the one it was chosen from. False for the program's own processes
+    /// connecting to each other, which goes nowhere.
+    /// </summary>
+    public bool ChooseProgram(ProgramPairRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        if (selectedGroupKey is not { } from || string.Equals(from, row.OtherKey, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        SelectGroup(row.OtherKey, syncRow: true);
+        programHops.Add((from, row.OtherKey, ladder.Depth));
+        return true;
+    }
+
+    /// <summary>
+    /// The hops made by <see cref="ChooseProgram"/>, the latest last: the program left, the one chosen, and the rung it was
+    /// chosen at.
+    /// </summary>
+    private readonly List<(string From, string To, int Depth)> programHops = [];
+
+    /// <summary>
+    /// Comes back along the latest hop made from the inspector's pairs of programs, as Esc does before it climbs the
+    /// ladder: where the program the hop chose is still the one chosen, on the rung it was chosen at, the program it was
+    /// chosen from is chosen again, and the key of the one left is returned, whose row in its list the keyboard goes back
+    /// to. A hop the selection or the ladder has since moved away from is forgotten, every earlier one with it, and null
+    /// returned.
+    /// </summary>
+    public string? ComeBackFromProgram()
+    {
+        if (programHops is not [.., var latest])
+        {
+            return null;
+        }
+
+        if (!string.Equals(selectedGroupKey, latest.To, StringComparison.Ordinal) || ladder.Depth != latest.Depth)
+        {
+            programHops.Clear();
+            return null;
+        }
+
+        programHops.RemoveAt(programHops.Count - 1);
+        SelectGroup(latest.From, syncRow: true);
+        return latest.To;
+    }
 
     /// <summary>The most relationships the inspector names for a chosen process, the busiest.</summary>
     internal const int PeersNamed = 5;
@@ -358,7 +414,6 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(SelectionConnections));
         OnPropertyChanged(nameof(ShowsConnections));
         OnPropertyChanged(nameof(SelectionPrograms));
-        OnPropertyChanged(nameof(SpokenSelectionPrograms));
         OnPropertyChanged(nameof(ProgramsMore));
         OnPropertyChanged(nameof(ShowsProgramsMore));
         OnPropertyChanged(nameof(ShowsPrograms));

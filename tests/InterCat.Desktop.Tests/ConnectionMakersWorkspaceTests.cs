@@ -296,9 +296,10 @@ public sealed class ConnectionMakersWorkspaceTests
         using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
             new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
         await workspace.LayoutReady;
-        // What the inspector last heard of them, so a binding is never left reading a stale list or heading.
+        // What the inspector last heard of them, so a binding is never left reading a stale list, heading or list name.
         var heard = new List<int>();
         var headings = new List<string>();
+        var names = new List<string>();
         workspace.PropertyChanged += (_, changed) =>
         {
             if (changed.PropertyName == nameof(WorkspaceViewModel.SelectionPrograms))
@@ -308,6 +309,10 @@ public sealed class ConnectionMakersWorkspaceTests
             else if (changed.PropertyName == nameof(WorkspaceViewModel.ProgramsHeading))
             {
                 headings.Add(workspace.ProgramsHeading);
+            }
+            else if (changed.PropertyName == nameof(WorkspaceViewModel.ProgramsListName))
+            {
+                names.Add(workspace.ProgramsListName);
             }
         };
 
@@ -326,8 +331,16 @@ public sealed class ConnectionMakersWorkspaceTests
             workspace.SelectionPrograms.Select(row => (row.Pair, row.Counts)));
         Assert.Equal(2, heard[^1]);
         Assert.False(workspace.ShowsProgramsMore);
-        Assert.Equal("Relationships by program: browser.exe connected to server.exe: 3 relationships, 12 records; "
-            + "browser.exe connected to browser.exe: 2 relationships, 8 records", workspace.SpokenSelectionPrograms);
+        // Each row says itself whole as the keyboard reaches it, who connected in words, and what Enter on it does; its own
+        // processes' pair goes nowhere, and says no Enter.
+        Assert.Equal(
+            [
+                "browser.exe connected to server.exe: 3 relationships, 12 records. Press Enter to choose the program at its "
+                    + "other end.",
+                "browser.exe connected to browser.exe: 2 relationships, 8 records",
+            ],
+            workspace.SelectionPrograms.Select(row => row.AccessibleName));
+        Assert.Equal("Relationships by program; Enter on one chooses the program at its other end", workspace.ProgramsListName);
 
         // The server talked with six programs, five of them named, ties by name, and the sixth counted.
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
@@ -338,16 +351,57 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal("1 relationship · 4 records", workspace.SelectionPrograms[^1].Counts);
         Assert.Equal("and 1 more program", workspace.ProgramsMore);
         Assert.True(workspace.ShowsProgramsMore);
-        Assert.EndsWith("server.exe connected to epsilon.exe: 1 relationship, 4 records; and 1 more program",
-            workspace.SpokenSelectionPrograms, StringComparison.Ordinal);
+        Assert.Equal("server.exe connected to epsilon.exe: 1 relationship, 4 records. Press Enter to choose the program at its "
+            + "other end.", workspace.SelectionPrograms[^1].AccessibleName);
 
-        // Under a brush they are still the whole session's, and say so.
+        // Enter on a pair chooses the program at its other end, as choosing its ranked row does, its own pairs then listed:
+        // from the server the browser, named first as the one that connected, and from the browser the server again, then
+        // alpha.exe, which lists the server it was come to from. Which programs talked with which is walked a pair at a time.
+        Assert.True(workspace.ChooseProgram(workspace.SelectionPrograms[0]));
+        Assert.Equal(("browser.exe", "browser.exe"), (workspace.SelectedGroup?.Name, workspace.SelectedRung?.Label));
+        Assert.Equal(2, heard[^1]);
+        Assert.False(workspace.ChooseProgram(workspace.SelectionPrograms[1]));
+        Assert.Equal("browser.exe", workspace.SelectedGroup?.Name);
+        Assert.True(workspace.ChooseProgram(workspace.SelectionPrograms[0]));
+        Assert.Equal("server.exe", workspace.SelectedGroup?.Name);
+        Assert.True(workspace.ChooseProgram(workspace.SelectionPrograms[1]));
+        Assert.Equal(("alpha.exe", "alpha.exe"), (workspace.SelectedGroup?.Name, workspace.SelectedRung?.Label));
+        Assert.Equal(["server.exe → alpha.exe"], workspace.SelectionPrograms.Select(row => row.Pair));
+        Assert.Equal(1, heard[^1]);
+
+        // Esc's way back comes back along the hops, the latest first, each saying the program it left, the ranked row of the
+        // one come back to chosen with it.
+        Assert.Equal(Key(workspace, "alpha.exe"), workspace.ComeBackFromProgram());
+        Assert.Equal(("server.exe", "server.exe"), (workspace.SelectedGroup?.Name, workspace.SelectedRung?.Label));
+        Assert.Equal(Key(workspace, "server.exe"), workspace.ComeBackFromProgram());
+        Assert.Equal(("browser.exe", "browser.exe"), (workspace.SelectedGroup?.Name, workspace.SelectedRung?.Label));
+        Assert.Equal(Key(workspace, "browser.exe"), workspace.ComeBackFromProgram());
+        Assert.Equal("server.exe", workspace.SelectedGroup?.Name);
+        Assert.Null(workspace.ComeBackFromProgram());
+        Assert.Equal("server.exe", workspace.SelectedGroup?.Name);
+
+        // A hop the selection has since moved away from is forgotten, with the hops before it, even once a program they chose
+        // is chosen again.
+        Assert.True(workspace.ChooseProgram(workspace.SelectionPrograms[1]));
+        Assert.True(workspace.ChooseProgram(workspace.SelectionPrograms[0]));
+        Assert.Equal("server.exe", workspace.SelectedGroup?.Name);
+        foreach (string program in (string[])["beta.exe", "alpha.exe", "server.exe"])
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == program);
+            Assert.Null(workspace.ComeBackFromProgram());
+            Assert.Equal(program, workspace.SelectedGroup?.Name);
+        }
+
+        // Under a brush they are still the whole session's, and say so; a pair still chooses its other end and its row.
         workspace.SelectInterval(new TimeRange(workspace.Snapshot.Extent.StartTicks, workspace.Snapshot.Extent.StartTicks + 5));
         await workspace.IntervalReady;
         Assert.Equal("Relationships by program · whole session", workspace.ProgramsHeading);
         Assert.Equal(workspace.ProgramsHeading, headings[^1]);
-        Assert.StartsWith("Relationships by program, over the whole session: browser.exe connected to server.exe",
-            workspace.SpokenSelectionPrograms, StringComparison.Ordinal);
+        Assert.Equal("Relationships by program, over the whole session; Enter on one chooses the program at its other end",
+            workspace.ProgramsListName);
+        Assert.Equal(workspace.ProgramsListName, names[^1]);
+        Assert.True(workspace.ChooseProgram(workspace.SelectionPrograms[0]));
+        Assert.Equal(("browser.exe", "browser.exe"), (workspace.SelectedGroup?.Name, workspace.SelectedRung?.Label));
 
         // A process is not a program, and neither is a group of processes by their terminal session.
         workspace.SelectProcess(workspace.Snapshot.Processes.Single(process => process.ProcessId == 400).Id);
@@ -360,6 +414,56 @@ public sealed class ConnectionMakersWorkspaceTests
         bySession.SelectedRung = bySession.RungRows[0];
         Assert.NotNull(bySession.SelectedGroup);
         Assert.False(bySession.ShowsPrograms);
+
+        static string Key(WorkspaceViewModel workspace, string program) =>
+            workspace.Snapshot.Groups.Single(group => group.Name == program).Key;
+    });
+
+    [Fact(DisplayName = "§6.3: Esc comes back along a chosen program's pairs only on the rung each hop was made at")]
+    public void AProgramsHopIsNoWayBackFromAnotherRung() => SingleThreadedContext.Run(async () =>
+    {
+        // The browser connects to each of twenty-six server processes, more of one program than the graph draws apart, so
+        // at the browser's rung the server is drawn as one node; the first of them connects to alpha.exe.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 500, 2) with { ResourceName = @"C:\Apps\alpha.exe", SessionRelativeTicks = 110 },
+            .. Enumerable.Range(0, 26).Select(index => Lifecycle(3 + index, ObservationKind.Create, 400 + index, (ulong)(3 + index))
+                with { ResourceName = @"C:\Apps\server.exe", SessionRelativeTicks = 120 + index }),
+            .. Enumerable.Range(0, 26).SelectMany(index => Connection(200 + (10 * index), 300, 400 + index,
+                $"127.0.0.1:{50000 + index}", $"127.0.0.1:{8000 + index}")),
+            .. Connection(600, 400, 500, "127.0.0.1:51000", "127.0.0.1:7000"),
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        await workspace.LayoutReady;
+        string server = workspace.Snapshot.Groups.Single(group => group.Name == "server.exe").Key;
+        string alpha = workspace.Snapshot.Groups.Single(group => group.Name == "alpha.exe").Key;
+
+        // A hop to the server made on the machine's rung...
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "browser.exe");
+        Assert.True(workspace.ChooseProgram(workspace.SelectionPrograms.Single()));
+        Assert.Equal(server, workspace.SelectedGroup?.Key);
+
+        // ...is no way back on the browser's rung, where the server is chosen by its one node.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "browser.exe");
+        Assert.True(workspace.Descend());
+        await workspace.LayoutReady;
+        GraphDisplayNode drawn = Assert.IsType<GraphDisplayNode>(
+            workspace.GraphDisplay.NodeOf(workspace.Snapshot.Processes.Single(process => process.ProcessId == 400).Id));
+        Assert.Equal(GraphNodeKind.Group, drawn.Kind);
+        workspace.SelectGraphNode(drawn.Key);
+        Assert.Equal(server, workspace.SelectedGroup?.Key);
+        Assert.Null(workspace.ComeBackFromProgram());
+        Assert.Equal(server, workspace.SelectedGroup?.Key);
+
+        // One made there is the way back there.
+        Assert.True(workspace.ChooseProgram(workspace.SelectionPrograms.Single(row => row.Pair == "server.exe → alpha.exe")));
+        Assert.Equal(alpha, workspace.SelectedGroup?.Key);
+        Assert.Equal(alpha, workspace.ComeBackFromProgram());
+        Assert.Equal(server, workspace.SelectedGroup?.Key);
     });
 
     [Fact(DisplayName = "§6.3: a chosen process's inspector names the processes it talked with, the busiest first, each marked from its side as its own connections count them, and RPC calls as made or served")]

@@ -7047,7 +7047,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         // their records over the scope shown.
         OnPropertyChanged(nameof(SelectionConnections));
         OnPropertyChanged(nameof(ProgramsHeading));
-        OnPropertyChanged(nameof(SpokenSelectionPrograms));
+        OnPropertyChanged(nameof(ProgramsListName));
         OnPropertyChanged(nameof(PeersHeading));
         OnPropertyChanged(nameof(PeersListName));
         RaiseMemberListChanged();

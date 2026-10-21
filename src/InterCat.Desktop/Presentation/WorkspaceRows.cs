@@ -162,7 +162,17 @@ public sealed record MemberRow(ProcessInstanceId Process, string Name, string De
 /// first, as `icat overview` names them - "svchost.exe → lsass.exe" - what joins them - "12 relationships · 72 records" -
 /// and both read aloud, who connected said in words.
 /// </summary>
-public sealed record ProgramPairRow(string Pair, string Counts, string Spoken);
+public sealed record ProgramPairRow(string Pair, string Counts, string Spoken) : IAccessibleRow
+{
+    /// <summary>The key of the program at the pair's other end from the chosen one, which Enter or a double click chooses.</summary>
+    public string OtherKey { get; init; } = string.Empty;
+
+    /// <summary>Whether the pair is the chosen program's own processes connecting to each other, which goes nowhere.</summary>
+    public bool Itself { get; init; }
+
+    /// <summary>The pair read aloud, with what Enter does on it where it leads anywhere.</summary>
+    public string AccessibleName => Itself ? Spoken : $"{Spoken}. Press Enter to choose the program at its other end.";
+}
 
 /// <summary>
 /// One relationship of a chosen process, as the inspector lists it (§6.3): the process at its other end, marked from the

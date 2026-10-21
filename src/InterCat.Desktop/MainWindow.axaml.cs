@@ -643,6 +643,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                     break;
                 }
 
+                if (ProgramsList.IsKeyboardFocusWithin)
+                {
+                    // Enter on one of a chosen program's pairs chooses the program at its other end, as its pairs do.
+                    e.Handled = ChooseSelectedProgram(viewModel);
+                    break;
+                }
+
                 if (CellRecordsList.IsKeyboardFocusWithin)
                 {
                     // Enter on a chosen cell's record opens it in E, selected there (§6.4), rather than descending.
@@ -732,8 +739,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 break;
             case Key.Escape:
                 // A drag in progress is cancelled where it began (§6.7); with none, Esc comes back along the latest hop to a
-                // relationship's other end, the keyboard on the relationship left by, and else ascends as the ladder's back
-                // does.
+                // relationship's or a pair of programs' other end, the keyboard on the row left by, and else ascends as the
+                // ladder's back does.
                 if (!(TimelineSurface.CancelDrag() || MinimapSurface.CancelDrag() || GraphSurface.CancelDrag()))
                 {
                     if (viewModel.ComeBackFromPeer() is { } left)
@@ -746,9 +753,24 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                             }
                         });
                     }
+                    else if (viewModel.ComeBackFromProgram() is { } leftProgram)
+                    {
+                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                        {
+                            if (!closed)
+                            {
+                                _ = FocusRow(ProgramsList, ProgramsList.Items.OfType<ProgramPairRow>()
+                                    .FirstOrDefault(row => string.Equals(row.OtherKey, leftProgram, StringComparison.Ordinal)));
+                            }
+                        });
+                    }
                     else
                     {
                         _ = viewModel.Ascend();
+
+                        // A choice let go takes the inspector's lists of what it held, and the row the keyboard was on goes
+                        // with them, with no focus event to say so: the keyboard is given back to what the window offers.
+                        KeepKeyboard();
                     }
                 }
 
@@ -2675,6 +2697,35 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
             if (!closed) _ = FocusRow(PeersList);
+        });
+        return true;
+    }
+
+    private void ChooseListedProgram(object? sender, TappedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel)
+        {
+            ChooseSelectedProgram(viewModel);
+        }
+    }
+
+    /// <summary>
+    /// Chooses the program at the other end of the pair of a chosen program's list the keyboard is on, or else the one
+    /// selected, and gives the keyboard to the list again, now that program's, so which programs talked with which is
+    /// walked a key at a time (§6.3). False when there is none, or it is the program's own processes.
+    /// </summary>
+    internal bool ChooseSelectedProgram(WorkspaceViewModel viewModel)
+    {
+        ProgramPairRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as ProgramPairRow
+            ?? ProgramsList.SelectedItem as ProgramPairRow;
+        if (row is null || !viewModel.ChooseProgram(row))
+        {
+            return false;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (!closed) _ = FocusRow(ProgramsList);
         });
         return true;
     }

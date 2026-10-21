@@ -927,20 +927,36 @@
                 </StackPanel>
                 <!-- §6.3: which programs a chosen program's processes talked with, maker first, as icat overview sums them:
                      on a busy machine otherwise read off the graph edge by edge. Each pair on a line of its own, what joins
-                     it beneath, so a pair's wrapped words never run into the next pair's. -->
+                     it beneath, so a pair's wrapped words never run into the next pair's. Enter or a double click on one
+                     chooses the program at its other end, whose own are then listed, so which programs talked with which is
+                     walked a pair at a time. -->
                 <StackPanel Spacing="3" IsVisible="{Binding ShowsPrograms}">
                   <TextBlock x:Name="ProgramsHeadingText" Text="{Binding ProgramsHeading}" Classes="muted" TextWrapping="Wrap" />
-                  <ItemsControl x:Name="ProgramsList" ItemsSource="{Binding SelectionPrograms}"
-                                AutomationProperties.Name="{Binding SpokenSelectionPrograms}">
-                    <ItemsControl.ItemTemplate>
+                  <ListBox x:Name="ProgramsList" ItemsSource="{Binding SelectionPrograms}" Background="Transparent"
+                           BorderThickness="0" DoubleTapped="ChooseListedProgram"
+                           ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.BringIntoViewOnFocusChange="False"
+                           AutomationProperties.Name="{Binding ProgramsListName}">
+                    <!-- Five at most, laid out whole within the inspector's own scroll. -->
+                    <ListBox.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel />
+                      </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.Styles>
+                      <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="6,3" />
+                        <Setter Property="MinHeight" Value="0" />
+                      </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemTemplate>
                       <DataTemplate x:DataType="pres:ProgramPairRow">
-                        <StackPanel Margin="0,0,0,4" Spacing="1">
+                        <StackPanel Margin="0,1" Spacing="1">
                           <TextBlock Text="{Binding Pair}" TextWrapping="Wrap" />
                           <TextBlock Text="{Binding Counts}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
                         </StackPanel>
                       </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
                   <TextBlock x:Name="ProgramsMoreText" Text="{Binding ProgramsMore}" Classes="muted" FontSize="12"
                              TextWrapping="Wrap" IsVisible="{Binding ShowsProgramsMore}" />
                 </StackPanel>

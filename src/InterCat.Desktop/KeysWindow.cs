@@ -110,8 +110,10 @@ internal static class WindowKeys
         new("Inspector", "E", "with a process an aggregate lists chosen, list its records"),
         new("Inspector", "Enter", "on one of a chosen process's relationships, choose the process at its other end, whose own "
             + "the list then holds"),
-        new("Inspector", "Esc", "after Enter on a relationship, choose again the process it was chosen from, the keyboard on "
-            + "that relationship"),
+        new("Inspector", "Enter", "on one of a chosen program's pairs of programs, choose the program at its other end, whose "
+            + "own the list then holds"),
+        new("Inspector", "Esc", "after Enter on a relationship or a pair of programs, choose again the process or program it "
+            + "was chosen from, the keyboard back on that row"),
         new("A level's records", "Enter", "show the chosen record as the capture recorded it"),
         new("A level's records", "C", "inspect the chosen record's content"),
     ]);
