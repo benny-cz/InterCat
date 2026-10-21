@@ -1006,9 +1006,10 @@
                     <TextBlock Text="{Binding PeersToggleLabel}" TextWrapping="Wrap" />
                   </Button>
                 </StackPanel>
-                <!-- §6.3: the other hosts a chosen process reached, by address, as icat processes lists one PID's: most of a
-                     busy machine's connections run to other hosts, which the graph draws to one node. Enter or a double
-                     click on one finds every process that reached it, as a search for its address does. -->
+                <!-- §6.3: the other hosts a chosen process, or a chosen program's processes, reached, by address, as icat
+                     processes lists one PID's: most of a busy machine's connections run to other hosts, which the graph
+                     draws to one node. Enter or a double click on one finds every process that reached it, as a search for
+                     its address does. -->
                 <StackPanel Spacing="3" IsVisible="{Binding ShowsReachedHosts}">
                   <TextBlock x:Name="ReachedHostsHeadingText" Text="{Binding ReachedHostsHeading}" Classes="muted"
                              TextWrapping="Wrap" />

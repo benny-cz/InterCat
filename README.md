@@ -43,8 +43,9 @@ typed alone offers its port as well. The relationship table (T) lists each relat
 hosts, the busiest first, with who connected and the bytes that crossed it, for a keyboard or a screen reader. A chosen
 process's inspector lists its relationships, the busiest five or every one on request, each marked with who connected to
 whom, as a chosen program's lists the programs its processes talked with; Enter on one chooses the process or program at
-its other end, so a chain of connections is walked a key at a time, and Esc walks it back. A chosen process's inspector
-lists the other hosts it reached as well, by address, and Enter on one finds every process that reached it.
+its other end, so a chain of connections is walked a key at a time, and Esc walks it back. A chosen process's or
+program's inspector lists the other hosts it reached as well, by address, and Enter on one finds every process that
+reached it.
 
 **The timeline** counts every observed record by mechanism, process, source direction and channel end. Brush an interval
 to rank within it, zoom into it, or read it on the capture machine's wall clock.

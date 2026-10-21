@@ -102,8 +102,8 @@ internal static class WindowKeys
         new("Search hits", "Enter", "open the chosen hit, or search the port a number offers"),
         new("Search hits", "Esc", "clear the search, and give the keyboard back to the search box"),
         new("Inspector", "Enter", "on one of a chosen cell's records, open it among the level's records, chosen there"),
-        new("Inspector", "Enter", "on a host Other hosts lists, or one a chosen process reached, find the processes that "
-            + "reached it, as searching its address does"),
+        new("Inspector", "Enter", "on a host Other hosts lists, or one a chosen process or program reached, find the "
+            + "processes that reached it, as searching its address does"),
         new("Inspector", "E", "with a host Other hosts lists chosen, list the records of every connection to it"),
         new("Inspector", "Enter", "on a process an aggregate lists - No relationships, Other hosts only, Other processes or "
             + "Other members - open it, as Enter on a process drawn on its own does"),

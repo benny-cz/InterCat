@@ -394,6 +394,16 @@ public sealed class ConnectionsInspectorWindowTests
             Assert.Equal(["52.0.0.3", "52.0.0.7"], next.ReachedHostRows.Take(2).Select(row => row.Address));
             Assert.Same(hosts.ContainerFromIndex(1), window.FocusManager?.GetFocusedElement());
 
+            // Its program's are listed alike, the heading saying whose they are.
+            TextBlock heading = window.GetControl<TextBlock>("ReachedHostsHeadingText");
+            next.SelectedRung = next.RungRows.Single(row => row.Label == "updater.exe");
+            Dispatch();
+            Assert.Equal("Other hosts its processes reached, the busiest first", heading.Text);
+            Assert.Equal(["52.0.0.1", "1 TCP connection · port 443 · 1 record"], Texts(hosts));
+            next.SelectProcess(next.Snapshot.Processes.Single(node => node.ProcessId == 900).Id);
+            Dispatch();
+            Assert.Equal("Other hosts it reached, the busiest first", heading.Text);
+
             // A double click on a host finds who reached it alike.
             Control first = Assert.IsAssignableFrom<Control>(hosts.ContainerFromIndex(0));
             first.BringIntoView();

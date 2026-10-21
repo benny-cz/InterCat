@@ -88,7 +88,10 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// <param name="ProgramHops">The hops made from a chosen program's pairs of programs, the latest last, which Esc comes back along (§6.3).</param>
 /// <param name="PeersListedWhole">The process whose relationships the inspector listed whole, as asked (§6.3).</param>
 /// <param name="ProgramsListedWhole">The program, by its key, whose pairs of programs the inspector listed whole, as asked (§6.3).</param>
-/// <param name="ReachedHostsListedWhole">The process whose other hosts the inspector listed whole, as asked (§6.3).</param>
+/// <param name="ReachedHostsListedWhole">
+/// The process, by its instance, or the program, by its group's key, whose other hosts the inspector listed whole, as
+/// asked (§6.3).
+/// </param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -123,7 +126,7 @@ public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<ProgramHop>? ProgramHops = null,
     ProcessInstanceId? PeersListedWhole = null,
     string? ProgramsListedWhole = null,
-    ProcessInstanceId? ReachedHostsListedWhole = null);
+    string? ReachedHostsListedWhole = null);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the

@@ -10,12 +10,13 @@ using static InterCat.Analysis.Tests.TestSessions;
 namespace InterCat.Desktop.Tests;
 
 /// <summary>
-/// The other hosts a chosen process reached, in the inspector (§6.3): by address, the busiest first, as `icat processes
-/// --pid` lists them, every one on request, and Enter on one finds every process that reached it.
+/// The other hosts a chosen process, or a chosen program's processes, reached, in the inspector (§6.3): by address, the
+/// busiest first, as `icat processes --pid` lists one process's, every one on request, and Enter on one finds every
+/// process that reached it.
 /// </summary>
 public sealed class ReachedHostsWorkspaceTests
 {
-    [Fact(DisplayName = "§6.3: a chosen process's inspector names the other hosts it reached, the busiest first, with what reached each, and finds who else reached one")]
+    [Fact(DisplayName = "§6.3: a chosen process's or program's inspector names the other hosts it reached, the busiest first, with what reached each, and finds who else reached one")]
     public void AChosenProcessNamesTheHostsItReached() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
@@ -90,7 +91,7 @@ public sealed class ReachedHostsWorkspaceTests
             + "that reached it", headings[^1]);
 
         // The client's listed whole is the client's alone: a process that reached one host names it and offers no more, and
-        // one that reached none names none and offers nothing; neither does a program.
+        // one that reached none names none and offers nothing.
         Assert.True(workspace.ToggleReachedHosts());
         workspace.SelectProcess(Process(workspace, 300).Id);
         Assert.False(workspace.ListsAllReachedHosts);
@@ -101,11 +102,33 @@ public sealed class ReachedHostsWorkspaceTests
         Assert.False(workspace.OffersReachedHostsToggle);
         Assert.False(workspace.ToggleReachedHosts());
         Assert.Equal(0, heard[^1]);
+
+        // A program lists the hosts its processes reached, each naming the busiest of them and how many more where several
+        // reached it; its listed whole is its own, apart from its process's.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "browser.exe");
+        Assert.Equal(
+            [
+                "52.0.0.9 | 2 TCP connections from browser.exe · PID 400 and 1 more · port 443 · 2 records",
+                "52.0.0.8 | 1 TCP connection from browser.exe · PID 401 · port 443 · 1 record",
+            ],
+            workspace.ReachedHostRows.Select(row => row.Address + " | " + row.Detail));
+        Assert.Equal("Other hosts its processes reached, the busiest first · whole session", workspace.ReachedHostsHeading);
+        Assert.Equal("Other hosts its processes reached, the busiest first, over the whole session; Enter on one finds the "
+            + "processes that reached it", headings[^1]);
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
-        Assert.False(workspace.ShowsReachedHosts);
+        Assert.Equal("10.0.0.5 | private · 1 TCP connection · accepted here at port 3389 · 2 records",
+            workspace.ReachedHostRows[1].Address + " | " + workspace.ReachedHostRows[1].Detail);
+        Assert.False(workspace.ListsAllReachedHosts);
+        Assert.True(workspace.ToggleReachedHosts());
+        workspace.SelectProcess(Process(workspace, 100).Id);
+        Assert.False(workspace.ListsAllReachedHosts);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
+        Assert.True(workspace.ListsAllReachedHosts);
+        Assert.Equal(7, workspace.ReachedHostRows.Count);
 
         // At the client's own rung a connection chosen among its rows is what the inspector describes, and the client's
         // hosts give way to it.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
         Assert.True(workspace.Descend());
         workspace.SelectedRung = workspace.RungRows.Single();
         Assert.True(workspace.Descend());
@@ -140,12 +163,19 @@ public sealed class ReachedHostsWorkspaceTests
 
         // A newer generation keeps them listed.
         WorkspaceNavigationMemento saved = workspace.CaptureNavigation();
-        Assert.Equal(Process(workspace, 900).Id, saved.ReachedHostsListedWhole);
+        Assert.Equal(Process(workspace, 900).Id.ToString(), saved.ReachedHostsListedWhole);
         using WorkspaceViewModel next = Open(session, 2);
         await next.LayoutReady;
         Assert.Null(next.RestoreNavigation(saved));
         Assert.Equal(100, next.ReachedHostRows.Count);
         Assert.True(next.ListsAllReachedHosts);
+
+        // Its program's are listed whole apart from it, and say where every host and who reached it is read.
+        next.SelectedRung = next.RungRows.Single(row => row.Label == "crawler.exe");
+        Assert.False(next.ListsAllReachedHosts);
+        Assert.True(next.ToggleReachedHosts());
+        Assert.Equal(100, next.ReachedHostRows.Count);
+        Assert.Equal("1 more, quieter: icat hosts lists every host and who reached it", next.ReachedHostsMore);
     });
 
     private static WorkspaceViewModel Open(TemporarySession session, int generation)
@@ -161,8 +191,9 @@ public sealed class ReachedHostsWorkspaceTests
     /// <summary>
     /// client.exe's PID 100 connects to 203.0.113.1's port 443 twice and sends on each, to 198.51.100.7's port 80 once and
     /// sends, and to 52.0.0.1, .2 and .3 once each; it accepts a connection from 10.0.0.5 at its port 3389 and receives on
-    /// it, and sends a datagram to the multicast group 224.0.0.251's port 5353. server.exe's PID 200 only starts, and
-    /// helper.exe's PID 300 connects to 198.51.100.7's port 80.
+    /// it, and sends a datagram to the multicast group 224.0.0.251's port 5353. server.exe's PID 200 only starts,
+    /// helper.exe's PID 300 connects to 198.51.100.7's port 80, and browser.exe's PIDs 400 and 401 each connect to
+    /// 52.0.0.9's port 443, the second to 52.0.0.8's too.
     /// </summary>
     private static ObservationRowV1[] Rows() =>
     [
@@ -171,6 +202,14 @@ public sealed class ReachedHostsWorkspaceTests
         Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Apps\helper.exe", SessionRelativeTicks = 120 },
         Transfer(70, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 60).Between("192.168.1.11:53000", "198.51.100.7:80")
             with { SessionRelativeTicks = 700 },
+        Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 130 },
+        Lifecycle(5, ObservationKind.Create, 401, 5) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 140 },
+        Transfer(80, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 400, 70).Between("192.168.1.12:54000", "52.0.0.9:443")
+            with { SessionRelativeTicks = 800 },
+        Transfer(81, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 401, 71).Between("192.168.1.12:54001", "52.0.0.9:443")
+            with { SessionRelativeTicks = 810 },
+        Transfer(82, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 401, 72).Between("192.168.1.12:54002", "52.0.0.8:443")
+            with { SessionRelativeTicks = 820 },
         .. Enumerable.Range(0, 2).SelectMany(index => new[]
         {
             Transfer(20 + (2 * index), ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, (ulong)(10 + (2 * index)))
