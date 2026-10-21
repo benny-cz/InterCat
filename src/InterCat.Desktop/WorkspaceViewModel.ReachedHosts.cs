@@ -76,14 +76,14 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// What the list leaves out with every host asked for, past the most it lists, and where every one is read: a
-    /// process's in `icat processes --pid --json`, a program's in `icat hosts`. Empty otherwise, where the button that asks
-    /// for them says how many there are.
+    /// process's in `icat processes --pid --json`, a program's in `icat hosts --program`, which says how to name one of
+    /// two programs of one name. Empty otherwise, where the button that asks for them says how many there are.
     /// </summary>
     public string ReachedHostsMore => ListsAllReachedHosts && HostsOfSelection().Hosts.Count - ReachedHostsListed is > 0 and var more
         ? string.Create(CultureInfo.CurrentCulture, $"{more:N0} more, quieter: ")
             + (ShowsLineage && selectedProcess is { } selected
                 ? string.Create(CultureInfo.CurrentCulture, $"icat processes --pid {selected.ProcessId} --json lists them all")
-                : "icat hosts lists every host and who reached it")
+                : $"icat hosts --program {CommandArgument.Of(SelectedGroup?.Name ?? string.Empty)} lists them all")
         : string.Empty;
 
     /// <summary>Whether the list says what it leaves out with every host asked for.</summary>

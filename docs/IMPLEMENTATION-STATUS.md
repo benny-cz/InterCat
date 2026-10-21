@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 674 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 675 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 675 — `icat hosts --program` lists one program's hosts, as its inspector points to (§6.3, R18):**
+  - Named as `icat programs` takes one; with `--address` those of its processes that reached one; a byte ranking reads
+    its connections alone, and the JSON describes the program (`other-hosts-v8`). A name two programs share is
+    refused, saying how each is listed, and a command the window or icat cites puts a name a shell would split in
+    double quotes.
+  - Debug and Release each ran 2,674 tests with revision 473's 93 failures and 4 skips, and nothing else failed; the
+    hosts command's new test lists one program's hosts as text and JSON, with --address, ranked by bytes and for a
+    program that reached none, and refuses a name two programs share, one none has and none at all, and a cited
+    value's twelve cases say when it is quoted. All twenty-seven mutations were caught: a program's hosts or byte
+    ranking read over every program, the JSON's program, path or process count wrong, either heading or the Program
+    field without the program or counting every process, a note naming the session or a command without the program
+    or unquoted, a shared name taken, the refusal's words, a name untrimmed or an empty one accepted, the window's
+    two notes unquoted, and a value never or always quoted, an empty one or one with a space left bare, or a plus or
+    a backslash quoted.
 
 - **Revision 674 — a chosen program's inspector lists the other hosts its processes reached (§6.3, R15):**
   - As a chosen process's are listed, each host naming the busiest of its processes that reached it and how many more

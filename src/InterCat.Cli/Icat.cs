@@ -195,10 +195,10 @@ internal static class Icat
         ConsoleUi.Line("      Graph eligibility is narrower than the all-observations timeline; caveats are included.");
         ConsoleUi.Line("      Its text names the busiest processes, relationships, pairs of programs and other hosts.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat hosts <directory> [--address <address>] [--limit <n>] [--json]");
+        ConsoleUi.Line("  icat hosts <directory> [--address <address>] [--program <name>] [--limit <n>] [--json]");
         ConsoleUi.Line("      The other hosts the session's processes reached, the busiest first, each naming the process");
         ConsoleUi.Line("      that reached it most; with --address every process that reached one: the address whole, or");
-        ConsoleUi.Line("      begun up to a dot or colon.");
+        ConsoleUi.Line("      begun up to a dot or colon; with --program one program's processes alone.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat programs <directory> [--program <name>] [--limit <n>] [--json]");
         ConsoleUi.Line("      The programs whose processes talked to each other, each pair named by which program's");

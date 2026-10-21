@@ -53,7 +53,7 @@ public sealed class HostsCommandTests
         (code, text, _) = await Run("hosts", session.Path, "--json");
         Assert.Equal(InterCatExitCode.Success, code);
         JsonElement root = JsonDocument.Parse(text).RootElement;
-        Assert.Equal(("other-hosts-v7", "records", 4, 2), (root.GetProperty("contract").GetString(),
+        Assert.Equal(("other-hosts-v8", "records", 4, 2), (root.GetProperty("contract").GetString(),
             root.GetProperty("rankedBy").GetString(), root.GetProperty("hosts").GetInt32(), root.GetProperty("processes").GetInt32()));
         JsonElement busiest = root.GetProperty("listed")[0];
         Assert.Equal(("142.250.1.1", 2, 0, 2, 5L), (busiest.GetProperty("address").GetString(), busiest.GetProperty("tcpConnections").GetInt32(),
@@ -95,6 +95,89 @@ public sealed class HostsCommandTests
         (code, text, _) = await Run("hosts", local.Path);
         Assert.Equal(InterCatExitCode.Success, code);
         Assert.Contains("No process of this session reached another host", text, Ordinal);
+    }
+
+    [Fact(DisplayName = "R18: icat hosts --program lists the other hosts one program's processes reached, or those of them that reached an address, as a chosen program's inspector lists them")]
+    public async Task IcatHostsListsOneProgramsHosts()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Rows(),
+            Lifecycle(3, ObservationKind.Create, 320, 11) with { ResourceName = @"C:\Apps\quiet.exe", SessionRelativeTicks = 120 },
+            Lifecycle(4, ObservationKind.Create, 330, 12) with { ResourceName = @"C:\Tools\quiet.exe", SessionRelativeTicks = 130 },
+        ]);
+        session.Store.ReleaseSegmentReaders();
+
+        // The updater's hosts alone: its three records to 142.250.1.1's port 8443 and its one to 2001:db8::1, named so.
+        (InterCatExitCode code, string text, string said) = await Run("hosts", session.Path, "--program", "updater.exe");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("OTHER HOSTS UPDATER.EXE'S PROCESSES REACHED", text, Ordinal);
+        Assert.Matches(@"(?m)^  Program +updater\.exe · 1 process\r?$", text);
+        Assert.Matches(@"(?m)^  Hosts +2 hosts, reached by 1 process\r?$", text);
+        Assert.Matches(@"(?m)^  142\.250\.1\.1 +- +updater\.exe · PID 310 +1 TCP connection +8443 +3\r?$", text);
+        Assert.Matches(@"(?m)^  2001:db8::1 +- +updater\.exe · PID 310 +1 TCP connection +443 +1\r?$", text);
+        Assert.DoesNotContain("8.8.8.8", text, Ordinal);
+
+        // By its file name's stem alike, and as JSON, which names the program.
+        (code, text, _) = await Run("hosts", session.Path, "--program", "updater", "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        JsonElement root = JsonDocument.Parse(text).RootElement;
+        JsonElement program = root.GetProperty("program");
+        Assert.Equal(("other-hosts-v8", "updater.exe", @"C:\Apps\updater.exe", 1, 2, 1), (root.GetProperty("contract").GetString(),
+            program.GetProperty("name").GetString(), program.GetProperty("path").GetString(), program.GetProperty("processes").GetInt32(),
+            root.GetProperty("hosts").GetInt32(), root.GetProperty("processes").GetInt32()));
+        (code, text, _) = await Run("hosts", session.Path, "--json");
+        Assert.Equal(JsonValueKind.Null, JsonDocument.Parse(text).RootElement.GetProperty("program").ValueKind);
+
+        // With --address, those of its processes that reached it: the updater at 142.250.1.1, not the browser.
+        (code, text, _) = await Run("hosts", session.Path, "--program", "updater.exe", "--address", "142.250");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Contains("UPDATER.EXE'S PROCESSES THAT REACHED 142.250", text, Ordinal);
+        Assert.Matches(@"(?m)^  Program +updater\.exe · 1 process\r?$", text);
+        Assert.Contains("updater.exe · PID 310", text, Ordinal);
+        Assert.DoesNotContain("browser.exe", text, Ordinal);
+        (code, text, _) = await Run("hosts", session.Path, "--program", "updater.exe", "--address", "142.250", "--json");
+        Assert.Equal("updater.exe", JsonDocument.Parse(text).RootElement.GetProperty("program").GetProperty("name").GetString());
+        (code, text, _) = await Run("hosts", session.Path, "--program", "updater.exe", "--address", "8.8.8.8");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Contains("No process of updater.exe reached an address 8.8.8.8 names", Regex.Replace(text, @"\s+", " "), Ordinal);
+        Assert.Contains("icat hosts <directory> --program updater.exe lists every host they reached.", Regex.Replace(text, @"\s+", " "),
+            Ordinal);
+        (code, text, _) = await Run("hosts", session.Path, "--program", "updater.exe", "--address", ":9999");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Contains("No process of updater.exe reached :9999", Regex.Replace(text, @"\s+", " "), Ordinal);
+        Assert.Contains("icat hosts <directory> --program updater.exe lists every host they reached, with its ports.",
+            Regex.Replace(text, @"\s+", " "), Ordinal);
+
+        // A byte ranking counts its connections alone.
+        (code, text, _) = await Run("hosts", session.Path, "--program", "updater.exe", "--rank-by", "bytes-sent", "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Equal(["142.250.1.1", "2001:db8::1"], JsonDocument.Parse(text).RootElement.GetProperty("listed").EnumerateArray()
+            .Select(host => host.GetProperty("address").GetString()));
+
+        // A name two programs share is refused, saying how each is listed; named as listed, one that reached none says so,
+        // and where none of it reached an address, the command that lists its hosts names it so a shell takes it whole.
+        (code, text, said) = await Run("hosts", session.Path, "--program", "quiet.exe");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--program quiet.exe names 2 programs - quiet.exe (Apps) and quiet.exe (Tools) - so name one as they are listed.",
+            Regex.Replace(said + text, @"\s+", " "), Ordinal);
+        (code, text, _) = await Run("hosts", session.Path, "--program", "quiet.exe (Apps)");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Contains("No process of quiet.exe (Apps) reached another host", Regex.Replace(text, @"\s+", " "), Ordinal);
+        (code, text, _) = await Run("hosts", session.Path, "--program", @"C:\Tools\quiet.exe", "--address", "8.8.8.8");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Contains("No process of quiet.exe (Tools) reached an address 8.8.8.8 names", Regex.Replace(text, @"\s+", " "), Ordinal);
+        Assert.Contains("icat hosts <directory> --program \"quiet.exe (Tools)\" lists every host they reached.",
+            Regex.Replace(text, @"\s+", " "), Ordinal);
+
+        // One the session does not hold, or no name at all, is refused.
+        (code, text, said) = await Run("hosts", session.Path, "--program", "nothing.exe");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("No program of this session is named nothing.exe", said + text, Ordinal);
+        (code, text, said) = await Run("hosts", session.Path, "--program", " ");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--program takes a program's name as icat programs lists it", said + text, Ordinal);
     }
 
     [Fact(DisplayName = "R18: icat hosts and icat overview name who reached each host, the busiest there first and how many more, one that reached it over both transports once")]
@@ -373,7 +456,8 @@ public sealed class HostsCommandTests
         // Asked for help, it says what it takes, ports and the rule an address is named by among them.
         (InterCatExitCode code, string text, string said) = await Run("hosts", "--help");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.StartsWith("icat hosts <session-directory> [--address <address>] [--limit <n>]", text, Ordinal);
+        Assert.StartsWith("icat hosts <session-directory> [--address <address>] [--program <name>] [--limit <n>]", text, Ordinal);
+        Assert.Contains("--program takes one program's processes alone", text, Ordinal);
         Assert.Contains("[--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received]", text, Ordinal);
         Assert.Contains("[--investigation <file>] [--json]", text, Ordinal);
         Assert.Contains("142.250.1.1:443 or [2001:db8::1]:443", text, Ordinal);
@@ -447,7 +531,7 @@ public sealed class HostsCommandTests
         (code, text, _) = await Run("hosts", session.Path, "--rank-by", "bytes-sent-and-received", "--json");
         Assert.Equal(InterCatExitCode.Success, code);
         JsonElement root = JsonDocument.Parse(text).RootElement;
-        Assert.Equal(("other-hosts-v7", "bytes-sent-and-received"), (root.GetProperty("contract").GetString(),
+        Assert.Equal(("other-hosts-v8", "bytes-sent-and-received"), (root.GetProperty("contract").GetString(),
             root.GetProperty("rankedBy").GetString()));
         JsonElement transfers = root.GetProperty("listed")[0].GetProperty("transfers");
         Assert.Equal((5L, 500L, 0L, 0L), (transfers.GetProperty("sends").GetInt64(), transfers.GetProperty("sentBytes").GetInt64(),

@@ -145,7 +145,7 @@ public sealed class ReachedHostsWorkspaceTests
         using var session = new TemporarySession();
         Publish(session.Store,
         [
-            Lifecycle(1, ObservationKind.Create, 900, 1) with { ResourceName = @"C:\Apps\crawler.exe", SessionRelativeTicks = 100 },
+            Lifecycle(1, ObservationKind.Create, 900, 1) with { ResourceName = @"C:\Apps\Web Crawler.exe", SessionRelativeTicks = 100 },
             .. Enumerable.Range(0, 101).Select(index => Transfer(200 + index, ObservationKind.Connect, AccountingSide.EndpointActivity,
                 0, 900, (ulong)(10 + index)).Between($"192.168.1.10:{40000 + index}", $"52.0.{index / 100}.{index % 100}:443")
                 with { SessionRelativeTicks = 200 + index }),
@@ -170,12 +170,13 @@ public sealed class ReachedHostsWorkspaceTests
         Assert.Equal(100, next.ReachedHostRows.Count);
         Assert.True(next.ListsAllReachedHosts);
 
-        // Its program's are listed whole apart from it, and say where every host and who reached it is read.
-        next.SelectedRung = next.RungRows.Single(row => row.Label == "crawler.exe");
+        // Its program's are listed whole apart from it, and say where every host and who reached it is read, the program
+        // named so a shell takes it whole.
+        next.SelectedRung = next.RungRows.Single(row => row.Label == "Web Crawler.exe");
         Assert.False(next.ListsAllReachedHosts);
         Assert.True(next.ToggleReachedHosts());
         Assert.Equal(100, next.ReachedHostRows.Count);
-        Assert.Equal("1 more, quieter: icat hosts lists every host and who reached it", next.ReachedHostsMore);
+        Assert.Equal("1 more, quieter: icat hosts --program \"Web Crawler.exe\" lists them all", next.ReachedHostsMore);
     });
 
     private static WorkspaceViewModel Open(TemporarySession session, int generation)

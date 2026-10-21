@@ -104,7 +104,7 @@ internal static class ProgramsCommand
     /// file name, as two of one name in different folders are listed apart, or that file name but for its extension -
     /// svchost for svchost.exe; else the one at that path.
     /// </summary>
-    private static ProcessGroup[] Named(IReadOnlyList<ProcessGroup> groups, string asked)
+    internal static ProcessGroup[] Named(IReadOnlyList<ProcessGroup> groups, string asked)
     {
         ProcessGroup[] byName = [.. groups.Where(group => string.Equals(group.Name, asked, StringComparison.OrdinalIgnoreCase))];
         if (byName.Length > 0)

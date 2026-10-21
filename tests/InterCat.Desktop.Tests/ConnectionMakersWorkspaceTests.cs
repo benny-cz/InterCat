@@ -484,11 +484,11 @@ public sealed class ConnectionMakersWorkspaceTests
     [Fact(DisplayName = "§6.3: a hub's relationships and a busy program's pairs are listed whole on request, a hundred at most and where to read the rest said, and a newer generation keeps them whole")]
     public void AHubsListsAreListedWholeOnRequest() => SingleThreadedContext.Run(async () =>
     {
-        // hub.exe's PID 1000 connects to the one process of each of 101 programs.
+        // Hub Service.exe's PID 1000 connects to the one process of each of 101 programs.
         using var session = new TemporarySession();
         Publish(session.Store,
         [
-            Lifecycle(1, ObservationKind.Create, 1000, 1) with { ResourceName = @"C:\Apps\hub.exe", SessionRelativeTicks = 100 },
+            Lifecycle(1, ObservationKind.Create, 1000, 1) with { ResourceName = @"C:\Apps\Hub Service.exe", SessionRelativeTicks = 100 },
             .. Enumerable.Range(0, 101).Select(index => Lifecycle(2 + index, ObservationKind.Create, 2000 + index, (ulong)(2 + index))
                 with { ResourceName = $@"C:\Apps\peer{index:D3}.exe", SessionRelativeTicks = 110 + index }),
             .. Enumerable.Range(0, 101).SelectMany(index => Connection(300 + (10 * index), 1000, 2000 + index,
@@ -511,15 +511,15 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal("1 more, quieter: icat processes --pid 1000 lists each process it exchanged data with", workspace.PeersMore);
         Assert.True(workspace.ShowsPeersMore);
 
-        // So does its program, of its pairs.
-        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "hub.exe");
+        // So does its program, of its pairs, its name put so a shell takes it whole where it says where to read the rest.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "Hub Service.exe");
         Assert.Equal(5, workspace.SelectionPrograms.Count);
         Assert.Equal("Show the busiest 100 of 101 programs", workspace.ProgramsToggleLabel);
         Assert.False(workspace.ShowsProgramsMore);
         Assert.True(workspace.TogglePrograms());
         Assert.Equal(100, workspace.SelectionPrograms.Count);
-        Assert.Equal("hub.exe → peer099.exe", workspace.SelectionPrograms[^1].Pair);
-        Assert.Equal("1 more, quieter: icat programs --program hub.exe lists them all", workspace.ProgramsMore);
+        Assert.Equal("Hub Service.exe → peer099.exe", workspace.SelectionPrograms[^1].Pair);
+        Assert.Equal("1 more, quieter: icat programs --program \"Hub Service.exe\" lists them all", workspace.ProgramsMore);
         Assert.True(workspace.ShowsProgramsMore);
 
         // Another program names its busiest, and offers no more; each list asked for whole stays so for its own.
@@ -530,7 +530,7 @@ public sealed class ConnectionMakersWorkspaceTests
         workspace.SelectProcess(workspace.Snapshot.Processes.Single(process => process.ProcessId == 2000).Id);
         Assert.False(workspace.ListsAllPeers);
         Assert.False(workspace.OffersPeersToggle);
-        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "hub.exe");
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "Hub Service.exe");
         Assert.Equal(100, workspace.SelectionPrograms.Count);
 
         // A newer generation keeps both whole.
@@ -540,7 +540,7 @@ public sealed class ConnectionMakersWorkspaceTests
             new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
         await next.LayoutReady;
         Assert.Null(next.RestoreNavigation(saved));
-        Assert.Equal(("hub.exe", 100), (next.SelectedGroup?.Name, next.SelectionPrograms.Count));
+        Assert.Equal(("Hub Service.exe", 100), (next.SelectedGroup?.Name, next.SelectionPrograms.Count));
         next.SelectProcess(hub);
         Assert.Equal(100, next.SelectionPeers.Count);
     });

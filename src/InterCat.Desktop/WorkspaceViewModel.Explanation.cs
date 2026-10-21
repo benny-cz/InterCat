@@ -133,7 +133,7 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     public string ProgramsMore => ListsAllPrograms && SelectedGroup is { } program
         && ProgramsOfSelection().Count - ProgramPairsListed is > 0 and var more
-        ? string.Create(CultureInfo.CurrentCulture, $"{more:N0} more, quieter: icat programs --program {program.Name} lists them all")
+        ? string.Create(CultureInfo.CurrentCulture, $"{more:N0} more, quieter: icat programs --program {CommandArgument.Of(program.Name)} lists them all")
         : string.Empty;
 
     /// <summary>Whether the list says what it leaves out with every pair asked for.</summary>
