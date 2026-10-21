@@ -100,6 +100,82 @@ public sealed class PortsCommandTests
             $"{process.GetProperty("processId").GetInt32()} {process.GetProperty("name").GetString()}";
     }
 
+    [Fact(DisplayName = "R18: icat ports --program lists one program's processes' listening ports, as its inspector does, and refuses a program it cannot name")]
+    public async Task IcatPortsListsOneProgramsPorts()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        session.Store.ReleaseSegmentReaders();
+
+        // The server's program: its process's three ports, the program named above them.
+        (InterCatExitCode code, string text, string said) = await Run("ports", session.Path, "--program", "server.exe");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Program +server\.exe · 1 process\r?$", text);
+        Assert.Matches(@"(?m)^  Ports +3 ports, at which 1 process accepted 12 TCP connections\r?$", text);
+        Assert.Equal(
+            [
+                "8080 | server.exe · PID 200 | 4 | 4 from 3 processes of probe.exe, client.exe and helper.exe",
+                "8443 | server.exe · PID 200 | 4 | 4 from 3 hosts",
+                "9000 | server.exe · PID 200 | 4 | 4 from unobserved processes on this machine",
+            ],
+            Listed(text));
+
+        // Its document names the program, and the machine's names none.
+        (code, text, said) = await Run("ports", session.Path, "--program", "server.exe", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement root = JsonDocument.Parse(text).RootElement;
+        Assert.Equal(("server.exe", 1, 3, 3), (root.GetProperty("program").GetProperty("name").GetString(),
+            root.GetProperty("program").GetProperty("processes").GetInt32(), root.GetProperty("ports").GetInt32(),
+            root.GetProperty("listeners").GetInt32()));
+        (_, text, _) = await Run("ports", session.Path, "--json");
+        Assert.Equal(JsonValueKind.Null, JsonDocument.Parse(text).RootElement.GetProperty("program").ValueKind);
+
+        // A program whose processes accepted nothing says so by its name.
+        (code, text, said) = await Run("ports", session.Path, "--program", "client.exe");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("No process of client.exe accepted a TCP connection the capture saw open", Regex.Replace(text, @"\s+", " "),
+            Ordinal);
+        Assert.Empty(Listed(text));
+
+        // One the session does not hold, or no name at all, is refused.
+        (code, _, said) = await Run("ports", session.Path, "--program", "nothing.exe");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("No program of this session is named nothing.exe", said, Ordinal);
+        (code, _, said) = await Run("ports", session.Path, "--program", " ");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--program takes a program's name as icat programs lists it", said, Ordinal);
+
+        // A name two programs share is refused, saying how each is listed; named as listed, one is, with each of its
+        // processes' ports.
+        using var twins = new TemporarySession();
+        Publish(twins.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Apps\quiet.exe" },
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\quiet.exe" },
+            Lifecycle(3, ObservationKind.Create, 201, 3) with { ResourceName = @"C:\Tools\quiet.exe" },
+            Accepted(10, 100, "192.168.1.10:445", "10.0.0.6:51000"),
+            Accepted(11, 200, "192.168.1.10:3389", "10.0.0.7:51000"),
+            Accepted(12, 201, "192.168.1.10:3390", "10.0.0.8:51000"),
+        ]);
+        twins.Store.ReleaseSegmentReaders();
+        (code, text, said) = await Run("ports", twins.Path, "--program", "quiet.exe");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--program quiet.exe names 2 programs - quiet.exe (Apps) and quiet.exe (Tools) - so name one as they are listed.",
+            Regex.Replace(said + text, @"\s+", " "), Ordinal);
+        (code, text, said) = await Run("ports", twins.Path, "--program", "quiet.exe (Tools)");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Program +quiet\.exe \(Tools\) · 2 processes\r?$", text);
+        Assert.Equal(["3389 | quiet.exe · PID 200 | 1 | 1 from 10.0.0.7", "3390 | quiet.exe · PID 201 | 1 | 1 from 10.0.0.8"],
+            Listed(text));
+        (code, text, said) = await Run("ports", twins.Path, "--program", "quiet.exe (Tools)", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(2, JsonDocument.Parse(text).RootElement.GetProperty("program").GetProperty("processes").GetInt32());
+
+        // Its help says what it takes.
+        (_, text, _) = await Run("ports", "--help");
+        Assert.Contains("--program takes one program's processes alone", Regex.Replace(text, @"\s+", " "), Ordinal);
+    }
+
     [Fact(DisplayName = "R18: icat ports says no process accepted a connection where every one the capture saw open was made, and refuses a session that records no open")]
     public async Task IcatPortsSaysWhyItListsNone()
     {

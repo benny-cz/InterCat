@@ -33,6 +33,7 @@ internal static class PortsCommand
 
         string? limitText = command.TakeOption("--limit");
         string? investigationText = command.TakeOption("--investigation");
+        string? programText = command.TakeOption("--program");
         bool json = command.TryTakeFlag("--json");
         string? directory = command.TakePositional();
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
@@ -50,6 +51,13 @@ internal static class PortsCommand
             && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit) || limit < 1))
         {
             ConsoleUi.Failure($"--limit expects a number of listeners of 1 or more; '{limitText}' is not one.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        string? asked = programText?.Trim();
+        if (asked is { Length: 0 })
+        {
+            ConsoleUi.Failure("--program takes a program's name as icat programs lists it - svchost.exe - or its executable's path.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -109,8 +117,28 @@ internal static class PortsCommand
             }
         }
 
-        IReadOnlyList<PortListener> listeners = ConnectionOpens.Listeners(derivations.Relations(cancellationToken),
-            EvidencePolicy.IncludeCorrelated);
+        // One program's ports are those its processes accepted connections at, as its inspector in the window lists them.
+        ProcessGroup? program = null;
+        if (asked is not null)
+        {
+            ProcessGroup[] named = ProgramsCommand.Named(overview.Groups, asked);
+            if (named.Length != 1)
+            {
+                ConsoleUi.Failure(named.Length == 0
+                    ? $"No program of this session is named {asked}: a program is named by its executable's file name, as icat "
+                        + "programs lists it, or by the executable's path."
+                    : $"--program {asked} names {named.Length} programs - "
+                        + WorkspaceLayout.Series([.. named.Select(group => group.Name)]) + " - so name one as they are listed.");
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            program = named[0];
+        }
+
+        HashSet<ProcessInstanceId>? members = program is null ? null
+            : [.. overview.Nodes.Where(node => node.GroupKey == program.Key).Select(node => node.Id)];
+        IReadOnlyList<PortListener> listeners = [.. ConnectionOpens.Listeners(derivations.Relations(cancellationToken),
+            EvidencePolicy.IncludeCorrelated).Where(listener => members?.Contains(listener.Process.Id) != false)];
         var names = new Names(overview);
         int ports = listeners.Select(listener => listener.Port).Distinct().Count();
         if (json)
@@ -119,6 +147,8 @@ internal static class PortsCommand
             {
                 Contract = Contract,
                 SessionPath = path,
+                Program = program is null ? null
+                    : new { program.Name, Path = program.Detail, Processes = members!.Count },
                 Ports = ports,
                 Listeners = listeners.Count,
                 Listed = listeners.Take(limit).Select(listener => new
@@ -153,11 +183,16 @@ internal static class PortsCommand
 
         ConsoleUi.Heading("Listening ports");
         ConsoleUi.Field("Session", path);
+        if (program is not null)
+        {
+            ConsoleUi.Field("Program", program.Name + " · " + CountText.Of(members!.Count, "process", "processes"));
+        }
+
         if (listeners.Count == 0)
         {
-            ConsoleUi.Note("No process of this session accepted a TCP connection the capture saw open: each it saw open was made "
-                + "to an end no record holds, most often another host's. icat hosts <directory> lists the hosts its processes "
-                + "connected to.");
+            ConsoleUi.Note((program is null ? "No process of this session" : $"No process of {program.Name}")
+                + " accepted a TCP connection the capture saw open: each it saw open was made to an end no record holds, most "
+                + "often another host's. icat hosts <directory> lists the hosts its processes connected to.");
             return InterCatExitCode.Success;
         }
 
@@ -209,14 +244,17 @@ internal static class PortsCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat ports <session-directory> [--limit <n>] [--investigation <file>] [--json]");
+        ConsoleUi.Line("icat ports <session-directory> [--program <name>] [--limit <n>] [--investigation <file>] [--json]");
         ConsoleUi.Line("  The ports this machine's processes accepted TCP connections at, as the capture saw them open:");
         ConsoleUi.Line("  each port with the process that accepted connections there, how many, and who connected - its");
         ConsoleUi.Line("  processes, other hosts by address, or processes the capture did not observe - the busiest");
         ConsoleUi.Line("  first. --limit lists that many, 50 unless it says so; --json writes them as a document, each");
-        ConsoleUi.Line("  with every process and host that connected. --investigation names, for a session that is one");
-        ConsoleUi.Line("  of its members, the processes of its other captures whose connections mirror those each");
-        ConsoleUi.Line("  listener accepted: candidates for who connected from another machine, never established.");
+        ConsoleUi.Line("  with every process and host that connected. --program takes one program's processes alone, named");
+        ConsoleUi.Line("  as icat programs lists it - svchost.exe - or by its executable's path: the ports they accepted");
+        ConsoleUi.Line("  connections at, as the window's inspector lists them with the program chosen. --investigation");
+        ConsoleUi.Line("  names, for a session that is one of its members, the processes of its other captures whose");
+        ConsoleUi.Line("  connections mirror those each listener accepted: candidates for who connected from another");
+        ConsoleUi.Line("  machine, never established.");
     }
 
     /// <summary>The processes and programs of a session's overview, as its tables name them.</summary>

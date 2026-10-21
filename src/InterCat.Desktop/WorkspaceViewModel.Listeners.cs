@@ -99,14 +99,15 @@ public sealed partial class WorkspaceViewModel
     public bool ListsAllListeners => ListenerScope is { } scope && string.Equals(listenersListedWhole, scope, StringComparison.Ordinal);
 
     /// <summary>
-    /// What the list leaves out with every port asked for, past the most it lists, and where every one is read; empty
-    /// otherwise, where the button that asks for them says how many there are.
+    /// What the list leaves out with every port asked for, past the most it lists, and where every one is read - a
+    /// program's by `icat ports --program`, named so a shell takes it whole; empty otherwise, where the button that asks
+    /// for them says how many there are.
     /// </summary>
     public string ListenersMore => ListsAllListeners && ListenerScope is { } scope
-        && ScopedListeners(scope).Count - ListenersListed is > 0 and var more
-        ? string.Create(CultureInfo.CurrentCulture,
-            $"{more:N0} more, quieter: icat ports --limit {wholeSnapshot.Listeners.Count:N0} lists them all")
-            + (scope.Length > 0 ? ", among the machine's" : string.Empty)
+        && ScopedListeners(scope).Count is var count && count - ListenersListed is > 0 and var more
+        ? string.Create(CultureInfo.CurrentCulture, $"{more:N0} more, quieter: icat ports")
+            + (Groups(scope) is { } program ? " --program " + CommandArgument.Of(program.Name) : string.Empty)
+            + string.Create(CultureInfo.CurrentCulture, $" --limit {count:N0} lists them all")
         : string.Empty;
 
     /// <summary>Whether the list says what it leaves out with every port asked for.</summary>

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 693 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 694 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 694 — icat ports --program lists one program's listening ports (§7.4, R18):**
+  - Named as icat programs lists it or by its executable's path, as icat hosts --program takes it; a Program field
+    names it and counts its processes, and the document names it. A name two programs share is refused with how each
+    is listed, and a program whose processes accepted nothing says so by its name. The window's hint for a program's
+    list past its hundredth port now names that command, with the program's count rather than the machine's, quoted
+    where a shell would split the name.
+  - Debug and Release each ran 2,702 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    twelve mutations were caught: every listener kept, every program's processes taken, the Program field or the
+    document's count and name unsaid, the no-port note naming the machine, a shared name taken as the first program,
+    a blank or untrimmed name taken, and the window's hint without --program, unquoted, or counting the machine's
+    ports.
 
 - **Revision 693 — a chosen program's inspector lists its processes' listening ports (§6.3, R15):**
   - As the machine's list does with nothing chosen; Enter chooses a port's process and Esc comes back to the program

@@ -301,22 +301,32 @@ public sealed class ListeningPortsWorkspaceTests
             Assert.False(workspace.OffersListenersToggle);
         }
 
+        // The server listens at a hundred and two ports, another server.exe, in another folder, at one more.
         using var many = new TemporarySession();
         Publish(many.Store,
         [
             Lifecycle(1, ObservationKind.Create, 200, 1) with { ResourceName = @"C:\Apps\server.exe" },
+            Lifecycle(2, ObservationKind.Create, 300, 2) with { ResourceName = @"C:\Tools\server.exe" },
             .. Enumerable.Range(0, 102).Select(index => Accepted(10 + index, 200, $"192.168.1.10:{9000 + index}", "10.0.0.6:50000")),
+            Accepted(200, 300, "192.168.1.10:8000", "10.0.0.7:50000"),
         ]);
         using (WorkspaceViewModel workspace = Open(many, 1))
         {
             await workspace.LayoutReady;
-            Assert.Equal("102 listening ports, the busiest first", workspace.ListenersHeading);
-            Assert.Equal("Show the busiest 100 of 102 listening ports", workspace.ListenersToggleLabel);
+            Assert.Equal("103 listening ports, the busiest first", workspace.ListenersHeading);
+            Assert.Equal("Show the busiest 100 of 103 listening ports", workspace.ListenersToggleLabel);
             Assert.False(workspace.ShowsListenersMore);
             Assert.True(workspace.ToggleListeners());
             Assert.Equal(100, workspace.ListenerRows.Count);
             Assert.True(workspace.ShowsListenersMore);
-            Assert.Equal("2 more, quieter: icat ports --limit 102 lists them all", workspace.ListenersMore);
+            Assert.Equal("3 more, quieter: icat ports --limit 103 lists them all", workspace.ListenersMore);
+
+            // A program's names the command that lists its processes' ports alone, as many as it has, the program named as
+            // icat takes it whole.
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe (Apps)");
+            Assert.True(workspace.ToggleListeners());
+            Assert.Equal("2 more, quieter: icat ports --program \"server.exe (Apps)\" --limit 102 lists them all",
+                workspace.ListenersMore);
         }
     });
 
