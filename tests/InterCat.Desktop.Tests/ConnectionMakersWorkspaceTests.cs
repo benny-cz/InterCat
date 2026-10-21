@@ -466,6 +466,99 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal(server, workspace.SelectedGroup?.Key);
     });
 
+    [Fact(DisplayName = "R7: a newer generation keeps the way back along a walk of relationships or of programs, and lets a hop go where the session no longer holds where it began")]
+    public void ANewerGenerationKeepsTheWayBackAlongAWalk() => SingleThreadedContext.Run(async () =>
+    {
+        // browser.exe's PID 300 connects to server.exe's PID 400, and the server to alpha.exe's PID 500.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 400, 2) with { ResourceName = @"C:\Apps\server.exe", SessionRelativeTicks = 110 },
+            Lifecycle(3, ObservationKind.Create, 500, 3) with { ResourceName = @"C:\Apps\alpha.exe", SessionRelativeTicks = 120 },
+            .. Connection(20, 300, 400, "127.0.0.1:50000", "127.0.0.1:8080"),
+            .. Connection(30, 400, 500, "127.0.0.1:50001", "127.0.0.1:7000"),
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var old = await Generation(1);
+        ProcessInstanceId browser = Process(old, 300).Id, server = Process(old, 400).Id, alpha = Process(old, 500).Id;
+        string browsers = Key(old, "browser.exe"), servers = Key(old, "server.exe"), alphas = Key(old, "alpha.exe");
+
+        // A walk of relationships from the browser's process to alpha's...
+        old.SelectProcess(browser);
+        Assert.True(old.ChoosePeer(old.SelectionPeers.Single()));
+        Assert.True(old.ChoosePeer(old.SelectionPeers.Single(row => row.PeerId == alpha)));
+        WorkspaceNavigationMemento walked = old.CaptureNavigation();
+        Assert.Equal([new PeerHop(browser, server, 0), new PeerHop(server, alpha, 0)], walked.PeerHops);
+        Assert.Null(walked.ProgramHops);
+
+        // ...is come back along in the next generation, hop by hop.
+        using (WorkspaceViewModel next = await Generation(2))
+        {
+            Assert.Null(next.RestoreNavigation(walked));
+            Assert.Equal(alpha, next.SelectedProcess?.Id);
+            Assert.Equal(alpha, next.ComeBackFromPeer());
+            Assert.Equal(server, next.SelectedProcess?.Id);
+            Assert.Equal(server, next.ComeBackFromPeer());
+            Assert.Equal(browser, next.SelectedProcess?.Id);
+            Assert.Null(next.ComeBackFromPeer());
+        }
+
+        // So is a walk of programs, each ranked row chosen again with its program.
+        old.SelectedRung = old.RungRows.Single(row => row.Label == "browser.exe");
+        Assert.True(old.ChooseProgram(old.SelectionPrograms.Single()));
+        Assert.True(old.ChooseProgram(old.SelectionPrograms.Single(row => row.OtherKey == alphas)));
+        WorkspaceNavigationMemento programs = old.CaptureNavigation();
+        Assert.Equal([new ProgramHop(browsers, servers, 0), new ProgramHop(servers, alphas, 0)], programs.ProgramHops);
+        using (WorkspaceViewModel next = await Generation(3))
+        {
+            Assert.Null(next.RestoreNavigation(programs));
+            Assert.Equal(("alpha.exe", "alpha.exe"), (next.SelectedGroup?.Name, next.SelectedRung?.Label));
+            Assert.Equal(alphas, next.ComeBackFromProgram());
+            Assert.Equal(("server.exe", "server.exe"), (next.SelectedGroup?.Name, next.SelectedRung?.Label));
+            Assert.Equal(servers, next.ComeBackFromProgram());
+            Assert.Equal(("browser.exe", "browser.exe"), (next.SelectedGroup?.Name, next.SelectedRung?.Label));
+            Assert.Null(next.ComeBackFromProgram());
+        }
+
+        // A hop from a process or a program the session no longer holds is let go, with those before it, and the choice
+        // stays where Esc came back to.
+        var gone = new ProcessInstanceId(Guid.NewGuid());
+        using (WorkspaceViewModel next = await Generation(4))
+        {
+            _ = next.RestoreNavigation(walked with { PeerHops = [new PeerHop(gone, browser, 0), new PeerHop(browser, server, 0),
+                new PeerHop(server, alpha, 0)] });
+            Assert.Equal(alpha, next.ComeBackFromPeer());
+            Assert.Equal(server, next.ComeBackFromPeer());
+            Assert.Null(next.ComeBackFromPeer());
+            Assert.Equal(browser, next.SelectedProcess?.Id);
+        }
+
+        using (WorkspaceViewModel next = await Generation(5))
+        {
+            _ = next.RestoreNavigation(programs with { ProgramHops = [new ProgramHop("executable:GONE.EXE", browsers, 0),
+                new ProgramHop(browsers, servers, 0), new ProgramHop(servers, alphas, 0)] });
+            Assert.Equal(alphas, next.ComeBackFromProgram());
+            Assert.Equal(servers, next.ComeBackFromProgram());
+            Assert.Null(next.ComeBackFromProgram());
+            Assert.Equal("browser.exe", next.SelectedGroup?.Name);
+        }
+
+        async Task<WorkspaceViewModel> Generation(int generation)
+        {
+            var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), $"{overview.GraphIdentity}:{generation}",
+                new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+            await workspace.LayoutReady;
+            return workspace;
+        }
+
+        static ProcessNode Process(WorkspaceViewModel workspace, int pid) =>
+            workspace.Snapshot.Processes.Single(process => process.ProcessId == pid);
+
+        static string Key(WorkspaceViewModel workspace, string program) =>
+            workspace.Snapshot.Groups.Single(group => group.Name == program).Key;
+    });
+
     [Fact(DisplayName = "§6.3: a chosen process's inspector names the processes it talked with, the busiest first, each marked from its side as its own connections count them, and RPC calls as made or served")]
     public void AChosenProcessNamesTheProcessesItTalkedWith() => SingleThreadedContext.Run(async () =>
     {

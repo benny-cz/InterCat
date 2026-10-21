@@ -27,24 +27,10 @@ public sealed class ConnectionsInspectorWindowTests
     public async Task TheInspectorStatesTheConnections()
     {
         using var session = new TemporarySession();
-        Publish(session.Store,
-        [
-            Timed(Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
-            Timed(Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" }),
-            Timed(Lifecycle(3, ObservationKind.Create, 300, 7) with { ResourceName = @"C:\Tools\helper.exe" }),
-            Timed(Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 3).Between("127.0.0.1:50000", "127.0.0.1:8080")),
-            Timed(Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 4).Between("127.0.0.1:8080", "127.0.0.1:50000")),
-            Timed(Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 5).Between("127.0.0.1:50000", "127.0.0.1:8080")),
-            Timed(Transfer(20, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 6).Between("192.168.1.10:52000", "203.0.113.1:443")),
-            Timed(Transfer(30, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 8).Between("127.0.0.1:50001", "127.0.0.1:8080")),
-            Timed(Transfer(31, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 9).Between("127.0.0.1:8080", "127.0.0.1:50001")),
-            Timed(Transfer(32, ObservationKind.Send, AccountingSide.SendSide, 8, 300, 10).Between("127.0.0.1:50001", "127.0.0.1:8080")),
-            Timed(Transfer(33, ObservationKind.Send, AccountingSide.SendSide, 8, 300, 11).Between("127.0.0.1:50001", "127.0.0.1:8080")),
-        ]);
+        Publish(session.Store, Rows());
         var window = new MainWindow { Width = 1456, Height = 939 };
         window.Show();
-        window.ApplyCaptureUpdate(new CaptureUiUpdate(CaptureUiPhase.Recording, "Recording", "A published generation.",
-            SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store)));
+        window.ApplyCaptureUpdate(Recording(session));
         Dispatch();
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         await workspace.LayoutReady;
@@ -160,6 +146,80 @@ public sealed class ConnectionsInspectorWindowTests
         Assert.Equal("helper.exe", workspace.SelectedGroup?.Name);
         window.Close();
     }
+
+    [AvaloniaFact(DisplayName = "R7/R15: a newer generation published while recording keeps the way back along a walk of programs, the keyboard on the pair it was left by wherever the list now holds it")]
+    public async Task ANewerGenerationKeepsTheWayBackAlongAWalk()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(Recording(session));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+            ListBox programs = window.GetControl<ListBox>("ProgramsList");
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
+            Dispatch();
+            Assert.Equal(["helper.exe → server.exe", "1 relationship · 4 records", "client.exe → server.exe",
+                "1 relationship · 3 records"], Texts(programs));
+            Assert.True(programs.ContainerFromIndex(1)!.Focus());
+            Dispatch();
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("client.exe", workspace.SelectedGroup?.Name);
+
+            // The next generation, in which the client sent twice more, replaces the workspace: the client stays chosen with
+            // the keyboard on its pair, and Esc comes back to the server, the keyboard on the client's pair, listed first now.
+            Publish(session.Store,
+            [
+                Timed(Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 12).Between("127.0.0.1:50000", "127.0.0.1:8080")),
+                Timed(Transfer(41, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 13).Between("127.0.0.1:50000", "127.0.0.1:8080")),
+            ]);
+            window.ApplyCaptureUpdate(Recording(session));
+            var next = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            Assert.NotSame(workspace, next);
+            await next.LayoutReady;
+            Dispatch();
+            Assert.Equal("client.exe", next.SelectedGroup?.Name);
+            Assert.Same(programs.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(("server.exe", "server.exe"), (next.SelectedGroup?.Name, next.SelectedRung?.Label));
+            Assert.Equal(["client.exe → server.exe", "1 relationship · 5 records", "helper.exe → server.exe",
+                "1 relationship · 4 records"], Texts(programs));
+            Assert.Same(programs.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// The client connects to the server and to another host, and the helper to the server, sending twice to the client's
+    /// once.
+    /// </summary>
+    private static ObservationRowV1[] Rows() =>
+    [
+        Timed(Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+        Timed(Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" }),
+        Timed(Lifecycle(3, ObservationKind.Create, 300, 7) with { ResourceName = @"C:\Tools\helper.exe" }),
+        Timed(Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 3).Between("127.0.0.1:50000", "127.0.0.1:8080")),
+        Timed(Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 4).Between("127.0.0.1:8080", "127.0.0.1:50000")),
+        Timed(Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 5).Between("127.0.0.1:50000", "127.0.0.1:8080")),
+        Timed(Transfer(20, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 6).Between("192.168.1.10:52000", "203.0.113.1:443")),
+        Timed(Transfer(30, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 8).Between("127.0.0.1:50001", "127.0.0.1:8080")),
+        Timed(Transfer(31, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 9).Between("127.0.0.1:8080", "127.0.0.1:50001")),
+        Timed(Transfer(32, ObservationKind.Send, AccountingSide.SendSide, 8, 300, 10).Between("127.0.0.1:50001", "127.0.0.1:8080")),
+        Timed(Transfer(33, ObservationKind.Send, AccountingSide.SendSide, 8, 300, 11).Between("127.0.0.1:50001", "127.0.0.1:8080")),
+    ];
+
+    /// <summary>The session's latest generation as a recording publishes it.</summary>
+    private static CaptureUiUpdate Recording(TemporarySession session) => new(CaptureUiPhase.Recording, "Recording",
+        "A published generation.", SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store));
 
     /// <summary>Keeps what the window drew beside the tests' other renders, for a person to look at.</summary>
     private static void Save(Window window, string name)

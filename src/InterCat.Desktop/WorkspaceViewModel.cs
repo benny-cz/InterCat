@@ -84,6 +84,8 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// </param>
 /// <param name="RecordOrigin">Where the latest way down from a cell's listed record began, which the way back comes to (§3.2).</param>
 /// <param name="IntervalRowOrigin">Where the latest way down from the interval table's row began, which the way back comes to (§3.2).</param>
+/// <param name="PeerHops">The hops made from a chosen process's relationships, the latest last, which Esc comes back along (§6.3).</param>
+/// <param name="ProgramHops">The hops made from a chosen program's pairs of programs, the latest last, which Esc comes back along (§6.3).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -113,7 +115,9 @@ public sealed record WorkspaceNavigationMemento(
     bool DescribesRow = false,
     IReadOnlyList<CellOrigin>? CellOrigins = null,
     CellRecordOrigin? RecordOrigin = null,
-    IntervalRowOrigin? IntervalRowOrigin = null);
+    IntervalRowOrigin? IntervalRowOrigin = null,
+    IReadOnlyList<PeerHop>? PeerHops = null,
+    IReadOnlyList<ProgramHop>? ProgramHops = null);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1698,7 +1702,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         scalesEachLane, reachedWith, chosenCell, ReadsWallClock, ChosenMemberRow?.Process, ListedChoice(), memberOrigin,
         selectedRelationship?.Key, chosenProcesses.Count > 0 ? [.. chosenProcesses] : null,
         relationshipOrigins.Count > 0 ? [.. relationshipOrigins] : null, ChosenHostEdgeRow()?.Key, DescribedRow is not null,
-        cellOrigins.Count > 0 ? [.. cellOrigins] : null, cellRecordOrigin, intervalRowOrigin);
+        cellOrigins.Count > 0 ? [.. cellOrigins] : null, cellRecordOrigin, intervalRowOrigin,
+        peerHops.Count > 0 ? [.. peerHops] : null, programHops.Count > 0 ? [.. programHops] : null);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1856,6 +1861,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         cellOrigins.AddRange(saved.CellOrigins ?? []);
         cellRecordOrigin = saved.RecordOrigin;
         intervalRowOrigin = saved.IntervalRowOrigin;
+
+        // So does the way back along a walk of relationships or of programs: a hop is checked when Esc comes to it, and
+        // let go where its choice, its rung or where it began is no longer this generation's.
+        peerHops.Clear();
+        peerHops.AddRange(saved.PeerHops ?? []);
+        programHops.Clear();
+        programHops.AddRange(saved.ProgramHops ?? []);
 
         // A relationship chosen, or processes chosen together, are chosen again as far as this generation holds them.
         if (saved.SelectedRelationshipKey is { } relationship)

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 669 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 670 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 670 — a newer generation keeps the way back along a walk (R7, §3.2, §6.3):**
+  - A recording's next publication carries the hops Esc comes back along after Enter on a relationship or a pair of
+    programs; a hop from a process or program the session no longer holds is let go, with the hops before it.
+  - Debug and Release each ran 2,655 tests with revision 473's 93 failures and 4 skips, and nothing else failed; the
+    two tests more carry a walk of relationships and one of programs into a newer generation, the second in the
+    window as a recording publishes it. All seven mutations were caught: either walk's hops not carried over, or not
+    taken up again - the programs' caught in the window too - and either walk coming back along a hop from a process
+    or program the session no longer holds.
 
 - **Revision 669 — Enter on a chosen program's pair of programs chooses the program at its other end (§6.3, §6.7, R15):**
   - The inspector's relationships by program take the keyboard as a process's relationships do: Enter or a double

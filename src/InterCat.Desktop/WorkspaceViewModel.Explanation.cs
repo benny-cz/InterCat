@@ -6,6 +6,18 @@ using InterCat.Domain;
 namespace InterCat.Desktop;
 
 /// <summary>
+/// A hop made from a chosen process's relationships (§6.3): the process left, the one chosen at the relationship's other
+/// end, and the depth of the rung it was chosen at, which Esc comes back along.
+/// </summary>
+public sealed record PeerHop(ProcessInstanceId From, ProcessInstanceId To, int Depth);
+
+/// <summary>
+/// A hop made from a chosen program's pairs of programs (§6.3): the program left and the one chosen at the pair's other
+/// end, by their keys, and the depth of the rung it was chosen at, which Esc comes back along.
+/// </summary>
+public sealed record ProgramHop(string From, string To, int Depth);
+
+/// <summary>
 /// What the inspector says made the selection's numbers (§6.8: every visual claim is one action from its explanation):
 /// for a process, the rule that bound its records to it and what the evidence policy left out; for an executable group,
 /// how its members were grouped and what its total left out; for a paired channel, the rule that paired its two ends,
@@ -140,22 +152,19 @@ public sealed partial class WorkspaceViewModel
         }
 
         SelectGroup(row.OtherKey, syncRow: true);
-        programHops.Add((from, row.OtherKey, ladder.Depth));
+        programHops.Add(new ProgramHop(from, row.OtherKey, ladder.Depth));
         return true;
     }
 
-    /// <summary>
-    /// The hops made by <see cref="ChooseProgram"/>, the latest last: the program left, the one chosen, and the rung it was
-    /// chosen at.
-    /// </summary>
-    private readonly List<(string From, string To, int Depth)> programHops = [];
+    /// <summary>The hops made by <see cref="ChooseProgram"/>, the latest last, kept for a newer generation.</summary>
+    private readonly List<ProgramHop> programHops = [];
 
     /// <summary>
     /// Comes back along the latest hop made from the inspector's pairs of programs, as Esc does before it climbs the
     /// ladder: where the program the hop chose is still the one chosen, on the rung it was chosen at, the program it was
     /// chosen from is chosen again, and the key of the one left is returned, whose row in its list the keyboard goes back
-    /// to. A hop the selection or the ladder has since moved away from is forgotten, every earlier one with it, and null
-    /// returned.
+    /// to. A hop the selection or the ladder has since moved away from, or one from a program a newer generation no longer
+    /// holds, is forgotten, every earlier one with it, and null returned.
     /// </summary>
     public string? ComeBackFromProgram()
     {
@@ -164,7 +173,8 @@ public sealed partial class WorkspaceViewModel
             return null;
         }
 
-        if (!string.Equals(selectedGroupKey, latest.To, StringComparison.Ordinal) || ladder.Depth != latest.Depth)
+        if (!string.Equals(selectedGroupKey, latest.To, StringComparison.Ordinal) || ladder.Depth != latest.Depth
+            || wholeSnapshot.Groups.All(group => !string.Equals(group.Key, latest.From, StringComparison.Ordinal)))
         {
             programHops.Clear();
             return null;
@@ -231,21 +241,19 @@ public sealed partial class WorkspaceViewModel
         }
 
         SelectProcess(row.PeerId);
-        peerHops.Add((from.Id, row.PeerId, ladder.Depth));
+        peerHops.Add(new PeerHop(from.Id, row.PeerId, ladder.Depth));
         return true;
     }
 
-    /// <summary>
-    /// The hops made by <see cref="ChoosePeer"/>, the latest last: the process left, the one chosen, and the rung it was
-    /// chosen at.
-    /// </summary>
-    private readonly List<(ProcessInstanceId From, ProcessInstanceId To, int Depth)> peerHops = [];
+    /// <summary>The hops made by <see cref="ChoosePeer"/>, the latest last, kept for a newer generation.</summary>
+    private readonly List<PeerHop> peerHops = [];
 
     /// <summary>
     /// Comes back along the latest hop made from the inspector's relationships, as Esc does before it climbs the ladder:
     /// where the process the hop chose is still the one chosen, on the rung it was chosen at, the process it was chosen
     /// from is chosen again, and the one left is returned, whose row in its list the keyboard goes back to. A hop the
-    /// selection or the ladder has since moved away from is forgotten, every earlier one with it, and null returned.
+    /// selection or the ladder has since moved away from, or one from a process a newer generation no longer holds, is
+    /// forgotten, every earlier one with it, and null returned.
     /// </summary>
     public ProcessInstanceId? ComeBackFromPeer()
     {
@@ -254,7 +262,8 @@ public sealed partial class WorkspaceViewModel
             return null;
         }
 
-        if (selectedProcess?.Id != latest.To || ladder.Depth != latest.Depth)
+        if (selectedProcess?.Id != latest.To || ladder.Depth != latest.Depth
+            || Snapshot.Processes.All(process => process.Id != latest.From))
         {
             peerHops.Clear();
             return null;
