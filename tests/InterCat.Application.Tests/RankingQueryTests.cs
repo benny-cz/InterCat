@@ -215,8 +215,9 @@ public sealed class RankingQueryTests
         Assert.Equal(session.Store.Current.Digest, evidence.Context.Manifest);
         Assert.Null(evidence.Context.Query);
         string[] lines = evidence.Content.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        Assert.EndsWith(",manifest", lines[0].TrimEnd('\r'), StringComparison.Ordinal);
-        Assert.All(lines.Skip(1), line => Assert.EndsWith("," + session.Store.Current.Digest, line.TrimEnd('\r'), StringComparison.Ordinal));
+        Assert.EndsWith(",manifest,query_identity", lines[0].TrimEnd('\r'), StringComparison.Ordinal);
+        Assert.All(lines.Skip(1), line => Assert.EndsWith($",{session.Store.Current.Digest},{evidence.Context.EvidenceQuery!.Identity}",
+            line.TrimEnd('\r'), StringComparison.Ordinal));
     }
 
     [Fact(DisplayName = "§19.5: a view that sets InterCat's own processes aside names no query, since icat metric counts them")]

@@ -1003,10 +1003,12 @@
       "I16": [
         "I16: a ranked export names its generation's manifest and the query icat metric prints, in JSON and CSV",
         "I16: a result names the materialized request it answers, so two spellings are one request",
+        "I16: an evidence export names the icat evidence command that lists its records under the policy the window counts by",
         "I16: an operation answer names the operation rule and the binding rule in its identity",
         "I16: any meaningful difference - member, snapshot, focus role or peer - is a different identity",
         "I16: candidate joins and the merged time name the generation of each capture they read, with its manifest",
         "I16: every answer names the identity of the specification and snapshot it answers",
+        "I16: every evidence scope is one icat evidence command, which lists the same records under the identity its export names",
         "I16: every golden specification canonicalizes to exactly its recorded bytes and identity",
         "I16: icat export names the icat metric query its rows answer, and that command, asked, prints its identity",
         "I16: rows no one icat metric request answers name no query and say why, and an evidence export names its manifest",

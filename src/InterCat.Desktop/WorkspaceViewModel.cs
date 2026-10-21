@@ -7157,7 +7157,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 read.NextCursor is null, workspaceDisclosure,
                 string.Create(CultureInfo.InvariantCulture,
                     $"Only the first {read.Records.Count:N0} records of this scope are included; narrow it with a filter or a brushed interval, or use icat export --limit for more."),
-                read.Coverage, exportedUtc) with { Manifest = read.ManifestDigest };
+                read.Coverage, exportedUtc) with
+            {
+                Manifest = read.ManifestDigest,
+                EvidenceQuery = EvidenceQuery.Name(read, source.Policy),
+            };
             if (EvidencePolicyCaveat is { } policy)
             {
                 context = context with { Caveats = [.. context.Caveats, policy] };

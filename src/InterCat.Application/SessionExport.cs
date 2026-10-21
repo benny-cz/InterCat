@@ -233,7 +233,11 @@ public static class SessionExport
             read.NextCursor is null, OverviewWorkspace.DisclosureFor(snapshot),
             string.Create(CultureInfo.InvariantCulture,
                 $"Only the first {records.Count:N0} records of this scope are included; raise --limit for the rest."),
-            read.Coverage, exportedUtc) with { Manifest = read.ManifestDigest };
+            read.Coverage, exportedUtc) with
+        {
+            Manifest = read.ManifestDigest,
+            EvidenceQuery = EvidenceQuery.Name(read, EvidencePolicy.IncludeCorrelated),
+        };
         string evidenceContent = request.Redacted
             ? RedactedShareExport.Evidence(request.Format, context, records)
             : WorkspaceExport.Evidence(request.Format, context, records);

@@ -125,11 +125,11 @@ public sealed class WorkspaceExportTests
 
         // Every line of rows ends by saying it holds one, then what the capture covered over the scope, after every
         // column the export had before, so each of those keeps its place; a ranking's lines then count what its view set
-        // aside (revision 417), after those in turn, and every line ends with its generation's manifest, a ranking's with
-        // its query's identity after it (revision 699).
+        // aside (revision 417), after those in turn, and every line ends with its generation's manifest and its query's
+        // identity (revisions 699 and 700).
         foreach ((string csv, int after) in new[]
         {
-            (WorkspaceExport.RankingCsv(ranked, rows), 4), (WorkspaceExport.EvidenceCsv(evidence, records), 1),
+            (WorkspaceExport.RankingCsv(ranked, rows), 4), (WorkspaceExport.EvidenceCsv(evidence, records), 2),
         })
         {
             string[] lines = Csv.Lines(csv);
@@ -147,8 +147,8 @@ public sealed class WorkspaceExportTests
         Assert.Equal(["0", "0", "", ""], Csv.Cells(rankedLines[1])[^4..]);
         Assert.Equal(["1", "312"], Csv.Cells(Csv.Lines(WorkspaceExport.RankingCsv(
             ranked with { SetAsideProcesses = 1, SetAsideRecords = 312 }, rows))[1])[^4..^2]);
-        Assert.Equal(["segment_row", "row_present"], Csv.Cells(Csv.Lines(WorkspaceExport.EvidenceCsv(evidence, records))[0])[^4..^2]);
-        Assert.Equal("manifest", Csv.Cells(Csv.Lines(WorkspaceExport.EvidenceCsv(evidence, records))[0])[^1]);
+        Assert.Equal(["segment_row", "row_present"], Csv.Cells(Csv.Lines(WorkspaceExport.EvidenceCsv(evidence, records))[0])[^5..^3]);
+        Assert.Equal(["manifest", "query_identity"], Csv.Cells(Csv.Lines(WorkspaceExport.EvidenceCsv(evidence, records))[0])[^2..]);
 
         // Named, the manifest and the identity fill those cells; a query no request answers leaves its identity's empty.
         const string Digest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -157,7 +157,10 @@ public sealed class WorkspaceExportTests
             ranked with { Manifest = Digest, Query = new(identity, "icat metric <directory>", null) }, rows))[1])[^2..]);
         Assert.Equal([Digest, ""], Csv.Cells(Csv.Lines(WorkspaceExport.RankingCsv(
             ranked with { Manifest = Digest, Query = RankingQueryName.None("none") }, rows))[1])[^2..]);
-        Assert.Equal(Digest, Csv.Cells(Csv.Lines(WorkspaceExport.EvidenceCsv(evidence with { Manifest = Digest }, records))[1])[^1]);
+        Assert.Equal([Digest, "ab"], Csv.Cells(Csv.Lines(WorkspaceExport.EvidenceCsv(evidence with
+        {
+            Manifest = Digest, EvidenceQuery = new("ab", "icat evidence <directory>"),
+        }, records))[1])[^2..]);
 
         // A scope with no row still names itself, says it is complete, and says what the capture covered there, on one
         // line that holds no row; a ranked one names its ranking, as a row would.
@@ -170,7 +173,7 @@ public sealed class WorkspaceExportTests
             string[] lines = Csv.Lines(csv);
             Assert.Equal(2, lines.Length);
             string[] cells = Csv.Cells(lines[1]);
-            int after = rankedBy < 0 ? 1 : 4;
+            int after = rankedBy < 0 ? 2 : 4;
             Assert.Equal(Csv.Cells(lines[0]).Length, cells.Length);
             Assert.Equal([SessionId.ToString("N"), "3", "25", "35", "true"], [cells[0], cells[1], cells[3], cells[4], cells[5]]);
             Assert.Equal(["false", said], cells[^(2 + after)..^after]);

@@ -34,6 +34,7 @@ internal static class EvidenceCommand
         string? directionText = command.TakeOption("--direction");
         string? endText = command.TakeOption("--end");
         string? fromText = command.TakeOption("--from");
+        string? policyText = command.TakeOption("--evidence-policy");
         bool json = command.TryTakeFlag("--json");
         bool wallClock = command.TryTakeFlag("--wall-clock");
         string? directory = command.TakePositional();
@@ -50,8 +51,12 @@ internal static class EvidenceCommand
         // direction's, or those made at one end of a paired channel.
         bool mechanismRead = MetricCommand.TryParseOptional(mechanismText, "--mechanism", out Mechanism? mechanism, out string? mechanismProblem);
         bool directionRead = MetricCommand.TryParseOptional(directionText, "--direction", out Direction? direction, out string? directionProblem);
+        // The policy a record's owner is bound under, as the window's evidence rung binds it where a person chose one.
+        bool policyRead = MetricCommand.TryParseOptional(policyText, "--evidence-policy", out EvidencePolicy? chosen, out string? policyProblem);
+        EvidencePolicy policy = chosen ?? EvidencePolicy.IncludeCorrelated;
         string? narrowingProblem = !mechanismRead ? mechanismProblem
             : !directionRead ? directionProblem
+            : !policyRead ? policyProblem
             : endText is not (null or "0" or "1") ? "--end takes 0, a paired channel's first end, or 1, its second."
             : null;
         int? end = endText is null ? null : endText == "0" ? 0 : 1;
@@ -83,8 +88,10 @@ internal static class EvidenceCommand
         // Another host's records are every connection's to its address, whoever held it, read where a channel's are.
         channel = host is not null ? HostScopeKeys.Of(host) : channel;
         // A relationship's evidence key opens its records at both ends (R4): a paired TCP or UDP channel's, or an RPC
-        // relationship's, channel's or call's, whose records the RPC calls name.
+        // relationship's, channel's or call's, whose records the RPC calls name. A process's HTTP exchanges, or one of
+        // them, name their own records too, as the window's evidence rung reads them.
         bool rpc = RpcChannelKeys.IsRpc(channel);
+        bool operation = rpc || HttpExchangeKeys.IsHttp(channel);
         SessionEvidencePage page;
         SessionClock clock = SessionClock.Session(TimeZoneInfo.Local);
         (long Ticks, string Said, DateTimeOffset? Utc)? from = null;
@@ -117,9 +124,9 @@ internal static class EvidenceCommand
             }
 
             page = SessionEvidenceQuery.Read(store,
-                rpc ? null : channel, interval, pageSize: pageSize, cursor: cursor,
-                ownerProcesses: owners.Length == 0 ? null : owners, resolveOwners: true,
-                operationKey: rpc ? channel : null, mechanism: mechanism, direction: direction, end: end,
+                operation ? null : channel, interval, pageSize: pageSize, cursor: cursor,
+                ownerProcesses: owners.Length == 0 ? null : owners, policy: policy, resolveOwners: true,
+                operationKey: operation ? channel : null, mechanism: mechanism, direction: direction, end: end,
                 cancellationToken: cancellationToken);
         }
         catch (ArgumentException exception)
@@ -140,6 +147,7 @@ internal static class EvidenceCommand
                 Contract = "evidence-page-v5",
                 SessionPath = path,
                 From = from is { } placed ? new { placed.Ticks, placed.Utc } : null,
+                EvidencePolicy = policy.ToString(),
                 Page = page,
             }, JsonContracts.Indented));
             return page.RestartRequired ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
@@ -149,9 +157,13 @@ internal static class EvidenceCommand
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Session ID", page.SessionId.ToString("N"));
         ConsoleUi.Field("Generation", ConsoleUi.Count(page.Generation));
+        if (page.ManifestDigest is { } digest) ConsoleUi.Field("Manifest", digest);
+        // The scope's identity, which its pages' cursors are bound to and an export of its records names (I16).
+        ConsoleUi.Field("Query", page.QueryIdentity);
         ConsoleUi.Field("Rows on page", ConsoleUi.Count(page.Records.Count));
         if (host is not null) ConsoleUi.Field("Host", host.Trim() + ", its connections whichever process held them");
-        else if (channel is not null) ConsoleUi.Field(rpc ? "RPC key" : "Paired channel", channel);
+        else if (channel is not null) ConsoleUi.Field(rpc ? "RPC key" : operation ? "HTTP key" : "Paired channel", channel);
+        if (policy != EvidencePolicy.IncludeCorrelated) ConsoleUi.Field("Evidence policy", policy.ToString());
         if (page.End is { } side) ConsoleUi.Field("Channel end", side == 0 ? "0, its first end" : "1, its second end");
         if (page.Mechanism is { } kind) ConsoleUi.Field("Mechanism", MechanismText.Name(kind));
         if (page.Direction is { } way) ConsoleUi.Field("Source direction", ObservationText.DirectionOf(way));
@@ -207,7 +219,8 @@ internal static class EvidenceCommand
                 + (interval is { } scope ? $" --interval {scope.StartTicks}:{scope.EndTicks}" : string.Empty)
                 + (page.Mechanism is { } named ? $" --mechanism {Kebab(named.ToString())}" : string.Empty)
                 + (page.Direction is { } marked ? $" --direction {Kebab(marked.ToString())}" : string.Empty)
-                + (page.End is { } narrowed ? string.Create(CultureInfo.InvariantCulture, $" --end {narrowed}") : string.Empty));
+                + (page.End is { } narrowed ? string.Create(CultureInfo.InvariantCulture, $" --end {narrowed}") : string.Empty)
+                + (policy == EvidencePolicy.IncludeCorrelated ? string.Empty : " --evidence-policy " + Kebab(policy.ToString())));
         return InterCatExitCode.Success;
     }
 
@@ -270,13 +283,14 @@ internal static class EvidenceCommand
     {
         ConsoleUi.Line("icat evidence <session-directory> [--channel <key> | --host <address>] [--owner-process <instance-guid> ...]");
         ConsoleUi.Line("              [--interval <start:end>] [--from <moment>] [--mechanism <name>] [--direction <name>]");
-        ConsoleUi.Line("              [--end <0|1>] [--page-size <1-200>]");
+        ConsoleUi.Line("              [--end <0|1>] [--evidence-policy <name>] [--page-size <1-200>]");
         ConsoleUi.Line("              [--cursor <token>] [--wall-clock] [--json]");
         ConsoleUi.Line("  Read-only pages of admitted normalized source rows in native-reading order.");
         ConsoleUi.Line("  A cursor continues after its last row, in a newer generation too; a changed scope, policy");
         ConsoleUi.Line("  or derivation asks for an explicit restart. --channel takes a relationship's evidence key: a");
         ConsoleUi.Line("  paired TCP or UDP channel's, or an RPC relationship's, which opens the calls its links join at both");
-        ConsoleUi.Line("  ends; an RPC channel's or call's key opens its own records, and no RPC key takes --owner-process.");
+        ConsoleUi.Line("  ends; an RPC channel's or call's key, or a process's HTTP exchanges' or one exchange's, opens its");
+        ConsoleUi.Line("  own records, and no such key takes --owner-process.");
         ConsoleUi.Line("  --host reads the records of every connection to one other host's address, whichever process held");
         ConsoleUi.Line("  it; who is at the address is not observed.");
         ConsoleUi.Line("  --owner-process selects rows canonically owned by that instance, not possible peer rows;");
@@ -290,6 +304,10 @@ internal static class EvidenceCommand
         ConsoleUi.Line("  --mechanism and --direction keep one mechanism's or one source direction's rows, and --end the");
         ConsoleUi.Line("  rows made at one end of a paired --channel: a timeline lane's records, as the window lists a");
         ConsoleUi.Line("  chosen cell's.");
+        ConsoleUi.Line("  --evidence-policy binds each row's owner as the window does where a person chose a policy:");
+        ConsoleUi.Line("  include-correlated, the default, direct-only, include-candidates or all-including-conflicting.");
+        ConsoleUi.Line("  Each page names its generation's manifest and its query's identity, which its cursors are bound to");
+        ConsoleUi.Line("  and an export of the same records names beside the command that lists them.");
 
         ConsoleUi.Line("  --wall-clock states each row's time on the wall clock its capture's machine read, in this");
         ConsoleUi.Line("  computer's zone, as the window's Wall clock does; a session that recorded none is refused.");

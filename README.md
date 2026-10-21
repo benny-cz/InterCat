@@ -116,6 +116,7 @@ icat hosts <session> --rank-by bytes-sent
 icat hosts <session> --address 10.0.0
 icat hosts <session> --program svchost.exe
 icat evidence <session> --host 10.0.0.20
+icat evidence <session> --owner-process <instance> --evidence-policy include-candidates
 icat processes <session> --rank-by connections-accepted
 icat processes <session> --pid <pid>
 icat processes <session> --program svchost.exe

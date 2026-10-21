@@ -67,6 +67,12 @@ public sealed record ExportContext(
     /// evidence export, or one whose query was not asked.
     /// </summary>
     public RankingQueryName? Query { get; init; }
+
+    /// <summary>
+    /// The <c>icat evidence</c> query an evidence export's records answer (<see cref="EvidenceQuery"/>); null for a ranked
+    /// export, or one whose records were not read.
+    /// </summary>
+    public EvidenceQueryName? EvidenceQuery { get; init; }
 }
 
 /// <summary>
@@ -309,6 +315,7 @@ public static class WorkspaceExport
             Query = context.Query is { } query
                 ? new
                 {
+                    Form = query.Identity is null ? null : "query-identity-v1",
                     Identity = query.Identity?.Token,
                     Canonical = query.Identity?.CanonicalSpecification,
                     query.Command,
@@ -342,6 +349,9 @@ public static class WorkspaceExport
             Contract,
             Kind = "evidence",
             Context = Describe(context),
+            Query = context.EvidenceQuery is { } query
+                ? new { Form = EvidenceQuery.Form, query.Identity, query.Command }
+                : null,
             Records = records.Select(record => Evidence(record)),
         }, Json);
     }
@@ -384,26 +394,26 @@ public static class WorkspaceExport
         [Number(context.SetAsideProcesses), Number(context.SetAsideRecords)];
 
     /// <summary>
-    /// A ranked CSV's last columns, after the set-aside ones: the manifest digest that pins the generation its rows were
-    /// read from, and the identity of the icat metric query they answer, empty where none does (I16). A CSV carries no
-    /// caveat, so the reason none does is the JSON's alone.
+    /// A CSV's last columns, after a ranking's set-aside ones: the manifest digest that pins the generation its lines were
+    /// read from, and the identity of the query they answer - icat metric's for ranked rows, icat evidence's for records -
+    /// empty where none does (I16). A CSV carries no caveat, so the reason none does is the JSON's alone.
     /// </summary>
     private static readonly string[] QueryHeader = ["manifest", "query_identity"];
 
     private static string[] QueryCells(ExportContext context) =>
-        [Text(context.Manifest ?? string.Empty), Text(context.Query?.Identity?.Token ?? string.Empty)];
+        [Text(context.Manifest ?? string.Empty), Text(context.Query?.Identity?.Token ?? context.EvidenceQuery?.Identity ?? string.Empty)];
 
     public static string EvidenceCsv(ExportContext context, IReadOnlyList<SessionEvidenceRecord> records)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(records);
         var csv = new StringBuilder();
-        Line(csv, [.. ContextHeader, .. EvidenceColumns, .. TrailingHeader, "manifest"]);
-        string[] trailing = [.. TrailingCells(context, present: true), Text(context.Manifest ?? string.Empty)];
+        Line(csv, [.. ContextHeader, .. EvidenceColumns, .. TrailingHeader, .. QueryHeader]);
+        string[] trailing = [.. TrailingCells(context, present: true), .. QueryCells(context)];
         if (records.Count == 0)
         {
             Line(csv, [.. ContextCells(context), .. Enumerable.Repeat(string.Empty, EvidenceColumns.Length),
-                .. TrailingCells(context, present: false), Text(context.Manifest ?? string.Empty)]);
+                .. TrailingCells(context, present: false), .. QueryCells(context)]);
         }
 
         foreach (SessionEvidenceRecord record in records)

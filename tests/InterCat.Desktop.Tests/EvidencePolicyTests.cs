@@ -213,6 +213,38 @@ public sealed class EvidencePolicyTests
         await workspace.ConnectionsReady;
     }
 
+    [Fact(DisplayName = "I16: an evidence export names the icat evidence command that lists its records under the policy the window counts by")]
+    public void AnEvidenceExportNamesItsPolicy() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        PublishLaterHolder(session);
+        var identities = new List<string>();
+        foreach (EvidencePolicy policy in new[] { EvidencePolicy.IncludeCorrelated, EvidencePolicy.IncludeCandidates })
+        {
+            using WorkspaceViewModel workspace = Open(session, policy);
+            ProcessNode later = workspace.Snapshot.Processes.Single(node => node.PidHolder == 2);
+            foreach (string key in (string[])[later.GroupKey, later.Id.ToString()!])
+            {
+                workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+                Assert.True(workspace.Descend());
+            }
+
+            Assert.True(workspace.ShowEvidence());
+            await workspace.EvidenceReady;
+            SessionExportResult export = await workspace.ExportAsync(ExportFormat.Json, DateTimeOffset.UnixEpoch);
+            EvidenceQueryName query = export.Context.EvidenceQuery!;
+            Assert.Equal($"icat evidence <directory> --owner-process {later.Id}"
+                + (policy == EvidencePolicy.IncludeCandidates ? " --evidence-policy include-candidates" : string.Empty), query.Command);
+            Assert.Equal(SessionEvidenceQuery.ReadScope(session.Store, 10, ownerProcesses: [later.Id], policy: policy,
+                resolveOwners: true).QueryIdentity, query.Identity);
+            Assert.Equal(session.Store.Current!.Digest, export.Context.Manifest);
+            identities.Add(query.Identity);
+        }
+
+        // Counting candidates binds other records to the process, so the two exports answer two queries.
+        Assert.Equal(2, identities.Distinct(StringComparer.Ordinal).Count());
+    });
+
     private static WorkspaceViewModel Open(TemporarySession session, EvidencePolicy policy)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store, policy);

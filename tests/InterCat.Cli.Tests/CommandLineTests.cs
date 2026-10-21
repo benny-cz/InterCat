@@ -284,6 +284,110 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "I16: every evidence scope is one icat evidence command, which lists the same records under the identity its export names")]
+    public async Task AnEvidenceScopeIsOneCommand()
+    {
+        using var machine = new TemporarySession();
+        (ObservationRowV1[] tcp, SourceFieldRowV1[] terminals) = TerminalSessions();
+        Publish(machine.Store, tcp, fields: terminals);
+        using var calls = new TemporarySession();
+        (ObservationRowV1[] rpc, SourceFieldRowV1[] links) = LinkedRpcCalls();
+        Publish(calls.Store, [.. rpc.Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })], fields: links);
+        using var web = new TemporarySession();
+        (ObservationRowV1[] http, SourceFieldRowV1[] exchanges) = HttpExchangeRows();
+        Publish(web.Store, http, fields: exchanges);
+
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(machine.Store);
+        ProcessNode client = overview.Nodes.First(node => node.ProcessId == 100);
+        ProcessNode tool = overview.Nodes.Single(node => node.ProcessId == 400);
+        ProcessInstanceId caller = SessionOverviewProjector.Project(calls.Store).Nodes.Single(node => node.ProcessId == 400).Id;
+        ProcessInstanceId browser = SessionOverviewProjector.Project(web.Store).Nodes.Single(node => node.ProcessId == 4_242).Id;
+        string group = client.GroupKey;
+        string channel = overview.Channels[0].Key;
+        foreach ((string name, TemporarySession session, SessionEvidencePage page, EvidencePolicy policy) in new[]
+        {
+            ("the whole session", machine, SessionEvidenceQuery.ReadScope(machine.Store, 500), EvidencePolicy.IncludeCorrelated),
+            ("a group's processes", machine, SessionEvidenceQuery.ReadScope(machine.Store, 500,
+                ownerProcesses: [.. overview.Nodes.Where(node => node.GroupKey == group).Select(node => node.Id)], resolveOwners: true),
+                EvidencePolicy.IncludeCorrelated),
+            ("one process, in an interval", machine, SessionEvidenceQuery.ReadScope(machine.Store, 500, interval: new TimeRange(5, 25),
+                ownerProcesses: [client.Id], resolveOwners: true), EvidencePolicy.IncludeCorrelated),
+            ("a paired channel's first end", machine, SessionEvidenceQuery.ReadScope(machine.Store, 500, channel, end: 0), EvidencePolicy.IncludeCorrelated),
+            ("a lane's mechanism", machine, SessionEvidenceQuery.ReadScope(machine.Store, 500, mechanism: Mechanism.Tcp,
+                direction: Direction.Outbound), EvidencePolicy.IncludeCorrelated),
+            ("another host", machine, SessionEvidenceQuery.ReadScope(machine.Store, 500, HostScopeKeys.Of("10.0.0.5")), EvidencePolicy.IncludeCorrelated),
+            ("an RPC channel", calls, SessionEvidenceQuery.ReadScope(calls.Store, 500,
+                operationKey: RpcChannelKeys.Channel(caller, RpcCallSide.Client, ServiceControlInterface)), EvidencePolicy.IncludeCorrelated),
+            ("a process's HTTP exchanges", web, SessionEvidenceQuery.ReadScope(web.Store, 500, operationKey: HttpExchangeKeys.Channel(browser)),
+                EvidencePolicy.IncludeCorrelated),
+            ("candidates counted", machine, SessionEvidenceQuery.ReadScope(machine.Store, 500, ownerProcesses: [tool.Id],
+                policy: EvidencePolicy.IncludeCandidates, resolveOwners: true), EvidencePolicy.IncludeCandidates),
+        })
+        {
+            Assert.True(page.Records.Count > 0, name);
+            EvidenceQueryName query = EvidenceQuery.Name(page, policy);
+            Assert.Equal(page.QueryIdentity, query.Identity);
+            (InterCatExitCode code, string json, string said) = await Run([.. Words(query.Command)
+                .Select(word => word == "<directory>" ? session.Path : word).Skip(1), "--page-size", "200", "--json"]);
+            Assert.True(code == InterCatExitCode.Success, $"{name}: {query.Command}: {said}");
+            using JsonDocument listed = JsonDocument.Parse(json);
+            JsonElement first = listed.RootElement.GetProperty("page");
+            Assert.True(query.Identity == first.GetProperty("queryIdentity").GetString(), $"{name}: {query.Command}");
+            Assert.Equal(session.Store.Current!.Digest, first.GetProperty("manifestDigest").GetString());
+            Assert.Equal(
+                [.. page.Records.Take(200).Select(record => (record.SegmentName, record.SegmentRow))],
+                first.GetProperty("records").EnumerateArray()
+                    .Select(record => (record.GetProperty("segmentName").GetString()!, record.GetProperty("segmentRow").GetInt32())));
+        }
+
+        // The command a person reads says the policy only where it is not the default, and a page's report names the
+        // manifest and the identity.
+        (InterCatExitCode reported, string report, _) = await Run("evidence", machine.Path, "--owner-process", tool.Id.ToString()!,
+            "--evidence-policy", "include-candidates");
+        Assert.Equal(InterCatExitCode.Success, reported);
+        Assert.Matches(@"(?m)^  Manifest +sha256:[0-9a-f]{64}\r?$", report);
+        Assert.Matches(@"(?m)^  Query +[0-9a-f]{64}\r?$", report);
+        Assert.Matches(@"(?m)^  Evidence policy +IncludeCandidates\r?$", report);
+        (InterCatExitCode paged, string onePage, _) = await Run("evidence", machine.Path, "--page-size", "1", "--evidence-policy", "direct-only");
+        Assert.Equal(InterCatExitCode.Success, paged);
+        Assert.Matches(@"Next page: icat evidence <directory> --cursor \S+ --evidence-policy direct-only", onePage);
+        (InterCatExitCode exchanged, string listedExchanges, _) = await Run("evidence", web.Path, "--channel", HttpExchangeKeys.Channel(browser));
+        Assert.Equal(InterCatExitCode.Success, exchanged);
+        Assert.Matches(@"(?m)^  HTTP key +http", listedExchanges);
+        (InterCatExitCode refused, _, string why) = await Run("evidence", machine.Path, "--evidence-policy", "everything");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, refused);
+        Assert.Contains("--evidence-policy expects one of: DirectOnly, IncludeCorrelated, IncludeCandidates, AllIncludingConflicting.",
+            why, StringComparison.Ordinal);
+
+        // An export of a rung's records names the same query, in JSON and as a CSV's last column.
+        string output = Path.Combine(Path.GetDirectoryName(machine.Path)!, Guid.NewGuid().ToString("N") + ".csv");
+        try
+        {
+            SessionExportResult exported = SessionExport.Build(machine.Store, new([group, client.Id.ToString()!], null, true, ExportFormat.Json),
+                DateTimeOffset.UnixEpoch);
+            using JsonDocument file = JsonDocument.Parse(exported.Content);
+            JsonElement named = file.RootElement.GetProperty("query");
+            Assert.Equal(EvidenceQuery.Form, named.GetProperty("form").GetString());
+            Assert.Equal(exported.Context.EvidenceQuery!.Identity, named.GetProperty("identity").GetString());
+            Assert.Equal($"icat evidence <directory> --owner-process {client.Id}", named.GetProperty("command").GetString());
+            (InterCatExitCode written, _, string wrote) = await Run("export", machine.Path, "--output", output, "--evidence",
+                "--at", group, "--at", client.Id.ToString()!);
+            Assert.True(written == InterCatExitCode.Success, wrote);
+            string[] lines = File.ReadAllLines(output);
+            Assert.EndsWith(",manifest,query_identity", lines[0], StringComparison.Ordinal);
+            Assert.All(lines.Skip(1), line => Assert.EndsWith($",{machine.Store.Current!.Digest},{exported.Context.EvidenceQuery.Identity}", line,
+                StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.Delete(output);
+        }
+    }
+
+    /// <summary>A command's words as a shell takes them: split at spaces, a double-quoted word kept whole without its quotes.</summary>
+    private static string[] Words(string command) =>
+        [.. Regex.Matches(command, "\"([^\"]*)\"|(\\S+)").Select(match => match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value)];
+
     [Fact(DisplayName = "R18: icat export --group-by session reaches a session's rung by its key, as the window groups it, and never guesses a session")]
     public async Task AnExportGroupsBySession()
     {
