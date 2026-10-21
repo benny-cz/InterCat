@@ -35,6 +35,7 @@ internal static class PortsCommand
         }
 
         string? limitText = command.TakeOption("--limit");
+        string? investigationText = command.TakeOption("--investigation");
         bool json = command.TryTakeFlag("--json");
         string? directory = command.TakePositional();
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
@@ -83,6 +84,34 @@ internal static class PortsCommand
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
+        // An investigation the session is a member of proposes, from its other members' captures, which of their processes
+        // connected to each listener here (§8.3).
+        IReadOnlyDictionary<(ProcessInstanceId Process, ushort Port), IReadOnlyList<CandidateEnd>>? candidates = null;
+        if (investigationText is not null)
+        {
+            string investigation = Path.GetFullPath(investigationText);
+            try
+            {
+                InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(investigation);
+                if (workspace.Members.All(member => member.SessionId != overview.SessionId))
+                {
+                    ConsoleUi.Failure($"This session is no member of {investigation}, so it proposes no other end for the "
+                        + "connections its processes accepted. icat workspace add puts it in.");
+                    return InterCatExitCode.InvalidInvocation;
+                }
+
+                ConsoleUi.Progress("Reading every member's one-sided connections and comparing their endpoints, mirrored.");
+                candidates = InvestigationHosts.ForListeners(workspace,
+                    WorkspaceCorrelation.Candidates(investigation, overview.Policy, cancellationToken), overview.SessionId);
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
+                or UnauthorizedAccessException)
+            {
+                ConsoleUi.Failure($"The investigation {investigation} could not be read: {exception.Message}");
+                return InterCatExitCode.InvalidInvocation;
+            }
+        }
+
         IReadOnlyList<PortListener> listeners = ConnectionOpens.Listeners(derivations.Relations(cancellationToken),
             EvidencePolicy.IncludeCorrelated);
         var names = new Names(overview);
@@ -109,6 +138,17 @@ internal static class PortsCommand
                         connector.Connections,
                     }),
                     Hosts = listener.Hosts.Select(host => new { host.Address, host.Connections }),
+                    CandidateOtherEnds = candidates is null ? null
+                        : candidates.GetValueOrDefault((listener.Process.Id, listener.Port), []).Select(end => new
+                        {
+                            Session = end.SessionId,
+                            end.HostId,
+                            Host = end.HostAlias,
+                            end.Process,
+                            end.ProcessId,
+                            end.Connections,
+                            end.Accepted,
+                        }).ToArray(),
                 }),
             }, JsonContracts.Indented));
             return InterCatExitCode.Success;
@@ -129,11 +169,16 @@ internal static class PortsCommand
             + " accepted " + CountText.Of(listeners.Sum(listener => listener.Accepted), "TCP connection"));
         ConsoleUi.Field("Ranked by", "the connections each accepted, the most first, then by port");
         ConsoleUi.Table(
-            ["Port", "Accepted by", "Connections", "From"],
+            ["Port", "Accepted by", "Connections", "From", .. candidates is null ? Array.Empty<string>() : ["Candidate other ends"]],
             [.. listeners.Take(limit).Select(listener => (IReadOnlyList<string>)
             [
                 listener.Port.ToString(CultureInfo.InvariantCulture), names.Named(listener.Process),
                 ConsoleUi.Count(listener.Accepted), From(listener, names),
+                .. candidates is null ? Array.Empty<string>()
+                    : [listener.FromHosts == 0 ? "-"
+                        : candidates.TryGetValue((listener.Process.Id, listener.Port), out IReadOnlyList<CandidateEnd>? ends)
+                            ? CandidateEnd.Listed(ends)
+                            : "none"],
             ])]);
         if (listeners.Count > limit)
         {
@@ -145,6 +190,15 @@ internal static class PortsCommand
             + "them open, whoever connected: a process of this session, another host by its address, or a process on this "
             + "machine the capture did not observe. icat processes <directory> --port <port> lists a port's listeners with "
             + "their traffic, and --pid <PID> whom each connected with.");
+        if (candidates is not null)
+        {
+            ConsoleUi.Note("A candidate other end is a process of another member's capture whose connection mirrors one the "
+                + "listener accepted from another host, never an established join: mirrored endpoints can be two connections "
+                + "behind an address translation, and a port used again is another connection. A join a person rejected names "
+                + "none, and - is a listener no other host connected to. icat workspace correlate <investigation> lists each "
+                + "candidate with its evidence.");
+        }
+
         return InterCatExitCode.Success;
     }
 
@@ -178,12 +232,14 @@ internal static class PortsCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat ports <session-directory> [--limit <n>] [--json]");
+        ConsoleUi.Line("icat ports <session-directory> [--limit <n>] [--investigation <file>] [--json]");
         ConsoleUi.Line("  The ports this machine's processes accepted TCP connections at, as the capture saw them open:");
         ConsoleUi.Line("  each port with the process that accepted connections there, how many, and who connected - its");
         ConsoleUi.Line("  processes, other hosts by address, or processes the capture did not observe - the busiest");
         ConsoleUi.Line("  first. --limit lists that many, 50 unless it says so; --json writes them as a document, each");
-        ConsoleUi.Line("  with every process and host that connected.");
+        ConsoleUi.Line("  with every process and host that connected. --investigation names, for a session that is one");
+        ConsoleUi.Line("  of its members, the processes of its other captures whose connections mirror those each");
+        ConsoleUi.Line("  listener accepted: candidates for who connected from another machine, never established.");
     }
 
     /// <summary>The processes and programs of a session's overview, as its tables name them.</summary>

@@ -137,6 +137,78 @@ public sealed class PortsCommandTests
         }
     }
 
+    [Fact(DisplayName = "R18: icat ports --investigation names, listener by listener, the process of another member's capture whose connection mirrors one it accepted, and refuses an investigation it cannot use")]
+    public async Task IcatPortsNamesCandidateOtherEnds()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "InterCat.Cli.Tests.Ports", Guid.NewGuid().ToString("N"));
+        try
+        {
+            InterCat.Application.DemoInvestigationResult demo = InterCat.Application.DemoInvestigation.Create(Path.Combine(folder, "demo"));
+
+            // The client's browser connected to the server's api at its 443 and the client's sync to its files at 8443, where
+            // the client's address names both; the db, which only the api connected to, has no other host to name an end of.
+            (InterCatExitCode code, string text, string said) = await Run("ports", demo.ServerSession, "--investigation",
+                demo.WorkspacePath);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches(@"(?m)^  Port +Accepted by +Connections +From +Candidate other ends\r?$", text);
+            Assert.Equal(
+                [
+                    "443 | api.exe · PID 5100 | 1 | 1 from 10.0.0.10 | demo client: browser.exe · PID 4100",
+                    "5432 | db.exe · PID 5200 | 1 | 1 from api.exe · PID 5100 | -",
+                    "8443 | files.exe · PID 5300 | 1 | 1 from 10.0.0.10 | demo client: sync.exe · PID 4200",
+                ],
+                [.. Regex.Matches(text, @"(?m)^  (\d+) +(\S+ · PID \d+) +(\d+) +(.+?)  +(\S.*?)\r?$")
+                    .Select(match => string.Join(" | ", match.Groups.Values.Skip(1).Select(group => group.Value)))]);
+            Assert.Contains("never an established join", Regex.Replace(text, @"\s+", " "), Ordinal);
+
+            // As JSON, each listed listener's candidate other ends; read without an investigation, none is said.
+            (code, text, _) = await Run("ports", demo.ServerSession, "--investigation", demo.WorkspacePath, "--json");
+            Assert.Equal(InterCatExitCode.Success, code);
+            JsonElement[] listed = [.. JsonDocument.Parse(text).RootElement.GetProperty("listed").EnumerateArray()];
+            Assert.Equal(["443: demo client browser.exe 4100 1 False", "5432: ", "8443: demo client sync.exe 4200 1 False"],
+                listed.Select(listener => $"{listener.GetProperty("port").GetInt32()}: " + string.Join(", ",
+                    listener.GetProperty("candidateOtherEnds").EnumerateArray().Select(end =>
+                        $"{end.GetProperty("host").GetString()} {end.GetProperty("process").GetString()} "
+                        + $"{end.GetProperty("processId").GetInt32()} {end.GetProperty("connections").GetInt32()} "
+                        + end.GetProperty("accepted").GetBoolean()))));
+            Assert.Equal(JsonValueKind.Null, JsonDocument.Parse((await Run("ports", demo.ServerSession, "--json")).Output).RootElement
+                .GetProperty("listed")[0].GetProperty("candidateOtherEnds").ValueKind);
+
+            // A join a person rejected names no end: the api's listener, which another host connected to, then has none.
+            InterCat.Application.ConnectionCandidate api = InterCat.Application.WorkspaceCorrelation.Candidates(demo.WorkspacePath)
+                .Candidates.Single(candidate => candidate.First.Connection.Holder.ProcessId == 5100
+                    || candidate.Second.Connection.Holder.ProcessId == 5100);
+            InterCat.Application.InvestigationWorkspace.Decide(demo.WorkspacePath, api.Ends.First, api.Ends.Second,
+                InterCat.Application.WorkspaceJoinDecision.Rejected, null, DateTimeOffset.UtcNow);
+            (code, text, said) = await Run("ports", demo.ServerSession, "--investigation", demo.WorkspacePath);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches(@"(?m)^  443 +api\.exe · PID 5100 +1 +1 from 10\.0\.0\.10 +none\r?$", text);
+
+            // An investigation the session is no member of, and a file that is none, are refused.
+            using var stranger = new TemporarySession();
+            Publish(stranger.Store, Rows());
+            stranger.Store.ReleaseSegmentReaders();
+            (code, _, said) = await Run("ports", stranger.Path, "--investigation", demo.WorkspacePath);
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains("This session is no member of ", said, Ordinal);
+            string notOne = Path.Combine(folder, "not-an-investigation.json");
+            File.WriteAllText(notOne, "{}");
+            (code, _, said) = await Run("ports", demo.ServerSession, "--investigation", notOne);
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains("could not be read", said, Ordinal);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
     /// <summary>
     /// The probe connects to the server's 8080 twice and the client and the helper once each; three other hosts connect to
     /// its 8443, one twice; processes on this machine the capture did not observe connect to its 9000 over IPv4's and

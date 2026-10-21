@@ -104,7 +104,7 @@ public static partial class ConnectionOpens
     };
 
     /// <summary>An endpoint's port as the source names it: an address, then a colon and the port - "[::1]:8080" for IPv6.</summary>
-    private static ushort? PortOf(string endpoint) =>
+    internal static ushort? PortOf(string endpoint) =>
         endpoint.LastIndexOf(':') is > 0 and var colon
             && ushort.TryParse(endpoint.AsSpan(colon + 1), NumberStyles.None, CultureInfo.InvariantCulture, out ushort port)
             ? port

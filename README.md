@@ -88,6 +88,7 @@ dotnet run --project src/InterCat.Cli -- --help
 icat demo <new-folder>
 icat overview <new-folder>/demo-server
 icat hosts <new-folder>/demo-client --investigation <new-folder>/demo.icat-workspace
+icat ports <new-folder>/demo-server --investigation <new-folder>/demo.icat-workspace
 icat channels <new-folder>/demo-server
 icat workspace show <new-folder>/demo.icat-workspace
 

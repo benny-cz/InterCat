@@ -205,7 +205,7 @@ internal static class Icat
         ConsoleUi.Line("      The programs whose processes talked to each other, each pair named by which program's");
         ConsoleUi.Line("      processes connected to which, the busiest first; with --program the pairs one program is in.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat ports <directory> [--limit <n>] [--json]");
+        ConsoleUi.Line("  icat ports <directory> [--limit <n>] [--investigation <file>] [--json]");
         ConsoleUi.Line("      The ports its processes accepted TCP connections at, each with the process that accepted");
         ConsoleUi.Line("      them and who connected - its processes, other hosts or unobserved ones - the busiest first.");
         ConsoleUi.Line();
