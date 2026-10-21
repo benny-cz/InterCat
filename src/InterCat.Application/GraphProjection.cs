@@ -145,6 +145,16 @@ public sealed record GraphDisplayNode(
     /// </summary>
     public int ConnectedProcesses { get; init; }
 
+    /// <summary>
+    /// For the same nodes, how many of the connections they stand for the hosts opened, which the drawn processes accepted
+    /// from them, as the capture saw them open (`relations-v1` §5d): its edges' <see cref="GraphDisplayEdge.MadeFromTarget"/>.
+    /// Zero for every other node.
+    /// </summary>
+    public int HostsConnected { get; init; }
+
+    /// <summary>For the same nodes, how many connections they stand for, TCP connections and UDP flows alike; zero for others.</summary>
+    public int HostConnections { get; init; }
+
     /// <summary>Whether the node is a resource the drawn processes' connections ran to - Other hosts or one host - holding no process.</summary>
     public bool IsHost => Kind is GraphNodeKind.OtherHosts or GraphNodeKind.Host;
 
@@ -1409,23 +1419,27 @@ public static class GraphProjection
             string key = HostKey(address);
             if (connected.TryGetValue(key, out HashSet<ProcessInstanceId>? reached))
             {
+                EdgeAggregate[] reaches = [.. hostEdges.Values.Where(reach => string.Equals(reach.Target, key, StringComparison.Ordinal))];
                 nodes = [.. nodes, new GraphDisplayNode(key, address, GraphNodeKind.Host, null, null, null, [],
-                    hostEdges.Values.Where(reach => string.Equals(reach.Target, key, StringComparison.Ordinal))
-                        .Aggregate(0L, (sum, reach) => Add(sum, reach.Observations)), 0, 0)
+                    reaches.Aggregate(0L, (sum, reach) => Add(sum, reach.Observations)), 0, 0)
                 {
                     ConnectedProcesses = reached.Count,
+                    HostsConnected = reaches.Sum(reach => reach.MadeFromTarget),
+                    HostConnections = reaches.Sum(reach => reach.Connections),
                 }];
             }
         }
 
         if (connected.TryGetValue(OtherHostsKey, out HashSet<ProcessInstanceId>? rest))
         {
+            EdgeAggregate[] reaches = [.. hostEdges.Values.Where(reach => string.Equals(reach.Target, OtherHostsKey, StringComparison.Ordinal))];
             nodes = [.. nodes, new GraphDisplayNode(
                 OtherHostsKey, "Other hosts", GraphNodeKind.OtherHosts, null, null, null, [],
-                hostEdges.Values.Where(reach => string.Equals(reach.Target, OtherHostsKey, StringComparison.Ordinal))
-                    .Aggregate(0L, (sum, reach) => Add(sum, reach.Observations)), 0, 0)
+                reaches.Aggregate(0L, (sum, reach) => Add(sum, reach.Observations)), 0, 0)
             {
                 ConnectedProcesses = rest.Count,
+                HostsConnected = reaches.Sum(reach => reach.MadeFromTarget),
+                HostConnections = reaches.Sum(reach => reach.Connections),
             }];
         }
 

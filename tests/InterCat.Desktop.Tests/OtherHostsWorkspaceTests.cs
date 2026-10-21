@@ -956,7 +956,9 @@ public sealed class OtherHostsWorkspaceTests
         GraphDisplayNode hub = workspace.GraphDisplay.OtherHosts!;
 
         // svchost.exe connected to 10.0.0.5 and accepted from it, and accepted from 10.0.0.6; browser.exe connected to
-        // 10.0.0.7. Other hosts' list and card say each host's connections with, to or from the processes at their ends.
+        // 10.0.0.7. Other hosts is captioned with the processes whose connections it stands for, some made by each, and its
+        // list and card say each host's connections with, to or from the processes at their ends.
+        Assert.Equal("with 2 processes", GraphView.Detail(hub));
         workspace.SelectGraphNode(hub.Key);
         Assert.Equal(
             [
@@ -973,9 +975,12 @@ public sealed class OtherHostsWorkspaceTests
             ],
             workspace.DescribeGraphHover(hub.Key)!.Lines.Where(line => line.StartsWith("  10.0.0.", StringComparison.Ordinal)));
 
-        // Drawn on its own, a host's card says its connections so too.
+        // Drawn on its own, a host's caption and card say its connections so too.
         Assert.True(workspace.OpenGraphNode(hub.Key));
         await workspace.LayoutReady;
+        string Caption(string address) => GraphView.Detail(workspace.GraphDisplay.Node(GraphProjection.HostKey(address))!);
+        Assert.Equal(("private · with 1 process", "private · to 1 process", "private · from 1 process"),
+            (Caption("10.0.0.5"), Caption("10.0.0.6"), Caption("10.0.0.7")));
         string Transport(string address) => workspace.DescribeGraphHover(GraphProjection.HostKey(address))!.Lines[1];
         Assert.Equal("2 TCP connections with 1 process · 4 records", Transport("10.0.0.5"));
         Assert.Equal("1 TCP connection to 1 process · 2 records", Transport("10.0.0.6"));

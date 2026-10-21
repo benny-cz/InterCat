@@ -2023,9 +2023,10 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     /// <summary>
     /// The secondary line: a process's PID, a reused PID's holder numbered ("PID 100 #2"), how many processes and
-    /// relationships an aggregate stands for, or how many processes' connections run to the Other hosts node. A process no
-    /// executable names is labelled by its PID already, and has none unless its PID was reused: its node read "PID 100"
-    /// over "PID 100".
+    /// relationships an aggregate stands for, or how many processes' connections run to the Other hosts node, which way as
+    /// far as the capture saw them open - "from 21 processes" that made them, "to 2 processes" that accepted every one, "with
+    /// 3 processes" where both. A process no executable names is labelled by its PID already, and has none unless its PID
+    /// was reused: its node read "PID 100" over "PID 100".
     /// </summary>
     internal static string Detail(GraphDisplayNode node)
     {
@@ -2039,8 +2040,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         {
             // A host drawn on its own says its address's scope, a multicast group's say, before what reached it.
             string scope = node.Kind == GraphNodeKind.Host && AddressScope.Of(node.Label) is { } named ? named + " · " : string.Empty;
+            string toward = node.HostsConnected == 0 ? "from" : node.HostsConnected == node.HostConnections ? "to" : "with";
             return scope + string.Create(CultureInfo.CurrentCulture,
-                $"from {node.ConnectedProcesses:N0} {(node.ConnectedProcesses == 1 ? "process" : "processes")}");
+                $"{toward} {node.ConnectedProcesses:N0} {(node.ConnectedProcesses == 1 ? "process" : "processes")}");
         }
 
         string members = string.Create(CultureInfo.CurrentCulture,
