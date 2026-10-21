@@ -35,9 +35,10 @@ public sealed record SearchResult(string Query, IReadOnlyList<SearchHit> Hits, i
 
 /// <summary>
 /// §6.7's search (Ctrl+F) over one snapshot's metadata: executable groups by name or image path, process instances by
-/// name, PID or an address their connections to other hosts ran to (§6.3) - with its port, or a port alone - and channels
-/// by endpoint. It reads no payload and no source field beyond what the ladder already shows (§10, P16), and it is
-/// bounded: a result states how many matched beyond the hits it lists.
+/// name, PID or an address their connections to other hosts ran to (§6.3) - with its port, or a port alone, which also
+/// finds those that accepted connections at that port of their own, whoever connected - and channels by endpoint. It
+/// reads no payload and no source field beyond what the ladder already shows (§10, P16), and it is bounded: a result
+/// states how many matched beyond the hits it lists.
 /// </summary>
 public static class WorkspaceSearch
 {
@@ -96,16 +97,24 @@ public static class WorkspaceSearch
         {
             int byName = RankOf(process, text, pid);
             (int byAddress, string? reach) = AddressRankOf(reached[process.Id], text);
-            if (byName < 0 && byAddress < 0) continue;
+            int byListening = ListeningRankOf(process, text);
+            if (byName < 0 && byAddress < 0 && byListening < 0) continue;
             string groupName = groups.TryGetValue(process.GroupKey, out ProcessGroup? group) ? group.Name : process.GroupKey;
 
             // Found by an address its connections ran to, a process says what reached it, never the address (P16): the
             // person typed it, and the process's rung lists each connection with its endpoints. Found by its name, it says
             // what tells it apart from its program's other instances. Its program is said only where its name does not
             // say it: two of one name in different folders, or one whose executable was never witnessed.
+            // Found by a port of its own it accepted connections at, where no other host's connection names the port, it
+            // says so: those connections may be its own machine's processes', which no host link holds. A port alone names no
+            // process by its name or PID.
             bool byReach = byAddress >= 0 && (byName < 0 || byAddress < byName);
-            string apart = byReach ? reach! : Apart(process, related.GetValueOrDefault(process.Id), snapshot.ConnectionOpensRecorded);
-            candidates.Add((byReach ? byAddress : byName, new(SearchHitKind.Process, process.Id.ToString(), process.NameWithPid,
+            bool byListen = byListening >= 0;
+            string apart = byReach ? reach!
+                : byListen ? ListenedText
+                : Apart(process, related.GetValueOrDefault(process.Id), snapshot.ConnectionOpensRecorded);
+            int rank = byReach ? byAddress : byListen ? byListening : byName;
+            candidates.Add((rank, new(SearchHitKind.Process, process.Id.ToString(), process.NameWithPid,
                 string.Equals(groupName, process.Name, StringComparison.OrdinalIgnoreCase)
                     ? char.ToUpperInvariant(apart[0]) + apart[1..]
                     : $"Process instance of {groupName} · {apart}",
@@ -170,17 +179,31 @@ public static class WorkspaceSearch
 
     /// <summary>
     /// Whether <paramref name="query"/> finds <paramref name="process"/>, by the rule <see cref="Find"/> ranks a process's
-    /// hit by - its PID, or a PID's first digits, its name, or an address its connections to other hosts,
-    /// <paramref name="links"/>, ran to - with no limit on how many it finds: a group's lanes are marked by it (§6.2:
-    /// search lane names), however many of them a search's listed hits leave out.
+    /// hit by - its PID, or a PID's first digits, its name, an address its connections to other hosts,
+    /// <paramref name="links"/>, ran to, or a port of its own it accepted connections at - with no limit on how many it
+    /// finds: a group's lanes are marked by it (§6.2: search lane names), however many of them a search's listed hits leave
+    /// out.
     /// </summary>
     public static bool Finds(ProcessNode process, IEnumerable<HostLink> links, string? query)
     {
         ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(links);
         string text = query?.Trim() ?? string.Empty;
-        return text.Length > 0 && (RankOf(process, text, PidIn(text)) >= 0 || AddressRankOf(links, text).Rank >= 0);
+        return text.Length > 0
+            && (RankOf(process, text, PidIn(text)) >= 0 || AddressRankOf(links, text).Rank >= 0 || ListeningRankOf(process, text) >= 0);
     }
+
+    /// <summary>What a process's hit says where a port of its own it accepted connections at found it.</summary>
+    private const string ListenedText = "TCP connections accepted at the port searched";
+
+    /// <summary>
+    /// How well a process matches a port searched alone by the ports of its own it accepted connections at, whoever
+    /// connected (<see cref="ProcessNode.AcceptedPorts"/>): 1, as broad as a port its connections to other hosts ran to,
+    /// where it accepted some at that port; -1 otherwise, and for any query but a port alone, since an endpoint names the
+    /// address at the other end.
+    /// </summary>
+    private static int ListeningRankOf(ProcessNode process, string text) =>
+        HostQueryOf(text) is { Address: null, Port: { } port } && process.AcceptedPorts.Contains(port) ? 1 : -1;
 
     /// <summary>A query that is a number is also a PID.</summary>
     private static int? PidIn(string text) =>

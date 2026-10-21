@@ -150,6 +150,32 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal(ClientMade, Card(100)[1]);
     });
 
+    [Fact(DisplayName = "§6.7: a port alone finds the process that accepted its own machine's connections at it, listed and marked in the graph, as its card names the port")]
+    public void APortSearchFindsTheProcessThatListenedAtIt() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Mixed());
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        await workspace.LayoutReady;
+        string Key(int pid) => workspace.GraphDisplay.NodeOf(workspace.Snapshot.Processes.Single(process => process.ProcessId == pid).Id)!.Key;
+
+        // The server accepted the client's connections at 8080, and the client the server's at 9000: each is found by its own.
+        workspace.SearchText = ":8080";
+        Assert.Contains(Key(200), workspace.SearchedGraphNodeKeys);
+        Assert.DoesNotContain(Key(100), workspace.SearchedGraphNodeKeys);
+        Assert.Equal("TCP connections accepted at the port searched",
+            workspace.SearchResults.Single(row => row.Hit.Label == "server.exe · PID 200").Hit.Detail);
+        workspace.SearchText = ":9000";
+        Assert.Contains(Key(100), workspace.SearchedGraphNodeKeys);
+        Assert.DoesNotContain(Key(200), workspace.SearchedGraphNodeKeys);
+
+        // A port no process accepted at finds none of them.
+        workspace.SearchText = ":7070";
+        Assert.DoesNotContain(workspace.SearchResults, row => row.Hit.Kind == SearchHitKind.Process);
+    });
+
     [Fact(DisplayName = "§6.8: the inspector states the connections a selected process or group made and accepted, as its card counts them, the whole session's under a brush, and not recorded where no open is")]
     public void TheInspectorStatesTheSelectionsConnections() => SingleThreadedContext.Run(async () =>
     {

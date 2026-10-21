@@ -361,6 +361,53 @@ public sealed class WorkspaceSearchTests
         }
     }
 
+    [Fact(DisplayName = "§6.7: a port alone finds the processes that accepted connections at that port of their own whoever connected, as their cards say it, by the rule that marks them")]
+    public void APortAloneFindsTheProcessesThatListenedAtIt()
+    {
+        // chrome.exe accepted its own machine's connections at 9222, which no host link holds; its caller made one to it, and
+        // a name that holds the port's digits finds nothing by them. sshd.exe, busier, accepted another host's at 9222.
+        ProcessGroup apps = new("apps", "app.exe", LaneGrouping.Executable);
+        ProcessNode listener = Process(1, 3000, "chrome.exe", apps.Key, (Mechanism.Tcp, 50)) with { AcceptedPorts = [443, 9222] };
+        ProcessNode caller = Process(2, 3028, "chrome.exe", apps.Key, (Mechanism.Tcp, 20));
+        ProcessNode named = Process(3, 4100, "9222.exe", apps.Key, (Mechanism.Tcp, 5));
+        ProcessNode remote = Process(4, 5000, "sshd.exe", apps.Key, (Mechanism.Tcp, 80)) with { AcceptedPorts = [9222] };
+        HostLink[] links =
+            [new(remote.Id, Mechanism.Tcp, [new("10.0.0.5", 1, 2) { Accepted = 1, AcceptedPorts = [9222] }], RelationStrength.Direct)];
+        WorkspaceSnapshot snapshot = new("Search", new TimeRange(0, 10), [apps], [listener, caller, named, remote], [], [], [], [], [])
+        {
+            HostLinks = links,
+        };
+
+        // Its hit says it accepted connections there, never the port, ranked as one found by another host's connections at it,
+        // the busier first.
+        SearchResult result = WorkspaceSearch.Find(snapshot, ":9222");
+        Assert.Equal(
+            [
+                (remote.Id.ToString(), "Process instance of app.exe · TCP connections accepted at the port searched, from 1 address"),
+                (listener.Id.ToString(), "Process instance of app.exe · TCP connections accepted at the port searched"),
+            ],
+            result.Hits.Select(hit => (hit.Key, hit.Detail)));
+        Assert.Equal([listener.Id.ToString()], WorkspaceSearch.Find(snapshot, ":443").Hits.Select(hit => hit.Key));
+
+        // Another port, an endpoint, which names the address at the other end, or a PID's digits find no listener by its port.
+        Assert.Empty(WorkspaceSearch.Find(snapshot, ":9223").Hits);
+        Assert.Empty(WorkspaceSearch.Find(snapshot, "127.0.0.1:9222").Hits);
+        Assert.DoesNotContain(WorkspaceSearch.Find(snapshot, "9222").Hits, hit => hit.Key == listener.Id.ToString());
+
+        // Found by its name or PID first, it is said apart as its name finds it.
+        Assert.Equal("Process instance of app.exe · no relationship", WorkspaceSearch.Find(snapshot, "3000").Hits.Single().Detail);
+
+        // The rule a process is found by is the one its hit is ranked by, which marks it in the graph and its lanes.
+        foreach (string query in new[] { ":9222", ":443", ":9223", "127.0.0.1:9222", "9222" })
+        {
+            Assert.Equal(
+                [.. WorkspaceSearch.Find(snapshot, query, limit: 1_000).Hits.Where(found => found.Kind == SearchHitKind.Process)
+                    .Select(found => found.Key).Order(StringComparer.Ordinal)],
+                snapshot.Processes.Where(process => WorkspaceSearch.Finds(process, links.Where(link => link.Process == process.Id), query))
+                    .Select(process => process.Id.ToString()).Order(StringComparer.Ordinal));
+        }
+    }
+
     [Fact(DisplayName = "§6.7: a bare number of at most five digits up to 65535 names the port it would be typed after a colon, and nothing else does")]
     public void ABareNumberNamesAPort()
     {
