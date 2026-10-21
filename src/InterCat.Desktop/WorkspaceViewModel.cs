@@ -88,6 +88,7 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// <param name="ProgramHops">The hops made from a chosen program's pairs of programs, the latest last, which Esc comes back along (§6.3).</param>
 /// <param name="PeersListedWhole">The process whose relationships the inspector listed whole, as asked (§6.3).</param>
 /// <param name="ProgramsListedWhole">The program, by its key, whose pairs of programs the inspector listed whole, as asked (§6.3).</param>
+/// <param name="ReachedHostsListedWhole">The process whose other hosts the inspector listed whole, as asked (§6.3).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -121,7 +122,8 @@ public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<PeerHop>? PeerHops = null,
     IReadOnlyList<ProgramHop>? ProgramHops = null,
     ProcessInstanceId? PeersListedWhole = null,
-    string? ProgramsListedWhole = null);
+    string? ProgramsListedWhole = null,
+    ProcessInstanceId? ReachedHostsListedWhole = null);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1708,7 +1710,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         relationshipOrigins.Count > 0 ? [.. relationshipOrigins] : null, ChosenHostEdgeRow()?.Key, DescribedRow is not null,
         cellOrigins.Count > 0 ? [.. cellOrigins] : null, cellRecordOrigin, intervalRowOrigin,
         peerHops.Count > 0 ? [.. peerHops] : null, programHops.Count > 0 ? [.. programHops] : null, peersListedWhole,
-        programsListedWhole);
+        programsListedWhole, reachedHostsListedWhole);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1874,10 +1876,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         programHops.Clear();
         programHops.AddRange(saved.ProgramHops ?? []);
 
-        // A list of relationships or of pairs asked for whole stays whole, its process or program chosen again or not.
+        // A list of relationships, pairs or other hosts asked for whole stays whole, its process or program chosen again or
+        // not.
         peersListedWhole = saved.PeersListedWhole;
         programsListedWhole = saved.ProgramsListedWhole;
-        RaiseListedWhole();
+        reachedHostsListedWhole = saved.ReachedHostsListedWhole;
 
         // A relationship chosen, or processes chosen together, are chosen again as far as this generation holds them.
         if (saved.SelectedRelationshipKey is { } relationship)
@@ -7072,6 +7075,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(ProgramsListName));
         OnPropertyChanged(nameof(PeersHeading));
         OnPropertyChanged(nameof(PeersListName));
+        OnPropertyChanged(nameof(ReachedHostsHeading));
+        OnPropertyChanged(nameof(ReachedHostsListName));
         RaiseMemberListChanged();
 
         // A byte ranking follows the scope: its bytes are read for the new one unless they came with its counts. So do a

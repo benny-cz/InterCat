@@ -508,7 +508,7 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.True(workspace.TogglePeers());
         Assert.Equal(100, workspace.SelectionPeers.Count);
         Assert.Equal("→ peer099.exe · PID 2099", workspace.SelectionPeers[^1].Peer);
-        Assert.Equal("1 more, quieter: icat processes --pid 1000 lists them all", workspace.PeersMore);
+        Assert.Equal("1 more, quieter: icat processes --pid 1000 lists each process it exchanged data with", workspace.PeersMore);
         Assert.True(workspace.ShowsPeersMore);
 
         // So does its program, of its pairs.

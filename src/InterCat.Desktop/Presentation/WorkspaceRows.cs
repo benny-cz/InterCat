@@ -148,6 +148,17 @@ public sealed record HostRow(string Address, string Detail) : IAccessibleRow
 }
 
 /// <summary>
+/// One other host a chosen process reached, as the inspector lists it (§6.3): its address, then its scope where one is
+/// known, what reached it, the ports at the address, those the process accepted said apart, and the records - "203.0.113.1",
+/// "2 TCP connections · port 443 · 6 records". Who is at the address is not observed (P7).
+/// </summary>
+public sealed record ReachedHostRow(string Address, string Detail) : IAccessibleRow
+{
+    /// <summary>The host read aloud, with what Enter does on it.</summary>
+    public string AccessibleName => $"{Address}, {Detail}. Press Enter to find the processes that reached it.";
+}
+
+/// <summary>
 /// A process an aggregate counts, as the inspector lists it beneath the aggregate's description (§6.3): its name and PID,
 /// then its records over the scope shown, its relationships and its connections to other hosts.
 /// </summary>

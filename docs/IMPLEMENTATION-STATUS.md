@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 672 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 673 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 673 — a chosen process's inspector lists the other hosts it reached (§6.3, R15):**
+  - By address, the busiest first, each with its scope, what reached it, the ports, those accepted and the records;
+    Enter or a double click on one finds every process that reached it. The busiest five are named, or every one on
+    request, and a newer generation keeps both, with the keyboard on its host.
+  - Debug and Release each ran 2,661 tests with revision 473's 93 failures and 4 skips, and nothing else failed; the
+    three tests more list a process's other hosts, list a hundred of a crawler's 101 and carry them into a newer
+    generation, and walk them in the window. All 27 mutations were caught: every process's hosts counted as the
+    chosen one's, one process's kept for another, or listed beside a row the inspector describes; a host's scope,
+    ports or accepted connections unsaid; the list never whole, or whole for every process once one asked; the note
+    past a hundred miscounted, or said while the busiest five are named; the button offered for five hosts or fewer,
+    its words never going back to the busiest or counting past a hundred wrong; a toggle taken where none is
+    offered, or one never naming the busiest again; a host the list does not hold found anyway; the rows or the
+    list's name not said again; a list asked for whole not carried over, or not taken up again; a row's name without
+    its Enter; the relationships' note saying what icat lists wrongly; Enter not taken, or taken on the selected row
+    rather than the one with the keyboard; a double click ignored; the keyboard left on the button; and the
+    keyboard's host not found again in a newer generation.
 
 - **Revision 672 — a newer generation keeps the keyboard on the relationship or pair it was on (R7, R15):**
   - While a recording publishes, the keyboard on a chosen process's relationship or a chosen program's pair stays on

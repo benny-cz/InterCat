@@ -330,6 +330,101 @@ public sealed class ConnectionsInspectorWindowTests
             ];
     }
 
+    [AvaloniaFact(DisplayName = "§6.3/R15: a chosen process's other hosts are listed in the inspector, Enter on one finds who reached it, a button lists them all, and a newer generation keeps the keyboard on its host")]
+    public async Task AProcesssOtherHostsAreListed()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Crawler());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(Recording(session));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+            ListBox hosts = window.GetControl<ListBox>("ReachedHostsList");
+            Assert.False(hosts.IsEffectivelyVisible);
+            workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.ProcessId == 900).Id);
+            Dispatch();
+            Assert.True(hosts.IsEffectivelyVisible);
+            Assert.Equal("Other hosts it reached, the busiest first", window.GetControl<TextBlock>("ReachedHostsHeadingText").Text);
+            Assert.Equal(["52.0.0.1", "1 TCP connection · port 443 · 1 record"], Texts(hosts).Take(2));
+            Assert.Equal("Other hosts it reached, the busiest first; Enter on one finds the processes that reached it",
+                AutomationProperties.GetName(hosts));
+            Assert.Equal("52.0.0.1, 1 TCP connection · port 443 · 1 record. Press Enter to find the processes that reached it.",
+                AutomationProperties.GetName(hosts.ContainerFromIndex(0)!));
+
+            // Enter on one finds every process that reached it, the crawler and the updater, the keyboard staying on it.
+            Assert.True(hosts.ContainerFromIndex(0)!.Focus());
+            Dispatch();
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("52.0.0.1", workspace.SearchText);
+            Assert.Equal(["crawler.exe", "updater.exe"],
+                workspace.SearchResults.Where(row => row.Hit.Kind == SearchHitKind.Process)
+                    .Select(row => row.Hit.Label.Split(' ')[0]).Order(StringComparer.Ordinal));
+            Assert.Equal(900, workspace.SelectedProcess?.ProcessId);
+            Assert.Same(hosts.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
+
+            // The button lists all seven, the keyboard on the sixth.
+            Button showHosts = window.GetControl<Button>("ReachedHostsToggleButton");
+            Assert.Equal("Show all 7 hosts", AutomationProperties.GetName(showHosts));
+            Assert.True(showHosts.Focus());
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(7, hosts.ItemCount);
+            Assert.Same(hosts.ContainerFromIndex(5), window.FocusManager?.GetFocusedElement());
+            Assert.Equal("Show the busiest 5", Assert.IsType<TextBlock>(showHosts.Content).Text);
+
+            // On the seventh, the next generation - three sends to the third host and one to the seventh - lists the
+            // seventh second, and the keyboard stays on it there.
+            Assert.True(hosts.ContainerFromIndex(6)!.Focus());
+            Dispatch();
+            Publish(session.Store,
+            [
+                .. Enumerable.Range(0, 3).Select(index => Timed(Transfer(80 + index, ObservationKind.Send, AccountingSide.SendSide, 8, 900,
+                    (ulong)(300 + index)).Between("192.168.1.10:52003", "52.0.0.3:443"))),
+                Timed(Transfer(84, ObservationKind.Send, AccountingSide.SendSide, 8, 900, 310).Between("192.168.1.10:52007", "52.0.0.7:443")),
+            ]);
+            window.ApplyCaptureUpdate(Recording(session));
+            var next = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await next.LayoutReady;
+            Dispatch();
+            Assert.Equal(["52.0.0.3", "52.0.0.7"], next.ReachedHostRows.Take(2).Select(row => row.Address));
+            Assert.Same(hosts.ContainerFromIndex(1), window.FocusManager?.GetFocusedElement());
+
+            // A double click on a host finds who reached it alike.
+            Control first = Assert.IsAssignableFrom<Control>(hosts.ContainerFromIndex(0));
+            first.BringIntoView();
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            Dispatch();
+            Point on = first.TranslatePoint(new(first.Bounds.Width / 2, first.Bounds.Height / 2), window)!.Value;
+            Assert.True(window.InputHitTest(on) is Visual hit && first.IsVisualAncestorOf(hit));
+            window.MouseDown(on, MouseButton.Left);
+            window.MouseUp(on, MouseButton.Left);
+            window.MouseDown(on, MouseButton.Left);
+            window.MouseUp(on, MouseButton.Left);
+            Dispatch();
+            Assert.Equal("52.0.0.3", next.SearchText);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>crawler.exe's PID 900 connects to seven hosts, 52.0.0.1 to 52.0.0.7, once each; updater.exe's PID 910 to the first.</summary>
+    private static ObservationRowV1[] Crawler() =>
+    [
+        Timed(Lifecycle(1, ObservationKind.Create, 900, 1) with { ResourceName = @"C:\Tools\crawler.exe" }),
+        Timed(Lifecycle(2, ObservationKind.Create, 910, 2) with { ResourceName = @"C:\Tools\updater.exe" }),
+        .. Enumerable.Range(1, 7).Select(index => Timed(Transfer(10 + index, ObservationKind.Connect, AccountingSide.EndpointActivity, 0,
+            900, (ulong)(10 + index)).Between($"192.168.1.10:{52000 + index}", $"52.0.0.{index}:443"))),
+        Timed(Transfer(30, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 910, 30).Between("192.168.1.10:53000", "52.0.0.1:443")),
+    ];
+
     /// <summary>hub.exe's PID 1000 connects to the one process of each of seven programs.</summary>
     private static ObservationRowV1[] Hub() =>
     [

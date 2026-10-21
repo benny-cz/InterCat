@@ -653,6 +653,14 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                     break;
                 }
 
+                if (ReachedHostsList.IsKeyboardFocusWithin)
+                {
+                    // Enter on one of the hosts a chosen process reached finds every process that reached it, as Enter on a
+                    // host Other hosts lists does; the keyboard stays on the list, so the next host is a key away.
+                    e.Handled = FindSelectedReachedHost(viewModel);
+                    break;
+                }
+
                 if (CellRecordsList.IsKeyboardFocusWithin)
                 {
                     // Enter on a chosen cell's record opens it in E, selected there (§6.4), rather than descending.
@@ -992,8 +1000,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// table counting a lane chosen, the inspector's records as a newer generation arrives - hides each row's container and
     /// gives it to whichever row it lays out next, so the keyboard went to a row other than the chosen one. A list given a
     /// newer generation's rows takes the row out of the window, which then finds no list of its own: the list it was in
-    /// gets the keyboard back, on the process or host still chosen in it, not the ranked table, or on the relationship or
-    /// pair of programs it was on, which no choice holds, wherever the newer counts list it.
+    /// gets the keyboard back, on the process or host still chosen in it, not the ranked table, or on the relationship,
+    /// pair of programs or host it was on, which no choice holds, wherever the newer counts list it.
     /// </summary>
     private bool GiveBackLastKeyboard()
     {
@@ -1008,7 +1016,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
     /// <summary>
     /// The row of <paramref name="list"/> that stands for what <paramref name="row"/>, a row of an earlier generation's list,
-    /// stood for: the relationship with the same process, or the pair with the same program, whatever counts it now says.
+    /// stood for: the relationship with the same process, the pair with the same program, or the host at the same address
+    /// a chosen process reached, whatever counts it now says.
     /// Null for any other row, which its list's chosen row stands for, if any.
     /// </summary>
     private static object? SameRow(ListBox list, object? row) => row switch
@@ -1016,6 +1025,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         PeerRow peer => list.Items.OfType<PeerRow>().FirstOrDefault(listed => listed.PeerId == peer.PeerId),
         ProgramPairRow pair => list.Items.OfType<ProgramPairRow>()
             .FirstOrDefault(listed => string.Equals(listed.OtherKey, pair.OtherKey, StringComparison.Ordinal)),
+        ReachedHostRow host => list.Items.OfType<ReachedHostRow>()
+            .FirstOrDefault(listed => string.Equals(listed.Address, host.Address, StringComparison.Ordinal)),
         _ => null,
     };
 
@@ -2725,6 +2736,33 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         {
             FocusFirstUnnamed(PeersList, WorkspaceViewModel.PeersNamed);
         }
+    }
+
+    private void ToggleReachedHosts(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel && viewModel.ToggleReachedHosts())
+        {
+            FocusFirstUnnamed(ReachedHostsList, WorkspaceViewModel.ReachedHostsNamed);
+        }
+    }
+
+    private void FindListedReachedHost(object? sender, TappedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel)
+        {
+            FindSelectedReachedHost(viewModel);
+        }
+    }
+
+    /// <summary>
+    /// Finds every process that reached the host of a chosen process's list the keyboard is on, or else the one selected,
+    /// as a search for its address does (§6.3). False when there is none.
+    /// </summary>
+    internal bool FindSelectedReachedHost(WorkspaceViewModel viewModel)
+    {
+        ReachedHostRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as ReachedHostRow
+            ?? ReachedHostsList.SelectedItem as ReachedHostRow;
+        return row is not null && viewModel.FindReachedHost(row);
     }
 
     private void TogglePrograms(object? sender, RoutedEventArgs eventArgs)

@@ -264,7 +264,8 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     public string PeersMore => ListsAllPeers && selectedProcess is { } selected
         && PeersOfSelection().Count - PeersListed is > 0 and var more
-        ? string.Create(CultureInfo.CurrentCulture, $"{more:N0} more, quieter: icat processes --pid {selected.ProcessId} lists them all")
+        ? string.Create(CultureInfo.CurrentCulture,
+            $"{more:N0} more, quieter: icat processes --pid {selected.ProcessId} lists each process it exchanged data with")
         : string.Empty;
 
     /// <summary>Whether the list says what it leaves out with every relationship asked for.</summary>
@@ -523,5 +524,6 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(ShowsPeers));
         OnPropertyChanged(nameof(OffersPeersToggle));
         RaiseListedWhole();
+        RaiseReachedHostsChanged();
     }
 }
