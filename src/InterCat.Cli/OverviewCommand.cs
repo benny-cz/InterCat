@@ -130,7 +130,8 @@ internal static class OverviewCommand
                 ])]);
             if (opened)
             {
-                ConsoleUi.Note("Connections are each one's TCP connections made and accepted, as the capture saw them open. "
+                ConsoleUi.Note("Connections are each one's TCP connections made and accepted, as the capture saw them open, "
+                    + "those accepted at the ports of its own they arrived at. "
                     + "icat processes <directory> --pid <PID> names who it connected to and who connected to it, and "
                     + "--rank-by connections-made or connections-accepted lists the processes that did so most.");
             }
@@ -243,12 +244,14 @@ internal static class OverviewCommand
     }
 
     /// <summary>
-    /// The TCP connections a process made and accepted over the session, as icat processes lists them: "41 made · 34
-    /// accepted", or "none" where the capture saw none of its own open.
+    /// The TCP connections a process made and accepted over the session, as icat processes lists them, those it accepted at
+    /// the ports of its own they arrived at: "41 made · 34 accepted at 9222", or "none" where the capture saw none of its
+    /// own open.
     /// </summary>
     private static string ConnectionsOf(ProcessNode node) => node.ConnectionsMade + node.ConnectionsAccepted == 0
         ? "none"
-        : string.Create(CultureInfo.CurrentCulture, $"{node.ConnectionsMade:N0} made · {node.ConnectionsAccepted:N0} accepted");
+        : string.Create(CultureInfo.CurrentCulture, $"{node.ConnectionsMade:N0} made · {node.ConnectionsAccepted:N0} accepted")
+            + (node.AcceptedPorts.Count > 0 ? " at " + HostLinkText.PortNumbers(node.AcceptedPorts) : string.Empty);
 
     /// <summary>The connections a process accepted from other hosts, with its own ports they arrived at: "2 at 443 and 8443", "-".</summary>
     private static string Accepted(IEnumerable<HostLink> links)

@@ -461,7 +461,8 @@ internal static class ProcessesCommand
             opensRecorded
                 ? "Connections made and accepted are each instance's TCP connections as the capture saw them open at either "
                     + "end, by its own connect or accept or the other end's: one between two instances is one each counts, "
-                    + "and one an instance made to itself it both made and accepted."
+                    + "and one an instance made to itself it both made and accepted. Those it accepted are at the ports of "
+                    + "its own they arrived at, which it listened at."
                 : "This session records no connection's open, so how many connections an instance made or accepted is "
                     + "unknown rather than none.",
         };
@@ -721,7 +722,7 @@ internal static class ProcessesCommand
                             + (item.Collector is { } collector ? $" ({CollectorText.Label(collector)})" : string.Empty),
                         Lifetime(item.Process, clock),
                         ConsoleUi.Count(item.Records),
-                        Connections(item, "none"),
+                        Connections(item, "none") + AcceptedAt(item),
                         Bytes(item.TransportBytesSent, item.Sends, "no sends"),
                         Bytes(item.TransportBytesReceived, item.Receives, "no receives"),
                     }),
@@ -823,7 +824,7 @@ internal static class ProcessesCommand
         {
             (null, _) or (_, null) => "not recorded: this session records no connection's open",
             (0, 0) => "none the capture saw open",
-            (_, > 0) when item.AcceptedPorts is { Count: > 0 } ports =>
+            _ when item.AcceptedPorts is { Count: > 0 } ports =>
                 Connections(item, string.Empty) + " at " + HostLinkText.Ports(ports) + ", as the capture saw them open",
             _ => Connections(item, string.Empty) + ", as the capture saw them open",
         });
@@ -917,6 +918,13 @@ internal static class ProcessesCommand
             ({ }, { }) => none,
             _ => "not recorded",
         };
+
+    /// <summary>
+    /// The ports of its own an instance accepted connections at, as a table's cell states them after its connections:
+    /// " at 445 and 3389"; empty where it accepted none, or the session records no connection's open.
+    /// </summary>
+    private static string AcceptedAt(ProcessActivityDocument item) =>
+        item.AcceptedPorts is { Count: > 0 } ports ? " at " + HostLinkText.PortNumbers(ports) : string.Empty;
 
     /// <summary>
     /// What a ranking orders instances by, the most first, and what breaks its ties before the PID: an instance's other

@@ -168,12 +168,14 @@ public sealed class OverviewCensusTests
         Assert.DoesNotContain("Busiest pair of programs", text, Ordinal);
 
         // Its busiest processes say the connections each made and accepted, as icat processes counts them - the server's
-        // three accepted counting the one from another host - and where to read with whom.
+        // three accepted counting the one from another host - at the ports of its own they arrived at, and where to read
+        // with whom.
         Assert.Matches(@"(?m)^  Busiest process +Own records +Mostly +Connections\r?$", text);
-        Assert.Matches(@"(?m)^  server\.exe · PID 200 +9 +TCP +1 made · 3 accepted\r?$", text);
+        Assert.Matches(@"(?m)^  server\.exe · PID 200 +9 +TCP +1 made · 3 accepted at 445 and 8080\r?$", text);
         Assert.Matches(@"(?m)^  client\.exe · PID 100 +6 +TCP +1 made · 0 accepted\r?$", text);
-        Assert.Matches(@"(?m)^  helper\.exe · PID 300 +5 +TCP +1 made · 1 accepted\r?$", text);
-        Assert.Contains("Connections are each one's TCP connections made and accepted, as the capture saw them open. icat "
+        Assert.Matches(@"(?m)^  helper\.exe · PID 300 +5 +TCP +1 made · 1 accepted at 9000\r?$", text);
+        Assert.Contains("Connections are each one's TCP connections made and accepted, as the capture saw them open, those "
+            + "accepted at the ports of its own they arrived at. icat "
             + "processes <directory> --pid <PID> names who it connected to and who connected to it, and --rank-by "
             + "connections-made or connections-accepted lists the processes that did so most.", Regex.Replace(text, @"\s+", " "), Ordinal);
 
@@ -239,7 +241,7 @@ public sealed class OverviewCensusTests
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Matches(@"(?m)^  resolver\.exe · PID 300 +4 +UDP +none\r?$", text);
         Assert.Matches(@"(?m)^  client\.exe · PID 100 +3 +TCP +1 made · 0 accepted\r?$", text);
-        Assert.Matches(@"(?m)^  server\.exe · PID 200 +3 +TCP +0 made · 1 accepted\r?$", text);
+        Assert.Matches(@"(?m)^  server\.exe · PID 200 +3 +TCP +0 made · 1 accepted at 8080\r?$", text);
     }
 
     [Fact(DisplayName = "§6.3: icat overview sums the relationships of programs that run several processes by the two programs at their ends, each pair named by who connected to whom")]

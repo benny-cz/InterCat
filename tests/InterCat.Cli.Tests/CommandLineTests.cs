@@ -446,10 +446,12 @@ public sealed class CommandLineTests : IDisposable
         (InterCatExitCode code, string table, string said) = await Run("processes", opened.Path);
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Matches(@"(?m)^  100 +client\.exe .* 2 made · 0 accepted +", table);
-        Assert.Matches(@"(?m)^  200 +server\.exe .* 0 made · 1 accepted +", table);
+        Assert.Matches(@"(?m)^  200 +server\.exe .* 0 made · 1 accepted at 8080 +", table);
         Assert.Matches(@"(?m)^  300 +resolver\.exe .* +none +32 B +no receives\r?$", table);
         Assert.Contains("Connections made and accepted are each instance's TCP connections as the capture saw them open",
             table, StringComparison.Ordinal);
+        Assert.Contains("Those it accepted are at the ports of its own they arrived at, which it listened at.",
+            Regex.Replace(table, @"\s+", " "), StringComparison.Ordinal);
         Assert.Matches(@"(?m)^  Connections +0 made · 1 accepted at port 8080, as the capture saw them open\r?$",
             (await Run("processes", opened.Path, "--pid", "200")).Output);
         Assert.Matches(@"(?m)^  Connections +none the capture saw open\r?$",
