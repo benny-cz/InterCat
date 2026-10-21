@@ -331,6 +331,9 @@ public sealed class ConnectionMakersWorkspaceTests
             workspace.SelectionPrograms.Select(row => (row.Pair, row.Counts)));
         Assert.Equal(2, heard[^1]);
         Assert.False(workspace.ShowsProgramsMore);
+        Assert.False(workspace.OffersProgramsToggle);
+        Assert.False(workspace.TogglePrograms());
+        Assert.False(workspace.ListsAllPrograms);
         // Each row says itself whole as the keyboard reaches it, who connected in words, and what Enter on it does; its own
         // processes' pair goes nowhere, and says no Enter.
         Assert.Equal(
@@ -349,10 +352,22 @@ public sealed class ConnectionMakersWorkspaceTests
                 "server.exe → epsilon.exe"],
             workspace.SelectionPrograms.Select(row => row.Pair));
         Assert.Equal("1 relationship · 4 records", workspace.SelectionPrograms[^1].Counts);
-        Assert.Equal("and 1 more program", workspace.ProgramsMore);
-        Assert.True(workspace.ShowsProgramsMore);
         Assert.Equal("server.exe connected to epsilon.exe: 1 relationship, 4 records. Press Enter to choose the program at its "
             + "other end.", workspace.SelectionPrograms[^1].AccessibleName);
+
+        // A button offers the sixth: every pair on request, and the busiest five again.
+        Assert.True(workspace.OffersProgramsToggle);
+        Assert.Equal("Show all 6 programs", workspace.ProgramsToggleLabel);
+        Assert.True(workspace.TogglePrograms());
+        Assert.True(workspace.ListsAllPrograms);
+        Assert.Equal("server.exe → gamma.exe", workspace.SelectionPrograms[^1].Pair);
+        Assert.Equal(6, heard[^1]);
+        Assert.Equal("Show the busiest 5", workspace.ProgramsToggleLabel);
+        Assert.False(workspace.ShowsProgramsMore);
+        Assert.False(workspace.TogglePrograms());
+        Assert.False(workspace.ListsAllPrograms);
+        Assert.Equal(5, heard[^1]);
+        Assert.Equal("Show all 6 programs", workspace.ProgramsToggleLabel);
 
         // Enter on a pair chooses the program at its other end, as choosing its ranked row does, its own pairs then listed:
         // from the server the browser, named first as the one that connected, and from the browser the server again, then
@@ -464,6 +479,70 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal(alpha, workspace.SelectedGroup?.Key);
         Assert.Equal(alpha, workspace.ComeBackFromProgram());
         Assert.Equal(server, workspace.SelectedGroup?.Key);
+    });
+
+    [Fact(DisplayName = "§6.3: a hub's relationships and a busy program's pairs are listed whole on request, a hundred at most and where to read the rest said, and a newer generation keeps them whole")]
+    public void AHubsListsAreListedWholeOnRequest() => SingleThreadedContext.Run(async () =>
+    {
+        // hub.exe's PID 1000 connects to the one process of each of 101 programs.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 1000, 1) with { ResourceName = @"C:\Apps\hub.exe", SessionRelativeTicks = 100 },
+            .. Enumerable.Range(0, 101).Select(index => Lifecycle(2 + index, ObservationKind.Create, 2000 + index, (ulong)(2 + index))
+                with { ResourceName = $@"C:\Apps\peer{index:D3}.exe", SessionRelativeTicks = 110 + index }),
+            .. Enumerable.Range(0, 101).SelectMany(index => Connection(300 + (10 * index), 1000, 2000 + index,
+                $"127.0.0.1:{40000 + index}", $"127.0.0.1:{9000 + index}")),
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        await workspace.LayoutReady;
+        ProcessInstanceId hub = workspace.Snapshot.Processes.Single(process => process.ProcessId == 1000).Id;
+
+        // The hub's process names its busiest five, and offers a hundred of its 101, the one left said where to read.
+        workspace.SelectProcess(hub);
+        Assert.Equal(5, workspace.SelectionPeers.Count);
+        Assert.Equal("Show the busiest 100 of 101 relationships", workspace.PeersToggleLabel);
+        Assert.False(workspace.ShowsPeersMore);
+        Assert.True(workspace.TogglePeers());
+        Assert.Equal(100, workspace.SelectionPeers.Count);
+        Assert.Equal("→ peer099.exe · PID 2099", workspace.SelectionPeers[^1].Peer);
+        Assert.Equal("1 more, quieter: icat processes --pid 1000 lists them all", workspace.PeersMore);
+        Assert.True(workspace.ShowsPeersMore);
+
+        // So does its program, of its pairs.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "hub.exe");
+        Assert.Equal(5, workspace.SelectionPrograms.Count);
+        Assert.Equal("Show the busiest 100 of 101 programs", workspace.ProgramsToggleLabel);
+        Assert.False(workspace.ShowsProgramsMore);
+        Assert.True(workspace.TogglePrograms());
+        Assert.Equal(100, workspace.SelectionPrograms.Count);
+        Assert.Equal("hub.exe → peer099.exe", workspace.SelectionPrograms[^1].Pair);
+        Assert.Equal("1 more, quieter: icat programs --program hub.exe lists them all", workspace.ProgramsMore);
+        Assert.True(workspace.ShowsProgramsMore);
+
+        // Another program names its busiest, and offers no more; each list asked for whole stays so for its own.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "peer000.exe");
+        Assert.False(workspace.ListsAllPrograms);
+        Assert.False(workspace.OffersProgramsToggle);
+        Assert.False(workspace.ShowsProgramsMore);
+        workspace.SelectProcess(workspace.Snapshot.Processes.Single(process => process.ProcessId == 2000).Id);
+        Assert.False(workspace.ListsAllPeers);
+        Assert.False(workspace.OffersPeersToggle);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "hub.exe");
+        Assert.Equal(100, workspace.SelectionPrograms.Count);
+
+        // A newer generation keeps both whole.
+        WorkspaceNavigationMemento saved = workspace.CaptureNavigation();
+        Assert.Equal((hub, workspace.SelectedGroup?.Key), (saved.PeersListedWhole, saved.ProgramsListedWhole));
+        using var next = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity + ":2",
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        await next.LayoutReady;
+        Assert.Null(next.RestoreNavigation(saved));
+        Assert.Equal(("hub.exe", 100), (next.SelectedGroup?.Name, next.SelectionPrograms.Count));
+        next.SelectProcess(hub);
+        Assert.Equal(100, next.SelectionPeers.Count);
     });
 
     [Fact(DisplayName = "R7: a newer generation keeps the way back along a walk of relationships or of programs, and lets a hop go where the session no longer holds where it began")]
@@ -622,8 +701,7 @@ public sealed class ConnectionMakersWorkspaceTests
             ],
             workspace.SelectionPeers.Select(row => (row.Peer, row.Detail)));
         Assert.Equal(5, heard[^1]);
-        Assert.Equal("and 3 more relationships", workspace.PeersMore);
-        Assert.True(workspace.ShowsPeersMore);
+        Assert.False(workspace.ShowsPeersMore);
         // Each row says itself whole as the keyboard reaches it, who connected in words, and what Enter on it does.
         Assert.Equal(
             [
@@ -639,6 +717,20 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal("Its relationships, the busiest first; Enter on one chooses the process at its other end",
             workspace.PeersListName);
 
+        // A button offers the other three: every relationship on request, the busiest first, and the busiest five again.
+        Assert.True(workspace.OffersPeersToggle);
+        Assert.Equal("Show all 8 relationships", workspace.PeersToggleLabel);
+        Assert.True(workspace.TogglePeers());
+        Assert.True(workspace.ListsAllPeers);
+        Assert.Equal(["→ epsilon.exe · PID 504", "→ gamma.exe · PID 502", "resolver.exe · PID 600"],
+            workspace.SelectionPeers.Skip(5).Select(row => row.Peer));
+        Assert.Equal(8, heard[^1]);
+        Assert.Equal("Show the busiest 5", workspace.PeersToggleLabel);
+        Assert.False(workspace.ShowsPeersMore);
+        Assert.False(workspace.TogglePeers());
+        Assert.False(workspace.ListsAllPeers);
+        Assert.Equal(5, heard[^1]);
+
         // The resolver's flow opened nothing, and its connection to itself is drawn with no arrowhead, as its edge's card says
         // display order only: neither row is marked or says a count of connections.
         workspace.SelectProcess(Process(workspace, 600).Id);
@@ -649,6 +741,9 @@ public sealed class ConnectionMakersWorkspaceTests
             ],
             workspace.SelectionPeers.Select(row => (row.Peer, row.Detail, row.Spoken)));
         Assert.False(workspace.ShowsPeersMore);
+        Assert.False(workspace.OffersPeersToggle);
+        Assert.False(workspace.TogglePeers());
+        Assert.False(workspace.ListsAllPeers);
 
         // Its connection to itself goes nowhere, and says no Enter; its other end, the server, is chosen as a click on its
         // node chooses it, its own relationships then listed, and from the server alpha.exe, which lists the server it was

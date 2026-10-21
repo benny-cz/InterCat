@@ -2701,6 +2701,34 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         return true;
     }
 
+    private void TogglePeers(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel && viewModel.TogglePeers())
+        {
+            FocusFirstUnnamed(PeersList, WorkspaceViewModel.PeersNamed);
+        }
+    }
+
+    private void TogglePrograms(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel && viewModel.TogglePrograms())
+        {
+            FocusFirstUnnamed(ProgramsList, WorkspaceViewModel.ProgramPairsNamed);
+        }
+    }
+
+    /// <summary>
+    /// Gives the keyboard to the first row of an inspector list asked for whole that it did not name before, once laid
+    /// out, so Down reads on from where the busiest few ended (§6.3, R15).
+    /// </summary>
+    private void FocusFirstUnnamed(ListBox list, int named) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (!closed && list.ItemCount > named)
+        {
+            _ = FocusRow(list, list.Items[named]);
+        }
+    });
+
     private void ChooseListedProgram(object? sender, TappedEventArgs eventArgs)
     {
         if (DataContext is WorkspaceViewModel viewModel)

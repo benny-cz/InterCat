@@ -198,6 +198,83 @@ public sealed class ConnectionsInspectorWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.3/R15: a hub's relationships and its program's pairs are listed whole by a button under each list, the keyboard on the first row it adds")]
+    public async Task AHubsListsAreListedWholeByAButton()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Hub());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(Recording(session));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+            ListBox peers = window.GetControl<ListBox>("PeersList");
+            Button showPeers = window.GetControl<Button>("PeersToggleButton");
+            workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.ProcessId == 1000).Id);
+            Dispatch();
+            Assert.Equal(5, peers.ItemCount);
+            Assert.True(showPeers.IsEffectivelyVisible);
+            Assert.Equal(("Show all 7 relationships", "Show all 7 relationships"),
+                (AutomationProperties.GetName(showPeers), Assert.IsType<TextBlock>(showPeers.Content).Text));
+
+            // Pressed, it lists all seven, the keyboard on the sixth, the first it added, and says it names the busiest again.
+            Assert.True(showPeers.Focus());
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(7, peers.ItemCount);
+            Assert.Same(peers.ContainerFromIndex(5), window.FocusManager?.GetFocusedElement());
+            Assert.Equal(("Show the busiest 5", "Show the busiest 5"),
+                (AutomationProperties.GetName(showPeers), Assert.IsType<TextBlock>(showPeers.Content).Text));
+
+            // Pressed again, with Space, which presses a button as it is let go, it names the busiest five, the keyboard
+            // staying on it.
+            Assert.True(showPeers.Focus());
+            window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.None);
+            window.KeyReleaseQwerty(PhysicalKey.Space, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(5, peers.ItemCount);
+            Assert.Same(showPeers, window.FocusManager?.GetFocusedElement());
+
+            // The program's pairs alike.
+            ListBox programs = window.GetControl<ListBox>("ProgramsList");
+            Button showPrograms = window.GetControl<Button>("ProgramsToggleButton");
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "hub.exe");
+            Dispatch();
+            Assert.Equal(5, programs.ItemCount);
+            Assert.Equal(("Show all 7 programs", "Show all 7 programs"),
+                (AutomationProperties.GetName(showPrograms), Assert.IsType<TextBlock>(showPrograms.Content).Text));
+            Assert.True(showPrograms.Focus());
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(7, programs.ItemCount);
+            Assert.Same(programs.ContainerFromIndex(5), window.FocusManager?.GetFocusedElement());
+            Assert.Equal("Show the busiest 5", Assert.IsType<TextBlock>(showPrograms.Content).Text);
+            Save(window, "hub-pairs-listed-whole-1456x939.png");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>hub.exe's PID 1000 connects to the one process of each of seven programs.</summary>
+    private static ObservationRowV1[] Hub() =>
+    [
+        Timed(Lifecycle(1, ObservationKind.Create, 1000, 1) with { ResourceName = @"C:\Tools\hub.exe" }),
+        .. Enumerable.Range(0, 7).SelectMany(index => new[]
+        {
+            Timed(Lifecycle(2 + index, ObservationKind.Create, 2000 + index, (ulong)(2 + index))
+                with { ResourceName = $@"C:\Tools\peer{index}.exe" }),
+            Timed(Transfer(20 + (2 * index), ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 1000, (ulong)(100 + (2 * index)))
+                .Between($"127.0.0.1:{50000 + index}", $"127.0.0.1:{8000 + index}")),
+            Timed(Transfer(21 + (2 * index), ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 2000 + index, (ulong)(101 + (2 * index)))
+                .Between($"127.0.0.1:{8000 + index}", $"127.0.0.1:{50000 + index}")),
+        }),
+    ];
+
     /// <summary>
     /// The client connects to the server and to another host, and the helper to the server, sending twice to the client's
     /// once.

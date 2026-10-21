@@ -959,6 +959,12 @@
                   </ListBox>
                   <TextBlock x:Name="ProgramsMoreText" Text="{Binding ProgramsMore}" Classes="muted" FontSize="12"
                              TextWrapping="Wrap" IsVisible="{Binding ShowsProgramsMore}" />
+                  <!-- Every pair on request, the busiest first, and the busiest few again: a busy program's are not cut to
+                       five. -->
+                  <Button x:Name="ProgramsToggleButton" Click="TogglePrograms" HorizontalAlignment="Left" Margin="0,2,0,0"
+                          IsVisible="{Binding OffersProgramsToggle}" AutomationProperties.Name="{Binding ProgramsToggleLabel}">
+                    <TextBlock Text="{Binding ProgramsToggleLabel}" TextWrapping="Wrap" />
+                  </Button>
                 </StackPanel>
                 <!-- §6.3: which processes a chosen process talked with, and who connected, from its side as its connections
                      above count them: on a busy machine otherwise read off the graph edge by edge or the table row by row.
@@ -993,6 +999,12 @@
                   </ListBox>
                   <TextBlock x:Name="PeersMoreText" Text="{Binding PeersMore}" Classes="muted" FontSize="12"
                              TextWrapping="Wrap" IsVisible="{Binding ShowsPeersMore}" />
+                  <!-- Every relationship on request, the busiest first, and the busiest few again: a hub's are not cut to
+                       five. -->
+                  <Button x:Name="PeersToggleButton" Click="TogglePeers" HorizontalAlignment="Left" Margin="0,2,0,0"
+                          IsVisible="{Binding OffersPeersToggle}" AutomationProperties.Name="{Binding PeersToggleLabel}">
+                    <TextBlock Text="{Binding PeersToggleLabel}" TextWrapping="Wrap" />
+                  </Button>
                 </StackPanel>
                 <!-- §6.8: a process's or a channel's numbers are one action from the rule behind them - how a process's
                      records were bound to it, and what the evidence policy left out, or how a channel's ends were paired. -->

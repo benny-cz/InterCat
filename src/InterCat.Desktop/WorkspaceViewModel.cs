@@ -86,6 +86,8 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// <param name="IntervalRowOrigin">Where the latest way down from the interval table's row began, which the way back comes to (§3.2).</param>
 /// <param name="PeerHops">The hops made from a chosen process's relationships, the latest last, which Esc comes back along (§6.3).</param>
 /// <param name="ProgramHops">The hops made from a chosen program's pairs of programs, the latest last, which Esc comes back along (§6.3).</param>
+/// <param name="PeersListedWhole">The process whose relationships the inspector listed whole, as asked (§6.3).</param>
+/// <param name="ProgramsListedWhole">The program, by its key, whose pairs of programs the inspector listed whole, as asked (§6.3).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -117,7 +119,9 @@ public sealed record WorkspaceNavigationMemento(
     CellRecordOrigin? RecordOrigin = null,
     IntervalRowOrigin? IntervalRowOrigin = null,
     IReadOnlyList<PeerHop>? PeerHops = null,
-    IReadOnlyList<ProgramHop>? ProgramHops = null);
+    IReadOnlyList<ProgramHop>? ProgramHops = null,
+    ProcessInstanceId? PeersListedWhole = null,
+    string? ProgramsListedWhole = null);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1703,7 +1707,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedRelationship?.Key, chosenProcesses.Count > 0 ? [.. chosenProcesses] : null,
         relationshipOrigins.Count > 0 ? [.. relationshipOrigins] : null, ChosenHostEdgeRow()?.Key, DescribedRow is not null,
         cellOrigins.Count > 0 ? [.. cellOrigins] : null, cellRecordOrigin, intervalRowOrigin,
-        peerHops.Count > 0 ? [.. peerHops] : null, programHops.Count > 0 ? [.. programHops] : null);
+        peerHops.Count > 0 ? [.. peerHops] : null, programHops.Count > 0 ? [.. programHops] : null, peersListedWhole,
+        programsListedWhole);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1868,6 +1873,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         peerHops.AddRange(saved.PeerHops ?? []);
         programHops.Clear();
         programHops.AddRange(saved.ProgramHops ?? []);
+
+        // A list of relationships or of pairs asked for whole stays whole, its process or program chosen again or not.
+        peersListedWhole = saved.PeersListedWhole;
+        programsListedWhole = saved.ProgramsListedWhole;
+        RaiseListedWhole();
 
         // A relationship chosen, or processes chosen together, are chosen again as far as this generation holds them.
         if (saved.SelectedRelationshipKey is { } relationship)

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 670 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 671 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 671 — a hub's relationships and a busy program's pairs are listed whole on request (§6.3, R15):**
+  - A button under each of the inspector's lists offers every relationship or pair, the busiest first, and then the
+    busiest five again, the keyboard going to the first row it adds; past a hundred, a note names the icat command
+    that lists them all. A recording's next generation keeps a list asked for whole.
+  - Debug and Release each ran 2,657 tests with revision 473's 93 failures and 4 skips, and nothing else failed; the
+    two tests more list a hub's 101 relationships and pairs a hundred at a time, carried into a newer generation,
+    and press the buttons in the window. All 29 mutations were caught: either list never listed whole, or whole for
+    every process or program once one asked; the note past a hundred miscounted, or said while the busiest five are
+    named; either button's words never going back to the busiest, or counting past a hundred wrong; a toggle taken
+    where none is offered, or one never naming the busiest again; the rows or the button's words not said again once
+    toggled, or the button not shown as its process or program is chosen; a list asked for whole not carried over,
+    or not taken up again; and the keyboard left on the button, or put on the list's first row rather than the first
+    it added.
 
 - **Revision 670 — a newer generation keeps the way back along a walk (R7, §3.2, §6.3):**
   - A recording's next publication carries the hops Esc comes back along after Enter on a relationship or a pair of

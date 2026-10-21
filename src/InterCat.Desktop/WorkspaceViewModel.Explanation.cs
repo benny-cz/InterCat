@@ -94,6 +94,12 @@ public sealed partial class WorkspaceViewModel
     /// <summary>The most pairs of programs the inspector names for a chosen program, the busiest.</summary>
     internal const int ProgramPairsNamed = 5;
 
+    /// <summary>The most pairs of programs the inspector lists for a chosen program once every one is asked for.</summary>
+    internal const int ProgramPairsListed = 100;
+
+    /// <summary>The program, by its key, whose pairs the inspector lists whole, as asked; null while it names the busiest.</summary>
+    private string? programsListedWhole;
+
     /// <summary>Every pair of programs the session's relationships join, summed once when first asked for.</summary>
     private IReadOnlyList<ProgramPair>? programPairs;
 
@@ -105,7 +111,8 @@ public sealed partial class WorkspaceViewModel
     /// graph edge by edge. Empty for any other selection, a group of processes by their session, and a program none of
     /// whose processes has a relationship.
     /// </summary>
-    public IReadOnlyList<ProgramPairRow> SelectionPrograms => [.. ProgramsOfSelection().Take(ProgramPairsNamed).Select(pair =>
+    public IReadOnlyList<ProgramPairRow> SelectionPrograms => [.. ProgramsOfSelection()
+        .Take(ListsAllPrograms ? ProgramPairsListed : ProgramPairsNamed).Select(pair =>
     {
         string counts = RelationshipCount(pair.Relationships) + " · " + Spoken.Count(pair.Records, "record");
         string other = string.Equals(pair.First.Key, selectedGroupKey, StringComparison.Ordinal) ? pair.Second.Key : pair.First.Key;
@@ -116,13 +123,47 @@ public sealed partial class WorkspaceViewModel
         };
     })];
 
-    /// <summary>How many more programs the selected program's processes talked with than the inspector names.</summary>
-    public string ProgramsMore => ProgramsOfSelection().Count - ProgramPairsNamed is > 0 and var more
-        ? "and " + Spoken.Count(more, "more program", "more programs")
+    /// <summary>Whether the inspector lists every pair of the selected program, as asked, rather than the busiest few.</summary>
+    public bool ListsAllPrograms => selectedGroupKey is { } program
+        && string.Equals(programsListedWhole, program, StringComparison.Ordinal);
+
+    /// <summary>
+    /// What the list leaves out with every pair asked for, past the most it lists, and where every one is read; empty
+    /// otherwise, where the button that asks for them says how many there are.
+    /// </summary>
+    public string ProgramsMore => ListsAllPrograms && SelectedGroup is { } program
+        && ProgramsOfSelection().Count - ProgramPairsListed is > 0 and var more
+        ? string.Create(CultureInfo.CurrentCulture, $"{more:N0} more, quieter: icat programs --program {program.Name} lists them all")
         : string.Empty;
 
-    /// <summary>Whether more programs than the inspector names are said to be left out.</summary>
+    /// <summary>Whether the list says what it leaves out with every pair asked for.</summary>
     public bool ShowsProgramsMore => ProgramsMore.Length > 0;
+
+    /// <summary>Whether the inspector offers every pair, or the busiest again: the program has more than it names.</summary>
+    public bool OffersProgramsToggle => ProgramsOfSelection().Count > ProgramPairsNamed;
+
+    /// <summary>What that button says: how many it would list, or that it names the busiest again.</summary>
+    public string ProgramsToggleLabel => ListsAllPrograms
+        ? string.Create(CultureInfo.CurrentCulture, $"Show the busiest {ProgramPairsNamed}")
+        : ProgramsOfSelection().Count is var count && count <= ProgramPairsListed
+            ? string.Create(CultureInfo.CurrentCulture, $"Show all {count:N0} programs")
+            : string.Create(CultureInfo.CurrentCulture, $"Show the busiest {ProgramPairsListed:N0} of {count:N0} programs");
+
+    /// <summary>
+    /// Lists every pair of the selected program, at most <see cref="ProgramPairsListed"/>, or names the busiest again, as its
+    /// button asks; true where it now lists every one. A program with no more pairs than the inspector names offers neither.
+    /// </summary>
+    public bool TogglePrograms()
+    {
+        if (!OffersProgramsToggle)
+        {
+            return false;
+        }
+
+        programsListedWhole = ListsAllPrograms ? null : selectedGroupKey;
+        RaiseListedWhole();
+        return ListsAllPrograms;
+    }
 
     /// <summary>The heading over them, saying under a brush that they are the whole session's.</summary>
     public string ProgramsHeading => "Relationships by program" + (appliedInterval is null ? string.Empty : " · whole session");
@@ -188,6 +229,12 @@ public sealed partial class WorkspaceViewModel
     /// <summary>The most relationships the inspector names for a chosen process, the busiest.</summary>
     internal const int PeersNamed = 5;
 
+    /// <summary>The most relationships the inspector lists for a chosen process once every one is asked for.</summary>
+    internal const int PeersListed = 100;
+
+    /// <summary>The process whose relationships the inspector lists whole, as asked; null while it names the busiest.</summary>
+    private ProcessInstanceId? peersListedWhole;
+
     /// <summary>
     /// The selected process's relationships over the whole session, the busiest first, each by the process at its other end,
     /// marked from the selected process's side as its own count of connections made and accepted reads them - "→" where it
@@ -197,7 +244,7 @@ public sealed partial class WorkspaceViewModel
     /// is otherwise read off the graph edge by edge or the relationship table row by row. Empty for any other selection.
     /// </summary>
     public IReadOnlyList<PeerRow> SelectionPeers => selectedProcess is { } selected
-        ? [.. PeersOfSelection().Take(PeersNamed).Select(edge => PeerRowOf(edge, selected.Id))]
+        ? [.. PeersOfSelection().Take(ListsAllPeers ? PeersListed : PeersNamed).Select(edge => PeerRowOf(edge, selected.Id))]
         : [];
 
     /// <summary>The process at a relationship's other end from the selected one, as a caption names it.</summary>
@@ -208,13 +255,62 @@ public sealed partial class WorkspaceViewModel
             + (other == selected ? " (itself)" : string.Empty);
     }
 
-    /// <summary>How many more relationships the selected process has than the inspector names.</summary>
-    public string PeersMore => PeersOfSelection().Count - PeersNamed is > 0 and var more
-        ? "and " + Spoken.Count(more, "more relationship", "more relationships")
+    /// <summary>Whether the inspector lists every relationship of the selected process, as asked, rather than the busiest few.</summary>
+    public bool ListsAllPeers => selectedProcess is { } selected && peersListedWhole == selected.Id;
+
+    /// <summary>
+    /// What the list leaves out with every relationship asked for, past the most it lists, and where every one is read;
+    /// empty otherwise, where the button that asks for them says how many there are.
+    /// </summary>
+    public string PeersMore => ListsAllPeers && selectedProcess is { } selected
+        && PeersOfSelection().Count - PeersListed is > 0 and var more
+        ? string.Create(CultureInfo.CurrentCulture, $"{more:N0} more, quieter: icat processes --pid {selected.ProcessId} lists them all")
         : string.Empty;
 
-    /// <summary>Whether more relationships than the inspector names are said to be left out.</summary>
+    /// <summary>Whether the list says what it leaves out with every relationship asked for.</summary>
     public bool ShowsPeersMore => PeersMore.Length > 0;
+
+    /// <summary>Whether the inspector offers every relationship, or the busiest again: the process has more than it names.</summary>
+    public bool OffersPeersToggle => PeersOfSelection().Count > PeersNamed;
+
+    /// <summary>What that button says: how many it would list, or that it names the busiest again.</summary>
+    public string PeersToggleLabel => ListsAllPeers
+        ? string.Create(CultureInfo.CurrentCulture, $"Show the busiest {PeersNamed}")
+        : PeersOfSelection().Count is var count && count <= PeersListed
+            ? string.Create(CultureInfo.CurrentCulture, $"Show all {count:N0} relationships")
+            : string.Create(CultureInfo.CurrentCulture, $"Show the busiest {PeersListed:N0} of {count:N0} relationships");
+
+    /// <summary>
+    /// Lists every relationship of the selected process, at most <see cref="PeersListed"/>, or names the busiest again, as
+    /// its button asks; true where it now lists every one. A process with no more relationships than the inspector names
+    /// offers neither.
+    /// </summary>
+    public bool TogglePeers()
+    {
+        if (!OffersPeersToggle)
+        {
+            return false;
+        }
+
+        peersListedWhole = ListsAllPeers ? null : selectedProcess?.Id;
+        RaiseListedWhole();
+        return ListsAllPeers;
+    }
+
+    /// <summary>Says again what the inspector's lists of relationships and of pairs hold, once asked for whole or not.</summary>
+    private void RaiseListedWhole()
+    {
+        OnPropertyChanged(nameof(SelectionPrograms));
+        OnPropertyChanged(nameof(ListsAllPrograms));
+        OnPropertyChanged(nameof(ProgramsMore));
+        OnPropertyChanged(nameof(ShowsProgramsMore));
+        OnPropertyChanged(nameof(ProgramsToggleLabel));
+        OnPropertyChanged(nameof(SelectionPeers));
+        OnPropertyChanged(nameof(ListsAllPeers));
+        OnPropertyChanged(nameof(PeersMore));
+        OnPropertyChanged(nameof(ShowsPeersMore));
+        OnPropertyChanged(nameof(PeersToggleLabel));
+    }
 
     /// <summary>The heading over them, saying under a brush that they are the whole session's.</summary>
     public string PeersHeading => "Its relationships, the busiest first" + (appliedInterval is null ? string.Empty : " · whole session");
@@ -422,13 +518,10 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(OffersCandidates));
         OnPropertyChanged(nameof(SelectionConnections));
         OnPropertyChanged(nameof(ShowsConnections));
-        OnPropertyChanged(nameof(SelectionPrograms));
-        OnPropertyChanged(nameof(ProgramsMore));
-        OnPropertyChanged(nameof(ShowsProgramsMore));
         OnPropertyChanged(nameof(ShowsPrograms));
-        OnPropertyChanged(nameof(SelectionPeers));
-        OnPropertyChanged(nameof(PeersMore));
-        OnPropertyChanged(nameof(ShowsPeersMore));
+        OnPropertyChanged(nameof(OffersProgramsToggle));
         OnPropertyChanged(nameof(ShowsPeers));
+        OnPropertyChanged(nameof(OffersPeersToggle));
+        RaiseListedWhole();
     }
 }
