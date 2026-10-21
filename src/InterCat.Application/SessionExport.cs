@@ -193,7 +193,10 @@ public static class SessionExport
             RankingMetric applied = rows.Any(row => row.Ranked is not null) ? request.RankBy : RankingMetric.Records;
             ExportContext ranked = WorkspaceExport.RankingContext(overview.SessionId, overview.Generation, ladder,
                 request.Interval, OverviewWorkspace.DisclosureFor(snapshot), snapshot.MechanismCoverage, exportedUtc, applied,
-                request.Grouping, snapshot.SetAside);
+                request.Grouping, snapshot.SetAside) with { Manifest = overview.ManifestDigest };
+
+            // The rows name the icat metric query they answer, as the window's export names it (R18, I16).
+            ranked = ranked with { Query = RankingQuery.Name(store, ranked, overview.Policy, cancellationToken) };
             if (rankingCaveat is not null && ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group)
             {
                 ranked = ranked with { Caveats = [.. ranked.Caveats, rankingCaveat] };
@@ -230,7 +233,7 @@ public static class SessionExport
             read.NextCursor is null, OverviewWorkspace.DisclosureFor(snapshot),
             string.Create(CultureInfo.InvariantCulture,
                 $"Only the first {records.Count:N0} records of this scope are included; raise --limit for the rest."),
-            read.Coverage, exportedUtc);
+            read.Coverage, exportedUtc) with { Manifest = read.ManifestDigest };
         string evidenceContent = request.Redacted
             ? RedactedShareExport.Evidence(request.Format, context, records)
             : WorkspaceExport.Evidence(request.Format, context, records);

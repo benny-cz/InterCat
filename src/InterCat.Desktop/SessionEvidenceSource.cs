@@ -25,6 +25,9 @@ public sealed class SessionEvidenceSource(
     /// <summary>The generation the workspace was projected from; a page may continue in a newer one.</summary>
     public long Generation { get; } = generation;
 
+    /// <summary>The digest of that generation's manifest, which an export names beside it (I16); null where none was read.</summary>
+    public string? ManifestDigest { get; init; }
+
     /// <summary>
     /// How strongly a record must bind to a process for a read to count it as that process's: correlated by default, or
     /// candidates too, when a person chose to count a reused PID's later holders' records.
@@ -36,6 +39,13 @@ public sealed class SessionEvidenceSource(
     /// of every total over the rows shown while each keeps its own; none unless a person set them aside.
     /// </summary>
     public IReadOnlySet<ProcessInstanceId> SetAside { get; init; } = new HashSet<ProcessInstanceId>();
+
+    /// <summary>
+    /// The icat metric query a ranked export's rows answer over this source's generation, or why none does
+    /// (<see cref="RankingQuery"/>), under the policy every read here binds records by.
+    /// </summary>
+    public Task<RankingQueryName> NameRankingAsync(ExportContext context, CancellationToken cancellationToken) =>
+        Task.Run(() => RankingQuery.Name(Store(), context, Policy, cancellationToken), cancellationToken);
 
     /// <summary>Counts each edge's and channel's records inside an analysis interval, for a brushed ranking.</summary>
     public Task<SessionIntervalCounts> CountAsync(TimeRange interval, CancellationToken cancellationToken) =>

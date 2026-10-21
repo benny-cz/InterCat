@@ -37,7 +37,7 @@ public sealed class CommandLineTests : IDisposable
 
     /// <summary>The fields an export's report states before its caveats.</summary>
     private static readonly string[] ExportFields =
-        ["Written to", "Contract", "Rung", "Breadcrumb", "Scope", "Ranked by", "Grouped by", "Rows", "Complete"];
+        ["Written to", "Contract", "Rung", "Breadcrumb", "Scope", "Ranked by", "Grouped by", "Rows", "Complete", "Query", "Asked by"];
 
     /// <summary>The names a machine-readable answer gives its contract or version under.</summary>
     private static readonly string[] VersionNames = ["contract", "schemaVersion", "reportVersion"];
@@ -242,6 +242,48 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"\n  Size +\S[^\n]*$", written.TrimEnd());
     }
 
+    [Fact(DisplayName = "I16: icat export names the icat metric query its rows answer, and that command, asked, prints its identity")]
+    public async Task AnExportNamesTheQueryItsRowsAnswer()
+    {
+        string output = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            (InterCatExitCode exported, string report, string said) = await Run(
+                "export", session.Path, "--output", output, "--rank-by", "bytes-sent", "--interval", "0:2ms");
+            Assert.True(exported == InterCatExitCode.Success, said);
+            string identity = Regex.Match(report, @"(?m)^  Query +(v1:sha256:[0-9a-f]{64})\r?$").Groups[1].Value;
+            string asked = Regex.Match(report, @"(?m)^  Asked by +(icat metric <directory> .+?)\r?$").Groups[1].Value;
+            Assert.Equal(
+                "icat metric <directory> --metric bytes-sent --byte-domain transport-observed --side send-side --group-by executable "
+                    + "--interval 0:20000",
+                asked);
+
+            // The command, the session's directory named, prints the same identity over the same generation.
+            string[] command = [.. asked.Split(' ').Skip(1).Select(word => word == "<directory>" ? session.Path : word), "--print-canonical"];
+            (InterCatExitCode printed, string canonical, string named) = await Run(command);
+            Assert.True(printed == InterCatExitCode.Success, named);
+            Assert.Contains($"Query identity {identity} (query-identity-v1).", named, StringComparison.Ordinal);
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(output));
+            JsonElement query = document.RootElement.GetProperty("query");
+            Assert.Equal(identity, query.GetProperty("identity").GetString());
+            Assert.Equal(canonical.TrimEnd(), query.GetProperty("canonical").GetString());
+            Assert.Equal(session.Store.Current!.Digest, document.RootElement.GetProperty("context").GetProperty("manifest").GetString());
+
+            // Ranked by what no request counts, the report names no query, and the file says why.
+            (InterCatExitCode connections, string unnamed, _) = await Run(
+                "export", session.Path, "--output", output, "--overwrite", "--rank-by", "connections-made");
+            Assert.Equal(InterCatExitCode.Success, connections);
+            Assert.DoesNotContain("  Query ", unnamed, StringComparison.Ordinal);
+            using JsonDocument why = JsonDocument.Parse(File.ReadAllText(output));
+            Assert.StartsWith("No icat metric request counts the TCP connections a process made",
+                why.RootElement.GetProperty("query").GetProperty("unnamed").GetString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(output);
+        }
+    }
+
     [Fact(DisplayName = "R18: icat export --group-by session reaches a session's rung by its key, as the window groups it, and never guesses a session")]
     public async Task AnExportGroupsBySession()
     {
@@ -303,13 +345,16 @@ public sealed class CommandLineTests : IDisposable
 
             // The sharing report's own report says what its file keeps, as the detailed export's does.
             Assert.EndsWith(NoLedger, report.TrimEnd(), StringComparison.Ordinal);
-            // A ranking's lines then count what its view set aside, which came later, so each earlier column kept its place.
-            foreach (string file in new[] { rows, shared })
-            {
-                string[] lines = File.ReadAllLines(file);
-                Assert.EndsWith(",scope_coverage,set_aside_processes,set_aside_records", lines[0], StringComparison.Ordinal);
-                Assert.All(lines.Skip(1), line => Assert.EndsWith($",\"{NoLedger}\",0,0", line, StringComparison.Ordinal));
-            }
+            // A ranking's lines then count what its view set aside, which came later, so each earlier column kept its place;
+            // the detailed export's then name its generation's manifest and the query its rows answer, which a sharing
+            // report, naming neither, leaves out.
+            string[] detailed = File.ReadAllLines(rows);
+            Assert.EndsWith(",scope_coverage,set_aside_processes,set_aside_records,manifest,query_identity", detailed[0], StringComparison.Ordinal);
+            Assert.All(detailed.Skip(1), line => Assert.Matches(
+                $",\"{Regex.Escape(NoLedger)}\",0,0,{session.Store.Current!.Digest},v1:sha256:[0-9a-f]{{64}}$", line));
+            string[] sharedLines = File.ReadAllLines(shared);
+            Assert.EndsWith(",scope_coverage,set_aside_processes,set_aside_records", sharedLines[0], StringComparison.Ordinal);
+            Assert.All(sharedLines.Skip(1), line => Assert.EndsWith($",\"{NoLedger}\",0,0", line, StringComparison.Ordinal));
         }
         finally
         {

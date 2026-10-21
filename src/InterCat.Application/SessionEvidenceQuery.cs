@@ -62,6 +62,9 @@ public sealed record SessionEvidencePage(
     /// <summary>Every canonical-owner instance the page is scoped to, sorted; empty when it is not owner-scoped.</summary>
     public IReadOnlyList<ProcessInstanceId> OwnerProcesses { get; init; } = [];
 
+    /// <summary>The digest of the manifest of <see cref="Generation"/>, which pins the snapshot the page was read from (I16).</summary>
+    public string? ManifestDigest { get; init; }
+
     /// <summary>
     /// The generation the cursor was issued in, when this page continued it in a newer one. Rows published later that
     /// sort before the cursor are not inserted into a list already under way; the first page includes them.
@@ -315,6 +318,7 @@ public static class SessionEvidenceQuery
                 owners.Length == 1 ? owners[0] : null, interval, records, next, restart, reason, Caveat)
             {
                 OwnerProcesses = Array.AsReadOnly(owners),
+                ManifestDigest = manifest.Digest,
                 ContinuedFromGeneration = continuedFrom,
                 OperationKey = operationKey,
                 Mechanism = narrowing.Mechanism,

@@ -963,7 +963,20 @@ public static partial class SessionMetrics
     /// canonical specification and its hash, so a caller can compare two requests, or a UI with the CLI, before any
     /// total is computed (§10.5). Null when the generation publishes no derived segment.
     /// </summary>
-    public static QueryIdentity? Identify(SessionStore store, MetricRequest request, CancellationToken cancellationToken = default)
+    public static QueryIdentity? Identify(SessionStore store, MetricRequest request, CancellationToken cancellationToken = default) =>
+        IdentifyCore(store, request, null, cancellationToken);
+
+    /// <summary>
+    /// The query identity a request answers under over one generation of the store, the one a view was read from: null
+    /// once a newer generation has been published, as well as when the generation publishes no derived segment, so a view
+    /// of an earlier generation is never named by a later one's identity (I16).
+    /// </summary>
+    public static QueryIdentity? Identify(
+        SessionStore store, MetricRequest request, long generation, CancellationToken cancellationToken = default) =>
+        IdentifyCore(store, request, generation, cancellationToken);
+
+    private static QueryIdentity? IdentifyCore(
+        SessionStore store, MetricRequest request, long? generation, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(request);
@@ -978,6 +991,11 @@ public static partial class SessionMetrics
         }
 
         using EvidenceLease lease = store.AcquireLease();
+        if (generation is { } asked && lease.Manifest.Generation != asked)
+        {
+            return null;
+        }
+
         List<(string Name, SegmentReaderV1 Reader)>? segments = OpenSegments(store, lease.Manifest, cancellationToken);
         return segments is null ? null : IdentityOf(request.Materialized(), lease.Manifest, segments);
     }

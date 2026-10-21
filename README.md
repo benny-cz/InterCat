@@ -64,7 +64,8 @@ reached, the processes another member's capture proposes at its other end, never
 each of its listening ports those whose connections mirror the ones it accepted.
 *Investigation → Explore the demo* opens InterCat's generated demo, which needs no capture.
 
-**Sharing.** A view exports as JSON or CSV. A session shares as a redacted metadata report, as a redacted session package
+**Sharing.** A view exports as JSON or CSV, naming the generation it was read from by its manifest digest and, for the
+machine's ranked rows, the `icat metric` command whose answer they are. A session shares as a redacted metadata report, as a redacted session package
 that reopens with pseudonymous names, addresses and ports, or byte for byte as the original evidence; a support bundle
 holds no content, name or path.
 

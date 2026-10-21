@@ -175,9 +175,10 @@ public sealed class CollectorSetAsideTests
         string[] csv = SessionExport.Build(session.Store,
             new([], null, false, ExportFormat.Csv, SetAsideCollectors: true), DateTimeOffset.UnixEpoch).Content.Split('\n',
             StringSplitOptions.RemoveEmptyEntries);
-        Assert.EndsWith(",row_present,scope_coverage,set_aside_processes,set_aside_records", csv[0].TrimEnd('\r'), StringComparison.Ordinal);
+        Assert.EndsWith(",row_present,scope_coverage,set_aside_processes,set_aside_records,manifest,query_identity", csv[0].TrimEnd('\r'),
+            StringComparison.Ordinal);
         Assert.Equal(3, csv.Length);
-        Assert.All(csv.Skip(1), line => Assert.EndsWith(",1,3", line.TrimEnd('\r'), StringComparison.Ordinal));
+        Assert.All(csv.Skip(1), line => Assert.EndsWith($",1,3,{session.Store.Current!.Digest},", line.TrimEnd('\r'), StringComparison.Ordinal));
 
         // The redacted report carries the two counts, and nothing that names the broker.
         SessionExportResult redacted = SessionExport.Build(session.Store,

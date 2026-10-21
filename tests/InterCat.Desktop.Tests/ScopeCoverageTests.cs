@@ -309,7 +309,10 @@ public sealed class ScopeCoverageTests
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         return new(OverviewWorkspace.From(overview), overview.GraphIdentity,
-            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation)
+            {
+                ManifestDigest = overview.ManifestDigest,
+            });
     }
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };

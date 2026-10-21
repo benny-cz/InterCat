@@ -4676,6 +4676,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             ? new SessionEvidenceSource(path, overview.SessionId, overview.Generation, overview.Policy)
             {
                 SetAside = WorkspaceCollectors.Instances(shownSnapshot),
+                ManifestDigest = overview.ManifestDigest,
             }
             : null;
         // A newer publication of the session shown keeps Other hosts opened, as it keeps the graph's layout (§6.3), and a

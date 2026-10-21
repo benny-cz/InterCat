@@ -32,7 +32,10 @@ public sealed class ExportParityTests
         ]);
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
-            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation)
+            {
+                ManifestDigest = overview.ManifestDigest,
+            });
         ProcessNode client = overview.Nodes.Single(node => node.ProcessId == 100);
         string[] path = [client.GroupKey, client.Id.ToString()];
 
@@ -89,7 +92,10 @@ public sealed class ExportParityTests
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         using var workspace = new WorkspaceViewModel(WorkspaceGrouping.Regroup(OverviewWorkspace.From(overview), LaneGrouping.UserSession),
             WorkspaceGrouping.Identity(overview.GraphIdentity, LaneGrouping.UserSession),
-            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation)
+            {
+                ManifestDigest = overview.ManifestDigest,
+            });
         SessionExportRequest Headless(string[] path, bool evidence, ExportFormat format) =>
             new(path, null, evidence, format, RankBy: evidence ? RankingMetric.Records : RankingMetric.ActivePeers,
                 Grouping: LaneGrouping.UserSession);

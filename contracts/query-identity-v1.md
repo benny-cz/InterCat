@@ -137,6 +137,11 @@ that publishes no derived segment has none, since it has no snapshot to name. A 
 identity: it means nothing. `icat metric` prints the identity with every answer, and `--print-canonical` prints the
 canonical specification and identity without answering.
 
+A ranked export of the machine rung, the window's and `icat export`'s (`intercat-export-v1`), names the identity, the
+canonical specification and the command of the request whose groups its rows are, over the generation the rows were
+read from, and an export whose rows are no request's groups says why (plan revision 699). It adds no member to the
+form above.
+
 ## 8. Golden corpus
 
 `fixtures/FX-QUERY-001/golden/canonical-corpus.tsv` maps named specifications, over a fixed snapshot, to their

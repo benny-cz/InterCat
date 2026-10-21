@@ -149,7 +149,7 @@ public sealed class SessionExportTests
         string[] lines = Csv.Lines(SessionExport.Build(gapped.Store, new([], new TimeRange(25, 35), true, ExportFormat.Csv),
             Exported).Content);
         Assert.Equal(2, lines.Length);
-        Assert.Equal(["false", Unknown], Csv.Cells(lines[1])[^2..]);
+        Assert.Equal(["false", Unknown, gapped.Store.Current!.Digest], Csv.Cells(lines[1])[^3..]);
         foreach ((bool records, SessionExportResult ordinary) in new[] { (false, gap), (true, evidence) })
         {
             SessionExportResult shared = SessionExport.Build(gapped.Store,

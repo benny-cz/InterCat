@@ -232,6 +232,14 @@ public sealed class OperationMetricsTests
         Assert.Null(errors.Value);
         Assert.Equal((0L, 1L), (errors.KnownContributions, errors.UnknownContributions));
         Assert.Contains("never as zero", errors.UnavailableExplanation!, StringComparison.Ordinal);
+
+        // Grouped, the answer still lists the process whose call it was, unmeasured, as a byte total none of whose
+        // contributions was measured lists its groups: the ranked table's row for it says the same.
+        MetricResult grouped = SessionMetrics.Evaluate(session.Store, Request(Metric.Errors) with { Grouping = LaneGrouping.InstanceOnly });
+        Assert.Equal(MetricUnavailableReason.NothingMeasured, grouped.Unavailable);
+        MetricGroup only = Assert.Single(grouped.Groups);
+        Assert.Equal((Client, null, 0L, 1L), (only.Process!.ProcessId, only.Value, only.KnownContributions, only.UnknownContributions));
+        Assert.Empty(grouped.Unattributed);
     }
 
     [Fact(DisplayName = "I16: an operation answer names the operation rule and the binding rule in its identity")]

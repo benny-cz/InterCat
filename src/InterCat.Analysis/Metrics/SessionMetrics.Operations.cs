@@ -247,9 +247,17 @@ public static partial class SessionMetrics
         };
 
         // An error count over calls none of which says how it ended is not a zero: it would report every one of them as
-        // having succeeded (R3, R21).
+        // having succeeded (R3, R21). Grouped, it still lists its groups, each unmeasured, as a byte total none of whose
+        // contributions was measured lists them: which processes completed the calls is part of the answer.
         if (effective == Metric.Errors && tally.Known == 0 && tally.Unknown > 0)
         {
+            if (request.Grouping is not null)
+            {
+                (IReadOnlyList<MetricGroup> unmeasured, MetricGroup? rest, IReadOnlyList<MetricGroup> withheld) =
+                    tally.Groups(request.RequestedRows, context);
+                answer = answer with { Groups = unmeasured, Remainder = rest, Unattributed = withheld, GroupsPartitionTotal = true };
+            }
+
             return answer with
             {
                 Unavailable = MetricUnavailableReason.NothingMeasured,

@@ -55,6 +55,18 @@ public sealed record ExportContext(
 
     /// <summary>The records those processes hold over the whole session, which the evidence still lists.</summary>
     public long SetAsideRecords { get; init; }
+
+    /// <summary>
+    /// The digest of the manifest of <see cref="Generation"/>, which pins its exact contents: a session and a generation
+    /// number alone name one snapshot only within one session's history (I16). Null for a view of no session.
+    /// </summary>
+    public string? Manifest { get; init; }
+
+    /// <summary>
+    /// The <c>icat metric</c> query a ranked export's rows answer, or why none does (<see cref="RankingQuery"/>); null for an
+    /// evidence export, or one whose query was not asked.
+    /// </summary>
+    public RankingQueryName? Query { get; init; }
 }
 
 /// <summary>
@@ -294,6 +306,15 @@ public static class WorkspaceExport
             RankedBy = RankingName(context.RankedBy),
             GroupedBy = GroupingName(context.GroupedBy),
             SetAside = new { Processes = context.SetAsideProcesses, Records = context.SetAsideRecords },
+            Query = context.Query is { } query
+                ? new
+                {
+                    Identity = query.Identity?.Token,
+                    Canonical = query.Identity?.CanonicalSpecification,
+                    query.Command,
+                    query.Unnamed,
+                }
+                : null,
             Rows = rows.Select(row => new
             {
                 row.Key,
@@ -330,13 +351,14 @@ public static class WorkspaceExport
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(rows);
         var csv = new StringBuilder();
-        Line(csv, [.. ContextHeader, .. RankingColumns, .. TrailingHeader, .. SetAsideHeader]);
+        Line(csv, [.. ContextHeader, .. RankingColumns, .. TrailingHeader, .. SetAsideHeader, .. QueryHeader]);
         string rankedBy = RankingName(context.RankedBy);
-        string[] trailing = [.. TrailingCells(context, present: true), .. SetAsideCells(context)];
+        string[] trailing = [.. TrailingCells(context, present: true), .. SetAsideCells(context), .. QueryCells(context)];
         if (rows.Count == 0)
         {
             Line(csv, [.. ContextCells(context), .. Enumerable.Repeat(string.Empty, 9), rankedBy,
-                .. Enumerable.Repeat(string.Empty, 4), .. TrailingCells(context, present: false), .. SetAsideCells(context)]);
+                .. Enumerable.Repeat(string.Empty, 4), .. TrailingCells(context, present: false), .. SetAsideCells(context),
+                .. QueryCells(context)]);
         }
 
         foreach (LadderRow row in rows)
@@ -361,17 +383,27 @@ public static class WorkspaceExport
     internal static string[] SetAsideCells(ExportContext context) =>
         [Number(context.SetAsideProcesses), Number(context.SetAsideRecords)];
 
+    /// <summary>
+    /// A ranked CSV's last columns, after the set-aside ones: the manifest digest that pins the generation its rows were
+    /// read from, and the identity of the icat metric query they answer, empty where none does (I16). A CSV carries no
+    /// caveat, so the reason none does is the JSON's alone.
+    /// </summary>
+    private static readonly string[] QueryHeader = ["manifest", "query_identity"];
+
+    private static string[] QueryCells(ExportContext context) =>
+        [Text(context.Manifest ?? string.Empty), Text(context.Query?.Identity?.Token ?? string.Empty)];
+
     public static string EvidenceCsv(ExportContext context, IReadOnlyList<SessionEvidenceRecord> records)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(records);
         var csv = new StringBuilder();
-        Line(csv, [.. ContextHeader, .. EvidenceColumns, .. TrailingHeader]);
-        string[] trailing = TrailingCells(context, present: true);
+        Line(csv, [.. ContextHeader, .. EvidenceColumns, .. TrailingHeader, "manifest"]);
+        string[] trailing = [.. TrailingCells(context, present: true), Text(context.Manifest ?? string.Empty)];
         if (records.Count == 0)
         {
             Line(csv, [.. ContextCells(context), .. Enumerable.Repeat(string.Empty, EvidenceColumns.Length),
-                .. TrailingCells(context, present: false)]);
+                .. TrailingCells(context, present: false), Text(context.Manifest ?? string.Empty)]);
         }
 
         foreach (SessionEvidenceRecord record in records)
@@ -438,6 +470,7 @@ public static class WorkspaceExport
     {
         context.SessionId,
         context.Generation,
+        context.Manifest,
         Rung = NavigationState.Name(context.Rung),
         context.Breadcrumb,
         Filters = context.Filters.Select(filter => new { filter.Field, filter.Value, filter.Key, filter.Level }),

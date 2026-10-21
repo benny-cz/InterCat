@@ -422,7 +422,10 @@ public sealed class HostEdgeRowsTests
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         return new(OverviewWorkspace.From(overview), overview.GraphIdentity,
-            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation)
+            {
+                ManifestDigest = overview.ManifestDigest,
+            });
     }
 
     internal static ObservationRowV1 Tcp(long tick, ObservationKind kind, int pid, ulong ordinal, string local, string remote) =>

@@ -7132,7 +7132,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             evidenceSource?.SessionId, evidenceSource?.Generation, ladder, appliedInterval, workspaceDisclosure,
             Snapshot.MechanismCoverage, exportedUtc,
             ExportRows().Any(row => row.Ranked is not null) ? AppliedRanking : RankingMetric.Records, Grouping,
-            wholeSnapshot.SetAside);
+            wholeSnapshot.SetAside) with { Manifest = evidenceSource?.ManifestDigest };
 
         // A call ranking says why it could not rank, or the RPC coverage its counts rest on, as icat export does.
         context = RankingExportCaveat is { } caveat ? context with { Caveats = [.. context.Caveats, caveat] } : context;
@@ -7157,7 +7157,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 read.NextCursor is null, workspaceDisclosure,
                 string.Create(CultureInfo.InvariantCulture,
                     $"Only the first {read.Records.Count:N0} records of this scope are included; narrow it with a filter or a brushed interval, or use icat export --limit for more."),
-                read.Coverage, exportedUtc);
+                read.Coverage, exportedUtc) with { Manifest = read.ManifestDigest };
             if (EvidencePolicyCaveat is { } policy)
             {
                 context = context with { Caveats = [.. context.Caveats, policy] };
@@ -7211,7 +7211,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 throw new InvalidOperationException(unread);
             }
 
-            ExportContext listed = ChannelRungRows.Describe(DescribeExport(exportedUtc), read,
+            ExportContext listed = ChannelRungRows.Describe(await NamedAsync(DescribeExport(exportedUtc), cancellationToken), read,
                 $"The export holds this scope's first {ChannelRungRows.Counted(channel.Key, read.Rows.Count)}, leaving the rest out; "
                 + "narrow it with a brushed interval, or use icat export --limit for them.");
             string listedContent = redacted
@@ -7238,12 +7238,37 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             throw new InvalidOperationException(problem);
         }
 
-        ExportContext ranked = DescribeExport(exportedUtc);
+        // The rows are taken with the context they were described in, before the query is named off the UI thread.
+        ExportContext described = DescribeExport(exportedUtc);
         IReadOnlyList<LadderRow> rows = ExportRows();
+        ExportContext ranked = await NamedAsync(described, cancellationToken);
         string rankedContent = redacted
             ? RedactedShareExport.Ranking(format, ranked, rows)
             : WorkspaceExport.Ranking(format, ranked, rows);
         return new(rankedContent, ranked, rows.Count);
+    }
+
+    /// <summary>
+    /// A ranked export's context with the icat metric query its rows answer, or why none does, named over the generation
+    /// shown off the UI thread, as icat export names it (R18, I16); as it was for a view of no session.
+    /// </summary>
+    private async Task<ExportContext> NamedAsync(ExportContext context, CancellationToken cancellationToken)
+    {
+        if (evidenceSource is not { } source)
+        {
+            return context;
+        }
+
+        try
+        {
+            return context with { Query = await source.NameRankingAsync(context, cancellationToken).AnsweredLater() };
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException
+            or InvalidOperationException or UnauthorizedAccessException)
+        {
+            // The rows are exported as read; the file says why their query is not named.
+            return context with { Query = RankingQuery.Unreadable(exception) };
+        }
     }
 
     /// <summary>

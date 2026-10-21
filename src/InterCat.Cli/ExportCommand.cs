@@ -145,6 +145,13 @@ internal static class ExportCommand
 
         ConsoleUi.Field(evidence ? "Records" : "Rows", ConsoleUi.Count(result.Rows));
         ConsoleUi.Field("Complete", result.Context.Complete ? "yes" : "no");
+        if (!redacted && result.Context.Query is { Identity: { } identity, Command: { } asked })
+        {
+            // The rows are one icat metric answer's groups, and that command prints this identity over this generation.
+            ConsoleUi.Field("Query", identity.Token);
+            ConsoleUi.Field("Asked by", asked);
+        }
+
         if (setAside && !evidence && result.Context.SetAsideProcesses == 0)
         {
             // Asked for, but nothing to set aside: said, so the rows are not read as having left anything out.
@@ -211,6 +218,10 @@ internal static class ExportCommand
         ConsoleUi.Line("  line. The file, and this report, state what the capture covered over the export's scope, mechanism");
         ConsoleUi.Line("  by mechanism (a CSV in each line's scope_coverage), so a count of none it could not see is not");
         ConsoleUi.Line("  read as no activity.");
+        ConsoleUi.Line("  The file names the generation's manifest digest, and the machine rung's rows, ranked by anything");
+        ConsoleUi.Line("  but RPC calls made or served or connections, are the groups of one icat metric answer: the file");
+        ConsoleUi.Line("  and this report name its identity and the command that asks it, and the file says why where");
+        ConsoleUi.Line("  no answer's groups are the rows.");
         ConsoleUi.Line("  --share-redacted writes an allowlisted, pseudonymized report without raw IDs, names, addresses,");
         ConsoleUi.Line("  source files or record locators, which still states that coverage. It is not anonymous, and it");
         ConsoleUi.Line("  is not a reopenable session.");

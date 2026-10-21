@@ -1334,7 +1334,10 @@ public sealed class RankingSelectorTests
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         return new(OverviewWorkspace.From(overview), overview.GraphIdentity,
-            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation)
+            {
+                ManifestDigest = overview.ManifestDigest,
+            });
     }
 
     private static int Pid(WorkspaceViewModel workspace, RungRow row) =>
