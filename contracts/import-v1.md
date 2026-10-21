@@ -1,8 +1,8 @@
 # InterCat canonical import v1
 
 Status: **source identity, import identity, canonical record keys, equal-time multiplicity, the
-bounded external-sort path and standalone ETL import into a published session implemented and measured;
-reuse of a completed import from a catalogue not yet implemented**.
+bounded external-sort path, standalone ETL import into a published session, and reuse of the folder that
+already holds an import implemented and measured; a catalogue of imports across folders is not kept**.
 
 This contract freezes the first IC-013 boundary: how a source's bytes become an identity, how one
 record becomes a canonical key, what ordering an import may claim, and what it must refuse. It is a
@@ -36,7 +36,9 @@ ImportIdentity = sha256(
 The retained-evidence policy and both contract versions are inside the identity, so importing metadata
 only and importing approved content are different derived sessions over the same bytes (§18.4). An
 import that finds a matching completed identity may reuse it; an import that differs in any of these
-inputs may not, and gets a different identity instead of quietly reusing an existing one.
+inputs may not, and gets a different identity instead of quietly reusing an existing one. The capture
+identity of an import's records, which is the identity of the session it publishes, is derived from this
+digest, so a session of that identity holds this import (§8).
 
 ## 3. Identity basis
 
@@ -155,17 +157,37 @@ keep.
 stdout and progress to stderr, refuses to overwrite a report without `--overwrite`, and refuses
 `--retain-content` outright, because no source has the validated payload contract, pre-persistence
 scope proof and payload-specific impact evidence that content retention requires. Without `--into` it
-writes an import summary, not a session. With `--into <new-empty-directory>` it publishes the admitted
-journal, its retained descriptor plan and derived observation/source-field segments as one committed
-generation. `--overwrite` applies only to an optional report file; it never allows import into a
-nonempty session directory. The import API also refuses a store with an existing generation, because
-appending the same evidence would silently count one capture twice. Re-derive an existing journal with
+writes an import summary, not a session. With `--into <directory>` it publishes the admitted journal, its
+retained descriptor plan and derived observation/source-field segments as one committed generation, into a
+new folder only. What the folder holds is read, writing nothing there, before a schema is compiled or a
+record read; the file is hashed for it only when the folder holds a session to compare it with:
+
+| The folder holds | `icat import` |
+|---|---|
+| Nothing, or only a session's lock files, which a confirmed cleanup of staged files leaves | Publishes the session. |
+| This import: the session whose identity the import derives (§2), every file its generation names verifying | Reuses it, reading the file no further and writing nothing (exit 0, or 1 where it reads its last-known-good generation). |
+| Another session, or an import of the same path made from other bytes or under another contract | Refused, naming what it was derived from. |
+| A session no generation of which verifies | Refused as damaged input (exit 4), naming `icat recover`. |
+| Files a publication staged and never published, which no writer holds | Refused, naming `icat staging`, whose confirmed cleanup leaves a folder the import publishes into. |
+| Files a writer is staging now | Refused: something is publishing into it. |
+| Anything else, or a file at that path | Refused, naming what is there. |
+
+A reuse writes `import-reuse-v1` with `--json`, and to `--output`: the source's path, kind, length and
+content digest, the import digest and the evidence it retained, and the session reused - its path,
+session identity, generation, commit time, manifest digest, observation rows, and why it reads its
+last-known-good generation, or null. `--rows-per-segment` and `--journal-batch-records` shape a new
+publication, so a reuse says it did not apply them, naming `icat rederive --rows-per-segment` for the
+segments. `--overwrite` applies only to the report file; it never lets an import into a folder that
+holds anything else. The import API also refuses a store with an existing generation, because appending
+the same evidence would silently count one capture twice. Re-derive an existing journal with
 `icat rederive` rather than re-importing it into that session.
 
 ## 9. Not yet implemented
 
-- Reuse of a matching completed import from a persistent catalogue. The identity is computed and
-  comparable; nothing stores it yet.
+- A catalogue of completed imports across folders. The folder an import is told to publish into is
+  recognised as holding it (§8), because a session's identity is derived from the import's; an import
+  into a new folder does not look for the same import in other folders, which would need a list of the
+  user's sessions that nothing keeps for imports.
 - Semantic normalizer upgrades and bookmark fallback to raw evidence when a fact is split or renamed
   (§18.4). Same-version replacement derivation generations exist; a new normalizer contract version
   requires a real mapping change and stable-raw-identity tests rather than an arbitrary version bump.

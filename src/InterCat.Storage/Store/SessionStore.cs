@@ -2253,6 +2253,9 @@ public sealed partial class SessionStore
         }
     }
 
+    /// <summary>Whether <paramref name="name"/> is a file a publication stages, or the marker of the writer staging it.</summary>
+    internal static bool IsStagedName(string name) => IsManagedStagingFile(name) || IsManagedStagingMarker(name);
+
     private static bool IsManagedStagingFile(string name) => IsManagedStagingName(name, StagingSuffix);
 
     private static bool IsManagedStagingMarker(string name) => IsManagedStagingName(name, StagingOwnershipSuffix);

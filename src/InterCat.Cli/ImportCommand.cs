@@ -31,6 +31,40 @@ internal sealed record ImportSummaryDocument
     public required IReadOnlyList<string> Notes { get; init; }
 }
 
+/// <summary>
+/// What an import says when the folder it was told to publish into already holds this file's import: the session it
+/// reuses rather than reading the file again (contracts/import-v1.md §8).
+/// </summary>
+internal sealed record ImportReuseDocument
+{
+    public required string Contract { get; init; }
+    public required uint ImportContractVersion { get; init; }
+    public required string SourcePath { get; init; }
+    public required string SourceKind { get; init; }
+    public required long SourceLengthBytes { get; init; }
+    public required string SourceContentDigest { get; init; }
+    public required string ImportDigest { get; init; }
+    public required string RetainedEvidence { get; init; }
+    public required ImportReusedSessionDocument Session { get; init; }
+    public required IReadOnlyList<string> Notes { get; init; }
+}
+
+/// <summary>The session an import reused, at the generation that verified.</summary>
+internal sealed record ImportReusedSessionDocument
+{
+    public required string Path { get; init; }
+    public required string SessionId { get; init; }
+    public required long Generation { get; init; }
+    public required DateTimeOffset CommittedUtc { get; init; }
+    public required string ManifestDigest { get; init; }
+    public required long ObservationRows { get; init; }
+
+    /// <summary>
+    /// Why the newest generation did not verify, when the session reads its last-known-good one; null otherwise.
+    /// </summary>
+    public required string? RolledBackBecause { get; init; }
+}
+
 /// <summary>The generation an import published, when it was given a session to publish into.</summary>
 internal sealed record ImportGenerationDocument
 {
@@ -166,23 +200,42 @@ internal static class ImportCommand
         }
 
         string? sessionPath = intoOption is null ? null : Path.GetFullPath(intoOption);
-        if (sessionPath is not null
-            && Directory.Exists(sessionPath)
-            && Directory.EnumerateFileSystemEntries(sessionPath).Any())
-        {
-            ConsoleUi.Failure(
-                $"{sessionPath} is not empty. An import needs a new empty session directory: appending "
-                + "could count one capture twice or mix unrelated evidence. Use 'icat session' to inspect "
-                + "it, 'icat rederive' to rebuild its retained journal, or choose a new directory. "
-                + "--overwrite applies only to the optional report file.");
-            return InterCatExitCode.InvalidInvocation;
-        }
-
         string? outputPath = outputOption is null ? null : Path.GetFullPath(outputOption);
         if (outputPath is not null && File.Exists(outputPath) && !overwrite)
         {
             ConsoleUi.Failure($"{outputPath} exists. Pass --overwrite to replace it.");
             return InterCatExitCode.InvalidInvocation;
+        }
+
+        // What the folder holds is read before a schema is compiled or a record read: a folder that already holds this
+        // file's import is reused, and the file is hashed only when there is a session to compare it with (§18.4).
+        ImportIdentity? identity = null;
+        if (sessionPath is not null)
+        {
+            ImportDestination destination = ImportDestination.Inspect(sessionPath, () =>
+            {
+                ConsoleUi.Progress($"Hashing {full} to compare it with the session {sessionPath} holds.");
+                return (identity ??= IdentityOf(full)).CaptureId.Value;
+            });
+            if (destination.Kind == ImportDestinationKind.ThisImport)
+            {
+                return await ReuseAsync(
+                    destination,
+                    identity!,
+                    full,
+                    (rowsOption is null ? null : rowsPerSegment, batchOption is null ? null : journalBatchRecords),
+                    json,
+                    outputPath,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            if (destination.Kind != ImportDestinationKind.New)
+            {
+                ConsoleUi.Failure(Refusal(destination, full));
+                return destination.Kind == ImportDestinationKind.Unreadable
+                    ? InterCatExitCode.CorruptedInput
+                    : InterCatExitCode.InvalidInvocation;
+            }
         }
 
         var host = new TraceEventSessionHost();
@@ -237,7 +290,7 @@ internal static class ImportCommand
                 $"Publishing into {sessionPath}: the admitted journal first, then the segments derived from it.");
             SessionStore store = SessionStore.Open(
                 LocalOwnedDirectory.Open(sessionPath),
-                DeriveSessionId(full),
+                (identity ??= IdentityOf(full)).CaptureId.Value,
                 $"import-v1:{full}");
             EtlSessionImportResult published = EtlCanonicalImport.ImportIntoSession(
                 full,
@@ -281,14 +334,176 @@ internal static class ImportCommand
     }
 
     /// <summary>
-    /// A session identity derived from the evidence rather than minted, so importing one file into a fresh
-    /// directory twice produces the same session rather than two that disagree about the same records.
+    /// The import's identity, whose capture identity is its session's: derived from the evidence rather than minted, so
+    /// importing one file into a fresh directory twice produces the same session rather than two that disagree about
+    /// the same records, and a folder that already holds the import is recognised as holding it.
     /// </summary>
-    private static Guid DeriveSessionId(string etlPath)
+    private static ImportIdentity IdentityOf(string etlPath)
     {
         using FileStream stream = File.OpenRead(etlPath);
         ImportSourceIdentity source = ImportSourceIdentity.Of(ImportSourceKind.StandaloneEtl, stream);
-        return ImportIdentity.Create(source, RetainedEvidencePolicy.MetadataOnly).CaptureId.Value;
+        return ImportIdentity.Create(source, RetainedEvidencePolicy.MetadataOnly);
+    }
+
+    /// <summary>
+    /// Reports the session that already holds this file's import, which every file its generation names verified, and
+    /// reads and writes nothing more (§18.4).
+    /// </summary>
+    private static async Task<InterCatExitCode> ReuseAsync(
+        ImportDestination destination,
+        ImportIdentity identity,
+        string sourcePath,
+        (int? RowsPerSegment, int? JournalBatchRecords) shape,
+        bool json,
+        string? outputPath,
+        CancellationToken cancellationToken)
+    {
+        SessionManifestV1 manifest = destination.Manifest!;
+        LocalOwnedDirectory root = LocalOwnedDirectory.Open(destination.Path);
+        long rows = SessionSegments.Names(manifest)
+            .Sum(name => (long)SessionSegments.DeclaredRowCount(root, manifest, name));
+        var notes = new List<string>
+        {
+            "This folder already holds this file's import, so it was reused: a session's identity is derived from the "
+            + "file's bytes, the evidence an import keeps and the import contract, and every file its generation names "
+            + "verified. The file was hashed and not read again, and nothing was written.",
+        };
+        if (destination.Reason is { } reason)
+        {
+            notes.Add(
+                "Its newest generation did not verify, so the session reads the retained last-known-good one: "
+                + $"{reason}. Nothing was repaired and nothing was removed. icat recover \"{destination.Path}\" "
+                + "reviews the pointer and, once you confirm, re-points it to this generation.");
+        }
+
+        // What shapes a new publication does not change the one reused; the journal it keeps can be derived again.
+        if (shape.RowsPerSegment is { } rowsPerSegment)
+        {
+            notes.Add(
+                "--rows-per-segment shapes a new publication, so this session keeps the segments it was published "
+                + $"with. icat rederive \"{destination.Path}\" --rows-per-segment "
+                + $"{rowsPerSegment.ToString(CultureInfo.InvariantCulture)} derives them again from its journal.");
+        }
+
+        if (shape.JournalBatchRecords is not null)
+        {
+            notes.Add(
+                "--journal-batch-records shapes a new journal, so this session keeps the journal it was imported with.");
+        }
+
+        var document = new ImportReuseDocument
+        {
+            Contract = "import-reuse-v1",
+            ImportContractVersion = identity.ImportContractVersion,
+            SourcePath = sourcePath,
+            SourceKind = identity.Source.Kind.ToString(),
+            SourceLengthBytes = identity.Source.Length,
+            SourceContentDigest = identity.Source.ContentDigest,
+            ImportDigest = identity.Digest,
+            RetainedEvidence = identity.RetainedEvidence.ToString(),
+            Session = new()
+            {
+                Path = destination.Path,
+                SessionId = manifest.SessionId.ToString("N"),
+                Generation = manifest.Generation,
+                CommittedUtc = manifest.CommittedUtc,
+                ManifestDigest = manifest.Digest,
+                ObservationRows = rows,
+                RolledBackBecause = destination.Reason,
+            },
+            Notes = notes,
+        };
+        string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
+        if (json)
+        {
+            Console.Out.WriteLine(payload);
+        }
+        else
+        {
+            ConsoleUi.Heading("Import reused");
+            ConsoleUi.Field("Source", document.SourcePath);
+            ConsoleUi.Field("Content digest", document.SourceContentDigest);
+            ConsoleUi.Field("Import identity", document.ImportDigest);
+            ConsoleUi.Field("Session", document.Session.Path);
+            ConsoleUi.Field(
+                "Generation",
+                $"{document.Session.Generation.ToString("N0", CultureInfo.CurrentCulture)}, published "
+                + document.Session.CommittedUtc.ToString("u", CultureInfo.InvariantCulture));
+            ConsoleUi.Field("Observations", rows.ToString("N0", CultureInfo.CurrentCulture));
+            ConsoleUi.Line();
+            foreach (string note in notes)
+            {
+                ConsoleUi.Note(note);
+            }
+
+            ConsoleUi.Note($"Open it with: icat session \"{destination.Path}\"");
+        }
+
+        if (outputPath is not null)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+            await File.WriteAllTextAsync(outputPath, payload, cancellationToken).ConfigureAwait(false);
+            ConsoleUi.Success($"Import summary written to {outputPath}.");
+        }
+
+        return destination.Reason is null ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
+    }
+
+    /// <summary>Why an import does not publish into a folder, in what it found there and what to do instead.</summary>
+    private static string Refusal(ImportDestination destination, string sourcePath)
+    {
+        string folder = destination.Path;
+        const string Elsewhere = "--overwrite replaces only the report file.";
+        return destination.Kind switch
+        {
+            ImportDestinationKind.Occupied when File.Exists(folder) =>
+                $"{folder} is a file. --into names the folder an import publishes its session into: a new one, or one "
+                + "that already holds this file's import.",
+            ImportDestinationKind.Occupied =>
+                $"{folder} holds {Listed(destination.Entries)}, which no session owns. An import publishes only into a "
+                + $"new folder, so its evidence is never mixed with anything else: choose a new folder. {Elsewhere}",
+            ImportDestinationKind.AnotherSession when destination.Manifest is { } other
+                && string.Equals(other.SourceIdentity, $"import-v1:{sourcePath}", StringComparison.Ordinal) =>
+                $"{folder} holds an import of {sourcePath} made from other bytes than the file holds now, or under "
+                + "another import contract, so it is not this import and is not reused: publishing into it would mix the "
+                + $"two. Open it with icat session \"{folder}\", or choose a new folder for this import. {Elsewhere}",
+            ImportDestinationKind.AnotherSession =>
+                $"{folder} holds another session, {Described(destination.Manifest)}. An import publishes only into a new "
+                + "folder, or reuses one that already holds this file's import; publishing into another session would "
+                + $"mix its evidence with this file's. Open it with icat session \"{folder}\", or choose a new folder. "
+                + Elsewhere,
+            ImportDestinationKind.Unreadable when destination.Manifest is not null =>
+                $"{folder} holds this file's import, but it cannot be reused. {destination.Reason} icat recover "
+                + $"\"{folder}\" reviews it; or choose a new folder for this import.",
+            ImportDestinationKind.Unreadable =>
+                $"{folder} holds a session whose identity cannot be read, so it is neither reused nor imported into. "
+                + $"{destination.Reason} icat recover \"{folder}\" reviews it; or choose a new folder for this import.",
+            ImportDestinationKind.Unfinished =>
+                $"{folder} holds no session: only {CountText.Of(destination.Entries.Count, "file")} "
+                + $"({ConsoleUi.Size(destination.StagedBytes)}) that a publication staged and never published, as an "
+                + $"import or a recording that stopped before it finished leaves them. icat staging \"{folder}\" lists "
+                + "them and removes them once you confirm; then run this import again, or choose a new folder.",
+            ImportDestinationKind.Publishing =>
+                $"{folder} holds no session yet, and something is publishing into it now: a writer holds files it is "
+                + "staging there. Wait for it to finish and run this import again, which reuses the session if it holds "
+                + "this file's import, or choose a new folder.",
+            _ => throw new ArgumentOutOfRangeException(nameof(destination), destination.Kind, "Only a refused folder is explained."),
+        };
+    }
+
+    /// <summary>A session as a refusal names it: what it was derived from and when it was published.</summary>
+    private static string Described(SessionManifestV1? manifest) => manifest is null
+        ? "which could not be read"
+        : (manifest.SourceIdentity.Length == 0 ? "which does not say what it was derived from"
+            : $"derived from {manifest.SourceIdentity}")
+            + $", published {manifest.CommittedUtc.ToString("u", CultureInfo.InvariantCulture)}";
+
+    /// <summary>The first few entries of a folder by name, and how many more there are.</summary>
+    private static string Listed(IReadOnlyList<string> entries)
+    {
+        const int Named = 3;
+        string named = string.Join(", ", entries.Take(Named));
+        return entries.Count <= Named ? named : $"{named} and {entries.Count - Named:N0} more";
     }
 
     private static ImportSummaryDocument Describe(
@@ -528,7 +743,9 @@ internal static class ImportCommand
         ConsoleUi.Line("      source identity, import identity, derived clock, counts and multiplicity.");
         ConsoleUi.Line("      With --into it also publishes a session: the admitted journal-v1 evidence and");
         ConsoleUi.Line("      the observation-v1 segments derived from it, as one committed generation.");
-        ConsoleUi.Line("      --into requires a new empty directory; --overwrite replaces only a report file.");
+        ConsoleUi.Line("      --into names a new folder. A folder that already holds this file's import is");
+        ConsoleUi.Line("      reused, not imported into again; any other session or file there is refused.");
+        ConsoleUi.Line("      --overwrite replaces only a report file.");
         ConsoleUi.Line("      Needs no elevation.");
     }
 }
