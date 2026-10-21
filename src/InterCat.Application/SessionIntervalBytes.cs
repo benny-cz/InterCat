@@ -425,7 +425,8 @@ public static class SessionIntervalByteQuery
     /// Measures each of <paramref name="mechanisms"/>' records in each column of an interval, in one pass: for each, what
     /// <see cref="Measure"/> answers for that mechanism's lane. A record of a mechanism not named is measured in no lane.
     /// The overview's own columns are answered from the bytes a persisted overview keeps there (overview-index-v1 minor 2),
-    /// so a finished session's first view under a byte ranking opens no segment either; any other columns are read.
+    /// so a finished session's first view under a byte ranking opens no segment either; any other columns from the byte
+    /// sums its tile index keeps (tile-index-v1 minor 5), which open no segment, and otherwise from the segments.
     /// </summary>
     public static SessionMechanismByteMeasures MeasureByMechanism(
         SessionStore store,
@@ -461,9 +462,13 @@ public static class SessionIntervalByteQuery
         }
         else
         {
-            SegmentReaderV1[] segments = SessionNativeInterval.Segments(store, manifest, interval, clock);
             var layout = new TimelineColumns(interval, columns, tallyMechanisms: false);
-            TransportByteTally total = TallyLanes(segments, layout, mechanisms, cancellationToken);
+            int[] laneOfCode = LanesOfCodes(mechanisms);
+            TransportByteTally total = PersistedLanes(store, manifest, layout, laneOfCode, mechanisms.Count,
+                    (segment, tally) => MeasureLanes(segment, layout, laneOfCode, mechanisms.Count, tally, cancellationToken),
+                    cancellationToken)
+                ?? TallyLanes(SessionNativeInterval.Segments(store, manifest, interval, clock), layout, laneOfCode, mechanisms.Count,
+                    cancellationToken);
             count = layout.Counts.Count;
             bytesOf = (column, lane) => total.Of((column * mechanisms.Count) + lane);
         }
@@ -491,7 +496,8 @@ public static class SessionIntervalByteQuery
             return new([]);
         }
 
-        TransportByteTally total = TallyLanes(segments, plan.Layout, plan.Mechanisms, cancellationToken);
+        TransportByteTally total = TallyLanes(segments, plan.Layout, LanesOfCodes(plan.Mechanisms), plan.Mechanisms.Count,
+            cancellationToken);
         return plan.Cells(total);
     }
 
@@ -537,22 +543,109 @@ public static class SessionIntervalByteQuery
                 (column, mechanism, total.Of((column * Mechanisms.Count) + lane)))));
     }
 
-    /// <summary>Every row's bytes in its column's slot for its mechanism's lane, column by column, then one slot outside.</summary>
-    private static TransportByteTally TallyLanes(
-        IReadOnlyList<SegmentReaderV1> segments,
-        TimelineColumns layout,
-        IReadOnlyList<Mechanism> mechanisms,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// Each mechanism code's lane among <paramref name="mechanisms"/>, -1 for a code no lane measures: a row's code indexes
+    /// it without hashing (R11).
+    /// </summary>
+    private static int[] LanesOfCodes(IReadOnlyList<Mechanism> mechanisms)
     {
-        int lanes = mechanisms.Count;
-
-        // A mechanism code's lane, or -1 for a code no lane measures; a row's code indexes it without hashing (R11).
         int[] laneOfCode = [.. Enumerable.Repeat(-1, Math.Max(TimelineColumns.MechanismCodes, mechanisms.Max(code => (int)code) + 1))];
-        for (int lane = 0; lane < lanes; lane++)
+        for (int lane = 0; lane < mechanisms.Count; lane++)
         {
             laneOfCode[(int)mechanisms[lane]] = lane;
         }
 
+        return laneOfCode;
+    }
+
+    /// <summary>
+    /// <paramref name="lanes"/> lanes' bytes in each column of <paramref name="layout"/> from the tiles the generation's
+    /// checkpoint persisted (`contracts/tile-index-v1.md` minor 5), each mechanism code in its lane of
+    /// <paramref name="laneOfCode"/>: a tile's byte sums whole where its records fall in one column, and its records only
+    /// where a column boundary falls among them. Where a level spans the segments and keeps their bytes, its tiles are added
+    /// first, and the sections only beneath the ranges it leaves. A segment whose readings go backwards, or whose rows a
+    /// measurement refuses, keeps no bytes in its section, and has its rows read by <paramref name="readRows"/>, as they are
+    /// without the index; no other segment is opened. Null when the generation names no tile index keeping bytes, or one
+    /// without a section of each of its segments; and when a part of it could not be read, which is said once, and the index
+    /// is not read again for the generation. The bytes are then read from the segments, and are the same.
+    /// </summary>
+    private static TransportByteTally? PersistedLanes(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        TimelineColumns layout,
+        int[] laneOfCode,
+        int lanes,
+        Action<SegmentReaderV1, TransportByteTally> readRows,
+        CancellationToken cancellationToken)
+    {
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        if (derivation.PersistedTiles(store.Root) is not { Minor: >= SessionTileIndex.SummedMinor } tiles)
+        {
+            return null;
+        }
+
+        StoreDependency[] segments = SessionOverviewIndex.ObservationSegments(manifest);
+        if (!segments.All(tiles.Describes))
+        {
+            return null;
+        }
+
+        var sums = new ByteLanes(layout, laneOfCode, lanes);
+        var rowsRead = new List<string>();
+        try
+        {
+            using TileReading reading = tiles.Read(store.Root);
+            if (tiles.SpansExactly(segments) && reading.Spanning().KeepsBytes)
+            {
+                // The level spans only sections keeping bytes: each beneath it adds its own.
+                TileRemainders left = reading.SpanSums(sums, cancellationToken);
+                foreach ((TileSection section, List<TimeRange> ranges) in reading.Beneath(left))
+                {
+                    foreach (TimeRange range in ranges)
+                    {
+                        if (!reading.SumInto(section, sums, range, cancellationToken))
+                        {
+                            throw SessionTileIndex.Invalid($"the spanning section keeps bytes {section.Entry.Describe} does not.");
+                        }
+                    }
+                }
+            }
+            else
+            {
+                foreach (StoreDependency segment in segments)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!reading.SumInto(reading.Section(segment.Name), sums, layout.Interval, cancellationToken))
+                    {
+                        rowsRead.Add(segment.Name);
+                    }
+                }
+            }
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            derivation.RefuseTiles(exception.Message);
+            return null;
+        }
+
+        // A segment its section keeps no bytes of is measured from its rows, as without the index: what refuses a row
+        // refuses it here too, and is no fault of the index's.
+        foreach (string name in rowsRead)
+        {
+            readRows(SessionSegments.Open(store, manifest, name), sums.Tally);
+        }
+
+        return sums.Tally;
+    }
+
+    /// <summary>Every row's bytes in its column's slot for its mechanism's lane, column by column, then one slot outside.</summary>
+    private static TransportByteTally TallyLanes(
+        IReadOnlyList<SegmentReaderV1> segments,
+        TimelineColumns layout,
+        int[] laneOfCode,
+        int lanes,
+        CancellationToken cancellationToken)
+    {
         // One slot per column and lane, column by column, then one for every row outside them.
         int slots = (layout.Counts.Count * lanes) + 1;
         var total = new TransportByteTally(slots);
@@ -630,9 +723,20 @@ public static class SessionIntervalByteQuery
             : scope.ChannelKey is { } key
             ? FocusRows.Resolve(store, manifest, generation, new TimelineFocus(key, []), policy, cancellationToken)
             : null;
-        SegmentReaderV1[] segments = SessionNativeInterval.Segments(store, manifest, interval, clock);
         var layout = new TimelineColumns(interval, columns, tallyMechanisms: false);
         int count = layout.Counts.Count;
+
+        // Every record's bytes, or one mechanism's, are what the tile index's byte sums hold, each in a lane of one: a
+        // finished session's interval then opens no segment.
+        if (rows is null && PersistedLanes(store, manifest, layout, LaneOfScope(scope.Mechanism), 1,
+                (segment, tally) => MeasureSegment(segment, layout, null, scope, tally, cancellationToken), cancellationToken)
+            is { } kept)
+        {
+            return new(manifest.SessionId, manifest.Generation, interval, scope,
+                Array.AsReadOnly([.. Enumerable.Range(0, count).Select(kept.Of)]));
+        }
+
+        SegmentReaderV1[] segments = SessionNativeInterval.Segments(store, manifest, interval, clock);
 
         // One slot per column, then one for every row outside them or outside the scope.
         var total = new TransportByteTally(count + 1);
@@ -644,6 +748,21 @@ public static class SessionIntervalByteQuery
             cancellationToken);
         return new(manifest.SessionId, manifest.Generation, interval, scope,
             Array.AsReadOnly([.. Enumerable.Range(0, count).Select(total.Of)]));
+    }
+
+    /// <summary>
+    /// Each mechanism code's lane where one lane measures every record, or <paramref name="only"/>'s records alone: 0 for a
+    /// code it measures, -1 for any other.
+    /// </summary>
+    private static int[] LaneOfScope(Mechanism? only)
+    {
+        int[] laneOfCode = new int[Math.Max(TimelineColumns.MechanismCodes, only is { } named ? (int)named + 1 : 0)];
+        for (int code = 0; code < laneOfCode.Length; code++)
+        {
+            laneOfCode[code] = only is not { } mechanism || code == (int)mechanism ? 0 : -1;
+        }
+
+        return laneOfCode;
     }
 
     /// <summary>Places each of one segment's rows in its column, or outside, and measures its bytes by column.</summary>

@@ -480,6 +480,14 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Contains(read.Lanes.SelectMany(lane => lane.Columns), bytes => bytes.SentMeasured > 0 && bytes.ReceivedMeasured > 0);
         Assert.Contains(read.Lanes.SelectMany(lane => lane.Columns), bytes => bytes.SentUnmeasured > 0);
         Assert.False(read.FromPersistedOverview);
+
+        // What the segments' rows measure of a zoom and of the whole session in coarser columns, before anything persisted
+        // keeps it.
+        var half = new TimeRange(extent.StartTicks, extent.StartTicks + (extent.SpanTicks / 2));
+        TransportBytes[] halfRead = [.. SessionIntervalByteQuery.MeasureByMechanism(session.Store, half, 8, lanes).Lanes
+            .SelectMany(lane => lane.Columns)];
+        TransportBytes[] coarserRead = [.. SessionIntervalByteQuery.MeasureByMechanism(session.Store, extent, columns / 2, lanes).Lanes
+            .SelectMany(lane => lane.Columns)];
         Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
 
         // The overview keeps, cell by cell, what a read of every segment measures.
@@ -495,7 +503,9 @@ public sealed class DerivationCheckpointOverviewTests
             }
         }
 
-        // A fresh viewer answers the overview's lanes from it and opens no segment; a zoomed view's columns are read.
+        // A fresh viewer answers the overview's lanes from it and opens no segment; a zoomed view's columns, and the whole
+        // session's in other columns than the overview's, which the kept cells do not answer, are added up from the tile
+        // index's byte sums, and open none either (tile-index-v1 minor 5).
         SessionDerivationCache.Clear();
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         SessionMechanismByteMeasures answered = SessionIntervalByteQuery.MeasureByMechanism(reopened, extent, columns, lanes);
@@ -503,18 +513,14 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.True(answered.FromPersistedOverview);
         Assert.Equal(read.Lanes.SelectMany(lane => lane.Columns), answered.Lanes.SelectMany(lane => lane.Columns));
         Assert.Equal(lanes, answered.Lanes.Select(lane => lane.Scope.Mechanism!.Value));
-        var half = new TimeRange(extent.StartTicks, extent.StartTicks + (extent.SpanTicks / 2));
         SessionMechanismByteMeasures zoomed = SessionIntervalByteQuery.MeasureByMechanism(reopened, half, 8, lanes);
-        Assert.True(reopened.SegmentReaderCache.Entries > 0);
         Assert.False(zoomed.FromPersistedOverview);
-        Assert.Equal(SessionIntervalByteQuery.MeasureByMechanism(session.Store, half, 8, lanes).Lanes.SelectMany(lane => lane.Columns),
-            zoomed.Lanes.SelectMany(lane => lane.Columns));
-
-        // The whole session in other columns than the overview's is read too: the kept cells answer only their own.
+        Assert.Equal(halfRead, zoomed.Lanes.SelectMany(lane => lane.Columns));
         SessionMechanismByteMeasures coarser = SessionIntervalByteQuery.MeasureByMechanism(reopened, extent, columns / 2, lanes);
         Assert.False(coarser.FromPersistedOverview);
-        Assert.Equal(SessionIntervalByteQuery.MeasureByMechanism(session.Store, extent, columns / 2, lanes).Lanes.SelectMany(lane => lane.Columns),
-            coarser.Lanes.SelectMany(lane => lane.Columns));
+        Assert.Equal(coarserRead, coarser.Lanes.SelectMany(lane => lane.Columns));
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+        Assert.Null(SessionDerivationCache.For(reopened.Current!).TilesProblem);
     }
 
     [Fact(DisplayName = "I4: an overview's lane bytes read back as written, an earlier overview keeps none, and damaged ones are refused")]

@@ -1141,7 +1141,7 @@ public sealed partial class SessionTileIndexTests
         (TileSection section, string path) = TopOf(session);
         int top = section.Levels - 1;
         (long block, int length) = section.BlockAt(top, 0);
-        int tileBytes = SessionTileIndex.TileBytes(section.Mechanisms.Length);
+        int tileBytes = section.TileBytes;
         byte[] kept = File.ReadAllBytes(path);
         Assert.InRange(section.TileCount(top), 2, SessionTileIndex.TilesPerBlock);
         (long from, int checkedLength) = (block, length - 4);
@@ -1157,12 +1157,12 @@ public sealed partial class SessionTileIndexTests
                 BinaryPrimitives.WriteInt32LittleEndian(kept.AsSpan((int)block + length - 8), lastLink);
                 break;
             default:
-                // The section's channel tallies begin a byte after its owner tallies end, and end where the section does.
+                // The section's channel tallies begin a byte after its owner tallies end, and end where its byte sums begin.
                 int header = (int)section.Entry.Offset;
                 int channelsAt = header + 35 + (2 * section.Mechanisms.Length) + (12 * section.Levels) + 32;
                 BinaryPrimitives.WriteInt64LittleEndian(kept.AsSpan(channelsAt), BinaryPrimitives.ReadInt64LittleEndian(kept.AsSpan(channelsAt)) + 1);
                 BinaryPrimitives.WriteInt64LittleEndian(kept.AsSpan(channelsAt + 8), BinaryPrimitives.ReadInt64LittleEndian(kept.AsSpan(channelsAt + 8)) - 1);
-                (from, checkedLength) = (header, channelsAt + 16 - header);
+                (from, checkedLength) = (header, channelsAt + 32 - header);
                 break;
         }
 

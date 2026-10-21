@@ -585,23 +585,46 @@ internal sealed class TransportByteTally(int slots)
     public void Add(int slot, SideMeasurement side)
     {
         ArgumentNullException.ThrowIfNull(side);
-        switch (side.Side)
+        Add(slot, (int)side.Side, side.TotalBytes, side.KnownContributions, side.UnknownContributions);
+    }
+
+    /// <summary>
+    /// Adds the bytes of one side's contributions to a slot, by its <c>EN-AccountingSide</c> code: a send side's as sent, a
+    /// receive side's as received, any other's as other - a segment's measurement of a side, or what a tile index keeps of a
+    /// tile's records (`contracts/tile-index-v1.md` minor 5).
+    /// </summary>
+    public void Add(int slot, int side, long total, long measured, long unmeasured)
+    {
+        switch ((AccountingSide)side)
         {
             case AccountingSide.SendSide:
-                sent[slot] = checked(sent[slot] + side.TotalBytes);
-                sentMeasured[slot] += side.KnownContributions;
-                sentUnmeasured[slot] += side.UnknownContributions;
+                sent[slot] = checked(sent[slot] + total);
+                sentMeasured[slot] += measured;
+                sentUnmeasured[slot] += unmeasured;
                 break;
             case AccountingSide.ReceiveSide:
-                received[slot] = checked(received[slot] + side.TotalBytes);
-                receivedMeasured[slot] += side.KnownContributions;
-                receivedUnmeasured[slot] += side.UnknownContributions;
+                received[slot] = checked(received[slot] + total);
+                receivedMeasured[slot] += measured;
+                receivedUnmeasured[slot] += unmeasured;
                 break;
             default:
-                other[slot] = checked(other[slot] + side.TotalBytes);
-                otherMeasured[slot] += side.KnownContributions;
-                otherUnmeasured[slot] += side.UnknownContributions;
+                other[slot] = checked(other[slot] + total);
+                otherMeasured[slot] += measured;
+                otherUnmeasured[slot] += unmeasured;
                 break;
+        }
+    }
+
+    /// <summary>Adds one record's contribution to a slot: the bytes it measured, or -1 for a size it declared and not recorded.</summary>
+    public void Add(int slot, int side, long value)
+    {
+        if (value < 0)
+        {
+            Add(slot, side, 0, 0, 1);
+        }
+        else
+        {
+            Add(slot, side, value, 1, 0);
         }
     }
 
