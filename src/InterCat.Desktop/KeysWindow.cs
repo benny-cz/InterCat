@@ -112,8 +112,8 @@ internal static class WindowKeys
             + "the list then holds"),
         new("Inspector", "Enter", "on one of a chosen program's pairs of programs, choose the program at its other end, whose "
             + "own the list then holds"),
-        new("Inspector", "Enter", "on one of the listening ports listed with nothing chosen, choose the process that accepted "
-            + "its connections"),
+        new("Inspector", "Enter", "on one of the listening ports listed with nothing or a program chosen, choose the process "
+            + "that accepted its connections"),
         new("Inspector", "Esc", "after Enter on a relationship, a pair of programs or a listening port, choose again the "
             + "process or program it was chosen from, or nothing, the keyboard back on that row"),
         new("A level's records", "Enter", "show the chosen record as the capture recorded it"),

@@ -125,6 +125,59 @@ public sealed class ListeningPortsWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.3/R15: a chosen program lists its processes' listening ports; Esc from a port's process comes back to the program on the port, then along the walk of programs")]
+    public async Task EscComesBackAlongAProgramsPortsAndItsWalk()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Recording, "Recording", "A published generation.",
+                SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store)));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+            ListBox ports = window.GetControl<ListBox>("ListenersList");
+            ListBox programs = window.GetControl<ListBox>("ProgramsList");
+
+            // The client's program, then the server's along its pair: its ports listed beneath its pairs.
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
+            Dispatch();
+            Assert.False(ports.IsEffectivelyVisible);
+            Assert.True(programs.ContainerFromIndex(0)!.Focus());
+            Dispatch();
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("server.exe", workspace.SelectedGroup?.Name);
+            Assert.True(ports.IsEffectivelyVisible);
+            Assert.Equal("5 listening ports of its processes, the busiest first",
+                window.GetControl<TextBlock>("ListenersHeadingText").Text);
+
+            // Enter on its 8443 chooses its process; Esc comes back to the program, the keyboard on the port; Esc again back
+            // to the client's program, the keyboard on the pair it was left by.
+            Assert.True(ports.ContainerFromIndex(1)!.Focus());
+            Dispatch();
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(200, workspace.SelectedProcess?.ProcessId);
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("server.exe", workspace.SelectedGroup?.Name);
+            Assert.Same(ports.ContainerFromIndex(1), window.FocusManager?.GetFocusedElement());
+            Assert.Equal((ushort)8443, ((window.FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as ListenerRow)?.Port);
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("client.exe", workspace.SelectedGroup?.Name);
+            Assert.Same(programs.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R7/R15: a newer generation published while recording keeps the keyboard on the listening port it was on, wherever the newer counts list it")]
     public async Task ANewerGenerationKeepsTheKeyboardOnItsPort()
     {

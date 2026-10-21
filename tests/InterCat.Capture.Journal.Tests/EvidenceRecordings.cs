@@ -291,5 +291,29 @@ internal sealed class TemporaryDirectory : IDisposable
 
     public string Path { get; }
 
-    public void Dispose() => Directory.Delete(Path, recursive: true);
+    /// <summary>
+    /// Removes the folder and everything in it. A reader a test has let go of can still be finishing its read of a session
+    /// in it, and re-establish that session's evidence lease guard as the folder is removed, so the removal is tried again,
+    /// briefly, until it holds.
+    /// </summary>
+    public void Dispose()
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                Directory.Delete(Path, recursive: true);
+                return;
+            }
+            catch (IOException) when (attempt < 50)
+            {
+                if (!Directory.Exists(Path))
+                {
+                    return;
+                }
+
+                Thread.Sleep(20);
+            }
+        }
+    }
 }

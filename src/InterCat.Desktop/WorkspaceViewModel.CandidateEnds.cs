@@ -138,6 +138,8 @@ public sealed partial class WorkspaceViewModel
 /// </summary>
 public sealed class CandidateHostsRead : IDisposable
 {
+    private static int running;
+
     private readonly CancellationTokenSource cancellation = new();
 
     internal CandidateHostsRead(string investigation, Guid sessionId, EvidencePolicy policy)
@@ -146,8 +148,17 @@ public sealed class CandidateHostsRead : IDisposable
         SessionId = sessionId;
         Policy = policy;
         CancellationToken token = cancellation.Token;
+        _ = Interlocked.Increment(ref running);
         Reading = Task.Run(() => Find(investigation, sessionId, policy, token), token);
+        _ = Reading.ContinueWith(_ => Interlocked.Decrement(ref running), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
+
+    /// <summary>
+    /// How many reads are still reading their investigation's sessions, let go or not: a read let go stops at its next
+    /// step, not at once, so a test waits for none before it removes the sessions they read.
+    /// </summary>
+    internal static int Running => Volatile.Read(ref running);
 
     /// <summary>The investigation the candidates are read from.</summary>
     public string Investigation { get; }

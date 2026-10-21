@@ -200,6 +200,10 @@ public sealed class InvestigationWindowTests
         finally
         {
             main.Close();
+
+            // The sessions opened from the investigation read its candidate joins in the background, and one let go stops
+            // at its next step: none may still be reading the sessions as they are removed.
+            WaitFor(() => CandidateHostsRead.Running == 0);
         }
     }
 

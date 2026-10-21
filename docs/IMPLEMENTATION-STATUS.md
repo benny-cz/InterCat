@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 692 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 693 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 693 — a chosen program's inspector lists its processes' listening ports (§6.3, R15):**
+  - As the machine's list does with nothing chosen; Enter chooses a port's process and Esc comes back to the program
+    on the port, before the walk of programs that reached it. The rows are built once from lookups, not a scan per end
+    at every read, and the first choice made now takes the machine's list away. A window test's cleanup raced a
+    candidate read still finishing after its window closed; it now waits for none, and temporary folders retry their
+    removal.
+  - Debug and Release each ran 2,701 tests with revision 473's 93 failures and 4 skips, and nothing else failed; the
+    first run's one other failure, the investigation test's cleanup, ran clean six times alone and in the second
+    run, its race being a timing one no mutation can force. All thirteen mutations were caught: no program's list, a
+    program's listing the machine's ports, either asked for whole making both so, the heading and the list's name
+    not saying whose, the way back forgetting its program, coming back to nothing or to a program gone, the list
+    restated at every choice or never at the first, rows not rebuilt for candidates read or built again at every
+    read, and Esc taking the walk of programs back before the port's way back.
 
 - **Revision 692 — a session opened from its investigation names each listening port's candidate other ends (§6.3, §8.3):**
   - The window's counterpart of icat ports --investigation, read with the hosts' from one comparison: on the demo

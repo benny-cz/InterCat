@@ -758,8 +758,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 break;
             case Key.Escape:
                 // A drag in progress is cancelled where it began (§6.7); with none, Esc comes back along the latest hop to a
-                // relationship's or a pair of programs' other end, or to a listening port's process, the keyboard on the row
-                // left by, and else ascends as the ladder's back does.
+                // relationship's other end, a listening port's process or a pair of programs' other end, the keyboard on the
+                // row left by, and else ascends as the ladder's back does. A port's process can be chosen from a program
+                // reached along a walk of programs, so its way back is taken before theirs.
                 if (!(TimelineSurface.CancelDrag() || MinimapSurface.CancelDrag() || GraphSurface.CancelDrag()))
                 {
                     if (viewModel.ComeBackFromPeer() is { } left)
@@ -772,17 +773,6 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                             }
                         });
                     }
-                    else if (viewModel.ComeBackFromProgram() is { } leftProgram)
-                    {
-                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                        {
-                            if (!closed)
-                            {
-                                _ = FocusRow(ProgramsList, ProgramsList.Items.OfType<ProgramPairRow>()
-                                    .FirstOrDefault(row => string.Equals(row.OtherKey, leftProgram, StringComparison.Ordinal)));
-                            }
-                        });
-                    }
                     else if (viewModel.ComeBackFromListener() is { } leftPort)
                     {
                         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -791,6 +781,17 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                             {
                                 _ = FocusRow(ListenersList, ListenersList.Items.OfType<ListenerRow>()
                                     .FirstOrDefault(row => row.Port == leftPort.Port && row.Process == leftPort.Process));
+                            }
+                        });
+                    }
+                    else if (viewModel.ComeBackFromProgram() is { } leftProgram)
+                    {
+                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                        {
+                            if (!closed)
+                            {
+                                _ = FocusRow(ProgramsList, ProgramsList.Items.OfType<ProgramPairRow>()
+                                    .FirstOrDefault(row => string.Equals(row.OtherKey, leftProgram, StringComparison.Ordinal)));
                             }
                         });
                     }

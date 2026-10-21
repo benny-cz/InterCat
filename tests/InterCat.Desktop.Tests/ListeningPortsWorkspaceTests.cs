@@ -61,6 +61,9 @@ public sealed class ListeningPortsWorkspaceTests
         Assert.Equal((ushort)8443, workspace.ListenerRows[2].Port);
         Assert.Equal(Process(workspace, 200).Id, workspace.ListenerRows[2].Process);
 
+        // The rows are built once for what they depend on, so every reader of them reads the same rows.
+        Assert.Same(workspace.ListenerRows, workspace.ListenerRows);
+
         // A button offers the sixth, a process that connected to itself, and then the busiest five again.
         Assert.True(workspace.OffersListenersToggle);
         Assert.Equal("Show all 6 listening ports", workspace.ListenersToggleLabel);
@@ -75,12 +78,13 @@ public sealed class ListeningPortsWorkspaceTests
         Assert.False(workspace.ListsAllListeners);
         Assert.Equal(5, heard[^1]);
 
-        // Anything chosen takes the list away, and letting it go brings it back: a process, a program, Other hosts, a
-        // relationship, processes chosen together and a time range; so does a rung below the machine's.
+        // Anything chosen but a program takes the list away, and letting it go brings it back: a process, Other hosts, a
+        // relationship, processes chosen together and a time range, and a program whose processes accepted nothing; so does
+        // a rung below the machine's.
         Action[] choices =
         [
             () => workspace.SelectProcess(Process(workspace, 100).Id),
-            () => workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe"),
+            () => workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe"),
             () => workspace.SelectGraphNode(workspace.GraphDisplay.OtherHosts!.Key),
             () => workspace.SelectedRelationship = workspace.Relationships[0],
             () =>
@@ -119,12 +123,22 @@ public sealed class ListeningPortsWorkspaceTests
         using WorkspaceViewModel workspace = Open(session, 1);
         await workspace.LayoutReady;
         ProcessInstanceId server = Process(workspace, 200).Id, client = Process(workspace, 100).Id;
+        var shown = new List<bool>();
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName == nameof(WorkspaceViewModel.ShowsListeners))
+            {
+                shown.Add(workspace.ShowsListeners);
+            }
+        };
 
-        // The server's 8080 chooses the server, whose inspector says who connected to it, there.
+        // The server's 8080 chooses the server, whose inspector says who connected to it, there: the first choice made takes
+        // the list away, said so to whatever shows it.
         ListenerRow port = workspace.ListenerRows.Single(row => row.Port == 8080 && row.Process == server);
         Assert.True(workspace.ChooseListener(port));
         Assert.Equal(server, workspace.SelectedProcess?.Id);
         Assert.False(workspace.ShowsListeners);
+        Assert.False(Assert.Single(shown));
         Assert.Contains(workspace.SelectionPeers, row => row.Peer == "← client.exe · PID 100" && row.Detail.Contains("TCP at 8080",
             StringComparison.Ordinal));
 
@@ -168,7 +182,7 @@ public sealed class ListeningPortsWorkspaceTests
         Assert.True(workspace.ToggleListeners());
         Assert.True(workspace.ChooseListener(workspace.ListenerRows.Single(row => row.Port == 52011)));
         WorkspaceNavigationMemento saved = workspace.CaptureNavigation();
-        Assert.Equal((new ListenerHop(52011, Process(workspace, 400).Id, 0), true), (saved.ListenerHop, saved.ListenersListedWhole));
+        Assert.Equal((new ListenerHop(52011, Process(workspace, 400).Id, 0), ""), (saved.ListenerHop, saved.ListenersListedWhole));
         using WorkspaceViewModel next = Open(session, 2);
         await next.LayoutReady;
         Assert.Null(next.RestoreNavigation(saved));
@@ -176,6 +190,80 @@ public sealed class ListeningPortsWorkspaceTests
         Assert.Equal(new ListenerHop(52011, Process(next, 400).Id, 0), next.ComeBackFromListener());
         Assert.True(next.ListsAllListeners);
         Assert.Equal(6, next.ListenerRows.Count);
+    });
+
+    [Fact(DisplayName = "§6.3: a chosen program's inspector lists its processes' listening ports; Enter chooses one's process, and Esc comes back to the program, along a walk of programs too")]
+    public void AChosenProgramListsItsProcessesListeningPorts() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session, 1);
+        await workspace.LayoutReady;
+        string servers = workspace.RungRows.Single(row => row.Label == "server.exe").Key;
+        var shown = new List<int>();
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName == nameof(WorkspaceViewModel.ListenerRows))
+            {
+                shown.Add(workspace.ListenerRows.Count);
+            }
+        };
+
+        // The server's program lists its process's three ports, as the machine's list says them, under its own heading.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
+        Assert.True(workspace.ShowsListeners);
+        Assert.Equal(3, shown[^1]);
+        Assert.Equal("3 listening ports of its processes, the busiest first", workspace.ListenersHeading);
+        Assert.Equal("3 listening ports of its processes, the busiest first: the ports its processes accepted connections at; "
+            + "Enter on one chooses the process that accepted them", workspace.ListenersListName);
+        Assert.Equal(
+            [
+                "8080 | server.exe · PID\u00A0200 | 4 connections accepted from 3 processes of probe.exe, client.exe and helper.exe",
+                "8443 | server.exe · PID\u00A0200 | 4 connections accepted from 3 hosts",
+                "9000 | server.exe · PID\u00A0200 | 4 connections accepted from unobserved processes on this machine",
+            ],
+            workspace.ListenerRows.Select(Said));
+        Assert.False(workspace.OffersListenersToggle);
+
+        // Asked for whole, the machine's list stays whole on its own: a program's names what it names, and the machine's is
+        // whole again once nothing is chosen.
+        workspace.ClearSelection();
+        Assert.True(workspace.ToggleListeners());
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "probe.exe");
+        Assert.Equal(("1 listening port of its processes", false), (workspace.ListenersHeading, workspace.ListsAllListeners));
+        workspace.ClearSelection();
+        Assert.Equal((true, 6), (workspace.ListsAllListeners, workspace.ListenerRows.Count));
+        Assert.False(workspace.ToggleListeners());
+
+        // Enter on the server's 8443 chooses its process; Esc comes back to the program, its row chosen again, where the
+        // list holds the port again.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
+        ListenerRow hosts = workspace.ListenerRows.Single(row => row.Port == 8443);
+        Assert.True(workspace.ChooseListener(hosts));
+        Assert.Equal(200, workspace.SelectedProcess?.ProcessId);
+        Assert.Equal(new ListenerHop(8443, hosts.Process, 0) { Program = servers }, workspace.CaptureNavigation().ListenerHop);
+        Assert.Equal(new ListenerHop(8443, hosts.Process, 0) { Program = servers }, workspace.ComeBackFromListener());
+        Assert.Equal(("server.exe", "server.exe"), (workspace.SelectedGroup?.Name, workspace.SelectedRung?.Label));
+        Assert.Contains(workspace.ListenerRows, row => row.Port == 8443);
+
+        // Along a walk of programs, from the helper's to the server's: the port's way back comes first, then the walk's.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "helper.exe");
+        Assert.True(workspace.ChooseProgram(workspace.SelectionPrograms.Single(row => row.OtherKey == servers)));
+        Assert.True(workspace.ChooseListener(workspace.ListenerRows.Single(row => row.Port == 9000)));
+        Assert.Equal((ushort)9000, workspace.ComeBackFromListener()?.Port);
+        Assert.Equal("server.exe", workspace.SelectedGroup?.Name);
+        Assert.Equal(servers, workspace.ComeBackFromProgram());
+        Assert.Equal("helper.exe", workspace.SelectedGroup?.Name);
+
+        // A program a newer generation no longer holds lets the way back go, the process staying chosen.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
+        Assert.True(workspace.ChooseListener(workspace.ListenerRows.Single(row => row.Port == 8080)));
+        WorkspaceNavigationMemento saved = workspace.CaptureNavigation();
+        using WorkspaceViewModel next = Open(session, 2);
+        await next.LayoutReady;
+        Assert.Null(next.RestoreNavigation(saved with { ListenerHop = saved.ListenerHop! with { Program = "executable:GONE.EXE" } }));
+        Assert.Null(next.ComeBackFromListener());
+        Assert.Equal(200, next.SelectedProcess?.ProcessId);
     });
 
     [Fact(DisplayName = "§6.3: a session whose processes accepted no connection lists no port, and one with more than a hundred says where the rest are read")]

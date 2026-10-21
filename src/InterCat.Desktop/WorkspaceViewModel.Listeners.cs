@@ -7,11 +7,12 @@ using InterCat.Domain;
 namespace InterCat.Desktop;
 
 /// <summary>
-/// The session's listening ports, in the inspector while it describes nothing on the machine rung (§6.3): each port its
-/// processes accepted TCP connections at, with the process that accepted them, how many and who connected, the busiest
-/// first, as `icat ports` lists them. A machine's servers - which process served at which port, and for whom - otherwise
-/// took each process's card in turn. Enter on one chooses the process that accepted its connections, whose inspector then
-/// says with whom, and Esc comes back to the list with the keyboard on that port.
+/// Listening ports in the inspector (§6.3): the session's while it describes nothing on the machine rung, and a chosen
+/// program's processes' while it describes the program - each port they accepted TCP connections at, with the process that
+/// accepted them, how many and who connected, the busiest first, as `icat ports` lists them. A machine's servers, or which
+/// of a program's processes served at which port and for whom, otherwise took each process's card in turn. Enter on one
+/// chooses the process that accepted its connections, whose inspector then says with whom, and Esc comes back to the list -
+/// nothing chosen again, or the program - with the keyboard on that port.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -21,45 +22,91 @@ public sealed partial class WorkspaceViewModel
     /// <summary>The most listening ports the inspector lists once every one is asked for.</summary>
     internal const int ListenersListed = 100;
 
-    /// <summary>Whether the inspector lists every listening port, as asked, rather than the busiest few.</summary>
-    private bool listenersListedWhole;
+    /// <summary>
+    /// Whose listening ports the inspector lists whole, as asked: the machine's, an empty key, or a program's, by its
+    /// group's key; null while it names the busiest.
+    /// </summary>
+    private string? listenersListedWhole;
 
     /// <summary>The way down made by <see cref="ChooseListener"/>, which Esc comes back along; kept for a newer generation.</summary>
     private ListenerHop? listenerHop;
 
     /// <summary>
-    /// The session's listening ports, the busiest first: each by its port and the process that accepted connections at it,
-    /// then how many and who connected - 8443, "files.exe · PID 5300", "1 connection accepted from 10.0.0.10".
+    /// The scope the list was last said for, so a selection that leaves it where it was restates nothing; until it is first
+    /// said, a scope no list has, so the first selection always says it.
     /// </summary>
-    public IReadOnlyList<ListenerRow> ListenerRows => [.. wholeSnapshot.Listeners
-        .Take(listenersListedWhole ? ListenersListed : ListenersNamed)
-        .Select(ListenerRowOf)];
+    private string? raisedListenerScope = UnsaidListenerScope;
+
+    /// <summary>The scope no list has, which the list has been said for before it is first said.</summary>
+    private const string UnsaidListenerScope = "unsaid:";
+
+    /// <summary>The rows last built, for the scope, the list asked for whole or not, and the candidate other ends read.</summary>
+    private (string Scope, bool Whole, object Candidates, IReadOnlyList<ListenerRow> Rows)? listenerRows;
+
+    /// <summary>The session's processes by instance, and its programs by key, built once to name the listening ports' ends.</summary>
+    private (Dictionary<ProcessInstanceId, ProcessNode> Processes, Dictionary<string, ProcessGroup> Groups)? listenerNames;
+
+    /// <summary>
+    /// The listening ports the inspector lists, the busiest first: each by its port and the process that accepted
+    /// connections at it, then how many and who connected - 8443, "files.exe · PID 5300", "1 connection accepted from
+    /// 10.0.0.10". Built once for what they depend on, and empty while the inspector lists none.
+    /// </summary>
+    public IReadOnlyList<ListenerRow> ListenerRows
+    {
+        get
+        {
+            if (ListenerScope is not { } scope)
+            {
+                return [];
+            }
+
+            bool whole = ListsAllListeners;
+            if (listenerRows is { } built && built.Scope == scope && built.Whole == whole
+                && ReferenceEquals(built.Candidates, candidateListeners))
+            {
+                return built.Rows;
+            }
+
+            IReadOnlyList<ListenerRow> rows = [.. ScopedListeners(scope).Take(whole ? ListenersListed : ListenersNamed)
+                .Select(ListenerRowOf)];
+            listenerRows = (scope, whole, candidateListeners, rows);
+            return rows;
+        }
+    }
 
     /// <summary>
     /// Whether the inspector lists them: on the machine rung while it describes nothing - no process, program, aggregate,
-    /// relationship, set or cell chosen - in a session whose processes accepted any connection the capture saw open.
+    /// relationship, set or cell chosen - or a program, whose processes accepted any connection the capture saw open.
     /// </summary>
-    public bool ShowsListeners => ladder.Current.Level == DetailLevel.Machine && DescribesNothing
-        && wholeSnapshot.Listeners.Count > 0;
+    public bool ShowsListeners => ListenerScope is { } scope && ScopedListeners(scope).Count > 0;
 
-    /// <summary>The heading over them: how many there are, the busiest first where there are several.</summary>
-    public string ListenersHeading => wholeSnapshot.Listeners.Count == 1 ? "1 listening port"
-        : string.Create(CultureInfo.CurrentCulture, $"{wholeSnapshot.Listeners.Count:N0} listening ports, the busiest first");
+    /// <summary>
+    /// The heading over them: how many there are, the busiest first where there are several, and whose - "6 listening ports,
+    /// the busiest first", "2 listening ports of its processes, the busiest first".
+    /// </summary>
+    public string ListenersHeading => ListenerScope is { } scope && ScopedListeners(scope).Count is var count
+        ? (count == 1 ? "1 listening port" : string.Create(CultureInfo.CurrentCulture, $"{count:N0} listening ports"))
+            + (scope.Length > 0 ? " of its processes" : string.Empty)
+            + (count == 1 ? string.Empty : ", the busiest first")
+        : string.Empty;
 
     /// <summary>The list as a screen reader names it: what it holds and what Enter on a row does.</summary>
-    public string ListenersListName => ListenersHeading + ": the ports this machine's processes accepted connections at; "
-        + "Enter on one chooses the process that accepted them";
+    public string ListenersListName => ListenersHeading + ": the ports "
+        + (ListenerScope is { Length: > 0 } ? "its processes" : "this machine's processes")
+        + " accepted connections at; Enter on one chooses the process that accepted them";
 
-    /// <summary>Whether the inspector lists every listening port, as asked, rather than the busiest few.</summary>
-    public bool ListsAllListeners => listenersListedWhole;
+    /// <summary>Whether the inspector lists every listening port of its scope, as asked, rather than the busiest few.</summary>
+    public bool ListsAllListeners => ListenerScope is { } scope && string.Equals(listenersListedWhole, scope, StringComparison.Ordinal);
 
     /// <summary>
     /// What the list leaves out with every port asked for, past the most it lists, and where every one is read; empty
     /// otherwise, where the button that asks for them says how many there are.
     /// </summary>
-    public string ListenersMore => listenersListedWhole && wholeSnapshot.Listeners.Count - ListenersListed is > 0 and var more
+    public string ListenersMore => ListsAllListeners && ListenerScope is { } scope
+        && ScopedListeners(scope).Count - ListenersListed is > 0 and var more
         ? string.Create(CultureInfo.CurrentCulture,
             $"{more:N0} more, quieter: icat ports --limit {wholeSnapshot.Listeners.Count:N0} lists them all")
+            + (scope.Length > 0 ? ", among the machine's" : string.Empty)
         : string.Empty;
 
     /// <summary>Whether the list says what it leaves out with every port asked for.</summary>
@@ -69,7 +116,7 @@ public sealed partial class WorkspaceViewModel
     /// What the candidate other ends its rows name are, beneath them, for a session opened from its investigation: never an
     /// established join; empty where none is named. The rows say which ports they are named for.
     /// </summary>
-    public string ListenersNote => wholeSnapshot.Listeners.Any(listener => CandidatesFor(listener) is not null)
+    public string ListenersNote => ListenerScope is { } scope && ScopedListeners(scope).Any(listener => CandidatesFor(listener) is not null)
         ? "The candidate other ends named here are processes of the investigation's other sessions whose connections mirror "
             + "those the ports accepted, never an established join."
         : string.Empty;
@@ -78,18 +125,21 @@ public sealed partial class WorkspaceViewModel
     public bool ShowsListenersNote => ListenersNote.Length > 0;
 
     /// <summary>Whether the inspector offers every listening port, or the busiest again: there are more than it names.</summary>
-    public bool OffersListenersToggle => wholeSnapshot.Listeners.Count > ListenersNamed;
+    public bool OffersListenersToggle => ListenerScope is { } scope && ScopedListeners(scope).Count > ListenersNamed;
 
     /// <summary>What that button says: how many it would list, or that it names the busiest again.</summary>
-    public string ListenersToggleLabel => listenersListedWhole
+    public string ListenersToggleLabel => ListsAllListeners
         ? string.Create(CultureInfo.CurrentCulture, $"Show the busiest {ListenersNamed}")
-        : wholeSnapshot.Listeners.Count is var count && count <= ListenersListed
-            ? string.Create(CultureInfo.CurrentCulture, $"Show all {count:N0} listening ports")
-            : string.Create(CultureInfo.CurrentCulture, $"Show the busiest {ListenersListed:N0} of {count:N0} listening ports");
+        : ListenerScope is { } scope && ScopedListeners(scope).Count is var count
+            ? count <= ListenersListed
+                ? string.Create(CultureInfo.CurrentCulture, $"Show all {count:N0} listening ports")
+                : string.Create(CultureInfo.CurrentCulture, $"Show the busiest {ListenersListed:N0} of {count:N0} listening ports")
+            : string.Empty;
 
     /// <summary>
-    /// Lists every listening port, at most <see cref="ListenersListed"/>, or names the busiest again, as its button asks;
-    /// true where it now lists every one. A session with no more than the inspector names offers neither.
+    /// Lists every listening port of the inspector's scope, at most <see cref="ListenersListed"/>, or names the busiest
+    /// again, as its button asks; true where it now lists every one. A scope with no more than the inspector names offers
+    /// neither.
     /// </summary>
     public bool ToggleListeners()
     {
@@ -98,9 +148,9 @@ public sealed partial class WorkspaceViewModel
             return false;
         }
 
-        listenersListedWhole = !listenersListedWhole;
+        listenersListedWhole = ListsAllListeners ? null : ListenerScope;
         RaiseListenersChanged();
-        return listenersListedWhole;
+        return ListsAllListeners;
     }
 
     /// <summary>
@@ -111,21 +161,21 @@ public sealed partial class WorkspaceViewModel
     public bool ChooseListener(ListenerRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
-        if (!ShowsListeners || !ListenerRows.Any(listed => listed.Port == row.Port && listed.Process == row.Process))
+        if (ListenerScope is not { } scope || !ListenerRows.Any(listed => listed.Port == row.Port && listed.Process == row.Process))
         {
             return false;
         }
 
         SelectProcess(row.Process);
-        listenerHop = new ListenerHop(row.Port, row.Process, ladder.Depth);
+        listenerHop = new ListenerHop(row.Port, row.Process, ladder.Depth) { Program = scope.Length > 0 ? scope : null };
         return true;
     }
 
     /// <summary>
     /// Comes back along the way down made from the listening ports, as Esc does before it climbs the ladder: where the
-    /// process it chose is still the one chosen, on the rung it was chosen at, nothing is chosen again and the hop is
-    /// returned, whose row the keyboard goes back to. A hop the selection or the ladder has since moved away from is let go,
-    /// and null returned.
+    /// process it chose is still the one chosen, on the rung it was chosen at, what the list was listed for is chosen again
+    /// - nothing, or the program, where this generation still holds it - and the hop is returned, whose row the keyboard
+    /// goes back to. A hop the selection or the ladder has since moved away from is let go, and null returned.
     /// </summary>
     public ListenerHop? ComeBackFromListener()
     {
@@ -140,9 +190,34 @@ public sealed partial class WorkspaceViewModel
             return null;
         }
 
+        if (hop.Program is { } program)
+        {
+            if (Groups(program) is null)
+            {
+                return null;
+            }
+
+            SelectGroup(program, syncRow: true);
+            return hop;
+        }
+
         ClearSelection();
         return hop;
     }
+
+    /// <summary>
+    /// Whose listening ports the inspector lists: the machine's, an empty key, while it describes nothing on the machine
+    /// rung, or a chosen program's, by its group's key, while it describes the program; null for any other selection.
+    /// </summary>
+    private string? ListenerScope => ladder.Current.Level != DetailLevel.Machine ? null
+        : DescribesNothing ? string.Empty
+        : GroupingExplanation.Length > 0 && SelectedGroup is { Kind: LaneGrouping.Executable } program ? program.Key
+        : null;
+
+    /// <summary>The listening ports of a scope, the busiest first: the machine's every one, or a program's processes'.</summary>
+    private IReadOnlyList<PortListener> ScopedListeners(string scope) => scope.Length == 0 ? wholeSnapshot.Listeners
+        : [.. wholeSnapshot.Listeners.Where(listener =>
+            string.Equals(NodeOf(listener.Process)?.GroupKey, scope, StringComparison.Ordinal))];
 
     /// <summary>
     /// Whether the inspector describes nothing, as its title says "Nothing selected": no relationship, row, set, aggregate,
@@ -181,22 +256,40 @@ public sealed partial class WorkspaceViewModel
     }
 
     /// <summary>A process as the inspector's lists name it, "files.exe · PID 5300", or by its PID where the session holds no node of it.</summary>
-    private string ProcessNamed(ProcessInstance process) =>
-        wholeSnapshot.Processes.FirstOrDefault(node => node.Id == process.Id)?.NameWithPid
+    private string ProcessNamed(ProcessInstance process) => NodeOf(process)?.NameWithPid
         ?? string.Create(CultureInfo.InvariantCulture, $"PID {process.ProcessId}");
 
     /// <summary>The program a process ran, as the session groups it, or the process itself where it holds none.</summary>
     private string ProgramOf(ProcessInstance process) =>
-        wholeSnapshot.Processes.FirstOrDefault(node => node.Id == process.Id) is { } node
-        && wholeSnapshot.Groups.FirstOrDefault(group => group.Key == node.GroupKey) is { } group
-            ? group.Name
-            : ProcessNamed(process);
+        NodeOf(process) is { } node && Groups(node.GroupKey) is { } group ? group.Name : ProcessNamed(process);
+
+    /// <summary>The session's node of a process; null where it holds none.</summary>
+    private ProcessNode? NodeOf(ProcessInstance process) => ListenerNames().Processes.GetValueOrDefault(process.Id);
+
+    /// <summary>The session's program of a key; null where it holds none.</summary>
+    private ProcessGroup? Groups(string key) => ListenerNames().Groups.GetValueOrDefault(key);
+
+    private (Dictionary<ProcessInstanceId, ProcessNode> Processes, Dictionary<string, ProcessGroup> Groups) ListenerNames() =>
+        listenerNames ??= (wholeSnapshot.Processes.ToDictionary(node => node.Id),
+            wholeSnapshot.Groups.ToDictionary(group => group.Key, StringComparer.Ordinal));
+
+    /// <summary>Says again what the list of listening ports holds where what the inspector describes moved it to another scope.</summary>
+    private void FollowListenerScope()
+    {
+        if (!string.Equals(ListenerScope, raisedListenerScope, StringComparison.Ordinal))
+        {
+            RaiseListenersChanged();
+        }
+    }
 
     /// <summary>Says again what the list of listening ports holds and whether it shows.</summary>
     private void RaiseListenersChanged()
     {
+        raisedListenerScope = ListenerScope;
         OnPropertyChanged(nameof(ListenerRows));
         OnPropertyChanged(nameof(ShowsListeners));
+        OnPropertyChanged(nameof(ListenersHeading));
+        OnPropertyChanged(nameof(ListenersListName));
         OnPropertyChanged(nameof(ListsAllListeners));
         OnPropertyChanged(nameof(ListenersMore));
         OnPropertyChanged(nameof(ShowsListenersMore));
@@ -211,4 +304,8 @@ public sealed partial class WorkspaceViewModel
 /// A way down made from the inspector's listening ports (§6.3): the port and the process chosen from it, on the rung it
 /// was chosen at, which Esc comes back along to the list.
 /// </summary>
-public sealed record ListenerHop(ushort Port, ProcessInstanceId Process, int Depth);
+public sealed record ListenerHop(ushort Port, ProcessInstanceId Process, int Depth)
+{
+    /// <summary>The program, by its group's key, whose processes' ports the list was listed for; null for the machine's.</summary>
+    public string? Program { get; init; }
+}
