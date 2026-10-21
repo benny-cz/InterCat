@@ -731,10 +731,25 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 e.Handled = viewModel.RelayoutGraph();
                 break;
             case Key.Escape:
-                // A drag in progress is cancelled where it began (§6.7); with none, Esc ascends as the ladder's back does.
+                // A drag in progress is cancelled where it began (§6.7); with none, Esc comes back along the latest hop to a
+                // relationship's other end, the keyboard on the relationship left by, and else ascends as the ladder's back
+                // does.
                 if (!(TimelineSurface.CancelDrag() || MinimapSurface.CancelDrag() || GraphSurface.CancelDrag()))
                 {
-                    _ = viewModel.Ascend();
+                    if (viewModel.ComeBackFromPeer() is { } left)
+                    {
+                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                        {
+                            if (!closed)
+                            {
+                                _ = FocusRow(PeersList, PeersList.Items.OfType<PeerRow>().FirstOrDefault(row => row.PeerId == left));
+                            }
+                        });
+                    }
+                    else
+                    {
+                        _ = viewModel.Ascend();
+                    }
                 }
 
                 e.Handled = true;

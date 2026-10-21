@@ -162,19 +162,51 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// Chooses the process at the other end of one of the selected process's relationships, as a click on its node does,
-    /// so who connected to whom can be walked a relationship at a time: its own relationships are then listed, the one
-    /// just come from among them. False for one connected to itself, which goes nowhere.
+    /// so who connected to whom can be walked a relationship at a time: its own relationships are then listed, and
+    /// <see cref="ComeBackFromPeer"/> chooses again the one it was chosen from. False for one connected to itself, which
+    /// goes nowhere.
     /// </summary>
     public bool ChoosePeer(PeerRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
-        if (selectedProcess?.Id == row.PeerId)
+        if (selectedProcess is not { } from || from.Id == row.PeerId)
         {
             return false;
         }
 
         SelectProcess(row.PeerId);
+        peerHops.Add((from.Id, row.PeerId, ladder.Depth));
         return true;
+    }
+
+    /// <summary>
+    /// The hops made by <see cref="ChoosePeer"/>, the latest last: the process left, the one chosen, and the rung it was
+    /// chosen at.
+    /// </summary>
+    private readonly List<(ProcessInstanceId From, ProcessInstanceId To, int Depth)> peerHops = [];
+
+    /// <summary>
+    /// Comes back along the latest hop made from the inspector's relationships, as Esc does before it climbs the ladder:
+    /// where the process the hop chose is still the one chosen, on the rung it was chosen at, the process it was chosen
+    /// from is chosen again, and the one left is returned, whose row in its list the keyboard goes back to. A hop the
+    /// selection or the ladder has since moved away from is forgotten, every earlier one with it, and null returned.
+    /// </summary>
+    public ProcessInstanceId? ComeBackFromPeer()
+    {
+        if (peerHops is not [.., var latest])
+        {
+            return null;
+        }
+
+        if (selectedProcess?.Id != latest.To || ladder.Depth != latest.Depth)
+        {
+            peerHops.Clear();
+            return null;
+        }
+
+        peerHops.RemoveAt(peerHops.Count - 1);
+        SelectProcess(latest.From);
+        return latest.To;
     }
 
     /// <summary>Whether the inspector names the processes the selected process talked with.</summary>

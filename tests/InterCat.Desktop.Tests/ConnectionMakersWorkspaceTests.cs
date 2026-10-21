@@ -467,6 +467,23 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal(500, workspace.SelectedProcess?.ProcessId);
         Assert.Equal(["← server.exe · PID 400"], workspace.SelectionPeers.Select(row => row.Peer));
 
+        // Esc's way back comes back along the hops, the latest first, saying which process each left: to the server, whose
+        // five busiest do not hold the resolver, and then to the resolver.
+        Assert.Equal(Process(workspace, 500).Id, workspace.ComeBackFromPeer());
+        Assert.Equal(400, workspace.SelectedProcess?.ProcessId);
+        Assert.Equal(Process(workspace, 400).Id, workspace.ComeBackFromPeer());
+        Assert.Equal(600, workspace.SelectedProcess?.ProcessId);
+        Assert.Null(workspace.ComeBackFromPeer());
+        Assert.Equal(600, workspace.SelectedProcess?.ProcessId);
+
+        // A hop the selection has since moved away from is forgotten, with the hops before it.
+        Assert.True(workspace.ChoosePeer(workspace.SelectionPeers[1]));
+        Assert.True(workspace.ChoosePeer(workspace.SelectionPeers[2]));
+        workspace.SelectProcess(Process(workspace, 400).Id);
+        Assert.Null(workspace.ComeBackFromPeer());
+        Assert.Equal(400, workspace.SelectedProcess?.ProcessId);
+        Assert.Null(workspace.ComeBackFromPeer());
+
         // Under a brush they are still the whole session's, and say so.
         workspace.SelectProcess(Process(workspace, 400).Id);
         workspace.SelectInterval(new TimeRange(workspace.Snapshot.Extent.StartTicks, workspace.Snapshot.Extent.StartTicks + 5));
@@ -482,10 +499,16 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal(0, heard[^1]);
 
         // At the server's own rung a connection chosen among its rows is what the inspector describes, and the server's
-        // relationships give way to it.
+        // relationships give way to it. A hop to the server made on the machine's rung is no way back from its own rung.
+        workspace.SelectProcess(Process(workspace, 600).Id);
+        Assert.True(workspace.ChoosePeer(workspace.SelectionPeers[1]));
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
         Assert.True(workspace.Descend());
         workspace.SelectedRung = workspace.RungRows.Single();
         Assert.True(workspace.Descend());
+        Assert.Equal(400, workspace.SelectedProcess?.ProcessId);
+        Assert.Null(workspace.ComeBackFromPeer());
+        Assert.Equal(400, workspace.SelectedProcess?.ProcessId);
         workspace.SelectedRung = workspace.RungRows.First(row => row.Label.Contains("browser.exe", StringComparison.Ordinal));
         Assert.NotNull(workspace.DescribedRow);
         Assert.False(workspace.ShowsPeers);

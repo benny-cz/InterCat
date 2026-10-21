@@ -77,6 +77,17 @@ public sealed class ConnectionsInspectorWindowTests
         Assert.Equal(["→ server.exe · PID 200", "1 made · TCP · 3 records"], Texts(peers));
         Assert.Same(peers.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
 
+        // Esc comes back: the server chosen again, the keyboard on the relationship it was left by; Esc again, with no hop
+        // left, climbs the ladder as anywhere, and on the machine's rung lets the choice go.
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Dispatch();
+        Assert.Equal(200, workspace.SelectedProcess?.ProcessId);
+        Assert.Equal(["← client.exe · PID 100", "1 accepted · TCP · 3 records"], Texts(peers));
+        Assert.Same(peers.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Dispatch();
+        Assert.Null(workspace.SelectedProcess);
+
         // Nothing chosen, nothing said.
         workspace.ClearSelection();
         Dispatch();
