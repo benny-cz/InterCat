@@ -67,9 +67,10 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         var scope = new TextBlock
         {
             Text = (processScope is { } process
-                ? $"Channels involving process instance {process}"
+                ? $"Channels involving {this.processName(process) ?? $"process instance {process}"}"
                 : "All admitted paired TCP and UDP channels")
-                + " · all session times (a time brush applies to the source records you open, not to this list)",
+                + ", the busiest first · all session times (a time brush applies to the source records you open, not to "
+                + "this list)",
             TextWrapping = TextWrapping.Wrap,
             FontWeight = FontWeight.SemiBold,
         };

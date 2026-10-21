@@ -63,6 +63,24 @@ public sealed class ChannelBrowserWindowTests
         Assert.Equal("Paired channels. Enter shows the selected channel's source records.", AutomationProperties.GetName(list));
         Assert.Equal("InterCat · Paired channels", browser.Title);
 
+        // Its heading says the list is the busiest first; one process's names the process as the workspace does, or by its
+        // instance where it is given no names.
+        Assert.Contains(browser.GetVisualDescendants().OfType<TextBlock>(), block => block.Text == "All admitted paired TCP and UDP "
+            + "channels, the busiest first · all session times (a time brush applies to the source records you open, not to this list)");
+        ProcessInstanceId client = snapshot.Processes.Single(process => process.ProcessId == 100).Id;
+        using (var scoped = new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation, client,
+            id => snapshot.Processes.FirstOrDefault(process => process.Id == id)?.NameWithPid))
+        {
+            Assert.Contains(scoped.GetLogicalDescendants().OfType<TextBlock>(), block => block.Text?.StartsWith(
+                "Channels involving client.exe · PID 100, the busiest first · ", StringComparison.Ordinal) == true);
+        }
+
+        using (var anonymous = new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation, client, null))
+        {
+            Assert.Contains(anonymous.GetLogicalDescendants().OfType<TextBlock>(), block => block.Text?.StartsWith(
+                $"Channels involving process instance {client}, the busiest first · ", StringComparison.Ordinal) == true);
+        }
+
         // The chosen row has the keyboard once the page is read, and Enter opens it, as a double click does.
         Dispatch();
         Assert.Same(list.ContainerFromIndex(0), browser.FocusManager?.GetFocusedElement());

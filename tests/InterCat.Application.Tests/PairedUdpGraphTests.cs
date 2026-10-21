@@ -58,9 +58,10 @@ public sealed class PairedUdpGraphTests
             [(Mechanism.Tcp, 2L, CoverageState.Covered), (Mechanism.Udp, 3L, CoverageState.NotCollected)],
             within.Channels.Select(channel => (channel.Mechanism, channel.ObservationCount, channel.Coverage)).OrderBy(channel => channel.Mechanism));
 
-        // The channel pages list it beside the connection and state both transports' coverage.
+        // The channel pages list it beside the connection, the busiest first - its four records before the connection's two -
+        // and state both transports' coverage.
         SessionChannelPage page = SessionChannelQuery.Read(session.Store);
-        Assert.Equal(new[] { tcp.Key, udp.Key }.Order(StringComparer.Ordinal), page.Channels.Select(channel => channel.Key));
+        Assert.Equal([udp.Key, tcp.Key], page.Channels.Select(channel => channel.Key));
         Assert.Equal([(Mechanism.Tcp, CoverageState.Covered), (Mechanism.Udp, CoverageState.NotCollected)],
             page.Coverage.Select(coverage => (coverage.Mechanism, coverage.State)));
         Assert.Equal((Mechanism.Udp, CoverageState.NotCollected),

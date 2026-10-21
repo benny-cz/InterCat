@@ -83,6 +83,50 @@ public sealed class SessionOverviewTests
         Assert.Empty(newer.Channels);
     }
 
+    [Fact(DisplayName = "§7.1: a page of channels lists the busiest first, channels of as many records by key, in one order across a generation's pages")]
+    public void AChannelPageListsTheBusiestFirst()
+    {
+        // PIDs 100 and 200 exchange two records over 50000 and 8080, PIDs 300 and 400 six over 50001 and 9090, and PIDs 500
+        // and 600 two over 50002 and 7070.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 1, 100, 1)
+                .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 1_000 },
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 1, 200, 2)
+                .Between(ServerEnd, ClientEnd) with { SessionRelativeTicks = 1_100 },
+            .. Enumerable.Range(0, 3).SelectMany(index => new[]
+            {
+                Transfer(20 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 1, 300, (ulong)(3 + (2 * index)))
+                    .Between("127.0.0.1:50001", "127.0.0.1:9090") with { SessionRelativeTicks = 1_200 + (20 * index) },
+                Transfer(21 + (2 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 1, 400, (ulong)(4 + (2 * index)))
+                    .Between("127.0.0.1:9090", "127.0.0.1:50001") with { SessionRelativeTicks = 1_210 + (20 * index) },
+            }),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 1, 500, 9)
+                .Between("127.0.0.1:50002", "127.0.0.1:7070") with { SessionRelativeTicks = 1_400 },
+            Transfer(31, ObservationKind.Receive, AccountingSide.ReceiveSide, 1, 600, 10)
+                .Between("127.0.0.1:7070", "127.0.0.1:50002") with { SessionRelativeTicks = 1_500 },
+        ]);
+
+        // The busiest first; the two of two records by key.
+        SessionChannelPage whole = SessionChannelQuery.Read(session.Store);
+        Assert.Equal([6L, 2L, 2L], whole.Channels.Select(channel => channel.ObservationCount));
+        string[] tied = [.. whole.Channels.Skip(1).Select(channel => channel.Key)];
+        Assert.Equal(tied.Order(StringComparer.Ordinal), tied);
+
+        // A page at a time, the same order.
+        List<string> paged = [];
+        string? cursor = null;
+        do
+        {
+            SessionChannelPage page = SessionChannelQuery.Read(session.Store, pageSize: 1, cursor: cursor);
+            paged.Add(Assert.Single(page.Channels).Key);
+            cursor = page.NextCursor;
+        }
+        while (cursor is not null);
+        Assert.Equal(whole.Channels.Select(channel => channel.Key), paged);
+    }
+
     [Fact(DisplayName = "§7.1: a page of channels names the processes at its ends as the overview names them, a reused PID's holders apart")]
     public void AChannelPageNamesItsEndsAsTheOverviewDoes()
     {

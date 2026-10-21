@@ -8,8 +8,8 @@ using InterCat.Storage;
 namespace InterCat.Application;
 
 /// <summary>
-/// A complete count and a bounded page of admitted paired TCP incarnations and UDP flows in a leased generation, with what
-/// the capture covered of each transport.
+/// A complete count and a bounded page of admitted paired TCP incarnations and UDP flows in a leased generation, the busiest
+/// first, with what the capture covered of each transport.
 /// </summary>
 public sealed record SessionChannelPage(
     string QueryIdentity,
@@ -66,8 +66,8 @@ public static class SessionChannelQuery
         if (cursor is not null && suppliedIdentity != identity)
         {
             return new(identity, manifest.SessionId, manifest.Generation, processScope, 0, [], null, true,
-                "This channel cursor names another generation or scope. Restart from the first page; no "
-                + "channel was silently shifted.", Caveat);
+                "This channel cursor names another generation, scope or order of channels. Restart from the first "
+                + "page; no channel was silently shifted.", Caveat);
         }
 
         SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest)
@@ -82,11 +82,16 @@ public static class SessionChannelQuery
             throw new InvalidOperationException("The selected process instance is not in this generation. "
                 + "Return to the overview and select it again.");
         TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
+
+        // The busiest first, by the records at its two ends, so a busy machine's heaviest connections lead the first page
+        // rather than its keys' order; channels of as many records follow their keys, one order a generation's cursor
+        // pages through.
         TransportRelation[] admitted = [.. relations.Relations.Where(relation =>
                 TransportRelationIndex.Relates(relation.Mechanism)
                 && SessionOverviewProjector.Admitted(relation.Strength, policy)
                 && (processScope is null || relation.First.Id == processScope || relation.Second.Id == processScope))
-            .OrderBy(relation => relation.StableKey, StringComparer.Ordinal)];
+            .OrderByDescending(relation => relation.Records)
+            .ThenBy(relation => relation.StableKey, StringComparer.Ordinal)];
         if (admitted.Select(relation => relation.StableKey).Distinct(StringComparer.Ordinal).Count() != admitted.Length)
             throw new InvalidDataException("Two admitted paired channels have the same raw-fact channel key.");
         if (cursor is not null && offset >= admitted.Length)
@@ -116,7 +121,7 @@ public static class SessionChannelQuery
     private static string Identity(SessionManifestV1 manifest, ProcessInstanceId? scope, EvidencePolicy policy)
     {
         string canonical = string.Create(CultureInfo.InvariantCulture,
-            $"channel-page-v1|{manifest.SessionId:N}|{manifest.Generation}|{manifest.Digest}|"
+            $"channel-page-v2|{manifest.SessionId:N}|{manifest.Generation}|{manifest.Digest}|"
             + $"{TransportRelationIndex.RelationRule}|{policy}|{scope}");
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }

@@ -10,6 +10,12 @@ namespace InterCat.Cli;
 /// <summary>Read-only pages of paired TCP and UDP channels, including generations above the overview bound.</summary>
 internal static class ChannelsCommand
 {
+    /// <summary>
+    /// The JSON's contract: a page of channels and the cursor to the next, since its second the busiest first by the
+    /// records at their two ends, channels of as many records by key, where its first paged them in key order alone.
+    /// </summary>
+    internal const string Contract = "channel-page-v2";
+
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
         Task.FromResult(Run(command, cancellationToken));
 
@@ -84,7 +90,7 @@ internal static class ChannelsCommand
         {
             Console.Out.WriteLine(JsonSerializer.Serialize(new
             {
-                Contract = "channel-page-v1", SessionPath = path, Page = page,
+                Contract = Contract, SessionPath = path, Page = page,
             }, JsonContracts.Indented));
             return page.RestartRequired ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
         }
@@ -100,6 +106,7 @@ internal static class ChannelsCommand
         }
 
         ConsoleUi.Field("Channels in scope", ConsoleUi.Count(page.TotalChannels));
+        ConsoleUi.Field("Ranked by", "the records at their two ends, the busiest first");
         // Each channel by who is at its two ends and who connected to whom, as the window's list names it, then the key its
         // records are read by.
         foreach (Channel channel in page.Channels)
@@ -185,10 +192,10 @@ internal static class ChannelsCommand
     {
         ConsoleUi.Line("icat channels <session-directory> [--process <instance-guid> [--one-sided]] [--page-size <1-200>]");
         ConsoleUi.Line("              [--cursor <token>] [--json]");
-        ConsoleUi.Line("  Read-only pages of admitted paired TCP and UDP channels, even above the overview bound, each named");
-        ConsoleUi.Line("  by the processes at its two ends - the one that made it first, an arrow at the one it connected");
-        ConsoleUi.Line("  to - with its key, and what the capture covered of each transport, from its coverage ledger, so a");
-        ConsoleUi.Line("  page of none is not read as no traffic.");
+        ConsoleUi.Line("  Read-only pages of admitted paired TCP and UDP channels, even above the overview bound, the");
+        ConsoleUi.Line("  busiest first by the records at their two ends, each named by the processes at its two ends - the");
+        ConsoleUi.Line("  one that made it first, an arrow at the one it connected to - with its key, and what the capture");
+        ConsoleUi.Line("  covered of each transport, from its coverage ledger, so a page of none is not read as no traffic.");
         ConsoleUi.Line("  A stale cursor requests an explicit restart; --process scopes by stable instance ID.");
         ConsoleUi.Line("  --one-sided lists the process's connections whose other end no record holds - most often");
         ConsoleUi.Line("  another host's - with their records and bytes, as its rung does.");
