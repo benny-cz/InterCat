@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 683 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 684 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,24 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 684 — icat ports lists the ports a session's processes accepted connections at, and who connected (§6.3, §7.4, R18):**
+  - Each port with the process that accepted connections there, how many, and who connected - processes of the
+    capture, other hosts by address, or unobserved processes on this machine - the busiest first, with --limit and
+    --json (listening-ports-v1); refused where no open is recorded. icat overview's busiest processes and icat
+    processes --port point to it.
+  - Debug and Release each ran 2,686 tests with revision 473's 93 failures and 4 skips, and nothing else failed; two
+    new tests list a session's listeners - a port two processes listened at, connections from processes of the
+    capture, from other hosts and from unobserved processes over IPv4's and IPv6's loopback, an IPv4-mapped address
+    and the listener's own, ranked, limited and as JSON - and say why none is listed where every open was made or no
+    open is recorded, and the overview's and icat processes --port's tests read their pointers to it. All thirty-two
+    mutations were caught: the accepting end or the connecting one swapped, a one-sided connect counted, read at its
+    remote port or with its ends swapped, the ranking or its ties reversed, an unobserved process at the listener's
+    own address, at a mapped loopback address or at loopback counted as a host, the connectors', hosts' and
+    programs' orders or ties reversed, connections counted by process or by host, the refusal dropped, ports,
+    processes or connections counted as listeners, the table's or the JSON's limit ignored, none listed as an empty
+    table, the more line said wrongly, itself unsaid, one process or host counted rather than named, unobserved ones
+    unsaid, and three programs counted or four named.
 
 - **Revision 683 — the command line says at which port relationships' connections arrived (§6.3, §6.8, R18):**
   - icat overview's busiest relationships and pairs of programs and icat programs say "TCP at 9222", a pair's ports

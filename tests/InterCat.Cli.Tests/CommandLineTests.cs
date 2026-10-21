@@ -26,7 +26,7 @@ public sealed class CommandLineTests : IDisposable
     private static readonly string[] Commands =
     [
         "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
-        "hosts", "programs", "evidence", "timeline", "export", "package", "raw", "content", "recover", "staging", "retain",
+        "hosts", "programs", "ports", "evidence", "timeline", "export", "package", "raw", "content", "recover", "staging", "retain",
         "compact", "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench",
         "support", "demo",
     ];
@@ -133,7 +133,7 @@ public sealed class CommandLineTests : IDisposable
             string[][] asked =
             [
                 ["overview", folder], ["channels", folder], ["channels", folder, "--process", record[1], "--one-sided"],
-                ["hosts", folder], ["programs", folder], ["programs", folder, "--program", "svchost.exe"],
+                ["hosts", folder], ["programs", folder], ["programs", folder, "--program", "svchost.exe"], ["ports", folder],
                 ["evidence", folder], ["timeline", folder, "--interval", "0:10"],
                 ["export", folder, "--output", Path.Combine(package, "rows.csv")], ["processes", folder], ["operations", folder],
                 ["exchanges", folder], ["metric", folder, "--metric", "observations"], ["raw", folder, .. record],
@@ -533,7 +533,8 @@ public sealed class CommandLineTests : IDisposable
         (code, text, said) = await Run("processes", session.Path, "--port", "443");
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Contains("No instance accepted a connection at port 443. icat hosts <directory> --address :443 lists the processes "
-            + "whose connections ran to that port at another host.", Regex.Replace(text, @"\s+", " "), StringComparison.Ordinal);
+            + "whose connections ran to that port at another host, and icat ports <directory> the ports its processes accepted "
+            + "connections at.", Regex.Replace(text, @"\s+", " "), StringComparison.Ordinal);
 
         // As JSON, the port named and the listeners alone, ranked as asked.
         using (JsonDocument json = JsonDocument.Parse((await Run("processes", session.Path, "--port", "8080", "--json")).Output))

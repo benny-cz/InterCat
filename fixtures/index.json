@@ -2098,6 +2098,8 @@
         "R18: icat package --interval holds an interval's records and its processes', and icat session says so in the window's words",
         "R18: icat package of a released session says what its source had released, and the package's readers say so too",
         "R18: icat pin, channels, exchanges, checkpoint and profiles refuse what they cannot read, naming what they expect",
+        "R18: icat ports lists the ports the session's processes accepted connections at, each with who connected, the busiest first",
+        "R18: icat ports says no process accepted a connection where every one the capture saw open was made, and refuses a session that records no open",
         "R18: icat processes --pid lists the other hosts an instance's connections ran to, by address, the most bytes first, its own connections alone",
         "R18: icat processes --pid says a process's RPC call records, which no transport record holds, and where its calls are listed with their other ends",
         "R18: icat programs --program lists the pairs one program is in, named as listed, by its executable's file name with or without its extension, or by its path",

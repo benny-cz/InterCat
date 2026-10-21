@@ -178,7 +178,8 @@ public sealed class OverviewCensusTests
         Assert.Contains("Connections are each one's TCP connections made and accepted, as the capture saw them open, those "
             + "accepted at the ports of its own they arrived at. icat "
             + "processes <directory> --pid <PID> names who it connected to and who connected to it, and --rank-by "
-            + "connections-made or connections-accepted lists the processes that did so most.", Regex.Replace(text, @"\s+", " "), Ordinal);
+            + "connections-made or connections-accepted lists the processes that did so most. icat ports <directory> lists the "
+            + "ports they accepted connections at, and who connected to each.", Regex.Replace(text, @"\s+", " "), Ordinal);
 
         // The server accepted its connection from another host, at its own 445, which its row and the host's say.
         Assert.Matches(@"(?m)^  Process +Connections to other hosts +Accepted here\r?$", text);

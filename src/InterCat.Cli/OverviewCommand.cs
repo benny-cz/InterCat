@@ -133,7 +133,8 @@ internal static class OverviewCommand
                 ConsoleUi.Note("Connections are each one's TCP connections made and accepted, as the capture saw them open, "
                     + "those accepted at the ports of its own they arrived at. "
                     + "icat processes <directory> --pid <PID> names who it connected to and who connected to it, and "
-                    + "--rank-by connections-made or connections-accepted lists the processes that did so most.");
+                    + "--rank-by connections-made or connections-accepted lists the processes that did so most. icat ports "
+                    + "<directory> lists the ports they accepted connections at, and who connected to each.");
             }
         }
 

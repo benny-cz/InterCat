@@ -16,7 +16,7 @@ namespace InterCat.Application;
 /// end, and so does one whose binding the evidence policy does not admit or whose two ends the capture could not tell
 /// apart from another connection's: the counts are of what the evidence says, never a guess.
 /// </remarks>
-public static class ConnectionOpens
+public static partial class ConnectionOpens
 {
     /// <summary>
     /// Each instance's connections made and accepted under <paramref name="policy"/>, of those whose first record, at

@@ -773,7 +773,8 @@ internal static class ProcessesCommand
                 : document.Port is { } unheld
                     ? string.Create(CultureInfo.InvariantCulture, $"  No instance accepted a connection at port {unheld}. icat hosts ")
                         + string.Create(CultureInfo.InvariantCulture, $"<directory> --address :{unheld} lists the processes whose ")
-                        + "connections ran to that port at another host."
+                        + "connections ran to that port at another host, and icat ports <directory> the ports its processes "
+                        + "accepted connections at."
                 : "  No process instance is in this session's evidence.");
         }
         else
@@ -1110,6 +1111,7 @@ internal static class ProcessesCommand
         ConsoleUi.Line("      address, the most bytes first, and its RPC call records, whose calls icat operations");
         ConsoleUi.Line("      lists with the process at each one's other end.");
         ConsoleUi.Line("      --port lists the instances that accepted connections at that port of their own, whoever");
-        ConsoleUi.Line("      connected - its own machine's processes or other hosts - the most connections first.");
+        ConsoleUi.Line("      connected - its own machine's processes or other hosts - the most connections first;");
+        ConsoleUi.Line("      icat ports lists every port they accepted at.");
     }
 }
