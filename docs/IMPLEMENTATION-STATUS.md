@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 685 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 686 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 686 — a host's own lines say which way its connections went (§6.3, R18):**
+  - Found by a window pass over the demo server after revision 685: a host that connected to the processes now reads
+    "2 TCP connections to api.exe · PID 5100 and 1 more", one connected both ways "with" them, and one they connected
+    to "from" them, in Other hosts' card and list and a host's own card.
+  - Debug and Release each ran 2,687 tests with revision 473's 93 failures and 4 skips, and nothing else failed; a
+    new test lists three hosts in Other hosts' list and card, and draws each on its own, one the processes connected
+    to, one that connected to them and one both ways, and the wording test says a host's connections from, to and
+    with its processes, beside UDP flows too. All nine mutations were caught: a host's connections never said to its
+    processes, said to them beside UDP flows or always from them, one transport's said from where to, with where
+    from or with where UDP, and the host's words, Other hosts' rows or a host's card left saying from.
 
 - **Revision 685 — other hosts' words say which way the connections went (§6.3, §6.8, R18):**
   - To the hosts where none was seen accepted, from them where every one was - the demo server's "2 TCP connections

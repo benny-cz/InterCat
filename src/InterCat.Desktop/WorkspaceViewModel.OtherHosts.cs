@@ -317,11 +317,12 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// What reached a host, as Other hosts' list and card say it: its transports and, where several drawn processes'
-    /// connections run to the other hosts, who reached this one - "5 UDP flows from msedge.exe · PID 3400 and 4 more".
+    /// connections run to the other hosts, who reached this one, which way as far as the capture saw - "5 UDP flows from
+    /// msedge.exe · PID 3400 and 4 more", "2 TCP connections to api.exe · PID 5100 and 1 more" where the host connected.
     /// </summary>
     private static string ReachedFrom(OtherHost host, bool several, IReadOnlyDictionary<string, string> reachedBy) =>
         several && reachedBy.TryGetValue(host.Address, out string? by) && by.Length > 0
-            ? HostLinkText.Reached(host, countsProcesses: false) + " from " + by
+            ? HostLinkText.Reached(host, countsProcesses: false) + HostLinkText.Toward(host) + by
             : HostLinkText.Reached(host, several);
 
     /// <summary>
@@ -442,7 +443,8 @@ public sealed partial class WorkspaceViewModel
         };
         foreach (IGrouping<Mechanism, HostLink> transport in links.GroupBy(link => link.Mechanism).OrderBy(group => group.Key))
         {
-            lines.Add(HostLinkText.Connections(transport.Key, transport.Sum(link => (long)link.Connections)) + " from "
+            lines.Add(HostLinkText.Connections(transport.Key, transport.Sum(link => (long)link.Connections))
+                + HostLinkText.Toward(transport.Key, [.. transport])
                 + CountText.Of(transport.Select(link => link.Process).Distinct().Count(), "process", "processes") + " · "
                 + CountText.Of(transport.Sum(link => link.Records), "record"));
         }

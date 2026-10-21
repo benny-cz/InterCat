@@ -597,6 +597,22 @@ public sealed class OtherHostsGraphTests
             HostLinkText.Reach(Mechanism.Udp, [flows, Link(two, Mechanism.Udp, 2, 2, 2)]));
         Assert.Equal("2 TCP connections from 1 host · 3 UDP flows with 1 host", HostLinkText.Line([flows, accepting]));
 
+        // A host's own words put the processes the other way about: its connections from them where it saw none accepted,
+        // to them where it saw every one accepted, and with them where it saw some, or saw them beside UDP flows.
+        Assert.Equal(" to ", HostLinkText.Toward(Mechanism.Tcp, [accepting, accepted]));
+        Assert.Equal(" with ", HostLinkText.Toward(Mechanism.Tcp, [mixed]));
+        Assert.Equal(" from ", HostLinkText.Toward(Mechanism.Tcp, [Link(one, Mechanism.Tcp, 3, 2, 3)]));
+        Assert.Equal(" from ", HostLinkText.Toward(Mechanism.Udp, [flows]));
+        Assert.Equal("2 TCP connections to 2 processes",
+            HostLinkText.Reached(new OtherHost("203.0.113.1", 2, 0, 2, 4) { Accepted = 2 }));
+        Assert.Equal("2 TCP connections with 2 processes",
+            HostLinkText.Reached(new OtherHost("203.0.113.1", 2, 0, 2, 4) { Connected = 1, Accepted = 1 }));
+        Assert.Equal("2 TCP connections and 1 UDP flow with 1 process",
+            HostLinkText.Reached(new OtherHost("203.0.113.1", 2, 1, 1, 5) { Accepted = 2 }));
+        Assert.Equal("2 TCP connections from 2 processes",
+            HostLinkText.Reached(new OtherHost("203.0.113.1", 2, 0, 2, 4) { Connected = 2 }));
+        Assert.Equal("2 TCP connections", HostLinkText.Reached(new OtherHost("203.0.113.1", 2, 0, 1, 4) { Accepted = 2 }, false));
+
         // A line says TCP before UDP, one process's with its hosts and several processes' by how many made them.
         Assert.Equal("3 TCP connections to 2 hosts · 5 UDP flows with 3 hosts",
             HostLinkText.Line([Link(one, Mechanism.Udp, 5, 3, 9), Link(one, Mechanism.Tcp, 3, 2, 4)]));

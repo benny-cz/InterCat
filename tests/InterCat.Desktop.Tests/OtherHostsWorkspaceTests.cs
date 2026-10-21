@@ -946,6 +946,42 @@ public sealed class OtherHostsWorkspaceTests
         Assert.DoesNotContain(service, workspace.SearchedGraphNodeKeys);
     });
 
+    [Fact(DisplayName = "§6.3: a host's line says which way its connections went: from the processes that made them, to those it connected to, with both")]
+    public void AHostsLineSaysWhichWayItsConnectionsWent() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, DirectedRows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        GraphDisplayNode hub = workspace.GraphDisplay.OtherHosts!;
+
+        // svchost.exe connected to 10.0.0.5 and accepted from it, and accepted from 10.0.0.6; browser.exe connected to
+        // 10.0.0.7. Other hosts' list and card say each host's connections with, to or from the processes at their ends.
+        workspace.SelectGraphNode(hub.Key);
+        Assert.Equal(
+            [
+                "10.0.0.5 | private · 2 TCP connections with svchost.exe · PID 300 · port 443 · 1 accepted here at port 3389 · 4 records",
+                "10.0.0.6 | private · 1 TCP connection to svchost.exe · PID 300 · accepted here at port 445 · 2 records",
+                "10.0.0.7 | private · 1 TCP connection from browser.exe · PID 400 · port 443 · 2 records",
+            ],
+            workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
+        Assert.Equal(
+            [
+                "  10.0.0.5 (private) · 2 TCP connections with svchost.exe · PID 300 · 1 accepted here at port 3389 · 4 records",
+                "  10.0.0.6 (private) · 1 TCP connection to svchost.exe · PID 300 · accepted here at port 445 · 2 records",
+                "  10.0.0.7 (private) · 1 TCP connection from browser.exe · PID 400 · 2 records",
+            ],
+            workspace.DescribeGraphHover(hub.Key)!.Lines.Where(line => line.StartsWith("  10.0.0.", StringComparison.Ordinal)));
+
+        // Drawn on its own, a host's card says its connections so too.
+        Assert.True(workspace.OpenGraphNode(hub.Key));
+        await workspace.LayoutReady;
+        string Transport(string address) => workspace.DescribeGraphHover(GraphProjection.HostKey(address))!.Lines[1];
+        Assert.Equal("2 TCP connections with 1 process · 4 records", Transport("10.0.0.5"));
+        Assert.Equal("1 TCP connection to 1 process · 2 records", Transport("10.0.0.6"));
+        Assert.Equal("1 TCP connection from 1 process · 2 records", Transport("10.0.0.7"));
+    });
+
     [Fact(DisplayName = "§6.3: an edge to other hosts says who opened its connections - its process by a connect, the hosts by one it accepted - as each host's edge drawn on its own does")]
     public void AnEdgeToOtherHostsSaysWhoOpenedItsConnections() => SingleThreadedContext.Run(async () =>
     {
@@ -1014,6 +1050,20 @@ public sealed class OtherHostsWorkspaceTests
             with { SessionRelativeTicks = 400 },
         Transfer(410, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 300, 7).Between("192.168.1.10:445", "10.0.0.6:50001")
             with { SessionRelativeTicks = 410 },
+    ];
+
+    /// <summary>
+    /// svchost.exe's connection to 10.0.0.5's port 443 and one it accepted from there at its own 3389, and one it accepted
+    /// from 10.0.0.6 at its 445; and browser.exe's connection to 10.0.0.7's 443. Each holds its open and a transfer.
+    /// </summary>
+    private static ObservationRowV1[] DirectedRows() =>
+    [
+        .. AcceptingRows(),
+        Lifecycle(2, ObservationKind.Create, 400, 8) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 110 },
+        Transfer(500, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 400, 9).Between("192.168.1.10:52001", "10.0.0.7:443")
+            with { SessionRelativeTicks = 500 },
+        Transfer(510, ObservationKind.Send, AccountingSide.SendSide, 100, 400, 10).Between("192.168.1.10:52001", "10.0.0.7:443")
+            with { SessionRelativeTicks = 510 },
     ];
 
     /// <summary>

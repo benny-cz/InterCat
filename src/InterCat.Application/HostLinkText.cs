@@ -103,9 +103,10 @@ public static class HostLinkText
     }
 
     /// <summary>
-    /// What reached one other host, transport by transport, and from how many processes: "12 TCP connections from 2
-    /// processes", "2 TCP connections and 3 UDP flows from 1 process". Where every host named is one process's,
-    /// <paramref name="countsProcesses"/> false leaves the process out: "2 TCP connections and 3 UDP flows".
+    /// What reached one other host, transport by transport, and from how many processes, which way as far as the capture
+    /// saw (<see cref="Toward"/>): "12 TCP connections from 2 processes", "2 TCP connections and 3 UDP flows from 1
+    /// process", "2 TCP connections to 2 processes" where the host connected to them. Where every host named is one
+    /// process's, <paramref name="countsProcesses"/> false leaves the process out: "2 TCP connections and 3 UDP flows".
     /// </summary>
     public static string Reached(OtherHost host, bool countsProcesses = true)
     {
@@ -116,8 +117,34 @@ public static class HostLinkText
             host.UdpFlows > 0 ? Connections(Mechanism.Udp, host.UdpFlows) : null,
         }.OfType<string>()];
         return string.Join(" and ", transports)
-            + (countsProcesses ? " from " + CountText.Of(host.Processes, "process", "processes") : string.Empty);
+            + (countsProcesses ? Toward(host) + CountText.Of(host.Processes, "process", "processes") : string.Empty);
     }
+
+    /// <summary>
+    /// The word that puts a host's connections between it and the processes at their other end, as far as the capture saw
+    /// them open: " from " the processes where it saw none accepted from the host - they made them, as most are, those
+    /// seen opening neither way among them - " to " them where it saw every one accepted, the host's own connections, and
+    /// " with " them where it saw some, or saw some of them accepted beside UDP flows, which nothing opens.
+    /// </summary>
+    public static string Toward(OtherHost host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        return host.Accepted == 0 ? " from "
+            : host.Accepted == host.TcpConnections && host.UdpFlows == 0 ? " to "
+            : " with ";
+    }
+
+    /// <summary>
+    /// The same of one transport's connections to a host, several processes' links to it: " from " them, " to " them or
+    /// " with " them; UDP flows are from them.
+    /// </summary>
+    public static string Toward(Mechanism mechanism, IReadOnlyCollection<HostLink> links) => WayOf(mechanism, links) switch
+    {
+        Way.To => " from ",
+        Way.From => " to ",
+        _ when mechanism == Mechanism.Udp => " from ",
+        _ => " with ",
+    };
 
     /// <summary>
     /// The connections to a host the processes accepted from it, with their own ports the connections arrived at:
