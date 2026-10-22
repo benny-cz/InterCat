@@ -460,6 +460,12 @@ grouped by process or filtered by a process, the binding rule, when records' oth
 and on the logical-operations basis, the operation rule and the binding rule beneath it (I16). It is computed under an evidence lease and from the manifest that lease
 holds, so neither a retention nor a later commit changes what it reads (I18).
 
+A caller that holds a lease of its own may ask over the generation it holds rather than the current one (revision
+730). Late evidence a newer generation publishes - the other end of a connection recorded a chunk later - changes
+the current answer and never the held one, which answers as it did under the same identity, its records keeping
+their identities, segments and rows (I17). A lease that has let go, by release or by its term, is refused, since
+retention may already have removed what it named; so is a lease of another session.
+
 A generation whose segments hold two derivations of one capture is refused: they describe the same evidence
 twice, and a total over both would count it twice (I2, R20). Segments whose clock differs from the clock the
 generation's journal describes are refused rather than interpreted (I8).

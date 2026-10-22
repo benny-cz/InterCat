@@ -2271,13 +2271,13 @@
         "S1: icat follow names, in each generation it mirrors after its first, a checkpoint of the generation before it",
         "S1: no checkpoint is staged but of a generation before the one asked for, nor of one that cannot be read",
         "S1: nothing is staged for a session with no generation, and a live checkpoint that is not one is set aside, the answer the same"
+      ],
+      "I17": [
+        "I17: an answer over a held generation is refused once its lease lets go, and for another session's lease",
+        "I17: late evidence publishes a new revision, and a generation held from before answers as it did, under the same identity"
       ]
     },
     "uncovered": {
-      "I17": {
-        "reason": "Late-evidence revisions need the storage generations of IC-016.",
-        "plannedBy": "IC-016"
-      },
       "P12": {
         "reason": "Callback-path prohibitions are asserted against the journal of IC-011.",
         "plannedBy": "IC-011"

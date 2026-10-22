@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 729 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 730 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 730 — I17: late evidence leaves an earlier generation's answer as it was (§7.4, §13.2, §24):**
+  - A metric can be answered over the generation a caller's lease holds. A test publishes a connection's client side,
+    then its server side a generation later: the newer generation answers with the joined records under a new
+    identity, while the held one answers exactly as before, its records keeping their identities and rows and its
+    files their bytes. A released, expired or foreign lease is refused. The contract ledger no longer lists I17 as
+    uncovered.
+  - Release ran 2,927 tests with revision 473's 93 failures and 4 skips, and failed nothing else. Debug failed one
+    more: "R11: writing a record's envelope allocates only the envelope" measured 382.75 bytes a call for an RPC
+    call's 264. It passed alone five times, in its assembly six times and in three concurrent runs of it six more;
+    it measures one thread's rents from the process-wide envelope pool, which other tests in its assembly hold
+    thousands of buffers from at once, so it now runs with the pool to itself, and the journal tests then ran in
+    Debug and Release with only their 3 known failures. All four mutations were caught: a released, an expired and
+    another session's lease answered over, and a held generation answered from the current one.
 
 - **Revision 729 — ADR-057: a view reads one generation and asks only for its latest request (§19.3, §6.2):**
   - The record states how the window schedules its questions - a latest-request slot per kind, late answers dropped, a

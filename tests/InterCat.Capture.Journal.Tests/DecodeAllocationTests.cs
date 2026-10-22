@@ -8,6 +8,17 @@ using Xunit;
 namespace InterCat.Capture.Journal.Tests;
 
 /// <summary>
+/// An envelope's buffers come from one pool the whole process shares, and a test that writes or replays a batch holds
+/// thousands of them at once. While it does, a size's bucket can be empty, and the next rent allocates an array that is
+/// that test's doing, not the record's. What one record allocates is therefore measured with the pool to itself.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class SharedEnvelopePool
+{
+    public const string Name = "Envelope pool";
+}
+
+/// <summary>
 /// R11's admission and decode loops, as each record of a journal passes them: an admitted record is written as its
 /// envelope, and an envelope is resolved against its retained plan, read back and derived. Each step allocates what it
 /// hands on - the envelope, the row, the row's name, its field rows - and nothing besides.
@@ -17,6 +28,7 @@ namespace InterCat.Capture.Journal.Tests;
 /// a collection or the runtime disturbs is not the step's own, and an object of the smallest size, 24 bytes, allocated
 /// on one call in 64 still shows. What a step should allocate is measured the same way, as copies of what it returned.
 /// </remarks>
+[Collection(SharedEnvelopePool.Name)]
 public sealed class DecodeAllocationTests
 {
     [Fact(DisplayName = "R11: resolving and reading a record allocate nothing, and deriving it allocates only its rows")]

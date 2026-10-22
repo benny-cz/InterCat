@@ -843,6 +843,53 @@ public static partial class SessionMetrics
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
+        (MetricRequest materialized, MetricEvaluationOptions bounds) = Checked(request, options);
+        if (store.Current is null)
+        {
+            throw new NoSessionException();
+        }
+
+        // The generation and every dependency it names are held for the whole answer, and the manifest read is
+        // the one the lease holds, so neither retention nor a later commit changes what is being read (I18).
+        using EvidenceLease lease = store.AcquireLease();
+        return AnswerOver(store, lease.Manifest, materialized, bounds, cancellationToken);
+    }
+
+    /// <summary>
+    /// Answers a request against the generation <paramref name="lease"/> holds, which need not be the store's current one.
+    /// Whatever has been published since - late evidence that completes a relation, a newer chunk - the held generation
+    /// answers as it did, under the same identity, while the current one answers the newer revision (I17).
+    /// </summary>
+    public static MetricResult Evaluate(
+        SessionStore store,
+        EvidenceLease lease,
+        MetricRequest request,
+        MetricEvaluationOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(lease);
+        (MetricRequest materialized, MetricEvaluationOptions bounds) = Checked(request, options);
+        if (lease.Manifest.SessionId != store.SessionId)
+        {
+            throw new ArgumentException("This lease holds a generation of another session.", nameof(lease));
+        }
+
+        // A lease that has let go protects nothing: retention may already have removed what its generation named.
+        if (lease.IsReleased || lease.HasExpiredAt(DateTimeOffset.UtcNow))
+        {
+            throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
+                $"The lease on generation {lease.Generation} no longer holds it, so it is not read. Take a new lease."));
+        }
+
+        return AnswerOver(store, lease.Manifest, materialized, bounds, cancellationToken);
+    }
+
+    /// <summary>The request in its canonical form and the bounds it is answered within, once both are checked.</summary>
+    private static (MetricRequest Materialized, MetricEvaluationOptions Bounds) Checked(
+        MetricRequest request,
+        MetricEvaluationOptions? options)
+    {
         ArgumentNullException.ThrowIfNull(request);
         MetricEvaluationOptions bounds = options ?? MetricEvaluationOptions.Default;
         if (bounds.EvidenceLimit is < 0 or > SegmentMeasurement.MaximumEvidenceRows)
@@ -868,15 +915,17 @@ public static partial class SessionMetrics
                 nameof(options));
         }
 
-        if (store.Current is null)
-        {
-            throw new NoSessionException();
-        }
+        return (materialized, bounds);
+    }
 
-        // The generation and every dependency it names are held for the whole answer, and the manifest read is
-        // the one the lease holds, so neither retention nor a later commit changes what is being read (I18).
-        using EvidenceLease lease = store.AcquireLease();
-        SessionManifestV1 manifest = lease.Manifest;
+    /// <summary>Answers a checked request over one held generation.</summary>
+    private static MetricResult AnswerOver(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        MetricRequest materialized,
+        MetricEvaluationOptions bounds,
+        CancellationToken cancellationToken)
+    {
         List<(string Name, SegmentReaderV1 Reader)>? segments = OpenSegments(store, manifest, cancellationToken);
         if (segments is null)
         {
