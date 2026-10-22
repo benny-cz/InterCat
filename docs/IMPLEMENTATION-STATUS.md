@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 712 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 713 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 713 — a live capture rides out a moment a file cannot be read or written (R10, ADR-027):**
+  - A follow step that could not read or write a file - another command publishing into the session, a program holding
+    a file just written - ended the window's capture as interrupted and icat capture with an error, as did a view of a
+    published generation that could not be read just now. The follows of a capture still recording now try the pass
+    again after pauses of 0.25 to 2 s, ending the capture only when the failure outlasts them, saying so; an
+    unreadable view is said on the capture card, and the capture goes on. Still open: a session opened while one of
+    its files is held is read at its last-known-good generation, or refused, as if the file were damaged.
+  - Debug and Release each ran 2,858 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    ten mutations were caught, one once its test measured the pauses: a follow's failed pass not tried again, tried
+    without end, tried once fewer, tried without a pause, or ended without saying it failed each time; a failure not
+    told before its pause; a failure of the evidence itself tried again; the window's live step given no pauses; and
+    a view that cannot be read ending the capture, or said as a bounded overview.
 
 - **Revision 712 — a coverage pass over the journal and follow code; a follow's failed compaction no longer ends it (R10, ADR-026):**
   - A follow's compaction that fails - as on a nearly full disk - ended the follow: the window stopped the capture as

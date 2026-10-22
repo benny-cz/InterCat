@@ -595,9 +595,15 @@ public static class DesktopCaptureRunner
                 }
                 else if (step.OverviewProblem is { } problem)
                 {
-                    report(new(CaptureUiPhase.Recording, "Capture continues; overview is bounded",
-                        problem + " The session is kept and can be inspected headlessly.",
-                        summary, sessionPath));
+                    report(step.OverviewUnread
+                        ? new(stopSent ? CaptureUiPhase.Finishing : CaptureUiPhase.Recording,
+                            "Capture continues; its newest view could not be read",
+                            problem + " " + Published(generation, follow.DerivedChunks) + " The view shown stays until a "
+                                + "later generation's is read; the session is kept.",
+                            summary, sessionPath)
+                        : new(CaptureUiPhase.Recording, "Capture continues; overview is bounded",
+                            problem + " The session is kept and can be inspected headlessly.",
+                            summary, sessionPath));
                 }
             }
         }

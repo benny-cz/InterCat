@@ -350,7 +350,7 @@ internal static class CaptureCommand
         CancellationToken cancellationToken)
     {
         FollowStep? last = null;
-        LiveSessionFollower? follower = null;
+        LiveFollow? follower = null;
         SessionStore? derived = null;
         bool stopRequested = false;
         bool settled = false;
@@ -380,7 +380,14 @@ internal static class CaptureCommand
                 {
                     Directory.CreateDirectory(sessionPath);
                     derived = SessionStore.Open(LocalOwnedDirectory.Open(sessionPath), source.SessionId, source.SourceIdentity);
-                    follower = LiveSessionFollower.Open(evidence, derived, indexer: LiveCheckpoints.Instance, cancellationToken: work);
+                    SessionStore into = derived;
+
+                    // A moment when a file cannot be read or written - another program holding one just written - is
+                    // ridden out rather than ending the capture; each is said, and one that outlasts the follow's pauses
+                    // ends it as before.
+                    follower = new LiveFollow(
+                        token => LiveSessionFollower.Open(evidence, into, indexer: LiveCheckpoints.Instance, cancellationToken: token),
+                        failed: exception => ConsoleUi.Warn("Deriving paused: " + exception.Message + " Trying again."));
                 }
             }
 

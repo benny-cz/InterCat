@@ -127,6 +127,83 @@ public sealed class LiveDerivationTests
         Assert.Equal(current.Generation, step.Overview!.Generation);
     });
 
+    [Fact(DisplayName = "§12: a live generation whose view cannot be read just now says why, and the capture goes on to the next one's")]
+    public void AnUnreadableViewLeavesTheCaptureGoing() => SingleThreadedContext.Run(async () =>
+    {
+        // A capture still recording, as far as it published.
+        using var evidence = new TemporaryDirectory();
+        using var user = new TemporarySession();
+        _ = await EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6, 7, 8], bursts: [1, 2, 4, 6]);
+        string pointer = Path.Combine(evidence.Path, SessionPointerV1.FileName);
+        string last = File.ReadAllText(pointer);
+        _ = EvidenceRecordings.RewindToUnfinalized(evidence.Path);
+
+        // Another program takes the newest segment just as the view reads it.
+        FileStream? held = null;
+        LiveDerivation? live = null;
+        using var derivation = live = new LiveDerivation(
+            evidence.Path, Path.Combine(user.Path, "explore"), Stopwatch.StartNew(), new SessionStoreRegistry(capacity: 4),
+            policy: () =>
+            {
+                SessionStore store = live!.Store!;
+                store.ReleaseSegmentReaders();
+                held ??= new FileStream(
+                    Path.Combine(store.Root.Path, SessionSegments.Names(store.Current!)[^1]),
+                    FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                return EvidencePolicy.IncludeCorrelated;
+            });
+        try
+        {
+            LiveDerivationStep step = await derivation.StepAsync(CancellationToken.None);
+            Assert.NotNull(held);
+            Assert.Equal((false, derivation.Store!.Current!.Generation, (SessionOverviewBundle?)null, true),
+                (step.Follow!.Finished, step.Generation, step.Overview, step.OverviewUnread));
+            Assert.False(string.IsNullOrWhiteSpace(step.OverviewProblem));
+        }
+        finally
+        {
+            held?.Dispose();
+        }
+
+        // The capture goes on: its last publication is followed, and that generation's view read.
+        File.WriteAllText(pointer, last);
+        LiveDerivationStep next = await derivation.StepAsync(CancellationToken.None);
+        Assert.True(next.Follow!.Finished);
+        Assert.Equal((derivation.Store!.Current!.Generation, false, (string?)null),
+            (next.Overview!.Generation, next.OverviewUnread, next.OverviewProblem));
+    });
+
+    [Fact(DisplayName = "§9: a live step rides out another command publishing into the session for a moment, and the capture goes on")]
+    public void ALiveStepRidesOutAnotherPublisher() => SingleThreadedContext.Run(async () =>
+    {
+        // A capture still recording, as far as it published, followed so far.
+        using var evidence = new TemporaryDirectory();
+        using var user = new TemporarySession();
+        _ = await EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6, 7, 8], bursts: [1, 2, 4, 6]);
+        string pointer = Path.Combine(evidence.Path, SessionPointerV1.FileName);
+        string last = File.ReadAllText(pointer);
+        _ = EvidenceRecordings.RewindToUnfinalized(evidence.Path);
+        string sessionPath = Path.Combine(user.Path, "explore");
+        using var derivation = new LiveDerivation(evidence.Path, sessionPath, Stopwatch.StartNew(), new SessionStoreRegistry(capacity: 4));
+        Assert.False((await derivation.StepAsync(CancellationToken.None)).Follow!.Finished);
+
+        // The capture publishes its last chunk while another command - a pin placed, a release - publishes into the
+        // session for a moment, holding its publication lock for less than the step's first pause.
+        File.WriteAllText(pointer, last);
+        var held = new FileStream(Path.Combine(sessionPath, "session-publication.lock"), FileMode.OpenOrCreate,
+            FileAccess.ReadWrite, FileShare.None);
+        Task release = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            await held.DisposeAsync();
+        });
+        LiveDerivationStep step = await derivation.StepAsync(CancellationToken.None);
+        await release;
+        Assert.True(step.Follow!.Finished);
+        Assert.Equal(8L, step.Follow.DerivedRecords);
+        Assert.NotNull(step.Overview);
+    });
+
     [Fact(DisplayName = "I14: a finished live follow publishes the session's derivation checkpoint and shows it as the next generation")]
     public void AFinishedFollowPublishesTheCheckpoint() => SingleThreadedContext.Run(async () =>
     {

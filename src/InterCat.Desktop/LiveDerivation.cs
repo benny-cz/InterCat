@@ -10,7 +10,10 @@ namespace InterCat.Desktop;
 /// <param name="Follow">The follow step, or null while the evidence session has published nothing to follow.</param>
 /// <param name="Generation">The derived generation this step saw first, or null when it saw no new one.</param>
 /// <param name="GenerationAt">When, from the user's start action, the step saw that generation.</param>
-/// <param name="OverviewProblem">Why the new generation has no overview, when projection refused it.</param>
+/// <param name="OverviewProblem">
+/// Why the new generation has no overview: projection refused it, or, when <paramref name="OverviewUnread"/>, could not read
+/// it just now - the capture goes on, and the next generation is projected anew.
+/// </param>
 /// <param name="Rolling">
 /// What the session's rolling retention did after this step's mirrors: a release, a pin holding it past its window, or why
 /// the capture must stop. Null when the session keeps every record or this step mirrored nothing.
@@ -23,7 +26,8 @@ internal sealed record LiveDerivationStep(
     TimeSpan Derivation,
     TimeSpan Projection,
     string? OverviewProblem,
-    RollingStep? Rolling = null);
+    RollingStep? Rolling = null,
+    bool OverviewUnread = false);
 
 /// <summary>
 /// Follows one live capture's published evidence into the user's own session and projects each new generation
@@ -50,7 +54,7 @@ internal sealed class LiveDerivation(
     RollingRetention? rolling = null) : IDisposable
 {
     private readonly CancellationTokenSource halt = new();
-    private LiveSessionFollower? follower;
+    private LiveFollow? follower;
     private SessionStore? derived;
     private long shownGeneration = -1;
 
@@ -118,7 +122,9 @@ internal sealed class LiveDerivation(
             // One store per session in this process: the window's queries read through the store that publishes, so
             // the session's readers are cached, and each new file hashed, once rather than once per store.
             (stores ?? SharedSessionStores.Registry).Adopt(sessionPath, derived);
-            follower = LiveSessionFollower.Open(evidence, derived, indexer: LiveCheckpoints.Instance, cancellationToken: cancellationToken);
+            SessionStore into = derived;
+            follower = new LiveFollow(token => LiveSessionFollower.Open(
+                evidence, into, indexer: LiveCheckpoints.Instance, cancellationToken: token));
         }
 
         long followStarted = Stopwatch.GetTimestamp();
@@ -156,6 +162,13 @@ internal sealed class LiveDerivation(
         catch (InvalidOperationException exception)
         {
             return new(step, current.Generation, generationAt, null, derivation, TimeSpan.Zero, exception.Message, kept);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            // The follow published the generation; only its view could not be read just now. The capture goes on, and the
+            // last view stays until a later generation's is read.
+            return new(step, current.Generation, generationAt, null, derivation, TimeSpan.Zero, exception.Message, kept,
+                OverviewUnread: true);
         }
     }
 }

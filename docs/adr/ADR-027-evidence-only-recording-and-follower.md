@@ -60,6 +60,11 @@ ordinary-integrity process can write derived segments there. §9 draws the deriv
   follow-along needs it somewhere `InterCat.Application` can reach.
 - Following across a release of the evidence's own chunks is refused rather than guessed. A broker that retains
   evidence while a viewer follows must coordinate the two.
+- A follower moves on only past a chunk it published, so a pass that fails part way can be tried again as it was. Since
+  plan revision 713 the follows of a capture still recording - the window's and `icat capture`'s - ride out a failure
+  to read or write a file, such as another command publishing into the session or a program holding a file just
+  written, by trying the pass again after pauses of 0.25, 0.5, 1 and 2 s; one that outlasts them ends the capture as
+  before, saying so. A view of a published generation that cannot be read just now no longer ends it either.
 - What remains of the broker binding:
   - a module the broker may reference, holding the evidence-only recording path; the dependency map keeps the broker
     from `Capture.Journal`, which also holds the ETL import parser;
