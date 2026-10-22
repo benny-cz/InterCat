@@ -1443,6 +1443,7 @@
       ],
       "R14": [
         "R14: a high-contrast mode holds every ink to 7 to 1, every fill to 4.5 to 1 and its divider to 3 to 1 on every surface",
+        "R14: a relation weaker than correlated - candidate, unresolved or conflicting - is dotted and ringed, so none reads as asserted",
         "R14: adjacent families stay separable under every simulated vision model, and any two in normal vision",
         "R14: every fill clears 3 to 1 against the ground it is drawn on",
         "R14: every ink token clears 4.5 to 1 against every surface it can land on",

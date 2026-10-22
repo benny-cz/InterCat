@@ -658,9 +658,13 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>The evidence key's strips are cached under keys no relationship uses.</summary>
     private static readonly string[] SampleKeys = [.. Enumerable.Range(0, 8).Select(strength => $"\u0000sample{strength}")];
 
-    /// <summary>A candidate or unresolved relation also carries an open ring at its middle, so it is never read as asserted.</summary>
+    /// <summary>
+    /// A relation weaker than correlated - a candidate, an unresolved one, or one whose evidence conflicts - also carries an
+    /// open ring at its middle, so none is read as asserted. A conflicting one is drawn only when a policy admits every
+    /// strength, and it is no more asserted than a candidate (ADR-055).
+    /// </summary>
     internal static bool RingsMiddle(RelationStrength strength) =>
-        strength is RelationStrength.Candidate or RelationStrength.Unresolved;
+        strength is RelationStrength.Candidate or RelationStrength.Unresolved or RelationStrength.Conflicting;
 
     /// <summary>
     /// One edge of <paramref name="strength"/> across <paramref name="bounds"/>, as the graph draws it but in body ink:
