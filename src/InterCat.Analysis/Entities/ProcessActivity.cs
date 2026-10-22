@@ -34,7 +34,7 @@ public sealed partial class ProcessActivityIndex
     private readonly HashSet<StoreDependency>? read;
 
     /// <summary>The records binding to no instance, with the transport bytes they measured (revision 737).</summary>
-    private readonly OwnerTally unowned;
+    private OwnerTally unowned;
 
     private ProcessActivityIndex(
         ProcessInstanceIndex processes,
@@ -59,7 +59,7 @@ public sealed partial class ProcessActivityIndex
     /// (revision 737): wherever the records were counted, and not where the counts were read back from a checkpoint, which
     /// keeps no such counts.
     /// </summary>
-    public bool OwnersKept { get; }
+    public bool OwnersKept { get; private set; }
 
     /// <summary>
     /// Whether a byte view refuses a record counted here: one naming no accounting side, one §23 does not define, no unit
@@ -386,7 +386,7 @@ public sealed partial class ProcessActivityIndex
 
         public Dictionary<Mechanism, long> Bound { get; private init; } = [];
 
-        public OwnerTally Owned { get; private init; } = new();
+        public OwnerTally Owned { get; set; } = new();
 
         /// <summary>A copy sharing nothing, its owner at the position <paramref name="mapped"/> gives it; null where it has none.</summary>
         public InstanceActivity? Copy(IReadOnlyDictionary<int, int>? mapped) =>

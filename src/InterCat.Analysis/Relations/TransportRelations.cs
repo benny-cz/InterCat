@@ -246,7 +246,7 @@ public sealed partial class TransportRelationIndex
     /// they measured (revision 737): wherever its records were read, and not where they were read back from a checkpoint,
     /// which keeps no such counts.
     /// </summary>
-    public bool OwnersKept { get; }
+    public bool OwnersKept { get; private set; }
 
     /// <summary>
     /// Whether its holders and owners are positions in exactly <paramref name="index"/>; relations made under another

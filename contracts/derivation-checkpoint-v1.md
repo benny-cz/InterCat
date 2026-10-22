@@ -18,7 +18,10 @@ earlier format said only whether a cut closed an incarnation, and one holding a 
 (§4). Format 1.4 (plan revision 736) adds, after every other section, what each incarnation's records sent and
 received (relations-v1 §5b), so a connection's summary over the whole session reads no segment. A checkpoint of an
 earlier format is read without them, its connections' summaries reading their rows, and a writer that finds one
-replaces it (§4).
+replaces it (§4). Format 1.5 (plan revision 738) keeps, after the transfers, every record by the owner it binds to -
+each incarnation's and each instance's (relations-v1 §5, entities-v1 §4a) - so a generation opened from the
+checkpoint ranks by bytes and by peers without reading its rows. An earlier format is read without them, and replaced
+the same way.
 
 Since plan revision 710 a live follow names a checkpoint in every generation it publishes after its first: the state of
 the generation that one extends, which a reader of the new generation extends over the chunk it adds (§2, §4's prefix).
@@ -47,7 +50,9 @@ set**. That state is what they need to answer any query and to extend to further
     - the weakest binding;
     - the first and last reading, and the first canonical position;
     - since format 1.4, its sends, the bytes they state and how many state none, the same of its receives, and
-      whether either sum passed what one holds.
+      whether either sum passed what one holds;
+    - since format 1.5, its records by the owner each binds to and how strongly, or none, with the transport bytes
+      they measured, and the PIDs they name when they name more than one.
 
   It also holds how many related records of each mechanism name no end. Pairing and channel numbers are recomputed
   from these (relations-v1 §3a, §5a).
@@ -55,7 +60,8 @@ set**. That state is what they need to answer any query and to extend to further
   reading of those records and how many of them bind to no instance; and for each instance and mechanism, its
   lifecycle records, which bind directly, and its other records, which bind as strongly as the instance's place among
   its PID's instances allows (entities-v1 §4). What an evidence policy admits of each instance is a function of these,
-  and the PID spans are what an extension checks (§4).
+  and the PID spans are what an extension checks (§4). Since format 1.5, every record by the instance it binds to and
+  how strongly, or none, with the transport bytes it measured (entities-v1 §4a).
 - **Identity.** The session, the generation the state was derived at, the clock and host, the capture and normalizer
   derivation every covered segment belongs to, and the rule identities: binding and relation in the header, and the
   count rule at the start of the activity.
@@ -129,10 +135,11 @@ byte count, at most 1 MiB, followed by the bytes. `guid` is 16 bytes in .NET's `
 most 512 MiB.
 
 ```text
-checkpoint  = header covered instances relations activity transfers
+checkpoint  = header covered instances relations activity transfers owners
                                                     ; activity from minor 1: a minor-0 one ends at relations;
-                                                    ; transfers from minor 4: an earlier one ends at activity
-header      = "ICATDCKP" (8 ASCII bytes), major u16 = 1, minor u16 = 4,
+                                                    ; transfers from minor 4: an earlier one ends at activity;
+                                                    ; owners from minor 5: an earlier one ends at transfers
+header      = "ICATDCKP" (8 ASCII bytes), major u16 = 1, minor u16 = 5,
               bindingRule str8, relationRule str8,
               session guid, derivedGeneration i64 (>= 1),
               clock guid, host guid,
@@ -178,12 +185,32 @@ transfer    = refused u8 (0, 1), sends i64, sentBytes i64, unsizedSends i64,
               receives i64, receivedBytes i64, unsizedReceives i64
                                                     ; 0 <= unsized <= its sends or receives; sends + receives
                                                     ; <= the incarnation's records; both bytes 0 when refused
+owners      = held* ownedInstances length u32       ; held: one per incarnation holding records, in the order
+                                                    ; relations holds them; length: the bytes before it in owners
+held        = count u32, pid i32*, byOwner          ; the PIDs ascending, only of an incarnation naming two or
+                                                    ; more; byOwner: exactly the incarnation's records
+ownedInstances = count u32, (instance i32, byOwner)*, byOwner
+                                                    ; strictly ascending by instance, each naming only itself;
+                                                    ; the last: the records binding to no instance, naming none
+byOwner     = refused u8 (0, 1), count u32, owner*, unownedRecords i64 (>= 0), hasBytes u8 (0, 1), [ownedBytes]
+                                                    ; refused: a byte view refuses a record of them
+owner       = instance i32, strength u8 (EN-RelationStrength), records i64 (>= 0), ownedBytes
+                                                    ; strictly ascending by (instance, strength)
+ownedBytes  = refused u8 (0, 1), (total i64, measured i64, unmeasured i64) * 3
+                                                    ; sent, received and any other side; none below 0;
+                                                    ; the totals 0 when refused
 ```
 
 The transfers come last and end with their count, so a minor-3 checkpoint is a minor-4 one without them. A writer
 whose relations count no transfers, because they were read from an earlier checkpoint, writes minor 3. A transfer is
 refused when its sent or received bytes passed what a sum holds: its counts are kept and its bytes are not, and the
 connection's summary reads its rows, which say why (metrics-v1).
+
+The records by owner come last and end with how many bytes they take, so a minor-4 checkpoint is a minor-5 one
+without them. A writer whose derivations keep no records by owner, because they were read from an earlier
+checkpoint, writes minor 4. The records are all but a process's or a thread's lifecycle records; the bytes are every
+record's, as a byte view measures them. Everything is written in canonical order - PIDs and owners ascending - so a
+derivation made at once and one extended write the same bytes (§1).
 
 An instance is named by its position in the rebuilt instances, which are ordered by PID and lifecycle epoch
 (entities-v1 §3), so the counts are as canonical as the instances.
@@ -198,7 +225,7 @@ A reader refuses a checkpoint whose bytes do not hash to the digest its generati
 `Index` before a viewer's first view, because this reader checks what it interprets (store-v1 §6). It then refuses the
 checkpoint when:
 
-- the magic is wrong, the major version is not 1, or the minor is above 4: a checkpoint is rebuildable, so there is no
+- the magic is wrong, the major version is not 1, or the minor is above 5: a checkpoint is rebuildable, so there is no
   partial read of a newer one. A minor-0 checkpoint of this build's rules would be read without counts: a reader
   counts them from every segment, and a writer that finds one replaces it (§2's publishers, `icat checkpoint`), since a
   reopen would otherwise read every segment. Every one revisions 162 to 165 wrote is under `process-binding-v2`,
@@ -231,7 +258,11 @@ checkpoint when:
   - a tally names no rebuilt instance or an undefined mechanism, or a PID's first reading is after its last;
   - a transfer is negative, says more of its sends or receives stated no size than there are, counts more sends and
     receives than its incarnation's records, or states bytes beside a refused sum; or there is not one transfer per
-    incarnation holding records.
+    incarnation holding records;
+  - an owner names no instance or an undefined strength, counts fewer records than none, or is out of order; an
+    incarnation's records by owner are not its records, or its PIDs contradict whether its records name two; an
+    instance's name another instance, or the records binding to none name one; transport bytes are below none or
+    stated beside a refused sum; or the records by owner do not take the bytes they say they take.
 
 A refused checkpoint is not used, and the overview says why in one caveat, because a
 slower open should be explainable. The answer is the same.
@@ -258,10 +289,11 @@ Relations read from a checkpoint before format 1.4 count no incarnation's transf
 what the covered segments' records sent is not in it: a connection's summary over the whole session then reads its
 rows. §2's publishers and `icat checkpoint` replace such a checkpoint with one that counts them.
 
-No format keeps the counts of records by owner (`relations-v1` §5, `entities-v1` §4a, revision 737): derivations
-read back from a checkpoint keep none, nor once extended, and a whole-session byte or peer ranking of their
-generation reads its rows. Since that revision whether a segment was read is told by the identity its generation
-records for it, so an extension opens only the segments it adds.
+Since format 1.5 the checkpoint keeps every record by owner (`relations-v1` §5, `entities-v1` §4a): derivations
+read back from it, and extended, rank their generation by bytes and by peers from them. Derivations read back from
+an earlier format keep none, nor once extended, and a whole-session byte or peer ranking of their generation reads
+its rows; §2's publishers and `icat checkpoint` replace such a checkpoint. Since revision 737 whether a segment was
+read is told by the identity its generation records for it, so an extension opens only the segments it adds.
 
 ## 5. What is not defined at this version
 

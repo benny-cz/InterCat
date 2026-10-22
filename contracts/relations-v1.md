@@ -143,7 +143,8 @@ an incarnation naming two among them. With the activity's own counts (`entities-
 by process and by each end of every channel, and how its records bind at their two ends, are then sums over
 incarnations and instances: a live generation's whole-session byte and peer rankings open no segment for them, and
 give exactly what a read of every segment gives. A record a byte view refuses leaves the bytes to that read, which
-says why. A checkpoint keeps none of these counts, so relations read back from one, extended or not, read the rows.
+says why. A checkpoint keeps these counts since format 1.5 (revision 738); relations read back from an earlier one
+keep none, extended or not, and read the rows.
 
 ## 5a. Channels
 

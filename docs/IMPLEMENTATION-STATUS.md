@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 737 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 738 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 738 — S3, P25: the derivation checkpoint keeps records by owner (derivation-checkpoint-v1 format 1.5):**
+  - Each incarnation's and each instance's records by owner, with the transport bytes they measured, are kept after
+    the transfers, so a viewer opening a live generation from the checkpoint it names ranks by bytes and peers opening
+    only the newest chunk's segments. A 1.4 checkpoint reads the rows and is replaced when published again; staging a
+    live checkpoint opens a segment only where the derivation still reads it. At a million rows in ten chunks a viewer
+    ranked by bytes in 90–133 ms opening one segment (rows: 176–386 ms); the counts make the checkpoint a third to two
+    fifths larger.
+  - Debug and Release each ran 2,967 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    twenty-two mutations were caught: a checkpoint claiming format 1.5 without the counts, the counts never written
+    or never read, their section's length unchecked, relations or counts read back as keeping none, an incarnation's
+    records by owner not checked against its records, its PIDs unchecked, dropped where it names two or written
+    unsorted, owners written as counted rather than in order, owners out of order, held twice or reversed taken (the
+    first form of that mutation did not compile, and three replaced it), sums below none or bytes beside a refusal
+    taken, a refused sum's bytes written, an instance's records naming another instance or those binding to none
+    naming one taken, and a checkpoint without the counts kept at publication, for the relations or the counts, or
+    taken as current.
 
 - **Revision 737 — S3, P25: a live generation's whole-session byte and peer rankings come from its derivation:**
   - The activity and each incarnation count every record by the owner it binds to, with the transport bytes it
@@ -883,8 +900,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - A live session still counts its overview from tiles until its writer finishes; since revision 710 it derives its
      processes, relations and counts from the checkpoint its generation names, reading only the newest chunk. Since
      revision 737 its whole-session byte and peer rankings come from what its derivation counted, extended from the
-     generation before, and an extension opens only the segments it adds; a derivation read back from a checkpoint
-     keeps no such counts, and reads the rows.
+     generation before, and an extension opens only the segments it adds; since revision 738 the checkpoint keeps
+     those counts too, so a viewer opening a live generation from the checkpoint it names ranks so as well.
    - A zoom of a live generation still builds a segment's tiles from its rows when first drawn; since revision 456 a
      finished generation's are persisted (`tile-index-v1`), with the records a column boundary can fall among, so its
      zooms open no segment, and since revision 457 neither do its brushes, which count from the tiles' tallies. Since revision 400 a zoom opens and tiles only the segments its interval meets, by the readings their headers

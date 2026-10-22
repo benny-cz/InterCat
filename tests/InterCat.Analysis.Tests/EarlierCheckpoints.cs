@@ -10,6 +10,25 @@ internal static class EarlierCheckpoints
     private const int TransferBytes = 1 + (6 * 8);
 
     /// <summary>
+    /// A checkpoint as revisions 736 and 737 wrote it: format 1.4, which keeps no records by owner. Format 1.5 keeps them
+    /// last, ending with how many bytes they take, so 1.4 is those bytes without them; a checkpoint of an earlier format is
+    /// returned as it is.
+    /// </summary>
+    public static byte[] WithoutOwners(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        if (BitConverter.ToUInt16(bytes, 10) < 5)
+        {
+            return [.. bytes];
+        }
+
+        long length = BitConverter.ToUInt32(bytes, bytes.Length - 4);
+        byte[] earlier = [.. bytes.AsSpan(0, bytes.Length - 4 - checked((int)length))];
+        earlier[10] = 4;
+        return earlier;
+    }
+
+    /// <summary>
     /// A checkpoint as revisions 573 to 735 wrote it: format 1.3, which counts no incarnation's transfers. Format 1.4 keeps
     /// them last, ending with how many there are, so 1.3 is those bytes without them; a checkpoint of an earlier format is
     /// returned as it is.
@@ -17,6 +36,7 @@ internal static class EarlierCheckpoints
     public static byte[] WithoutTransfers(byte[] bytes)
     {
         ArgumentNullException.ThrowIfNull(bytes);
+        bytes = WithoutOwners(bytes);
         if (BitConverter.ToUInt16(bytes, 10) < 4)
         {
             return [.. bytes];

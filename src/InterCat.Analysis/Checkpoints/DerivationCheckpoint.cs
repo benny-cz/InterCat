@@ -26,9 +26,15 @@ public sealed class DerivationCheckpoint
     /// record made each cut, a connect, an accept or a disconnect (revision 573); an earlier checkpoint that holds a cut
     /// opening an incarnation is refused, and one that holds none is read as it is. Minor 4 counts what each incarnation's
     /// records sent and received (revision 736), after every other section; relations read from an earlier checkpoint keep
-    /// no such counts, and relations that keep none are written as minor 3, which is minor 4 without them.
+    /// no such counts, and relations that keep none are written as minor 3, which is minor 4 without them. Minor 5 keeps
+    /// every record by the owner it binds to, each incarnation's and each instance's (revision 737), after the transfers
+    /// and ending with its length; derivations read from an earlier checkpoint keep no such counts, and ones that keep
+    /// none are written as minor 4, which is minor 5 without them.
     /// </summary>
-    private const ushort Minor = 4;
+    private const ushort Minor = 5;
+
+    /// <summary>The minor derivations that keep no records by owner are written at.</summary>
+    private const ushort MinorWithoutOwners = 4;
 
     /// <summary>The minor relations that count no incarnation's transfers are written at.</summary>
     private const ushort MinorWithoutTransfers = 3;
@@ -201,7 +207,10 @@ public sealed class DerivationCheckpoint
         var writer = new IndexFileWriter(destination, MaximumBytes, What);
         writer.Raw(Magic);
         writer.U16(Major);
-        writer.U16(relations.TransfersKept ? Minor : MinorWithoutTransfers);
+        ushort minor = !relations.TransfersKept ? MinorWithoutTransfers
+            : !(relations.OwnersKept && activity.OwnersKept) ? MinorWithoutOwners
+            : Minor;
+        writer.U16(minor);
         writer.Str8(ProcessInstanceIndex.BindingRule);
         writer.Str8(TransportRelationIndex.RelationRule);
         writer.Identity(sessionId);
@@ -222,9 +231,18 @@ public sealed class DerivationCheckpoint
         processes.WriteState(writer);
         relations.WriteState(writer);
         activity.WriteState(writer);
-        if (relations.TransfersKept)
+        if (minor >= MinorWithoutOwners)
         {
             relations.WriteTransfers(writer);
+        }
+
+        // The records by owner end with how many bytes they take, so a checkpoint of minor 4 is these bytes without them.
+        if (minor >= Minor)
+        {
+            long start = writer.Written;
+            relations.WriteOwners(writer);
+            activity.WriteOwners(writer);
+            writer.U32(checked((uint)(writer.Written - start)));
         }
 
         writer.Flush();
@@ -364,6 +382,18 @@ public sealed class DerivationCheckpoint
         if (minor >= 4)
         {
             relations.ReadTransfers(reader);
+        }
+
+        if (minor >= 5)
+        {
+            int start = reader.Remaining;
+            relations.ReadOwners(reader);
+            activity!.ReadOwners(reader);
+            int taken = start - reader.Remaining;
+            if (reader.U32() != (uint)taken)
+            {
+                throw reader.Invalid("its records by owner do not take the bytes it says they take.");
+            }
         }
 
         reader.RequireEnd();

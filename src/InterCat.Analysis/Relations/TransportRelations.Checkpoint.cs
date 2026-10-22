@@ -83,6 +83,54 @@ public sealed partial class TransportRelationIndex
         TransfersKept = true;
     }
 
+    /// <summary>
+    /// Writes what each incarnation holding records counts of them by owner (`contracts/derivation-checkpoint-v1.md` §3,
+    /// <c>owners</c>, format 1.5): the PIDs its records name when they name more than one, ascending, then its tally, in
+    /// the order <see cref="WriteState"/> wrote the incarnations.
+    /// </summary>
+    internal void WriteOwners(IndexFileWriter writer)
+    {
+        foreach (Incarnation incarnation in Ordered().Where(incarnation => incarnation.Records > 0))
+        {
+            int[] pids = incarnation.PidsDisagree ? [.. incarnation.ProcessIds.Order()] : [];
+            writer.Count(pids.Length);
+            foreach (int pid in pids)
+            {
+                writer.I32(pid);
+            }
+
+            incarnation.Owners.Write(writer);
+        }
+    }
+
+    /// <summary>
+    /// Reads what <see cref="WriteOwners"/> wrote into the incarnations <see cref="ReadState"/> read, which then count their
+    /// records by owner (<see cref="OwnersKept"/>), refusing PIDs that contradict whether the records name two, and a tally
+    /// of other than the incarnation's records.
+    /// </summary>
+    internal void ReadOwners(IndexFileReader reader)
+    {
+        foreach (Incarnation incarnation in Ordered().Where(incarnation => incarnation.Records > 0))
+        {
+            int count = reader.Count(4);
+            int[] pids = [.. Enumerable.Range(0, count).Select(_ => reader.I32())];
+            if ((count > 0) != incarnation.PidsDisagree || count == 1 || pids.Zip(pids.Skip(1)).Any(pair => pair.First >= pair.Second))
+            {
+                throw reader.Invalid("an incarnation's PIDs contradict whether its records name two, or are out of order.");
+            }
+
+            OwnerTally owners = OwnerTally.Read(reader, processes.Instances.Count);
+            if (owners.Records != incarnation.Records)
+            {
+                throw reader.Invalid("an incarnation's records by owner are not its records.");
+            }
+
+            incarnation.Kept(pids, owners);
+        }
+
+        OwnersKept = true;
+    }
+
     /// <summary>Every end's incarnations, ends in canonical order and each end's in time order, as the state is written.</summary>
     private IEnumerable<Incarnation> Ordered() =>
         ends.OrderBy(entry => entry.Key).SelectMany(entry => entry.Value.Incarnations);
@@ -329,6 +377,20 @@ public sealed partial class TransportRelationIndex
         /// Writes what its records sent and received (format 1.4): whether a sum was refused, then its sends, the bytes they
         /// state and how many state none, and the same of its receives. A refused sum is written as none.
         /// </summary>
+        /// <summary>
+        /// Takes the PIDs its records name and its records by owner as a checkpoint kept them (format 1.5); the PIDs only
+        /// when they name more than one, which the checkpoint's state does not name.
+        /// </summary>
+        public void Kept(int[] pids, OwnerTally owners)
+        {
+            Owners = owners;
+            if (pids.Length > 0)
+            {
+                processId = pids[0];
+                otherProcessIds = [.. pids[1..]];
+            }
+        }
+
         public void WriteTransfers(IndexFileWriter writer)
         {
             writer.Flag(SumsRefused);

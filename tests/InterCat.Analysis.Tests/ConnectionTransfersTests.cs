@@ -166,10 +166,10 @@ public sealed class ConnectionTransfersTests
         Assert.Equal(new ConnectionTransfers(1, 100, 0, 1, 0, 1), relations.TransfersOf(Assert.Single(relations.OneSided)));
         using var written = new MemoryStream();
         _ = DerivationCheckpoint.Write(written, Session, 2, processes, relations, ProcessActivityIndex.Derive(observations, processes));
-        byte[] bytes = written.ToArray();
+        byte[] bytes = EarlierCheckpoints.WithoutOwners(written.ToArray());
 
-        // The one incarnation's entry is the last 49 bytes before the count: a refusal flag, then its sends, the bytes they
-        // state, how many state none, and the same of its receives.
+        // In format 1.4 the one incarnation's entry is the last 49 bytes before the count: a refusal flag, then its sends, the
+        // bytes they state, how many state none, and the same of its receives.
         int entry = bytes.Length - 4 - 49;
         foreach ((int offset, long value) in new[]
         {

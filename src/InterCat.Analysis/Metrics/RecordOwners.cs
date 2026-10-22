@@ -74,6 +74,48 @@ public sealed class TransportByteSums
         return copy;
     }
 
+    /// <summary>
+    /// Writes the sums (`contracts/derivation-checkpoint-v1.md` §3, <c>bytes</c>, format 1.5): whether a sum was refused,
+    /// then each side's bytes, measured and unmeasured contributions. A refused sum's bytes are written as none, since
+    /// where it stopped depends on the order the records were read in.
+    /// </summary>
+    internal void Write(IndexFileWriter writer)
+    {
+        writer.Flag(Refused);
+        foreach ((long bytes, long measured, long unmeasured) in Sides())
+        {
+            writer.I64(Refused ? 0 : bytes);
+            writer.I64(measured);
+            writer.I64(unmeasured);
+        }
+    }
+
+    /// <summary>Reads what <see cref="Write"/> wrote, refusing counts below none or bytes beside a refused sum.</summary>
+    internal static TransportByteSums Read(IndexFileReader reader)
+    {
+        bool refused = reader.Flag();
+        long[] values = [.. Enumerable.Range(0, 9).Select(_ => reader.I64())];
+        if (values.Any(value => value < 0) || (refused && (values[0] != 0 || values[3] != 0 || values[6] != 0)))
+        {
+            throw reader.Invalid("a sum of transport bytes is below none, or states bytes beside a refusal.");
+        }
+
+        return new()
+        {
+            SentBytes = values[0], SentMeasured = values[1], SentUnmeasured = values[2],
+            ReceivedBytes = values[3], ReceivedMeasured = values[4], ReceivedUnmeasured = values[5],
+            OtherBytes = values[6], OtherMeasured = values[7], OtherUnmeasured = values[8],
+            Refused = refused,
+        };
+    }
+
+    private IEnumerable<(long Bytes, long Measured, long Unmeasured)> Sides()
+    {
+        yield return (SentBytes, SentMeasured, SentUnmeasured);
+        yield return (ReceivedBytes, ReceivedMeasured, ReceivedUnmeasured);
+        yield return (OtherBytes, OtherMeasured, OtherUnmeasured);
+    }
+
     /// <summary>Adds bytes to a sum as a byte view adds them; past what a sum holds the sums are refused, as the view refuses them.</summary>
     private long Sum(long total, long bytes)
     {
@@ -121,6 +163,15 @@ internal sealed class OwnerTally
 
     /// <summary>Whether a record of the tally was refused by a byte view: no side, an undefined one, no unit or another unit.</summary>
     public bool BytesRefused { get; private set; }
+
+    /// <summary>How many records it counts, those binding to none among them.</summary>
+    public long Records => owners.Sum(owner => owner.Records) + unownedRecords;
+
+    /// <summary>Whether it counts a record binding to an instance.</summary>
+    public bool HasOwners => owners.Count > 0;
+
+    /// <summary>Whether every instance it counts records of is <paramref name="instance"/>.</summary>
+    public bool OwnedOnlyBy(int instance) => owners.All(owner => owner.Instance == instance);
 
     public void Add(ProcessBinding binding, OwnedRecord record)
     {
@@ -183,6 +234,66 @@ internal sealed class OwnerTally
         }
 
         return copy;
+    }
+
+    /// <summary>
+    /// Writes the tally in canonical order (`contracts/derivation-checkpoint-v1.md` §3, <c>tally</c>, format 1.5): whether a
+    /// byte view refused a record of it, each owner by position and strength with its records and bytes, then the records
+    /// binding to none and their bytes, if any measured.
+    /// </summary>
+    public void Write(IndexFileWriter writer)
+    {
+        writer.Flag(BytesRefused);
+        (int Instance, RelationStrength Strength, long Records, TransportByteSums Bytes)[] ordered =
+            [.. owners.OrderBy(owner => owner.Instance).ThenBy(owner => owner.Strength)];
+        writer.Count(ordered.Length);
+        foreach ((int instance, RelationStrength strength, long records, TransportByteSums bytes) in ordered)
+        {
+            writer.I32(instance);
+            writer.U8((byte)strength);
+            writer.I64(records);
+            bytes.Write(writer);
+        }
+
+        writer.I64(unownedRecords);
+        writer.Flag(unownedBytes is not null);
+        unownedBytes?.Write(writer);
+    }
+
+    /// <summary>
+    /// Reads what <see cref="Write"/> wrote over <paramref name="instances"/> instances, refusing an owner that names no
+    /// instance or an undefined strength, records below none, and owners out of order or held twice.
+    /// </summary>
+    public static OwnerTally Read(IndexFileReader reader, int instances)
+    {
+        var tally = new OwnerTally { BytesRefused = reader.Flag() };
+        int count = reader.Count(4 + 1 + 8 + 1 + (9 * 8));
+        (int Instance, int Strength) last = (-1, -1);
+        for (int index = 0; index < count; index++)
+        {
+            int instance = reader.I32();
+            var strength = (RelationStrength)reader.U8();
+            long records = reader.I64();
+            TransportByteSums bytes = TransportByteSums.Read(reader);
+            if (instance < 0 || instance >= instances || !Enum.IsDefined(strength) || records < 0
+                || (instance, (int)strength).CompareTo(last) <= 0)
+            {
+                throw reader.Invalid("an owner of the records counted names no instance or an undefined strength, counts "
+                    + "fewer records than none, or is out of order.");
+            }
+
+            tally.owners.Add((instance, strength, records, bytes));
+            last = (instance, (int)strength);
+        }
+
+        tally.unownedRecords = reader.I64();
+        if (tally.unownedRecords < 0)
+        {
+            throw reader.Invalid("it counts fewer records binding to no instance than none.");
+        }
+
+        tally.unownedBytes = reader.Flag() ? TransportByteSums.Read(reader) : null;
+        return tally;
     }
 
     /// <summary>What the tally counted: each owner at each strength, then the records binding to none, where there are any.</summary>

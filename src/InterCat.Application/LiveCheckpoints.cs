@@ -41,8 +41,9 @@ public sealed class LiveCheckpoints : ILiveIndexer
                 return [];
             }
 
-            SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-            SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+            // Opened only as the derivation reads them: one already made, as a live follow's is, opens none.
+            var segments = new SegmentsOnDemand(store, manifest, SessionSegments.Names(manifest));
+            var fields = new SegmentsOnDemand(store, manifest, SessionSegments.FieldNames(manifest));
             SessionDerivation derivation = SessionDerivationCache.For(manifest);
             ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
             TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);

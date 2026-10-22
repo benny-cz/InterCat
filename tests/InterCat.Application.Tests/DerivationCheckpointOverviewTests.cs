@@ -1061,7 +1061,7 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Null(SessionPeerRanking.KeptBindings(segments, processes, relations, CancellationToken.None, maximumPairs: kept.Pairs.Count - 1));
     }
 
-    [Fact(DisplayName = "I14: peer bindings that name an instance the checkpoint does not hold are not used, and the segments are read")]
+    [Fact(DisplayName = "I14: peer bindings that name an instance the checkpoint does not hold are not used: the peers are counted from the checkpoint's records by owner, or read from the segments where it keeps none")]
     public void PeerBindingsTheCheckpointDoesNotHoldAreRead()
     {
         SessionDerivationCache.Clear();
@@ -1077,15 +1077,18 @@ public sealed class DerivationCheckpointOverviewTests
             {
                 PeerBindings = new([new(stranger, RelationStrength.Correlated, default, 0, 3)]),
             });
-        PublishIndexes(session.Store, withCheckpoint: true, stream.ToArray());
-
-        SessionDerivationCache.Clear();
-        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
-        SessionPeerMeasures answered = SessionPeerRanking.Measure(reopened, null);
-        Assert.NotEqual(0, reopened.SegmentReaderCache.Entries);
-        Assert.Equal(read.ByProcess.OrderBy(entry => entry.Key.Value), answered.ByProcess.OrderBy(entry => entry.Key.Value));
-        Assert.Equal(read.ByGroup.OrderBy(entry => entry.Key, StringComparer.Ordinal), answered.ByGroup.OrderBy(entry => entry.Key, StringComparer.Ordinal));
-        Assert.Equal((read.WithPeers, read.Unattributed), (answered.WithPeers, answered.Unattributed));
+        foreach (bool ownersKept in new[] { true, false })
+        {
+            PublishIndexes(session.Store, withCheckpoint: true, stream.ToArray(), earlier: ownersKept ? null : EarlierCheckpoints.WithoutOwners);
+            SessionDerivationCache.Clear();
+            SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+            SessionPeerMeasures answered = SessionPeerRanking.Measure(reopened, null);
+            Assert.Equal(ownersKept, reopened.SegmentReaderCache.Entries == 0);
+            Assert.Equal(read.ByProcess.OrderBy(entry => entry.Key.Value), answered.ByProcess.OrderBy(entry => entry.Key.Value));
+            Assert.Equal(read.ByGroup.OrderBy(entry => entry.Key, StringComparer.Ordinal), answered.ByGroup.OrderBy(entry => entry.Key, StringComparer.Ordinal));
+            Assert.Equal((read.WithPeers, read.Unattributed), (answered.WithPeers, answered.Unattributed));
+            reopened.ReleaseSegmentReaders();
+        }
     }
 
     [Fact(DisplayName = "S3: a reopened session lists each process's connections to other hosts and ranks Other hosts by bytes from its checkpoint, opening no segment; one kept before connections' transfers were reads the rows to the same answer, and is published again")]
@@ -1123,9 +1126,9 @@ public sealed class DerivationCheckpointOverviewTests
         // Its indexes published again as they are, are current. Beside a checkpoint written before revision 736, which
         // counts no connection's transfers, they are not: the transfers are read from the rows, to the same answer, and
         // the next publication writes a checkpoint that counts them.
-        Republish(session, withoutTransfers: false);
+        Republish(session);
         Assert.Equal(CheckpointOutcome.AlreadyCurrent, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
-        Republish(session, withoutTransfers: true);
+        Republish(session, EarlierCheckpoints.WithoutTransfers);
         SessionDerivationCache.Clear();
         SessionStore older = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         Assert.Equal(read, Answers(older));
@@ -1138,15 +1141,42 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Equal(0, again.SegmentReaderCache.Entries);
     }
 
+    [Fact(DisplayName = "S3: a finished session whose checkpoint keeps no records by owner, as checkpoints before revision 738 kept none, is published again with one that keeps them")]
+    public void ACheckpointWithoutOwnersIsPublishedAgain()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        Publish(session.Store, HostTrafficTests.Rows(), rowsPerSegment: 3);
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        Assert.True(Kept(session.Path));
+        Republish(session, EarlierCheckpoints.WithoutOwners);
+        Assert.False(Kept(session.Path));
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        Assert.Equal(CheckpointOutcome.AlreadyCurrent, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        Assert.True(Kept(session.Path));
+
+        // Whether a fresh viewer takes the current generation's derivations from its checkpoint keeping records by owner.
+        static bool Kept(string path)
+        {
+            SessionDerivationCache.Clear();
+            SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(path));
+            (ProcessInstanceIndex _, TransportRelationIndex relations, ProcessActivityIndex? activity) = SessionDerivationCache
+                .For(viewer.Current!).FromCheckpoint(viewer.Root, SessionSegments.SourceClock(viewer.Root, viewer.Current!)!.Value)
+                ?? throw new Xunit.Sdk.XunitException("The checkpoint covers every segment the generation names.");
+            viewer.ReleaseSegmentReaders();
+            return relations.OwnersKept && activity!.OwnersKept;
+        }
+    }
+
     /// <summary>
     /// Publishes the current generation's indexes again as the next generation, each as it is, but the checkpoint, which
-    /// is written as format 1.3 kept it when <paramref name="withoutTransfers"/>: without any connection's transfers.
+    /// <paramref name="checkpoint"/> writes as an earlier build kept it when it is given.
     /// </summary>
-    private static void Republish(TemporarySession session, bool withoutTransfers)
+    private static void Republish(TemporarySession session, Func<byte[], byte[]>? checkpoint = null)
     {
         SessionStore store = session.Store;
         SessionManifestV1 published = store.Current!;
-        StoreDependency checkpoint = DerivationCheckpoint.NamedBy(published)!;
+        StoreDependency named = DerivationCheckpoint.NamedBy(published)!;
         long next = store.NextGeneration;
         var staged = new List<StoreStagingFile>();
         try
@@ -1159,7 +1189,7 @@ public sealed class DerivationCheckpointOverviewTests
                     StoreDependencyKind.Index);
                 staged.Add(file);
                 byte[] bytes = File.ReadAllBytes(Path.Combine(session.Path, index.Name));
-                file.Content.Write(withoutTransfers && index == checkpoint ? EarlierCheckpoints.WithoutTransfers(bytes) : bytes);
+                file.Content.Write(checkpoint is not null && index == named ? checkpoint(bytes) : bytes);
                 _ = file.Complete();
             }
 
@@ -1233,7 +1263,8 @@ public sealed class DerivationCheckpointOverviewTests
         return earlier;
     }
 
-    private static void PublishIndexes(SessionStore store, bool withCheckpoint, byte[]? overview, bool minorZero = false)
+    private static void PublishIndexes(
+        SessionStore store, bool withCheckpoint, byte[]? overview, bool minorZero = false, Func<byte[], byte[]>? earlier = null)
     {
         SessionManifestV1 manifest = store.Current!;
         long next = store.NextGeneration;
@@ -1253,6 +1284,7 @@ public sealed class DerivationCheckpointOverviewTests
                 staged.Add(checkpoint);
                 checkpoint.Content.Write(minorZero
                     ? EarlierCheckpoints.MinorZero(written.ToArray(), segments, processes, activity)
+                    : earlier is not null ? earlier(written.ToArray())
                     : written.ToArray());
                 _ = checkpoint.Complete();
             }

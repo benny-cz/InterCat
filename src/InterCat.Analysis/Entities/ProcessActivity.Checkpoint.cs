@@ -53,6 +53,62 @@ public sealed partial class ProcessActivityIndex
     }
 
     /// <summary>
+    /// Writes every record by the owner it binds to (`contracts/derivation-checkpoint-v1.md` §3, <c>owners</c>, format 1.5):
+    /// each instance's tally, by position, then the tally of the records binding to none.
+    /// </summary>
+    internal void WriteOwners(IndexFileWriter writer)
+    {
+        KeyValuePair<int, InstanceActivity>[] owned = [.. instances.Where(entry => entry.Value.Owned.HasOwners)];
+        Array.Sort(owned, static (left, right) => left.Key.CompareTo(right.Key));
+        writer.Count(owned.Length);
+        foreach ((int instance, InstanceActivity activity) in owned)
+        {
+            writer.I32(instance);
+            activity.Owned.Write(writer);
+        }
+
+        unowned.Write(writer);
+    }
+
+    /// <summary>
+    /// Reads what <see cref="WriteOwners"/> wrote, after which the counts keep every record by owner
+    /// (<see cref="OwnersKept"/>); refuses an instance out of order or naming none, a tally of other instances' records, and
+    /// one binding to none that names an instance.
+    /// </summary>
+    internal void ReadOwners(IndexFileReader reader)
+    {
+        int count = reader.Count(4 + 1 + 4 + 8 + 1);
+        int last = -1;
+        for (int index = 0; index < count; index++)
+        {
+            int instance = reader.I32();
+            OwnerTally owned = OwnerTally.Read(reader, processes.Instances.Count);
+            if (instance <= last || instance >= processes.Instances.Count || !owned.HasOwners || !owned.OwnedOnlyBy(instance))
+            {
+                throw reader.Invalid("an instance's records by owner name another instance, none, or are out of order.");
+            }
+
+            if (!instances.TryGetValue(instance, out InstanceActivity? activity))
+            {
+                activity = new();
+                instances[instance] = activity;
+            }
+
+            activity.Owned = owned;
+            last = instance;
+        }
+
+        OwnerTally none = OwnerTally.Read(reader, processes.Instances.Count);
+        if (none.HasOwners)
+        {
+            throw reader.Invalid("the records binding to no instance name one.");
+        }
+
+        unowned = none;
+        OwnersKept = true;
+    }
+
+    /// <summary>
     /// Rebuilds counts a checkpoint holds over <paramref name="processes"/>, whose positions they name.
     /// <paramref name="earlierRule"/> names the rule of <see cref="ProcessInstanceIndex.EarlierBindingRules"/> the
     /// checkpoint was derived under, whose instances and counts are this rule's only when every record named its owner:

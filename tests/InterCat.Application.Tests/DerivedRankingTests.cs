@@ -108,8 +108,40 @@ public sealed class DerivedRankingTests
         Assert.Equal(3, whole.ByProcess.Count);
     }
 
-    [Fact(DisplayName = "I14: relations and counts read back from a checkpoint keep no owners, nor once extended, so their whole-session bytes and peers are read from the rows")]
-    public void CountsReadBackFromACheckpointKeepNoOwners()
+    [Fact(DisplayName = "S3: a viewer opening a live generation ranks by bytes and peers from the records by owner the checkpoint it names keeps, opening only the newest chunk's segments, and as its rows do")]
+    public void AViewerRanksFromTheCheckpointsOwners()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = Conversation();
+        _ = Publish(session.Store, rows[..12], rowsPerSegment: 3, indexer: LiveCheckpoints.Instance);
+        _ = Publish(session.Store, rows[12..], rowsPerSegment: 3, indexer: LiveCheckpoints.Instance);
+        SessionManifestV1 published = session.Store.Current!;
+        DerivationCheckpoint named = DerivationCheckpoint.Read(
+            SessionSegments.ReadVerified(session.Store.Root, DerivationCheckpoint.NamedBy(published)!, DerivationCheckpoint.MaximumBytes),
+            published.SessionId,
+            SessionSegments.SourceClock(session.Store.Root, published)!.Value);
+        Assert.True(named.Relations.OwnersKept && named.Activity!.OwnersKept);
+
+        int added = SessionSegments.Names(published).Count - 4;
+        var everything = new TimeRange(0, long.MaxValue / 4);
+        foreach (EvidencePolicy policy in Enum.GetValues<EvidencePolicy>())
+        {
+            SessionDerivationCache.Clear();
+            SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+            SessionByteMeasures bytes = SessionByteRanking.Measure(viewer, null, policy);
+            SessionPeerMeasures counted = SessionPeerRanking.Measure(viewer, null, policy);
+            Assert.True(bytes.FromDerivation);
+            Assert.True(SessionDerivationCache.For(viewer.Current!).RelationsFromCheckpoint);
+            Assert.InRange(viewer.SegmentReaderCache.Entries, 1, added);
+            Assert.Equal(Text(SessionByteRanking.Measure(viewer, everything, policy)), Text(bytes));
+            Assert.Equal(Text(SessionPeerRanking.Measure(viewer, everything, policy)), Text(counted));
+            viewer.ReleaseSegmentReaders();
+        }
+    }
+
+    [Fact(DisplayName = "I14: relations and counts read back from a checkpoint of format 1.4 keep no owners, nor once extended, so their whole-session bytes and peers are read from the rows")]
+    public void CountsReadBackFromAnEarlierCheckpointKeepNoOwners()
     {
         using var session = new TemporarySession();
         ObservationRowV1[] rows = Conversation();
@@ -120,7 +152,11 @@ public sealed class DerivedRankingTests
         ProcessActivityIndex activity = ProcessActivityIndex.Derive(observations, processes);
         using var written = new MemoryStream();
         _ = DerivationCheckpoint.Write(written, session.Store.Current!.SessionId, 2, processes, relations, activity);
-        DerivationCheckpoint read = DerivationCheckpoint.Read(written.ToArray(), session.Store.Current!.SessionId, TestClock);
+        Assert.True(DerivationCheckpoint.Read(written.ToArray(), session.Store.Current!.SessionId, TestClock).Relations.OwnersKept);
+
+        // As checkpoints were written before revision 738: format 1.4, which keeps no records by owner.
+        DerivationCheckpoint read = DerivationCheckpoint.Read(
+            EarlierCheckpoints.WithoutOwners(written.ToArray()), session.Store.Current!.SessionId, TestClock);
         Assert.False(read.Relations.OwnersKept);
         Assert.False(read.Activity!.OwnersKept);
         Assert.Null(read.Relations.OwnersByPeer());

@@ -115,8 +115,8 @@ later generation extends them only when every PID's counted readings bind alike 
 Since revision 737 the counts also keep every record by the instance it binds to and how strongly - or by none -
 with the transport bytes it measured, as a byte view measures them (`metrics-v1` §4): every record's bytes, before
 any evidence policy, and every record but a process's or a thread's lifecycle records for the counts of peers
-(`metrics-v1` §6.1). They extend with the counts, each instance's moved as its counts move. A checkpoint keeps none
-of them, so counts read back from one keep none, nor once extended.
+(`metrics-v1` §6.1). They extend with the counts, each instance's moved as its counts move. A checkpoint keeps them
+since format 1.5 (revision 738); counts read back from an earlier one keep none, nor once extended.
 
 ## 5. Evidence policy
 
