@@ -103,6 +103,17 @@ public sealed class InterruptedCaptureOfferTests
             "Partial session saved",
             InterruptedCaptureOffer.Finished(new(Step(1, 1, 1, finished: false), session.Store, Completed: true), Culture)
                 .Headline);
+        Assert.DoesNotContain("compaction", detail, StringComparison.Ordinal);
+
+        // A finish whose compaction was not published saved the session all the same, and says what it was left with.
+        foreach (bool finished in new[] { true, false })
+        {
+            (string saved, string said) = InterruptedCaptureOffer.Finished(
+                new(Step(40, 40, 9_000, finished) with { CompactionFailure = "The disk is full." }, session.Store, Completed: true),
+                Culture);
+            Assert.Equal(finished ? "Session saved" : "Partial session saved", saved);
+            Assert.EndsWith(" " + FollowText.CompactionFailed("The disk is full."), said, StringComparison.Ordinal);
+        }
     }
 
     [Theory(DisplayName = "§3.1: a capture is named by when it started, in the viewer's own day")]

@@ -30,6 +30,12 @@ internal sealed record CaptureDocument
     public required long DerivedRecords { get; init; }
     public required long? Generation { get; init; }
 
+    /// <summary>
+    /// Why a compaction of the follow was not published, or null. The session is whole all the same, with more segments
+    /// than it needs until icat compact coalesces them.
+    /// </summary>
+    public string? CompactionFailure { get; init; }
+
     /// <summary>The rolling retention the follow ran (`--keep-last`); null when the session kept every record.</summary>
     public RollingDocument? Rolling { get; init; }
 
@@ -266,6 +272,7 @@ internal static class CaptureCommand
             DerivedChunks = last?.DerivedChunks ?? 0,
             DerivedRecords = last?.DerivedRecords ?? 0,
             Generation = derived?.Current?.Generation,
+            CompactionFailure = last?.CompactionFailure,
             Rolling = derived is null ? null : RollingFollow.Describe(rolling, derived),
             Content = CaptureContent.Describe(prepared.Summary, seen, derived),
         };
@@ -553,6 +560,11 @@ internal static class CaptureCommand
         if (document.Reason is { } reason)
         {
             ConsoleUi.Note(reason);
+        }
+
+        if (document.CompactionFailure is { } failure)
+        {
+            ConsoleUi.Warn(FollowText.CompactionFailed(failure));
         }
 
         if (document.Finished)

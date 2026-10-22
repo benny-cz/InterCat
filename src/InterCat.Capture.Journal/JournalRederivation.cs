@@ -57,6 +57,14 @@ public static class JournalRederivation
                 + "cannot be re-derived.");
         }
 
+        if (GeneratedSessions.IsDemo(manifest))
+        {
+            // Checked before the plan too: the demo keeps none, and is no earlier version's session.
+            return new(false, "InterCat generated this demo session. Its rows were written as they are, beside records made "
+                + "to match them, not derived from those records, so there is nothing to re-derive. The session stays "
+                + "readable as it is.");
+        }
+
         if (!manifest.Boundary.IsDeclared)
         {
             return new(false, "This generation names no committed journal boundary.");
@@ -194,7 +202,8 @@ public static class JournalRederivation
         ArgumentNullException.ThrowIfNull(store);
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
-        if (manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.RedactionPolicy))
+        if (manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.RedactionPolicy)
+            || GeneratedSessions.IsDemo(manifest))
         {
             throw new InvalidOperationException(Assess(manifest).Explanation);
         }

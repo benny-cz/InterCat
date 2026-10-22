@@ -42,6 +42,9 @@ segments, with a field segment and dictionaries beside each. Every commit and le
      rows need.
    - A compaction that fails leaves the recording published and whole, so it is reported rather than ending the
      capture.
+   - A follow of a broker's capture compacts the session it derives the same way, and since plan revision 712 a
+     compaction of it that fails is reported in the same words and leaves the follow going, as a recording's does,
+     where it had ended the follow - in the window, ending the capture - although every chunk was mirrored.
    - `icat compact [--check]` coalesces any session, and is lossless, so it needs no confirmation.
 5. **"Per time block" is the recorder's count of small publications.** §20.1's per-time-block bound is read as how
    many small publications have accumulated. A chunked recording's segments cover consecutive, barely overlapping

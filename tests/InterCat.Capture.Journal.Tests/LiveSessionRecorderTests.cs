@@ -339,6 +339,74 @@ public sealed class LiveSessionRecorderTests
         Assert.NotNull(SessionSegments.CoverageLedger(reopened.Root, manifest));
     }
 
+    [Fact(DisplayName = "I15: a recording whose compaction fails says why and records on whole, compacting nothing more")]
+    public async Task ARecordingWhoseCompactionFailsRecordsOn()
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "live-tests");
+        var host = new ScriptedHost();
+        long now = Stopwatch.GetTimestamp();
+        FileStream? held = null;
+        try
+        {
+            // Three bursts as above; once the first went out, another program holds its segment, so the compaction the
+            // second makes due cannot read it.
+            for (int index = 0; index < 6; index++)
+            {
+                if (index is 2 or 4)
+                {
+                    int published = index / 2;
+                    host.PauseUntil(() =>
+                    {
+                        if (store.Current is not { } current
+                            || current.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Journal) < published)
+                        {
+                            return false;
+                        }
+
+                        held ??= new FileStream(Path.Combine(directory.Path, SessionSegments.Names(current)[0]),
+                            FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                        return true;
+                    }, TimeSpan.FromSeconds(30));
+                }
+
+                host.Admit(new AdmittedEvent
+                {
+                    SourceIndex = 0,
+                    EventId = 10,
+                    Version = 0,
+                    TimestampQpc = now + index,
+                    TimestampUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
+                    RecordOrdinal = index + 1,
+                });
+            }
+
+            LiveRecordingResult result = await LiveSessionRecorder.RecordAsync(
+                Plan(),
+                host,
+                store,
+                _ => host.Delivered.Task,
+                DateTimeOffset.UtcNow,
+                publishEvery: TimeSpan.FromMilliseconds(100),
+                compaction: new CompactionOptions { SmallUnitsBeforeCompaction = 2 });
+
+            // Every publication is in the session, none coalesced - the compactions due while it recorded and when it
+            // stopped were left undone - and the session is whole, its rows replaying from its journal.
+            Assert.NotNull(held);
+            Assert.False(string.IsNullOrWhiteSpace(result.CompactionFailure));
+            Assert.Equal(0, result.Compactions);
+            Assert.True(result.Publications >= 3, $"The recording published {result.Publications} times; three bursts publish three.");
+            held.Dispose();
+            SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path));
+            Assert.Equal(result.Publications, reopened.Current!.Generation);
+            Assert.Equal(6, JournalRederivation.Verify(reopened).ObservationRows);
+        }
+        finally
+        {
+            held?.Dispose();
+        }
+    }
+
     [Fact(DisplayName = "R16: a privileged recording publishes evidence only, and a follower derives the session from it")]
     public async Task AFollowerDerivesEvidenceOnlyRecordings()
     {

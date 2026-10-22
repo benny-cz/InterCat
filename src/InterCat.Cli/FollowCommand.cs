@@ -22,6 +22,12 @@ internal sealed record FollowDocument
     public required long? Generation { get; init; }
     public required int Compactions { get; init; }
 
+    /// <summary>
+    /// Why a compaction of the follow was not published, or null. The session is whole all the same, with more segments
+    /// than it needs until icat compact coalesces them.
+    /// </summary>
+    public string? CompactionFailure { get; init; }
+
     /// <summary>The rolling retention the follow ran (`--keep-last`); null when it kept every record.</summary>
     public RollingDocument? Rolling { get; init; }
 }
@@ -194,6 +200,7 @@ internal static class FollowCommand
             DerivedRecords = last?.DerivedRecords ?? 0,
             Generation = derived.Current?.Generation,
             Compactions = last?.Compactions ?? 0,
+            CompactionFailure = last?.CompactionFailure,
             Rolling = RollingFollow.Describe(rolling, derived),
         };
         if (json)
@@ -305,6 +312,7 @@ internal static class FollowCommand
             DerivedRecords = result.Step.DerivedRecords,
             Generation = result.Session.Current?.Generation,
             Compactions = result.Step.Compactions,
+            CompactionFailure = result.Step.CompactionFailure,
         };
         if (json)
         {
@@ -367,6 +375,11 @@ internal static class FollowCommand
                 ConsoleUi.Field("Pinned", $"a pin keeps every record from {SessionTimeText.Seconds(pinned, CultureInfo.CurrentCulture)}, "
                     + $"so the session keeps more than {rolling.Window}");
             }
+        }
+
+        if (document.CompactionFailure is { } failure)
+        {
+            ConsoleUi.Warn(FollowText.CompactionFailed(failure));
         }
 
         ConsoleUi.Note(

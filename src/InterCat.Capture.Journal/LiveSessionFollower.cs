@@ -39,6 +39,12 @@ public sealed record FollowStep
     public required int Compactions { get; init; }
 
     /// <summary>
+    /// Why a compaction of this follow was not published, or null. The follow mirrors every chunk all the same, so its
+    /// session is whole, only with more segments than it needs; it compacts nothing more (<see cref="FollowText.CompactionFailed"/>).
+    /// </summary>
+    public string? CompactionFailure { get; init; }
+
+    /// <summary>
     /// How many of the capture's oldest chunks the derived session no longer holds: those its releases gave up, which the
     /// evidence may then release in turn (ADR-048 decision 5). Mirroring never changes it; a release of the derived session
     /// raises it from the next pass.
@@ -83,6 +89,9 @@ public sealed class LiveSessionFollower
     private bool mirroredCollectors;
     private ulong journalIndex;
     private int smallUnits;
+
+    // Why a compaction was not published, once one was not; the follow compacts nothing after it.
+    private string? compactionFailure;
 
     private LiveSessionFollower(
         SessionStore evidence,
@@ -201,6 +210,7 @@ public sealed class LiveSessionFollower
             Finished = finished,
             DerivedGeneration = derived.Current?.Generation,
             Compactions = compactions,
+            CompactionFailure = compactionFailure,
         };
     }
 
@@ -489,16 +499,34 @@ public sealed class LiveSessionFollower
         normalizer = new ObservationNormalizerV1(clock);
     }
 
+    /// <summary>
+    /// Publishes one compaction, or nothing when no run of small publications is left. A compaction that fails - as one
+    /// writing its coalesced copy on a nearly full disk does first - leaves the follow's session published and whole, so it
+    /// is reported and not tried again rather than ending the follow, as a recording's is (§20.1).
+    /// </summary>
     private int Compact(CompactionOptions bounds)
     {
-        CompactionResult? result = SegmentCompaction.Compact(derived, DateTimeOffset.UtcNow, bounds, options);
-        if (result is null)
+        if (compactionFailure is not null)
         {
             return 0;
         }
 
-        smallUnits += (IsSmall(result.Generation) ? 1 : 0) - result.Plan.Coalesced.Count();
-        return 1;
+        try
+        {
+            CompactionResult? result = SegmentCompaction.Compact(derived, DateTimeOffset.UtcNow, bounds, options);
+            if (result is null)
+            {
+                return 0;
+            }
+
+            smallUnits += (IsSmall(result.Generation) ? 1 : 0) - result.Plan.Coalesced.Count();
+            return 1;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            compactionFailure = exception.Message;
+            return 0;
+        }
     }
 
     private bool IsSmall(DerivedGenerationResult published) =>

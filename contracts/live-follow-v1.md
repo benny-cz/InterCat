@@ -13,8 +13,10 @@ session directory holds only the files its store names (`contracts/store-v1.md`)
 - A follow writes its ticket when it knows both directories, before it mirrors the first chunk.
 - The follow holds the ticket open for reading and writing and shares it only for reading. A process that can open a
   ticket for writing therefore knows no follow holds it. A running follow's ticket cannot be removed by another process.
-- Each owner-lease renewal rewrites `ownerLeaseExpiresUtc` with the expiry the broker returned (broker-v1). A renewal
-  whose rewrite fails leaves the earlier expiry, which can only make a later launch wait less.
+- Each owner-lease renewal rewrites `ownerLeaseExpiresUtc` with the expiry the broker returned (broker-v1). A rewrite
+  writes the ticket over the one there in a single write and never empties the file first; a ticket shorter than
+  the one it replaces ends in spaces. A renewal whose rewrite fails therefore leaves the earlier expiry, which can
+  only make a later launch wait less, and the next renewal writes it again.
 - A follow that ends early releases its ticket and leaves it in place. That includes a crash, an interruption, a close
   whose finish timed out, and a stop that left published chunks unfollowed.
 - The ticket is removed once the session holds everything the capture will publish, or when the user forgets it.
@@ -23,7 +25,7 @@ session directory holds only the files its store names (`contracts/store-v1.md`)
 
 ## 2. JSON contract
 
-The UTF-8 JSON object is at most 64 KiB:
+The UTF-8 JSON object, which spaces may follow, is at most 64 KiB:
 
 ```text
 {

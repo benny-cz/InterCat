@@ -21,7 +21,7 @@ public sealed record DemoInvestigationResult(string Directory, string WorkspaceP
 public static class DemoInvestigation
 {
     /// <summary>The source identity every demo session is published under: what readers check to say it was generated.</summary>
-    public const string SourceIdentity = "intercat-demo-v1";
+    public const string SourceIdentity = GeneratedSessions.DemoSourceIdentity;
 
     /// <summary>What every view of a demo session says, in these words.</summary>
     public const string Disclosure =
@@ -54,11 +54,7 @@ public static class DemoInvestigation
     public const long ServerLost = 2;
 
     /// <summary>Whether a session was published as the demo's, by the source identity its generation names.</summary>
-    public static bool IsDemo(SessionManifestV1 manifest)
-    {
-        ArgumentNullException.ThrowIfNull(manifest);
-        return string.Equals(manifest.SourceIdentity, SourceIdentity, StringComparison.Ordinal);
-    }
+    public static bool IsDemo(SessionManifestV1 manifest) => GeneratedSessions.IsDemo(manifest);
 
     /// <summary>
     /// Writes the demo into <paramref name="directory"/>, which must not exist or be empty: its two sessions, each

@@ -466,6 +466,9 @@ public static class DesktopCaptureRunner
                                                 : (pinStop is { } pinned ? "A pin stopped the capture. " + pinned + " " : string.Empty)
                                                     + (final.FailureReason
                                                         ?? "The capture is closed. All published evidence was followed.")
+                                                    + (derivation.Last?.CompactionFailure is { } failed
+                                                        ? " " + FollowText.CompactionFailed(failed)
+                                                        : string.Empty)
                                                     + (options.Content is null
                                                         ? string.Empty
                                                         : " Content kept: "
@@ -581,6 +584,7 @@ public static class DesktopCaptureRunner
                         $"{follow.DerivedRecords.ToString("N0", CultureInfo.CurrentCulture)} observed records",
                         Published(generation, follow.DerivedChunks) + " "
                         + (Keeps(derivation.Rolling) is { } kept ? kept + " " : string.Empty)
+                        + (follow.CompactionFailure is { } failed ? FollowText.CompactionFailed(failed) + " " : string.Empty)
                         + "The graph relates processes by paired TCP and UDP"
                         + (options.LinksRpcCalls ? " and by RPC calls linked to the processes that served them," : string.Empty)
                         + " and draws their connections to other hosts; other observations remain in the timeline.",

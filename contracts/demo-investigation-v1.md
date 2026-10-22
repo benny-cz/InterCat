@@ -58,7 +58,8 @@ no value in it is evidence about Windows."
 | The investigation window | First among its caveats, when any member is a demo session |
 | `icat demo` | Before it writes, and with what it wrote |
 | The window's Explore the demo | Its capture card, once the demo is open; the action's description says nothing in it was captured |
-| `icat session` | Among its notes |
+| `icat session` | Among its notes, and in its re-derivation line: generated rows have nothing to re-derive |
+| `icat rederive` | As its refusal, in the same words, changing nothing |
 | `icat workspace show` | After its members, and as each member's `demo` in its document, since `workspace-resolution-v21` |
 
 ## 4. The window's demo

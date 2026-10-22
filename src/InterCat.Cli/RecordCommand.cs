@@ -355,8 +355,7 @@ internal static class RecordCommand
 
         if (document.CompactionFailure is { } failure)
         {
-            ConsoleUi.Warn(
-                $"A compaction was not published ({failure}). The recording is whole; run icat compact to coalesce it.");
+            ConsoleUi.Warn(FollowText.CompactionFailed(failure));
         }
 
         if (document.EvidenceOnly)

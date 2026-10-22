@@ -83,7 +83,7 @@ public sealed record LiveFollowTicket
         try
         {
             var hold = new LiveFollowHold(stream, path, this);
-            hold.Write();
+            hold.Write(this);
             return hold;
         }
         catch
@@ -228,7 +228,8 @@ public sealed class LiveFollowHold : IDisposable
 
     /// <summary>
     /// Records the owner lease the broker just renewed, so a later launch knows until when the capture could still be
-    /// recording. A ticket that could not be rewritten keeps its earlier expiry, which only makes a launch wait less.
+    /// recording. A ticket that could not be rewritten keeps its earlier expiry, which only makes a launch wait less, and
+    /// the next renewal writes it again.
     /// </summary>
     public void Renew(DateTimeOffset ownerLeaseExpiresUtc)
     {
@@ -237,10 +238,11 @@ public sealed class LiveFollowHold : IDisposable
             return;
         }
 
-        Ticket = Ticket with { OwnerLeaseExpiresUtc = ownerLeaseExpiresUtc };
+        LiveFollowTicket renewed = Ticket with { OwnerLeaseExpiresUtc = ownerLeaseExpiresUtc };
         try
         {
-            Write();
+            Write(renewed);
+            Ticket = renewed;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -265,12 +267,20 @@ public sealed class LiveFollowHold : IDisposable
     /// <summary>The follow ended early: the ticket stays, released, for a later launch to finish from.</summary>
     public void Dispose() => Release();
 
-    internal void Write()
+    /// <summary>
+    /// Writes <paramref name="ticket"/> over the one the file holds in a single write, never emptying it first: one shorter
+    /// than what is there ends in spaces, which JSON reads past. A rewrite that fails therefore leaves the earlier ticket
+    /// for a later launch to read, where emptying the file first would have left nothing that reads as one.
+    /// </summary>
+    internal void Write(LiveFollowTicket ticket)
     {
         FileStream held = stream ?? throw new ObjectDisposedException(nameof(LiveFollowHold));
+        byte[] json = JsonSerializer.SerializeToUtf8Bytes(ticket, LiveFollowTicket.Options);
+        byte[] bytes = new byte[Math.Max(json.Length, held.Length)];
+        bytes.AsSpan(json.Length).Fill((byte)' ');
+        json.CopyTo(bytes, 0);
         held.Position = 0;
-        held.SetLength(0);
-        JsonSerializer.Serialize(held, Ticket, LiveFollowTicket.Options);
+        held.Write(bytes);
         held.Flush(flushToDisk: true);
     }
 

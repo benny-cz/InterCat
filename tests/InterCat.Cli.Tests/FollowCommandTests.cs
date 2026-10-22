@@ -228,6 +228,67 @@ public sealed class FollowCommandTests : IDisposable
             current.SessionId, SessionSegments.SourceClock(derived.Root, current)!.Value).Segments.Count);
     }
 
+    [Fact(DisplayName = "§20.1: icat follow whose compaction cannot be published finishes all the same, says why, and keeps the session whole")]
+    public async Task AFollowWhoseCompactionFailsFinishesWhole()
+    {
+        (string evidencePath, SessionManifestV1 source) = await Recorded("capture");
+        int chunks = LiveSessionFollower.Progress(source).Chunks;
+        string session = Followed(evidencePath, source, "explore", chunks: 1);
+
+        // Something already stands where the compaction that ends the follow would publish its generation, as a file left
+        // there by another program would: the compaction cannot be published, and every chunk was mirrored before it.
+        Directory.CreateDirectory(Path.Combine(session, SessionManifestV1.FileNameFor(chunks + 1)));
+        (InterCatExitCode code, string output, string said) = await Run("follow", evidencePath, session, "--once", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using (JsonDocument document = JsonDocument.Parse(output))
+        {
+            JsonElement root = document.RootElement;
+            Assert.Equal((true, chunks, 0), (root.GetProperty("finished").GetBoolean(),
+                root.GetProperty("derivedChunks").GetInt32(), root.GetProperty("compactions").GetInt32()));
+            Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("compactionFailure").GetString()));
+        }
+
+        Assert.Equal(4, JournalRederivation.Verify(SessionStore.OpenExisting(LocalOwnedDirectory.Open(session))).ObservationRows);
+
+        // A follow that compacted says nothing of it.
+        (string otherEvidence, _) = await Recorded("capture-2");
+        (code, output, said) = await Run("follow", otherEvidence, Path.Combine(root.Path, "explore-2"), "--once", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using (JsonDocument document = JsonDocument.Parse(output))
+        {
+            Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("compactionFailure").ValueKind);
+        }
+
+        Assert.DoesNotContain("A compaction was not published", said, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "§20.1: icat follow says in its summary that a compaction was not published, in the words icat record uses")]
+    public async Task AFollowSaysItsCompactionWasNotPublished()
+    {
+        (string evidencePath, SessionManifestV1 source) = await Recorded("capture");
+        int chunks = LiveSessionFollower.Progress(source).Chunks;
+        string session = Followed(evidencePath, source, "explore", chunks: 1);
+        Directory.CreateDirectory(Path.Combine(session, SessionManifestV1.FileNameFor(chunks + 1)));
+        (InterCatExitCode code, _, string said) = await Run("follow", evidencePath, session, "--once");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("A compaction was not published: ", said, StringComparison.Ordinal);
+        Assert.Contains(". The session is whole, with more segments than it needs; icat compact coalesces them.", said,
+            StringComparison.Ordinal);
+
+        // A capture a viewer left unfinished is finished the same way, naming the session alone.
+        (string otherEvidence, SessionManifestV1 other) = await Recorded("capture-2");
+        string unfinished = Followed(otherEvidence, other, "explore-2", chunks: 1);
+        _ = Ticket(other, otherEvidence, unfinished, settled: true);
+        Directory.CreateDirectory(Path.Combine(unfinished, SessionManifestV1.FileNameFor(LiveSessionFollower.Progress(other).Chunks + 1)));
+        (code, string output, said) = await Run("follow", unfinished, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using JsonDocument document = JsonDocument.Parse(output);
+        Assert.Equal((true, 0), (document.RootElement.GetProperty("finished").GetBoolean(),
+            document.RootElement.GetProperty("compactions").GetInt32()));
+        Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("compactionFailure").GetString()));
+        Assert.False(File.Exists(LiveFollowTicket.PathFor(unfinished)));
+    }
+
     /// <summary>A finalized evidence recording of four records, as the broker publishes it, in a folder of its own.</summary>
     private async Task<(string Path, SessionManifestV1 Source)> Recorded(string name)
     {

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 711 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 712 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 712 — a coverage pass over the journal and follow code; a follow's failed compaction no longer ends it (R10, ADR-026):**
+  - A follow's compaction that fails - as on a nearly full disk - ended the follow: the window stopped the capture as
+    interrupted, and icat capture and icat follow ended with an error although every chunk was mirrored. It is now
+    reported once and not tried again, as a recording's is, in one wording on the capture card, a finished interrupted
+    capture's card, icat capture, icat follow and icat record (`compactionFailure`), and the follow goes on. A
+    ticket's renewal writes over the ticket rather than emptying it first (`live-follow-v1` §1). The generated demo
+    says it has nothing to re-derive, never that an earlier version published it (`demo-investigation-v1` §3). Tests
+    now run a follow's compactions as it goes, renewals on every platform, cut names, declared statuses and each
+    mechanism's row key.
+  - Debug and Release each ran 2,853 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    twenty-four mutations were caught: the demo's re-derivation said as an earlier version's, or replayed, or the
+    demo not known by its identity; a ticket rewritten unpadded, not rewritten, rewritten for an older expiry or
+    after its hold was released, or renewed only in memory; a session folder not made yet listed, or a ticket
+    rewritten since it was found taken; a follow's failed compaction ending it, tried again or unreported, and no
+    compaction while it follows; a recording's failed compaction ending it; the failure's reason left untrimmed; a
+    cut name left unmarked, a declared status dropped, and RPC calls' or sections' rows keyed otherwise; icat
+    follow's document left without the failure, for a follow or a finish, or its summary without the warning; and a
+    finished capture's card without it.
 
 - **Revision 711 — a coverage pass over revisions 699 to 710; bytes past what a sum holds refused with why (R10, I6):**
   - Of the 2,993 lines revisions 699 to 710 added that a test can reach, 143 ran in none. Tests now run whole a tile

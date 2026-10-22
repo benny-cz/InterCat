@@ -94,12 +94,14 @@ internal sealed record InterruptedCaptureOffer(
     {
         ArgumentNullException.ThrowIfNull(result);
         FollowStep step = result.Step;
+        string compaction = step.CompactionFailure is { } failed ? " " + FollowText.CompactionFailed(failed) : string.Empty;
         return step.Finished
             ? ("Session saved", $"Every chunk the capture published is in this session: {Chunks(step.DerivedChunks, culture)}, "
-                + $"{Records(step.DerivedRecords, culture)}. InterCat derived the rest from the evidence the broker kept.")
+                + $"{Records(step.DerivedRecords, culture)}. InterCat derived the rest from the evidence the broker kept."
+                + compaction)
             : ("Partial session saved", "The capture ended before it was finalized, so records after its last publication "
                 + $"were not kept. Every chunk it published is in this session: {Chunks(step.DerivedChunks, culture)}, "
-                + $"{Records(step.DerivedRecords, culture)}.");
+                + $"{Records(step.DerivedRecords, culture)}." + compaction);
     }
 
     /// <summary>

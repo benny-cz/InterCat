@@ -936,6 +936,7 @@
         "I15: a published segment opens by its header, directories and time column, and reads a column when first asked",
         "I15: a published segment whose length changed since its generation recorded it is not read",
         "I15: a reader that meets the pointer while a writer publishes acquires the generation it names once it reads whole, and one that stays unreadable is refused",
+        "I15: a recording whose compaction fails says why and records on whole, compacting nothing more",
         "I15: a release nothing can rebuild is carried by every later generation, and a manifest that carries none is as it was",
         "I15: a release whose boundary falls inside the first batch releases nothing",
         "I15: a reopened session acquires the generation its pointer names",
@@ -1059,6 +1060,7 @@
         "I2: an import names the evidence it cannot find instead of importing nothing",
         "I2: an import refuses a bound outside its declared range before reading a record",
         "I2: an import requires both a path and a compiled admission plan",
+        "I2: each mechanism family keys its rows by a discriminator of its own, the same in every version",
         "I2: one observation cannot publish the same source field twice",
         "I2: process identity refuses a field repeated across field segments",
         "I2: records keyed against a derived clock keep one identity across imports",
@@ -1351,6 +1353,7 @@
       ],
       "R1": [
         "R1: a UDP receive keeps its endpoints as delivered and is read as its owner's own flow",
+        "R1: a name cut to what a record holds is kept as cut and marked so, and a status the source declares is carried",
         "R1: a published segment carries source facts only, never a resolved identity",
         "R1: a published segment is immutable, and a later generation reads the same bytes",
         "R1: an IPv6 receive keeps its 128-bit endpoints as delivered and is read as its owner's own flow",
@@ -1655,6 +1658,7 @@
         "R2: ranked by peers, each process counts its own, the rows overlap, and an unresolved-only process is unmeasured"
       ],
       "R20": [
+        "R20: InterCat's generated demo is said to have nothing to re-derive, as the demo it is, never as an earlier version's session",
         "R20: a legacy journal without its descriptor plan is refused without changing the generation",
         "R20: a published journal re-derives byte-identical segments in a replacement generation",
         "R20: a session read at its last complete generation is checked, and refused re-derivation before any replay",
@@ -2064,6 +2068,7 @@
       "R18": [
         "R18: a channel's export stops at its limit and says so, the rest left to a brushed interval or icat export --limit",
         "R18: a cited command's value is taken whole, in double quotes where a shell would split or read it",
+        "R18: a compaction not published is said once, in words that keep the session whole, wherever it is said",
         "R18: a demo session says it was generated wherever the window shows it, in icat's words",
         "R18: a follow counts its published chunks and records as the card does, one in the singular",
         "R18: a group's RPC call time is its members' calls together, as the duration metric grouped by executable or by session answers",

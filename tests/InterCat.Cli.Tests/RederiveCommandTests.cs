@@ -1,4 +1,5 @@
 using System.Text.Json;
+using InterCat.Application;
 using InterCat.Analysis.Tests;
 using InterCat.Capture.Journal.Tests;
 using InterCat.Domain;
@@ -80,6 +81,38 @@ public sealed class RederiveCommandTests : IDisposable
         Assert.Contains("No retained normalization plan: an earlier version of InterCat published this session before plans "
             + "were kept, so its journal cannot be replayed. The session stays readable as it is.", described,
             StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R20: InterCat's generated demo is said to have nothing to re-derive, as the demo it is, never as an earlier version's session")]
+    public async Task TheDemoHasNothingToRederive()
+    {
+        DemoInvestigationResult demo = DemoInvestigation.Create(Path.Combine(root.Path, "demo"));
+        long generation = Generation(demo.ClientSession);
+        const string Nothing = "InterCat generated this demo session. Its rows were written as they are, beside records made "
+            + "to match them, not derived from those records, so there is nothing to re-derive. The session stays readable "
+            + "as it is.";
+        foreach (string[] args in new[] { ["rederive", demo.ClientSession], new[] { "rederive", demo.ClientSession, "--check" } })
+        {
+            (InterCatExitCode code, string output, string said) = await Run(args);
+            Assert.Equal((InterCatExitCode.PermissionOrCapabilityFailure, string.Empty), (code, output));
+            Assert.Contains(Nothing, said, StringComparison.Ordinal);
+            Assert.DoesNotContain("earlier version", said, StringComparison.Ordinal);
+            Assert.DoesNotContain("Replaying", said, StringComparison.Ordinal);
+            Assert.DoesNotContain("Checking generation", said, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(generation, Generation(demo.ClientSession));
+
+        // icat session says so in the same words, beside the demo's disclosure, and names no command to run.
+        (_, string described, _) = await Run("session", demo.ServerSession);
+        Assert.Contains(Nothing, described, StringComparison.Ordinal);
+        Assert.Contains(DemoInvestigation.Disclosure, described, StringComparison.Ordinal);
+        Assert.DoesNotContain("earlier version", described, StringComparison.Ordinal);
+        (_, string document, _) = await Run("session", demo.ServerSession, "--json");
+        using JsonDocument parsed = JsonDocument.Parse(document);
+        JsonElement rederivation = parsed.RootElement.GetProperty("rederivation");
+        Assert.Equal((false, Nothing, JsonValueKind.Null), (rederivation.GetProperty("canAttempt").GetBoolean(),
+            rederivation.GetProperty("explanation").GetString(), rederivation.GetProperty("command").ValueKind));
     }
 
     [Fact(DisplayName = "R20: a session read at its last complete generation is checked, and refused re-derivation before any replay")]

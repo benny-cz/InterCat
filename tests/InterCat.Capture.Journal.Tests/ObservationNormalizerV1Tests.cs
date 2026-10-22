@@ -516,6 +516,58 @@ public sealed class ObservationNormalizerV1Tests
         Assert.False(normalizer.ToRow(without, plan).Markers.HasFlag(SegmentRowMarkers.ExtendedDataRequested));
     }
 
+    [Fact(DisplayName = "R1: a name cut to what a record holds is kept as cut and marked so, and a status the source declares is carried")]
+    public void ACutNameIsMarkedAndADeclaredStatusCarried()
+    {
+        AdmittedEventPlan plan = LifecyclePlan() with
+        {
+            MinimumBodyLength = 8,
+            Slots =
+            [
+                .. LifecyclePlan().Slots,
+                new AdmittedSlotPlan("ExitStatus", FieldRole.Status, 4, 4, null, null, SlotTransform.None),
+            ],
+        };
+        (ObservationNormalizerV1 normalizer, SourceClockDescriptor clock) = Normalizer();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(plan)], clock.Id);
+
+        // A packaged app's image path runs past the 160 characters a record holds of a name, as many on Windows do.
+        string path = @"C:\Program Files\WindowsApps\" + new string('a', 140) + @"\app.exe";
+        AdmittedEvent cut = Admitted(plan);
+        cut.SetSlot(0, 4_242);
+        cut.SetSlot(1, 259);
+        cut.SetName(path, truncated: false);
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(cut, plan, CaptureId.New());
+        ObservationRowV1 row = normalizer.ToRow(envelope, plan);
+        Assert.Equal(path[..AdmittedEvent.MaximumNameLength], row.ResourceName);
+        Assert.True(row.Markers.HasFlag(SegmentRowMarkers.ResourceNameTruncated));
+        Assert.Equal(259, row.StatusCode);
+        Assert.Null(row.Validate());
+
+        // A whole name is not marked, nor is a status the record does not carry made up.
+        AdmittedEvent whole = Admitted(plan);
+        whole.SetSlot(0, 4_242);
+        whole.SetName(@"C:\Windows\System32\svchost.exe", truncated: false);
+        using RecordEnvelopeV1 wholeEnvelope = mapper.ToEnvelope(whole, plan, CaptureId.New());
+        ObservationRowV1 named = normalizer.ToRow(wholeEnvelope, plan);
+        Assert.Equal((@"C:\Windows\System32\svchost.exe", (long?)null), (named.ResourceName, named.StatusCode));
+        Assert.False(named.Markers.HasFlag(SegmentRowMarkers.ResourceNameTruncated));
+    }
+
+    [Fact(DisplayName = "I2: each mechanism family keys its rows by a discriminator of its own, the same in every version")]
+    public void EachMechanismFamilyKeysItsRowsTheSameWay() =>
+        Assert.Equal(
+            [
+                "process-lifecycle", "process-lifecycle", "network-transfer", "network-transfer", "rpc-call", "pipe-operation",
+                "pipe-operation", "alpc-message", "section-mapping", "source-observation", "source-observation",
+            ],
+            new[]
+            {
+                Mechanism.ProcessLifecycle, Mechanism.ThreadLifecycle, Mechanism.Tcp, Mechanism.Udp, Mechanism.Rpc,
+                Mechanism.NamedPipe, Mechanism.AnonymousPipe, Mechanism.Alpc, Mechanism.SharedSection, Mechanism.ComActivation,
+                Mechanism.Quic,
+            }.Select(ObservationNormalizerV1.DiscriminatorFor));
+
     [Fact(DisplayName = "I15: every derived row is writable into a segment as it stands")]
     public void EveryDerivedRowIsWritable()
     {

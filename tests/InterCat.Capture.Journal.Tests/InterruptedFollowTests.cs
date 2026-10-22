@@ -54,6 +54,87 @@ public sealed class InterruptedFollowTests
         Assert.Empty(LiveFollowTicket.FindInterrupted(root.Path));
     }
 
+    [Fact(DisplayName = "§3.1: a renewal writes the new expiry over the ticket, never emptying it, and a released hold renews nothing")]
+    public void ARenewalWritesOverTheTicket()
+    {
+        using var root = new TemporaryDirectory();
+        string session = Path.Combine(root.Path, "explore-1");
+        string path = LiveFollowTicket.PathFor(session);
+        var started = new DateTimeOffset(2026, 10, 22, 9, 0, 0, TimeSpan.Zero);
+        LiveFollowTicket ticket = LiveFollowTicket.For(
+            Guid.NewGuid(), Path.Combine(root.Path, "evidence"), session, started, started.AddSeconds(30).AddTicks(1_234_567));
+
+        using (LiveFollowHold running = ticket.Hold())
+        {
+            int first = ReadHeld(path).Length;
+
+            // An expiry written shorter than the one before it - by its fraction's eight characters - ends in spaces where
+            // the longer one ended: the file is written over, never emptied first, so no rewrite leaves less than a whole
+            // ticket.
+            running.Renew(started.AddSeconds(40));
+            string shorter = ReadHeld(path);
+            Assert.Equal(first, shorter.Length);
+            Assert.EndsWith("}" + new string(' ', 8), shorter, StringComparison.Ordinal);
+            Assert.Equal(ticket with { OwnerLeaseExpiresUtc = started.AddSeconds(40) }, Parse(shorter));
+            Assert.Equal(started.AddSeconds(40), running.Ticket.OwnerLeaseExpiresUtc);
+
+            // One written longer takes the room it needs.
+            running.Renew(started.AddSeconds(50).AddTicks(9_876_543));
+            string longer = ReadHeld(path);
+            Assert.EndsWith("}", longer, StringComparison.Ordinal);
+            Assert.Equal(ticket with { OwnerLeaseExpiresUtc = started.AddSeconds(50).AddTicks(9_876_543) }, Parse(longer));
+
+            // An expiry no later than the one written changes nothing.
+            running.Renew(started.AddSeconds(45));
+            Assert.Equal(longer, ReadHeld(path));
+        }
+
+        // A later launch reads the last renewal, padding and all; a hold already released renews nothing.
+        LiveFollowTicket found = Assert.Single(LiveFollowTicket.FindInterrupted(root.Path));
+        Assert.Equal(started.AddSeconds(50).AddTicks(9_876_543), found.OwnerLeaseExpiresUtc);
+        LiveFollowHold released = found.Hold();
+        string written = ReadHeld(path);
+        released.Dispose();
+        released.Renew(started.AddMinutes(5));
+        Assert.Equal((written, found), (ReadHeld(path), released.Ticket));
+    }
+
+    [Fact(DisplayName = "§3.1: a session folder not made yet holds no ticket, and a ticket rewritten since it was found is not taken")]
+    public void OnlyTheTicketAsFoundIsTaken()
+    {
+        using var root = new TemporaryDirectory();
+        Assert.Empty(LiveFollowTicket.FindInterrupted(Path.Combine(root.Path, "Sessions")));
+
+        string session = Path.Combine(root.Path, "Sessions", "explore-1");
+        LiveFollowTicket ticket = LiveFollowTicket.For(
+            Guid.NewGuid(), Path.Combine(root.Path, "evidence"), session, Now, Now.AddSeconds(30));
+        ticket.Hold().Dispose();
+        LiveFollowTicket offered = Assert.Single(LiveFollowTicket.FindInterrupted(Path.Combine(root.Path, "Sessions")));
+
+        // Another follow of the session wrote its own ticket since: the one offered is no longer there to take, and the
+        // file is left as it is, held by nothing, for the ticket it now holds.
+        LiveFollowTicket since = offered with { StartedUtc = Now.AddMinutes(1), OwnerLeaseExpiresUtc = Now.AddMinutes(2) };
+        since.Hold().Dispose();
+        Assert.Null(LiveFollowTicket.TryTake(offered));
+        using LiveFollowHold taken = Assert.IsType<LiveFollowHold>(LiveFollowTicket.TryTake(since));
+        Assert.Equal(since, taken.Ticket);
+    }
+
+    /// <summary>A ticket's text as a running follow holds it, read as another process may: for reading only.</summary>
+    private static string ReadHeld(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
+    private static readonly System.Text.Json.JsonSerializerOptions TicketJson = new()
+    {
+        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+    };
+
+    private static LiveFollowTicket Parse(string text) => System.Text.Json.JsonSerializer.Deserialize<LiveFollowTicket>(text, TicketJson)!;
+
     [Fact(DisplayName = "§3.1: naming a session finds its own ticket, and only once no follow holds it")]
     public void NamingASessionFindsItsOwnTicket()
     {

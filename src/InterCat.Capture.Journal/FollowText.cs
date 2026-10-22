@@ -23,6 +23,17 @@ public static class FollowText
             + $"{Records(step.DerivedRecords, culture)} so far.";
     }
 
+    /// <summary>
+    /// What a recording or a follow says once a compaction was not published (§20.1): every row was published all the
+    /// same, so its session is whole, only with more segments than it needs. The window and icat say it in these words.
+    /// </summary>
+    public static string CompactionFailed(string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        return $"A compaction was not published: {reason.Trim().TrimEnd('.')}. The session is whole, with more segments "
+            + "than it needs; icat compact coalesces them.";
+    }
+
     private static string Count(long count, string noun, CultureInfo culture)
     {
         ArgumentNullException.ThrowIfNull(culture);
