@@ -2275,13 +2275,14 @@
       "I17": [
         "I17: an answer over a held generation is refused once its lease lets go, and for another session's lease",
         "I17: late evidence publishes a new revision, and a generation held from before answers as it did, under the same identity"
+      ],
+      "P12": [
+        "P12: once a capture's descriptors have been seen, a callback's queue, counters and coverage tally allocate nothing",
+        "P12: the capture callback allocates from a pool, and otherwise only where a reviewed bound holds",
+        "P12: the capture callback reaches no query, store, file, network, name or symbol lookup, decoder or wait, and only reviewed locks"
       ]
     },
     "uncovered": {
-      "P12": {
-        "reason": "Callback-path prohibitions are asserted against the journal of IC-011.",
-        "plannedBy": "IC-011"
-      },
       "P13": {
         "reason": "Coverage epochs on a provider change arrive with IC-009.",
         "plannedBy": "IC-009"
