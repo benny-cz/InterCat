@@ -103,6 +103,12 @@ public sealed class DesktopCaptureTests
         Assert.Equal("Generation 3 · 2 published chunks.", DesktopCaptureRunner.Published(3, 2));
     }
 
+    [Fact(DisplayName = "§9: a generation whose view could not be read is said with what it means first, and why last")]
+    public void AnUnreadViewSaysWhatItMeansFirst() => Assert.Equal(
+        "Generation 3 · 2 published chunks. The view shown stays until a later generation's is read; the session is kept. "
+            + "The disk is not ready.",
+        DesktopCaptureRunner.ViewUnread("The disk is not ready.", 3, 2));
+
     [Fact(DisplayName = "P19: the window asks for a content capture of the processes a person chose, every exchange of theirs within the limits chosen")]
     public void AContentCaptureAsksForTheChosenProcesses()
     {

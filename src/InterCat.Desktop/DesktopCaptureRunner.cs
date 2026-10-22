@@ -237,6 +237,14 @@ public static class DesktopCaptureRunner
         string.Create(CultureInfo.CurrentCulture, $"Generation {generation:N0} · ")
         + FollowText.Chunks(chunks, CultureInfo.CurrentCulture) + ".";
 
+    /// <summary>
+    /// What the capture card says of a generation published whose view could not be read just now: the generation, that
+    /// the view shown stays and the session is kept, and then why, whose path to a file can fill the card's few lines.
+    /// </summary>
+    public static string ViewUnread(string problem, long generation, int chunks) =>
+        Published(generation, chunks) + " The view shown stays until a later generation's is read; the session is kept. "
+        + problem;
+
     public static string Describe(BrokerEffectiveCaptureSummary summary) =>
         $"{summary.EffectiveProfileId ?? summary.RequestedProfileId} · "
         + $"{string.Join(", ", summary.Sources.Select(source => source.SourceId))} · "
@@ -598,9 +606,7 @@ public static class DesktopCaptureRunner
                     report(step.OverviewUnread
                         ? new(stopSent ? CaptureUiPhase.Finishing : CaptureUiPhase.Recording,
                             "Capture continues; its newest view could not be read",
-                            problem + " " + Published(generation, follow.DerivedChunks) + " The view shown stays until a "
-                                + "later generation's is read; the session is kept.",
-                            summary, sessionPath)
+                            ViewUnread(problem, generation, follow.DerivedChunks), summary, sessionPath)
                         : new(CaptureUiPhase.Recording, "Capture continues; overview is bounded",
                             problem + " The session is kept and can be inspected headlessly.",
                             summary, sessionPath));

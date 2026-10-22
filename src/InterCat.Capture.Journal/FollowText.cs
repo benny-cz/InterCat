@@ -25,13 +25,14 @@ public static class FollowText
 
     /// <summary>
     /// What a recording or a follow says once a compaction was not published (§20.1): every row was published all the
-    /// same, so its session is whole, only with more segments than it needs. The window and icat say it in these words.
+    /// same, so its session is whole, only with more segments than it needs. The window and icat say it in these words,
+    /// what it means before why, since a reason can name a file by a path that fills the capture card's few lines.
     /// </summary>
     public static string CompactionFailed(string reason)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
-        return $"A compaction was not published: {reason.Trim().TrimEnd('.')}. The session is whole, with more segments "
-            + "than it needs; icat compact coalesces them.";
+        return "A compaction was not published; the session is whole, with more segments than it needs, and icat compact "
+            + $"coalesces them. It failed: {reason.Trim().TrimEnd('.')}.";
     }
 
     private static string Count(long count, string noun, CultureInfo culture)

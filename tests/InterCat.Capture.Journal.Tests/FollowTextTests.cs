@@ -18,12 +18,12 @@ public sealed class FollowTextTests
         Assert.Equal("12 of 40 published chunks derived, 3,210 records so far.", FollowText.Progress(Step(12, 40, 3_210), culture));
     }
 
-    [Fact(DisplayName = "R18: a compaction not published is said once, in words that keep the session whole, wherever it is said")]
+    [Fact(DisplayName = "R18: a compaction not published is said once, in words that keep the session whole, wherever it is said, and why last")]
     public void ACompactionNotPublishedIsSaidInOneWay()
     {
         Assert.Equal(
-            "A compaction was not published: There is not enough space on the disk. The session is whole, with more "
-                + "segments than it needs; icat compact coalesces them.",
+            "A compaction was not published; the session is whole, with more segments than it needs, and icat compact "
+                + "coalesces them. It failed: There is not enough space on the disk.",
             FollowText.CompactionFailed(" There is not enough space on the disk. "));
         Assert.Throws<ArgumentException>(() => FollowText.CompactionFailed(" "));
     }

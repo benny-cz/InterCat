@@ -271,9 +271,8 @@ public sealed class FollowCommandTests : IDisposable
         Directory.CreateDirectory(Path.Combine(session, SessionManifestV1.FileNameFor(chunks + 1)));
         (InterCatExitCode code, _, string said) = await Run("follow", evidencePath, session, "--once");
         Assert.True(code == InterCatExitCode.Success, said);
-        Assert.Contains("A compaction was not published: ", said, StringComparison.Ordinal);
-        Assert.Contains(". The session is whole, with more segments than it needs; icat compact coalesces them.", said,
-            StringComparison.Ordinal);
+        Assert.Contains("A compaction was not published; the session is whole, with more segments than it needs, and icat "
+            + "compact coalesces them. It failed: ", said, StringComparison.Ordinal);
 
         // A capture a viewer left unfinished is finished the same way, naming the session alone.
         (string otherEvidence, SessionManifestV1 other) = await Recorded("capture-2");

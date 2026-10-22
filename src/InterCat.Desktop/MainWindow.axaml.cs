@@ -4087,11 +4087,12 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
         // A repeated detail (a live-counter update) keeps any navigation notice the last refresh appended to it. A session
         // opened afresh says its own, though its words repeat the last one's, as two sessions published in the same
-        // generation's do, so no notice of the session shown before it stays, or is said twice.
+        // generation's do, so no notice of the session shown before it stays, or is said twice. A file of the session it
+        // names is named from the session's folder down, which the path line names whole (§6.1); hover keeps it whole.
         if (forceOverview || !string.Equals(update.Detail, appliedDetail, StringComparison.Ordinal))
         {
             appliedDetail = update.Detail;
-            Say(CaptureDetail, update.Detail, aloud);
+            Say(CaptureDetail, SessionFolderText.Shortened(update.Detail, update.SessionPath ?? CaptureSessionPath.Text), aloud);
         }
 
         CaptureLatency.Text = Freshness(update.Milestones);

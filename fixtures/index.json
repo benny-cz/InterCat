@@ -2069,7 +2069,7 @@
       "R18": [
         "R18: a channel's export stops at its limit and says so, the rest left to a brushed interval or icat export --limit",
         "R18: a cited command's value is taken whole, in double quotes where a shell would split or read it",
-        "R18: a compaction not published is said once, in words that keep the session whole, wherever it is said",
+        "R18: a compaction not published is said once, in words that keep the session whole, wherever it is said, and why last",
         "R18: a demo session says it was generated wherever the window shows it, in icat's words",
         "R18: a follow counts its published chunks and records as the card does, one in the singular",
         "R18: a group's RPC call time is its members' calls together, as the duration metric grouped by executable or by session answers",
