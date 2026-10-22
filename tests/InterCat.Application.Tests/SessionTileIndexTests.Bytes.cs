@@ -218,6 +218,10 @@ public sealed partial class SessionTileIndexTests
         ProcessInstanceId[] group = [.. bound.Processes.Instances.Take(3).Select(instance => instance.Id)];
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         Assert.Equal(LaneBytes(twin.Store, whole, 64), LaneBytes(reopened, whole, 64));
+
+        // Lanes at columns of their own, which no overview keeps, add up from the sections that keep bytes and the rows of
+        // the one that does not.
+        Assert.Equal(LaneBytes(twin.Store, whole, 63), LaneBytes(reopened, whole, 63));
         Assert.Equal(IntervalBytes(twin.Store, whole, 64), IntervalBytes(reopened, whole, 64));
         Assert.Equal(Brushed(twin.Store, brush, EvidencePolicy.IncludeCorrelated), Brushed(reopened, brush, EvidencePolicy.IncludeCorrelated));
         Assert.Equal(

@@ -194,6 +194,52 @@ public static class SegmentMeasurement
     /// <summary>The most evidence rows one measurement returns. A listing is an inspection path, not an export.</summary>
     public const int MaximumEvidenceRows = 10_000;
 
+    /// <summary>Why bytes adding up past what a sum holds are refused, wherever they are added up.</summary>
+    public const string PastASum = "The records' sizes add up past 9,223,372,036,854,775,807 bytes, more than a sum holds. "
+        + "No capture records that much, so they are refused rather than summed.";
+
+    // What marks a refusal to sum bytes the records state apart from a file that cannot be read.
+    private const string UnsummableMark = "InterCat.UnsummableBytes";
+
+    /// <summary>
+    /// <paramref name="total"/> with <paramref name="bytes"/> added. A total past what a sum holds is refused
+    /// (<see cref="PastASum"/>) rather than wrapped into a smaller one that looks plausible (§10.2), so whatever adds up
+    /// bytes refuses them as the measurement of their rows does.
+    /// </summary>
+    public static long AddBytes(long total, long bytes)
+    {
+        long sum = unchecked(total + bytes);
+        return ((total ^ sum) & (bytes ^ sum)) < 0 ? throw Unsummable(PastASum) : sum;
+    }
+
+    /// <summary>
+    /// A refusal to sum the bytes records state, which is no damage to the file holding them: a measurement naming no
+    /// accounting side or one §23 does not define, no unit, a unit other than the rows it is summed with or than a view
+    /// sums, or sizes adding up past what a sum holds. Everything else the records hold reads as before; only a total of
+    /// their bytes is refused, and its reason says why (R2, §10.2). It is unreadable input wherever input is refused.
+    /// </summary>
+    public static InvalidDataException Unsummable(string reason)
+    {
+        var refusal = new InvalidDataException(reason);
+        refusal.Data[UnsummableMark] = true;
+        return refusal;
+    }
+
+    /// <summary>Whether <paramref name="exception"/> refuses to sum bytes (<see cref="Unsummable"/>) rather than read a file.</summary>
+    public static bool IsUnsummable(Exception exception) =>
+        exception is InvalidDataException && exception.Data.Contains(UnsummableMark);
+
+    /// <summary>A side's total with one row's bytes added, refused with that row where it passes what a sum holds.</summary>
+    private static long AddRowBytes(long total, long bytes, int row)
+    {
+        long sum = unchecked(total + bytes);
+        return ((total ^ sum) & (bytes ^ sum)) < 0
+            ? throw Unsummable(
+                $"Row {row} measures {bytes} bytes, which takes its side's total past 9,223,372,036,854,775,807, more than "
+                + "a sum holds. No capture records that much, so the sizes are refused rather than summed.")
+            : sum;
+    }
+
     /// <summary>
     /// Sums one byte domain and one accounting side over a segment. Every row is accounted for — summed,
     /// counted as an unknown with its reason, or excluded with the reason it was excluded — so a total can
@@ -242,8 +288,8 @@ public static class SegmentMeasurement
     /// <summary>
     /// Measures one byte domain over a segment in one pass, keeping each accounting side's contributions apart.
     /// Every row is accounted for: in the interval or not, in the projection or not, with a declared slot in this
-    /// domain, in another, or in none. Accumulation is checked, so a long capture reports an overflow rather than
-    /// wrapping into a smaller total that looks plausible (§10.2).
+    /// domain, in another, or in none. A side's total past what a sum holds is refused, naming the row that took it there,
+    /// rather than wrapped into a smaller total that looks plausible (§10.2).
     /// </summary>
     public static DomainMeasurement MeasureDomain(SegmentReaderV1 segment, DomainMeasurementSpec spec, ReadOnlySpan<bool> processMask = default)
     {
@@ -320,21 +366,21 @@ public static class SegmentMeasurement
             }
 
             ulong sideCode = sides.UnsignedAt(row)
-                ?? throw new InvalidDataException(
+                ?? throw Unsummable(
                     $"Row {row} declares a byte domain and no accounting side, so nothing says which side of "
                     + "the exchange its measurement belongs to (§5.3).");
             if (sideCode is 0 or >= Slots)
             {
-                throw new InvalidDataException(
+                throw Unsummable(
                     $"Row {row} labels its measurement with accounting side {sideCode}, which §23 does not "
                     + "define. An unknown side is refused rather than summed under a guessed one.");
             }
 
             var rowUnit = (MeasurementUnit)(units.UnsignedAt(row)
-                ?? throw new InvalidDataException($"Row {row} declares a byte slot with no unit (R2)."));
+                ?? throw Unsummable($"Row {row} declares a byte slot with no unit (R2)."));
             if (unit is { } established && established != rowUnit)
             {
-                throw new InvalidDataException(
+                throw Unsummable(
                     $"Row {row} measures in {rowUnit} where earlier rows measure in {established}. Two units "
                     + "are not summed and are not converted into one another here.");
             }
@@ -343,7 +389,7 @@ public static class SegmentMeasurement
             int slot = (int)sideCode;
             if (values.SignedAt(row) is { } value)
             {
-                totals[slot] = checked(totals[slot] + value);
+                totals[slot] = AddRowBytes(totals[slot], value, row);
                 known[slot]++;
             }
             else
@@ -586,21 +632,21 @@ public static class SegmentMeasurement
             }
 
             ulong sideCode = sides.UnsignedAt(row)
-                ?? throw new InvalidDataException(
+                ?? throw Unsummable(
                     $"Row {row} declares a byte domain and no accounting side, so nothing says which side of "
                     + "the exchange its measurement belongs to (§5.3).");
             if (sideCode is 0 or >= Slots)
             {
-                throw new InvalidDataException(
+                throw Unsummable(
                     $"Row {row} labels its measurement with accounting side {sideCode}, which §23 does not "
                     + "define. An unknown side is refused rather than summed under a guessed one.");
             }
 
             var rowUnit = (MeasurementUnit)(units.UnsignedAt(row)
-                ?? throw new InvalidDataException($"Row {row} declares a byte slot with no unit (R2)."));
+                ?? throw Unsummable($"Row {row} declares a byte slot with no unit (R2)."));
             if (unit is { } established && established != rowUnit)
             {
-                throw new InvalidDataException(
+                throw Unsummable(
                     $"Row {row} measures in {rowUnit} where earlier rows measure in {established}. Two units "
                     + "are not summed and are not converted into one another here.");
             }
@@ -609,7 +655,7 @@ public static class SegmentMeasurement
             int slot = (group * Slots) + (int)sideCode;
             if (values.SignedAt(row) is { } value)
             {
-                totals[slot] = checked(totals[slot] + value);
+                totals[slot] = AddRowBytes(totals[slot], value, row);
                 known[slot]++;
             }
             else

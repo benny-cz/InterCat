@@ -220,6 +220,37 @@ public sealed class RankingQueryTests
             line.TrimEnd('\r'), StringComparison.Ordinal));
     }
 
+    [Fact(DisplayName = "I16: rows whose session cannot be read again to name their query name none, and say why")]
+    public void RowsWhoseSessionCannotBeReadNameNoQuery()
+    {
+        using var session = new TemporarySession();
+        (List<ObservationRowV1> rows, List<SourceFieldRowV1> fields) = RandomMachine(new Random(11));
+        Publish(session.Store, rows, fields: fields);
+        ExportContext machine = SessionExport.Build(session.Store,
+            new([], null, false, ExportFormat.Json, RankBy: RankingMetric.BytesSent), Exported).Context;
+        Assert.NotNull(machine.Query!.Identity);
+
+        // The rows were read; a segment another program holds since, or one gone, naming their query cannot read what the
+        // captures declared.
+        session.Store.ReleaseSegmentReaders();
+        string segment = Path.Combine(session.Path, SessionSegments.Names(session.Store.Current!)[0]);
+        using (new FileStream(segment, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            Unread(RankingQuery.Name(session.Store, machine, EvidencePolicy.IncludeCorrelated));
+        }
+
+        File.Delete(segment);
+        Unread(RankingQuery.Name(session.Store, machine, EvidencePolicy.IncludeCorrelated));
+
+        static void Unread(RankingQueryName unread)
+        {
+            Assert.Null(unread.Identity);
+            Assert.Null(unread.Command);
+            Assert.StartsWith("The session could not be read to name the icat metric query these rows answer: ", unread.Unnamed,
+                StringComparison.Ordinal);
+        }
+    }
+
     [Fact(DisplayName = "§19.5: a view that sets InterCat's own processes aside names no query, since icat metric counts them")]
     public void ASetAsideViewNamesNoQuery()
     {

@@ -1222,6 +1222,45 @@ public sealed partial class SegmentV1Tests
         Assert.Equal(1, sent.ExcludedOutsideInterval);
     }
 
+    [Fact(DisplayName = "§10.2: a side's bytes past what a sum holds are refused, naming the row that took it there, as bytes not summed rather than a file not read")]
+    public void BytesPastASumAreRefusedNamingTheRow()
+    {
+        const long Half = (long.MaxValue / 2) + 1;
+        SegmentReaderV1 segment = Build(
+            [
+                Row(100, bytes: Half, side: AccountingSide.SendSide),
+                Row(200, bytes: Half, side: AccountingSide.ReceiveSide),
+                Row(300, bytes: Half, side: AccountingSide.SendSide),
+            ]);
+        var spec = new DomainMeasurementSpec { Domain = ByteDomain.TransportObserved };
+
+        // A side's second row takes it past a sum; each side fits on its own, and so does the pass before that row.
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(() => SegmentMeasurement.MeasureDomain(segment, spec));
+        Assert.Equal(
+            $"Row 2 measures {Half} bytes, which takes its side's total past 9,223,372,036,854,775,807, more than a sum "
+            + "holds. No capture records that much, so the sizes are refused rather than summed.",
+            refusal.Message);
+        Assert.True(SegmentMeasurement.IsUnsummable(refusal));
+        DomainMeasurement before = SegmentMeasurement.MeasureDomain(segment, spec with { Interval = new TimeRange(100, 300) });
+        Assert.Equal((Half, Half), (before.Side(AccountingSide.SendSide)!.TotalBytes, before.Side(AccountingSide.ReceiveSide)!.TotalBytes));
+
+        // Grouped apart, each group's side fits; grouped together, the same row is named.
+        Assert.Equal(Half, SegmentMeasurement.MeasureDomainByGroup(segment, spec, [0, 0, 1], 2).Groups[1].Single().TotalBytes);
+        InvalidDataException grouped = Assert.Throws<InvalidDataException>(
+            () => SegmentMeasurement.MeasureDomainByGroup(segment, spec, [0, 0, 0], 1));
+        Assert.Equal(refusal.Message, grouped.Message);
+        Assert.True(SegmentMeasurement.IsUnsummable(grouped));
+
+        // Totals added up elsewhere are refused alike, either way past a sum; a file that cannot be read is no such refusal.
+        Assert.Equal(long.MaxValue, SegmentMeasurement.AddBytes(long.MaxValue - 1, 1));
+        InvalidDataException past = Assert.Throws<InvalidDataException>(() => SegmentMeasurement.AddBytes(long.MaxValue, 1));
+        Assert.Equal(SegmentMeasurement.PastASum, past.Message);
+        Assert.True(SegmentMeasurement.IsUnsummable(past));
+        Assert.True(SegmentMeasurement.IsUnsummable(Assert.Throws<InvalidDataException>(() => SegmentMeasurement.AddBytes(long.MinValue, -1))));
+        Assert.False(SegmentMeasurement.IsUnsummable(new InvalidDataException(SegmentMeasurement.PastASum)));
+        Assert.False(SegmentMeasurement.IsUnsummable(new IOException(SegmentMeasurement.PastASum)));
+    }
+
     [Fact(DisplayName = "I8: a journal's clock is read without decoding a batch, and a torn one is refused")]
     public void AJournalClockIsReadWithoutItsBatches()
     {

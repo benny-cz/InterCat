@@ -162,6 +162,24 @@ public sealed class SessionHttpExchangesTests
         Assert.NotNull(SessionHttpExchanges.Spans(session.Store, HttpExchangeKeys.Channel(other), new TimeRange(0, 400)).Problem);
     }
 
+    [Theory(DisplayName = "§10.2: HTTP buffers whose sizes add up past what a sum holds, in one part or across a channel's exchanges, are refused with why, never summed small")]
+    [InlineData(8, 9)]
+    [InlineData(4, 11)]
+    [InlineData(8, 13)]
+    public void BuffersPastASumAreRefused(int first, int second)
+    {
+        // Two buffers, each of a size no capture records: exchange 1's response body's two; exchange 2's and exchange 3's
+        // request heads; exchange 1's and exchange 3's response bodies.
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = Rows(out SourceFieldRowV1[] fields);
+        Publish(session.Store,
+            [.. rows.Select((row, index) => index == first || index == second ? row with { ByteValue = 5_000_000_000_000_000_000 } : row)],
+            fields: fields);
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(() => SessionHttpExchanges.Channels(session.Store, Client(session.Store)));
+        Assert.Equal(SegmentMeasurement.PastASum, refusal.Message);
+        Assert.True(SegmentMeasurement.IsUnsummable(refusal));
+    }
+
     internal static ProcessInstanceId Client(SessionStore store) =>
         SessionOverviewProjector.Project(store).Nodes.Single(node => node.ProcessId == 4_242).Id;
 

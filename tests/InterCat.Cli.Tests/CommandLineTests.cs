@@ -181,6 +181,69 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "§10.2: sizes adding up past what a sum holds are corrupted input to every reader of bytes, which says why, and the rest of the session still answers")]
+    public async Task SizesPastASumAreCorruptedInputToEveryByteReader()
+    {
+        // Two processes of one program each send one size no capture records, each in a segment of its own: each segment's
+        // sums fit, and so does each process's, but neither the session's total nor the program's does.
+        using var oversized = new TemporarySession();
+        Publish(oversized.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 4) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 300, 5) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 200 },
+            Lifecycle(3, ObservationKind.Create, 200, 6) with { ResourceName = @"C:\Tools\server.exe", SessionRelativeTicks = 300 },
+            Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 5_000_000_000_000_000_000, 100, 1)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 10_000 },
+            Transfer(110, ObservationKind.Send, AccountingSide.SendSide, 5_000_000_000_000_000_000, 300, 2)
+                .Between("127.0.0.1:50001", "127.0.0.1:8080") with { SessionRelativeTicks = 11_000 },
+            Transfer(120, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 3)
+                .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 12_000 },
+        ], rowsPerSegment: 1);
+        oversized.Store.ReleaseSegmentReaders();
+        string[] bytesSent = ["metric", oversized.Path, "--metric", "bytes-sent", "--byte-domain", "transport-observed", "--side", "send-side"];
+        foreach (string[] args in new[]
+        {
+            bytesSent,
+            [.. bytesSent, "--group-by", "executable"],
+            [.. bytesSent, "--group-by", "process"],
+            new[] { "processes", oversized.Path, "--rank-by", "bytes-sent" },
+        })
+        {
+            (InterCatExitCode code, _, string said) = await Run(args);
+            string invocation = "icat " + string.Join(' ', args);
+            Assert.True(code == InterCatExitCode.CorruptedInput, $"{invocation} exited {code}: {said}");
+            Assert.True(said.Contains("more than a sum holds. No capture records that much", StringComparison.Ordinal),
+                $"{invocation} said: {said}");
+        }
+
+        // One process sends a size no capture records and another receives one: each side's sum fits, and each process's,
+        // but not every side's at the endpoints together, nor the processes'.
+        using var sided = new TemporarySession();
+        Publish(sided.Store,
+        [
+            Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 5_000_000_000_000_000_000, 100, 1)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 10_000 },
+            Transfer(110, ObservationKind.Receive, AccountingSide.ReceiveSide, 5_000_000_000_000_000_000, 200, 2)
+                .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 11_000 },
+        ], rowsPerSegment: 1);
+        sided.Store.ReleaseSegmentReaders();
+        string[] endpoint = ["metric", sided.Path, "--metric", "endpoint-activity-bytes", "--byte-domain", "transport-observed", "--side", "endpoint"];
+        foreach (string[] args in new[] { endpoint, [.. endpoint, "--group-by", "process"] })
+        {
+            (InterCatExitCode code, _, string said) = await Run(args);
+            string invocation = "icat " + string.Join(' ', args);
+            Assert.True(code == InterCatExitCode.CorruptedInput, $"{invocation} exited {code}: {said}");
+            Assert.True(said.Contains("more than a sum holds. No capture records that much", StringComparison.Ordinal),
+                $"{invocation} said: {said}");
+        }
+
+        foreach (string[] args in new[] { ["metric", oversized.Path, "--metric", "observations"], new[] { "overview", oversized.Path } })
+        {
+            (InterCatExitCode code, _, string said) = await Run(args);
+            Assert.True(code == InterCatExitCode.Success, $"icat {string.Join(' ', args)} exited {code}: {said}");
+        }
+    }
+
     [Fact(DisplayName = "§20.4: a damaged session is corrupted input to every reader, an export's as well")]
     public async Task ADamagedSessionIsCorruptedInput()
     {

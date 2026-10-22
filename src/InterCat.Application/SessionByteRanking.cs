@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using InterCat.Analysis;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -52,29 +53,56 @@ public sealed record TransportBytes(
                 return (ReceivedMeasured > 0 ? ReceivedBytes : null, ReceivedMeasured, ReceivedUnmeasured);
             case RankingMetric.EndpointBytes:
                 long measured = SentMeasured + ReceivedMeasured + OtherMeasured;
-                return (measured > 0 ? checked(SentBytes + ReceivedBytes + OtherBytes) : null, measured,
+                return (measured > 0 ? Total : null, measured,
                     SentUnmeasured + ReceivedUnmeasured + OtherUnmeasured);
             default:
                 throw new ArgumentOutOfRangeException(nameof(metric), metric, "Only a byte ranking reads a process's bytes.");
         }
     }
 
-    /// <summary>Two sets of records' bytes together: a group's, which its members partition, or several columns'.</summary>
+    /// <summary>Every byte these records measured, sent, received or neither.</summary>
+    internal long Total => SegmentMeasurement.AddBytes(SegmentMeasurement.AddBytes(SentBytes, ReceivedBytes), OtherBytes);
+
+    /// <summary>
+    /// Two sets of records' bytes together: a group's, which its members partition, or several columns'. Bytes past what a
+    /// sum holds are refused (<see cref="SegmentMeasurement.PastASum"/>), though a query's answer never holds any: every
+    /// sum of its parts fits, since their total does (<see cref="Fit"/>).
+    /// </summary>
     public TransportBytes Plus(TransportBytes other)
     {
         ArgumentNullException.ThrowIfNull(other);
         return new(
-            checked(SentBytes + other.SentBytes),
+            SegmentMeasurement.AddBytes(SentBytes, other.SentBytes),
             SentMeasured + other.SentMeasured,
             SentUnmeasured + other.SentUnmeasured,
-            checked(ReceivedBytes + other.ReceivedBytes),
+            SegmentMeasurement.AddBytes(ReceivedBytes, other.ReceivedBytes),
             ReceivedMeasured + other.ReceivedMeasured,
             ReceivedUnmeasured + other.ReceivedUnmeasured)
         {
-            OtherBytes = checked(OtherBytes + other.OtherBytes),
+            OtherBytes = SegmentMeasurement.AddBytes(OtherBytes, other.OtherBytes),
             OtherMeasured = OtherMeasured + other.OtherMeasured,
             OtherUnmeasured = OtherUnmeasured + other.OtherUnmeasured,
         };
+    }
+
+    /// <summary>
+    /// Refuses, as their rows' measurement would, parts of an answer whose bytes add up past what a sum holds
+    /// (<see cref="SegmentMeasurement.PastASum"/>), so every sum a view takes of them fits.
+    /// </summary>
+    internal static void Fit(IEnumerable<TransportBytes> parts)
+    {
+        long all = 0;
+        foreach (TransportBytes part in parts)
+        {
+            all = SegmentMeasurement.AddBytes(all, part.Total);
+        }
+    }
+
+    /// <summary><paramref name="parts"/>, read only, once their bytes are found to fit what a sum holds (<see cref="Fit"/>).</summary>
+    internal static ReadOnlyCollection<TransportBytes> Fitted(TransportBytes[] parts)
+    {
+        Fit(parts);
+        return Array.AsReadOnly(parts);
     }
 }
 
@@ -219,7 +247,10 @@ public static class SessionByteRanking
             }
         }
 
-        return new(manifest.SessionId, manifest.Generation, interval, byProcess, total.Processes.Of(instances))
+        TransportBytes unattributed = total.Processes.Of(instances);
+        TransportBytes.Fit(byProcess.Values.Append(unattributed));
+        TransportBytes.Fit(byChannelEnd.Values);
+        return new(manifest.SessionId, manifest.Generation, interval, byProcess, unattributed)
         {
             ByChannelEnd = byChannelEnd,
         };
@@ -278,6 +309,7 @@ public static class SessionByteRanking
             }
         }
 
+        TransportBytes.Fit(byProcess.Values.Append(unattributed));
         var byChannelEnd = new Dictionary<ChannelEnd, TransportBytes>();
         foreach ((string channel, ProcessInstanceId holder, RelationStrength strength, TransportBytes bytes) in kept.Ends)
         {
@@ -294,6 +326,7 @@ public static class SessionByteRanking
             }
         }
 
+        TransportBytes.Fit(byChannelEnd.Values);
         return new(manifest.SessionId, manifest.Generation, null, byProcess, unattributed)
         {
             ByChannelEnd = byChannelEnd,
@@ -625,7 +658,8 @@ public static class SessionByteRanking
 
             return total;
         }
-        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        catch (Exception exception) when ((exception is InvalidDataException && !SegmentMeasurement.IsUnsummable(exception))
+            || exception is IOException or UnauthorizedAccessException)
         {
             derivation.RefuseTiles(exception.Message);
             return null;
@@ -663,10 +697,13 @@ public static class SessionByteRanking
 
 /// <summary>
 /// One worker's transport bytes per slot and side - a slot being whatever a grouping of rows gives it: a process, a channel
-/// end, a column - merged once it has no segment left (<see cref="SegmentPasses"/>).
+/// end, a column - merged once it has no segment left (<see cref="SegmentPasses"/>). Bytes are summed in bytes only, and a
+/// slot's total past what a sum holds is refused (<see cref="SegmentMeasurement.PastASum"/>); the answer made of its slots
+/// is fitted where it is made (<see cref="TransportBytes.Fit"/>), a slot for rows outside it never part of it.
 /// </summary>
 internal sealed class TransportByteTally(int slots)
 {
+
     private readonly long[] sent = new long[slots];
     private readonly long[] sentMeasured = new long[slots];
     private readonly long[] sentUnmeasured = new long[slots];
@@ -680,10 +717,20 @@ internal sealed class TransportByteTally(int slots)
     /// <summary>How many slots it keeps.</summary>
     public int Slots => sent.Length;
 
-    /// <summary>Adds one segment's grouped measurement, whose groups are these slots.</summary>
+    /// <summary>
+    /// Adds one segment's grouped measurement, whose groups are these slots. A segment measuring them in another unit is
+    /// refused, as two units are: a byte view sums bytes, and converts nothing into them.
+    /// </summary>
     public void Add(GroupedDomainMeasurement measured)
     {
         ArgumentNullException.ThrowIfNull(measured);
+        if (measured.Unit is { } unit && unit != MeasurementUnit.Bytes)
+        {
+            throw SegmentMeasurement.Unsummable(
+                $"A segment measures its transport bytes in {unit}. A byte view sums bytes, and does not convert another "
+                + "unit into them.");
+        }
+
         for (int group = 0; group < measured.Groups.Count; group++)
         {
             foreach (SideMeasurement side in measured.Groups[group])
@@ -709,17 +756,17 @@ internal sealed class TransportByteTally(int slots)
         switch ((AccountingSide)side)
         {
             case AccountingSide.SendSide:
-                sent[slot] = checked(sent[slot] + total);
+                sent[slot] = SegmentMeasurement.AddBytes(sent[slot], total);
                 sentMeasured[slot] += measured;
                 sentUnmeasured[slot] += unmeasured;
                 break;
             case AccountingSide.ReceiveSide:
-                received[slot] = checked(received[slot] + total);
+                received[slot] = SegmentMeasurement.AddBytes(received[slot], total);
                 receivedMeasured[slot] += measured;
                 receivedUnmeasured[slot] += unmeasured;
                 break;
             default:
-                other[slot] = checked(other[slot] + total);
+                other[slot] = SegmentMeasurement.AddBytes(other[slot], total);
                 otherMeasured[slot] += measured;
                 otherUnmeasured[slot] += unmeasured;
                 break;
@@ -744,13 +791,13 @@ internal sealed class TransportByteTally(int slots)
         ArgumentNullException.ThrowIfNull(other);
         for (int slot = 0; slot < sent.Length; slot++)
         {
-            sent[slot] = checked(sent[slot] + other.sent[slot]);
+            sent[slot] = SegmentMeasurement.AddBytes(sent[slot], other.sent[slot]);
             sentMeasured[slot] += other.sentMeasured[slot];
             sentUnmeasured[slot] += other.sentUnmeasured[slot];
-            received[slot] = checked(received[slot] + other.received[slot]);
+            received[slot] = SegmentMeasurement.AddBytes(received[slot], other.received[slot]);
             receivedMeasured[slot] += other.receivedMeasured[slot];
             receivedUnmeasured[slot] += other.receivedUnmeasured[slot];
-            this.other[slot] = checked(this.other[slot] + other.other[slot]);
+            this.other[slot] = SegmentMeasurement.AddBytes(this.other[slot], other.other[slot]);
             otherMeasured[slot] += other.otherMeasured[slot];
             otherUnmeasured[slot] += other.otherUnmeasured[slot];
         }

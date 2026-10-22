@@ -69,7 +69,11 @@ end's bytes are its holder's on that channel when the policy admits both the cha
 exactly what a read of every segment measures under the policy (`SessionByteRanking`), so the ranked table's
 whole-session byte ranking and the graph sized by bytes read no segment either. An interval is still read. A session
 with more than 20,000 paired channels, or whose process bytes would take more than 12 MiB, keeps none, as does one where an
-end's records bind at two strengths, which no binding rule gives today; it is then read as before.
+end's records bind at two strengths, which no binding rule gives today; it is then read as before. Since plan revision 711
+an overview keeps neither lane bytes nor process bytes where measuring them refuses a row (`contracts/segment-v1.md` §6) -
+two units, a unit other than bytes, sizes adding up past what a sum holds - and is published all the same; they are read,
+and refused with the reason, when asked for. Process bytes kept whose total passes what a sum holds are refused when read,
+as measuring them would be.
 
 Since minor 4 (plan revision 445) it also holds how many timed rows were read **before the extent** begins: those a
 generation that released an interval kept from before its boundary. The main and minimap columns, with them, add up to

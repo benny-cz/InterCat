@@ -106,11 +106,14 @@ tile's sums are its children's. A tile keeps its sums however few its records, f
 mechanisms.
 
 A segment keeps no bytes where reading its rows' bytes would refuse one: a transport-observed record measured in a unit
-other than the segment's others are, or stating no side or unit §23 defines, or no reason for a value it lacks, or a
-side's bytes past what a sum holds. Its section's tiles then keep no sums and its records no measures, and a query reads
-its rows, which refuse as they do without an index. A checkpoint measures every timed segment's bytes as it publishes
-(`contracts/overview-index-v1.md` minor 2), and publishes nothing where that refuses a row, so the sections of a tile
-index it publishes keep their bytes; one keeping none is read as this says.
+other than bytes - before plan revision 711, other than the segment's other records - or stating no side or unit §23
+defines, or no reason for a value it lacks, or a side's bytes past what a sum holds. Its section's tiles then keep no
+sums and its records no measures, and a query reads its rows, which refuse as they do without an index. A checkpoint
+measures every timed segment's bytes as it publishes (`contracts/overview-index-v1.md` minor 2). Before plan revision
+711 it published nothing where that refused a row; since, it publishes all the same, its overview keeping no bytes and
+the sections of the segments that refuse keeping none, so a session with such a record still reopens from its
+checkpoint. A refusal to sum bytes the records state is theirs, never the index's: a reader meeting one, among the rows
+it reads or adding up sums it keeps, refuses with the reason and reads no part of the index as unreadable for it.
 
 ### Byte tallies
 

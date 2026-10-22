@@ -236,7 +236,9 @@ public static class SessionCheckpoints
 
     /// <summary>
     /// The overview's lane bytes, when it has columns, and every process's and paired channel end's bytes before any evidence
-    /// policy, when an overview keeps them, summed in one pass over the segments; each null when it is not kept.
+    /// policy, when an overview keeps them, summed in one pass over the segments; each null when it is not kept. Bytes the
+    /// records state but their measurement refuses to sum - in two units, say, or past what a sum holds - are kept by
+    /// neither, and the rest is published all the same: a reader measures the rows when asked, and says why it cannot.
     /// </summary>
     private static (OverviewLaneBytes? Lanes, OverviewProcessBytes? Processes) SumBytes(
         IReadOnlyList<SegmentReaderV1> segments,
@@ -253,16 +255,24 @@ public static class SessionCheckpoints
         }
 
         var total = new ByteTallies(lanes?.Start(), kept?.Start());
-        SegmentPasses.Run(
-            segments,
-            () => new ByteTallies(lanes?.Start(), kept?.Start()),
-            (segment, tallies) =>
-            {
-                lanes?.Measure(segment, tallies.Lanes!, cancellationToken);
-                kept?.Measure(segment, tallies.Kept!, cancellationToken);
-            },
-            total.Add,
-            cancellationToken);
+        try
+        {
+            SegmentPasses.Run(
+                segments,
+                () => new ByteTallies(lanes?.Start(), kept?.Start()),
+                (segment, tallies) =>
+                {
+                    lanes?.Measure(segment, tallies.Lanes!, cancellationToken);
+                    kept?.Measure(segment, tallies.Kept!, cancellationToken);
+                },
+                total.Add,
+                cancellationToken);
+        }
+        catch (InvalidDataException exception) when (SegmentMeasurement.IsUnsummable(exception))
+        {
+            return (null, null);
+        }
+
         return (lanes?.Cells(total.Lanes!), kept?.Finish(total.Kept!));
     }
 

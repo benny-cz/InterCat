@@ -19,6 +19,33 @@ namespace InterCat.Desktop.Tests;
 /// </summary>
 public sealed class LiveBytesTests
 {
+    [Fact(DisplayName = "§10.2/R21: a session whose sizes add up past what a sum holds says its bytes could not be read, and why, rather than reading them for ever")]
+    public void BytesPastASumAreSaidUnreadable() => SingleThreadedContext.Run(async () =>
+    {
+        // client.exe sends twice more than a sum holds.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Rows().Select(row => row.Kind == ObservationKind.Send && row.OwnerProcessId == 100 ? row with { ByteValue = 5_000_000_000_000_000_000 } : row),
+            Tcp(103, ObservationKind.Send, 100, 103, "127.0.0.1:50000", "127.0.0.1:9000") with { ByteValue = 5_000_000_000_000_000_000 },
+        ]);
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        workspace.ShowTables = true;
+        workspace.SelectGraphNode(workspace.GraphDisplay.NodeOf(Process(workspace, 100).Id)!.Key);
+        await workspace.SelectionBytesReady;
+        Assert.EndsWith(" · bytes could not be read", workspace.EvidenceSummary, StringComparison.Ordinal);
+        Assert.Equal("bytes could not be read", workspace.TableRows[0].KnownBytes);
+
+        // Ranked by bytes, the rows stay ranked by records and the note says why.
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.RankingReady;
+        Assert.StartsWith("Bytes sent unavailable: Row ", workspace.RankingNote, StringComparison.Ordinal);
+        Assert.EndsWith("more than a sum holds. No capture records that much, so the sizes are refused rather than summed.",
+            workspace.RankingNote, StringComparison.Ordinal);
+        Assert.NotEmpty(workspace.RungRows);
+    });
+
     [Fact(DisplayName = "§6.4/R15: a live publication's table and card state the last one's bytes, marked updating aloud as on screen, until its own are read; one whose own cannot be read says so")]
     public void ALivePublicationKeepsTheTablesBytes() => SingleThreadedContext.Run(async () =>
     {

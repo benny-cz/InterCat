@@ -140,6 +140,23 @@ public sealed class ImportCatalogueTests : IDisposable
         Assert.Equal(content, File.ReadAllText(Catalogue));
     }
 
+    [Fact(DisplayName = "§8.1: a catalogue that cannot be read lists nothing, says why, and is left as it is")]
+    public void ACatalogueThatCannotBeReadIsLeftAsItIs()
+    {
+        WriteCatalogue([Listed(Entry("a", 1, 1))]);
+        string kept = File.ReadAllText(Catalogue);
+        using (new FileStream(Catalogue, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            ImportCatalogue read = ImportCatalogue.Read(Catalogue);
+            Assert.Empty(read.Entries);
+            Assert.StartsWith($"{Catalogue} could not be read: ", read.Problem, StringComparison.Ordinal);
+            Assert.Equal(read.Problem, ImportCatalogue.Update(Catalogue, Entry("b", 2, 2), []).Problem);
+        }
+
+        Assert.Equal(kept, File.ReadAllText(Catalogue));
+        Assert.Equal([Path.Combine(root, "a")], ImportCatalogue.Read(Catalogue).Entries.Select(entry => entry.Path));
+    }
+
     [Fact(DisplayName = "§8.1: a file larger than a catalogue grows is not read as one, and is never replaced")]
     public void ALargerFileIsNotACatalogue()
     {

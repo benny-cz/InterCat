@@ -105,6 +105,33 @@ public sealed class LiveCheckpointTests
         Assert.Contains(overview.Caveats, caveat => caveat.Contains(slot.CheckpointProblem!, StringComparison.Ordinal));
     }
 
+    [Fact(DisplayName = "S1: no checkpoint is staged but of a generation before the one asked for, nor of one that cannot be read")]
+    public void NoCheckpointIsStagedThatCannotBeMade()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        ObservationRowV1[][] chunks = IncrementalOverviewTests.LiveChunks();
+        Publish(session.Store, chunks[0]);
+        Publish(session.Store, chunks[1]);
+        long current = session.Store.Current!.Generation;
+        Assert.Empty(LiveCheckpoints.Instance.Stage(session.Store, current, CancellationToken.None));
+        Assert.Single(LiveCheckpoints.Instance.Stage(session.Store, current + 1, CancellationToken.None)).Dispose();
+
+        // A segment another program holds, or one gone: the generation cannot be derived, so no checkpoint of it is staged,
+        // and its publication would go on.
+        session.Store.ReleaseSegmentReaders();
+        string segment = Path.Combine(session.Path, SessionSegments.Names(session.Store.Current!)[0]);
+        using (new FileStream(segment, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            SessionDerivationCache.Clear();
+            Assert.Empty(LiveCheckpoints.Instance.Stage(session.Store, current + 1, CancellationToken.None));
+        }
+
+        File.Delete(segment);
+        SessionDerivationCache.Clear();
+        Assert.Empty(LiveCheckpoints.Instance.Stage(session.Store, current + 1, CancellationToken.None));
+    }
+
     /// <summary>A step of a live recording into a store, with the indexer its follow publishes through.</summary>
     private delegate void Step(SessionStore store, ILiveIndexer? indexer);
 

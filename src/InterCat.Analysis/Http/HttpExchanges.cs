@@ -246,8 +246,8 @@ public sealed partial class HttpExchangeIndex
                 Exchanges = members.Count,
                 Complete = members.Count(member => member.Exchange.Complete),
                 Records = members.Sum(member => (long)member.Exchange.Records),
-                RequestBytes = members.Sum(member => member.Exchange.RequestBytes),
-                ResponseBytes = members.Sum(member => member.Exchange.ResponseBytes),
+                RequestBytes = members.Aggregate(0L, (sum, member) => SegmentMeasurement.AddBytes(sum, member.Exchange.RequestBytes)),
+                ResponseBytes = members.Aggregate(0L, (sum, member) => SegmentMeasurement.AddBytes(sum, member.Exchange.ResponseBytes)),
                 First = start,
             });
             start = end;
@@ -380,7 +380,7 @@ public sealed partial class HttpExchangeIndex
             whole = buffers[index].Sequence == index;
         }
 
-        return new(buffers.Length, buffers.Sum(buffer => buffer.Bytes), whole);
+        return new(buffers.Length, buffers.Aggregate(0L, (sum, buffer) => SegmentMeasurement.AddBytes(sum, buffer.Bytes)), whole);
     }
 
     /// <summary>

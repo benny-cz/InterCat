@@ -117,6 +117,37 @@ public sealed class SessionConnectionsTests
         Assert.Equal(5, timeline.Focus[0].ObservationCount);
     }
 
+    [Fact(DisplayName = "§10.2: connections whose sizes add up past what a sum holds are refused with why, never listed with a total wrapped small")]
+    public void ConnectionsPastASumAreRefused()
+    {
+        // The connection's send and its receipt each fit; together they do not.
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Rows().Select(row => row.RawRecordOrdinal is 21 or 22 ? row with { ByteValue = 5_000_000_000_000_000_000 } : row)]);
+        (ProcessInstanceId client, _) = Instances(session.Store);
+        foreach (Action listing in new Action[]
+        {
+            () => SessionConnections.OneSided(session.Store, client),
+            () => SessionConnections.ToHost(session.Store, "10.0.0.9"),
+        })
+        {
+            InvalidDataException refusal = Assert.Throws<InvalidDataException>(listing);
+            Assert.Equal(SegmentMeasurement.PastASum, refusal.Message);
+            Assert.True(SegmentMeasurement.IsUnsummable(refusal));
+        }
+
+        // Over a time scope holding only the send, they fit, and are listed.
+        ConnectionSummary sent = SessionConnections.OneSided(session.Store, client, new TimeRange(1_000, 1_002)).Connections.Single();
+        Assert.Equal((5_000_000_000_000_000_000, 0L), (sent.SentBytes, sent.ReceivedBytes));
+
+        // Two sends on one connection take its side past a sum.
+        using var twice = new TemporarySession();
+        Publish(twice.Store, [.. Rows().Select(row => row.RawRecordOrdinal == 21 ? row with { ByteValue = 5_000_000_000_000_000_000 } : row),
+            Timed(Transfer(1_003, ObservationKind.Send, AccountingSide.SendSide, 5_000_000_000_000_000_000, 100, 25)
+                .Between("192.168.1.5:52000", "10.0.0.9:443"))]);
+        Assert.Equal(SegmentMeasurement.PastASum,
+            Assert.Throws<InvalidDataException>(() => SessionConnections.OneSided(twice.Store, Instances(twice.Store).Client)).Message);
+    }
+
     private static (ProcessInstanceId Client, ProcessInstanceId Server) Instances(SessionStore store)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(store);

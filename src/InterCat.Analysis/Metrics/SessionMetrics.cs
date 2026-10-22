@@ -1437,7 +1437,7 @@ public static partial class SessionMetrics
             {
                 if (unit is { } established && established != segmentUnit)
                 {
-                    throw new InvalidDataException(
+                    throw SegmentMeasurement.Unsummable(
                         $"Segments of generation {context.Generation} measure {domain} in {established} and "
                         + $"{segmentUnit}. Two units are not summed and are not converted here.");
                 }
@@ -1484,7 +1484,7 @@ public static partial class SessionMetrics
                 continue;
             }
 
-            value = checked(value + side.TotalBytes);
+            value = SegmentMeasurement.AddBytes(value, side.TotalBytes);
             knownTaken += side.KnownContributions;
             unknownTaken += side.UnknownContributions;
             foreach ((FieldAvailability reason, long count) in side.UnknownReasons)
@@ -1794,7 +1794,7 @@ public static partial class SessionMetrics
 
         public void Add(SideMeasurement side)
         {
-            total = checked(total + side.TotalBytes);
+            total = SegmentMeasurement.AddBytes(total, side.TotalBytes);
             known += side.KnownContributions;
             unknown += side.UnknownContributions;
             foreach ((FieldAvailability reason, long count) in side.UnknownReasons)

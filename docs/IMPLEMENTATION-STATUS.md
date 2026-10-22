@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 710 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 711 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,26 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 711 — a coverage pass over revisions 699 to 710; bytes past what a sum holds refused with why (R10, I6):**
+  - Of the 2,993 lines revisions 699 to 710 added that a test can reach, 143 ran in none. Tests now run whole a tile
+    of more than 64 byte tally entries, a live checkpoint that cannot be derived, a ranked export whose session cannot
+    be read again and a catalogue of imports that cannot be read. Sizes adding up past what a sum holds ended a brush,
+    a byte ranking and a finished session's checkpoint with an overflow, the window's read unhandled and icat with a
+    stack trace, and wrapped a process's connections' totals small; one record in another unit made a checkpoint
+    publish nothing. Every byte read now refuses them with a reason, as unreadable input that blames no index; a byte
+    view sums bytes only; and a checkpoint publishes all the same, keeping no bytes (`segment-v1` §6, `tile-index-v1`,
+    `overview-index-v1`).
+  - Debug and Release each ran 2,842 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    thirty-five mutations were caught, eight once the tests were strengthened: a side's or a group's row sizes, or
+    any two sizes, wrapped or overflowing as they are summed; the refusal left unmarked, or every malformed read
+    taken for one; a tally summing seconds, or a tally's slot wrapped; the answer of a ranking, measured or kept, of
+    an interval, of mechanism lanes, of owner lanes or of direction rows left unfitted; the tiles blamed for a
+    refused ranking, owner lanes or mechanism lanes; a section keeping sums of another unit or past what a sum
+    holds, or a spanning level keeping sums past it; a tile's tallies or sums not grown; a checkpoint not published
+    once its bytes are refused, or staged of the generation asked for; an unreadable checkpoint, query or catalogue
+    thrown rather than said; a metric's total, group or groups wrapped; connections' sizes or total wrapped; and an
+    HTTP part's, requests' or responses' bytes wrapped.
 
 - **Revision 710 — a session still being recorded reopens from its newest chunk (S1, S4):**
   - Each generation a live follow publishes - the window's, `icat capture`'s, `icat follow`'s - names a derivation

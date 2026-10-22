@@ -352,16 +352,23 @@ public static class SessionConnections
                 if (kind == ObservationKind.Send)
                 {
                     sends[at]++;
-                    if (value is { } size) sent[at] += size;
+                    if (value is { } size) sent[at] = SegmentMeasurement.AddBytes(sent[at], size);
                     else unsized[at]++;
                 }
                 else
                 {
                     receives[at]++;
-                    if (value is { } size) received[at] += size;
+                    if (value is { } size) received[at] = SegmentMeasurement.AddBytes(received[at], size);
                     else unsizedReceives[at]++;
                 }
             }
+        }
+
+        // A view adds up any of these connections' bytes, whose total therefore fits what a sum holds or is refused.
+        long all = 0;
+        for (int index = 0; index < held.Length; index++)
+        {
+            all = SegmentMeasurement.AddBytes(SegmentMeasurement.AddBytes(all, sent[index]), received[index]);
         }
 
         return (manifest.SessionId, manifest.Generation, manifest.Digest, clock, coverage,

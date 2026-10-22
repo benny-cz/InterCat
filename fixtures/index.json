@@ -1015,6 +1015,7 @@
         "I16: every golden specification canonicalizes to exactly its recorded bytes and identity",
         "I16: icat export names the icat metric query its rows answer, and that command, asked, prints its identity",
         "I16: rows no one icat metric request answers name no query and say why, and an evidence export names its manifest",
+        "I16: rows whose session cannot be read again to name their query name none, and say why",
         "I16: the window's export names its rows' query under the policy it counts by, and says why once the session moved on"
       ],
       "I18": [
@@ -1143,6 +1144,7 @@
         "I4: a segment whose session times go backwards has no tiles and is counted row by row",
         "I4: a spanning section whose checksums hold but whose parts do not agree is refused: the query counts from the segments' rows instead",
         "I4: a spanning section whose extents are not its sections' is refused where a range it leaves reads one",
+        "I4: a tile holding more byte tallies and sums than a read first keeps room for is read whole, as its rows measure",
         "I4: an overview's RPC links read back as written, a minor-0 overview keeps none, and damaged links are refused",
         "I4: an overview's lane bytes read back as written, an earlier overview keeps none, and damaged ones are refused",
         "I4: an overview's process bytes read back as written, an earlier overview keeps none, and damaged ones are refused",
@@ -2204,6 +2206,7 @@
         "S1: each generation the window's live follow publishes after its first names a checkpoint of the one before it",
         "S1: each live publication names a checkpoint of the generation it extends, and a viewer opening the session extends it wherever a derivation in memory extends, projecting as one of every record",
         "S1: icat follow names, in each generation it mirrors after its first, a checkpoint of the generation before it",
+        "S1: no checkpoint is staged but of a generation before the one asked for, nor of one that cannot be read",
         "S1: nothing is staged for a session with no generation, and a live checkpoint that is not one is set aside, the answer the same"
       ]
     },

@@ -922,9 +922,9 @@ internal static class SessionTileIndex
 
     /// <summary>
     /// Whether reading <paramref name="segment"/>'s rows measures their transport-observed bytes without refusing one
-    /// (`SegmentMeasurement.MeasureDomainByGroup`): each such row stating an accounting side §23 defines and the segment's
-    /// one unit, and a value of zero or more or why it has none, and no side's bytes past what a sum holds. Where reading
-    /// would refuse a row, the section keeps no bytes, and a query reads its rows, which refuse it as before.
+    /// (`SegmentMeasurement.MeasureDomainByGroup`, `TransportByteTally`): each such row stating an accounting side §23
+    /// defines, in bytes, and a value of zero or more or why it has none, and no side's bytes past what a sum holds. Where
+    /// reading would refuse a row, the section keeps no bytes, and a query reads its rows, which refuse it as before.
     /// </summary>
     private static bool Summable(SegmentReaderV1 segment, CancellationToken cancellationToken)
     {
@@ -933,7 +933,6 @@ internal static class SessionTileIndex
         SegmentColumnSlice units = segment.Slice(SegmentColumnId.MeasurementUnit);
         SegmentColumnSlice values = segment.Slice(SegmentColumnId.ByteValue);
         SegmentColumnSlice availability = segment.Slice(SegmentColumnId.ByteAvailability);
-        ulong? unit = null;
         long[] totals = new long[(int)AccountingSide.CanonicalOwner + 1];
         try
         {
@@ -946,12 +945,11 @@ internal static class SessionTileIndex
                 }
 
                 if (sides.UnsignedAt(row) is not { } side || side is 0 or > (ulong)AccountingSide.CanonicalOwner
-                    || units.UnsignedAt(row) is not { } rowUnit || (unit is { } established && established != rowUnit))
+                    || units.UnsignedAt(row) != (ulong)MeasurementUnit.Bytes)
                 {
                     return false;
                 }
 
-                unit = rowUnit;
                 if (values.SignedAt(row) is { } value)
                 {
                     if (value < 0)

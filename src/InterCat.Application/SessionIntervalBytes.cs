@@ -240,11 +240,11 @@ public static class SessionIntervalByteQuery
 
         return new(manifest.SessionId, manifest.Generation, interval, owner,
             new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval, IntervalByteScope.Whole,
-                Array.AsReadOnly([.. Enumerable.Range(0, count).Select(total.Machine.Of)])),
+                TransportBytes.Fitted([.. Enumerable.Range(0, count).Select(total.Machine.Of)])),
             Array.AsReadOnly([.. SessionTimelineQuery.LaneDirections.Select((direction, slot) =>
                 new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval,
                     new IntervalByteScope { Owner = owner, Direction = direction },
-                    Array.AsReadOnly([.. Enumerable.Range(0, count).Select(column => total.Lanes.Of((slot * count) + column))])))]));
+                    TransportBytes.Fitted([.. Enumerable.Range(0, count).Select(column => total.Lanes.Of((slot * count) + column))])))]));
     }
 
     /// <summary>
@@ -367,11 +367,11 @@ public static class SessionIntervalByteQuery
 
         return new(manifest.SessionId, manifest.Generation, interval,
             new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval, IntervalByteScope.Whole,
-                Array.AsReadOnly([.. Enumerable.Range(0, machineCount).Select(total.Machine.Of)])),
+                TransportBytes.Fitted([.. Enumerable.Range(0, machineCount).Select(total.Machine.Of)])),
             Array.AsReadOnly([.. owners.Select((owner, lane) =>
                 new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval,
                     new IntervalByteScope { Owner = owner },
-                    Array.AsReadOnly([.. Enumerable.Range(0, laneCount).Select(column => total.Lanes.Of((lane * laneCount) + column))])))]));
+                    TransportBytes.Fitted([.. Enumerable.Range(0, laneCount).Select(column => total.Lanes.Of((lane * laneCount) + column))])))]));
     }
 
     /// <summary>
@@ -478,7 +478,8 @@ public static class SessionIntervalByteQuery
                 cancellationToken);
             return total;
         }
-        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        catch (Exception exception) when ((exception is InvalidDataException && !SegmentMeasurement.IsUnsummable(exception))
+            || exception is IOException or UnauthorizedAccessException)
         {
             derivation.RefuseTiles(exception.Message);
             return null;
@@ -605,6 +606,8 @@ public static class SessionIntervalByteQuery
             bytesOf = (column, lane) => total.Of((column * mechanisms.Count) + lane);
         }
 
+        TransportBytes.Fit(Enumerable.Range(0, mechanisms.Count)
+            .SelectMany(lane => Enumerable.Range(0, count).Select(column => bytesOf(column, lane))));
         return new(manifest.SessionId, manifest.Generation, interval, Array.AsReadOnly([.. mechanisms.Select((mechanism, lane) =>
             new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval,
                 new IntervalByteScope { Mechanism = mechanism },
@@ -754,7 +757,8 @@ public static class SessionIntervalByteQuery
                 }
             }
         }
-        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        catch (Exception exception) when ((exception is InvalidDataException && !SegmentMeasurement.IsUnsummable(exception))
+            || exception is IOException or UnauthorizedAccessException)
         {
             derivation.RefuseTiles(exception.Message);
             return null;
@@ -865,7 +869,7 @@ public static class SessionIntervalByteQuery
             is { } kept)
         {
             return new(manifest.SessionId, manifest.Generation, interval, scope,
-                Array.AsReadOnly([.. Enumerable.Range(0, count).Select(kept.Of)]));
+                TransportBytes.Fitted([.. Enumerable.Range(0, count).Select(kept.Of)]));
         }
 
         SegmentReaderV1[] segments = SessionNativeInterval.Segments(store, manifest, interval, clock);
@@ -879,7 +883,7 @@ public static class SessionIntervalByteQuery
             total.Add,
             cancellationToken);
         return new(manifest.SessionId, manifest.Generation, interval, scope,
-            Array.AsReadOnly([.. Enumerable.Range(0, count).Select(total.Of)]));
+            TransportBytes.Fitted([.. Enumerable.Range(0, count).Select(total.Of)]));
     }
 
     /// <summary>

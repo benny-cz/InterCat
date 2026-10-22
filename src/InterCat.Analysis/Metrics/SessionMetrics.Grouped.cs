@@ -128,7 +128,7 @@ public static partial class SessionMetrics
             {
                 if (unit is { } established && established != segmentUnit)
                 {
-                    throw new InvalidDataException(
+                    throw SegmentMeasurement.Unsummable(
                         $"Segments of generation {context.Generation} measure {request.ByteDomain} in {established} and "
                         + $"{segmentUnit}. Two units are not summed and are not converted here.");
                 }
@@ -219,7 +219,7 @@ public static partial class SessionMetrics
                 continue;
             }
 
-            totalValue = checked(totalValue + (group.Value ?? 0));
+            totalValue = SegmentMeasurement.AddBytes(totalValue, group.Value ?? 0);
             totalKnown += group.KnownContributions;
             totalUnknown += group.UnknownContributions;
             if (group.Kind == MetricGroupKind.Unattributed)

@@ -281,8 +281,13 @@ denominator is the declared slots, so "12 MiB observed, measured on 63% of eligi
 statement about availability and never about how much of the machine's traffic was captured.
 
 A sum covers exactly one byte domain and one accounting side. Contributions in another domain or on another
-side are excluded **and counted**, never added (I6, P3). Accumulation is checked, so a long high-volume
-capture reports an overflow rather than wrapping into a smaller total that looks plausible (§10.2).
+side are excluded **and counted**, never added (I6, P3). Accumulation is checked: a side's total past
+9,223,372,036,854,775,807 bytes is refused as unreadable input, naming the row that takes it there, rather than wrapped
+into a smaller total that looks plausible (§10.2). No capture records that much, so sizes adding up past it are not to
+be trusted. Since plan revision 711 every sum a reader takes of such totals - across segments, processes, channel ends
+or columns - is refused alike, and so is any answer whose parts add up past it, so a view adding up any of them never
+passes it; before, the reader ended with an overflow. Such a refusal is of the records' bytes alone: everything else
+they hold reads as before, and an index made of them is not set aside for it.
 
 ## 7. Row markers
 
