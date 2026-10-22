@@ -7,7 +7,7 @@ namespace InterCat.Storage.Tests;
 /// §20.1's compaction targets: a live recording's small publications are coalesced into bounded segments, and every
 /// row survives exactly, with the evidence and its boundary untouched (ADR-026).
 /// </summary>
-public sealed class SegmentCompactionTests
+public sealed partial class SegmentCompactionTests
 {
     private static readonly Guid Session = Guid.Parse("d5e6f7a8-b9c0-4d1e-8f2a-3b4c5d6e7f80");
     private static readonly CaptureId Capture = new(Guid.Parse("c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f"));
@@ -267,7 +267,8 @@ public sealed class SegmentCompactionTests
         SessionStore store,
         ulong firstOrdinal,
         int records,
-        Func<ObservationRowV1, ObservationRowV1>? shape = null)
+        Func<ObservationRowV1, ObservationRowV1>? shape = null,
+        ILiveIndexer? indexer = null)
     {
         using DerivedGenerationBuilder builder = DerivedGenerationBuilder.Begin(store, Identity, TestClock, Committed);
         var schemas = new JournalV1SchemaTable();
@@ -292,6 +293,11 @@ public sealed class SegmentCompactionTests
                 Availability = FieldAvailability.Present,
             });
             builder.Journal.Append(Envelope(ticks, ordinal, schema, policy));
+        }
+
+        if (indexer is not null)
+        {
+            builder.StageIndexesOf(indexer);
         }
 
         _ = builder.Complete(Committed);

@@ -118,7 +118,7 @@ internal sealed class LiveDerivation(
             // One store per session in this process: the window's queries read through the store that publishes, so
             // the session's readers are cached, and each new file hashed, once rather than once per store.
             (stores ?? SharedSessionStores.Registry).Adopt(sessionPath, derived);
-            follower = LiveSessionFollower.Open(evidence, derived, cancellationToken: cancellationToken);
+            follower = LiveSessionFollower.Open(evidence, derived, indexer: LiveCheckpoints.Instance, cancellationToken: cancellationToken);
         }
 
         long followStarted = Stopwatch.GetTimestamp();

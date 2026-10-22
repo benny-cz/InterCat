@@ -205,6 +205,29 @@ public sealed class FollowCommandTests : IDisposable
         Assert.False(Directory.Exists(session));
     }
 
+    [Fact(DisplayName = "S1: icat follow names, in each generation it mirrors after its first, a checkpoint of the generation before it")]
+    public async Task AFollowNamesACheckpointOfTheGenerationBefore()
+    {
+        // A capture still recording, as far as it published: three chunks.
+        string evidencePath = Path.Combine(root.Path, "capture");
+        Directory.CreateDirectory(evidencePath);
+        _ = await EvidenceRecordings.RecordEvidence(evidencePath, ordinals: [1, 2, 3, 4, 5, 6, 7, 8], bursts: [1, 2, 4, 6]);
+        _ = EvidenceRecordings.RewindToUnfinalized(evidencePath);
+        string session = Path.Combine(root.Path, "explore");
+        (InterCatExitCode code, _, string said) = await Run("follow", evidencePath, session, "--once");
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+
+        // The newest generation names a checkpoint, named for it, of every segment the generation before it named.
+        SessionStore derived = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session));
+        SessionManifestV1 current = derived.Current!;
+        Assert.True(current.Generation >= 2, $"The follow published {current.Generation} generation(s).");
+        StoreDependency named = Assert.IsType<StoreDependency>(InterCat.Analysis.DerivationCheckpoint.NamedBy(current));
+        Assert.Equal(InterCat.Analysis.DerivationCheckpoint.FileNameFor(current.Generation), named.Name);
+        Assert.Equal(SessionSegments.Names(current).Count - 1, InterCat.Analysis.DerivationCheckpoint.Read(
+            SessionSegments.ReadVerified(derived.Root, named, InterCat.Analysis.DerivationCheckpoint.MaximumBytes),
+            current.SessionId, SessionSegments.SourceClock(derived.Root, current)!.Value).Segments.Count);
+    }
+
     /// <summary>A finalized evidence recording of four records, as the broker publishes it, in a folder of its own.</summary>
     private async Task<(string Path, SessionManifestV1 Source)> Recorded(string name)
     {

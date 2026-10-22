@@ -106,6 +106,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private bool collectorsStaged;
     private bool redactionPolicyStaged;
     private bool contentStaged;
+    private bool indexesStaged;
     private bool disposed;
 
     private DerivedGenerationBuilder(
@@ -186,6 +187,42 @@ public sealed class DerivedGenerationBuilder : IDisposable
 
         Stage(CoverageLedgerFileName(generation), StoreDependencyKind.CoverageLedger, ledger.Encode());
         ledgerStaged = true;
+    }
+
+    /// <summary>
+    /// Stages the indexes <paramref name="indexer"/> makes of the generation this one extends, named for this one
+    /// (<see cref="ILiveIndexer"/>): a reader of this generation extends them over the segments it adds. Only a generation
+    /// that adds a journal chunk to its predecessor's takes them, once, before publication; a compaction, a release or a
+    /// re-derivation replaces what such indexes describe.
+    /// </summary>
+    public void StageIndexesOf(ILiveIndexer indexer, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(indexer);
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (completed || indexesStaged)
+        {
+            throw new InvalidOperationException("A generation stages the indexes of the one it extends once, before publication.");
+        }
+
+        if (compacting || releasing || retainedBoundary is not null)
+        {
+            throw new InvalidOperationException(
+                "Only a generation that adds a journal chunk extends the indexes of the one before it.");
+        }
+
+        IReadOnlyList<StoreStagingFile> files = indexer.Stage(store, generation, cancellationToken);
+        if (files.Any(file => file.Kind != StoreDependencyKind.Index || file.Dependency is null))
+        {
+            foreach (StoreStagingFile file in files)
+            {
+                file.Dispose();
+            }
+
+            throw new InvalidOperationException("An indexer stages completed indexes only.");
+        }
+
+        staged.AddRange(files);
+        indexesStaged = true;
     }
 
     /// <summary>

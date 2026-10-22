@@ -2199,6 +2199,12 @@
       ],
       "S4": [
         "S4: a level spans the segments only where two or more hold a timed record and none's readings go backwards"
+      ],
+      "S1": [
+        "S1: each generation the window's live follow publishes after its first names a checkpoint of the one before it",
+        "S1: each live publication names a checkpoint of the generation it extends, and a viewer opening the session extends it wherever a derivation in memory extends, projecting as one of every record",
+        "S1: icat follow names, in each generation it mirrors after its first, a checkpoint of the generation before it",
+        "S1: nothing is staged for a session with no generation, and a live checkpoint that is not one is set aside, the answer the same"
       ]
     },
     "uncovered": {

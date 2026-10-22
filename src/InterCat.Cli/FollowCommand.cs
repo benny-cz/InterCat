@@ -138,7 +138,8 @@ internal static class FollowCommand
         using var pinStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
         {
-            LiveSessionFollower follower = LiveSessionFollower.Open(evidence, derived, cancellationToken: cancellationToken);
+            LiveSessionFollower follower = LiveSessionFollower.Open(
+                evidence, derived, indexer: LiveCheckpoints.Instance, cancellationToken: cancellationToken);
             ConsoleUi.Progress(
                 once
                     ? $"Deriving what {evidencePath} has committed so far into {sessionPath}."

@@ -373,7 +373,7 @@ internal static class CaptureCommand
                 {
                     Directory.CreateDirectory(sessionPath);
                     derived = SessionStore.Open(LocalOwnedDirectory.Open(sessionPath), source.SessionId, source.SourceIdentity);
-                    follower = LiveSessionFollower.Open(evidence, derived, cancellationToken: work);
+                    follower = LiveSessionFollower.Open(evidence, derived, indexer: LiveCheckpoints.Instance, cancellationToken: work);
                 }
             }
 

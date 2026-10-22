@@ -143,7 +143,7 @@ public sealed class FollowContentTests
     /// Records the content fixture's messages as evidence only, publishing every 100 ms, a chunk for each burst: each burst
     /// after the first waits for the ones before it to be published. Every message is kept, whole or cut to 8 bytes.
     /// </summary>
-    private static async Task<SessionStore> RecordContentEvidence(string directory, string[][] bursts)
+    internal static async Task<SessionStore> RecordContentEvidence(string directory, string[][] bursts)
     {
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "content-follow-tests");
         OwnedSessionPlan plan = ContentRecordingTests.Plan(

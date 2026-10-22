@@ -17,6 +17,10 @@ each cut - a connect, an accept or a disconnect - so the relations say how each 
 earlier format said only whether a cut closed an incarnation, and one holding a cut that opened one is derived again
 (§4).
 
+Since plan revision 710 a live follow names a checkpoint in every generation it publishes after its first: the state of
+the generation that one extends, which a reader of the new generation extends over the chunk it adds (§2, §4's prefix).
+Opening a session while it is still being followed then reads only its newest chunk's rows to derive (§12.1 S1).
+
 A checkpoint is a derived index. It holds no evidence and changes no observation (R1). It can always be rebuilt from
 the segments it covers (R20). A missing, stale or unreadable checkpoint costs time and never changes an answer.
 
@@ -71,11 +75,22 @@ and adds nothing else (store-v1 §5, `CommitIndex`). The source generation must 
 the checkpoint is refused. It is never published while another writer, such as a live capture, may still publish: a
 writer that finds the generation it opened superseded is refused (store-v1 §5).
 
+The exception is the live writer's own (plan revision 710). A live follow - the window's, `icat capture`'s and
+`icat follow`'s - stages into each generation it publishes, beside the chunk that generation adds, a checkpoint of the
+generation it extends: written afresh, named for the generation that publishes it, and covering every segment the
+generation before named, so the new generation's reader extends it over the added chunk alone (§4's prefix). It is
+made from the follow's own derivation of the generation before, extended chunk by chunk as the window's is, and in the
+window it is that derivation. A follow's first generation extends nothing and names none; nor does the compaction that
+coalesces a follow's small chunks, which replaces the segments any checkpoint described; nor a recording's own writer
+(`icat record`, the broker), since deriving would put analysis on the writer that holds the capture, nor the finish of
+an interrupted follow, which publishes a checkpoint of everything once it is done. A checkpoint that cannot be made is
+not staged, and the generation is published without it.
+
 Later publications treat it as an index over segments:
 
 | Publication | The checkpoint |
 |---|---|
-| An additive generation, such as a live chunk | not carried: the generation has none until its writer publishes one |
+| An additive generation, such as a live chunk | not carried: a live follow stages one of the generation before it into the generation (revision 710); another writer's has none until it publishes one |
 | A compaction, or a retention that releases a segment | released with the segments, and listed in the retention record (§20.2: no stale index outlives what it describes) |
 | A re-derivation | not carried: the replacement names new segments (store-v1 §5) |
 | A retention of journal chunks or a journal prefix | carried: every segment stays named |

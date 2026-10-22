@@ -71,6 +71,7 @@ public sealed class LiveSessionFollower
     private readonly SessionStore derived;
     private readonly DerivedGenerationOptions options;
     private readonly CompactionOptions compaction;
+    private readonly ILiveIndexer? indexer;
     private readonly Dictionary<(uint Stream, uint Epoch), ulong> endedAt = [];
     private (CaptureId Capture, SourceClockDescriptor Clock)? recorded;
     private ObservationNormalizerV1? normalizer;
@@ -87,24 +88,29 @@ public sealed class LiveSessionFollower
         SessionStore evidence,
         SessionStore derived,
         DerivedGenerationOptions options,
-        CompactionOptions compaction)
+        CompactionOptions compaction,
+        ILiveIndexer? indexer)
     {
         this.evidence = evidence;
         this.derived = derived;
         this.options = options;
+        this.indexer = indexer;
         this.compaction = compaction;
     }
 
     /// <summary>
     /// Opens a follower of <paramref name="evidence"/> into <paramref name="derived"/>, which is empty or holds what an
     /// earlier follower mirrored. What it already holds is read once, so the next chunk continues its ordinals and its
-    /// journal index.
+    /// journal index. <paramref name="indexer"/>, where given, stages into each generation the follower publishes the
+    /// indexes of the one it extends (derivation-checkpoint-v1 §2), so a reader opening the session while it is still
+    /// followed extends them over the newest segments rather than deriving from every one.
     /// </summary>
     public static LiveSessionFollower Open(
         SessionStore evidence,
         SessionStore derived,
         DerivedGenerationOptions? options = null,
         CompactionOptions? compaction = null,
+        ILiveIndexer? indexer = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(evidence);
@@ -123,7 +129,7 @@ public sealed class LiveSessionFollower
                 nameof(evidence));
         }
 
-        var follower = new LiveSessionFollower(evidence, derived, options ?? DerivedGenerationOptions.Default, bounds);
+        var follower = new LiveSessionFollower(evidence, derived, options ?? DerivedGenerationOptions.Default, bounds, indexer);
         follower.Resume(cancellationToken);
         return follower;
     }
@@ -442,6 +448,12 @@ public sealed class LiveSessionFollower
                 content.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan);
             RequireRecorded(kept, content, source);
             builder.StageMirroredContent(kept, cancellationToken);
+        }
+
+        // The generation this one extends is indexed into it, so a reader opening the session now reads only this chunk's rows.
+        if (indexer is not null)
+        {
+            builder.StageIndexesOf(indexer, cancellationToken);
         }
 
         DerivedGenerationResult published = builder.CompleteMirror(records, DateTimeOffset.UtcNow, cancellationToken);

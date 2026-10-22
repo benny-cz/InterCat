@@ -533,7 +533,8 @@ internal static class TestSessions
         ClockCalibrationV1? calibration = null,
         bool finished = false,
         CollectorIdentitiesV1? collectors = null,
-        byte[]? plan = null)
+        byte[]? plan = null,
+        ILiveIndexer? indexer = null)
     {
         SourceClockDescriptor sourceClock = clock ?? TestClock;
         CaptureId captureId = capture ?? Capture;
@@ -603,6 +604,12 @@ internal static class TestSessions
         if (plan is not null)
         {
             builder.StageNormalizerPlan(plan);
+        }
+
+        // A live follow indexes the generation this one extends into it, as its follower does.
+        if (indexer is not null)
+        {
+            builder.StageIndexesOf(indexer);
         }
 
         // A capture that reached its last publication says so, as a recorder's final generation does.

@@ -107,6 +107,26 @@ public sealed class LiveDerivationTests
         Assert.Equal(EvidencePolicy.IncludeCorrelated, (await defaulted.StepAsync(CancellationToken.None)).Overview!.Policy);
     });
 
+    [Fact(DisplayName = "S1: each generation the window's live follow publishes after its first names a checkpoint of the one before it")]
+    public void ALiveGenerationNamesACheckpointOfTheOneBefore() => SingleThreadedContext.Run(async () =>
+    {
+        // A capture still recording, as far as it published.
+        using var evidence = new TemporaryDirectory();
+        using var user = new TemporarySession();
+        _ = await EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6, 7, 8], bursts: [1, 2, 4, 6]);
+        _ = EvidenceRecordings.RewindToUnfinalized(evidence.Path);
+        using var derivation = new LiveDerivation(
+            evidence.Path, Path.Combine(user.Path, "explore"), Stopwatch.StartNew(), new SessionStoreRegistry(capacity: 4));
+
+        LiveDerivationStep step = await derivation.StepAsync(CancellationToken.None);
+        Assert.False(step.Follow!.Finished);
+        SessionManifestV1 current = derivation.Store!.Current!;
+        Assert.True(current.Generation >= 2, $"The follow published {current.Generation} generation(s).");
+        StoreDependency named = Assert.IsType<StoreDependency>(DerivationCheckpoint.NamedBy(current));
+        Assert.Equal(DerivationCheckpoint.FileNameFor(current.Generation), named.Name);
+        Assert.Equal(current.Generation, step.Overview!.Generation);
+    });
+
     [Fact(DisplayName = "I14: a finished live follow publishes the session's derivation checkpoint and shows it as the next generation")]
     public void AFinishedFollowPublishesTheCheckpoint() => SingleThreadedContext.Run(async () =>
     {

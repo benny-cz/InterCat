@@ -143,8 +143,11 @@ describes the files of an earlier generation, so it is not carried. Like a re-de
 was derived from, and it is refused when a writer has published since. A re-derivation carries no index, because its
 segments are new. Neither does an additive generation. An index is then named only by the generation that published
 it, so a damaged one costs a rollback to the generation before, and never fails a live writer's next commit, which
-re-measures everything it carries. A dropped index stays with the last-known-good generation and is then an ordinary
-orphan (§6).
+re-measures everything it carries. A dropped index stays with the last-known-good generation, and since revision 710
+goes with that generation's manifest once a later publication supersedes it too (§9). An additive generation may stage
+indexes of its own beside its chunk (revision 710): a live follow stages
+a derivation checkpoint of the generation it extends, written afresh and named for the generation that publishes it,
+so it too is named only by that generation (`contracts/derivation-checkpoint-v1.md` §2).
 
 Retiring a dependency otherwise is retention (§8).
 
@@ -591,9 +594,13 @@ its generation named, so a live session keeping one per publication would hold m
 square of its length: 16 MB after the default 10-minute capture.
 
 - **Which ones.** A generation was current once exactly when a later manifest names it as its previous generation.
-  The writer follows that chain back from the current generation, and only the chain's manifests go. A manifest an
-  interrupted publication left was never current, and no chain reaches it whatever its number, so it stays an orphan
-  for recovery to judge. Nothing else is removed this way: no dependency, pointer, lock or staging file.
+  The writer follows that chain back from the current generation, and only the chain's manifests go, each with the
+  indexes it named that neither generation a pointer names does (revision 710): an index describes only the
+  generations that name it and is rebuilt from the evidence, and a live follow stages one into every generation it
+  publishes, which would otherwise be left an orphan two publications later. A superseded generation goes whole or
+  not at all, so the manifest a later publication finds still leads it to the indexes. A manifest an interrupted
+  publication left was never current, and no chain reaches it whatever its number, so it stays an orphan for recovery
+  to judge. Nothing else is removed this way: no other dependency, pointer, lock or staging file.
 - **When.** Only while the writer can take the evidence guard exclusively, which no reader anywhere holds, and only
   for manifests no lease of the writer's names. Otherwise a later publication removes them all at once. Removal is
   cleanup: a failure is ignored, and the publication already succeeded.

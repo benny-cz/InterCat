@@ -1872,16 +1872,19 @@ public sealed partial class SessionStore
     }
 
     /// <summary>
-    /// Removes the manifests of generations that were once current and that no pointer names any more (store-v1 §9).
-    /// Each lists every dependency its generation named, so a live session that kept one per publication would hold
-    /// manifest bytes growing with the square of its length.
+    /// Removes the manifests of generations that were once current and that no pointer names any more (store-v1 §9), with
+    /// the indexes only they named. Each manifest lists every dependency its generation named, so a live session that kept
+    /// one per publication would hold manifest bytes growing with the square of its length; and a live follow stages an
+    /// index into each generation it publishes, which the next but one no longer names.
     /// </summary>
     /// <remarks>
     /// A generation was current once exactly when a later one names it as its previous generation, so the walk follows
     /// that chain back from the current generation. A manifest an interrupted publication left was never current, and
-    /// no chain reaches it, whatever its number: it stays an orphan for recovery to judge. Only manifests go, never a
-    /// dependency, and only while no reader anywhere holds the evidence guard and no lease here names them; otherwise a
-    /// later publication tries again. It never throws: cleanup is optional, preserving evidence is not.
+    /// no chain reaches it, whatever its number: it stays an orphan for recovery to judge. A superseded generation goes
+    /// whole - its manifest and every index no kept generation names, which describe only it and are rebuilt from the
+    /// evidence - or not at all, never another dependency, and only while no reader anywhere holds the evidence guard and
+    /// no lease here names any of them; otherwise a later publication tries again, led back to the indexes by the manifest
+    /// kept. It never throws: cleanup is optional, preserving evidence is not.
     /// </remarks>
     /// <param name="removalLockHeld">Whether the caller already holds the evidence guard exclusively, as retention does.</param>
     /// <returns>How many manifests were removed.</returns>
@@ -1902,7 +1905,8 @@ public sealed partial class SessionStore
             }
 
             // Manifests are immutable, so the chain is read before the guard is taken; a reader waits only for deletion.
-            var superseded = new List<string>();
+            HashSet<string> keptFiles = Referenced(directory, kept);
+            var superseded = new List<(string Manifest, string[] Indexes)>();
             long? generation = kept.PreviousGeneration is { } first && first < kept.Generation ? first : null;
             while (generation is { } older)
             {
@@ -1917,7 +1921,9 @@ public sealed partial class SessionStore
 
                 if (!named.Contains(older))
                 {
-                    superseded.Add(name);
+                    superseded.Add((name, [.. manifest.Dependencies
+                        .Where(dependency => dependency.Kind == StoreDependencyKind.Index && !keptFiles.Contains(dependency.Name))
+                        .Select(dependency => dependency.Name)]));
                 }
 
                 generation = manifest.PreviousGeneration is { } prior && prior < older ? prior : null;
@@ -1935,7 +1941,23 @@ public sealed partial class SessionStore
             }
 
             Sweep(now);
-            return superseded.Count(name => !IsLeased(name, now) && directory.RemoveOwnedFile(name));
+            int removed = 0;
+            foreach ((string name, string[] indexes) in superseded)
+            {
+                if (IsLeased(name, now) || indexes.Any(index => IsLeased(index, now)))
+                {
+                    continue;
+                }
+
+                foreach (string index in indexes)
+                {
+                    _ = directory.RemoveOwnedFile(index);
+                }
+
+                removed += directory.RemoveOwnedFile(name) ? 1 : 0;
+            }
+
+            return removed;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
             or ArgumentOutOfRangeException)
