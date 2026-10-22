@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 724 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 725 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 725 — ADR-053: the graph's bounded projection and deterministic layout (§6.3, §19.4, R7, R12):**
+  - The record says why the graph is a folded process graph of at most 100 nodes with every process drawn or counted,
+    laid out by hashed seeding, bounded Fruchterman-Reingold relaxation and separation, with pins fixed and nodes
+    drawn before anchored. A new test lays out the same graph on one, two and eight threads at once, repeatedly, and
+    requires identical positions, as §13.6 asks. The determinism holds within one runtime on one processor
+    architecture, since seeding reads the runtime's sine and cosine.
+  - Debug and Release each ran 2,923 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    one mutation was caught: a seed that read the thread it ran on, which only the new test notices.
 
 - **Revision 724 — ADR-052: the broker believes the operating system about its client (§20.3, R19, R22):**
   - The record says why each check of the broker's boundary is the one it is, and what it lets through: a process of

@@ -342,6 +342,55 @@ public sealed class GraphLayoutTests
         IReadOnlyList<ProcessGroup> groups, IReadOnlyList<ProcessNode> processes, IReadOnlyList<CommunicationEdge> edges) =>
         new("Session", new TimeRange(0, 10), groups, processes, edges, [], [], [], []);
 
+    [Fact(DisplayName = "§19.4: the same graph lays out bit for bit alike in repeated runs and on one, two or eight threads at once")]
+    public void LayoutIsTheSameOnEveryWorkerCount()
+    {
+        // §13.6 tests a determinism claim at worker counts 1, 2 and N and across repeat runs. A layout runs on one thread,
+        // so what this holds is that nothing it reads is shared between layouts: no cache, no static state, no clock. A
+        // fresh drawing, and a settled refresh with every node drawn before and one pinned, are both compared.
+        GraphDisplay display = Dense(60);
+        GraphDisplayLayout fresh = GraphLayout.ComputeDisplay("determinism", display);
+        var pins = new Dictionary<string, GraphPoint>(StringComparer.Ordinal) { [display.Nodes[0].Key] = new(0.4, 0.4) };
+        GraphDisplayLayout refreshed = GraphLayout.ComputeDisplay("determinism", display, fresh.Positions, pins, settled: true);
+
+        foreach (int workers in new[] { 1, 2, 8 })
+        {
+            var results = new (GraphDisplayLayout Fresh, GraphDisplayLayout Refreshed)[workers * 2];
+            Thread[] threads = [.. Enumerable.Range(0, workers).Select(worker => new Thread(() =>
+            {
+                for (int run = 0; run < 2; run++)
+                {
+                    results[(worker * 2) + run] = (
+                        GraphLayout.ComputeDisplay("determinism", display),
+                        GraphLayout.ComputeDisplay("determinism", display, fresh.Positions, pins, settled: true));
+                }
+            }))];
+            foreach (Thread thread in threads)
+            {
+                thread.Start();
+            }
+
+            foreach (Thread thread in threads)
+            {
+                thread.Join();
+            }
+
+            Assert.All(results, result =>
+            {
+                AssertIdentical(fresh, result.Fresh);
+                AssertIdentical(refreshed, result.Refreshed);
+            });
+        }
+
+        static void AssertIdentical(GraphDisplayLayout expected, GraphDisplayLayout actual)
+        {
+            Assert.Equal(expected.Energy, actual.Energy);
+            Assert.Equal(
+                expected.Positions.OrderBy(entry => entry.Key, StringComparer.Ordinal),
+                actual.Positions.OrderBy(entry => entry.Key, StringComparer.Ordinal));
+        }
+    }
+
     [Fact(DisplayName = "R8: malformed layout input or a graph over budget is refused, never partly drawn")]
     public void InvalidInputIsRefused()
     {
