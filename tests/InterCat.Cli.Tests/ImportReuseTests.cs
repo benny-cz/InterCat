@@ -14,11 +14,14 @@ namespace InterCat.Cli.Tests;
 /// other folder that is not new is refused with what it holds and what to do instead, before a schema is compiled or a
 /// record read; and the cleanup of an import that stopped leaves a folder the import publishes into.
 /// </summary>
-public sealed class ImportReuseTests : IDisposable
+public sealed partial class ImportReuseTests : IDisposable
 {
     private const string Compiling = "Compiling admission plans";
 
     private readonly TemporaryDirectory root = new();
+
+    /// <summary>This test's catalogue of imports, in a folder not made until something is recorded.</summary>
+    private string Catalogue => Path.Combine(root.Path, "catalogue", ImportCatalogue.FileName);
 
     public void Dispose() => root.Dispose();
 
@@ -301,8 +304,16 @@ public sealed class ImportReuseTests : IDisposable
 
     private static string Regex(string text) => System.Text.RegularExpressions.Regex.Escape(text);
 
-    private static async Task<(InterCatExitCode Code, string Output, string Error)> Run(params string[] args)
+    /// <summary>
+    /// Runs icat; an import keeps this test's own catalogue of imports unless it names one, never the user's.
+    /// </summary>
+    private async Task<(InterCatExitCode Code, string Output, string Error)> Run(params string[] args)
     {
+        if (args is ["import", ..] && !args.Contains("--catalogue"))
+        {
+            args = [.. args, "--catalogue", Catalogue];
+        }
+
         TextWriter output = Console.Out;
         TextWriter error = Console.Error;
         using var answered = new StringWriter();

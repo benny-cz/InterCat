@@ -32,8 +32,9 @@ internal sealed record ImportSummaryDocument
 }
 
 /// <summary>
-/// What an import says when the folder it was told to publish into already holds this file's import: the session it
-/// reuses rather than reading the file again (contracts/import-v1.md §8).
+/// What an import says when the folder it was told to publish into already holds this file's import, or the catalogue of
+/// imports lists another folder that does: the session it reuses rather than reading the file again
+/// (contracts/import-v1.md §8, §8.1).
 /// </summary>
 internal sealed record ImportReuseDocument
 {
@@ -45,6 +46,13 @@ internal sealed record ImportReuseDocument
     public required string SourceContentDigest { get; init; }
     public required string ImportDigest { get; init; }
     public required string RetainedEvidence { get; init; }
+
+    /// <summary>The folder --into named; the session reused is in another one where the catalogue of imports listed it.</summary>
+    public required string Into { get; init; }
+
+    /// <summary>The catalogue of imports that listed the folder reused; null where it is the folder --into named.</summary>
+    public required string? Catalogue { get; init; }
+
     public required ImportReusedSessionDocument Session { get; init; }
     public required IReadOnlyList<string> Notes { get; init; }
 }
@@ -123,7 +131,7 @@ internal sealed record ImportSpillDocument
 /// Imports one standalone ETL through the canonical import contract. It reads a file and needs no
 /// elevation: R16 keeps parsing out of the privileged broker, and this command is the proof of it.
 /// </summary>
-internal static class ImportCommand
+internal static partial class ImportCommand
 {
     public static async Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken)
     {
@@ -139,10 +147,12 @@ internal static class ImportCommand
         string? outputOption = command.TakeOption("--output");
         string? entriesOption = command.TakeOption("--max-entries-in-memory");
         string? spillOption = command.TakeOption("--spill-directory");
+        string? catalogueOption = command.TakeOption("--catalogue");
         string? sourcePath = command.TakePositional();
         bool content = command.TryTakeFlag("--retain-content");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
+        bool again = command.TryTakeFlag("--again");
         if (command.TryReportUnknown(out string? unknown))
         {
             ConsoleUi.Failure(command.Refusal(unknown!));
@@ -207,9 +217,21 @@ internal static class ImportCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        string? cataloguePath = catalogueOption is null ? ImportCatalogue.DefaultPath() : Path.GetFullPath(catalogueOption);
+        if (catalogueOption is not null && Directory.Exists(cataloguePath))
+        {
+            ConsoleUi.Failure(
+                $"{cataloguePath} is a folder. --catalogue names the file the catalogue of imports is kept in, such as "
+                + $"{Path.Combine(cataloguePath, ImportCatalogue.FileName)}.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         // What the folder holds is read before a schema is compiled or a record read: a folder that already holds this
-        // file's import is reused, and the file is hashed only when there is a session to compare it with (§18.4).
+        // file's import is reused, and so is one the catalogue of imports lists as holding it; the file is hashed only when
+        // there is a session to compare it with (§18.4).
         ImportIdentity? identity = null;
+        var catalogue = new CatalogueKeeping(cataloguePath);
+        IReadOnlyList<string> gone = [];
         if (sessionPath is not null)
         {
             ImportDestination destination = ImportDestination.Inspect(sessionPath, () =>
@@ -217,16 +239,13 @@ internal static class ImportCommand
                 ConsoleUi.Progress($"Hashing {full} to compare it with the session {sessionPath} holds.");
                 return (identity ??= IdentityOf(full)).CaptureId.Value;
             });
+            (int?, int?) shape = (rowsOption is null ? null : rowsPerSegment, batchOption is null ? null : journalBatchRecords);
             if (destination.Kind == ImportDestinationKind.ThisImport)
             {
+                catalogue.Record(identity!, destination.Path, full, []);
                 return await ReuseAsync(
-                    destination,
-                    identity!,
-                    full,
-                    (rowsOption is null ? null : rowsPerSegment, batchOption is null ? null : journalBatchRecords),
-                    json,
-                    outputPath,
-                    cancellationToken).ConfigureAwait(false);
+                    destination, identity!, full, shape, (destination.Path, null, again), json, outputPath, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             if (destination.Kind != ImportDestinationKind.New)
@@ -235,6 +254,19 @@ internal static class ImportCommand
                 return destination.Kind == ImportDestinationKind.Unreadable
                     ? InterCatExitCode.CorruptedInput
                     : InterCatExitCode.InvalidInvocation;
+            }
+
+            if (!again)
+            {
+                CatalogueLookup lookup = catalogue.LookUp(full, destination.Path, () => identity ??= IdentityOf(full));
+                gone = lookup.Gone;
+                if (lookup.Reused is { } listed)
+                {
+                    catalogue.Record(identity!, listed.Path, full, gone);
+                    return await ReuseAsync(
+                        listed, identity!, full, shape, (destination.Path, catalogue.Path, false), json, outputPath, cancellationToken)
+                        .ConfigureAwait(false);
+                }
             }
         }
 
@@ -308,6 +340,7 @@ internal static class ImportCommand
             result = published.Import;
             generation = published.Generation;
             _ = CheckpointStep.Publish(store, cancellationToken);
+            catalogue.Record(result.Summary.Identity, sessionPath, full, gone);
         }
 
         ImportSummaryDocument document = Describe(result, environment, sessionPath, generation);
@@ -347,13 +380,15 @@ internal static class ImportCommand
 
     /// <summary>
     /// Reports the session that already holds this file's import, which every file its generation names verified, and
-    /// reads and writes nothing more (§18.4).
+    /// reads and writes nothing more (§18.4): in the folder --into named, or in the one the catalogue of imports listed,
+    /// writing nothing into the folder --into named (§8.1).
     /// </summary>
     private static async Task<InterCatExitCode> ReuseAsync(
         ImportDestination destination,
         ImportIdentity identity,
         string sourcePath,
         (int? RowsPerSegment, int? JournalBatchRecords) shape,
+        (string Into, string? Catalogue, bool Again) asked,
         bool json,
         string? outputPath,
         CancellationToken cancellationToken)
@@ -362,12 +397,25 @@ internal static class ImportCommand
         LocalOwnedDirectory root = LocalOwnedDirectory.Open(destination.Path);
         long rows = SessionSegments.Names(manifest)
             .Sum(name => (long)SessionSegments.DeclaredRowCount(root, manifest, name));
+        const string Derived =
+            "a session's identity is derived from the file's bytes, the evidence an import keeps and the import contract, "
+            + "and every file its generation names verified. The file was hashed and not read again";
         var notes = new List<string>
         {
-            "This folder already holds this file's import, so it was reused: a session's identity is derived from the "
-            + "file's bytes, the evidence an import keeps and the import contract, and every file its generation names "
-            + "verified. The file was hashed and not read again, and nothing was written.",
+            asked.Catalogue is { } catalogue
+                ? $"The catalogue of imports {catalogue} lists {destination.Path} as holding this file's import, so it was "
+                    + $"reused rather than imported into {asked.Into}: {Derived}, and nothing was written into either "
+                    + $"folder. Pass --again to import it into {asked.Into} all the same."
+                : $"This folder already holds this file's import, so it was reused: {Derived}, and nothing was written "
+                    + "into it.",
         };
+        if (asked.Again)
+        {
+            notes.Add(
+                "--again imports a file into a new folder even where the catalogue of imports lists another that holds "
+                + "it; this folder holds it already, and an import never publishes into a session twice.");
+        }
+
         if (destination.Reason is { } reason)
         {
             notes.Add(
@@ -401,6 +449,8 @@ internal static class ImportCommand
             SourceContentDigest = identity.Source.ContentDigest,
             ImportDigest = identity.Digest,
             RetainedEvidence = identity.RetainedEvidence.ToString(),
+            Into = asked.Into,
+            Catalogue = asked.Catalogue,
             Session = new()
             {
                 Path = destination.Path,
@@ -425,6 +475,11 @@ internal static class ImportCommand
             ConsoleUi.Field("Content digest", document.SourceContentDigest);
             ConsoleUi.Field("Import identity", document.ImportDigest);
             ConsoleUi.Field("Session", document.Session.Path);
+            if (asked.Catalogue is not null)
+            {
+                ConsoleUi.Field("Not imported into", asked.Into);
+            }
+
             ConsoleUi.Field(
                 "Generation",
                 $"{document.Session.Generation.ToString("N0", CultureInfo.CurrentCulture)}, published "
@@ -736,7 +791,7 @@ internal static class ImportCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("  icat import <source.etl> [--into <session-dir>] [--rows-per-segment <n>]");
-        ConsoleUi.Line("             [--journal-batch-records <n>]");
+        ConsoleUi.Line("             [--journal-batch-records <n>] [--catalogue <file>] [--again]");
         ConsoleUi.Line("             [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("             [--max-entries-in-memory <n>] [--spill-directory <dir>]");
         ConsoleUi.Line("      Reads a standalone ETL through the canonical import contract and reports its");
@@ -745,7 +800,20 @@ internal static class ImportCommand
         ConsoleUi.Line("      the observation-v1 segments derived from it, as one committed generation.");
         ConsoleUi.Line("      --into names a new folder. A folder that already holds this file's import is");
         ConsoleUi.Line("      reused, not imported into again; any other session or file there is refused.");
-        ConsoleUi.Line("      --overwrite replaces only a report file.");
+        ConsoleUi.Line("      Each import published or reused is recorded in your catalogue of imports, and");
+        ConsoleUi.Line("      one it lists in another folder is reused there, writing nothing into the new");
+        ConsoleUi.Line("      folder; --again imports the file into the new folder all the same. The");
+        if (ImportCatalogue.DefaultPath() is { } kept)
+        {
+            ConsoleUi.Line($"      catalogue is kept in {kept},");
+            ConsoleUi.Line("      or in the file --catalogue names. --overwrite replaces only a report file.");
+        }
+        else
+        {
+            ConsoleUi.Line("      catalogue is kept only in the file --catalogue names: this system has no");
+            ConsoleUi.Line("      folder of your own for it. --overwrite replaces only a report file.");
+        }
+
         ConsoleUi.Line("      Needs no elevation.");
     }
 }

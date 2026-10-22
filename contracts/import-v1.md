@@ -1,8 +1,9 @@
 # InterCat canonical import v1
 
 Status: **source identity, import identity, canonical record keys, equal-time multiplicity, the
-bounded external-sort path, standalone ETL import into a published session, and reuse of the folder that
-already holds an import implemented and measured; a catalogue of imports across folders is not kept**.
+bounded external-sort path, standalone ETL import into a published session, reuse of the folder that
+already holds an import, and the catalogue of imports that finds one in another folder implemented and
+measured**.
 
 This contract freezes the first IC-013 boundary: how a source's bytes become an identity, how one
 record becomes a canonical key, what ordering an import may claim, and what it must refuse. It is a
@@ -164,8 +165,8 @@ record read; the file is hashed for it only when the folder holds a session to c
 
 | The folder holds | `icat import` |
 |---|---|
-| Nothing, or only a session's lock files, which a confirmed cleanup of staged files leaves | Publishes the session. |
-| This import: the session whose identity the import derives (§2), every file its generation names verifying | Reuses it, reading the file no further and writing nothing (exit 0, or 1 where it reads its last-known-good generation). |
+| Nothing, or only a session's lock files, which a confirmed cleanup of staged files leaves | Publishes the session, unless the catalogue of imports lists another folder that holds this import (§8.1). |
+| This import: the session whose identity the import derives (§2), every file its generation names verifying | Reuses it, reading the file no further and writing nothing into it (exit 0, or 1 where it reads its last-known-good generation), and records it in the catalogue of imports. |
 | Another session, or an import of the same path made from other bytes or under another contract | Refused, naming what it was derived from. |
 | A session no generation of which verifies | Refused as damaged input (exit 4), naming `icat recover`. |
 | Files a publication staged and never published, which no writer holds | Refused, naming `icat staging`, whose confirmed cleanup leaves a folder the import publishes into. |
@@ -173,21 +174,68 @@ record read; the file is hashed for it only when the folder holds a session to c
 | Anything else, or a file at that path | Refused, naming what is there. |
 
 A reuse writes `import-reuse-v1` with `--json`, and to `--output`: the source's path, kind, length and
-content digest, the import digest and the evidence it retained, and the session reused - its path,
-session identity, generation, commit time, manifest digest, observation rows, and why it reads its
-last-known-good generation, or null. `--rows-per-segment` and `--journal-batch-records` shape a new
-publication, so a reuse says it did not apply them, naming `icat rederive --rows-per-segment` for the
-segments. `--overwrite` applies only to the report file; it never lets an import into a folder that
-holds anything else. The import API also refuses a store with an existing generation, because appending
-the same evidence would silently count one capture twice. Re-derive an existing journal with
-`icat rederive` rather than re-importing it into that session.
+content digest, the import digest and the evidence it retained, the folder `--into` named (`into`), the
+catalogue that listed the folder reused, or null where it is the folder `--into` named (`catalogue`),
+and the session reused - its path, session identity, generation, commit time, manifest digest,
+observation rows, and why it reads its last-known-good generation, or null. `--rows-per-segment` and
+`--journal-batch-records` shape a new publication, so a reuse says it did not apply them, naming
+`icat rederive --rows-per-segment` for the segments. `--overwrite` applies only to the report file; it
+never lets an import into a folder that holds anything else. The import API also refuses a store with an
+existing generation, because appending the same evidence would silently count one capture twice.
+Re-derive an existing journal with `icat rederive` rather than re-importing it into that session.
+
+## 8.1 The catalogue of imports
+
+A session's identity is derived from its import's (§2), so the folder an import is told to publish into
+is recognised as holding it; an import of the same file into another folder needs to know where the user
+put the first. `icat import` keeps a catalogue of completed imports for that: `import-catalogue-v1.json`
+in the user's own InterCat folder (`%LOCALAPPDATA%\InterCat` on Windows, beside the window's sessions),
+or the file `--catalogue <file>` names. It is a hint, never evidence.
+
+- An import that publishes a session, and every reuse, records one entry: the import digest, the session
+  identity, the session's folder as a full path, the source's path and length, and when it was recorded.
+  It replaces the entry of the same folder. The newest 1,000 entries are kept; an older import is
+  imported again.
+- Before an import publishes into a new folder, and unless `--again` is passed, it reads the catalogue.
+  The file is hashed only when the catalogue lists an import of a file of the same length. This import's
+  entries are tried newest first, and a folder is reused only when it holds this import and every file its
+  generation names verifies, exactly as §8 reuses the folder `--into` names. Nothing is written into the
+  folder `--into` named, which is not made where it was not there; the report names both folders (§8),
+  and `--again` imports the file into the new folder all the same.
+- A listed folder that no longer holds the import - removed, emptied, holding another session or other
+  files, or the very folder `--into` names, which is new - is forgotten when the catalogue is next
+  written. One whose session cannot be read is named in a warning and stays listed, since `icat recover`
+  may yet recover it.
+- A file that cannot be read as a catalogue of this contract - unreadable, not one, of another contract,
+  or larger than 16 MiB - lists nothing and is never replaced: the import says so once and goes on. A
+  catalogue that cannot be written is warned about, and the import stands.
+- A writer holds `import-catalogue-v1.json.lock` beside it, waiting up to five seconds for another, reads
+  the catalogue again and replaces it whole - written beside it and moved over it - so two imports
+  recording at once both stay listed, and a reader meets the old catalogue or the new one, never half of
+  either.
+
+```json
+{
+  "contract": "import-catalogue-v1",
+  "imports": [
+    {
+      "importDigest": "sha256:<64 hexadecimal digits>",
+      "sessionId": "<32 hexadecimal digits>",
+      "path": "C:\\Cases\\trace",
+      "sourcePath": "C:\\Traces\\trace.etl",
+      "sourceLength": 268435456,
+      "recordedUtc": "2026-10-22T09:30:00+00:00"
+    }
+  ]
+}
+```
+
+An entry without an import digest, a session identity of 32 hexadecimal digits, a fully qualified
+folder, a source path or a length of zero or more is passed over, and dropped when the catalogue is next
+written.
 
 ## 9. Not yet implemented
 
-- A catalogue of completed imports across folders. The folder an import is told to publish into is
-  recognised as holding it (§8), because a session's identity is derived from the import's; an import
-  into a new folder does not look for the same import in other folders, which would need a list of the
-  user's sessions that nothing keeps for imports.
 - Semantic normalizer upgrades and bookmark fallback to raw evidence when a fact is split or renamed
   (§18.4). Same-version replacement derivation generations exist; a new normalizer contract version
   requires a real mapping change and stable-raw-identity tests rather than an arbitrary version bump.
