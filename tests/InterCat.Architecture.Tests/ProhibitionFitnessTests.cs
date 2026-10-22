@@ -6,7 +6,8 @@ namespace InterCat.Architecture.Tests;
 
 /// <summary>
 /// Prohibitions a fitness function can hold where no runtime test reaches: what the elevated broker can reach at all
-/// (P18), and the intrusive means of resolving a peer no product code uses (P20).
+/// (P18), the intrusive means of resolving a peer no product code uses (P20), and the network no product code reaches
+/// (P16, §11.1).
 /// </summary>
 public sealed partial class ProhibitionFitnessTests
 {
@@ -105,6 +106,46 @@ public sealed partial class ProhibitionFitnessTests
         Assert.Contains("serverProcessId != (uint)expectedServerProcessId",
             File.ReadAllText(Path.Combine(root, "src", "InterCat.CaptureBroker.Protocol", "WindowsBrokerPipeClient.cs")),
             StringComparison.Ordinal);
+    }
+
+    /// <summary>What reaches past the machine: a connection, a request, a mail, a name lookup.</summary>
+    private static readonly string[] Network =
+    [
+        "HttpClient", "WebClient", "WebRequest", "TcpClient", "TcpListener", "UdpClient", "ClientWebSocket", "new Socket(",
+        "SmtpClient", "Dns.", "SymbolReader",
+    ];
+
+    /// <summary>The packages product code is built on, reviewed for what they send: none sends anything at run time.</summary>
+    private static readonly string[] ReviewedPackages =
+        ["Avalonia", "Avalonia.Desktop", "Avalonia.Themes.Fluent", "Microsoft.Diagnostics.Tracing.TraceEvent"];
+
+    [Fact(DisplayName = "P16: no product code opens a connection, sends a request or looks up a name, and it is built only on reviewed packages")]
+    public void NothingTheProductHoldsLeavesTheMachineButInAFile()
+    {
+        // §11.1: the product has no automatic upload path, so evidence leaves the machine only in a file a person saves.
+        // The workloads are fixtures that open their own sockets and requests; everything else ships.
+        string root = RepositoryRoot();
+        string[] product = [.. Directory.EnumerateDirectories(Path.Combine(root, "src"))
+            .Select(Path.GetFileName)
+            .Where(project => project is not null && project != "InterCat.TestWorkloads"
+                && File.Exists(Path.Combine(root, "src", project, project + ".csproj")))
+            .Select(project => project!)];
+        Assert.Contains("InterCat.Desktop", product);
+
+        var reaches = new List<string>();
+        foreach (string source in product.SelectMany(project => Sources(root, project)))
+        {
+            string text = File.ReadAllText(source);
+            reaches.AddRange(Network.Where(call => text.Contains(call, StringComparison.Ordinal))
+                .Select(call => $"{Relative(root, source)}: {call}"));
+        }
+
+        Assert.True(reaches.Count == 0, string.Join(Environment.NewLine, reaches));
+
+        // A package added to product code is reviewed for what it sends before it is added here.
+        string[] packages = [.. product.SelectMany(project => PackagesOf(root, project)).Distinct().Order(StringComparer.Ordinal)];
+        Assert.Contains("Avalonia", packages);
+        Assert.Empty(packages.Except(ReviewedPackages, StringComparer.Ordinal));
     }
 
     /// <summary>A project and every project it references, directly or through another.</summary>

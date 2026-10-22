@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 727 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 728 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 728 — ADR-056: content kept only when asked, leaving only in a file a person saves (§11, P16):**
+  - The record states the policy §11's decisions make together: metadata by default, content only under a reviewed
+    request from measured sources, kept as restricted evidence and read only on request, and four files a person can
+    save, each saying what it holds. A new test holds that no product code reaches the network and that product code
+    is built only on reviewed packages. Encryption at rest, a secure erase and tightened session access are listed as
+    not built.
+  - No product code changed: the architecture tests, where the new test lives, ran 31 and passed. Both mutations
+    were caught: a product file that names a socket client, and a product project that references an unreviewed
+    package.
 
 - **Revision 727 — ADR-055: every correlation states one of five strengths (§7.4, §6.6, R14, P8):**
   - The record states the model the correlators share: five strengths that are claims about the evidence, each fixed
