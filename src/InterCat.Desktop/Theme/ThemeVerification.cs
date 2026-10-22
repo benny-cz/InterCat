@@ -33,7 +33,7 @@ public sealed record ThemeModeReport(
     IReadOnlyList<SeparationResult> StatusSeparations,
     bool Satisfied);
 
-/// <summary>The complete theme verification, written beside the theme definition (§21.2 item 9).</summary>
+/// <summary>The complete theme verification, written beside the theme definition (§21.2 item 11).</summary>
 public sealed record ThemeReport(
     string ThemeVersion,
     DateTimeOffset GeneratedUtc,

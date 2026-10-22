@@ -197,7 +197,72 @@ public sealed class ThemeContractTests
         Assert.All(ThemePalette.Modes, mode => Assert.Equal("Lifecycle", ThemePalette.TokensFor(mode, MechanismFamily.Lifecycle).Label));
     }
 
-    [Fact(DisplayName = "R20: the committed theme report matches what the palette computes today")]
+    [Fact(DisplayName = "R20: theme/ holds exactly what the report tool writes from the palette today: its tokens, every measurement and the summary")]
+    public void CommittedThemeFilesAreWhatTheToolWrites()
+    {
+        // The measurements alone once stood for the files: a glyph, a label, a hex, a target or a summary row could
+        // change in the code while the committed definition kept the old one. Each file is compared whole, with the
+        // time the committed report was generated, so only regenerating them with the tool makes this pass.
+        string root = RepositoryRoot();
+        using JsonDocument committed = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "theme", "contrast-report.json")));
+        ThemeReport report = ThemeVerification.Verify(committed.RootElement.GetProperty("generatedUtc").GetDateTimeOffset());
+
+        Assert.True(report.Satisfied);
+        Assert.Equal(ThemeFiles.Tokens(), Committed(root, "tokens.json"));
+        Assert.Equal(ThemeFiles.Report(report), Committed(root, "contrast-report.json"));
+        Assert.Equal(ThemeFiles.Summary(report), Committed(root, "README.md"));
+    }
+
+    [Fact(DisplayName = "R14: the palette is held to the targets ADR-050 records, so a lower one is a decision, not a regenerated report")]
+    public void TheTargetsAreTheRecordedOnes()
+    {
+        // A lowered target passes every measurement once the report is regenerated with it, so the targets themselves are
+        // held here: changing one changes ADR-050 first.
+        double[] targets =
+        [
+            ThemePalette.MinimumInkContrast, ThemePalette.MinimumFillContrast, ThemePalette.MinimumAdjacentDistance,
+            ThemePalette.MinimumSimulatedDistance, ThemePalette.MinimumGreyscaleLightness, ThemePalette.MinimumAnyPairDistance,
+            ThemePalette.MinimumStatusDistance, ThemePalette.MinimumHighContrastInk, ThemePalette.MinimumHighContrastFill,
+            ThemePalette.MinimumHighContrastDivider,
+        ];
+        Assert.Equal([4.5, 3.0, 18.0, 10.0, 6.0, 15.0, 18.0, 7.0, 4.5, 3.0], targets);
+
+        // And every measurement is held to the target of its kind, in every mode.
+        foreach (ThemeMode mode in ThemePalette.Modes)
+        {
+            ThemeModeReport report = ThemeVerification.VerifyMode(mode);
+            bool high = ThemePalette.IsHighContrast(mode);
+            Assert.All(report.InkContrast, result => Assert.Equal(high ? 7.0 : 4.5, result.Required));
+            Assert.All(report.FillContrast, result =>
+                Assert.Equal(result.Token == "divider" || !high ? 3.0 : 4.5, result.Required));
+            Assert.All(report.Separations, result => Assert.Equal(
+                result.Model switch { "Normal" => 18.0, "AnyPair" => 15.0, "Greyscale" => 6.0, _ => 10.0 },
+                result.Required));
+            Assert.All(report.StatusSeparations, result => Assert.Equal(18.0, result.Required));
+        }
+    }
+
+    [Fact(DisplayName = "R20: the summary shows each check's measurement nearest its own target, so a failing one is never hidden by a lower one that passes")]
+    public void TheSummaryShowsTheMeasurementNearestItsTarget()
+    {
+        // A high-contrast mode holds its fills to 4.5 to 1 and its divider to 3. Shown by value alone, the divider's 3.2
+        // was the worst row and read "met" while a fill failed at 4.4.
+        ContrastResult[] ink = [new("body ink", "canvas", "#FFFFFF", "#000000", 21.0, 7.0, true)];
+        ContrastResult[] fills =
+        [
+            new("divider", "elevated", "#5A5A5A", "#1A1A1A", 3.2, 3.0, true),
+            new("Tcp fill", "plot", "#3A6AA0", "#000000", 4.4, 4.5, false),
+        ];
+        ThemeReport report = new("0.0.0", DateTimeOffset.UnixEpoch,
+            [new("HighContrastDark", ink, fills, [], [], false)], [], false);
+
+        string summary = ThemeFiles.Summary(report);
+
+        Assert.Contains("| Fill contrast | 4.40 to 1 (Tcp fill on plot) | 4.5 to 1 | NOT MET |\n", summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("divider", summary, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R20: the committed theme measurements match what the palette computes today, each named where one drifts")]
     public void CommittedReportMatchesTheCode()
     {
         string root = RepositoryRoot();
@@ -295,6 +360,10 @@ public sealed class ThemeContractTests
             ColorMath.RelativeLuminance(grey),
             2);
     }
+
+    // A checkout may turn line feeds into carriage return and line feed; the tool writes line feeds everywhere.
+    private static string Committed(string root, string name) =>
+        File.ReadAllText(Path.Combine(root, "theme", name)).Replace("\r\n", "\n", StringComparison.Ordinal);
 
     private static string RepositoryRoot()
     {

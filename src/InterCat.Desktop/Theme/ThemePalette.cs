@@ -82,7 +82,7 @@ public sealed record MotionTokens(TimeSpan Selection, TimeSpan LevelChange);
 /// <summary>
 /// The InterCat theme. Values are the contract: the thresholds below are enforced by tests, and the
 /// measured results are written beside the definition so a palette change that breaks one fails a build
-/// rather than a review (§6.6, §21.2 item 9).
+/// rather than a review (§6.6, §21.2 item 11, ADR-050).
 /// </summary>
 public static class ThemePalette
 {

@@ -1415,6 +1415,7 @@
         "R14: adjacent families stay separable under every simulated vision model, and any two in normal vision",
         "R14: every fill clears 3 to 1 against the ground it is drawn on",
         "R14: every ink token clears 4.5 to 1 against every surface it can land on",
+        "R14: the palette is held to the targets ADR-050 records, so a lower one is a decision, not a regenerated report",
         "R14: the primary action draws in its own measured fill and ink at rest, under the pointer and pressed, in every mode",
         "R14: the primary action's ink clears 4.5 to 1 on its fill in every state, and that fill is no family's"
       ],
@@ -1685,8 +1686,10 @@
         "R20: greyscale simulation keeps luminance and drops chroma",
         "R20: icat rederive --check replays a recording's journal and says what it verified, publishing nothing",
         "R20: importing into an existing generation is refused before reading an ETL",
-        "R20: the committed theme report matches what the palette computes today",
+        "R20: the committed theme measurements match what the palette computes today, each named where one drifts",
         "R20: the retained descriptor plan round-trips and refuses a different journal schema",
+        "R20: the summary shows each check's measurement nearest its own target, so a failing one is never hidden by a lower one that passes",
+        "R20: theme/ holds exactly what the report tool writes from the palette today: its tokens, every measurement and the summary",
         "R20: what icat rederive cannot replay is refused before it says it began, in words that name no step there is not"
       ],
       "R21": [
