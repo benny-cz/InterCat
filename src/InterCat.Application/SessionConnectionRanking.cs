@@ -90,21 +90,31 @@ public static class SessionConnectionRanking
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so its processes cannot be identified.");
 
-        // A time scope reads only the segments holding a reading in it; the whole session reads every segment. Whether the
-        // session records any open at all is the whole derivation's to say, whatever the scope reads.
+        // A time scope reads only the segments holding a reading in it. The whole session's TCP records are each instance's
+        // own records of TCP, which the derivation counts by the same binding a pass over the rows would make: kept with a
+        // finished session's checkpoint, and extended from one live generation to the next, so the whole session opens no
+        // segment it has not already read (P25). Whether the session records any open at all is the whole derivation's to
+        // say, whatever the scope reads.
         var generation = new GenerationSegments(store, manifest, clock);
         ProcessInstanceIndex processes = generation.Processes(cancellationToken);
         TransportRelationIndex relations = generation.Relations(cancellationToken);
         bool opensRecorded = ConnectionOpens.Recorded(relations);
         TimeRange? native = interval is { } presentation ? RankingScope.NativeInterval(clock, presentation) : null;
-        SegmentReaderV1[] segments = native is { } readings
-            ? SessionNativeInterval.Segments(store, manifest, (readings.StartTicks, readings.EndTicks))
-            : interval is null ? generation.All : [];
 
         int instances = processes.Instances.Count;
         var total = new ConnectionTally(instances);
-        if (interval is null || native is not null)
+        if (interval is null && generation.Activity(processes, cancellationToken) is { } activity)
         {
+            for (int instance = 0; instance < instances; instance++)
+            {
+                total.Tcp[instance] = activity.RecordsOf(instance, policy, Mechanism.Tcp);
+            }
+        }
+        else if (interval is null || native is not null)
+        {
+            SegmentReaderV1[] segments = native is { } readings
+                ? SessionNativeInterval.Segments(store, manifest, (readings.StartTicks, readings.EndTicks))
+                : generation.All;
             SegmentPasses.Run(
                 segments,
                 () => new ConnectionTally(instances),

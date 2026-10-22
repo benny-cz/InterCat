@@ -60,6 +60,12 @@ public sealed class ProcessActivityTests
                         .ThenBy(entry => entry.Mechanism)];
                     Assert.Equal(counted, activity.MechanismsOf(instance, policy).ToArray());
                     Assert.Equal(counted.Sum(entry => entry.Records), activity.RecordsOf(instance, policy));
+
+                    // One mechanism's alone, as a ranking by one mechanism's records reads them: lifecycle records too.
+                    foreach (Mechanism mechanism in Enum.GetValues<Mechanism>())
+                    {
+                        Assert.Equal(expected.GetValueOrDefault((instance, mechanism)), activity.RecordsOf(instance, policy, mechanism));
+                    }
                 }
             }
 

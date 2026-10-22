@@ -1,3 +1,4 @@
+using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -149,6 +150,95 @@ public sealed class SessionConnectionRankingTests
         ProcessInstanceId quiet = SessionOverviewProjector.Project(session.Store).Nodes.Single(node => node.ProcessId == 200).Id;
         Assert.Equal(new RankedValue(RankingMetric.ConnectionsMade, 0, 1, 0), measured.Of(quiet).Of(RankingMetric.ConnectionsMade));
         Assert.Equal(new RankedValue(RankingMetric.ConnectionsAccepted, 0, 1, 0), measured.Of(quiet).Of(RankingMetric.ConnectionsAccepted));
+    }
+
+    [Theory(DisplayName = "S3: the whole session's TCP records behind each process's connections are counted from its derivation's activity, exactly as binding every row does, under every policy")]
+    [InlineData(3)]
+    [InlineData(17)]
+    [InlineData(20_261_022)]
+    public void TheWholeSessionCountsFromActivityAsEveryRowBinds(int seed)
+    {
+        var random = new Random(seed);
+        int candidates = 0;
+        for (int trial = 0; trial < 8; trial++)
+        {
+            SessionDerivationCache.Clear();
+            using var session = new TemporarySession();
+            foreach ((ObservationRowV1[] rows, SourceFieldRowV1[] fields) in RandomCaptures.Chunks(random))
+            {
+                _ = Publish(session.Store, rows, rowsPerSegment: random.Next(1, 12), fields: fields);
+            }
+
+            SessionManifestV1 manifest = session.Store.Current!;
+            SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(session.Store.Root, manifest, name))];
+            SegmentReaderV1[] fieldSegments = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(session.Store.Root, manifest, name))];
+            ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, TestClock, fieldSegments);
+            foreach (EvidencePolicy policy in Enum.GetValues<EvidencePolicy>())
+            {
+                // Each instance's TCP records, read row by row: those whose own owner binds to it as strongly as the
+                // policy admits. A later holder of a reused PID binds them only as candidates.
+                var expected = new Dictionary<ProcessInstanceId, long>();
+                foreach (SegmentReaderV1 segment in segments)
+                {
+                    ProcessBinding[] owners = processes.OwnersOf(segment);
+                    SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+                    for (int row = 0; row < segment.RowCount; row++)
+                    {
+                        if ((Mechanism)mechanisms.UnsignedAt(row)!.Value != Mechanism.Tcp || !owners[row].IsBound)
+                        {
+                            continue;
+                        }
+
+                        if (!owners[row].IsAdmittedUnder(policy))
+                        {
+                            continue;
+                        }
+
+                        if (owners[row].Strength == RelationStrength.Candidate)
+                        {
+                            candidates++;
+                        }
+
+                        ProcessInstanceId id = processes.Instances[owners[row].Instance].Id;
+                        expected[id] = expected.GetValueOrDefault(id) + 1;
+                    }
+                }
+
+                SessionConnectionMeasures measured = SessionConnectionRanking.Measure(session.Store, null, policy);
+                Assert.Equal(
+                    expected.Select(entry => (entry.Key.Value, entry.Value)).Order(),
+                    measured.ByProcess.Select(entry => (entry.Key.Value, entry.Value.TcpRecords)).Order());
+            }
+        }
+
+        // The captures reused PIDs, so a later holder's records were counted only where candidates were admitted.
+        Assert.True(candidates > 0, "No capture bound a TCP record to a later holder of a reused PID.");
+    }
+
+    [Fact(DisplayName = "S3: a reopened session ranks its processes by connections made and accepted from its checkpoint, opening no segment, and a brush reads the segments it meets")]
+    public void AReopenedSessionRanksByConnectionsOpeningNoSegment()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        (int, long, long, long)[] Counts(SessionConnectionMeasures measures, SessionStore store) =>
+            [.. measures.ByProcess.Select(entry => (SessionOverviewProjector.Project(store).Nodes.Single(node => node.Id == entry.Key)
+                .ProcessId, entry.Value.Made, entry.Value.Accepted, entry.Value.TcpRecords)).Order()];
+        (int, long, long, long)[] written = Counts(SessionConnectionRanking.Measure(session.Store, null), session.Store);
+        (int, long, long, long)[] brushed = Counts(SessionConnectionRanking.Measure(session.Store, new TimeRange(0, 15)), session.Store);
+
+        // A fresh viewer of the finished session counts each process's TCP records from its checkpoint's activity.
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        SessionConnectionMeasures whole = SessionConnectionRanking.Measure(reopened, null);
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+        Assert.True(whole.OpensRecorded);
+        Assert.Equal(written, Counts(whole, reopened));
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+
+        // A brush counts the TCP records inside it, from the rows of the segments its interval meets.
+        Assert.Equal(brushed, Counts(SessionConnectionRanking.Measure(reopened, new TimeRange(0, 15)), reopened));
+        Assert.NotEqual(0, reopened.SegmentReaderCache.Entries);
     }
 
     /// <summary>

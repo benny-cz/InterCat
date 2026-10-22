@@ -127,6 +127,12 @@ connected to itself both - and a one-sided connection (§5b) one its holder made
 as does an incarnation that is neither a relation nor one-sided. A scope takes a connection whose first record, at
 either end, is within it.
 
+The TCP records a ranking reads beside a process's connections are its own TCP records in scope that bind to it as the
+policy admits. Since revision 734 the whole session's are those the derivation's activity counts
+(`process-activity-v1`), which binds each record by its owner exactly so: kept with a finished session's checkpoint
+and extended from one live generation to the next, so ranking the whole session by connections opens no segment it
+has not read already. A time scope reads the records of the segments it meets.
+
 Every record of an incarnation has that incarnation's other end (§4), so a count of records by their other end is a
 sum over incarnations, plus the records with no end, and needs no second read of any record: how many records of a
 mechanism have no other end a policy admits is exactly how many of them a per-record read would find unadmitted.

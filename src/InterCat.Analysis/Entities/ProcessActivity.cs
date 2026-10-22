@@ -57,11 +57,41 @@ public sealed partial class ProcessActivityIndex
     internal ProcessInstanceIndex Processes => processes;
 
     /// <summary>
+    /// Whether these are the counts of exactly <paramref name="index"/>'s instances, so that a position in it is a position
+    /// here; counts made under another derivation's instances may bind the same records elsewhere.
+    /// </summary>
+    public bool Counts(ProcessInstanceIndex index) => ReferenceEquals(processes, index);
+
+    /// <summary>
     /// The records of the instance at <paramref name="instance"/> that <paramref name="policy"/> admits: its lifecycle
     /// records always, the rest when the policy admits how strongly the instance binds them.
     /// </summary>
     public long RecordsOf(int instance, EvidencePolicy policy) =>
         MechanismsOf(instance, policy).Sum(entry => entry.Records);
+
+    /// <summary>
+    /// What <see cref="RecordsOf(int, EvidencePolicy)"/> counts of <paramref name="mechanism"/> alone, as a pass binding
+    /// each of the instance's records by its owner and keeping those the policy admits would count them.
+    /// </summary>
+    public long RecordsOf(int instance, EvidencePolicy policy, Mechanism mechanism)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(instance);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(instance, processes.Instances.Count);
+        if (!Enum.IsDefined(policy))
+        {
+            throw new ArgumentOutOfRangeException(nameof(policy));
+        }
+
+        if (!instances.TryGetValue(instance, out InstanceActivity? activity))
+        {
+            return 0;
+        }
+
+        long records = activity.Direct.GetValueOrDefault(mechanism);
+        return new ProcessBinding(instance, StrengthOf(instance), ProcessBindingReason.Bound).IsAdmittedUnder(policy)
+            ? records + activity.Bound.GetValueOrDefault(mechanism)
+            : records;
+    }
 
     /// <summary>What <see cref="RecordsOf"/> counts, by mechanism, largest first and then by mechanism code.</summary>
     public IReadOnlyList<(Mechanism Mechanism, long Records)> MechanismsOf(int instance, EvidencePolicy policy)

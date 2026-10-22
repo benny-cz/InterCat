@@ -47,6 +47,19 @@ internal sealed class GenerationSegments(SessionStore store, SessionManifestV1 m
         ?? Derivation.Relations(store.Root, All, clock, Fields, cancellationToken);
 
     /// <summary>
+    /// Each instance's records over the whole generation, by mechanism: those already counted, which taking the instances
+    /// from the checkpoint takes with them, opening no segment; or else extended from an earlier generation's or the
+    /// checkpoint's, or counted, opening the segments that needs. Null when they are counted for other instances than
+    /// <paramref name="processes"/>, and a caller reads the rows instead.
+    /// </summary>
+    public ProcessActivityIndex? Activity(ProcessInstanceIndex processes, CancellationToken cancellationToken)
+    {
+        ProcessActivityIndex counted = Derivation.DerivedActivity
+            ?? Derivation.Activity(store.Root, OnDemand, clock, FieldsOnDemand, cancellationToken);
+        return counted.Counts(processes) ? counted : null;
+    }
+
+    /// <summary>
     /// The other ends of the RPC calls: followed once per generation over every segment, since a call's request and its
     /// response can lie in different ones, and then read without opening one.
     /// </summary>
