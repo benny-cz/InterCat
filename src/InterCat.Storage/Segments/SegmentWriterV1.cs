@@ -240,7 +240,7 @@ internal sealed class SegmentTableBuilder
     private readonly bool[][] presence;
     private readonly List<string?> texts = [];
     private readonly List<SortKey> keys = [];
-    private readonly Dictionary<(Guid Provider, ushort EventId, byte Version), (string Entry, uint Local)> schemas = [];
+    private readonly Dictionary<(Guid Provider, ushort EventId, byte Version), (string Fingerprint, uint Local)> schemas = [];
     private readonly List<string> schemaEntries = [];
     private readonly StagedLayout wideLayout;
     private readonly StagedLayout? narrowLayout;
@@ -323,11 +323,11 @@ internal sealed class SegmentTableBuilder
     /// </summary>
     public uint InternSchema(Guid providerId, ushort eventId, byte version, string fingerprint)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fingerprint);
         (Guid, ushort, byte) key = (providerId, eventId, version);
-        string expected = SegmentFormatV1.SchemaEntry(providerId, eventId, version, fingerprint);
-        if (schemas.TryGetValue(key, out (string Entry, uint Local) existing))
+        if (schemas.TryGetValue(key, out (string Fingerprint, uint Local) existing))
         {
-            return existing.Entry.Equals(expected, StringComparison.Ordinal)
+            return existing.Fingerprint.Equals(fingerprint, StringComparison.Ordinal)
                 ? existing.Local
                 : throw new InvalidOperationException(
                     $"Descriptor {providerId:D}/{eventId}/v{version} already carries a different schema "
@@ -336,8 +336,8 @@ internal sealed class SegmentTableBuilder
         }
 
         var local = (uint)schemaEntries.Count;
-        schemaEntries.Add(expected);
-        schemas.Add(key, (expected, local));
+        schemaEntries.Add(SegmentFormatV1.SchemaEntry(providerId, eventId, version, fingerprint));
+        schemas.Add(key, (fingerprint, local));
         return local;
     }
 

@@ -27,6 +27,11 @@ public sealed class JournalV1SchemaTable
     private readonly Dictionary<(Guid Provider, ushort EventId, byte Version), JournalSchemaV1> schemas = [];
     private readonly Dictionary<string, JournalPolicyV1> policies = new(StringComparer.Ordinal);
 
+    // Every record names its schema and policy by reference, so a replay looks them up once per record; these index the
+    // tables by reference when first asked, and a table that grows forgets them (R11).
+    private Dictionary<uint, JournalSchemaV1>? schemasByReference;
+    private Dictionary<uint, JournalPolicyV1>? policiesByReference;
+
     public IReadOnlyCollection<JournalSchemaV1> Schemas => schemas.Values;
 
     public IReadOnlyCollection<JournalPolicyV1> Policies => policies.Values;
@@ -48,6 +53,7 @@ public sealed class JournalV1SchemaTable
 
         var added = new JournalSchemaV1((uint)schemas.Count + 1, providerId, eventId, version, fingerprint);
         schemas.Add(key, added);
+        schemasByReference = null;
         return added.Reference;
     }
 
@@ -62,6 +68,7 @@ public sealed class JournalV1SchemaTable
 
         var added = new JournalPolicyV1((uint)policies.Count + 1, policyId);
         policies.Add(policyId, added);
+        policiesByReference = null;
         return added.Reference;
     }
 
@@ -87,11 +94,28 @@ public sealed class JournalV1SchemaTable
         return table;
     }
 
+    /// <summary>The schema a reference names: the first the table holds under it, as a search of the table finds it.</summary>
     public JournalSchemaV1? Find(uint reference) =>
-        schemas.Values.FirstOrDefault(schema => schema.Reference == reference);
+        (schemasByReference ??= ByReference(schemas.Values, schema => schema.Reference)).GetValueOrDefault(reference);
 
+    /// <summary>The policy a reference names: the first the table holds under it, as a search of the table finds it.</summary>
     public JournalPolicyV1? FindPolicy(uint reference) =>
-        policies.Values.FirstOrDefault(policy => policy.Reference == reference);
+        (policiesByReference ??= ByReference(policies.Values, policy => policy.Reference)).GetValueOrDefault(reference);
+
+    /// <summary>
+    /// Indexes entries by reference in the table's order. A decoded table can name one reference twice, and the first
+    /// keeps it, as a search in that order would find it.
+    /// </summary>
+    private static Dictionary<uint, T> ByReference<T>(IEnumerable<T> entries, Func<T, uint> reference)
+    {
+        var index = new Dictionary<uint, T>();
+        foreach (T entry in entries)
+        {
+            _ = index.TryAdd(reference(entry), entry);
+        }
+
+        return index;
+    }
 }
 
 /// <summary>The frames journal-v1 defines. A reader that meets an unknown kind refuses the file (§20.1).</summary>

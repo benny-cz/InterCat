@@ -334,6 +334,7 @@ public static class EtlCanonicalImport
         CaptureCoverageTally coverage,
         CancellationToken cancellationToken) : IAdmittedEventSink
     {
+        private readonly List<SourceFieldRowV1> fields = [];
         private Exception? failure;
         private ulong journalIndex;
 
@@ -379,9 +380,10 @@ public static class EtlCanonicalImport
                 // The index entry and the derived row are taken first; the journal takes ownership of the
                 // envelope last, because appending it transfers the buffers it holds (§18.1).
                 builder.Add(envelope, cancellationToken);
-                ObservationRowV1 row = normalizer.ToRow(envelope, plan, journalIndex);
+                fields.Clear();
+                ObservationRowV1 row = normalizer.ToRow(envelope, plan, journalIndex, fields);
                 generation.AddRow(row);
-                foreach (SourceFieldRowV1 field in ObservationNormalizerV1.FieldRows(envelope, plan, row))
+                foreach (SourceFieldRowV1 field in fields)
                 {
                     generation.AddFieldRow(field);
                 }

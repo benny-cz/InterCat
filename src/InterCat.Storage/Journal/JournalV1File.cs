@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using InterCat.Domain;
 
@@ -316,59 +317,85 @@ public static class JournalV1Reader
         byte[] frameHeader = new byte[8];
         byte[] digest = new byte[32];
         Span<byte> measured = stackalloc byte[32];
-        while (stream.Position < stream.Length)
+
+        // A batch frame holds thousands of records, a megabyte or so; one pooled buffer, grown to the largest frame,
+        // carries every frame of the replay instead of a new array per frame (R11). Nothing decoded from a frame refers
+        // to it: the decoders copy what they keep.
+        byte[]? buffer = null;
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            ReadFramePart(stream, frameHeader);
-            JournalFrameKind kind = (JournalFrameKind)BinaryPrimitives.ReadUInt32LittleEndian(frameHeader);
-            int length = BinaryPrimitives.ReadInt32LittleEndian(frameHeader.AsSpan(4));
-            if (length < 0 || length > JournalV1Codec.MaximumFrameBytes)
+            while (stream.Position < stream.Length)
             {
-                throw new InvalidDataException("A journal-v1 replay frame length is outside its bound.");
-            }
+                cancellationToken.ThrowIfCancellationRequested();
+                ReadFramePart(stream, frameHeader);
+                JournalFrameKind kind = (JournalFrameKind)BinaryPrimitives.ReadUInt32LittleEndian(frameHeader);
+                int length = BinaryPrimitives.ReadInt32LittleEndian(frameHeader.AsSpan(4));
+                if (length < 0 || length > JournalV1Codec.MaximumFrameBytes)
+                {
+                    throw new InvalidDataException("A journal-v1 replay frame length is outside its bound.");
+                }
 
-            byte[] payload = new byte[length];
-            ReadFramePart(stream, payload);
-            ReadFramePart(stream, digest);
-            System.Security.Cryptography.SHA256.HashData(payload, measured);
-            if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(measured, digest))
-            {
-                throw new InvalidDataException($"A journal-v1 replay {kind} frame fails its checksum.");
-            }
-
-            switch (kind)
-            {
-                case JournalFrameKind.SourceClock when clock is null && !sawBatch:
-                    clock = JournalV1Codec.DecodeClock(payload);
-                    break;
-                case JournalFrameKind.SchemaTable when schemas is null && !sawBatch:
-                    schemas = JournalV1Codec.DecodeSchemaTable(payload);
-                    break;
-                case JournalFrameKind.RecordBatch when clock is not null && schemas is not null:
-                    sawBatch = true;
-                    using (JournalBatchV1 batch = JournalV1Codec.DecodeBatch(payload, capture))
+                if (buffer is null || buffer.Length < length)
+                {
+                    byte[] grown = ArrayPool<byte>.Shared.Rent(length);
+                    if (buffer is not null)
                     {
-                        onBatch(capture, clock.Value, schemas, batch);
-                        records = checked(records + batch.Records.Count);
+                        ArrayPool<byte>.Shared.Return(buffer);
                     }
 
-                    break;
-                case JournalFrameKind.Terminal:
-                    if (stream.Position != stream.Length)
-                    {
-                        throw new InvalidDataException("A journal-v1 replay has bytes after its terminal frame.");
-                    }
+                    buffer = grown;
+                }
 
-                    terminal = true;
+                Span<byte> payload = buffer.AsSpan(0, length);
+                ReadFramePart(stream, payload);
+                ReadFramePart(stream, digest);
+                System.Security.Cryptography.SHA256.HashData(payload, measured);
+                if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(measured, digest))
+                {
+                    throw new InvalidDataException($"A journal-v1 replay {kind} frame fails its checksum.");
+                }
+
+                switch (kind)
+                {
+                    case JournalFrameKind.SourceClock when clock is null && !sawBatch:
+                        clock = JournalV1Codec.DecodeClock(payload);
+                        break;
+                    case JournalFrameKind.SchemaTable when schemas is null && !sawBatch:
+                        schemas = JournalV1Codec.DecodeSchemaTable(payload);
+                        break;
+                    case JournalFrameKind.RecordBatch when clock is not null && schemas is not null:
+                        sawBatch = true;
+                        using (JournalBatchV1 batch = JournalV1Codec.DecodeBatch(payload, capture))
+                        {
+                            onBatch(capture, clock.Value, schemas, batch);
+                            records = checked(records + batch.Records.Count);
+                        }
+
+                        break;
+                    case JournalFrameKind.Terminal:
+                        if (stream.Position != stream.Length)
+                        {
+                            throw new InvalidDataException("A journal-v1 replay has bytes after its terminal frame.");
+                        }
+
+                        terminal = true;
+                        break;
+                    default:
+                        throw new InvalidDataException(
+                            $"A journal-v1 replay has an unknown, repeated or out-of-order {kind} frame.");
+                }
+
+                if (terminal)
+                {
                     break;
-                default:
-                    throw new InvalidDataException(
-                        $"A journal-v1 replay has an unknown, repeated or out-of-order {kind} frame.");
+                }
             }
-
-            if (terminal)
+        }
+        finally
+        {
+            if (buffer is not null)
             {
-                break;
+                ArrayPool<byte>.Shared.Return(buffer);
             }
         }
 
@@ -522,7 +549,7 @@ public static class JournalV1Reader
             "A journal-v1 lookup needs one source clock, one schema table and a complete terminal frame.");
     }
 
-    private static void ReadFramePart(Stream stream, byte[] buffer)
+    private static void ReadFramePart(Stream stream, Span<byte> buffer)
     {
         try
         {

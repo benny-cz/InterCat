@@ -278,6 +278,7 @@ public static class JournalRederivation
         ObservationNormalizerV1? normalizer = null;
         (CaptureId Capture, SourceClockDescriptor Clock)? recorded = null;
         JournalV1SchemaTable? validated = null;
+        var fields = new List<SourceFieldRowV1>();
 
         // The highest ordinal each stream reached in the chunks already replayed, and in every record replayed so far;
         // the lowest it holds; and the oldest record each stream's current rows derive from.
@@ -373,9 +374,10 @@ public static class JournalRederivation
                                 ? Math.Min(lowest, envelope.RecordOrdinal)
                                 : envelope.RecordOrdinal;
                             AdmittedEventPlan descriptor = plan.Resolve(envelope, schemas);
-                            ObservationRowV1 row = normalizer!.ToRow(envelope, descriptor, journalIndex);
+                            fields.Clear();
+                            ObservationRowV1 row = normalizer!.ToRow(envelope, descriptor, journalIndex, fields);
                             builder?.AddRow(row);
-                            foreach (SourceFieldRowV1 field in ObservationNormalizerV1.FieldRows(envelope, descriptor, row))
+                            foreach (SourceFieldRowV1 field in fields)
                             {
                                 builder?.AddFieldRow(field);
                                 fieldRows = checked(fieldRows + 1);

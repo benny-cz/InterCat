@@ -156,9 +156,9 @@ public sealed record RecordEnvelopeV1 : IDisposable
     public void Dispose()
     {
         Body.Dispose();
-        foreach (ExtendedItemV1 item in ExtendedItems)
+        for (int index = 0; index < ExtendedItems.Count; index++)
         {
-            item.Dispose();
+            ExtendedItems[index].Dispose();
         }
     }
 }

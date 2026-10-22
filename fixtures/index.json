@@ -808,6 +808,8 @@
         "I1: a journal from another format major is refused, never read at a guessed layout",
         "I1: a journal without its terminal frame is refused as an interrupted capture",
         "I1: a journal-v1 file has exactly the bytes its golden corpus records",
+        "I1: a reference names the first entry a table holds under it, and a table that grows names what it gained",
+        "I1: a replay refuses a damaged frame, a frame past its bound, an unknown frame and bytes after its end",
         "I1: re-derivation refuses journal chunks that do not continue one another, and publishes nothing",
         "I1: replaying a journal preserves every field of every record"
       ],
@@ -910,6 +912,7 @@
         "I15: a damaged or dishonest segment is refused, never read at a guess",
         "I15: a damaged variable chunk is refused when its column is read",
         "I15: a dependency that changed under a generation fails it rather than being read",
+        "I15: a descriptor whose fingerprint changes inside one segment is refused",
         "I15: a dictionary is sorted and unique, and a column resolves through it",
         "I15: a file another program holds for a moment is waited for, and the generation naming it acquired, not the one kept to fall back to",
         "I15: a file read before the store hashes the session is refused in the words opening uses",
@@ -946,6 +949,7 @@
         "I15: a retention generation publishes what it released and why",
         "I15: a retention record with no stated reason is refused",
         "I15: a retention that releases a segment releases every index with it, and a journal release keeps them",
+        "I15: a row's descriptor is read through the segment's schema dictionary, and without it is not guessed",
         "I15: a segment none of whose rows has an IPv6 address is observation-v1 and stages what it always did",
         "I15: a segment of IPv4 and other records keeps the bytes observation-v1 has always had",
         "I15: a segment referencing a dictionary the generation does not name is refused",
@@ -1382,8 +1386,12 @@
         "R11: a repaint of a zoomed timeline drawn as density allocates nothing of its own, on every rung, a cell beside the pointer or not, on records and on bytes",
         "R11: a repaint of the timeline, graph, minimap and hover layer allocates nothing of its own, on every rung",
         "R11: a repaint while the graph's nodes move and a ring settles allocates nothing of its own",
+        "R11: a replay reads its frames into one pooled buffer, so it allocates what its records are, not their bytes",
         "R11: a row's layout is kept while its cells and the view stay, and laid out again when either changes",
-        "R11: a warm projection, timeline count, focused count and interval count allocate nothing per row"
+        "R11: a warm projection, timeline count, focused count and interval count allocate nothing per row",
+        "R11: reading a row back allocates the row and nothing else, its codes and descriptor included",
+        "R11: resolving and reading a record allocate nothing, and deriving it allocates only its rows",
+        "R11: writing a record's envelope allocates only the envelope"
       ],
       "R12": [
         "R12: a pinned node is a hard constraint, while an existing node starts at its prior position",
@@ -1664,7 +1672,10 @@
       "R20": [
         "R20: InterCat's generated demo is said to have nothing to re-derive, as the demo it is, never as an earlier version's session",
         "R20: a legacy journal without its descriptor plan is refused without changing the generation",
+        "R20: a plan is its contract and its descriptors, and a copy given other descriptors interprets by them",
+        "R20: a plan with an empty place among its descriptors is refused when it is checked, not when it is read",
         "R20: a published journal re-derives byte-identical segments in a replacement generation",
+        "R20: a record two retained descriptors both interpret is refused rather than given to either",
         "R20: a session read at its last complete generation is checked, and refused re-derivation before any replay",
         "R20: an in-place change after store open and a cancelled check never publish",
         "R20: an unchanged layout keeps one schema fingerprint across formatting differences",
@@ -1941,6 +1952,7 @@
         "R3: a session's recording runs from its capture's epoch to the stop its clock calibration records, and a whole-session rate divides by it",
         "R3: a single sample answers every quantile from the bucket it fell in",
         "R3: a source field value and its availability cannot disagree",
+        "R3: a status the source reports but does not expose says so, and a source with none says it has none",
         "R3: a throughput with no elapsed time is unmeasured rather than infinite",
         "R3: a wall-clock alignment is bounded by the clocks' stated agreement, the samples' acquisition and the stated drift",
         "R3: a whole session states per second over its recording when its capture recorded a stop, as icat metric's rate does",

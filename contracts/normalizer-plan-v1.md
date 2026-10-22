@@ -59,6 +59,11 @@ selected by its header's opcode too. A class's descriptors at one version share 
 share one layout fingerprint, and a file where they do not is refused. A manifest descriptor has no `opcode` member,
 so its plan file is exactly what it was before this revision.
 
+A record that two descriptors both select - one with no `opcode` beside one naming the record's - is refused as an
+interpretation the plan does not give, naming the record, as one that no descriptor selects is (revision 718). Before,
+such a record failed with an error that named no record and that a follow or a rebuild did not treat as damaged
+evidence.
+
 ## IPv6 address slots (revision 174)
 
 A descriptor may admit up to two IPv6 endpoint addresses (ADR-029). Such a slot has kind 6, `Address128`, width 16, and

@@ -52,9 +52,9 @@ public sealed record CompiledBodyAdmissionPolicy
 
     public bool PermitsExtendedDataType(ushort type)
     {
-        foreach (ushort permitted in PermittedExtendedDataTypes)
+        for (int index = 0; index < PermittedExtendedDataTypes.Count; index++)
         {
-            if (permitted == type)
+            if (PermittedExtendedDataTypes[index] == type)
             {
                 return true;
             }
@@ -169,8 +169,7 @@ public static class CaptureBodyAdmissionPolicies
         ArgumentNullException.ThrowIfNull(policy);
         bool exactExtendedDataAllowlist =
             policy.PermittedExtendedDataTypes.Count == EtwExtendedDataTypes.PermittedMetadata.Count
-            && policy.PermittedExtendedDataTypes.Distinct().Count() == policy.PermittedExtendedDataTypes.Count
-            && policy.PermittedExtendedDataTypes.All(EtwExtendedDataTypes.PermittedMetadata.Contains);
+            && EachPermittedOnce(policy.PermittedExtendedDataTypes);
         bool metadataOnly = string.Equals(policy.PolicyId, MetadataOnlyPolicyId, StringComparison.Ordinal)
             && policy.Mode == AdmissionMode.MetadataOnly
             && policy.ContentRecordLimit == 0
@@ -207,5 +206,30 @@ public static class CaptureBodyAdmissionPolicies
                 + "content policy for one admitted source, with their byte bounds and extended-data allowlist, are "
                 + "accepted. The capture was refused instead of being downgraded or retaining unreviewed content.");
         }
+    }
+
+    /// <summary>
+    /// Whether every type is one the metadata allowlist permits, named once. A record's decode checks its policy, so this
+    /// walks the list rather than building sets from it (R11).
+    /// </summary>
+    private static bool EachPermittedOnce(IReadOnlyList<ushort> types)
+    {
+        for (int index = 0; index < types.Count; index++)
+        {
+            if (!EtwExtendedDataTypes.PermittedMetadata.Contains(types[index]))
+            {
+                return false;
+            }
+
+            for (int earlier = 0; earlier < index; earlier++)
+            {
+                if (types[earlier] == types[index])
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 }

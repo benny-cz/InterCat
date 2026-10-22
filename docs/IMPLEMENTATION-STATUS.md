@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 717 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 718 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 718 — a journal's write and decode loops held to R11 (§19.4, `normalizer-plan-v1`):**
+  - Resolving a record searched its plan with LINQ, reading its projection copied it into a stream, deriving its row
+    hashed its fact key afresh and read the projection again for its field rows, a replay read each frame into an
+    array of its own, and reading rows back boxed their codes: following a session allocated 8.4 KB a record, now 4.4
+    KB. Resolving and reading a record allocate nothing, deriving it only its rows, writing it only its envelope,
+    reading a row back only the row; tests hold each to the byte, and 3,000 varied records gave the same output, byte
+    for byte, on the code before and after. A record two descriptors both select is refused as data, naming the
+    record.
+  - Debug and Release each ran 2,888 tests with revision 473's 93 failures and 4 skips, and failed nothing else; the
+    allocation tests pass in both. All 28 mutations were caught: a table that forgets no reference index as it
+    grows, or keeps a reference's last entry; a replay buffer that never grows, or an array per frame; row codes
+    boxed, or a descriptor parsed per row; a changed fingerprint accepted; a plan index dropping a descriptor,
+    ignoring opcodes, accepting two descriptors, reading an empty place, equal by contract alone, or kept stale by a
+    copy; an allowlist taking a denied or repeated type; a projection read past its end or its tail ignored, its
+    body copied, written to the heap, or a list per envelope; a fact key hashed per row or none for an unnamed
+    mechanism; a status report ignored; field rows skipped, or kept from the last record by a follow, a rebuild or a
+    recording. An equivalence probe of 3,000 records gave the same output, byte for byte, on the code before and
+    after.
 
 - **Revision 717 — coverage pass over revisions 573–716 (who connected, ports, programs) (R10):**
   - Of 8,728 reachable lines those revisions added, 204 ran in no test, most of them guards, Windows-only paths or
@@ -826,8 +845,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      since nothing pairs a channel's records one by one.
    - R11 beyond paint and aggregation: since revision 155 a test holds the window's four aggregate queries to no
      allocation per row, and since revision 291 it runs alone, where no other test can empty the derivation cache.
-     The admission and decode loops keep IC-019's Windows allocation measurements and have no test that runs here. A
-     pan still formats and lays out the ticks it draws, which §19.4 allows.
+     Since revision 718 tests hold a journal's write and decode loops to what they hand on: writing a record allocates
+     its envelope, resolving and reading it nothing, deriving it its rows, and reading a row back the row. What stays:
+     a replay builds each record's envelope, about 450 bytes, some 190 of them its body's array, which the shared pool
+     cannot keep for the 4,096 records a batch holds at once (a pool or an arena of the batch's own would); compaction
+     reads rows back whole to write them again; and the callback's own admission keeps IC-019's Windows measurements.
+     A pan still formats and lays out the ticks it draws, which §19.4 allows.
    - Theme modes (§6.1, §26.2, §26.3): light and dark follow the operating system since revision 138, and its
      high-contrast setting since revision 140; since revision 146 the user can choose one, kept in `app-settings-v1`.
      Revision 147 restated menus, tool tips, scroll bars and list selection in high contrast. Revision 287 draws every

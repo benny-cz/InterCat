@@ -26,6 +26,17 @@ public sealed class AdmittedEventEnvelopeMapper
     /// </summary>
     private const uint AddressedProjectionMagic = 0x32504149;
 
+    /// <summary>
+    /// The most bytes a projection takes: every field at its widest, and a name of the longest length every one of whose
+    /// characters takes UTF-8's widest encoding of a UTF-16 character, three bytes.
+    /// </summary>
+    private const int MaximumProjectionBytes =
+        sizeof(uint) + sizeof(long) + sizeof(byte) + (AdmissionPlanCompiler.MaximumSlots * sizeof(long))
+        + sizeof(bool) + 16
+        + sizeof(byte) + (AdmittedEvent.MaximumAddresses * 16)
+        + sizeof(bool) + sizeof(ushort) + (AdmittedEvent.MaximumNameLength * 3)
+        + sizeof(byte) + sizeof(ushort);
+
     private readonly JournalV1SchemaTable schemas = new();
     private readonly ClockId clockId;
 
@@ -82,10 +93,13 @@ public sealed class AdmittedEventEnvelopeMapper
                 + $"'{plan.BodyPolicy.PolicyId}' limit of {plan.BodyPolicy.MaximumRetainedBodyBytes} bytes.");
         }
 
-        List<ExtendedItemV1>? extendedItems = null;
+        IReadOnlyList<ExtendedItemV1>? extendedItems = null;
         try
         {
-            extendedItems = ReadExtendedItems(admitted, plan.BodyPolicy);
+            // Most records carry no extended item, and share the one empty list rather than each building its own.
+            extendedItems = admitted.ExtendedItemsCopied == 0
+                ? Array.Empty<ExtendedItemV1>()
+                : ReadExtendedItems(admitted, plan.BodyPolicy);
             return new()
             {
                 CaptureId = captureId,
@@ -149,11 +163,6 @@ public sealed class AdmittedEventEnvelopeMapper
         CompiledBodyAdmissionPolicy policy)
     {
         int count = admitted.ExtendedItemsCopied;
-        if (count == 0)
-        {
-            return [];
-        }
-
         var items = new List<ExtendedItemV1>(count);
         Span<byte> buffer = stackalloc byte[AdmittedEvent.MaximumExtendedItemBytes];
         for (int index = 0; index < count; index++)
@@ -216,8 +225,7 @@ public sealed class AdmittedEventEnvelopeMapper
                 + $"'{plan.BodyPolicy.PolicyId}'.");
         }
 
-        using var stream = new MemoryStream(envelope.Body.Bytes.ToArray(), writable: false);
-        using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: false);
+        var reader = new ProjectionReader(envelope.Body.Bytes.ReadOnlySpan);
         uint magic = reader.ReadUInt32();
         if (magic is not (ProjectionMagic or AddressedProjectionMagic))
         {
@@ -253,7 +261,7 @@ public sealed class AdmittedEventEnvelopeMapper
 
         if (reader.ReadBoolean())
         {
-            admitted.SetIdentifier(new Guid(ReadExactly(reader, 16), bigEndian: true));
+            admitted.SetIdentifier(new Guid(reader.Take(16), bigEndian: true));
         }
 
         if (magic == AddressedProjectionMagic)
@@ -269,7 +277,7 @@ public sealed class AdmittedEventEnvelopeMapper
             {
                 if ((addresses & (1 << ordinal)) != 0)
                 {
-                    admitted.SetAddress(ordinal, BinaryPrimitives.ReadUInt128BigEndian(ReadExactly(reader, 16)));
+                    admitted.SetAddress(ordinal, BinaryPrimitives.ReadUInt128BigEndian(reader.Take(16)));
                 }
             }
         }
@@ -281,18 +289,21 @@ public sealed class AdmittedEventEnvelopeMapper
             throw new InvalidDataException("A journal-v1 projection name exceeds its UTF-8 bound.");
         }
 
-        string name = Encoding.UTF8.GetString(ReadExactly(reader, nameByteLength));
-        if (name.Length > 0)
+        // A name is decoded where it is read: UTF-8 never yields more characters than it has bytes.
+        Span<char> name = stackalloc char[AdmittedEvent.MaximumNameLength * 4];
+        int nameLength = Encoding.UTF8.GetChars(reader.Take(nameByteLength), name);
+        if (nameLength > 0)
         {
-            admitted.SetName(name, nameTruncated);
+            admitted.SetName(name[..nameLength], nameTruncated);
         }
 
         var availability = (ExtendedDataAvailability)reader.ReadByte();
         int present = reader.ReadUInt16();
         admitted.BeginExtendedData(availability, present);
         Span<byte> item = stackalloc byte[AdmittedEvent.MaximumExtendedItemBytes];
-        foreach (ExtendedItemV1 extended in envelope.ExtendedItems)
+        for (int index = 0; index < envelope.ExtendedItems.Count; index++)
         {
+            ExtendedItemV1 extended = envelope.ExtendedItems[index];
             int length = Math.Min(extended.Bytes.Length, item.Length);
             extended.Bytes.ReadOnlySpan[..length].CopyTo(item);
             if (!admitted.TryAppendExtendedItem(
@@ -311,7 +322,7 @@ public sealed class AdmittedEventEnvelopeMapper
             admitted.RecordOmittedExtendedItem();
         }
 
-        if (stream.Position != stream.Length)
+        if (!reader.AtEnd)
         {
             throw new InvalidDataException("A journal-v1 projection has an unexplained trailing tail.");
         }
@@ -388,61 +399,110 @@ public sealed class AdmittedEventEnvelopeMapper
     /// </summary>
     private static EnvelopeBuffer EncodeProjection(in AdmittedEvent admitted)
     {
-        using var stream = new MemoryStream(512);
-        using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        var writer = new ProjectionWriter(stackalloc byte[MaximumProjectionBytes]);
+        byte addresses = admitted.KnownAddressMask;
+        writer.Write(addresses == 0 ? ProjectionMagic : AddressedProjectionMagic);
+        writer.Write(admitted.TimestampUtcTicks);
+        writer.Write(admitted.KnownSlotMask);
+        for (int index = 0; index < AdmissionPlanCompiler.MaximumSlots; index++)
         {
-            byte addresses = admitted.KnownAddressMask;
-            writer.Write(addresses == 0 ? ProjectionMagic : AddressedProjectionMagic);
-            writer.Write(admitted.TimestampUtcTicks);
-            writer.Write(admitted.KnownSlotMask);
-            for (int index = 0; index < AdmissionPlanCompiler.MaximumSlots; index++)
-            {
-                _ = admitted.TryGetSlot(index, out long value);
-                writer.Write(value);
-            }
-
-            writer.Write(admitted.HasIdentifier);
-            if (admitted.HasIdentifier)
-            {
-                writer.Write(admitted.Identifier.ToByteArray(bigEndian: true));
-            }
-
-            if (addresses != 0)
-            {
-                writer.Write(addresses);
-                Span<byte> address = stackalloc byte[16];
-                for (int ordinal = 0; ordinal < AdmittedEvent.MaximumAddresses; ordinal++)
-                {
-                    if (admitted.TryGetAddress(ordinal, out UInt128 value))
-                    {
-                        BinaryPrimitives.WriteUInt128BigEndian(address, value);
-                        writer.Write(address);
-                    }
-                }
-            }
-
-            Span<char> chars = stackalloc char[AdmittedEvent.MaximumNameLength];
-            int nameLength = admitted.CopyName(chars);
-            byte[] name = Encoding.UTF8.GetBytes(new string(chars[..nameLength]));
-            writer.Write(admitted.NameTruncated);
-            writer.Write(checked((ushort)name.Length));
-            writer.Write(name);
-
-            // How extended data was handled travels with the record, so a replayed record repeats the
-            // counts instead of inferring them from what survived the policy (I13).
-            writer.Write((byte)admitted.ExtendedData);
-            writer.Write(checked((ushort)admitted.ExtendedItemsPresent));
+            _ = admitted.TryGetSlot(index, out long value);
+            writer.Write(value);
         }
 
-        return EnvelopeBuffer.CopyOf(stream.GetBuffer().AsSpan(0, (int)stream.Length));
+        writer.Write(admitted.HasIdentifier);
+        if (admitted.HasIdentifier)
+        {
+            _ = admitted.Identifier.TryWriteBytes(writer.Next(16), bigEndian: true, out _);
+        }
+
+        if (addresses != 0)
+        {
+            writer.Write(addresses);
+            for (int ordinal = 0; ordinal < AdmittedEvent.MaximumAddresses; ordinal++)
+            {
+                if (admitted.TryGetAddress(ordinal, out UInt128 value))
+                {
+                    BinaryPrimitives.WriteUInt128BigEndian(writer.Next(16), value);
+                }
+            }
+        }
+
+        Span<char> chars = stackalloc char[AdmittedEvent.MaximumNameLength];
+        ReadOnlySpan<char> name = chars[..admitted.CopyName(chars)];
+        int nameBytes = Encoding.UTF8.GetByteCount(name);
+        writer.Write(admitted.NameTruncated);
+        writer.Write(checked((ushort)nameBytes));
+        _ = Encoding.UTF8.GetBytes(name, writer.Next(nameBytes));
+
+        // How extended data was handled travels with the record, so a replayed record repeats the
+        // counts instead of inferring them from what survived the policy (I13).
+        writer.Write((byte)admitted.ExtendedData);
+        writer.Write(checked((ushort)admitted.ExtendedItemsPresent));
+        return EnvelopeBuffer.CopyOf(writer.Written);
     }
 
-    private static byte[] ReadExactly(BinaryReader reader, int length)
+    /// <summary>
+    /// Writes a projection body as a binary writer of it wrote it - little-endian, a boolean one byte - into a buffer the
+    /// encoder holds on its stack, so a record's projection allocates nothing but the pooled body it is copied to (R11).
+    /// </summary>
+    private ref struct ProjectionWriter(Span<byte> buffer)
     {
-        byte[] value = reader.ReadBytes(length);
-        return value.Length == length
-            ? value
-            : throw new EndOfStreamException("A journal-v1 projection ended inside a declared field.");
+        private readonly Span<byte> buffer = buffer;
+        private int position;
+
+        public readonly ReadOnlySpan<byte> Written => buffer[..position];
+
+        public Span<byte> Next(int length)
+        {
+            Span<byte> next = buffer.Slice(position, length);
+            position += length;
+            return next;
+        }
+
+        public void Write(byte value) => Next(sizeof(byte))[0] = value;
+
+        public void Write(bool value) => Write(value ? (byte)1 : (byte)0);
+
+        public void Write(ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(Next(sizeof(ushort)), value);
+
+        public void Write(uint value) => BinaryPrimitives.WriteUInt32LittleEndian(Next(sizeof(uint)), value);
+
+        public void Write(long value) => BinaryPrimitives.WriteInt64LittleEndian(Next(sizeof(long)), value);
+    }
+
+    /// <summary>
+    /// Reads a projection body where it lies, as a binary reader of it read it: little-endian, and a boolean any byte but
+    /// zero. A body that ends inside a field is refused as a stream that ended there is.
+    /// </summary>
+    private ref struct ProjectionReader(ReadOnlySpan<byte> body)
+    {
+        private readonly ReadOnlySpan<byte> body = body;
+        private int position;
+
+        public readonly bool AtEnd => position == body.Length;
+
+        public ReadOnlySpan<byte> Take(int length)
+        {
+            if (body.Length - position < length)
+            {
+                throw new EndOfStreamException("A journal-v1 projection ended inside a declared field.");
+            }
+
+            ReadOnlySpan<byte> taken = body.Slice(position, length);
+            position += length;
+            return taken;
+        }
+
+        public byte ReadByte() => Take(1)[0];
+
+        public bool ReadBoolean() => ReadByte() != 0;
+
+        public ushort ReadUInt16() => BinaryPrimitives.ReadUInt16LittleEndian(Take(sizeof(ushort)));
+
+        public uint ReadUInt32() => BinaryPrimitives.ReadUInt32LittleEndian(Take(sizeof(uint)));
+
+        public long ReadInt64() => BinaryPrimitives.ReadInt64LittleEndian(Take(sizeof(long)));
     }
 
     private static void Append(IncrementalHash hash, int value) => Append(hash, unchecked((ulong)(long)value));

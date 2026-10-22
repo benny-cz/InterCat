@@ -158,6 +158,13 @@ public sealed class SegmentReaderV1
     /// <summary>The bytes <see cref="derived"/> holds.</summary>
     private long derivedBytes;
 
+    /// <summary>
+    /// The schema dictionary's entries, each parsed the first time a row names it: a pass reads every row's descriptor,
+    /// and parsing its entry per row split the text afresh each time (R11). An entry parses to the same parts on any
+    /// thread, so threads that parse one at once store equal values.
+    /// </summary>
+    private SchemaParts?[]? schemaParts;
+
     /// <summary>The bytes a reader that reads its file in pieces holds: the columns and chunk it has read.</summary>
     private long residentBytes;
 
@@ -797,11 +804,24 @@ public sealed class SegmentReaderV1
         SegmentColumnDescriptor column = Require(SegmentColumnId.SchemaCode);
         uint code = BinaryPrimitives.ReadUInt32LittleEndian(
             ValueBytes(SegmentColumnId.SchemaCode).Slice(row * sizeof(uint), sizeof(uint)));
-        return dictionaries.TryGetValue(column.DictionaryId, out SegmentDictionaryV1? dictionary)
-            ? SegmentFormatV1.ParseSchemaEntry(dictionary[code])
-            : throw new InvalidOperationException(
+        if (!dictionaries.TryGetValue(column.DictionaryId, out SegmentDictionaryV1? dictionary))
+        {
+            throw new InvalidOperationException(
                 $"This segment's schema dictionary {column.DictionaryId} was not supplied, so a row's "
                 + "descriptor cannot be resolved.");
+        }
+
+        SchemaParts?[] parsed = schemaParts ??= new SchemaParts?[dictionary.Count];
+        SchemaParts? parts = code < (uint)parsed.Length ? parsed[code] : null;
+        if (parts is null)
+        {
+            (Guid providerId, ushort eventId, byte version, string fingerprint) =
+                SegmentFormatV1.ParseSchemaEntry(dictionary[code]);
+            parts = new(providerId, eventId, version, fingerprint);
+            parsed[code] = parts;
+        }
+
+        return (parts.ProviderId, parts.EventId, parts.Version, parts.Fingerprint);
     }
 
     /// <summary>Materializes one `source-fields-v1` row. It is the inspection path, not the aggregation path.</summary>
@@ -1120,7 +1140,7 @@ public sealed class SegmentReaderV1
     {
         ulong value = UnsignedValue(id, row)
             ?? throw new InvalidDataException($"Row {row} has no value in required column {id}.");
-        var code = (T)Enum.ToObject(typeof(T), (int)value);
+        T code = FromCode<T>((int)value);
         return Enum.IsDefined(code)
             ? code
             : throw new InvalidDataException(
@@ -1136,12 +1156,25 @@ public sealed class SegmentReaderV1
             return null;
         }
 
-        var code = (T)Enum.ToObject(typeof(T), (int)value);
+        T code = FromCode<T>((int)value);
         return Enum.IsDefined(code)
             ? code
             : throw new InvalidDataException(
                 $"Row {row} of column {id} carries code {value}, which §23 does not define.");
     }
+
+    /// <summary>
+    /// The enum value a stored code names, as <see cref="Enum.ToObject(Type, int)"/> names it. A row read decodes a dozen
+    /// codes and a pass reads every row, so the enums the columns store, all of them int-backed, are read without boxing
+    /// (R11); any other is read as before.
+    /// </summary>
+    private static T FromCode<T>(int code)
+        where T : struct, Enum =>
+        System.Runtime.CompilerServices.Unsafe.SizeOf<T>() == sizeof(int)
+            ? System.Runtime.CompilerServices.Unsafe.BitCast<int, T>(code)
+            : (T)Enum.ToObject(typeof(T), code);
+
+    private sealed record SchemaParts(Guid ProviderId, ushort EventId, byte Version, string Fingerprint);
 
     private SegmentColumnDescriptor Require(SegmentColumnId id) =>
         columns.TryGetValue(id, out SegmentColumnDescriptor? column)

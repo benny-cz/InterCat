@@ -512,6 +512,27 @@ public sealed class CaptureProfileCompilerTests
         Assert.Throws<NotSupportedException>(() => CaptureBodyAdmissionPolicies.EnsureSupported(forgedMetadata));
     }
 
+    [Fact(DisplayName = "IC-012: an extended-data allowlist of the right length that names a type twice, or one the policy denies, is refused")]
+    public void AnAllowlistOfTheRightLengthButWrongTypesIsRefused()
+    {
+        IReadOnlyList<ushort> permitted = CaptureBodyAdmissionPolicies.MetadataOnly.PermittedExtendedDataTypes;
+        CompiledBodyAdmissionPolicy repeated = CaptureBodyAdmissionPolicies.MetadataOnly with
+        {
+            PermittedExtendedDataTypes = [.. permitted.Take(permitted.Count - 1), permitted[0]],
+        };
+        CompiledBodyAdmissionPolicy denied = CaptureBodyAdmissionPolicies.MetadataOnly with
+        {
+            PermittedExtendedDataTypes = [.. permitted.Take(permitted.Count - 1), EtwExtendedDataTypes.Sid],
+        };
+
+        Assert.Throws<NotSupportedException>(() => CaptureBodyAdmissionPolicies.EnsureSupported(repeated));
+        Assert.Throws<NotSupportedException>(() => CaptureBodyAdmissionPolicies.EnsureSupported(denied));
+        CaptureBodyAdmissionPolicies.EnsureSupported(CaptureBodyAdmissionPolicies.MetadataOnly with
+        {
+            PermittedExtendedDataTypes = [.. permitted.Reverse()],
+        });
+    }
+
     private static SourceAdmissionPlan BuildPlan(string sourceId, int sourceIndex, int eventId)
     {
         WindowsSourceDefinition definition = WindowsSourceCatalog.Find(sourceId)!;

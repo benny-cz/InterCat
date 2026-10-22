@@ -259,6 +259,46 @@ public sealed partial class SegmentV1Tests
             segment.ObservationIdOf(0));
     }
 
+    [Fact(DisplayName = "R11: reading a row back allocates the row and nothing else, its codes and descriptor included")]
+    public void ReadingARowAllocatesOnlyTheRow()
+    {
+        ObservationRowV1 full = Row(1_000, bytes: 512) with
+        {
+            OwnerProcessId = 4_242,
+            StatusCode = 5,
+            StatusAvailability = FieldAvailability.Present,
+        };
+        SegmentReaderV1 segment = Build([full, Row(2_000, bytes: null, availability: FieldAvailability.EventLost)]);
+        ObservationRowV1 read = segment.Row(0);
+
+        Assert.Equal(full, read);
+        Assert.Equal(PerCall(() => _ = read with { }), PerCall(() => segment.Row(0)));
+        Assert.Equal(0, PerCall(() => segment.SchemaOf(1)));
+    }
+
+    [Fact(DisplayName = "I15: a row's descriptor is read through the segment's schema dictionary, and without it is not guessed")]
+    public void ADescriptorNeedsItsSchemaDictionary()
+    {
+        (byte[] bytes, IReadOnlyList<SegmentDictionaryV1> dictionaries) = EncodeWithDictionaries([Row(1_000, bytes: 1)]);
+
+        Assert.Equal(
+            (Provider, (ushort)10, (byte)0, "sha256:" + new string('a', 64)),
+            SegmentReaderV1.Open(bytes, dictionaries).SchemaOf(0));
+        InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() => SegmentReaderV1.Open(bytes).SchemaOf(0));
+        Assert.Contains("schema dictionary", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I15: a descriptor whose fingerprint changes inside one segment is refused")]
+    public void ADescriptorKeepsOneFingerprintInASegment()
+    {
+        var writer = new SegmentWriterV1(Identity, 0);
+        writer.Add(Row(1_000, bytes: 1));
+
+        InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() =>
+            writer.Add(Row(2_000, bytes: 2) with { SchemaFingerprint = "sha256:" + new string('b', 64) }));
+        Assert.Contains("already carries a different schema fingerprint", refused.Message, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "I15: a segment's bytes are a function of its rows, not of their arrival order")]
     public void ASegmentIsAFunctionOfItsRows()
     {
@@ -1413,6 +1453,32 @@ public sealed partial class SegmentV1Tests
 
         SegmentBuildResult built = writer.Build();
         return (built.Segment, built.Dictionaries);
+    }
+
+    /// <summary>
+    /// What one warm call allocates on this thread: the least of five runs of 64 calls, so one run a collection disturbs is
+    /// not the call's own, and an object of the smallest size allocated on one call in 64 still shows.
+    /// </summary>
+    private static double PerCall(Action call)
+    {
+        for (int warm = 0; warm < 64; warm++)
+        {
+            call();
+        }
+
+        long least = long.MaxValue;
+        for (int run = 0; run < 5; run++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int index = 0; index < 64; index++)
+            {
+                call();
+            }
+
+            least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        return least / 64.0;
     }
 
     private static SegmentReaderV1 Build(IEnumerable<ObservationRowV1> rows)

@@ -228,6 +228,34 @@ public sealed class AdmittedEventEnvelopeMapperTests
         Assert.Equal(8, unstated.PointerSize);
     }
 
+    [Fact(DisplayName = "IC-011: a projection that ends inside a field, or runs on past its last, is refused")]
+    public void AProjectionOfTheWrongLengthIsRefused()
+    {
+        AdmittedEventPlan plan = BuildEventPlan();
+        var mapper = new AdmittedEventEnvelopeMapper([BuildSource(plan)], ClockId.New());
+        AdmittedEvent admitted = BuildAdmitted();
+        admitted.SetName("named resource", truncated: false);
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, CaptureId.New());
+        byte[] body = envelope.Body.Bytes.ToArray();
+        using RecordEnvelopeV1 shorter = envelope with { Body = Retained(body[..^1]) };
+        using RecordEnvelopeV1 longer = envelope with { Body = Retained([.. body, 0]) };
+
+        Assert.Equal("named resource".Length, Name(AdmittedEventEnvelopeMapper.FromEnvelope(envelope, plan)));
+        Assert.Throws<EndOfStreamException>(() => AdmittedEventEnvelopeMapper.FromEnvelope(shorter, plan));
+        InvalidDataException tail = Assert.Throws<InvalidDataException>(() => AdmittedEventEnvelopeMapper.FromEnvelope(longer, plan));
+        Assert.Contains("trailing tail", tail.Message, StringComparison.Ordinal);
+
+        static BodyV1 Retained(byte[] bytes) => new()
+        {
+            Classification = BodyClassificationV1.ApprovedMetadata,
+            Disposition = BodyDispositionV1.Retained,
+            OriginalLength = bytes.Length,
+            Bytes = EnvelopeBuffer.CopyOf(bytes),
+        };
+
+        static int Name(AdmittedEvent read) => read.CopyName(new char[AdmittedEvent.MaximumNameLength]);
+    }
+
     private static AdmittedEvent BuildAdmitted() => new()
     {
         SourceIndex = 4,

@@ -402,6 +402,59 @@ public sealed class JournalV1Tests
         Assert.Equal(hidden, found);
     }
 
+    [Fact(DisplayName = "I1: a replay refuses a damaged frame, a frame past its bound, an unknown frame and bytes after its end")]
+    public void AReplayRefusesWhatItCannotVerify()
+    {
+        byte[] journal = BuildJournal(batchCapacity: 2, [(1, 1), (1, 2), (1, 3)]);
+        int batch = BatchOffset(journal, 1);
+        byte[] damaged = [.. journal];
+        damaged[batch + 8 + 40] ^= 0xFF;
+        byte[] unbounded = [.. journal];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(unbounded.AsSpan(batch + 4), JournalV1Codec.MaximumFrameBytes + 1);
+        byte[] unknown = [.. journal];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(unknown.AsSpan(batch), 9);
+
+        Assert.Equal(3, Replay(journal));
+        Assert.Contains("RecordBatch frame fails its checksum", Refusal(damaged), StringComparison.Ordinal);
+        Assert.Contains("frame length is outside its bound", Refusal(unbounded), StringComparison.Ordinal);
+        Assert.Contains("unknown, repeated or out-of-order 9 frame", Refusal(unknown), StringComparison.Ordinal);
+        Assert.Contains("bytes after its terminal frame", Refusal([.. journal, 0]), StringComparison.Ordinal);
+
+        static long Replay(byte[] file)
+        {
+            using var stream = new MemoryStream(file);
+            return JournalV1Reader.ReplayBatches(stream, (_, _, _, _) => { });
+        }
+
+        static string Refusal(byte[] file) => Assert.Throws<InvalidDataException>(() => Replay(file)).Message;
+    }
+
+    [Fact(DisplayName = "I1: a reference names the first entry a table holds under it, and a table that grows names what it gained")]
+    public void ReferencesResolveAsTheTableHoldsThem()
+    {
+        var table = new JournalV1SchemaTable();
+        Guid provider = Guid.Parse("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+        uint first = table.Intern(provider, 10, 2, "provider/10/v2/8");
+        uint policy = table.InternPolicy("metadata-only-v1");
+        Assert.Equal((ushort)10, table.Find(first)!.EventId);
+        Assert.Equal("metadata-only-v1", table.FindPolicy(policy)!.PolicyId);
+
+        // Looked up once already, a table that grows still finds what it gained.
+        uint second = table.Intern(provider, 11, 2, "provider/11/v2/8");
+        uint secondPolicy = table.InternPolicy("scoped-content-fixture-v1");
+        Assert.Equal((ushort)11, table.Find(second)!.EventId);
+        Assert.Equal("scoped-content-fixture-v1", table.FindPolicy(secondPolicy)!.PolicyId);
+        Assert.Null(table.Find(99));
+        Assert.Null(table.FindPolicy(99));
+
+        // A table read from a file can name one reference twice; the first entry under it is the one its records name.
+        JournalV1SchemaTable decoded = JournalV1SchemaTable.FromDecoded(
+            [new(1, provider, 10, 2, "first"), new(1, provider, 11, 2, "second")],
+            [new(1, "first-policy"), new(1, "second-policy")]);
+        Assert.Equal("first", decoded.Find(1)!.Fingerprint);
+        Assert.Equal("first-policy", decoded.FindPolicy(1)!.PolicyId);
+    }
+
     private static byte[] BuildJournal(int batchCapacity, IReadOnlyList<(uint Stream, ulong Ordinal)> records)
     {
         var schemas = new JournalV1SchemaTable();

@@ -26,6 +26,13 @@ public sealed class ObservationNormalizerV1
     /// <summary>The derivation this normalizer is. It is part of every row's observation identity (§7.2).</summary>
     public static NormalizerContractVersion ContractVersion => NormalizerContractVersion.V1;
 
+    /// <summary>
+    /// Each mechanism's fact key, hashed once. It is a property of the mechanism family, not of the record, so a record
+    /// reads it rather than hashing its discriminator again (§7.2, R11).
+    /// </summary>
+    private static readonly Dictionary<Mechanism, FactKey> FactKeys = Enum.GetValues<Mechanism>()
+        .ToDictionary(mechanism => mechanism, mechanism => FactKey.Create(DiscriminatorFor(mechanism)));
+
     private readonly SourceClockDescriptor clock;
 
     public ObservationNormalizerV1(SourceClockDescriptor clock) => this.clock = clock;
@@ -52,7 +59,28 @@ public sealed class ObservationNormalizerV1
     public ObservationRowV1 ToRow(
         RecordEnvelopeV1 envelope,
         AdmittedEventPlan plan,
-        ulong? journalRecordIndex = null)
+        ulong? journalRecordIndex = null) => Derive(envelope, plan, journalRecordIndex, fields: null);
+
+    /// <summary>
+    /// Derives the row one admitted record yields and adds its source field rows to <paramref name="fields"/>, reading the
+    /// record once for both. It is what <see cref="ToRow(RecordEnvelopeV1, AdmittedEventPlan, ulong?)"/> and
+    /// <see cref="FieldRows"/> derive apart, for a loop over a journal, which allocates only the rows it derives (R11).
+    /// </summary>
+    public ObservationRowV1 ToRow(
+        RecordEnvelopeV1 envelope,
+        AdmittedEventPlan plan,
+        ulong? journalRecordIndex,
+        List<SourceFieldRowV1> fields)
+    {
+        ArgumentNullException.ThrowIfNull(fields);
+        return Derive(envelope, plan, journalRecordIndex, fields);
+    }
+
+    private ObservationRowV1 Derive(
+        RecordEnvelopeV1 envelope,
+        AdmittedEventPlan plan,
+        ulong? journalRecordIndex,
+        List<SourceFieldRowV1>? fields)
     {
         ArgumentNullException.ThrowIfNull(envelope);
         ArgumentNullException.ThrowIfNull(plan);
@@ -65,18 +93,20 @@ public sealed class ObservationNormalizerV1
 
         AdmittedEvent admitted = AdmittedEventEnvelopeMapper.FromEnvelope(envelope, plan);
         SlotValues slots = ReadSlots(in admitted, plan);
-        ByteMeasurement measurement = ResolveMeasurement(in admitted, plan, slots);
+        ByteMeasurement measurement = ResolveMeasurement(in admitted, plan, in slots);
         TimestampConversionResult session = SourceClockMath.ConvertToSession(
             clock,
             new(envelope.ClockId, envelope.TimestampEncoding, envelope.NativeTicks));
 
-        return new()
+        var row = new ObservationRowV1
         {
             RawStreamId = envelope.StreamId,
             RawSourceEpoch = envelope.SourceEpoch,
             RawRecordOrdinal = envelope.RecordOrdinal,
             JournalRecordIndex = journalRecordIndex,
-            FactKey = FactKey.Create(DiscriminatorFor(plan.Mechanism)),
+            FactKey = FactKeys.TryGetValue(plan.Mechanism, out FactKey key)
+                ? key
+                : FactKey.Create(DiscriminatorFor(plan.Mechanism)),
             ProviderId = plan.ProviderGuid,
             EventId = checked((ushort)plan.EventId),
             DescriptorVersion = checked((byte)plan.Version),
@@ -138,6 +168,12 @@ public sealed class ObservationNormalizerV1
                 : QualityLevel.UnknownQuality,
             Markers = Markers(in admitted, envelope, plan),
         };
+        if (fields is not null)
+        {
+            AddFieldRows(in admitted, plan, row, fields);
+        }
+
+        return row;
     }
 
     /// <summary>
@@ -152,24 +188,39 @@ public sealed class ObservationNormalizerV1
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(row);
         IReadOnlyList<AdmittedSlotPlan> slots = plan.Slots;
-        List<SourceFieldRowV1>? fields = null;
-        AdmittedEvent admitted = default;
-        bool decoded = false;
         for (int index = 0; index < slots.Count; index++)
         {
-            if (slots[index].SourceField is not { } field || slots[index].Kind != AdmittedSlotKind.Numeric)
+            if (IsFieldRow(slots[index]))
+            {
+                AdmittedEvent admitted = AdmittedEventEnvelopeMapper.FromEnvelope(envelope, plan);
+                var fields = new List<SourceFieldRowV1>();
+                AddFieldRows(in admitted, plan, row, fields);
+                return fields;
+            }
+        }
+
+        return [];
+    }
+
+    /// <summary>Whether a slot yields a source field row: a numeric one the catalog gives a meaning.</summary>
+    private static bool IsFieldRow(AdmittedSlotPlan slot) => slot is { SourceField: not null, Kind: AdmittedSlotKind.Numeric };
+
+    private static void AddFieldRows(
+        in AdmittedEvent admitted,
+        AdmittedEventPlan plan,
+        ObservationRowV1 row,
+        List<SourceFieldRowV1> fields)
+    {
+        IReadOnlyList<AdmittedSlotPlan> slots = plan.Slots;
+        for (int index = 0; index < slots.Count; index++)
+        {
+            if (slots[index] is not { SourceField: { } field, Kind: AdmittedSlotKind.Numeric })
             {
                 continue;
             }
 
-            if (!decoded)
-            {
-                admitted = AdmittedEventEnvelopeMapper.FromEnvelope(envelope, plan);
-                decoded = true;
-            }
-
             bool known = admitted.TryGetSlot(index, out long value);
-            (fields ??= []).Add(new()
+            fields.Add(new()
             {
                 RawStreamId = row.RawStreamId,
                 RawSourceEpoch = row.RawSourceEpoch,
@@ -181,8 +232,6 @@ public sealed class ObservationNormalizerV1
                 Availability = known ? FieldAvailability.Present : FieldAvailability.EventLost,
             });
         }
-
-        return (IReadOnlyList<SourceFieldRowV1>?)fields ?? [];
     }
 
     private static SegmentRowMarkers Markers(
@@ -227,7 +276,7 @@ public sealed class ObservationNormalizerV1
     private static ByteMeasurement ResolveMeasurement(
         in AdmittedEvent admitted,
         AdmittedEventPlan plan,
-        SlotValues slots)
+        in SlotValues slots)
     {
         AccountingSide? side = plan.Kind switch
         {
@@ -252,8 +301,15 @@ public sealed class ObservationNormalizerV1
 
         // The descriptor declared no admitted byte field. The capability report says whether the source has one
         // it could not admit, which is an unknown in a declared slot, or none at all, which is inapplicable.
-        FieldCapability? declared = plan.FieldReport.FirstOrDefault(field =>
-            field.Role == FieldRole.ByteCount && field.ByteDomain is not null);
+        FieldCapability? declared = null;
+        for (int index = 0; index < plan.FieldReport.Count && declared is null; index++)
+        {
+            if (plan.FieldReport[index] is { Role: FieldRole.ByteCount, ByteDomain: not null } field)
+            {
+                declared = field;
+            }
+        }
+
         _ = admitted;
         return declared is null
             ? new(null, null, null, null, FieldAvailability.NotApplicable)
@@ -267,12 +323,22 @@ public sealed class ObservationNormalizerV1
                     : declared.Availability);
     }
 
-    private static FieldAvailability? AvailabilityOf(AdmittedEventPlan plan, FieldRole role) =>
-        plan.FieldReport.FirstOrDefault(field => field.Role == role)?.Availability;
+    private static FieldAvailability? AvailabilityOf(AdmittedEventPlan plan, FieldRole role)
+    {
+        for (int index = 0; index < plan.FieldReport.Count; index++)
+        {
+            if (plan.FieldReport[index].Role == role)
+            {
+                return plan.FieldReport[index].Availability;
+            }
+        }
+
+        return null;
+    }
 
     private static SlotValues ReadSlots(in AdmittedEvent admitted, AdmittedEventPlan plan)
     {
-        var values = new SlotValues();
+        SlotValues values = default;
         IReadOnlyList<AdmittedSlotPlan> slots = plan.Slots;
         int addressOrdinal = 0;
         for (int index = 0; index < slots.Count; index++)
@@ -377,14 +443,15 @@ public sealed class ObservationNormalizerV1
         _ => (uint)raw,
     };
 
-    private sealed record ByteMeasurement(
+    private readonly record struct ByteMeasurement(
         long? Value,
         ByteDomain? Domain,
         AccountingSide? Side,
         MeasurementUnit? Unit,
         FieldAvailability Availability);
 
-    private sealed class SlotValues
+    /// <summary>What a record's slots say, read once and handed on by reference; a struct, so a record allocates none.</summary>
+    private struct SlotValues
     {
         public int? OwnerProcessId { get; set; }
 

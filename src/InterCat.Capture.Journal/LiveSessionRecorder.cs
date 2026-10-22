@@ -170,6 +170,7 @@ public static class LiveSessionRecorder
         CompactionOptions compaction) : ILiveRecordingDerivation
     {
         private readonly ObservationNormalizerV1 normalizer = new(clock);
+        private readonly List<SourceFieldRowV1> fields = [];
         private int smallUnits;
 
         public NormalizerContractVersion Derivation => ObservationNormalizerV1.ContractVersion;
@@ -180,9 +181,10 @@ public static class LiveSessionRecorder
 
         public void Derive(RecordEnvelopeV1 envelope, AdmittedEventPlan descriptor, ulong journalIndex, DerivedGenerationBuilder builder)
         {
-            ObservationRowV1 row = normalizer.ToRow(envelope, descriptor, journalIndex);
+            fields.Clear();
+            ObservationRowV1 row = normalizer.ToRow(envelope, descriptor, journalIndex, fields);
             builder.AddRow(row);
-            foreach (SourceFieldRowV1 field in ObservationNormalizerV1.FieldRows(envelope, descriptor, row))
+            foreach (SourceFieldRowV1 field in fields)
             {
                 builder.AddFieldRow(field);
             }

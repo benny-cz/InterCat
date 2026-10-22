@@ -368,6 +368,7 @@ public sealed class LiveSessionFollower
         var reached = new Dictionary<(uint Stream, uint Epoch), ulong>(endedAt);
         ulong index = journalIndex;
         JournalV1SchemaTable? validated = null;
+        var fields = new List<SourceFieldRowV1>();
         long records = JournalV1Reader.ReplayBatches(
             stream,
             (_, _, schemas, batch) =>
@@ -396,9 +397,10 @@ public sealed class LiveSessionFollower
                         ? Math.Max(highest, envelope.RecordOrdinal)
                         : envelope.RecordOrdinal;
                     AdmittedEventPlan descriptor = plan.Resolve(envelope, schemas);
-                    ObservationRowV1 row = normalizer!.ToRow(envelope, descriptor, index);
+                    fields.Clear();
+                    ObservationRowV1 row = normalizer!.ToRow(envelope, descriptor, index, fields);
                     builder.AddRow(row);
-                    foreach (SourceFieldRowV1 field in ObservationNormalizerV1.FieldRows(envelope, descriptor, row))
+                    foreach (SourceFieldRowV1 field in fields)
                     {
                         builder.AddFieldRow(field);
                     }

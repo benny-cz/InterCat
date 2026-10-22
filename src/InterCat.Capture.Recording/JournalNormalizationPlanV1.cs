@@ -21,9 +21,23 @@ public sealed record JournalNormalizationPlanV1
         MaxDepth = 32,
     };
 
+    private readonly IReadOnlyList<AdmittedEventPlan> descriptors = [];
+
+    // A replay resolves every record it reads, so the descriptors are indexed by what a record names of them once, when
+    // they are set, rather than searched per record (R11).
+    private readonly Dictionary<(int Source, Guid Provider, int Event, int Version), AdmittedEventPlan[]> byEvent = [];
+
     public required string Contract { get; init; }
 
-    public required IReadOnlyList<AdmittedEventPlan> Descriptors { get; init; }
+    public required IReadOnlyList<AdmittedEventPlan> Descriptors
+    {
+        get => descriptors;
+        init
+        {
+            descriptors = value;
+            byEvent = ByEvent(value);
+        }
+    }
 
     public static JournalNormalizationPlanV1 FromSources(IReadOnlyList<SourceAdmissionPlan> sources)
     {
@@ -123,14 +137,29 @@ public sealed record JournalNormalizationPlanV1
             ?? throw new InvalidDataException($"Record {envelope.RecordOrdinal} names an unknown schema reference.");
         JournalPolicyV1 policy = table.FindPolicy(envelope.AdmissionPolicyReference)
             ?? throw new InvalidDataException($"Record {envelope.RecordOrdinal} names an unknown policy reference.");
-        AdmittedEventPlan plan = Descriptors.SingleOrDefault(descriptor =>
-            descriptor.SourceIndex == checked((int)envelope.StreamId - 1)
-            && descriptor.ProviderGuid == envelope.Header.ProviderId
-            && descriptor.EventId == envelope.Header.EventId
-            && descriptor.Version == envelope.Header.Version
-            && (descriptor.Opcode is null || descriptor.Opcode == envelope.Header.Opcode))
-            ?? throw new InvalidDataException(
+        AdmittedEventPlan? plan = null;
+        if (byEvent.TryGetValue(
+            (checked((int)envelope.StreamId - 1), envelope.Header.ProviderId, envelope.Header.EventId, envelope.Header.Version),
+            out AdmittedEventPlan[]? candidates))
+        {
+            foreach (AdmittedEventPlan candidate in candidates)
+            {
+                if (candidate.Opcode is null || candidate.Opcode == envelope.Header.Opcode)
+                {
+                    plan = plan is null
+                        ? candidate
+                        : throw new InvalidDataException(
+                            $"Record {envelope.RecordOrdinal} has more than one retained descriptor interpretation for its "
+                            + "stream and event.");
+                }
+            }
+        }
+
+        if (plan is null)
+        {
+            throw new InvalidDataException(
                 $"Record {envelope.RecordOrdinal} has no retained descriptor interpretation for its stream and event.");
+        }
         if (schema.ProviderId != plan.ProviderGuid
             || schema.EventId != plan.EventId
             || schema.Version != plan.Version
@@ -142,6 +171,36 @@ public sealed record JournalNormalizationPlanV1
         }
 
         return plan;
+    }
+
+    /// <summary>A plan is its contract and its descriptors; the index it keeps of them is not part of what it is.</summary>
+    public bool Equals(JournalNormalizationPlanV1? other) =>
+        other is not null
+        && string.Equals(Contract, other.Contract, StringComparison.Ordinal)
+        && EqualityComparer<IReadOnlyList<AdmittedEventPlan>>.Default.Equals(Descriptors, other.Descriptors);
+
+    public override int GetHashCode() => HashCode.Combine(Contract, Descriptors);
+
+    /// <summary>
+    /// Groups descriptors by stream, provider, event and version, in the plan's order. A plan not yet validated may hold
+    /// anything, so what no record could name is left out rather than refused here; validation refuses it.
+    /// </summary>
+    private static Dictionary<(int Source, Guid Provider, int Event, int Version), AdmittedEventPlan[]> ByEvent(
+        IReadOnlyList<AdmittedEventPlan>? descriptors)
+    {
+        var index = new Dictionary<(int Source, Guid Provider, int Event, int Version), AdmittedEventPlan[]>();
+        foreach (AdmittedEventPlan? descriptor in descriptors ?? [])
+        {
+            if (descriptor is null)
+            {
+                continue;
+            }
+
+            (int, Guid, int, int) key = (descriptor.SourceIndex, descriptor.ProviderGuid, descriptor.EventId, descriptor.Version);
+            index[key] = index.TryGetValue(key, out AdmittedEventPlan[]? earlier) ? [.. earlier, descriptor] : [descriptor];
+        }
+
+        return index;
     }
 
     private void Validate()

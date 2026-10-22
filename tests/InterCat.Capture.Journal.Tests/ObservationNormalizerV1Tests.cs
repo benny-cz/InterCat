@@ -624,6 +624,93 @@ public sealed class ObservationNormalizerV1Tests
         Assert.Equal(2, sent.ExcludedByProjection);
     }
 
+    [Fact(DisplayName = "R20: a record two retained descriptors both interpret is refused rather than given to either")]
+    public void ARecordTwoDescriptorsInterpretIsRefused()
+    {
+        // A descriptor for every opcode of an event beside one for a single opcode: both read that opcode's records.
+        AdmittedEventPlan any = TransferPlan();
+        AdmittedEventPlan tenth = TransferPlan() with { Opcode = 10 };
+        (ObservationNormalizerV1 _, SourceClockDescriptor clock) = Normalizer();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(any)], clock.Id);
+        JournalNormalizationPlanV1 plan = JournalNormalizationPlanV1.FromSources([Source(any) with { Events = [any, tenth] }]);
+        plan.ValidateAgainst(mapper.Schemas);
+        AdmittedEvent other = Admitted(any);
+        other.Opcode = 12;
+        using RecordEnvelopeV1 both = mapper.ToEnvelope(Admitted(any), any, CaptureId.New());
+        using RecordEnvelopeV1 one = mapper.ToEnvelope(other, any, CaptureId.New());
+
+        InvalidDataException refused = Assert.Throws<InvalidDataException>(() => plan.Resolve(both, mapper.Schemas));
+        Assert.Contains("more than one retained descriptor interpretation", refused.Message, StringComparison.Ordinal);
+        Assert.Same(any, plan.Resolve(one, mapper.Schemas));
+    }
+
+    [Fact(DisplayName = "R20: a plan is its contract and its descriptors, and a copy given other descriptors interprets by them")]
+    public void APlanCopyInterpretsByItsOwnDescriptors()
+    {
+        AdmittedEventPlan transfer = TransferPlan();
+        AdmittedEventPlan lifecycle = LifecyclePlan();
+        (ObservationNormalizerV1 _, SourceClockDescriptor clock) = Normalizer();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(transfer), Source(lifecycle)], clock.Id);
+        JournalNormalizationPlanV1 plan = JournalNormalizationPlanV1.FromSources([Source(transfer), Source(lifecycle)]);
+        JournalNormalizationPlanV1 transfers = plan with { Descriptors = [transfer] };
+        using RecordEnvelopeV1 started = mapper.ToEnvelope(Admitted(lifecycle), lifecycle, CaptureId.New());
+
+        Assert.Same(lifecycle, plan.Resolve(started, mapper.Schemas));
+        Assert.Throws<InvalidDataException>(() => transfers.Resolve(started, mapper.Schemas));
+        Assert.Equal(plan, plan with { });
+        Assert.Equal(plan.GetHashCode(), (plan with { }).GetHashCode());
+        Assert.NotEqual(plan, transfers);
+        Assert.NotEqual(plan, plan with { Contract = "normalizer-plan-v0" });
+        Assert.False(plan.Equals(null));
+    }
+
+    [Fact(DisplayName = "R20: a plan with an empty place among its descriptors is refused when it is checked, not when it is read")]
+    public void APlanWithAnEmptyDescriptorIsRefusedWhenChecked()
+    {
+        AdmittedEventPlan transfer = TransferPlan();
+        (ObservationNormalizerV1 _, SourceClockDescriptor clock) = Normalizer();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(transfer)], clock.Id);
+        var plan = new JournalNormalizationPlanV1 { Contract = JournalNormalizationPlanV1.ContractName, Descriptors = [transfer, null!] };
+
+        Assert.Throws<InvalidDataException>(() => plan.ValidateAgainst(mapper.Schemas));
+    }
+
+    [Fact(DisplayName = "§7.2: a row's fact key is its mechanism family's, and a mechanism no family names keys by the source's own")]
+    public void EveryMechanismKeysItsRowsByItsFamily()
+    {
+        (ObservationNormalizerV1 normalizer, SourceClockDescriptor clock) = Normalizer();
+        AdmittedEventPlan transfer = TransferPlan();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(transfer)], clock.Id);
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(Admitted(transfer), transfer, CaptureId.New());
+
+        foreach (Mechanism mechanism in Enum.GetValues<Mechanism>())
+        {
+            Assert.Equal(
+                FactKey.Create(ObservationNormalizerV1.DiscriminatorFor(mechanism)),
+                normalizer.ToRow(envelope, transfer with { Mechanism = mechanism }).FactKey);
+        }
+
+        Assert.Equal(
+            FactKey.Create("source-observation"),
+            normalizer.ToRow(envelope, transfer with { Mechanism = (Mechanism)999 }).FactKey);
+    }
+
+    [Fact(DisplayName = "R3: a status the source reports but does not expose says so, and a source with none says it has none")]
+    public void AStatusTheSourceDoesNotExposeSaysSo()
+    {
+        (ObservationNormalizerV1 normalizer, SourceClockDescriptor clock) = Normalizer();
+        AdmittedEventPlan transfer = TransferPlan();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(transfer)], clock.Id);
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(Admitted(transfer), transfer, CaptureId.New());
+        AdmittedEventPlan hidden = transfer with
+        {
+            FieldReport = [.. transfer.FieldReport, new("Status", FieldAvailability.NotExposed, FieldRole.Status)],
+        };
+
+        Assert.Equal(FieldAvailability.NotExposed, normalizer.ToRow(envelope, hidden).StatusAvailability);
+        Assert.Equal(FieldAvailability.NotApplicable, normalizer.ToRow(envelope, transfer).StatusAvailability);
+    }
+
     private static (ObservationNormalizerV1 Normalizer, SourceClockDescriptor Clock) Normalizer()
     {
         SourceClockDescriptor clock = new(
