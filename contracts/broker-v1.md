@@ -170,7 +170,8 @@ the registry is not an identity oracle. Restart invalidates every grant by desig
   `analysisFinalized` independently. Replaying one partial request returns the same partial result; a new
   request may retry incomplete finalization.
 
-The runtime is still an interface and tests use a fake. A completion-write failure never exposes start
+The runtime is an interface: the composed host's `BrokerEvidenceCaptureRuntime` drives real ETW (section 5.5), and
+the coordinator's tests use a fake. A completion-write failure never exposes start
 success and triggers best-effort compensating stop; the stored intent remains for recovery.
 
 ### 4.1 Durable ownership log
@@ -343,8 +344,9 @@ after a permissive pipe exists.
 After connection, the broker calls `ImpersonateNamedPipeClient`, opens the thread token and derives the
 canonical user SID, authentication LUID/logon-session ID, mandatory integrity level and elevation bit.
 The SID and logon session must both match the configured owner. Anonymous impersonation is refused.
-`RevertToSelf` is mandatory on every path; inability to revert after an authentication failure terminates
-the process rather than continuing under the client token. `GetNamedPipeClientProcessId` is recorded only
+`RevertToSelf` is mandatory on every path; inability to revert, after a failed read or a successful one, terminates
+the process rather than continuing under the client token (revision 724; before, a successful read whose revert failed
+threw instead). `GetNamedPipeClientProcessId` is recorded only
 as diagnostic data and never participates in authorization. Since revision 415 a capture the client starts
 names that PID, and its creation time where the broker can read it, as the client that asked for the capture
 (`contracts/collector-identities-v1.md`): a label for its activity in the capture, never an identity it is
@@ -360,9 +362,9 @@ commands this section once stated ended such a connection after 17 minutes, and 
 real token/pipe APIs, first-instance squatting, a machine-name/redirector connection refusal, wrong-logon
 refusal and a complete Hello exchange. The composed host (section 5.5) reuses one instance for its lifetime.
 
-Prepared tokens will be unguessable, expiring broker records bound to the authenticated SID/logon
-session and the prepared digest. A token is distinct from the digest. Start/stop request IDs will be
-idempotent, and ownership will be durable before success is exposed. Owner leases stop orphaned
+Prepared tokens are unguessable, expiring broker grants bound to the authenticated SID/logon
+session and the prepared digest (section 4); a token is distinct from the digest. Start/stop request IDs are
+idempotent, and ownership is durable before success is exposed (section 4). Owner leases stop orphaned
 interactive captures by default; bounded headless captures use an explicit owner and duration/retention
 policy. Disconnect alone is neither successful stop nor authorization to take ownership.
 
@@ -534,6 +536,9 @@ Assets are the elevated provider/session controls, admitted event data, broker-o
 capture ownership and the requesting user's consent. Relevant attackers are another local user, a
 same-user ordinary-integrity process, a remote pipe client, malformed imported data and a stale or
 compromised client connection.
+
+ADR-052 records why each check of this boundary is the one it is, and what a process of the capturing user in the
+same logon session can still ask while a broker serves (revision 724).
 
 Protocol v1 must reject remote clients, identity/session mismatch, unsupported commands or versions,
 oversized frames, expired/wrong-owner tokens, duplicate starts that would create another session,

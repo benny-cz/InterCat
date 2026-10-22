@@ -63,9 +63,10 @@ public static partial class WindowsBrokerTokenIdentity
             throw;
         }
 
+        // A thread that cannot revert would go on as the client, whatever the read found, so the broker ends here too.
         if (!RevertToSelf())
         {
-            throw NativeFailure("The broker could not end named-pipe client impersonation.");
+            Environment.FailFast("The broker could not end named-pipe client impersonation.");
         }
 
         return identity;

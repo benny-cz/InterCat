@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 723 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 724 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 724 — ADR-052: the broker believes the operating system about its client (§20.3, R19, R22):**
+  - The record says why each check of the broker's boundary is the one it is, and what it lets through: a process of
+    the capturing user in the same logon session passes as the window does while a broker serves. Writing it found the
+    plan claiming integrity and elevation checks the broker does not need or make, and a revert failure after a
+    successful read that threw rather than ending the broker; it now ends the broker on every path.
+  - Two rows of records owed were already decided (ADR-015; ADR-010, ADR-024, ADR-043 to ADR-046, ADR-048) and are
+    gone, and a test holds the decision table and `docs/adr` to each other.
+  - Debug and Release each ran 2,922 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    six mutations were caught: the new record's row taken out of the table or given twice, a record named that does
+    not exist, and the table's rows, the names or the files left unread. The revert change runs only on Windows,
+    where no test can make a revert fail; it was built, not run.
 
 - **Revision 723 — ADR-051: fixtures named for their area, each covering exactly what its tests assert (§13.5, P16, P27):**
   - Writing the owed ADR found 18 claims across ten fixtures that none of their listed tests asserts, a gate check
