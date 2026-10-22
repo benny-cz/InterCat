@@ -186,6 +186,9 @@ internal sealed class ScriptedHost : IEtwSessionHost
 
     public bool FailLossRead { get; init; }
 
+    /// <summary>The sources whose enablement this host refuses, as ETW refuses a provider it cannot enable.</summary>
+    public IReadOnlySet<string> Refused { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+
     /// <summary>Completes once every scripted outcome reached the sink.</summary>
     public TaskCompletionSource Delivered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -235,7 +238,9 @@ internal sealed class ScriptedHost : IEtwSessionHost
 
         public string SessionName => plan.Identity.SessionName;
 
-        public ProviderEnablementResult Enable(ProviderEnablementRequest request) => new(request.SourceId, true, null);
+        public ProviderEnablementResult Enable(ProviderEnablementRequest request) => host.Refused.Contains(request.SourceId)
+            ? new(request.SourceId, false, "access is denied in this test")
+            : new(request.SourceId, true, null);
 
         public ProviderEnablementResult EnableKernelFlags(string sourceId, ulong flags) => new(sourceId, true, null);
 

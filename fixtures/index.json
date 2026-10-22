@@ -2280,13 +2280,14 @@
         "P12: once a capture's descriptors have been seen, a callback's queue, counters and coverage tally allocate nothing",
         "P12: the capture callback allocates from a pool, and otherwise only where a reviewed bound holds",
         "P12: the capture callback reaches no query, store, file, network, name or symbol lookup, decoder or wait, and only reviewed locks"
+      ],
+      "P13": [
+        "P13: a capture's providers are enabled and its session configured only as it starts, and nothing disables a provider",
+        "P13: a provider refused as a capture starts is said, and the capture's one coverage epoch does not count it collected",
+        "P13: only the capture adapter names an ETW session's controls, so no other code can reconfigure a capture"
       ]
     },
     "uncovered": {
-      "P13": {
-        "reason": "Coverage epochs on a provider change arrive with IC-009.",
-        "plannedBy": "IC-009"
-      },
       "P25": {
         "reason": "Since revision 403 a zoom, a brush's counts, its lanes' bytes, a time scope's byte and peer rankings, an evidence page and a process's connections open only the segments they read; since revision 408 paired calls and grouped exchanges are read without opening one; and since revisions 440 and 441 a finished session keeps its RPC calls and HTTP exchanges in an operation index, so a reopen's first call ranking, RPC or HTTP listing, or brush derives none. A live generation's first RPC or HTTP view still derives its operations from every segment, and a zoom builds a met segment's tiles from its rows.",
         "plannedBy": "M5"

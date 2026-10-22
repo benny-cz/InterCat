@@ -6,8 +6,8 @@ namespace InterCat.Architecture.Tests;
 
 /// <summary>
 /// Prohibitions a fitness function can hold where no runtime test reaches: what the elevated broker can reach at all
-/// (P18), the intrusive means of resolving a peer no product code uses (P20), and the network no product code reaches
-/// (P16, §11.1).
+/// (P18), the intrusive means of resolving a peer no product code uses (P20), the network no product code reaches
+/// (P16, §11.1), and the ETW session controls only the capture adapter names (P13).
 /// </summary>
 public sealed partial class ProhibitionFitnessTests
 {
@@ -148,6 +148,26 @@ public sealed partial class ProhibitionFitnessTests
         Assert.Empty(packages.Except(ReviewedPackages, StringComparer.Ordinal));
     }
 
+    [Fact(DisplayName = "P13: only the capture adapter names an ETW session's controls, so no other code can reconfigure a capture")]
+    public void OnlyTheCaptureAdapterControlsASession()
+    {
+        // The capture adapter's own callers are held to a capture's start by the broker's tests, which walk the IL of what
+        // the broker and the recorders are built from; this holds that the command line, the window and every other
+        // project leave the session to it.
+        string root = RepositoryRoot();
+        string[] product = [.. Directory.EnumerateDirectories(Path.Combine(root, "src"))
+            .Select(Path.GetFileName)
+            .Where(project => project is not null && File.Exists(Path.Combine(root, "src", project, project + ".csproj")))
+            .Select(project => project!)];
+        Assert.Contains("InterCat.Cli", product);
+
+        string[] naming = [.. product.SelectMany(project => Sources(root, project))
+            .Where(source => SessionControl().IsMatch(File.ReadAllText(source)))
+            .Select(source => Relative(root, source))];
+        Assert.Contains("src/InterCat.Capture.Windows/Etw/TraceEventProviderControl.cs", naming);
+        Assert.All(naming, source => Assert.StartsWith("src/InterCat.Capture.Windows/", source, StringComparison.Ordinal));
+    }
+
     /// <summary>A project and every project it references, directly or through another.</summary>
     private static SortedSet<string> Closure(string root, string project)
     {
@@ -182,6 +202,13 @@ public sealed partial class ProhibitionFitnessTests
             .Order(StringComparer.Ordinal);
 
     private static string Relative(string root, string path) => Path.GetRelativePath(root, path).Replace('\\', '/');
+
+    /// <summary>
+    /// TraceEvent's own session type, or a call that enables or disables what a session collects. InterCat's adapter that
+    /// wraps it, <c>TraceEventSessionHost</c>, is how other projects start one, and is not matched.
+    /// </summary>
+    [GeneratedRegex(@"\bTraceEventSession\b|\.(Enable|Disable)(Kernel)?Provider\(")]
+    private static partial Regex SessionControl();
 
     /// <summary>A call of OpenProcess, not its declaration: the word, then its arguments up to the closing parenthesis.</summary>
     [GeneratedRegex(@"(?<!static partial SafeProcessHandle )OpenProcess\([^)]*\)")]

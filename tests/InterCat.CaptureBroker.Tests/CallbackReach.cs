@@ -62,6 +62,64 @@ internal sealed class CallbackReach
 
     public static string Name(MethodBase method) => $"{TypeName(method.DeclaringType!)}.{method.Name}";
 
+    /// <summary>
+    /// Every call the methods of <paramref name="assemblies"/> make, each with the method it is written in, so a call an
+    /// async method or a lambda makes is named for the method that holds it rather than for a compiler-generated one.
+    /// </summary>
+    public static IEnumerable<(string Caller, MethodBase Target)> Calls(params Assembly[] assemblies)
+    {
+        const BindingFlags Declared = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public
+            | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+        foreach (Type type in assemblies.SelectMany(Types))
+        {
+            foreach (MethodBase method in type.GetMethods(Declared).Concat<MethodBase>(type.GetConstructors(Declared)))
+            {
+                if (method.GetMethodBody()?.GetILAsByteArray() is not { } il)
+                {
+                    continue;
+                }
+
+                Type[]? typeArguments = type.IsGenericType ? type.GetGenericArguments() : null;
+                Type[]? methodArguments = method.IsGenericMethod ? method.GetGenericArguments() : null;
+                foreach (Instruction instruction in Decode(il))
+                {
+                    if (instruction.Code.OperandType == OperandType.InlineMethod
+                        && method.Module.ResolveMethod((int)instruction.Operand, typeArguments, methodArguments) is { } target)
+                    {
+                        yield return (WrittenIn(method), target);
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The method a body was written in: a state machine's, a closure's, a lambda's or a local function's is named for
+    /// the method that holds it.
+    /// </summary>
+    private static string WrittenIn(MethodBase method)
+    {
+        string name = method.Name;
+        if (name.StartsWith('<') && name.IndexOf('>') > 1)
+        {
+            name = name[1..name.IndexOf('>')];
+        }
+
+        Type type = method.DeclaringType!;
+        while (type.IsNested && type.Name.StartsWith('<'))
+        {
+            int close = type.Name.IndexOf('>');
+            if (close > 1)
+            {
+                name = type.Name[1..close];
+            }
+
+            type = type.DeclaringType!;
+        }
+
+        return $"{TypeName(type)}.{name}";
+    }
+
     private static string TypeName(Type type) => (type.FullName ?? type.Name).Split('`')[0];
 
     private void Visit(MethodBase method)
