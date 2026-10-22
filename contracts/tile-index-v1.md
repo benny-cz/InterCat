@@ -5,7 +5,8 @@ minor 4 in revision 701, minor 5 in revision 704, minor 6 in revision 706 and mi
 count from it since revision 458, a process's direction rows since revision 459, a channel's ends since revision 460,
 every query from a level spanning the segments since revision 701, a zoom's byte lanes and an interval's bytes from its
 byte sums since revision 704, a brush's bytes by process and channel end from its byte tallies since revision 706, a
-group's byte lanes from them since revision 707, and a process's byte direction rows since revision 708. It holds
+group's byte lanes from them since revision 707, and a process's byte direction rows since revision 708; and since
+revision 739 a live follow keeps each chunk's tiles (§6). It holds
 §12.1 S4's deeper levels, beneath the persisted overview (`contracts/overview-index-v1.md`), which is the top level. For
 each observation segment of a generation, it keeps:
 
@@ -767,10 +768,54 @@ across a boundary, and a focus counts the sections as before (§5).
   revision 461 is taken from them.
 - A channel's bytes in columns, which no focus adds from the byte tallies at this version. It reads its rows from the
   segments its interval meets.
-- The tiles of a live generation, which publishes no checkpoint until its writer finishes. Its zooms build each
-  segment's tiles from its rows.
+- A live generation's own tile index, and a level spanning its segments. Since plan revision 739 it names the tiles of
+  each chunk but its newest (§6), which count its overview and its zooms' whole timeline; they bind no record, so its
+  brushes, focuses and zooms' byte lanes build the tiles of the segments their interval meets from their rows, as
+  before.
 - Spanning tiles narrower than a focus's columns where they are many. The level's finest tiles are at most 2,048, so a
   focus at more columns than that, or over a part of the session holding fewer, finds each lying across a column
   boundary and counts the sections beneath, as before minor 4.
 - A level spanning segments one of which keeps no tiles, its timed readings going backwards. Every query then counts the
   segments' sections, and that one's rows.
+
+## 6. Chunk tiles
+
+Since plan revision 739 a live follow keeps the tiles of each chunk it publishes, so a session still being recorded
+counts its overview and its timeline from tiles, as a finished one does, rather than from every segment's rows (§12.1
+S1, S4). A chunk's tiles are a tile index of this format, of the observation segments one generation published - those
+whose names carry its number - named:
+
+```text
+chunk-tiles-<the segments' generation:D10>-<publishing generation:D10>.bin
+```
+
+They differ from a generation's tile index in three ways.
+
+- **They bind no record.** Their directory states the derivation of no instance and no channel, fingerprinted as any
+  derivation is (§3), and every record's owner and channel key is 0, so no tile tallies an owner or a channel. A later
+  derivation of the session binds those records otherwise, so the tiles serve only what no binding changes - their
+  records' readings, mechanisms, directions, ends and measures. A brush, a focus or a byte tally counts bindings only
+  under the derivation a directory states (§4), and a derivation of a session's records never is that one; a
+  derivation of none is, under which every record binds to none, as here.
+- **They are carried.** store-v1 §5 names any other index only in the generation that published it. Each live
+  publication stages, beside the checkpoint of the generation it extends (`contracts/derivation-checkpoint-v1.md` §2),
+  the tiles of the chunk that generation added, and those of older chunks no tiles describe, newest first: chunks
+  recorded before revision 739, or written since a compaction or a dropped file. It tiles at most four chunks, and a
+  chunk after the first only while those it tiled hold fewer than 1,000,000 rows. Every later generation that names a
+  chunk's segments carries its tiles, as it carries the segments. A release gives them up with the segments they
+  describe and keeps those of the chunks it keeps; an index publication, which publishes a tile index of every
+  segment, and a re-derivation, whose segments are new, carry none.
+- **They decide no generation.** Acquiring a generation passes over them, and so does a viewer's hashing after its
+  first view. Their reader checks each part it reads against its own checksum (§4): it reads the rows of a chunk whose
+  tiles it cannot open, and counts from every segment's rows where a part it reads does not hold. A commit re-measures
+  the ones it carries and drops any that no longer measure as recorded, and a later publication tiles that chunk again
+  under a name of its own. Were they to decide, a damaged one would send a reader back past every generation since the
+  one that tiled its chunk, for an index.
+
+A reader of a generation that names no tile index of its own counts its overview and its zooms' whole timeline from
+the section of each segment a chunk's tiles describe, and from the rows of every other segment an interval meets: the
+newest chunk's, and any whose tiles are gone or cannot be opened, or whose readings go backwards (§1). The counts are
+the rows'. At 1,000,000 records published in ten chunks of 100,000, the nine chunks' tiles took 7.4% of the segments'
+bytes and tiling one took 34 to 94 ms of a publication's second or so; a cold open's overview counted from them in 7
+ms, opening the newest chunk's one segment, where every segment's rows took 42 ms and opened all ten, and a zoom of
+the whole extent at 256 columns took 17 ms and opened no other.

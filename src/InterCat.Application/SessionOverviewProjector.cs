@@ -188,8 +188,8 @@ public static class SessionOverviewProjector
 
         // A finished session names a derivation checkpoint and a persisted overview covering every segment, and then
         // its first view opens no segment (§12.1 S1, S4). A segment is opened only for what neither holds.
-        SegmentReaderV1[]? opened = null;
-        SegmentReaderV1[]? openedFields = null;
+        SegmentsOnDemand? opened = null;
+        SegmentsOnDemand? openedFields = null;
         (ProcessInstanceIndex processes, TransportRelationIndex relations, ProcessActivityIndex? saved) =
             derivation.FromCheckpoint(store.Root, clock)
             ?? (derivation.Processes(store.Root, Segments(), clock, Fields(), cancellationToken),
@@ -197,6 +197,7 @@ public static class SessionOverviewProjector
                 null);
         ProcessActivityIndex activity = saved ?? derivation.Activity(store.Root, Segments(), clock, Fields(), cancellationToken);
         OverviewCounts counted = derivation.PersistedOverview(store.Root)
+            ?? CountFromChunks(store, manifest, derivation, RetainedFromTicks(manifest), cancellationToken)
             ?? Count(Segments(), RetainedFromTicks(manifest), cancellationToken);
 
         // Every instance and relationship is in the bundle, however many there are. What the graph draws at once is the
@@ -481,11 +482,11 @@ public static class SessionOverviewProjector
                 : null,
         };
 
-        SegmentReaderV1[] Segments() => opened ??=
-            [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+        // Opened as they are read: a derivation extending the checkpoint a live generation names reads only the segments
+        // it adds, and the overview's counts only those no chunk's tiles describe.
+        SegmentsOnDemand Segments() => opened ??= new(store, manifest, SessionSegments.Names(manifest));
 
-        SegmentReaderV1[] Fields() => openedFields ??=
-            [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+        SegmentsOnDemand Fields() => openedFields ??= new(store, manifest, SessionSegments.FieldNames(manifest));
     }
 
     /// <summary>
@@ -519,16 +520,92 @@ public static class SessionOverviewProjector
         // Every count comes from the segments' tiles (§12.1 S4's first level), built once per reader: the extent from
         // their earliest and latest readings, and the buckets and minimap columns from tiles whole wherever a tile's
         // records fall in one column. Only a tile a bucket boundary crosses has its rows read (§10.3).
+        var counted = new CountedSegment[segments.Count];
+        for (int index = 0; index < segments.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            counted[index] = CountedSegment.Of(segments[index], cancellationToken);
+        }
+
+        return Count(counted, retainedFromTicks, cancellationToken);
+    }
+
+    /// <summary>
+    /// <see cref="Count(IReadOnlyList{SegmentReaderV1}, long?, CancellationToken)"/> for a generation naming the tiles of
+    /// some of its chunks (`contracts/tile-index-v1.md` §6): a segment those tiles describe is counted from its section,
+    /// opening none of them, and every other from its own tiles, built from its rows, as there; the counts are the same.
+    /// Null where the generation names no chunk tiles that could be opened, or a part of them read is not what it should
+    /// be, and its segments are then counted as they are without them.
+    /// </summary>
+    internal static OverviewCounts? CountFromChunks(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        SessionDerivation derivation,
+        long? retainedFromTicks,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<TileIndexFile> chunks = derivation.TiledChunks(store.Root);
+        if (chunks.Count == 0)
+        {
+            return null;
+        }
+
+        var readings = new Dictionary<TileIndexFile, TileReading>();
+        try
+        {
+            StoreDependency[] observed = SessionOverviewIndex.ObservationSegments(manifest);
+            var counted = new CountedSegment[observed.Length];
+            for (int index = 0; index < observed.Length; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                StoreDependency dependency = observed[index];
+                TileIndexFile? chunk = chunks.FirstOrDefault(file => file.Describes(dependency));
+                if (chunk is not null)
+                {
+                    if (!readings.TryGetValue(chunk, out TileReading? reading))
+                    {
+                        reading = chunk.Read(store.Root);
+                        readings[chunk] = reading;
+                    }
+
+                    // A segment whose readings go backwards keeps no tiles, and its rows are read.
+                    if (reading.Section(dependency.Name) is { Ordered: true } section)
+                    {
+                        counted[index] = CountedSegment.Of(reading, section);
+                        continue;
+                    }
+                }
+
+                counted[index] = CountedSegment.Of(SessionSegments.Open(store, manifest, dependency.Name), cancellationToken);
+            }
+
+            return Count(counted, retainedFromTicks, cancellationToken);
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+        finally
+        {
+            foreach (TileReading reading in readings.Values)
+            {
+                reading.Dispose();
+            }
+        }
+    }
+
+    /// <summary>The overview's counts of <paramref name="segments"/>, each counted as it can be.</summary>
+    private static OverviewCounts Count(
+        CountedSegment[] segments,
+        long? retainedFromTicks,
+        CancellationToken cancellationToken)
+    {
         long rows = 0;
         long withoutTime = 0;
         long minimum = long.MaxValue;
         long maximum = long.MinValue;
-        var tiles = new SegmentTimeTiles[segments.Count];
-        for (int index = 0; index < segments.Count; index++)
+        foreach (CountedSegment segment in segments)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            SegmentTimeTiles segment = SegmentTimeTiles.Of(segments[index], cancellationToken);
-            tiles[index] = segment;
             rows += segment.Rows;
             withoutTime += segment.Untimed;
             if (segment.First is { } first && segment.Last is { } last)
@@ -554,15 +631,54 @@ public static class SessionOverviewProjector
         var main = new TimelineColumns(extent, MaximumTimelineBuckets, tallyMechanisms: true);
         (TimeRange span, int count) = SessionMinimap.ColumnsFor(extent);
         var minimap = new TimelineColumns(span, count, tallyMechanisms: false);
-        for (int index = 0; index < segments.Count; index++)
+        foreach (CountedSegment segment in segments)
         {
-            tiles[index].CountInto(segments[index], main, cancellationToken);
-            tiles[index].CountInto(segments[index], minimap, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            segment.CountInto(main, cancellationToken);
+            segment.CountInto(minimap, cancellationToken);
         }
 
         // Every timed row lies at or before the extent's end, so a timed row no column holds was read before it began.
         long counted = main.Counts.Sum(column => (long)column);
         return new(rows, withoutTime, extent, main, minimap) { BeforeExtent = rows - withoutTime - counted };
+    }
+
+    /// <summary>
+    /// One segment as the overview counts it: how many rows it holds, how many have no session time, its earliest and latest
+    /// timed readings, and its timed records counted into columns - from its own tiles, built from its rows, or from its
+    /// section of a chunk's tiles, which counts exactly what those tiles do.
+    /// </summary>
+    private readonly struct CountedSegment(int rows, int untimed, long? first, long? last, SegmentReaderV1? segment,
+        SegmentTimeTiles? tiles, TileReading? reading, TileSection? section)
+    {
+        public int Rows { get; } = rows;
+
+        public int Untimed { get; } = untimed;
+
+        public long? First { get; } = first;
+
+        public long? Last { get; } = last;
+
+        public static CountedSegment Of(SegmentReaderV1 segment, CancellationToken cancellationToken)
+        {
+            SegmentTimeTiles tiles = SegmentTimeTiles.Of(segment, cancellationToken);
+            return new(tiles.Rows, tiles.Untimed, tiles.First, tiles.Last, segment, tiles, null, null);
+        }
+
+        public static CountedSegment Of(TileReading reading, TileSection section) =>
+            new(section.Rows, section.Untimed, section.First, section.Last, null, null, reading, section);
+
+        public void CountInto(TimelineColumns columns, CancellationToken cancellationToken)
+        {
+            if (tiles is not null)
+            {
+                _ = tiles.CountInto(segment!, columns, cancellationToken);
+            }
+            else if (!reading!.CountInto(section!, columns, cancellationToken))
+            {
+                throw new InvalidDataException("A chunk's tiles keep none of a segment whose readings they say never go backwards.");
+            }
+        }
     }
 
     /// <summary>The timeline, its mechanism lanes and the minimap the counts give, with coverage judged by the ledger.</summary>

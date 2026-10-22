@@ -353,10 +353,13 @@ public static class SessionTimelineQuery
         // comes from the tiles the generation's checkpoint persisted where they describe its segments, and no segment is
         // opened; otherwise, and with a focus that reads its rows, from the tiles of each segment the interval meets. Either
         // way only a tile a column boundary crosses has its records read.
+        // A live generation persists no tiles of its own, but names the tiles of each chunk before its newest (§6), which
+        // count those chunks' segments as the persisted tiles would, opening none.
         SegmentReaderV1[]? met = null;
         SegmentReaderV1[] Met() => met ??= SessionNativeInterval.Segments(store, manifest, interval, clock);
         TimelineColumns counted = (rows is null || tiledFocus || wholeMechanism is not null
                 ? PersistedWhole(store, manifest, interval, columns, cancellationToken)
+                    ?? ChunkWhole(store, manifest, interval, columns, clock, cancellationToken)
                 : null)
             ?? CountWhole(Met(), interval, columns, cancellationToken);
         bool groupFocus = focus is { ChannelKey: null, OwnerProcesses.Count: > 1 };
@@ -440,6 +443,72 @@ public static class SessionTimelineQuery
         }
 
         return counted;
+    }
+
+    /// <summary>
+    /// The whole timeline of a generation naming the tiles of some of its chunks (`contracts/tile-index-v1.md` §6): each
+    /// segment those tiles describe counted from its section, opening none of them, and every other segment the interval
+    /// meets from its own tiles, as <see cref="CountWhole"/> counts it; the counts are the same. Null where the generation
+    /// names no chunk tiles that could be opened, or a part of them read is not what it should be, and the segments the
+    /// interval meets are then counted from their own.
+    /// </summary>
+    private static TimelineColumns? ChunkWhole(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        TimeRange interval,
+        int columns,
+        SourceClockDescriptor clock,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<TileIndexFile> chunks = SessionDerivationCache.For(manifest).TiledChunks(store.Root);
+        if (chunks.Count == 0)
+        {
+            return null;
+        }
+
+        var readings = new Dictionary<TileIndexFile, TileReading>();
+        try
+        {
+            var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
+            (long First, long End) native = SessionNativeInterval.Readings(interval, clock);
+            foreach (StoreDependency segment in SessionOverviewIndex.ObservationSegments(manifest))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (chunks.FirstOrDefault(chunk => chunk.Describes(segment)) is { } chunk)
+                {
+                    if (!readings.TryGetValue(chunk, out TileReading? reading))
+                    {
+                        reading = chunk.Read(store.Root);
+                        readings[chunk] = reading;
+                    }
+
+                    // False only for a segment whose readings go backwards, which keeps no tiles: its rows are read.
+                    if (reading.CountInto(reading.Section(segment.Name), counted, cancellationToken))
+                    {
+                        continue;
+                    }
+                }
+
+                if (SessionNativeInterval.Meets(SessionSegments.NativeRange(store, manifest, segment.Name), native))
+                {
+                    SegmentReaderV1 opened = SessionSegments.Open(store, manifest, segment.Name);
+                    _ = SegmentTimeTiles.Of(opened, cancellationToken).CountInto(opened, counted, cancellationToken);
+                }
+            }
+
+            return counted;
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+        finally
+        {
+            foreach (TileReading reading in readings.Values)
+            {
+                reading.Dispose();
+            }
+        }
     }
 
     /// <summary>

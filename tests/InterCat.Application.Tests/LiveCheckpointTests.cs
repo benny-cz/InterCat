@@ -105,7 +105,7 @@ public sealed class LiveCheckpointTests
         Assert.Contains(overview.Caveats, caveat => caveat.Contains(slot.CheckpointProblem!, StringComparison.Ordinal));
     }
 
-    [Fact(DisplayName = "S1: no checkpoint is staged but of a generation before the one asked for, nor of one that cannot be read")]
+    [Fact(DisplayName = "S1: no checkpoint is staged but of a generation before the one asked for, nor of one that cannot be read, nor a chunk's tiles of a segment that cannot be")]
     public void NoCheckpointIsStagedThatCannotBeMade()
     {
         SessionDerivationCache.Clear();
@@ -115,21 +115,39 @@ public sealed class LiveCheckpointTests
         Publish(session.Store, chunks[1]);
         long current = session.Store.Current!.Generation;
         Assert.Empty(LiveCheckpoints.Instance.Stage(session.Store, current, CancellationToken.None));
-        Assert.Single(LiveCheckpoints.Instance.Stage(session.Store, current + 1, CancellationToken.None)).Dispose();
 
-        // A segment another program holds, or one gone: the generation cannot be derived, so no checkpoint of it is staged,
-        // and its publication would go on.
+        // The checkpoint of the generation asked for, and the tiles of its chunks, newest first (tile-index-v1 §6).
+        Assert.Equal(
+            [DerivationCheckpoint.FileNameFor(current + 1), ChunkTileFiles.FileNameFor(2, current + 1), ChunkTileFiles.FileNameFor(1, current + 1)],
+            Staged(session.Store, current + 1));
+
+        // A segment another program holds: the generation cannot be derived, so no checkpoint of it is staged, nor its
+        // chunk's tiles, and its publication would go on with the other chunk's.
         session.Store.ReleaseSegmentReaders();
         string segment = Path.Combine(session.Path, SessionSegments.Names(session.Store.Current!)[0]);
         using (new FileStream(segment, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
         {
             SessionDerivationCache.Clear();
-            Assert.Empty(LiveCheckpoints.Instance.Stage(session.Store, current + 1, CancellationToken.None));
+            Assert.Equal([ChunkTileFiles.FileNameFor(2, current + 1)], Staged(session.Store, current + 1));
         }
 
+        // One gone: the generation does not verify, so nothing of it is staged.
         File.Delete(segment);
         SessionDerivationCache.Clear();
-        Assert.Empty(LiveCheckpoints.Instance.Stage(session.Store, current + 1, CancellationToken.None));
+        Assert.Empty(Staged(session.Store, current + 1));
+    }
+
+    /// <summary>What the live indexer stages into generation <paramref name="generation"/>, by name, given up again.</summary>
+    private static string[] Staged(SessionStore store, long generation)
+    {
+        IReadOnlyList<StoreStagingFile> staged = LiveCheckpoints.Instance.Stage(store, generation, CancellationToken.None);
+        string[] names = [.. staged.Select(file => file.PublishedName)];
+        foreach (StoreStagingFile file in staged)
+        {
+            file.Dispose();
+        }
+
+        return names;
     }
 
     /// <summary>A step of a live recording into a store, with the indexer its follow publishes through.</summary>

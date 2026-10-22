@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 738 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 739 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,24 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 739 — S1, S4, P25: a live follow keeps each chunk's tiles (tile-index-v1 §6, store-v1 §5):**
+  - Each live publication stages, beside its checkpoint, the tiles of the chunk the generation it extends added,
+    binding no record; every later generation carries them while it names the chunk's segments, a release gives them
+    up only with those, and a damaged one decides no generation and is dropped by the next commit. A live generation's
+    overview and zooms' whole timeline count every chunk but the newest from them: at a million rows in ten chunks a
+    cold open's overview counted in 7 ms opening one segment, where the rows took 42 ms and ten, for tiles a
+    fourteenth of the segments' bytes and 34–94 ms of a publication.
+  - Debug and Release each ran 2,979 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    thirty mutations were caught: a chunk's tiles not carried, every index carried, tiles carried without their
+    chunk's segments or once they no longer verify, acquisition or a viewer's later hashing decided by them, a
+    release giving up every chunk's tiles or none, a retention publication keeping a damaged one, a name of
+    generation 0 or of no separator taken, a field segment or a non-segment taken as described, a generation out of
+    range named, no tiles staged, the oldest chunk tiled first, a tiled chunk tiled again, a fifth chunk tiled or
+    the row bound ignored, counted from the first or left uncounted, the overview or the zoom passing chunk tiles
+    over, the overview counting a segment whose readings go backwards from its section, the zoom opening a segment
+    its interval does not meet, the overview opening every segment at once, an earlier generation's tiles not taken,
+    and a chunk's tiles stating a derivation other than the empty one.
 
 - **Revision 738 — S3, P25: the derivation checkpoint keeps records by owner (derivation-checkpoint-v1 format 1.5):**
   - Each incarnation's and each instance's records by owner, with the transport bytes they measured, are kept after
@@ -897,12 +915,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      3. Done in revision 458 for a finished session: its zooms, brushes and groups open no segment, and the working set
         at the scale gate's end is 263 MB at 10M rows, from 1.35 GB; a live session, and a focus that reads its rows,
         still cache segment readers within the reader cache's budget.
-   - A live session still counts its overview from tiles until its writer finishes; since revision 710 it derives its
-     processes, relations and counts from the checkpoint its generation names, reading only the newest chunk. Since
-     revision 737 its whole-session byte and peer rankings come from what its derivation counted, extended from the
-     generation before, and an extension opens only the segments it adds; since revision 738 the checkpoint keeps
-     those counts too, so a viewer opening a live generation from the checkpoint it names ranks so as well.
-   - A zoom of a live generation still builds a segment's tiles from its rows when first drawn; since revision 456 a
+   - A live session counts its overview from tiles: since revision 739 every chunk's but the newest's from the tiles a
+     live follow keeps of it (`tile-index-v1` §6), carried with its segments, and the newest's from its rows. Since
+     revision 710 it derives its processes, relations and counts from the checkpoint its generation names, reading
+     only the newest chunk. Since revision 737 its whole-session byte and peer rankings come from what its derivation
+     counted, extended from the generation before, and an extension opens only the segments it adds; since revision
+     738 the checkpoint keeps those counts too, so a viewer opening a live generation from the checkpoint it names
+     ranks so as well.
+   - A zoom of a live generation counts its whole timeline from its chunks' tiles since revision 739, but its focuses,
+     brushes and byte lanes still build a segment's tiles from its rows when first drawn; since revision 456 a
      finished generation's are persisted (`tile-index-v1`), with the records a column boundary can fall among, so its
      zooms open no segment, and since revision 457 neither do its brushes, which count from the tiles' tallies. Since revision 400 a zoom opens and tiles only the segments its interval meets, by the readings their headers
      declare: a hundredth of a reopened 1M-row session in twenty segments drew in 3-17 ms, from 86-237 ms. Since

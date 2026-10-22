@@ -744,7 +744,13 @@ public sealed partial class SessionStore
                 // An index describes the files of the generation it was published for and is not carried: a generation
                 // that adds segments has no index until its writer publishes one, and a damaged index can then cost at
                 // most a rollback to the generation before it, never every later generation (derivation-checkpoint-v1).
-                carried = [.. current?.Dependencies.Where(dependency => dependency.Kind != StoreDependencyKind.Index) ?? []];
+                // A chunk's tiles describe only that chunk's segments, which every later generation carries, so they are
+                // carried with them; one that no longer verifies is dropped rather than failing the commit, and its chunk
+                // is tiled again under a name of its own (tile-index-v1 §6).
+                carried = WithoutUnverifiedChunkTiles(
+                    [.. current?.Dependencies.Where(dependency =>
+                        dependency.Kind != StoreDependencyKind.Index || CarriesWithItsSegments(dependency, current)) ?? []],
+                    nextGeneration);
             }
 
             // A capture's calibration grows once, from its start sample alone to its start and stop: the one a generation
@@ -927,7 +933,8 @@ public sealed partial class SessionStore
         int hashed = 0;
         long hashedBytes = 0;
         byte[] buffer = new byte[HashBufferBytes];
-        foreach (StoreDependency dependency in manifest.Dependencies)
+        // A chunk's tiles never decide a generation, and their reader checks them block by block (tile-index-v1 §6).
+        foreach (StoreDependency dependency in manifest.Dependencies.Where(dependency => !ChunkTileFiles.Is(dependency)))
         {
             cancellationToken.ThrowIfCancellationRequested();
             string? problem;
@@ -2113,7 +2120,7 @@ public sealed partial class SessionStore
             SourceIdentity,
             previousManifest.Generation,
             boundary,
-            dependencies,
+            WithoutUnverifiedChunkTiles([.. dependencies], nextGeneration),
             record,
             SessionManifestV1.ReleasesCarriedFrom(previousManifest, record));
         Unverified? unverifiable = VerifyDependencies(directory, manifest, measurements);
@@ -2175,18 +2182,47 @@ public sealed partial class SessionStore
     /// <summary>
     /// An index describes the segments of the generation it was derived from, so a publication that stops naming a
     /// segment stops naming every index as well, in the same retention record. No index outlives what it describes
-    /// (§20.2, derivation-checkpoint-v1 §2).
+    /// (§20.2, derivation-checkpoint-v1 §2). A chunk's tiles describe that chunk's segments alone, so they go with those
+    /// and stay with the segments kept (tile-index-v1 §6).
     /// </summary>
     private static void ReleaseIndexesWithSegments(SessionManifestV1 manifest, List<StoreDependency> released)
     {
-        if (!released.Any(dependency => dependency.Kind == StoreDependencyKind.Segment))
+        StoreDependency[] segments = [.. released.Where(dependency => dependency.Kind == StoreDependencyKind.Segment)];
+        if (segments.Length == 0)
         {
             return;
         }
 
         released.AddRange(manifest.Dependencies.Where(dependency =>
-            dependency.Kind == StoreDependencyKind.Index && !released.Contains(dependency)));
+            dependency.Kind == StoreDependencyKind.Index
+            && !released.Contains(dependency)
+            && (!ChunkTileFiles.Is(dependency) || segments.Any(segment => ChunkTileFiles.Describes(dependency.Name, segment)))));
     }
+
+    /// <summary>
+    /// <paramref name="carried"/> without the chunks' tiles among them that no longer verify for generation
+    /// <paramref name="generation"/> (tile-index-v1 §6): those chunks' rows are read instead, and a later publication tiles
+    /// them again under names of their own, rather than one damaged index failing every later commit.
+    /// </summary>
+    private List<StoreDependency> WithoutUnverifiedChunkTiles(List<StoreDependency> carried, long generation)
+    {
+        if (!carried.Any(ChunkTileFiles.Is))
+        {
+            return carried;
+        }
+
+        IReadOnlyDictionary<string, OwnedFileFacts>? listing = directory.DescribeOwnedFiles();
+        return [.. carried.Where(dependency => !ChunkTileFiles.Is(dependency)
+            || VerifyDependencies(directory, [dependency], generation, measurements, listing: listing) is null)];
+    }
+
+    /// <summary>
+    /// Whether an additive generation carries the index <paramref name="dependency"/> of <paramref name="manifest"/>: only
+    /// a chunk's tiles, and only while the manifest names one of that chunk's segments.
+    /// </summary>
+    private static bool CarriesWithItsSegments(StoreDependency dependency, SessionManifestV1 manifest) =>
+        ChunkTileFiles.Is(dependency)
+        && manifest.Dependencies.Any(segment => ChunkTileFiles.Describes(dependency.Name, segment));
 
     private StagingCleanupReport InspectStaging(
         bool remove,
@@ -2516,7 +2552,7 @@ public sealed partial class SessionStore
                 + $"generation {candidate.Generation}");
         }
 
-        Unverified? unverified = VerifyDependencies(directory, candidate, measurements, hashContents);
+        Unverified? unverified = VerifyDependencies(directory, candidate, measurements, hashContents, chunkTilesDecide: false);
         if (unverified is not null)
         {
             return unverified;
@@ -2543,17 +2579,42 @@ public sealed partial class SessionStore
     /// listed and hashed later, by <see cref="VerifyContents"/>, so opening costs one listing rather than every byte of
     /// the session (S1). Every other dependency is small and carries no checksum of its own, so it is hashed now.
     /// </param>
+    /// <param name="chunkTilesDecide">
+    /// False for acquiring a generation, which a chunk's tiles never decide: their reader checks every block it reads by
+    /// the block's own checksum and reads the chunk's rows around one that does not hold, and the next commit drops it
+    /// (tile-index-v1 §6). A generation would otherwise fail over to one before every generation naming the tiles.
+    /// </param>
     private static Unverified? VerifyDependencies(
         IOwnedDirectory directory,
         SessionManifestV1 manifest,
         DependencyMeasurements? measurements,
-        bool hashContents = true)
+        bool hashContents = true,
+        bool chunkTilesDecide = true) =>
+        VerifyDependencies(
+            directory,
+            chunkTilesDecide ? manifest.Dependencies : manifest.Dependencies.Where(dependency => !ChunkTileFiles.Is(dependency)),
+            manifest.Generation,
+            measurements,
+            hashContents);
+
+    /// <summary>
+    /// <see cref="VerifyDependencies(IOwnedDirectory, SessionManifestV1, DependencyMeasurements?, bool)"/> for
+    /// <paramref name="dependencies"/>, which generation <paramref name="generation"/> names or is to name, confirming from
+    /// <paramref name="listing"/> where one is given rather than listing the directory again.
+    /// </summary>
+    private static Unverified? VerifyDependencies(
+        IOwnedDirectory directory,
+        IEnumerable<StoreDependency> dependencies,
+        long generation,
+        DependencyMeasurements? measurements,
+        bool hashContents = true,
+        IReadOnlyDictionary<string, OwnedFileFacts>? listing = null)
     {
         IReadOnlyDictionary<string, OwnedFileFacts>? listed = measurements is { IsEmpty: false } || !hashContents
-            ? directory.DescribeOwnedFiles()
+            ? listing ?? directory.DescribeOwnedFiles()
             : null;
         byte[]? buffer = null;
-        foreach (StoreDependency dependency in manifest.Dependencies)
+        foreach (StoreDependency dependency in dependencies)
         {
             if (listed is not null
                 && listed.TryGetValue(dependency.Name, out OwnedFileFacts facts)
@@ -2582,7 +2643,7 @@ public sealed partial class SessionStore
                     FileOptions.SequentialScan);
                 if (stream.Length != dependency.LengthBytes)
                 {
-                    return new(dependency.Name, dependency.LengthMismatch(stream.Length, manifest.Generation));
+                    return new(dependency.Name, dependency.LengthMismatch(stream.Length, generation));
                 }
 
                 long lastWrite = File.GetLastWriteTimeUtc(stream.SafeFileHandle).Ticks;
@@ -2598,7 +2659,7 @@ public sealed partial class SessionStore
                 }
 
                 buffer ??= new byte[HashBufferBytes];
-                string? problem = DigestProblem(stream, dependency, manifest.Generation, buffer, CancellationToken.None);
+                string? problem = DigestProblem(stream, dependency, generation, buffer, CancellationToken.None);
                 if (problem is not null)
                 {
                     return new(dependency.Name, problem);
@@ -2608,7 +2669,7 @@ public sealed partial class SessionStore
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                return new(dependency.Name, Unreadable(dependency, exception, manifest.Generation),
+                return new(dependency.Name, Unreadable(dependency, exception, generation),
                     Held: exception is not (FileNotFoundException or DirectoryNotFoundException));
             }
         }

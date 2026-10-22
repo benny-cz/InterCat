@@ -116,6 +116,7 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     private string? tilesProblem;
     private string? operationsProblem;
     private OperationIndex? operationIndex;
+    private TileIndexFile[]? chunkTiles;
     private bool operationIndexRead;
     private SessionContentIndex? content;
 
@@ -546,6 +547,50 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             }
 
             return tiles;
+        }
+    }
+
+    /// <summary>The chunk tiles this generation's queries opened, which a later generation's take where it names them too.</summary>
+    internal TileIndexFile[]? OpenedChunkTiles => Volatile.Read(ref chunkTiles);
+
+    /// <summary>
+    /// The tiles of the chunks this generation names (`contracts/tile-index-v1.md` §6), each opened and checked once: taken
+    /// from the latest earlier generation's where it names the same file, so a live view opens only a new chunk's. One
+    /// that cannot be opened is passed over, and its chunk's rows are read instead, as without it.
+    /// </summary>
+    public IReadOnlyList<TileIndexFile> TiledChunks(IOwnedDirectory directory)
+    {
+        ArgumentNullException.ThrowIfNull(directory);
+        lock (gate)
+        {
+            if (chunkTiles is { } known)
+            {
+                return known;
+            }
+
+            TileIndexFile[] earlier = SessionDerivationCache.Earlier(this, entry => entry.OpenedChunkTiles) ?? [];
+            var opened = new List<TileIndexFile>();
+            foreach (StoreDependency dependency in ChunkTiles.NamedBy(Manifest))
+            {
+                if (Array.Find(earlier, file => file.Dependency == dependency) is { } kept)
+                {
+                    opened.Add(kept);
+                    continue;
+                }
+
+                try
+                {
+                    opened.Add(SessionTileIndex.Open(directory, dependency, Manifest.SessionId, ChunkTiles.CachedBlocks));
+                }
+                catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+                {
+                    // Its chunk's segments are counted from their rows.
+                }
+            }
+
+            TileIndexFile[] all = [.. opened];
+            Volatile.Write(ref chunkTiles, all);
+            return all;
         }
     }
 

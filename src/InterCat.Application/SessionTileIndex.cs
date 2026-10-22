@@ -232,19 +232,35 @@ internal static class SessionTileIndex
             processes.Instances.Count, relations.Channels, hash.GetHashAndReset());
         Fingerprints.AddOrUpdate(relations, new(processes, derivation));
         return derivation;
+    }
 
-        static void Text(IncrementalHash into, string value)
-        {
-            into.AppendData(Encoding.UTF8.GetBytes(value));
-            into.AppendData([0]);
-        }
+    /// <summary>
+    /// The derivation of no instance and no channel, under which every record binds to none, fingerprinted as
+    /// <see cref="Derivation"/> fingerprints one: what a chunk's tiles state (§6).
+    /// </summary>
+    internal static TileDerivation UnboundDerivation()
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        Text(hash, ProcessInstanceIndex.BindingRule);
+        Text(hash, TransportRelationIndex.RelationRule);
+        Number(hash, 0);
+        Number(hash, 0);
+        Number(hash, 0);
+        Number(hash, 0);
+        return new(ProcessInstanceIndex.BindingRule, TransportRelationIndex.RelationRule, 0, 0, hash.GetHashAndReset());
+    }
 
-        static void Number(IncrementalHash into, int value)
-        {
-            Span<byte> bytes = stackalloc byte[4];
-            BinaryPrimitives.WriteInt32LittleEndian(bytes, value);
-            into.AppendData(bytes);
-        }
+    private static void Text(IncrementalHash into, string value)
+    {
+        into.AppendData(Encoding.UTF8.GetBytes(value));
+        into.AppendData([0]);
+    }
+
+    private static void Number(IncrementalHash into, int value)
+    {
+        Span<byte> bytes = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(bytes, value);
+        into.AppendData(bytes);
     }
 
     /// <summary>
@@ -268,10 +284,42 @@ internal static class SessionTileIndex
         TileDerivation? stated = null,
         long spanningEntries = MaximumSpanningEntries)
     {
-        ArgumentNullException.ThrowIfNull(destination);
-        ArgumentNullException.ThrowIfNull(segments);
         ArgumentNullException.ThrowIfNull(processes);
         ArgumentNullException.ThrowIfNull(relations);
+        return WriteCore(destination, sessionId, derivedGeneration, segments, processes, relations,
+            stated ?? Derivation(processes, relations), spanningEntries, cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes the tiles of <paramref name="segments"/> as a chunk's tiles (§6): as <see cref="Write"/> writes them, under
+    /// the derivation of no instance and no channel (<see cref="TileDerivation.Unbound"/>), so every record binds to none
+    /// and no tile tallies an owner or a channel. A derivation of the session that reads them later binds the records
+    /// otherwise, so they serve only what no binding changes: the records' readings, mechanisms, directions, ends and
+    /// measures.
+    /// </summary>
+    /// <returns>How many bytes were written.</returns>
+    public static long WriteUnbound(
+        Stream destination,
+        Guid sessionId,
+        long derivedGeneration,
+        IReadOnlyList<(StoreDependency Dependency, SegmentReaderV1 Reader)> segments,
+        CancellationToken cancellationToken) =>
+        WriteCore(destination, sessionId, derivedGeneration, segments, null, null, TileDerivation.Unbound,
+            MaximumSpanningEntries, cancellationToken);
+
+    private static long WriteCore(
+        Stream destination,
+        Guid sessionId,
+        long derivedGeneration,
+        IReadOnlyList<(StoreDependency Dependency, SegmentReaderV1 Reader)> segments,
+        ProcessInstanceIndex? processes,
+        TransportRelationIndex? relations,
+        TileDerivation derivation,
+        long spanningEntries,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(segments);
         ArgumentOutOfRangeException.ThrowIfLessThan(derivedGeneration, 1);
         var writer = new IndexFileWriter(destination, long.MaxValue, What);
 
@@ -288,7 +336,6 @@ internal static class SessionTileIndex
         Crc32C.Write(header.AsSpan(HeaderLength - 4), Crc32C.Compute(header.AsSpan(0, HeaderLength - 4)));
         writer.Raw(header);
 
-        TileDerivation derivation = stated ?? Derivation(processes, relations);
         var directory = new MemoryStream();
         var entries = new IndexFileWriter(directory, MaximumDirectoryBytes, What);
         entries.Str8(derivation.BindingRule);
@@ -348,8 +395,8 @@ internal static class SessionTileIndex
     private static void WriteSection(
         IndexFileWriter writer,
         SegmentReaderV1 segment,
-        ProcessInstanceIndex processes,
-        TransportRelationIndex relations,
+        ProcessInstanceIndex? processes,
+        TransportRelationIndex? relations,
         SpanningLevel? spanning,
         CancellationToken cancellationToken)
     {
@@ -365,8 +412,9 @@ internal static class SessionTileIndex
         byte[] byteTallies = [];
         if (usable)
         {
-            PackedOwners owners = SegmentBindings.OwnersOf(segment, processes);
-            PackedChannels channels = SegmentBindings.ChannelsOf(segment, relations);
+            // A chunk's tiles bind no record: every row's bindings are none (§6).
+            PackedOwners owners = processes is null ? new(new uint[segment.RowCount]) : SegmentBindings.OwnersOf(segment, processes);
+            PackedChannels channels = relations is null ? new(new uint[segment.RowCount]) : SegmentBindings.ChannelsOf(segment, relations);
 
             // Which end of its channel each row was made at, as a channel focus reading the row finds it.
             using RentedRows<sbyte> ends = RentedRows<sbyte>.For(segment);
@@ -1025,7 +1073,8 @@ internal static class SessionTileIndex
     /// Opens the tile index <paramref name="dependency"/> names: its header, footer and directory, each checked. A section
     /// is read when a zoom or a brush first needs it, and a block when one reads it.
     /// </summary>
-    public static TileIndexFile Open(IOwnedDirectory directory, StoreDependency dependency, Guid sessionId)
+    public static TileIndexFile Open(
+        IOwnedDirectory directory, StoreDependency dependency, Guid sessionId, int cachedBlocks = TileIndexFile.DefaultCachedBlocks)
     {
         ArgumentNullException.ThrowIfNull(directory);
         ArgumentNullException.ThrowIfNull(dependency);
@@ -1152,7 +1201,7 @@ internal static class SessionTileIndex
         }
 
         return new TileIndexFile(dependency, derivedGeneration, minor,
-            new TileDerivation(bindingRule, relationRule, instances, channels, fingerprint), entries, spanning);
+            new TileDerivation(bindingRule, relationRule, instances, channels, fingerprint), entries, spanning, cachedBlocks);
     }
 
     internal static byte[] Read(FileStream stream, long offset, int length)
@@ -2410,6 +2459,13 @@ internal static class SessionTileIndex
 internal sealed record TileDerivation(string BindingRule, string RelationRule, int Instances, int Channels, byte[] Fingerprint)
 {
     /// <summary>
+    /// The derivation of no instance and no channel, under which every record binds to none: what a chunk's tiles state
+    /// (`contracts/tile-index-v1.md` §6). A brush, a focus or a byte tally counts their bindings only for a derivation
+    /// that matches it, one of no instance and no channel, under which every record does bind to none.
+    /// </summary>
+    public static TileDerivation Unbound { get; } = SessionTileIndex.UnboundDerivation();
+
+    /// <summary>
     /// Whether <paramref name="processes"/> and <paramref name="relations"/> are these: made under the same rules, of the
     /// same instances and channels in the same order, so they bind every record of the same segments as these did.
     /// </summary>
@@ -2669,10 +2725,13 @@ internal sealed class TileBlock
 internal sealed class TileIndexFile
 {
     /// <summary>
-    /// The most blocks kept decoded for later zooms, brushes and groups: about 25 MB, whatever the session's size (S2), and
-    /// every block of a 10M-record session's tiles, which a group's lanes at 2,000 columns read most of.
+    /// The most blocks a generation's tile index keeps decoded for later zooms, brushes and groups: about 25 MB, whatever
+    /// the session's size (S2), and every block of a 10M-record session's tiles, which a group's lanes at 2,000 columns
+    /// read most of.
     /// </summary>
-    private const int MaximumCachedBlocks = 16_384;
+    internal const int DefaultCachedBlocks = 16_384;
+
+    private readonly int maximumCachedBlocks;
 
     private readonly Dictionary<string, TileSectionEntry> entries;
     private readonly TileSectionEntry[] ordered;
@@ -2689,7 +2748,8 @@ internal sealed class TileIndexFile
         int minor,
         TileDerivation derivation,
         IReadOnlyList<TileSectionEntry> entries,
-        TileSectionEntry? spanning)
+        TileSectionEntry? spanning,
+        int maximumCachedBlocks = DefaultCachedBlocks)
     {
         Dependency = dependency;
         DerivedGeneration = derivedGeneration;
@@ -2698,6 +2758,7 @@ internal sealed class TileIndexFile
         ordered = [.. entries];
         this.entries = entries.ToDictionary(entry => entry.Name, StringComparer.Ordinal);
         spanningEntry = spanning;
+        this.maximumCachedBlocks = maximumCachedBlocks;
     }
 
     public StoreDependency Dependency { get; }
@@ -2940,7 +3001,7 @@ internal sealed class TileIndexFile
 
         lock (gate)
         {
-            if (blocks.Count >= MaximumCachedBlocks)
+            if (blocks.Count >= maximumCachedBlocks)
             {
                 blocks.Clear();
             }

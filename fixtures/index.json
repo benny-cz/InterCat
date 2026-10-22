@@ -2284,13 +2284,23 @@
         "S2: past its bound, the spanning level's finest tiles are made ten times wider until their tally entries fit, and where none do it is given up; a zoom, a brush, a focus and a zoom's byte lanes count the same either way"
       ],
       "S4": [
-        "S4: a level spans the segments only where two or more hold a timed record and none's readings go backwards"
+        "S4: a chunk's tiles are carried by every later generation naming its segments, though no other index is, and an index publication names none",
+        "S4: a chunk's tiles are named for the generation whose observation segments they describe and the one that published them",
+        "S4: a chunk's tiles bind no record: they state the derivation of no instance and no channel, which a derivation of the session's records does not match, and a live generation names no tile index a brush or a focus could count bindings from",
+        "S4: a chunk's tiles shortened or rewritten decide no generation: the session is read at its newest, and the next commit drops them and carries the others",
+        "S4: a chunk's tiles that cannot be read are read around, so the overview and the zooms count as the chunk's rows do",
+        "S4: a later generation's derivation takes the chunks' tiles an earlier one opened, and opens only those of the chunk it adds",
+        "S4: a level spans the segments only where two or more hold a timed record and none's readings go backwards",
+        "S4: a live generation opened cold draws the overview and the zooms a session of the same chunks recorded without tiles draws, opening only its newest chunk's segments",
+        "S4: a live generation's overview counts every chunk but its newest from the tiles staged of it, opening only the newest chunk's segments, and counts as every segment's rows do",
+        "S4: a publication tiles the chunks no tiles describe, newest first, at most four, and none more once those it tiled hold its bound of rows, until every chunk but the newest is tiled",
+        "S4: a release that gives up a chunk's segment gives up that chunk's tiles and every other index, and keeps the tiles of the chunks it keeps"
       ],
       "S1": [
         "S1: each generation the window's live follow publishes after its first names a checkpoint of the one before it",
         "S1: each live publication names a checkpoint of the generation it extends, and a viewer opening the session extends it wherever a derivation in memory extends, projecting as one of every record",
         "S1: icat follow names, in each generation it mirrors after its first, a checkpoint of the generation before it",
-        "S1: no checkpoint is staged but of a generation before the one asked for, nor of one that cannot be read",
+        "S1: no checkpoint is staged but of a generation before the one asked for, nor of one that cannot be read, nor a chunk's tiles of a segment that cannot be",
         "S1: nothing is staged for a session with no generation, and a live checkpoint that is not one is set aside, the answer the same"
       ],
       "I17": [
@@ -2310,7 +2320,7 @@
     },
     "uncovered": {
       "P25": {
-        "reason": "Since revision 403 a zoom, a brush's counts, its lanes' bytes, a time scope's byte and peer rankings, an evidence page and a process's connections open only the segments they read; since revision 408 paired calls and grouped exchanges are read without opening one; and since revisions 440 and 441 a finished session keeps its RPC calls and HTTP exchanges in an operation index, so a reopen's first call ranking, RPC or HTTP listing, or brush derives none. Since revisions 544 and 733 a live generation extends the RPC calls and HTTP exchanges of the generation before it, held in memory, over the segments it adds, and since revision 734 the whole session's connection ranking counts from the derivation's activity, opening no segment. Since revision 735 a finished session's ranking by peers counts from how its records bind at their two ends, kept with its persisted overview. Since revision 736 a connection's sends, receives and bytes are counted as its relations are derived, kept with the checkpoint and extended between live generations, so the whole session's connections to other hosts and Other hosts' ranking by bytes open no segment. Since revision 737 a live generation's whole-session byte and peer rankings come from what its derivation counted as it read each record, extended from the generation before, and an extension opens only the segments it adds; since revision 738 the checkpoint keeps those counts too, so a generation opened from one ranks so as well, where one written earlier reads every segment for them; a live generation opened with nothing derived before it still derives its operations from every segment; and a zoom of a live generation builds a met segment's tiles from its rows.",
+        "reason": "Since revision 403 a zoom, a brush's counts, its lanes' bytes, a time scope's byte and peer rankings, an evidence page and a process's connections open only the segments they read; since revision 408 paired calls and grouped exchanges are read without opening one; and since revisions 440 and 441 a finished session keeps its RPC calls and HTTP exchanges in an operation index, so a reopen's first call ranking, RPC or HTTP listing, or brush derives none. Since revisions 544 and 733 a live generation extends the RPC calls and HTTP exchanges of the generation before it, held in memory, over the segments it adds, and since revision 734 the whole session's connection ranking counts from the derivation's activity, opening no segment. Since revision 735 a finished session's ranking by peers counts from how its records bind at their two ends, kept with its persisted overview. Since revision 736 a connection's sends, receives and bytes are counted as its relations are derived, kept with the checkpoint and extended between live generations, so the whole session's connections to other hosts and Other hosts' ranking by bytes open no segment. Since revision 737 a live generation's whole-session byte and peer rankings come from what its derivation counted as it read each record, extended from the generation before, and an extension opens only the segments it adds; since revision 738 the checkpoint keeps those counts too, so a generation opened from one ranks so as well, where one written earlier reads every segment for them; a live generation opened with nothing derived before it still derives its operations from every segment; and since revision 739 a live generation counts its overview and its zooms' whole timeline from the tiles a live follow keeps of every chunk but its newest, though its brushes, focuses and byte lanes read the rows of the segments their interval meets.",
         "plannedBy": "M5"
       }
     }

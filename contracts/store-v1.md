@@ -149,6 +149,12 @@ indexes of its own beside its chunk (revision 710): a live follow stages
 a derivation checkpoint of the generation it extends, written afresh and named for the generation that publishes it,
 so it too is named only by that generation (`contracts/derivation-checkpoint-v1.md` §2).
 
+**A chunk's tiles are the one index carried** (revision 739, `contracts/tile-index-v1.md` §6). A live follow stages,
+beside that checkpoint, the tiles of the chunk the generation it extends added, and every later generation that names
+that chunk's segments carries them. They decide no generation: acquiring one passes over them, their reader checks
+every part it reads and reads rows where it cannot, and a commit drops one that no longer measures as recorded rather
+than fail. A damaged one then costs a reader rows, never a rollback past every generation since it was written.
+
 Retiring a dependency otherwise is retention (§8).
 
 ## 6. Acquiring and recovering
@@ -200,7 +206,8 @@ hashed:
   (`derivation-checkpoint-v1` §4). Revision 162 added it: a checkpoint can be tens of megabytes for a session of many
   connections, and hashing it at open would read it twice. A tile index (revision 456) is read by the block instead,
   and checks each block, and each block of records, against its own checksum before interpreting a byte of it
-  (`tile-index-v1` §4): a zoom reads what it draws, and a session's whole tile index would be read for none.
+  (`tile-index-v1` §4): a zoom reads what it draws, and a session's whole tile index would be read for none. A
+  chunk's tiles (revision 739) are not hashed at all: they decide no generation (`tile-index-v1` §6).
 
 Every other kind is small and carries no checksum of its own, so it is hashed at open as before. After its first
 view, the viewer hashes each file it listed. A file whose digest disagrees is reported and forgotten, so the next
@@ -450,7 +457,8 @@ it would promise a rollback that cannot be performed.
 **A retention that releases a segment releases every index too**, in the same record (revision 162). An index
 describes the segments of the generation it was derived from, and §20.2 removes stale index references atomically
 with the new manifest. A compaction is such a retention. A release of journal chunks or of a journal prefix keeps
-every segment, so it keeps the indexes.
+every segment, so it keeps the indexes. A chunk's tiles describe that chunk's segments alone, so a retention releases
+them only with those, and keeps the tiles of the chunks whose segments it keeps (revision 739).
 
 ### Releasing a journal prefix
 
