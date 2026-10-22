@@ -15,7 +15,10 @@ derived again (§4). Format 1.2 (plan revision 173) lets an end be IPv6, its add
 format 1.0 or 1.1 holds IPv4 ends only and is still read (§4). Format 1.3 (plan revision 573) says which record made
 each cut - a connect, an accept or a disconnect - so the relations say how each connection opened (relations-v1 §3); an
 earlier format said only whether a cut closed an incarnation, and one holding a cut that opened one is derived again
-(§4).
+(§4). Format 1.4 (plan revision 736) adds, after every other section, what each incarnation's records sent and
+received (relations-v1 §5b), so a connection's summary over the whole session reads no segment. A checkpoint of an
+earlier format is read without them, its connections' summaries reading their rows, and a writer that finds one
+replaces it (§4).
 
 Since plan revision 710 a live follow names a checkpoint in every generation it publishes after its first: the state of
 the generation that one extends, which a reader of the new generation extends over the chunk it adds (§2, §4's prefix).
@@ -42,7 +45,9 @@ set**. That state is what they need to answer any query and to extend to further
     - the PID they name, or that they name two;
     - the instance its bound records bind to, or that they bind to two;
     - the weakest binding;
-    - the first and last reading, and the first canonical position.
+    - the first and last reading, and the first canonical position;
+    - since format 1.4, its sends, the bytes they state and how many state none, the same of its receives, and
+      whether either sum passed what one holds.
 
   It also holds how many related records of each mechanism name no end. Pairing and channel numbers are recomputed
   from these (relations-v1 §3a, §5a).
@@ -124,8 +129,10 @@ byte count, at most 1 MiB, followed by the bytes. `guid` is 16 bytes in .NET's `
 most 512 MiB.
 
 ```text
-checkpoint  = header covered instances relations activity   ; activity from minor 1: a minor-0 one ends at relations
-header      = "ICATDCKP" (8 ASCII bytes), major u16 = 1, minor u16 = 3,
+checkpoint  = header covered instances relations activity transfers
+                                                    ; activity from minor 1: a minor-0 one ends at relations;
+                                                    ; transfers from minor 4: an earlier one ends at activity
+header      = "ICATDCKP" (8 ASCII bytes), major u16 = 1, minor u16 = 4,
               bindingRule str8, relationRule str8,
               session guid, derivedGeneration i64 (>= 1),
               clock guid, host guid,
@@ -165,7 +172,18 @@ activity    = countRule str8 ("process-activity-v1"), withoutOwner i64 (>= 0),
 span        = pid i32, first i64, last i64 (>= first), unbound i64 (>= 0)
 tally       = instance i32 (a position among the rebuilt instances), mechanism u16 (EN-Mechanism),
               direct i64 (>= 0), bound i64 (>= 0)   ; not both 0
+transfers   = transfer*, count u32                  ; one per incarnation holding records, in the order relations
+                                                    ; holds them; count is how many there are
+transfer    = refused u8 (0, 1), sends i64, sentBytes i64, unsizedSends i64,
+              receives i64, receivedBytes i64, unsizedReceives i64
+                                                    ; 0 <= unsized <= its sends or receives; sends + receives
+                                                    ; <= the incarnation's records; both bytes 0 when refused
 ```
+
+The transfers come last and end with their count, so a minor-3 checkpoint is a minor-4 one without them. A writer
+whose relations count no transfers, because they were read from an earlier checkpoint, writes minor 3. A transfer is
+refused when its sent or received bytes passed what a sum holds: its counts are kept and its bytes are not, and the
+connection's summary reads its rows, which say why (metrics-v1).
 
 An instance is named by its position in the rebuilt instances, which are ordered by PID and lifecycle epoch
 (entities-v1 §3), so the counts are as canonical as the instances.
@@ -180,7 +198,7 @@ A reader refuses a checkpoint whose bytes do not hash to the digest its generati
 `Index` before a viewer's first view, because this reader checks what it interprets (store-v1 §6). It then refuses the
 checkpoint when:
 
-- the magic is wrong, the major version is not 1, or the minor is above 3: a checkpoint is rebuildable, so there is no
+- the magic is wrong, the major version is not 1, or the minor is above 4: a checkpoint is rebuildable, so there is no
   partial read of a newer one. A minor-0 checkpoint of this build's rules would be read without counts: a reader
   counts them from every segment, and a writer that finds one replaces it (§2's publishers, `icat checkpoint`), since a
   reopen would otherwise read every segment. Every one revisions 162 to 165 wrote is under `process-binding-v2`,
@@ -210,7 +228,10 @@ checkpoint when:
   - an ambiguous incarnation names a holder;
   - an end's latest position is missing although an incarnation holds records, or present although none does;
   - a holder is not an instance of the rebuilt instances;
-  - a tally names no rebuilt instance or an undefined mechanism, or a PID's first reading is after its last.
+  - a tally names no rebuilt instance or an undefined mechanism, or a PID's first reading is after its last;
+  - a transfer is negative, says more of its sends or receives stated no size than there are, counts more sends and
+    receives than its incarnation's records, or states bytes beside a refused sum; or there is not one transfer per
+    incarnation holding records.
 
 A refused checkpoint is not used, and the overview says why in one caveat, because a
 slower open should be explainable. The answer is the same.
@@ -232,6 +253,10 @@ name, length and digest:
 A derivation already in memory for an earlier generation of the same session is extended in preference to reading a
 checkpoint. Both give the same result. RPC calls and their other ends extend only from a derivation in memory, by
 `contracts/operations-v1.md` §3a, and never from a checkpoint or an operation index.
+
+Relations read from a checkpoint before format 1.4 count no incarnation's transfers, nor do they once extended, since
+what the covered segments' records sent is not in it: a connection's summary over the whole session then reads its
+rows. §2's publishers and `icat checkpoint` replace such a checkpoint with one that counts them.
 
 ## 5. What is not defined at this version
 

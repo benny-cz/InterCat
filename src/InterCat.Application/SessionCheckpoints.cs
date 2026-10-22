@@ -96,6 +96,14 @@ public static class SessionCheckpoints
             ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
             TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
             ProcessActivityIndex activity = derivation.Activity(store.Root, segments, clock, fields, cancellationToken);
+
+            // Relations taken from a checkpoint written before revision 736 count no connection's transfers, which the
+            // checkpoint published now keeps, so they are derived again over the segments: to the same relations.
+            if (!relations.TransfersKept)
+            {
+                relations = TransportRelationIndex.Derive(segments, processes, cancellationToken);
+            }
+
             OverviewCounts counts = SessionOverviewProjector.Count(
                 segments, SessionOverviewProjector.RetainedFromTicks(manifest), cancellationToken);
 
@@ -191,7 +199,8 @@ public static class SessionCheckpoints
     /// names. A checkpoint written before revision 166 holds no activity, which a reopen would count from every segment,
     /// so it is replaced, and so is a generation published before revision 440, which names no operation index, 441, whose
     /// index keeps no exchanges, 456, which names no tile index, 457, whose tile index keeps no bindings - or keeps them
-    /// under a derivation other than the checkpoint's - or 701, whose tile index keeps no level spanning its segments.
+    /// under a derivation other than the checkpoint's - or 701, whose tile index keeps no level spanning its segments - or
+    /// 736, whose checkpoint counts no connection's transfers.
     /// </summary>
     private static bool IsCurrent(
         IOwnedDirectory directory,
@@ -206,7 +215,7 @@ public static class SessionCheckpoints
                 && DerivationCheckpoint.Read(
                         SessionSegments.ReadVerified(directory, checkpoint, DerivationCheckpoint.MaximumBytes),
                         manifest.SessionId,
-                        clock) is { Activity: not null } saved
+                        clock) is { Activity: not null, Relations.TransfersKept: true } saved
                 && saved.Covers(segments, fields)
                 && SessionOverviewIndex.NamedBy(manifest) is { } overview
                 && SessionOverviewIndex.Covers(

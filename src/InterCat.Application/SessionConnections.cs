@@ -261,6 +261,49 @@ public static class SessionConnections
         };
     }
 
+    /// <summary>
+    /// Each connection's summary from what its records sent and received and how many it holds, the most records first:
+    /// within a time scope (<paramref name="scoped"/>) a connection none of whose records it holds is not listed. A view
+    /// adds up any of these connections' bytes, whose total therefore fits what a sum holds or is refused.
+    /// </summary>
+    private static IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> Summarized(
+        TransportConnection[] held,
+        ConnectionTransfers[] transfers,
+        Func<int, long> records,
+        bool scoped)
+    {
+        long all = 0;
+        foreach (ConnectionTransfers carried in transfers)
+        {
+            all = SegmentMeasurement.AddBytes(SegmentMeasurement.AddBytes(all, carried.SentBytes), carried.ReceivedBytes);
+        }
+
+        return
+        [
+            .. Enumerable.Range(0, held.Length)
+                .Where(index => !scoped || records(index) > 0)
+                .Select(index => (held[index], new ConnectionSummary(
+                    held[index].StableKey,
+                    held[index].Mechanism,
+                    held[index].LocalEndpoint,
+                    held[index].RemoteEndpoint,
+                    records(index),
+                    transfers[index].Sends,
+                    transfers[index].SentBytes,
+                    transfers[index].UnmeasuredSends,
+                    transfers[index].Receives,
+                    transfers[index].ReceivedBytes,
+                    transfers[index].UnmeasuredReceives,
+                    held[index].OpenWitnessed,
+                    held[index].CloseWitnessed)
+                {
+                    Opening = held[index].Opening,
+                }))
+                .OrderByDescending(pair => pair.Item2.Records)
+                .ThenBy(pair => pair.Item2.Key, StringComparer.Ordinal),
+        ];
+    }
+
     private static long SessionTime(SourceClockDescriptor clock, long nativeTicks) =>
         SourceClockMath.ConvertToSession(clock, new NativeTimestamp(clock.Id, clock.Encoding, nativeTicks)).SessionTime?.Nanoseconds
             ?? throw new InvalidDataException($"A connection's reading {nativeTicks} is not on its capture's clock.");
@@ -294,6 +337,15 @@ public static class SessionConnections
         if (held.Length == 0)
         {
             return (manifest.SessionId, manifest.Generation, manifest.Digest, clock, coverage, []);
+        }
+
+        // Over the whole session each connection's sends, receives and bytes are what its relations counted as they read its
+        // records - kept with a finished session's checkpoint and extended from one live generation to the next - so no
+        // segment is opened (P25). Relations that keep no such counts, or a sum one refused, read the rows, which say why.
+        if (interval is null && held.Select(relations.TransfersOf).ToArray() is var counted && counted.All(transfers => transfers is not null))
+        {
+            return (manifest.SessionId, manifest.Generation, manifest.Digest, clock, coverage,
+                Summarized(held, counted!, index => held[index].Records, scoped: false));
         }
 
         // A connection's records all read between its first and last readings, so only a segment whose readings meet a
@@ -364,37 +416,12 @@ public static class SessionConnections
             }
         }
 
-        // A view adds up any of these connections' bytes, whose total therefore fits what a sum holds or is refused.
-        long all = 0;
-        for (int index = 0; index < held.Length; index++)
-        {
-            all = SegmentMeasurement.AddBytes(SegmentMeasurement.AddBytes(all, sent[index]), received[index]);
-        }
-
-        return (manifest.SessionId, manifest.Generation, manifest.Digest, clock, coverage,
-        [
-            .. Enumerable.Range(0, held.Length)
-                .Where(index => interval is null || records[index] > 0)
-                .Select(index => (held[index], new ConnectionSummary(
-                    held[index].StableKey,
-                    held[index].Mechanism,
-                    held[index].LocalEndpoint,
-                    held[index].RemoteEndpoint,
-                    records[index],
-                    sends[index],
-                    sent[index],
-                    unsized[index],
-                    receives[index],
-                    received[index],
-                    unsizedReceives[index],
-                    held[index].OpenWitnessed,
-                    held[index].CloseWitnessed)
-                {
-                    Opening = held[index].Opening,
-                }))
-                .OrderByDescending(pair => pair.Item2.Records)
-                .ThenBy(pair => pair.Item2.Key, StringComparer.Ordinal),
-        ]);
+        return (manifest.SessionId, manifest.Generation, manifest.Digest, clock, coverage, Summarized(
+            held,
+            [.. Enumerable.Range(0, held.Length).Select(index => new ConnectionTransfers(
+                sends[index], sent[index], unsized[index], receives[index], received[index], unsizedReceives[index]))],
+            index => records[index],
+            scoped: interval is not null));
 
         // Whether a segment's readings, first to last, meet a lifetime, and the time scope's readings when there are any.
         bool Holds((long Min, long Max) span)

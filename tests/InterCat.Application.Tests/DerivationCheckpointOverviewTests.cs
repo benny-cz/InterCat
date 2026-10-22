@@ -1088,6 +1088,90 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Equal((read.WithPeers, read.Unattributed), (answered.WithPeers, answered.Unattributed));
     }
 
+    [Fact(DisplayName = "S3: a reopened session lists each process's connections to other hosts and ranks Other hosts by bytes from its checkpoint, opening no segment; one kept before connections' transfers were reads the rows to the same answer, and is published again")]
+    public void AReopenedSessionListsItsConnectionsFromItsCheckpoint()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        Publish(session.Store, HostTrafficTests.Rows(), rowsPerSegment: 3);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        IReadOnlyList<HostLink> links = overview.HostLinks;
+        Assert.True(session.Store.Current!.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Segment) > 2);
+
+        // Each process's connections, the hosts ranked by what their connections carried, each process's reach of each,
+        // and every connection held, as the window and an investigation ask for them.
+        string Answers(SessionStore store) => string.Join(Environment.NewLine,
+        [
+            .. overview.Nodes.Select(node => string.Join(", ", SessionConnections.OneSided(store, node.Id).Connections)),
+            .. SessionHostTraffic.Of(store, links, RankingMetric.EndpointBytes).Select(host => $"{host.Host.Address} {host.Host.Records} "
+                + $"{host.Sends} {host.SentBytes} {host.UnmeasuredSends} {host.Receives} {host.ReceivedBytes} {host.UnmeasuredReceives}"),
+            .. SessionHostTraffic.OfReaches(store, links).Select(reach => reach.ToString()),
+            .. SessionConnections.All(store).Connections.Select(held => held.Summary.ToString()),
+        ]);
+        string read = Answers(session.Store);
+        Assert.Contains("SentBytes = 9000", read, StringComparison.Ordinal);
+        Assert.Contains("UnmeasuredSends = 2", read, StringComparison.Ordinal);
+        Assert.Contains("ReceivedBytes = 2000", read, StringComparison.Ordinal);
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+
+        // A fresh viewer of the finished session takes every connection's sends, receives and bytes from its checkpoint.
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        Assert.Equal(read, Answers(reopened));
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+
+        // Its indexes published again as they are, are current. Beside a checkpoint written before revision 736, which
+        // counts no connection's transfers, they are not: the transfers are read from the rows, to the same answer, and
+        // the next publication writes a checkpoint that counts them.
+        Republish(session, withoutTransfers: false);
+        Assert.Equal(CheckpointOutcome.AlreadyCurrent, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        Republish(session, withoutTransfers: true);
+        SessionDerivationCache.Clear();
+        SessionStore older = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        Assert.Equal(read, Answers(older));
+        Assert.NotEqual(0, older.SegmentReaderCache.Entries);
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        Assert.Equal(CheckpointOutcome.AlreadyCurrent, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        SessionDerivationCache.Clear();
+        SessionStore again = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        Assert.Equal(read, Answers(again));
+        Assert.Equal(0, again.SegmentReaderCache.Entries);
+    }
+
+    /// <summary>
+    /// Publishes the current generation's indexes again as the next generation, each as it is, but the checkpoint, which
+    /// is written as format 1.3 kept it when <paramref name="withoutTransfers"/>: without any connection's transfers.
+    /// </summary>
+    private static void Republish(TemporarySession session, bool withoutTransfers)
+    {
+        SessionStore store = session.Store;
+        SessionManifestV1 published = store.Current!;
+        StoreDependency checkpoint = DerivationCheckpoint.NamedBy(published)!;
+        long next = store.NextGeneration;
+        var staged = new List<StoreStagingFile>();
+        try
+        {
+            foreach (StoreDependency index in published.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Index))
+            {
+                StoreStagingFile file = store.Stage(index.Name.Replace(
+                    published.Generation.ToString("D10", System.Globalization.CultureInfo.InvariantCulture),
+                    next.ToString("D10", System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal),
+                    StoreDependencyKind.Index);
+                staged.Add(file);
+                byte[] bytes = File.ReadAllBytes(Path.Combine(session.Path, index.Name));
+                file.Content.Write(withoutTransfers && index == checkpoint ? EarlierCheckpoints.WithoutTransfers(bytes) : bytes);
+                _ = file.Complete();
+            }
+
+            Assert.Equal(4, staged.Count);
+            _ = store.CommitIndex(staged, published.Generation, Committed, next);
+        }
+        finally
+        {
+            staged.ForEach(file => file.Dispose());
+        }
+    }
+
     /// <summary>Each channel's pairing, in the order of its client's port.</summary>
     private static (RelationRule?, RelationStrength, bool, bool)[] Pairings(SessionOverviewBundle overview) =>
         [.. overview.Channels

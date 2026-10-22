@@ -46,6 +46,48 @@ public sealed partial class TransportRelationIndex
     }
 
     /// <summary>
+    /// Writes what each incarnation holding records sent and received (`contracts/derivation-checkpoint-v1.md` §3,
+    /// <c>transfers</c>, format 1.4): one entry per such incarnation, in the order <see cref="WriteState"/> wrote them, and
+    /// then how many there are, so a checkpoint of format 1.3 is these bytes without them.
+    /// </summary>
+    internal void WriteTransfers(IndexFileWriter writer)
+    {
+        int count = 0;
+        foreach (Incarnation incarnation in Ordered().Where(incarnation => incarnation.Records > 0))
+        {
+            incarnation.WriteTransfers(writer);
+            count++;
+        }
+
+        writer.Count(count);
+    }
+
+    /// <summary>
+    /// Reads what <see cref="WriteTransfers"/> wrote into the incarnations <see cref="ReadState"/> read, which then count
+    /// what their records sent and received (<see cref="TransfersKept"/>).
+    /// </summary>
+    internal void ReadTransfers(IndexFileReader reader)
+    {
+        int count = 0;
+        foreach (Incarnation incarnation in Ordered().Where(incarnation => incarnation.Records > 0))
+        {
+            incarnation.ReadTransfers(reader);
+            count++;
+        }
+
+        if (reader.U32() != (uint)count)
+        {
+            throw reader.Invalid("its transfers are not one entry per incarnation holding records.");
+        }
+
+        TransfersKept = true;
+    }
+
+    /// <summary>Every end's incarnations, ends in canonical order and each end's in time order, as the state is written.</summary>
+    private IEnumerable<Incarnation> Ordered() =>
+        ends.OrderBy(entry => entry.Key).SelectMany(entry => entry.Value.Incarnations);
+
+    /// <summary>
     /// An end's address in its family's width: four bytes for IPv4, as every format has written them, and from format 1.2
     /// sixteen bytes in network order for IPv6.
     /// </summary>
@@ -69,6 +111,8 @@ public sealed partial class TransportRelationIndex
     /// record was left without an end: that rule left every IPv6 record without one. <paramref name="cutKinds"/> says
     /// whether the format says which record opened an incarnation, a connect or an accept, which format 1.3 added; an
     /// earlier one that holds an opening cut is refused, since its relations could not say how a connection opened.
+    /// What each incarnation's records sent and received is read after the checkpoint's last section, where format 1.4
+    /// holds it (<see cref="ReadTransfers"/>); until then the relations keep no such counts.
     /// </summary>
     internal static TransportRelationIndex ReadState(
         IndexFileReader reader,
@@ -138,7 +182,7 @@ public sealed partial class TransportRelationIndex
             last = key;
         }
 
-        return new(processes, ends, withoutEnd, read);
+        return new(processes, ends, withoutEnd, read, transfersKept: false);
     }
 
     private static UInt128 ReadAddress(IndexFileReader reader, byte family) =>
@@ -279,6 +323,39 @@ public sealed partial class TransportRelationIndex
             WritePosition(writer, FirstPosition ?? throw new InvalidOperationException("An incarnation holds records and no first one."));
             writer.I64(Records);
             writer.I64(Untimed);
+        }
+
+        /// <summary>
+        /// Writes what its records sent and received (format 1.4): whether a sum was refused, then its sends, the bytes they
+        /// state and how many state none, and the same of its receives. A refused sum is written as none.
+        /// </summary>
+        public void WriteTransfers(IndexFileWriter writer)
+        {
+            writer.Flag(SumsRefused);
+            writer.I64(Sends);
+            writer.I64(SumsRefused ? 0 : SentBytes);
+            writer.I64(UnsizedSends);
+            writer.I64(Receives);
+            writer.I64(SumsRefused ? 0 : ReceivedBytes);
+            writer.I64(UnsizedReceives);
+        }
+
+        /// <summary>Reads what <see cref="WriteTransfers"/> wrote, refusing counts its records contradict.</summary>
+        public void ReadTransfers(IndexFileReader reader)
+        {
+            bool refused = reader.Flag();
+            (long sends, long sent, long unsizedSends, long receives, long received, long unsizedReceives) =
+                (reader.I64(), reader.I64(), reader.I64(), reader.I64(), reader.I64(), reader.I64());
+            if (sends < 0 || unsizedSends < 0 || unsizedSends > sends
+                || receives < 0 || unsizedReceives < 0 || unsizedReceives > receives
+                || sends > Records - receives
+                || (refused && (sent != 0 || received != 0)))
+            {
+                throw reader.Invalid("an incarnation's sends and receives contradict its records.");
+            }
+
+            (Sends, SentBytes, UnsizedSends, Receives, ReceivedBytes, UnsizedReceives, SumsRefused) =
+                (sends, sent, unsizedSends, receives, received, unsizedReceives, refused);
         }
 
         /// <summary>The incarnation within <paramref name="bounds"/> that a checkpoint describes.</summary>

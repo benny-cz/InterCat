@@ -129,14 +129,17 @@ public sealed class DerivationCheckpointTests
         byte[] bytes = Checkpoint(processes, relations, activity);
         Assert.NotEmpty(relations.Relations);
 
-        // Format 1.1, written by revisions 166 to 172, differs from 1.2 only where an end is IPv6, which it cannot hold.
-        byte[] minorOne = [.. bytes];
+        // Format 1.1, written by revisions 166 to 172, differs from 1.2 only where an end is IPv6, which it cannot hold. Its
+        // relations count no connection's transfers, as none before 1.4 do, and are written again as 1.3, which keeps none.
+        byte[] minorOne = EarlierCheckpoints.WithoutTransfers(bytes);
         minorOne[10] = 1;
         DerivationCheckpoint one = DerivationCheckpoint.Read(minorOne, Session, TestClock);
         Assert.True(one.Covers(observations, fields));
         AssertSameProcesses(processes, one.Processes, observations);
         AssertSameRelations(relations, one.Relations, observations);
-        Assert.Equal(bytes, Checkpoint(one.Processes, one.Relations, one.Activity!));
+        Assert.False(one.Relations.TransfersKept);
+        Assert.All(one.Relations.OneSided, connection => Assert.Null(one.Relations.TransfersOf(connection)));
+        Assert.Equal(EarlierCheckpoints.WithoutTransfers(bytes), Checkpoint(one.Processes, one.Relations, one.Activity!));
 
         // A minor-0 checkpoint, written before revision 166, ends before the counts: it is read without them, and the
         // instances and relations it holds answer as before.
@@ -170,7 +173,7 @@ public sealed class DerivationCheckpointTests
         Assert.Equal([ConnectionOpening.Connected, ConnectionOpening.Accepted],
             DerivationCheckpoint.Read(current, Session, TestClock).Relations.OneSided
                 .OrderBy(connection => connection.FirstNativeTicks).Select(connection => connection.Opening));
-        byte[] minorTwo = [.. current];
+        byte[] minorTwo = EarlierCheckpoints.WithoutTransfers(current);
         minorTwo[10] = 2;
         Assert.Contains("before 1.3, does not say whether a connect or an accept opened a connection",
             Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(minorTwo, Session, TestClock)).Message,
@@ -184,6 +187,7 @@ public sealed class DerivationCheckpointTests
         ProcessInstanceIndex acceptedProcesses = ProcessInstanceIndex.Derive(acceptedRows, TestClock, acceptedFields);
         byte[] acceptedBytes = Checkpoint(acceptedProcesses, TransportRelationIndex.Derive(acceptedRows, acceptedProcesses),
             ProcessActivityIndex.Derive(acceptedRows, acceptedProcesses));
+        acceptedBytes = EarlierCheckpoints.WithoutTransfers(acceptedBytes);
         acceptedBytes[10] = 2;
         Assert.Contains("an end's cut has kind 2", Assert.Throws<InvalidDataException>(
             () => DerivationCheckpoint.Read(acceptedBytes, Session, TestClock)).Message, StringComparison.Ordinal);
@@ -211,7 +215,7 @@ public sealed class DerivationCheckpointTests
         Assert.Equal(bytes, Checkpoint(read.Processes, read.Relations, read.Activity!));
         DerivationCheckpoint both = DerivationCheckpoint.Read(
             EarlierCheckpoints.UnderEarlierBindingRule(EarlierCheckpoints.UnderEarlierRelationRule(bytes)), Session, TestClock);
-        Assert.Equal(bytes, Checkpoint(both.Processes, both.Relations, both.Activity!));
+        Assert.Equal(EarlierCheckpoints.WithoutTransfers(bytes), Checkpoint(both.Processes, both.Relations, both.Activity!));
 
         // So did process-binding-v3, which bound only an RPC record among those that named none (ADR-037).
         DerivationCheckpoint third = DerivationCheckpoint.Read(EarlierCheckpoints.UnderEarlierBindingRule(bytes, 3), Session, TestClock);
@@ -255,7 +259,7 @@ public sealed class DerivationCheckpointTests
         byte[] bytes = Checkpoint(processes, relations, ProcessActivityIndex.Derive(observations, processes));
         DerivationCheckpoint read = DerivationCheckpoint.Read(EarlierCheckpoints.UnderEarlierRelationRule(bytes), Session, TestClock);
         AssertSameRelations(relations, read.Relations, observations);
-        Assert.Equal(bytes, Checkpoint(read.Processes, read.Relations, read.Activity!));
+        Assert.Equal(EarlierCheckpoints.WithoutTransfers(bytes), Checkpoint(read.Processes, read.Relations, read.Activity!));
 
         // A record without an end might have been an IPv6 one this rule relates, so such relations are derived again.
         using var incomplete = new TemporarySession();
@@ -307,6 +311,7 @@ public sealed class DerivationCheckpointTests
         ProcessInstanceIndex ipv6Processes = ProcessInstanceIndex.Derive(ipv6Rows, TestClock, ipv6Fields);
         byte[] claimed = Checkpoint(ipv6Processes, TransportRelationIndex.Derive(ipv6Rows, ipv6Processes),
             ProcessActivityIndex.Derive(ipv6Rows, ipv6Processes));
+        claimed = EarlierCheckpoints.WithoutTransfers(claimed);
         claimed[10] = 1;
         Assert.Contains("address family", Assert.Throws<InvalidDataException>(
             () => DerivationCheckpoint.Read(claimed, Session, TestClock)).Message, StringComparison.Ordinal);
@@ -338,8 +343,8 @@ public sealed class DerivationCheckpointTests
         Assert.InRange(refused, 1, bytes.Length);
 
         byte[] newer = [.. bytes];
-        newer[10] = 4;
-        Assert.Contains("format 1.4", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(newer, Session, TestClock)).Message,
+        newer[10] = 5;
+        Assert.Contains("format 1.5", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(newer, Session, TestClock)).Message,
             StringComparison.Ordinal);
         byte[] rule = [.. bytes];
         int at = bytes.AsSpan().IndexOf(Encoding.ASCII.GetBytes(ProcessInstanceIndex.BindingRule));

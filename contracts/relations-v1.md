@@ -179,6 +179,15 @@ A one-sided channel with an undecided or unbound holder is not listed; nor is an
 revision 249 a connection's evidence rung focuses the timeline on its records, as a paired channel's does - by its
 channel number, at its one end, so without a paired channel's two-ends lanes.
 
+Since revision 736 each incarnation also counts what its records sent and received as the relations read them: its
+sends, the bytes they state and how many state none, and the same of its receives, a sum refused as a pass over the
+rows refuses it once it passes what a sum holds. A connection's summary over the whole session - a process's
+connections to other hosts, Other hosts ranked by bytes, `icat channels --one-sided` and an investigation's
+connections - is made from these counts and its records, and opens no segment; over a time scope it still reads the
+segments the connection's lifetime meets there. The counts extend with the relations from one live generation to
+the next, and a checkpoint keeps them (`derivation-checkpoint-v1` format 1.4). Relations that keep none, read from an
+earlier checkpoint, read the rows, as does a connection whose sum was refused: its rows say why.
+
 ## 5c. What became of a mechanism's records (revision 541)
 
 A **census** of a related mechanism under an evidence policy counts each of its records once, by what became of it, and

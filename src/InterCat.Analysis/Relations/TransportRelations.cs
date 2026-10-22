@@ -141,6 +141,18 @@ public sealed record TransportConnection
 }
 
 /// <summary>
+/// What a one-sided connection's records sent and received over everything its relations read: its sends and the bytes
+/// they state, how many of them state none, and the same of its receives (`relations-v1` §5b, revision 736).
+/// </summary>
+public sealed record ConnectionTransfers(
+    long Sends,
+    long SentBytes,
+    long UnmeasuredSends,
+    long Receives,
+    long ReceivedBytes,
+    long UnmeasuredReceives);
+
+/// <summary>
 /// The connection incarnation - the channel of §7.1 - one record belongs to, or why the record names none. A paired
 /// incarnation and its partner are one channel; an incarnation whose other end no record holds is a one-sided channel.
 /// </summary>
@@ -196,16 +208,21 @@ public sealed partial class TransportRelationIndex
     /// <summary>The process index the holders here are positions in.</summary>
     private readonly ProcessInstanceIndex processes;
 
+    /// <summary>Each one-sided connection's incarnation, by its channel.</summary>
+    private readonly Dictionary<int, Incarnation> oneSidedIncarnations;
+
     private TransportRelationIndex(
         ProcessInstanceIndex processes,
         Dictionary<EndKey, EndTimeline> ends,
         Dictionary<Mechanism, long> withoutEnd,
-        HashSet<StoreDependency>? read)
+        HashSet<StoreDependency>? read,
+        bool transfersKept)
     {
         this.processes = processes;
         this.ends = ends;
         this.withoutEnd = withoutEnd;
         this.read = read;
+        TransfersKept = transfersKept;
         foreach ((EndKey key, EndTimeline timeline) in ends)
         {
             if (key.CompareTo(key.Mirror()) <= 0 && ends.TryGetValue(key.Mirror(), out EndTimeline? mirror))
@@ -216,7 +233,32 @@ public sealed partial class TransportRelationIndex
 
         Channels = NumberChannels(ends);
         Relations = BuildRelations(processes, ends);
-        OneSided = BuildOneSided(processes, ends);
+        (OneSided, oneSidedIncarnations) = BuildOneSided(processes, ends);
+    }
+
+    /// <summary>
+    /// Whether each incarnation counts what its records sent and received: so since revision 736, wherever its records
+    /// were read, and not where they were read back from a checkpoint before format 1.4, which kept no such counts.
+    /// </summary>
+    public bool TransfersKept { get; private set; }
+
+    /// <summary>
+    /// What a one-sided connection's records sent and received: its sends and receives, the bytes they state and how many
+    /// state none, exactly as a pass over its rows counts them. Null when these relations keep no such counts
+    /// (<see cref="TransfersKept"/>), when the connection is not one of theirs, or when a sum passed what one holds, which
+    /// a pass over the rows refuses with its reason.
+    /// </summary>
+    public ConnectionTransfers? TransfersOf(TransportConnection connection)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        return TransfersKept
+            && oneSidedIncarnations.TryGetValue(connection.Channel, out Incarnation? incarnation)
+            && incarnation.Records == connection.Records
+            && incarnation.First == connection.FirstNativeTicks
+            && !incarnation.SumsRefused
+                ? new(incarnation.Sends, incarnation.SentBytes, incarnation.UnsizedSends,
+                    incarnation.Receives, incarnation.ReceivedBytes, incarnation.UnsizedReceives)
+                : null;
     }
 
     /// <summary>
@@ -283,7 +325,7 @@ public sealed partial class TransportRelationIndex
             Observe(segment, processes, ends, withoutEnd);
         }
 
-        return new(processes, ends, withoutEnd, PublishedAs(segments));
+        return new(processes, ends, withoutEnd, PublishedAs(segments), transfersKept: true);
     }
 
     /// <summary>
@@ -401,7 +443,7 @@ public sealed partial class TransportRelationIndex
             Observe(segment, processes, extended, countedWithoutEnd);
         }
 
-        return new(processes, extended, countedWithoutEnd, [.. read, .. added.Select(segment => segment.Published!)]);
+        return new(processes, extended, countedWithoutEnd, [.. read, .. added.Select(segment => segment.Published!)], TransfersKept);
     }
 
     /// <summary>The published files of these segments, or null when one of them has no published identity.</summary>
@@ -435,6 +477,8 @@ public sealed partial class TransportRelationIndex
         var columns = new EndColumns(segment);
         var owners = new RecordOwnerColumns(segment);
         SegmentColumnSlice sessionTimes = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+        SegmentColumnSlice sizes = default;
+        bool sized = false;
         for (int row = 0; row < segment.RowCount; row++)
         {
             if (columns.KeyAt(row) is not { } key)
@@ -455,13 +499,23 @@ public sealed partial class TransportRelationIndex
                 ends[key] = timeline;
             }
 
+            // A send or a receive is counted with the bytes it states, which a segment holding none of either never reads.
+            ObservationKind kind = columns.KindAt(row);
+            if (kind is ObservationKind.Send or ObservationKind.Receive && !sized)
+            {
+                sizes = segment.Slice(SegmentColumnId.ByteValue);
+                sized = true;
+            }
+
             Position position = columns.PositionAt(row);
             int? owner = owners.At(row, (Mechanism)key.Protocol);
             timeline.Observe(
                 position,
                 owner,
                 processes.Bind(owner, position.Ticks, isLifecycleRecord: false),
-                timed: sessionTimes.HasValue(row));
+                timed: sessionTimes.HasValue(row),
+                kind,
+                kind is ObservationKind.Send or ObservationKind.Receive ? sizes.SignedAt(row) : null);
         }
     }
 
@@ -875,9 +929,12 @@ public sealed partial class TransportRelationIndex
         return relations;
     }
 
-    private static List<TransportConnection> BuildOneSided(ProcessInstanceIndex processes, Dictionary<EndKey, EndTimeline> ends)
+    private static (List<TransportConnection> Connections, Dictionary<int, Incarnation> ByChannel) BuildOneSided(
+        ProcessInstanceIndex processes,
+        Dictionary<EndKey, EndTimeline> ends)
     {
         var connections = new List<TransportConnection>();
+        var byChannel = new Dictionary<int, Incarnation>();
         foreach ((EndKey key, EndTimeline timeline) in ends.OrderBy(entry => entry.Key))
         {
             foreach (Incarnation incarnation in timeline.Incarnations)
@@ -889,6 +946,7 @@ public sealed partial class TransportRelationIndex
                 }
 
                 ProcessInstance holder = processes.Instances[incarnation.Holder];
+                byChannel[incarnation.Channel] = incarnation;
                 connections.Add(new()
                 {
                     Mechanism = (Mechanism)key.Protocol,
@@ -911,7 +969,7 @@ public sealed partial class TransportRelationIndex
             }
         }
 
-        return connections;
+        return (connections, byChannel);
     }
 
     /// <summary>
@@ -1045,10 +1103,10 @@ public sealed partial class TransportRelationIndex
             }
         }
 
-        /// <summary>Places one record in its incarnation.</summary>
-        public void Observe(Position position, int? owner, ProcessBinding binding, bool timed)
+        /// <summary>Places one record in its incarnation, with what it is and the bytes it states.</summary>
+        public void Observe(Position position, int? owner, ProcessBinding binding, bool timed, ObservationKind kind, long? bytes)
         {
-            At(position).Observe(position, owner, binding, timed);
+            At(position).Observe(position, owner, binding, timed, kind, bytes);
             if (LastPosition is not { } last || position.CompareTo(last) > 0)
             {
                 LastPosition = position;
@@ -1235,6 +1293,26 @@ public sealed partial class TransportRelationIndex
         /// <summary>How many of <see cref="Records"/> have no session time.</summary>
         public long Untimed { get; private set; }
 
+        /// <summary>How many of <see cref="Records"/> are sends, and of those, how many bytes they state and how many state none.</summary>
+        public long Sends { get; private set; }
+
+        public long SentBytes { get; private set; }
+
+        public long UnsizedSends { get; private set; }
+
+        /// <summary>How many of <see cref="Records"/> are receives, and of those, how many bytes they state and how many state none.</summary>
+        public long Receives { get; private set; }
+
+        public long ReceivedBytes { get; private set; }
+
+        public long UnsizedReceives { get; private set; }
+
+        /// <summary>
+        /// Whether its sent or received bytes passed what a sum holds, as a pass over its rows refuses them: the sums are
+        /// then not given, and the rows are read for the refusal.
+        /// </summary>
+        public bool SumsRefused { get; private set; }
+
         public Pairing Pairing { get; private set; }
 
         public Incarnation? Partner { get; private set; }
@@ -1289,6 +1367,13 @@ public sealed partial class TransportRelationIndex
                 Last = Last,
                 Records = Records,
                 Untimed = Untimed,
+                Sends = Sends,
+                SentBytes = SentBytes,
+                UnsizedSends = UnsizedSends,
+                Receives = Receives,
+                ReceivedBytes = ReceivedBytes,
+                UnsizedReceives = UnsizedReceives,
+                SumsRefused = SumsRefused,
             };
         }
 
@@ -1312,13 +1397,26 @@ public sealed partial class TransportRelationIndex
             Candidates = overlapping;
         }
 
-        public void Observe(Position position, int? owner, ProcessBinding binding, bool timed)
+        public void Observe(Position position, int? owner, ProcessBinding binding, bool timed, ObservationKind kind, long? bytes)
         {
             long reading = position.Ticks;
             Records++;
             if (!timed)
             {
                 Untimed++;
+            }
+
+            if (kind == ObservationKind.Send)
+            {
+                Sends++;
+                if (bytes is { } size) SentBytes = Sum(SentBytes, size);
+                else UnsizedSends++;
+            }
+            else if (kind == ObservationKind.Receive)
+            {
+                Receives++;
+                if (bytes is { } size) ReceivedBytes = Sum(ReceivedBytes, size);
+                else UnsizedReceives++;
             }
 
             First = Math.Min(First, reading);
@@ -1354,6 +1452,22 @@ public sealed partial class TransportRelationIndex
             }
 
             Weakest = Weaker(Weakest, binding.Strength);
+        }
+
+        /// <summary>
+        /// Adds a record's bytes to a sum, as a pass over the rows adds them; past what a sum holds the sums are refused, as
+        /// the pass refuses them.
+        /// </summary>
+        private long Sum(long total, long bytes)
+        {
+            long sum = unchecked(total + bytes);
+            if (((total ^ sum) & (bytes ^ sum)) < 0)
+            {
+                SumsRefused = true;
+                return total;
+            }
+
+            return sum;
         }
     }
 }

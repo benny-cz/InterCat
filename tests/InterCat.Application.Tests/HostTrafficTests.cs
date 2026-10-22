@@ -130,7 +130,7 @@ public sealed class HostTrafficTests
     /// of no stated size to 142.250.1.1 and one to 60.0.0.1; and svc.exe's one 300 B receive from 52.1.1.1. Each row's
     /// session time is its reading in workspace ticks.
     /// </summary>
-    private static ObservationRowV1[] Rows() =>
+    internal static ObservationRowV1[] Rows() =>
     [
         Timed(Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Apps\browser.exe" }),
         Timed(Lifecycle(2, ObservationKind.Create, 310, 2) with { ResourceName = @"C:\Apps\updater.exe" }),

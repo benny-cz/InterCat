@@ -24,9 +24,14 @@ public sealed class DerivationCheckpoint
     /// Minor 1 adds each instance's activity (revision 166); a minor-0 checkpoint is read without it. Minor 2 lets an end
     /// be IPv6, its addresses in 16 bytes (revision 173); an earlier checkpoint holds only IPv4 ends. Minor 3 says which
     /// record made each cut, a connect, an accept or a disconnect (revision 573); an earlier checkpoint that holds a cut
-    /// opening an incarnation is refused, and one that holds none is read as it is.
+    /// opening an incarnation is refused, and one that holds none is read as it is. Minor 4 counts what each incarnation's
+    /// records sent and received (revision 736), after every other section; relations read from an earlier checkpoint keep
+    /// no such counts, and relations that keep none are written as minor 3, which is minor 4 without them.
     /// </summary>
-    private const ushort Minor = 3;
+    private const ushort Minor = 4;
+
+    /// <summary>The minor relations that count no incarnation's transfers are written at.</summary>
+    private const ushort MinorWithoutTransfers = 3;
     private const byte ObservationRole = 1;
     private const byte FieldRole = 2;
     private const string What = "derivation checkpoint";
@@ -194,7 +199,7 @@ public sealed class DerivationCheckpoint
         var writer = new IndexFileWriter(destination, MaximumBytes, What);
         writer.Raw(Magic);
         writer.U16(Major);
-        writer.U16(Minor);
+        writer.U16(relations.TransfersKept ? Minor : MinorWithoutTransfers);
         writer.Str8(ProcessInstanceIndex.BindingRule);
         writer.Str8(TransportRelationIndex.RelationRule);
         writer.Identity(sessionId);
@@ -215,6 +220,11 @@ public sealed class DerivationCheckpoint
         processes.WriteState(writer);
         relations.WriteState(writer);
         activity.WriteState(writer);
+        if (relations.TransfersKept)
+        {
+            relations.WriteTransfers(writer);
+        }
+
         writer.Flush();
         return writer.Written;
     }
@@ -349,6 +359,11 @@ public sealed class DerivationCheckpoint
         ProcessActivityIndex? activity = minor >= 1
             ? ProcessActivityIndex.ReadState(reader, processes, [.. segments], earlierRule: earlierBinding)
             : null;
+        if (minor >= 4)
+        {
+            relations.ReadTransfers(reader);
+        }
+
         reader.RequireEnd();
         return new(session, derivedGeneration, segments.AsReadOnly(), fields.AsReadOnly(), processes, relations, activity);
     }

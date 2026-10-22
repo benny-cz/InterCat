@@ -6,6 +6,28 @@ namespace InterCat.Analysis.Tests;
 /// <summary>Checkpoints as an earlier build wrote them, for tests of how a later build reads them.</summary>
 internal static class EarlierCheckpoints
 {
+    /// <summary>The bytes one incarnation's transfers take in format 1.4: whether a sum was refused, and six counts.</summary>
+    private const int TransferBytes = 1 + (6 * 8);
+
+    /// <summary>
+    /// A checkpoint as revisions 573 to 735 wrote it: format 1.3, which counts no incarnation's transfers. Format 1.4 keeps
+    /// them last, ending with how many there are, so 1.3 is those bytes without them; a checkpoint of an earlier format is
+    /// returned as it is.
+    /// </summary>
+    public static byte[] WithoutTransfers(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        if (BitConverter.ToUInt16(bytes, 10) < 4)
+        {
+            return [.. bytes];
+        }
+
+        long entries = BitConverter.ToUInt32(bytes, bytes.Length - 4);
+        byte[] earlier = [.. bytes.AsSpan(0, bytes.Length - 4 - checked((int)(entries * TransferBytes)))];
+        earlier[10] = 3;
+        return earlier;
+    }
+
     /// <summary>
     /// A checkpoint as revisions 166 to 172 wrote it: format 1.1, under `transport-endpoint-relation-v3`. It differs from
     /// format 1.2 under v4 only in those two words when no end is IPv6, which 1.1 cannot hold.
@@ -20,7 +42,7 @@ internal static class EarlierCheckpoints
             throw new InvalidOperationException("The checkpoint does not name the relation rule this helper rewrites.");
         }
 
-        byte[] earlier = [.. bytes];
+        byte[] earlier = WithoutTransfers(bytes);
         earlier[10] = 1;
         earlier[at + rule.Length - 1] = (byte)'3';
         return earlier;
@@ -62,6 +84,7 @@ internal static class EarlierCheckpoints
         ArgumentNullException.ThrowIfNull(observations);
         ArgumentNullException.ThrowIfNull(processes);
         ArgumentNullException.ThrowIfNull(activity);
+        bytes = WithoutTransfers(bytes);
         int pids = observations.SelectMany(segment => Enumerable.Range(0, segment.RowCount)
                 .Select(segment.Row)
                 .Select(row => RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.HeaderProcessId)))

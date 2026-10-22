@@ -380,7 +380,7 @@ public sealed class IntervalSegmentReadTests
         }
     }
 
-    [Fact(DisplayName = "§12.1: a process's connections open only the segments their lifetimes meet, within its time scope when it has one, and list what one segment of the same records lists")]
+    [Fact(DisplayName = "§12.1: a process's connections over the whole session open no segment, within a time scope only the segments their lifetimes meet there, and list what one segment of the same records lists")]
     public void AProcessesConnectionsOpenOnlyTheSegmentsTheyLieIn()
     {
         // Three processes' connections to other hosts in six segments of a hundred records, segment k holding ticks
@@ -413,11 +413,12 @@ public sealed class IntervalSegmentReadTests
         _ = SessionOverviewProjector.Project(split.Store);
         Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(split.Store, Committed).Outcome);
 
+        // Over the whole session each connection's records, sends and bytes are what its relations counted (revision 736).
         foreach ((int process, TimeRange? scope, int opened, long records) in new (int, TimeRange?, int, long)[]
         {
-            (100, null, 2, 101),
-            (200, null, 3, 201),
-            (300, null, 4, 295),
+            (100, null, 0, 101),
+            (200, null, 0, 201),
+            (300, null, 0, 295),
             (200, new TimeRange(4_500, 4_600), 1, 10),
             (100, new TimeRange(4_500, 4_600), 0, 0),
         })
@@ -430,11 +431,11 @@ public sealed class IntervalSegmentReadTests
             reopened.ReleaseSegmentReaders();
         }
 
-        // Every process's connections together meet every segment.
+        // Every process's connections together, which meet every segment, open none either.
         SessionStore all = Reopened(split.Path);
         Assert.Equal(SessionConnections.All(twin.Store).Connections.Select(held => held.Summary),
             SessionConnections.All(all).Connections.Select(held => held.Summary));
-        Assert.Equal(6, all.SegmentReaderCache.Entries);
+        Assert.Equal(0, all.SegmentReaderCache.Entries);
         all.ReleaseSegmentReaders();
     }
 

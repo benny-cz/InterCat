@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 735 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 736 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 736 — S3, P25: a whole session's connections to other hosts open no segment (derivation-checkpoint-v1 format 1.4):**
+  - Each connection's sends, receives and bytes are counted as its relations are derived, extended between live
+    generations and kept with the checkpoint. A process's connections, Other hosts ranked by bytes and an
+    investigation's connections over the whole session read no row: at 1M rows a reopened session ranks Other hosts by
+    bytes in 36 ms first and 9 ms after, opening no segment, where its rows took 332 and 38 ms. A checkpoint of format
+    1.3 reads the rows and is replaced when published again. A live generation's whole-session byte and peer rankings
+    still read every segment.
+  - Debug and Release each ran 2,957 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    thirty mutations were caught: a send left uncounted, a receive's bytes or an unsized receive counted as a
+    send's, a sum past what one holds not refused, an extension's copy dropping the sends, the received bytes or the
+    refusal, an extension or a format-1.3 read claiming counts, counts given unkept, for another connection or past
+    a refusal, sizes not passed, a checkpoint's entry count, sends past the records, unsized sends or bytes beside a
+    refusal left unchecked, a refused sum's bytes written, a writer claiming 1.4 without counts or always writing
+    them, a reader skipping them or not keeping them, the whole session never counted, counted within a scope, taken
+    with counts missing or its records from the transfers, the total left unchecked, a scope listing connections it
+    holds none of, a publication keeping uncounted relations, and an uncounted checkpoint taken as current. That
+    last survived until the test republished every index beside the older checkpoint; dropping the refusal outright
+    fails the analyzers, so a refusal of negative totals alone stood in for it.
 
 - **Revision 735 — S3, P25: a finished session's ranking by peers opens no segment (overview-index-v1 minor 7):**
   - A finished session's persisted overview keeps how its records bind at their two ends: each pair of an owner's
@@ -849,8 +868,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      revision 401 a brush's counts, its lanes' bytes and a time scope's byte and peer rankings do too, with the
      checkpoint's instances and channels; since revision 402 an evidence page opens only the segments it reads and
      stops past its time scope, and since revision 403 a process's connections read only the segments their lifetimes
-     meet. Since revision 408 the call ranking and a process's RPC and HTTP listings read the calls and exchanges once
-     paired or grouped, opening no segment, and a call's or an exchange's evidence opens only the segments holding its
+     meet, and since revision 736 none over the whole session: their relations count what they sent and received, and
+     the checkpoint keeps it. Since revision 408 the call ranking and a process's RPC and HTTP listings read the calls
+     and exchanges once paired or grouped, opening no segment, and a call's or an exchange's evidence opens only the
+     segments holding its
      records. Since revision 412 the generation keeps an operation's records by segment, and a page or a zoom of them
      reads their rows alone: a busy channel's zoom takes 4 to 9 ms after the first, where it took 123 to 167. Since
      revision 440 a finished session keeps its calls and their other ends in an operation index, so a reopen's first
