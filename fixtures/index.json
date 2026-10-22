@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
-  "description": "Traceability matrix of section 13.5: fixtures to contracts to tests to milestones. Two checks in InterCat.Architecture.Tests keep it honest.",
-  "updatedUtc": "2026-09-27",
+  "description": "Traceability matrix of section 13.5 and ADR-051: fixtures to contracts to tests to milestones. The checks in InterCat.Architecture.Tests keep it honest.",
+  "updatedUtc": "2026-10-22",
   "fixtures": [
     {
       "id": "FX-TCP-001",
@@ -16,7 +16,7 @@
       "covers": {
         "rules": [
           "R8",
-          "R9",
+          "R18",
           "R21"
         ],
         "invariants": [
@@ -36,7 +36,7 @@
       },
       "expected": {
         "artifact": "fixtures/FX-TCP-001/evidence/verification.json",
-        "note": "The expected query bundle and its canonical hash are defined by IC-018. This milestone records measured counters and the inputs they came from."
+        "note": "Measured counters and the inputs they came from. The committed evidence re-evaluates to its tier in the test suite, and `icat verify` rebuilds runs from it. A capture fixture's expected result is its measurement; canonical query bundles are FX-QUERY-001's corpus."
       },
       "environment": [
         {
@@ -63,7 +63,12 @@
         "R8: a capture moves Idle to Recording to Closed and reports its own counters",
         "P14: a capture never adopts or stops a session it did not create",
         "P16: persisted fixture evidence excludes unrelated whole-machine endpoints",
-        "I14: one admitted record cannot satisfy two truth operations"
+        "I14: one admitted record cannot satisfy two truth operations",
+        "P27: committed transport fixture evidence reproduces its measured tier",
+        "I14: icat verify re-evaluates a run rebuilt from a curated fixture to the coverage it was published with",
+        "R21: a run that missed half its operations is verified with every criterion it fails said in words, and exits partial",
+        "R18: icat verify refuses a run it cannot verify, saying why, and writes over curated output only when asked",
+        "P16: committed transport fixture evidence holds only the loopback flows its truth names"
       ]
     },
     {
@@ -78,9 +83,12 @@
       ],
       "covers": {
         "rules": [
-          "R1"
+          "R1",
+          "R18"
         ],
-        "invariants": [],
+        "invariants": [
+          "I14"
+        ],
         "prohibitions": [
           "P16",
           "P27"
@@ -113,7 +121,10 @@
       "tests": [
         "P27: committed transport fixture evidence reproduces its measured tier",
         "R1: a UDP receive keeps its endpoints as delivered and is read as its owner's own flow",
-        "P27: an operation seen only with its endpoints mirrored is an orientation gap, not a miss"
+        "P27: an operation seen only with its endpoints mirrored is an orientation gap, not a miss",
+        "I14: icat verify re-evaluates a run rebuilt from a curated fixture to the coverage it was published with",
+        "R18: icat verify refuses a run it cannot verify, saying why, and writes over curated output only when asked",
+        "P16: committed transport fixture evidence holds only the loopback flows its truth names"
       ]
     },
     {
@@ -128,9 +139,12 @@
       ],
       "covers": {
         "rules": [
-          "R1"
+          "R1",
+          "R22"
         ],
-        "invariants": [],
+        "invariants": [
+          "I14"
+        ],
         "prohibitions": [
           "P16",
           "P27"
@@ -163,7 +177,11 @@
       "tests": [
         "P27: committed transport fixture evidence reproduces its measured tier",
         "P27: an IPv6 loopback workload is matched on its own flows, never on the same ports over IPv4",
-        "R22: an IPv6 connection relates its two ends as an IPv4 one does, and never meets an end of the other family"
+        "R22: an IPv6 connection relates its two ends as an IPv4 one does, and never meets an end of the other family",
+        "I14: icat verify re-evaluates a run rebuilt from a curated fixture to the coverage it was published with",
+        "P16: committed transport fixture evidence holds only the loopback flows its truth names",
+        "P27: a build's coverage names a tier measured on it, and names another build's evidence as another's",
+        "R1: an IPv6 receive keeps its 128-bit endpoints as delivered and is read as its owner's own flow"
       ]
     },
     {
@@ -180,7 +198,9 @@
         "rules": [
           "R1"
         ],
-        "invariants": [],
+        "invariants": [
+          "I14"
+        ],
         "prohibitions": [
           "P16",
           "P27"
@@ -213,7 +233,9 @@
       "tests": [
         "P27: committed transport fixture evidence reproduces its measured tier",
         "R1: an IPv6 receive keeps its 128-bit endpoints as delivered and is read as its owner's own flow",
-        "P27: an operation seen only with its endpoints mirrored is an orientation gap, not a miss"
+        "P27: an operation seen only with its endpoints mirrored is an orientation gap, not a miss",
+        "I14: icat verify re-evaluates a run rebuilt from a curated fixture to the coverage it was published with",
+        "P16: committed transport fixture evidence holds only the loopback flows its truth names"
       ]
     },
     {
@@ -235,7 +257,8 @@
         "prohibitions": [
           "P3",
           "P7",
-          "P8"
+          "P8",
+          "P27"
         ]
       },
       "truth": {
@@ -274,7 +297,9 @@
         "P8: a completion is paired by I/O request identity, not by time proximity",
         "R22: an operation on an unobserved create is left unresolved, not matched by name",
         "R21: a negative result records the control that proves the source was live",
-        "P7: a pipe peer pairing is checked against the truth log rather than assumed"
+        "P7: a pipe peer pairing is checked against the truth log rather than assumed",
+        "P27: a source that registers and enables but emits nothing stays unsupported",
+        "R3: an operation without a paired completion keeps completed bytes unknown"
       ]
     },
     {
@@ -411,11 +436,11 @@
       ],
       "covers": {
         "rules": [
-          "R17",
-          "R21",
           "R3",
           "R8",
-          "R9"
+          "R9",
+          "R17",
+          "R21"
         ],
         "invariants": [
           "I13",
@@ -482,14 +507,13 @@
       ],
       "covers": {
         "rules": [
-          "R21",
           "R3",
-          "R9"
+          "R9",
+          "R21"
         ],
         "invariants": [
           "I1",
-          "I8",
-          "I21"
+          "I8"
         ],
         "prohibitions": [
           "P16"
@@ -595,9 +619,7 @@
         "IC-012"
       ],
       "covers": {
-        "rules": [
-          "R17"
-        ],
+        "rules": [],
         "invariants": [
           "I21"
         ],
@@ -631,7 +653,10 @@
       },
       "tests": [
         "I21: a recording keeps each fixture message's bytes beside its journal chunk, and stops at its content limit",
-        "P15: a scoped content policy keeps the content of the sources it names, and of no other"
+        "P15: a scoped content policy keeps the content of the sources it names, and of no other",
+        "P2: a fixture message decodes into the fields its bytes hold, each with its bytes, linked to the record and the decoder's version",
+        "P2: a fixture message the capture cut, or that ends or leaves its header, decodes only what its bytes show and says why the rest does not",
+        "P2: icat content --decode lists a fixture message's fields with the bytes each came from and what it did not decode, only when asked and never into JSON"
       ]
     },
     {
@@ -646,14 +671,12 @@
       ],
       "covers": {
         "rules": [
-          "R17",
-          "R22"
+          "R17"
         ],
         "invariants": [
           "I21"
         ],
         "prohibitions": [
-          "P15",
           "P28"
         ]
       },
@@ -700,14 +723,12 @@
       ],
       "covers": {
         "rules": [
-          "R17",
-          "R22"
+          "R17"
         ],
         "invariants": [
           "I21"
         ],
         "prohibitions": [
-          "P15",
           "P28"
         ]
       },
@@ -762,7 +783,6 @@
         ],
         "prohibitions": [
           "P2",
-          "P15",
           "P28"
         ]
       },
@@ -796,8 +816,18 @@
         "I21: a process's HTTP exchanges are a row of its rung, listed with their parts, each exchange's buffers one step away",
         "I21: a part is assembled only from every buffer from its first to its last, each kept whole; else its gaps are named",
         "I21: a recording keeps each WinINet buffer beside its journal chunk, with its exchange, its place and its ends",
-        "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone"
+        "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone",
+        "R17: WinINet's capture events are HTTP messages, and a buffer's bytes are admitted only under a policy that names them",
+        "P2: a part that is not whole is shown with each gap in place, and no byte stands in for what is missing",
+        "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one"
       ]
+    }
+  ],
+  "retired": [
+    {
+      "id": "FX-IMPORT-001",
+      "revision": 723,
+      "reason": "A local import probe, an ETL holding machine data, that bench results of 2026-09-22 and 2026-09-23 name as their input. It was never committed or declared; the number is kept so it is never given to another fixture."
     }
   ],
   "contractCoverage": {
@@ -1240,6 +1270,7 @@
       ],
       "P16": [
         "P16: a support bundle says a session it cannot read by its folder, in its reader's words, and a ledger it lacks as unknown",
+        "P16: committed transport fixture evidence holds only the loopback flows its truth names",
         "P16: icat support lists what a bundle holds before writing it, and says a session it cannot read by its folder",
         "P16: icat support writes versions, capabilities and each session's counters, and no name, endpoint, host or path",
         "P16: persisted fixture evidence excludes unrelated whole-machine endpoints",

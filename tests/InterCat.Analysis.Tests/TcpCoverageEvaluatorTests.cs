@@ -126,6 +126,29 @@ public sealed class TcpCoverageEvaluatorTests
         Assert.Equal(CapabilityTier.TrafficVisualization, result.Assessment.Tier);
     }
 
+    /// <summary>
+    /// A fixture's evidence is committed and shared, so it may hold the workload's own flows and nothing else the machine
+    /// did (P16): every committed observation is one its truth's flows select, between loopback addresses alone.
+    /// </summary>
+    [Theory(DisplayName = "P16: committed transport fixture evidence holds only the loopback flows its truth names")]
+    [InlineData("FX-TCP-001", false)]
+    [InlineData("FX-UDP-001", false)]
+    [InlineData("FX-TCP-002", true)]
+    [InlineData("FX-UDP-002", true)]
+    public void CommittedEvidenceHoldsOnlyItsTruthsFlows(string fixture, bool ipv6)
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", fixture, "evidence");
+        TruthRecord[] truth = ReadLines<TruthRecord>(Path.Combine(evidence, "truth.jsonl"));
+        NetworkTransferObservation[] observations = ReadLines<NetworkTransferObservation>(Path.Combine(evidence, "observations.jsonl"));
+        TcpCoverageSettings settings = Settings() with { FixtureId = fixture, LoopbackAddress6 = ipv6 ? UInt128.One : null };
+
+        Assert.NotEmpty(observations);
+        Assert.Equal(observations, TcpCoverageEvaluator.SelectFixtureEvidence(truth, observations, settings));
+        Assert.All(observations, observation => Assert.Equal(
+            ipv6 ? (0u, 0u, UInt128.One, UInt128.One) : (Loopback, Loopback, UInt128.Zero, UInt128.Zero),
+            (observation.SourceAddress, observation.DestinationAddress, observation.SourceAddress6, observation.DestinationAddress6)));
+    }
+
     private static T[] ReadLines<T>(string path)
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);

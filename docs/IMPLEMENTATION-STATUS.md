@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 722 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 723 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 723 — ADR-051: fixtures named for their area, each covering exactly what its tests assert (§13.5, P16, P27):**
+  - Writing the owed ADR found 18 claims across ten fixtures that none of their listed tests asserts, a gate check
+    with nothing to read, and bench results naming a fixture the index never declared. A fixture's covers now equal
+    its tests' contracts: the tests that read the transport fixtures' evidence are listed, and a new test holds that
+    evidence to its own loopback flows, backing 10 claims; the other 8 are removed. The checks also hold IDs,
+    directories, milestones, backlog items and every fixture ID named elsewhere to the index, and the undeclared
+    import probe is retired with its reason.
+  - Debug and Release each ran 2,920 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    20 mutations were caught: each check of an entry, a retired number, a directory and a named ID left out in turn;
+    IDs of any form accepted; names, or the plan's milestones, left unread; the retired number changed in the index;
+    and a foreign endpoint in a fixture's committed evidence.
 
 - **Revision 722 — ADR-050: the palette's targets and why each is the number it is, held by tests (§6.6, R14, R20):**
   - Writing the owed ADR found that a lowered target passed every test once the report was regenerated, that the
