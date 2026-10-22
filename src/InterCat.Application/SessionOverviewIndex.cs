@@ -42,6 +42,68 @@ internal sealed record OverviewCounts(
     /// overview-index-v1 minor 4). Zero for every other session, and in an overview of an earlier minor.
     /// </summary>
     public long BeforeExtent { get; init; }
+
+    /// <summary>
+    /// How the whole session's records bind at their two ends, before any evidence policy, which the ranked table reads
+    /// under a ranking by peers, when a persisted overview kept them (overview-index-v1 minor 7); null when it did not, and
+    /// then they are read from the segments when a view asks.
+    /// </summary>
+    public OverviewPeerBindings? PeerBindings { get; init; }
+}
+
+/// <summary>
+/// One way a record binds at its two ends, and how many records bind so: the instance its own owner binds to and the one
+/// at its other end (`relations-v1` §4), each with the strength it binds at. An end bound to no instance, or at a strength
+/// no evidence policy admits, is none: the empty identity, at no strength.
+/// </summary>
+internal readonly record struct PeerBindingPair(
+    ProcessInstanceId Owner,
+    RelationStrength OwnerStrength,
+    ProcessInstanceId Peer,
+    RelationStrength PeerStrength,
+    long Records);
+
+/// <summary>
+/// How the whole session's records bind at their two ends, before any evidence policy (overview-index-v1 minor 7): for
+/// every record but a process's or a thread's lifecycle record, its owner's binding and its other end's, with how many
+/// records share both. A record's part in a count of peers rests on its two bindings alone, so a policy applied to them
+/// gives exactly what <see cref="SessionPeerRanking.Measure"/> reads from every segment under it.
+/// </summary>
+internal sealed class OverviewPeerBindings
+{
+    /// <summary>The most pairs an overview keeps, about 2 MiB of them: far more than a machine's processes talk in.</summary>
+    public const int MaximumPairs = 50_000;
+
+    /// <summary>The bytes one pair takes in a persisted overview: two identities, two strengths and a count.</summary>
+    public const int PairBytes = 16 + 1 + 16 + 1 + 8;
+
+    public OverviewPeerBindings(IEnumerable<PeerBindingPair> pairs)
+    {
+        ArgumentNullException.ThrowIfNull(pairs);
+        Pairs = Array.AsReadOnly([.. pairs.Order(Canonical.Instance)]);
+    }
+
+    /// <summary>Every pair of bindings, by owner and its strength, then other end and its strength.</summary>
+    public IReadOnlyList<PeerBindingPair> Pairs { get; }
+
+    /// <summary>How many bytes they take in a persisted overview (overview-index-v1 §3), flag included.</summary>
+    public long EncodedLength => 1 + 4 + ((long)Pairs.Count * PairBytes);
+
+    /// <summary>The order a persisted overview keeps them in: by each identity's "N" form, then by strength.</summary>
+    internal static int Compare(PeerBindingPair left, PeerBindingPair right)
+    {
+        int order = string.CompareOrdinal(left.Owner.Value.ToString("N"), right.Owner.Value.ToString("N"));
+        order = order != 0 ? order : ((int)left.OwnerStrength).CompareTo((int)right.OwnerStrength);
+        order = order != 0 ? order : string.CompareOrdinal(left.Peer.Value.ToString("N"), right.Peer.Value.ToString("N"));
+        return order != 0 ? order : ((int)left.PeerStrength).CompareTo((int)right.PeerStrength);
+    }
+
+    private sealed class Canonical : IComparer<PeerBindingPair>
+    {
+        public static Canonical Instance { get; } = new();
+
+        public int Compare(PeerBindingPair x, PeerBindingPair y) => OverviewPeerBindings.Compare(x, y);
+    }
 }
 
 /// <summary>
@@ -142,11 +204,11 @@ internal static class SessionOverviewIndex
     /// <summary>
     /// Minor 1 adds the RPC link totals after the counts, minor 2 each overview column's bytes per mechanism after them,
     /// minor 3 each process's and TCP channel end's bytes after those, minor 4 how many timed rows were read before the
-    /// extent begins, minor 5 keeps each UDP flow's ends beside each TCP connection's, as the graph draws both, and minor 6
-    /// how many of each RPC link's calls each end of its pair made, last (§3); an earlier overview holds what its minor did
-    /// and is still read.
+    /// extent begins, minor 5 keeps each UDP flow's ends beside each TCP connection's, as the graph draws both, minor 6
+    /// how many of each RPC link's calls each end of its pair made, and minor 7 how the whole session's records bind at
+    /// their two ends, last (§3); an earlier overview holds what its minor did and is still read.
     /// </summary>
-    private const ushort Minor = 6;
+    private const ushort Minor = 7;
 
     /// <summary>The most RPC link totals an overview holds: far more instance pairs than a session draws.</summary>
     private const int MaximumRpcLinks = 1_000_000;
@@ -326,6 +388,22 @@ internal static class SessionOverviewIndex
             }
         }
 
+        // Minor 7: how the whole session's records bind at their two ends, before any evidence policy, in their canonical
+        // order, kept by a writer that counted them.
+        writer.Flag(counts.PeerBindings is not null);
+        if (counts.PeerBindings is { } bindings)
+        {
+            writer.Count(bindings.Pairs.Count);
+            foreach (PeerBindingPair pair in bindings.Pairs)
+            {
+                writer.Identity(pair.Owner.Value);
+                writer.U8((byte)pair.OwnerStrength);
+                writer.Identity(pair.Peer.Value);
+                writer.U8((byte)pair.PeerStrength);
+                writer.I64(pair.Records);
+            }
+        }
+
         writer.Flush();
         return writer.Written;
     }
@@ -440,9 +518,16 @@ internal static class SessionOverviewIndex
             OverviewProcessBytes? untimedKept = minor >= 3 ? ReadProcessBytes(reader, coversUdp: minor >= 5) : null;
             long untimedBefore = minor >= 4 ? reader.I64() : 0;
             untimedLinks = minor >= 6 && untimedLinks is not null ? ReadCallers(reader, untimedLinks) : untimedLinks;
+            OverviewPeerBindings? untimedPeers = minor >= 7 ? ReadPeerBindings(reader) : null;
             reader.RequireEnd();
             return rows == withoutTime && untimedBefore == 0
-                ? (new(rows, withoutTime, null, null, null) { RpcLinks = untimedLinks, LaneBytes = untimedBytes, ProcessBytes = untimedKept },
+                ? (new(rows, withoutTime, null, null, null)
+                    {
+                        RpcLinks = untimedLinks,
+                        LaneBytes = untimedBytes,
+                        ProcessBytes = untimedKept,
+                        PeerBindings = untimedPeers,
+                    },
                     segments.AsReadOnly())
                 : throw reader.Invalid("it has timed rows and no extent.");
         }
@@ -511,6 +596,7 @@ internal static class SessionOverviewIndex
         OverviewProcessBytes? kept = minor >= 3 ? ReadProcessBytes(reader, coversUdp: minor >= 5) : null;
         long beforeExtent = minor >= 4 ? reader.I64() : 0;
         links = minor >= 6 && links is not null ? ReadCallers(reader, links) : links;
+        OverviewPeerBindings? peers = minor >= 7 ? ReadPeerBindings(reader) : null;
         reader.RequireEnd();
         if (beforeExtent < 0 || beforeExtent > timed)
         {
@@ -524,6 +610,7 @@ internal static class SessionOverviewIndex
                     LaneBytes = laneBytes,
                     ProcessBytes = kept,
                     BeforeExtent = beforeExtent,
+                    PeerBindings = peers,
                 },
                 segments.AsReadOnly())
             : throw reader.Invalid("its columns do not add up to its timed rows.");
@@ -622,6 +709,49 @@ internal static class SessionOverviewIndex
         }
 
         return new(unbound, processes, ends, coversUdp);
+    }
+
+    /// <summary>
+    /// Minor 7's peer bindings (§3): none when they were not kept; otherwise each pair of an owner's binding and an other
+    /// end's once and in order, each end an instance at a strength some policy admits or none at no strength, with the
+    /// records that bind so, at most <see cref="OverviewPeerBindings.MaximumPairs"/> of them.
+    /// </summary>
+    private static OverviewPeerBindings? ReadPeerBindings(IndexFileReader reader)
+    {
+        if (!reader.Flag())
+        {
+            return null;
+        }
+
+        int count = reader.Count(OverviewPeerBindings.PairBytes);
+        if (count > OverviewPeerBindings.MaximumPairs)
+        {
+            throw reader.Invalid($"it keeps {count:N0} pairs of peer bindings, more than an overview keeps.");
+        }
+
+        var pairs = new List<PeerBindingPair>(count);
+        for (int index = 0; index < count; index++)
+        {
+            var pair = new PeerBindingPair(
+                new ProcessInstanceId(reader.Identity()),
+                (RelationStrength)reader.U8(),
+                new ProcessInstanceId(reader.Identity()),
+                (RelationStrength)reader.U8(),
+                reader.I64());
+            if (!Bound(pair.Owner, pair.OwnerStrength) || !Bound(pair.Peer, pair.PeerStrength) || pair.Records <= 0
+                || (pairs.Count > 0 && OverviewPeerBindings.Compare(pairs[^1], pair) >= 0))
+            {
+                throw reader.Invalid("a pair of peer bindings names a strength no policy admits, or none with one, holds no "
+                    + "record, or is out of order.");
+            }
+
+            pairs.Add(pair);
+        }
+
+        return new(pairs);
+
+        static bool Bound(ProcessInstanceId instance, RelationStrength strength) =>
+            instance.Value == Guid.Empty ? strength == 0 : Admissible(strength);
     }
 
     /// <summary>Whether a binding at <paramref name="strength"/> is one some evidence policy admits.</summary>

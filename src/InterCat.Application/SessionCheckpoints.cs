@@ -106,6 +106,10 @@ public static class SessionCheckpoints
                 SumBytes(segments, counts.Main, processes, relations, cancellationToken);
             counts = counts with { LaneBytes = laneBytes, ProcessBytes = processBytes };
 
+            // How every record binds at its two ends is kept too, so the first ranking by peers reads no segment either
+            // (overview-index-v1 minor 7).
+            counts = counts with { PeerBindings = SessionPeerRanking.KeptBindings(segments, processes, relations, cancellationToken) };
+
             // A capture that collected ALPC keeps its RPC links with the overview, so its first view follows no call
             // (overview-index-v1 §3); one that did not keeps none.
             RpcPeerIndex peers = derivation.RpcPeers(store.Root, segments, clock, fields, cancellationToken);

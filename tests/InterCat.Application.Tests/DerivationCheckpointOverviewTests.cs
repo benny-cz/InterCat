@@ -370,7 +370,7 @@ public sealed class DerivationCheckpointOverviewTests
         // follows the calls through the segments again and draws the same edge, callers and all.
         byte[] current = SessionSegments.ReadVerified(session.Store.Root, SessionOverviewIndex.NamedBy(session.Store.Current!)!,
             SessionOverviewIndex.MaximumBytes);
-        byte[] minorFive = current[..^16];
+        byte[] minorFive = AsMinorSix(current, session.Store.Current!.SessionId)[..^16];
         minorFive[10] = 5;
         Assert.Equal(0, Assert.Single(SessionOverviewIndex.Read(minorFive, session.Store.Current!.SessionId).Counts.RpcLinks!).FirstCalls);
         PublishIndexes(session.Store, withCheckpoint: true, minorFive);
@@ -420,15 +420,15 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Equal(links, SessionOverviewIndex.Read(bytes, manifest.SessionId).Counts.RpcLinks);
 
         // A minor-5 overview, as revisions 545 to 660 wrote it, ends before each link's callers, and its links name none.
-        byte[] minorFive = bytes[..^(16 * links.Length)];
+        byte[] minorFive = AsMinorSix(bytes, manifest.SessionId)[..^(16 * links.Length)];
         minorFive[10] = 5;
         Assert.Equal(links.Select(link => link with { FirstCalls = 0, SecondCalls = 0 }),
             SessionOverviewIndex.Read(minorFive, manifest.SessionId).Counts.RpcLinks!);
 
-        // A minor-0 overview, as revisions 163 to 228 wrote it, ends with its minimap and keeps no links: this build's ends
+        // A minor-0 overview, as revisions 163 to 228 wrote it, ends with its minimap and keeps no links: a minor-6 one ends
         // with a flag for links, another for lane bytes and another for process bytes after it, and the eight bytes of the
         // rows read before its extent.
-        byte[] minorZero = Written(counts)[..^(3 + 8)];
+        byte[] minorZero = AsMinorSix(Written(counts), manifest.SessionId)[..^(3 + 8)];
         minorZero[10] = 0;
         OverviewCounts earlier = SessionOverviewIndex.Read(minorZero, manifest.SessionId).Counts;
         Assert.Null(earlier.RpcLinks);
@@ -548,9 +548,9 @@ public sealed class DerivationCheckpointOverviewTests
         byte[] bytes = Written(counts with { LaneBytes = lanes });
         Assert.Equal(lanes.Cells, SessionOverviewIndex.Read(bytes, manifest.SessionId).Counts.LaneBytes!.Cells);
 
-        // A minor-1 overview, as revisions 229 to 288 wrote it, ends with its links and keeps no lane bytes; this build's
+        // A minor-1 overview, as revisions 229 to 288 wrote it, ends with its links and keeps no lane bytes; a minor-6 one
         // keeps no process bytes after them, and says so in a byte before the rows read before its extent.
-        byte[] minorOne = Written(counts)[..^(2 + 8)];
+        byte[] minorOne = AsMinorSix(Written(counts), manifest.SessionId)[..^(2 + 8)];
         minorOne[10] = 1;
         Assert.Null(SessionOverviewIndex.Read(minorOne, manifest.SessionId).Counts.LaneBytes);
 
@@ -559,7 +559,7 @@ public sealed class DerivationCheckpointOverviewTests
         (int column, Mechanism mechanism, TransportBytes first) = lanes.Cells[0];
         Mechanism absent = Enum.GetValues<Mechanism>().First(candidate => counts.Main!.CountOf(column, candidate) == 0);
         const int Cell = 4 + 2 + (9 * 8);
-        int cellsEnd = bytes.Length - 1;
+        int cellsEnd = bytes.Length - 2;
         byte[] swapped = [.. bytes];
         bytes.AsSpan(cellsEnd - (2 * Cell), Cell).CopyTo(swapped.AsSpan(cellsEnd - Cell));
         bytes.AsSpan(cellsEnd - Cell, Cell).CopyTo(swapped.AsSpan(cellsEnd - (2 * Cell)));
@@ -670,8 +670,8 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
         SessionManifestV1 manifest = session.Store.Current!;
         byte[] written = SessionSegments.ReadVerified(session.Store.Root, SessionOverviewIndex.NamedBy(manifest)!, SessionOverviewIndex.MaximumBytes);
-        // This build writes minor 6, whose callers follow only RPC links, which this session keeps none of.
-        Assert.Equal(6, BitConverter.ToUInt16(written, 10));
+        // This build writes minor 7, whose callers follow only RPC links, which this session keeps none of.
+        Assert.Equal(7, BitConverter.ToUInt16(written, 10));
         OverviewProcessBytes kept = SessionOverviewIndex.Read(written, manifest.SessionId).Counts.ProcessBytes!;
         Assert.True(kept.CoversUdp);
         SessionByteMeasures read = SessionByteRanking.Measure(session.Store, null);
@@ -680,7 +680,7 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Contains(read.ByChannelEnd.Keys, end => end.ChannelKey == flow.Key);
 
         // The same bytes under minor 4, which kept TCP's ends alone, are not used for this session's flow: its bytes are read.
-        byte[] minorFour = [.. written];
+        byte[] minorFour = AsMinorSix(written, manifest.SessionId);
         minorFour[10] = 4;
         Assert.False(SessionOverviewIndex.Read(minorFour, manifest.SessionId).Counts.ProcessBytes!.CoversUdp);
         PublishIndexes(session.Store, withCheckpoint: true, minorFour);
@@ -698,7 +698,9 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(tcp.Store, Committed).Outcome);
         SessionByteMeasures tcpRead = SessionByteRanking.Measure(tcp.Store, null);
         SessionManifestV1 tcpManifest = tcp.Store.Current!;
-        byte[] tcpFour = SessionSegments.ReadVerified(tcp.Store.Root, SessionOverviewIndex.NamedBy(tcpManifest)!, SessionOverviewIndex.MaximumBytes);
+        byte[] tcpFour = AsMinorSix(
+            SessionSegments.ReadVerified(tcp.Store.Root, SessionOverviewIndex.NamedBy(tcpManifest)!, SessionOverviewIndex.MaximumBytes),
+            tcpManifest.SessionId);
         tcpFour[10] = 4;
         PublishIndexes(tcp.Store, withCheckpoint: true, tcpFour);
         SessionDerivationCache.Clear();
@@ -816,10 +818,11 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Equal(kept.Processes, again.Processes);
         Assert.Equal(kept.Ends, again.Ends);
         Assert.Equal(kept.EncodedLength, bytes.Length - Written(counts with { ProcessBytes = null }).Length + 1);
-        Assert.Equal(0, BitConverter.ToInt64(bytes, bytes.Length - 8));
+        byte[] six = AsMinorSix(bytes, manifest.SessionId);
+        Assert.Equal(0, BitConverter.ToInt64(six, six.Length - 8));
 
         // A minor-2 overview, as revision 289 wrote it, ends with its lane bytes and keeps no process bytes.
-        byte[] minorTwo = Written(counts with { ProcessBytes = null })[..^(1 + 8)];
+        byte[] minorTwo = AsMinorSix(Written(counts with { ProcessBytes = null }), manifest.SessionId)[..^(1 + 8)];
         minorTwo[10] = 2;
         OverviewCounts earlier = SessionOverviewIndex.Read(minorTwo, manifest.SessionId).Counts;
         Assert.Null(earlier.ProcessBytes);
@@ -827,7 +830,7 @@ public sealed class DerivationCheckpointOverviewTests
 
         // A minor-3 overview, as revisions 292 to 444 wrote it, ends with its process bytes, and counts every timed row in
         // its columns: none read before its extent.
-        byte[] minorThree = Written(counts)[..^8];
+        byte[] minorThree = AsMinorSix(Written(counts), manifest.SessionId)[..^8];
         minorThree[10] = 3;
         OverviewCounts third = SessionOverviewIndex.Read(minorThree, manifest.SessionId).Counts;
         Assert.Equal(kept.Processes, third.ProcessBytes!.Processes);
@@ -941,6 +944,150 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Equal(expected, Pairings(overview));
     }
 
+    [Theory(DisplayName = "S3: a reopened session ranks its processes and groups by peers from how its records bind, as reading every segment does, under every policy and with processes set aside, and opens no segment")]
+    [InlineData(7)]
+    [InlineData(23)]
+    [InlineData(20_261_022)]
+    public void AReopenedSessionRanksByPeersFromItsBindings(int seed)
+    {
+        var random = new Random(seed);
+        for (int trial = 0; trial < 6; trial++)
+        {
+            SessionDerivationCache.Clear();
+            using var session = new TemporarySession();
+            foreach ((ObservationRowV1[] rows, SourceFieldRowV1[] fields) in RandomCaptures.Chunks(random))
+            {
+                _ = Publish(session.Store, rows, rowsPerSegment: random.Next(1, 12), fields: fields);
+            }
+
+            // What reading every segment counts, under every policy, with nothing set aside and with some processes set aside.
+            ProcessInstanceId[] instances = [.. SessionOverviewProjector.Project(session.Store).Nodes.Select(node => node.Id)];
+            HashSet<ProcessInstanceId>[] asides = [[], [.. instances.Where(_ => random.Next(3) == 0)]];
+            var read = new List<string>();
+            foreach (EvidencePolicy policy in Enum.GetValues<EvidencePolicy>())
+            {
+                foreach (HashSet<ProcessInstanceId> aside in asides)
+                {
+                    read.Add(Peers(SessionPeerRanking.Measure(session.Store, null, policy, aside)));
+                }
+            }
+
+            // A fresh viewer of the finished session counts the same from its overview's peer bindings, opening no segment.
+            Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+            SessionDerivationCache.Clear();
+            SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+            Assert.NotNull(SessionDerivationCache.For(reopened.Current!).PersistedOverview(reopened.Root)!.PeerBindings);
+            var answered = new List<string>();
+            foreach (EvidencePolicy policy in Enum.GetValues<EvidencePolicy>())
+            {
+                foreach (HashSet<ProcessInstanceId> aside in asides)
+                {
+                    answered.Add(Peers(SessionPeerRanking.Measure(reopened, null, policy, aside)));
+                }
+            }
+
+            Assert.Equal(read, answered);
+            Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+        }
+
+        // Every process's and group's count, the processes with a peer and the records with neither end known, in one order.
+        static string Peers(SessionPeerMeasures measures) => string.Join(Environment.NewLine,
+        [
+            .. measures.ByProcess.OrderBy(entry => entry.Key.Value).Select(entry => $"{entry.Key.Value:N} {entry.Value}"),
+            .. measures.ByGroup.OrderBy(entry => entry.Key, StringComparer.Ordinal).Select(entry => $"{entry.Key} {entry.Value}"),
+            $"{measures.WithPeers} {measures.Unattributed}",
+        ]);
+    }
+
+    [Fact(DisplayName = "I4: an overview's peer bindings read back as written, a minor-6 overview keeps none, and damaged ones are refused")]
+    public void PersistedPeerBindingsReadBackOrAreRefused()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        Publish(session.Store, KeptBytesSession());
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        SessionManifestV1 manifest = session.Store.Current!;
+        (OverviewCounts counts, IReadOnlyList<StoreDependency> covered) = SessionOverviewIndex.Read(
+            SessionSegments.ReadVerified(session.Store.Root, SessionOverviewIndex.NamedBy(manifest)!, SessionOverviewIndex.MaximumBytes),
+            manifest.SessionId);
+        OverviewPeerBindings kept = Assert.IsType<OverviewPeerBindings>(counts.PeerBindings);
+        byte[] Written(OverviewCounts written)
+        {
+            using var stream = new MemoryStream();
+            _ = SessionOverviewIndex.Write(stream, manifest.SessionId, 1, [.. covered], written);
+            return stream.ToArray();
+        }
+
+        // The session's records bind at both ends to two processes, to a process connected to itself, to a later holder of a
+        // reused PID as a candidate, and to no instance at either end: each way is kept once, with the records that bind so.
+        Assert.Contains(kept.Pairs, pair => pair.Owner.Value != Guid.Empty && pair.Peer.Value != Guid.Empty && pair.Owner != pair.Peer);
+        Assert.Contains(kept.Pairs, pair => pair.Owner.Value != Guid.Empty && pair.Owner == pair.Peer);
+        Assert.Contains(kept.Pairs, pair => pair.OwnerStrength == RelationStrength.Candidate);
+        Assert.Contains(kept.Pairs, pair => pair.Owner.Value == Guid.Empty && pair.Peer.Value == Guid.Empty && pair.OwnerStrength == 0);
+        byte[] bytes = Written(counts);
+        Assert.Equal(kept.Pairs, SessionOverviewIndex.Read(bytes, manifest.SessionId).Counts.PeerBindings!.Pairs);
+        Assert.Equal(kept.EncodedLength, bytes.Length - Written(counts with { PeerBindings = null }).Length + 1);
+
+        // A minor-6 overview, as revisions 661 to 734 wrote it, keeps none, and its peers are read from the segments.
+        Assert.Null(SessionOverviewIndex.Read(AsMinorSix(bytes, manifest.SessionId), manifest.SessionId).Counts.PeerBindings);
+
+        // A pair binding none at a strength, an instance at a strength no policy admits, holding no record, or out of order -
+        // which a pair held twice is - is refused; so are more pairs than an overview keeps.
+        PeerBindingPair pair = kept.Pairs.First(pair => pair.Owner.Value != Guid.Empty);
+        PeerBindingPair[][] damaged =
+        [
+            [pair with { Owner = default }],
+            [pair with { OwnerStrength = RelationStrength.Unresolved }],
+            [pair with { Peer = pair.Owner, PeerStrength = 0 }],
+            [pair with { Records = 0 }],
+            [pair, pair],
+        ];
+        foreach (PeerBindingPair[] pairs in damaged)
+        {
+            Assert.Contains("a pair of peer bindings", Assert.Throws<InvalidDataException>(() => SessionOverviewIndex.Read(
+                Written(counts with { PeerBindings = new(pairs) }), manifest.SessionId)).Message, StringComparison.Ordinal);
+        }
+
+        PeerBindingPair[] tooMany = [.. Enumerable.Range(0, OverviewPeerBindings.MaximumPairs + 1)
+            .Select(index => pair with { Peer = new ProcessInstanceId(new Guid(index, 0, 0, new byte[8])), PeerStrength = RelationStrength.Correlated })];
+        Assert.Contains("more than an overview keeps", Assert.Throws<InvalidDataException>(() => SessionOverviewIndex.Read(
+            Written(counts with { PeerBindings = new(tooMany) }), manifest.SessionId)).Message, StringComparison.Ordinal);
+
+        // A writer keeps none past its bound, and the segments are read instead.
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(session.Store, manifest, name))];
+        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, TestClock);
+        TransportRelationIndex relations = TransportRelationIndex.Derive(segments, processes);
+        Assert.Equal(kept.Pairs, SessionPeerRanking.KeptBindings(segments, processes, relations, CancellationToken.None)!.Pairs);
+        Assert.Null(SessionPeerRanking.KeptBindings(segments, processes, relations, CancellationToken.None, maximumPairs: kept.Pairs.Count - 1));
+    }
+
+    [Fact(DisplayName = "I14: peer bindings that name an instance the checkpoint does not hold are not used, and the segments are read")]
+    public void PeerBindingsTheCheckpointDoesNotHoldAreRead()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        Publish(session.Store, KeptBytesSession());
+        SessionPeerMeasures read = SessionPeerRanking.Measure(session.Store, null);
+        SessionManifestV1 manifest = session.Store.Current!;
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(session.Store, manifest, name))];
+        var stranger = new ProcessInstanceId(Guid.Parse("0b5e5e5e-0000-4000-8000-000000000002"));
+        using var stream = new MemoryStream();
+        _ = SessionOverviewIndex.Write(stream, manifest.SessionId, manifest.Generation, SessionOverviewIndex.ObservationSegments(manifest),
+            SessionOverviewProjector.Count(segments, CancellationToken.None) with
+            {
+                PeerBindings = new([new(stranger, RelationStrength.Correlated, default, 0, 3)]),
+            });
+        PublishIndexes(session.Store, withCheckpoint: true, stream.ToArray());
+
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        SessionPeerMeasures answered = SessionPeerRanking.Measure(reopened, null);
+        Assert.NotEqual(0, reopened.SegmentReaderCache.Entries);
+        Assert.Equal(read.ByProcess.OrderBy(entry => entry.Key.Value), answered.ByProcess.OrderBy(entry => entry.Key.Value));
+        Assert.Equal(read.ByGroup.OrderBy(entry => entry.Key, StringComparer.Ordinal), answered.ByGroup.OrderBy(entry => entry.Key, StringComparer.Ordinal));
+        Assert.Equal((read.WithPeers, read.Unattributed), (answered.WithPeers, answered.Unattributed));
+    }
+
     /// <summary>Each channel's pairing, in the order of its client's port.</summary>
     private static (RelationRule?, RelationStrength, bool, bool)[] Pairings(SessionOverviewBundle overview) =>
         [.. overview.Channels
@@ -990,6 +1137,18 @@ public sealed class DerivationCheckpointOverviewTests
     /// <paramref name="overview"/> when given. The checkpoint is in the format revisions 162 to 165 wrote, without the
     /// process counts, when <paramref name="minorZero"/> asks for that.
     /// </summary>
+    /// <summary>
+    /// An overview as minor 6 wrote it, from one this build wrote: without the peer bindings minor 7 keeps after
+    /// everything else. An earlier minor is cut from it as that minor's own fields require.
+    /// </summary>
+    internal static byte[] AsMinorSix(byte[] bytes, Guid sessionId)
+    {
+        long peerBindings = SessionOverviewIndex.Read(bytes, sessionId).Counts.PeerBindings?.EncodedLength ?? 1;
+        byte[] earlier = bytes[..^(int)peerBindings];
+        earlier[10] = 6;
+        return earlier;
+    }
+
     private static void PublishIndexes(SessionStore store, bool withCheckpoint, byte[]? overview, bool minorZero = false)
     {
         SessionManifestV1 manifest = store.Current!;

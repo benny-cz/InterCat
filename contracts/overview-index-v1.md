@@ -1,7 +1,7 @@
 # InterCat overview index v1
 
 Status: **implemented** in plan revision 163; minor 1 in revision 229, minor 2 in revision 289, minor 3 in revision
-292, minor 4 in revision 445, minor 5 in revision 545, minor 6 in revision 661. It is the top level of §12.1 S4's pyramid: the whole-session overview a generation's first view draws, persisted
+292, minor 4 in revision 445, minor 5 in revision 545, minor 6 in revision 661, minor 7 in revision 735. It is the top level of §12.1 S4's pyramid: the whole-session overview a generation's first view draws, persisted
 beside its derivation checkpoint (`contracts/derivation-checkpoint-v1.md`). With both, opening a finished session opens
 no segment before the first view. Its processes and relationships come from the checkpoint, and its timeline, mechanism
 lanes and minimap from these counts. Deeper levels are the per-segment tiles of revision 158, built from a segment's
@@ -90,6 +90,16 @@ process called which, as it says which connected to which. An earlier overview's
 does not use them: it follows the calls through the segments again, as where none were kept, since an overview never
 changes an answer.
 
+Since minor 7 (plan revision 735) it also holds the **peer bindings**: how every record but a process's or a thread's
+lifecycle record binds at its two ends - its own owner, and the instance at its other end (`relations-v1` §4) - each
+an instance at the strength it binds at, or none where it binds to no instance or at a strength no policy admits,
+with how many records bind so. They are held before any evidence policy. A record's part in a count of peers
+(`metrics-v1` §6.1) rests on its two bindings alone, so a policy applied to them counts each process's and each
+group's distinct peers, the records beside them whose other end is unknown, the processes with a peer and the records
+with neither end known exactly as a read of every segment does, under any grouping and with any processes set aside:
+the ranked table's whole-session ranking by peers reads no segment either. An interval is still read. A session with
+more than 50,000 pairs keeps none, and is read as before.
+
 ## 2. Files and publication
 
 The dependency kind is `Index` (store-v1 code 4), under the name:
@@ -137,6 +147,11 @@ overview   = "ICATOVRV" (8 ASCII bytes), major u16 = 1, minor u16 = 6,
              [(firstCalls i64, secondCalls i64)*]                               ; minor 6 and later
                   ; only where hasRpcLinks is 1: one entry per RPC link, in the links' order; each value >= 0, and
                   ; 1 <= firstCalls + secondCalls <= the link's records
+             hasPeerBindings u8 (0, 1),                                         ; minor 7 and later
+             [count u32 (<= 50,000),
+              (owner guid, ownerStrength u8, peer guid, peerStrength u8, records i64 (> 0))*]
+                  ; an end bound to no instance is the empty guid at strength 0; ascending by
+                  ; (owner "N" form, ownerStrength, peer "N" form, peerStrength)
 
 bytes      = sentBytes i64, sentMeasured i64, sentUnmeasured i64,
              receivedBytes i64, receivedMeasured i64, receivedUnmeasured i64,
@@ -146,7 +161,7 @@ bytes      = sentBytes i64, sentMeasured i64, sentUnmeasured i64,
 A minor-0 overview ends after its minimap, or after `hasExtent` when it is 0, and holds no RPC links; a minor-1 overview
 ends after them and holds no lane bytes; a minor-2 overview ends after those and holds no process bytes; a minor-3
 overview ends after those and counts no row before its extent; a minor-5 overview ends after `beforeExtent`, and its
-links name no caller. Each is read as before. A link's strength is `EN-RelationStrength`'s
+links name no caller; a minor-6 overview ends after its callers and keeps no peer bindings. Each is read as before. A link's strength is `EN-RelationStrength`'s
 `Correlated`, `Candidate` or `Conflicting`.
 
 A reader refuses an overview whose bytes do not hash to its recorded digest. It also refuses one where:
@@ -170,11 +185,14 @@ A reader refuses an overview whose bytes do not hash to its recorded digest. It 
   side no contribution measured; or hold no contribution at all;
 - a process's or channel end's bytes name no instance, channel or holder, or a strength no policy admits; are out of
   order or held twice; hold a value below zero, or bytes on a side no contribution measured; or hold no contribution at
-  all. The unbound bytes may hold none, and are otherwise held to the same.
+  all. The unbound bytes may hold none, and are otherwise held to the same;
+- a pair of peer bindings binds an end to no instance at a strength, or to an instance at a strength no policy admits;
+  holds no record; is out of order or held twice; or there are more than 50,000 of them.
 
 A reader uses the process bytes only for the whole session, and only when the derivations it builds from the
 checkpoint hold every instance they name and every channel end, at one of its channel's two holders; otherwise it reads
-the segments.
+the segments. It uses the peer bindings only for the whole session, and only when those derivations hold every
+instance they name.
 
 A refused overview is not used, and the overview says why in one caveat. A reader uses an overview for a generation
 only when it covers exactly the generation's observation segments, with the same names, lengths and digests, and,

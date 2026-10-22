@@ -12,6 +12,7 @@ namespace InterCat.Application.Tests;
 /// accepted, as the capture saw each open at either end, which a group's are the sum of and a process's card says over the
 /// whole session; and unmeasured rather than none where the session records no connection's open (R21).
 /// </summary>
+[Collection(SharedDerivationCache.Name)]
 public sealed class SessionConnectionRankingTests
 {
     [Fact(DisplayName = "§5.2: each process's connections made and accepted are those the capture saw it make and accept in scope, beside its TCP records, and a group's are its members'")]

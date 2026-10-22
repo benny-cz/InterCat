@@ -70,14 +70,12 @@ public static class SessionPeerRanking
             ?? throw new InvalidDataException("This generation names no source clock, so its processes cannot be identified.");
 
         // A time scope reads only the segments holding a reading in it, with the instances and channels the derivation or
-        // the checkpoint holds (P25); the whole session reads every segment.
+        // the checkpoint holds (P25). The whole session is counted from how its records bind at their two ends, where a
+        // finished session's persisted overview keeps them, and otherwise reads every segment.
         var generation = new GenerationSegments(store, manifest, clock);
         ProcessInstanceIndex processes = generation.Processes(cancellationToken);
         TransportRelationIndex relations = generation.Relations(cancellationToken);
         TimeRange? native = interval is { } presentation ? RankingScope.NativeInterval(clock, presentation) : null;
-        SegmentReaderV1[] segments = native is { } readings
-            ? SessionNativeInterval.Segments(store, manifest, (readings.StartTicks, readings.EndTicks))
-            : interval is null ? generation.All : [];
 
         // Each instance's group as the ladder keys it under every grouping the window offers - by executable and by terminal
         // session - as a dense index into one list of keys, which never collide, so a change of grouping reads nothing again.
@@ -109,8 +107,20 @@ public static class SessionPeerRanking
 
         // An interval no reading can fall in holds nothing, and no segment is read.
         var total = new PeerTally(instances, groupKeys.Count, groupings.Count);
-        if (interval is null || native is not null)
+        if (interval is null
+            && generation.Derivation.PersistedOverview(store.Root) is { PeerBindings: { } kept }
+            && Resolve(kept, processes) is { } pairs)
         {
+            foreach ((ProcessBinding owner, ProcessBinding peer, long records) in pairs)
+            {
+                Count(owner, peer, records, policy, groupOf, total);
+            }
+        }
+        else if (interval is null || native is not null)
+        {
+            SegmentReaderV1[] segments = native is { } readings
+                ? SessionNativeInterval.Segments(store, manifest, (readings.StartTicks, readings.EndTicks))
+                : generation.All;
             SegmentPasses.Run(
                 segments,
                 () => new PeerTally(instances, groupKeys.Count, groupings.Count),
@@ -180,20 +190,155 @@ public static class SessionPeerRanking
                 continue;
             }
 
-            ProcessBinding owner = owners[row];
-            ProcessBinding peer = peers[row];
-            int self = owner.IsAdmittedUnder(policy) ? owner.Instance : -1;
-            int other = peer.IsAdmittedUnder(policy) ? peer.Instance : -1;
-            tally.Processes.Add(self, other, self, other);
-            for (int grouping = 0; grouping < groupOf.Length; grouping++)
+            Count(owners[row], peers[row], 1, policy, groupOf, tally);
+        }
+    }
+
+    /// <summary>
+    /// Counts <paramref name="records"/> records that bind at their own end to <paramref name="owner"/> and at their other
+    /// end to <paramref name="peer"/>, by process and by group, each end only where the policy admits it.
+    /// </summary>
+    private static void Count(
+        ProcessBinding owner,
+        ProcessBinding peer,
+        long records,
+        EvidencePolicy policy,
+        int[][] groupOf,
+        PeerTally tally)
+    {
+        int self = owner.IsAdmittedUnder(policy) ? owner.Instance : -1;
+        int other = peer.IsAdmittedUnder(policy) ? peer.Instance : -1;
+        tally.Processes.Add(self, other, self, other, records);
+        for (int grouping = 0; grouping < groupOf.Length; grouping++)
+        {
+            tally.Groups[grouping].Add(
+                self < 0 ? -1 : groupOf[grouping][self], other < 0 ? -1 : groupOf[grouping][other], self, other, records);
+        }
+
+        if (self < 0 && other < 0)
+        {
+            tally.Unattributed += records;
+        }
+    }
+
+    /// <summary>
+    /// The pairs of bindings a persisted overview keeps, bound to <paramref name="processes"/>' instances; null when one
+    /// names an instance they do not hold, and the segments are read instead.
+    /// </summary>
+    private static List<(ProcessBinding Owner, ProcessBinding Peer, long Records)>? Resolve(
+        OverviewPeerBindings kept,
+        ProcessInstanceIndex processes)
+    {
+        var positionOf = new Dictionary<ProcessInstanceId, int>(processes.Instances.Count);
+        for (int position = 0; position < processes.Instances.Count; position++)
+        {
+            positionOf[processes.Instances[position].Id] = position;
+        }
+
+        var resolved = new List<(ProcessBinding Owner, ProcessBinding Peer, long Records)>(kept.Pairs.Count);
+        foreach (PeerBindingPair pair in kept.Pairs)
+        {
+            if (Binding(pair.Owner, pair.OwnerStrength) is not { } owner || Binding(pair.Peer, pair.PeerStrength) is not { } peer)
             {
-                tally.Groups[grouping].Add(self < 0 ? -1 : groupOf[grouping][self], other < 0 ? -1 : groupOf[grouping][other], self, other);
+                return null;
             }
-            if (self < 0 && other < 0)
+
+            resolved.Add((owner, peer, pair.Records));
+        }
+
+        return resolved;
+
+        ProcessBinding? Binding(ProcessInstanceId instance, RelationStrength strength) =>
+            instance.Value == Guid.Empty ? ProcessBinding.Unresolved(ProcessBindingReason.NoOwner)
+            : positionOf.TryGetValue(instance, out int position) ? new ProcessBinding(position, strength, ProcessBindingReason.Bound)
+            : null;
+    }
+
+    /// <summary>
+    /// How the whole session's records bind at their two ends, before any evidence policy (overview-index-v1 minor 7), counted
+    /// in one pass over <paramref name="segments"/>, the generation's every segment; null when there are more pairs than
+    /// <paramref name="maximumPairs"/>, as a persisted overview keeps, and the segments are read when a view asks.
+    /// </summary>
+    internal static OverviewPeerBindings? KeptBindings(
+        IReadOnlyList<SegmentReaderV1> segments,
+        ProcessInstanceIndex processes,
+        TransportRelationIndex relations,
+        CancellationToken cancellationToken,
+        int maximumPairs = OverviewPeerBindings.MaximumPairs)
+    {
+        var total = new BindingTally();
+        SegmentPasses.Run(
+            segments,
+            () => new BindingTally(),
+            (segment, tally) => tally.Count(segment, processes, relations),
+            total.Add,
+            cancellationToken);
+        return total.Pairs.Count > maximumPairs
+            ? null
+            : new([.. total.Pairs.Select(entry => new PeerBindingPair(
+                entry.Key.Owner < 0 ? default : processes.Instances[entry.Key.Owner].Id,
+                entry.Key.OwnerStrength,
+                entry.Key.Peer < 0 ? default : processes.Instances[entry.Key.Peer].Id,
+                entry.Key.PeerStrength,
+                entry.Value))]);
+    }
+
+    /// <summary>
+    /// One worker's records by the pair of bindings at their two ends: an end bound at a strength some policy admits by its
+    /// instance's position, and any other end as none, at no strength.
+    /// </summary>
+    private sealed class BindingTally
+    {
+        public Dictionary<(int Owner, RelationStrength OwnerStrength, int Peer, RelationStrength PeerStrength), long> Pairs { get; } = [];
+
+        public void Count(SegmentReaderV1 segment, ProcessInstanceIndex processes, TransportRelationIndex relations)
+        {
+            SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+            PackedOwners owners = SegmentBindings.OwnersOf(segment, processes);
+            PackedOwners peers = SegmentBindings.PeersOf(segment, relations);
+
+            // Records of one connection lie together, so a run of one pair is counted once it ends.
+            (int, RelationStrength, int, RelationStrength) run = default;
+            long length = 0;
+            for (int row = 0; row < segment.RowCount; row++)
             {
-                tally.Unattributed++;
+                if ((Mechanism)mechanisms.UnsignedAt(row)!.Value is Mechanism.ProcessLifecycle or Mechanism.ThreadLifecycle)
+                {
+                    continue;
+                }
+
+                (int Instance, RelationStrength Strength) owner = Kept(owners[row]);
+                (int Instance, RelationStrength Strength) peer = Kept(peers[row]);
+                (int, RelationStrength, int, RelationStrength) pair = (owner.Instance, owner.Strength, peer.Instance, peer.Strength);
+                if (length > 0 && pair != run)
+                {
+                    Pairs[run] = Pairs.GetValueOrDefault(run) + length;
+                    length = 0;
+                }
+
+                run = pair;
+                length++;
+            }
+
+            if (length > 0)
+            {
+                Pairs[run] = Pairs.GetValueOrDefault(run) + length;
             }
         }
+
+        public void Add(BindingTally other)
+        {
+            foreach ((var pair, long records) in other.Pairs)
+            {
+                Pairs[pair] = Pairs.GetValueOrDefault(pair) + records;
+            }
+        }
+
+        private static (int Instance, RelationStrength Strength) Kept(ProcessBinding binding) =>
+            binding.IsBound && binding.Strength is RelationStrength.Direct or RelationStrength.Correlated
+                or RelationStrength.Candidate or RelationStrength.Conflicting
+                ? (binding.Instance, binding.Strength)
+                : (-1, 0);
     }
 
     /// <summary>One worker's peers by process and by each grouping's groups, merged once it has no segment left.</summary>
@@ -225,14 +370,14 @@ public static class SessionPeerRanking
         private readonly long[] unknown = new long[slots];
 
         /// <summary>
-        /// One record: its owner's group and its other end's, -1 where the policy does not admit that end, with the two
-        /// instances each adds to the other's peers.
+        /// <paramref name="records"/> records alike: their owner's group and their other end's, -1 where the policy does not
+        /// admit that end, with the two instances each adds to the other's peers.
         /// </summary>
-        public void Add(int ownerGroup, int peerGroup, int owner, int peer)
+        public void Add(int ownerGroup, int peerGroup, int owner, int peer, long records)
         {
             if (ownerGroup >= 0 && peerGroup >= 0 && ownerGroup == peerGroup)
             {
-                known[ownerGroup]++;
+                known[ownerGroup] += records;
                 PeersOf(ownerGroup).Add(owner);
                 PeersOf(ownerGroup).Add(peer);
                 return;
@@ -242,12 +387,12 @@ public static class SessionPeerRanking
             {
                 if (peerGroup >= 0)
                 {
-                    known[ownerGroup]++;
+                    known[ownerGroup] += records;
                     PeersOf(ownerGroup).Add(peer);
                 }
                 else
                 {
-                    unknown[ownerGroup]++;
+                    unknown[ownerGroup] += records;
                 }
             }
 
@@ -255,12 +400,12 @@ public static class SessionPeerRanking
             {
                 if (ownerGroup >= 0)
                 {
-                    known[peerGroup]++;
+                    known[peerGroup] += records;
                     PeersOf(peerGroup).Add(owner);
                 }
                 else
                 {
-                    unknown[peerGroup]++;
+                    unknown[peerGroup] += records;
                 }
             }
         }

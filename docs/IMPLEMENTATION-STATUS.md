@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 734 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 735 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 735 — S3, P25: a finished session's ranking by peers opens no segment (overview-index-v1 minor 7):**
+  - A finished session's persisted overview keeps how its records bind at their two ends: each pair of an owner's
+    binding and an other end's, with the records that bind so. Applying a policy, a grouping and the processes set
+    aside to them counts each process's and group's peers exactly as reading every segment does. At 1M rows a reopened
+    session ranks by peers in 44 ms first and 1.4 ms after, opening no segment, where its rows took 391 and 99 ms. A
+    live generation's whole-session byte and peer rankings still read every segment.
+  - Debug and Release each ran 2,950 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    fifteen mutations were caught: a pair's records counted once for its known peers, for its unknown ends or for
+    those with neither end known, a lifecycle record kept, a segment's last run dropped, a run ended on a like pair,
+    the kept pairs never used, a candidate kept as correlated, the writer's bound ignored, a publication keeping
+    none, a reader taking pairs out of order, holding no record, binding none at a strength or past its bound, and
+    none read as the first instance bound directly. Read as that instance at no strength, which no policy admits, it
+    changed nothing.
 
 - **Revision 734 — S3, P25: the whole session's ranking by connections opens no segment:**
   - The TCP records behind each process's connections made and accepted are counted from the derivation's activity,
