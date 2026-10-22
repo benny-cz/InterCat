@@ -211,18 +211,23 @@ public sealed partial class TransportRelationIndex
     /// <summary>Each one-sided connection's incarnation, by its channel.</summary>
     private readonly Dictionary<int, Incarnation> oneSidedIncarnations;
 
+    /// <summary>Each relation's two incarnations, the first end's and the second's, by its channel.</summary>
+    private readonly Dictionary<int, (Incarnation First, Incarnation Second)> pairedIncarnations;
+
     private TransportRelationIndex(
         ProcessInstanceIndex processes,
         Dictionary<EndKey, EndTimeline> ends,
         Dictionary<Mechanism, long> withoutEnd,
         HashSet<StoreDependency>? read,
-        bool transfersKept)
+        bool transfersKept,
+        bool ownersKept)
     {
         this.processes = processes;
         this.ends = ends;
         this.withoutEnd = withoutEnd;
         this.read = read;
         TransfersKept = transfersKept;
+        OwnersKept = ownersKept;
         foreach ((EndKey key, EndTimeline timeline) in ends)
         {
             if (key.CompareTo(key.Mirror()) <= 0 && ends.TryGetValue(key.Mirror(), out EndTimeline? mirror))
@@ -232,8 +237,66 @@ public sealed partial class TransportRelationIndex
         }
 
         Channels = NumberChannels(ends);
-        Relations = BuildRelations(processes, ends);
+        (Relations, pairedIncarnations) = BuildRelations(processes, ends);
         (OneSided, oneSidedIncarnations) = BuildOneSided(processes, ends);
+    }
+
+    /// <summary>
+    /// Whether each incarnation counts its records by the owner each binds to and how strongly, with the transport bytes
+    /// they measured (revision 737): wherever its records were read, and not where they were read back from a checkpoint,
+    /// which keeps no such counts.
+    /// </summary>
+    public bool OwnersKept { get; }
+
+    /// <summary>
+    /// Whether its holders and owners are positions in exactly <paramref name="index"/>; relations made under another
+    /// derivation's instances may hold the same records elsewhere.
+    /// </summary>
+    public bool Binds(ProcessInstanceIndex index) => ReferenceEquals(processes, index);
+
+    /// <summary>
+    /// The records of <paramref name="relation"/>'s two incarnations by the owner each binds to and how strongly - or to
+    /// none - with the transport bytes they measured: exactly what a pass binding each of the channel's rows by its own
+    /// owner counts (`relations-v1` §5, revision 737). Null when these relations keep no such counts
+    /// (<see cref="OwnersKept"/>), when the relation is not one of theirs, or when a byte view refuses a record of it.
+    /// </summary>
+    public IReadOnlyList<RecordOwners>? OwnersOf(TransportRelation relation)
+    {
+        ArgumentNullException.ThrowIfNull(relation);
+        return OwnersKept
+            && pairedIncarnations.TryGetValue(relation.Channel, out (Incarnation First, Incarnation Second) pair)
+            && pair.First.Records + pair.Second.Records == relation.Records
+            && !pair.First.Owners.BytesRefused
+            && !pair.Second.Owners.BytesRefused
+                ? [.. pair.First.Owners.Snapshot(), .. pair.Second.Owners.Snapshot()]
+                : null;
+    }
+
+    /// <summary>
+    /// Every incarnation's records by the owner each binds to and how strongly - or to none - beside the other end every
+    /// one of them has (<see cref="PeersOf"/>): summed over incarnations, what a pass binding each related row with an end
+    /// at its two ends counts (`relations-v1` §5, revision 737). Null when these relations keep no such counts.
+    /// </summary>
+    public IReadOnlyList<(ProcessBinding Peer, IReadOnlyList<RecordOwners> Owners)>? OwnersByPeer()
+    {
+        if (!OwnersKept)
+        {
+            return null;
+        }
+
+        var tallies = new List<(ProcessBinding Peer, IReadOnlyList<RecordOwners> Owners)>();
+        foreach (EndTimeline timeline in ends.Values)
+        {
+            foreach (Incarnation incarnation in timeline.Incarnations)
+            {
+                if (incarnation.Records > 0)
+                {
+                    tallies.Add((PeerOf(incarnation), incarnation.Owners.Snapshot()));
+                }
+            }
+        }
+
+        return tallies;
     }
 
     /// <summary>
@@ -325,7 +388,7 @@ public sealed partial class TransportRelationIndex
             Observe(segment, processes, ends, withoutEnd);
         }
 
-        return new(processes, ends, withoutEnd, PublishedAs(segments), transfersKept: true);
+        return new(processes, ends, withoutEnd, PublishedAs(segments), transfersKept: true, ownersKept: true);
     }
 
     /// <summary>
@@ -344,7 +407,10 @@ public sealed partial class TransportRelationIndex
     {
         ArgumentNullException.ThrowIfNull(segments);
         ArgumentNullException.ThrowIfNull(processes);
-        if (read is null || PublishedAs(segments) is not { } offered || !read.IsSubsetOf(offered))
+
+        // Which segments were read is told by the identities the segments declare, so one already read is not opened again.
+        StoreDependency?[] offered = RpcCallIndex.IdentitiesOf(segments);
+        if (read is null || offered.Any(identity => identity is null) || !read.IsSubsetOf(offered!))
         {
             return null;
         }
@@ -352,13 +418,19 @@ public sealed partial class TransportRelationIndex
         // Every holder here is a position in the old process index; each must bind the same records, as strongly, in
         // the new one, where it may have another position or even another identity. The records an incarnation's holder
         // rests on all name its one PID and lie between its first and last reading. An incarnation whose records name two
-        // PIDs has no holder under any process index, so nothing it read depends on one.
+        // PIDs has no holder under any process index, so nothing it read depends on one - but for the owners it counts
+        // its records by (revision 737), whose every PID is held to the same, over the incarnation's readings.
         var readings = new Dictionary<int, (long First, long Last)>();
         foreach (EndTimeline timeline in ends.Values)
         {
             foreach (Incarnation incarnation in timeline.Incarnations)
             {
-                if (incarnation.Records > 0 && !incarnation.PidsDisagree && incarnation.ProcessId is { } processId)
+                if (incarnation.Records == 0 || (incarnation.PidsDisagree && !OwnersKept))
+                {
+                    continue;
+                }
+
+                foreach (int processId in incarnation.ProcessIds)
                 {
                     readings[processId] = readings.TryGetValue(processId, out (long First, long Last) seen)
                         ? (Math.Min(seen.First, incarnation.First), Math.Max(seen.Last, incarnation.Last))
@@ -387,7 +459,8 @@ public sealed partial class TransportRelationIndex
             extended[key] = copy;
         }
 
-        SegmentReaderV1[] added = [.. segments.Where(segment => !read.Contains(segment.Published!))];
+        SegmentReaderV1[] added = [.. Enumerable.Range(0, segments.Count).Where(index => !read.Contains(offered[index]!))
+            .Select(index => segments[index])];
         var cuts = new Dictionary<EndKey, List<Cut>>();
         foreach (SegmentReaderV1 segment in added)
         {
@@ -443,7 +516,8 @@ public sealed partial class TransportRelationIndex
             Observe(segment, processes, extended, countedWithoutEnd);
         }
 
-        return new(processes, extended, countedWithoutEnd, [.. read, .. added.Select(segment => segment.Published!)], TransfersKept);
+        return new(processes, extended, countedWithoutEnd, [.. read, .. added.Select(segment => segment.Published!)], TransfersKept,
+            OwnersKept);
     }
 
     /// <summary>The published files of these segments, or null when one of them has no published identity.</summary>
@@ -479,6 +553,7 @@ public sealed partial class TransportRelationIndex
         SegmentColumnSlice sessionTimes = segment.Slice(SegmentColumnId.SessionRelativeTicks);
         SegmentColumnSlice sizes = default;
         bool sized = false;
+        var measured = new ByteDomainRows(segment, ByteDomain.TransportObserved);
         for (int row = 0; row < segment.RowCount; row++)
         {
             if (columns.KeyAt(row) is not { } key)
@@ -515,7 +590,8 @@ public sealed partial class TransportRelationIndex
                 processes.Bind(owner, position.Ticks, isLifecycleRecord: false),
                 timed: sessionTimes.HasValue(row),
                 kind,
-                kind is ObservationKind.Send or ObservationKind.Receive ? sizes.SignedAt(row) : null);
+                kind is ObservationKind.Send or ObservationKind.Receive ? sizes.SignedAt(row) : null,
+                OwnedRecord.Of(in measured, row, (Mechanism)key.Protocol));
         }
     }
 
@@ -885,9 +961,12 @@ public sealed partial class TransportRelationIndex
         }
     }
 
-    private static List<TransportRelation> BuildRelations(ProcessInstanceIndex processes, Dictionary<EndKey, EndTimeline> ends)
+    private static (List<TransportRelation> Relations, Dictionary<int, (Incarnation, Incarnation)> ByChannel) BuildRelations(
+        ProcessInstanceIndex processes,
+        Dictionary<EndKey, EndTimeline> ends)
     {
         var relations = new List<TransportRelation>();
+        var byChannel = new Dictionary<int, (Incarnation, Incarnation)>();
         foreach ((EndKey key, EndTimeline timeline) in ends.OrderBy(entry => entry.Key))
         {
             if (key.CompareTo(key.Mirror()) > 0)
@@ -904,6 +983,7 @@ public sealed partial class TransportRelationIndex
                     continue;
                 }
 
+                byChannel[incarnation.Channel] = (incarnation, other);
                 relations.Add(new()
                 {
                     Mechanism = (Mechanism)key.Protocol,
@@ -926,7 +1006,7 @@ public sealed partial class TransportRelationIndex
             }
         }
 
-        return relations;
+        return (relations, byChannel);
     }
 
     private static (List<TransportConnection> Connections, Dictionary<int, Incarnation> ByChannel) BuildOneSided(
@@ -1103,10 +1183,11 @@ public sealed partial class TransportRelationIndex
             }
         }
 
-        /// <summary>Places one record in its incarnation, with what it is and the bytes it states.</summary>
-        public void Observe(Position position, int? owner, ProcessBinding binding, bool timed, ObservationKind kind, long? bytes)
+        /// <summary>Places one record in its incarnation, with what it is, the bytes it states and what a byte view measures of it.</summary>
+        public void Observe(
+            Position position, int? owner, ProcessBinding binding, bool timed, ObservationKind kind, long? bytes, OwnedRecord record)
         {
-            At(position).Observe(position, owner, binding, timed, kind, bytes);
+            At(position).Observe(position, owner, binding, timed, kind, bytes, record);
             if (LastPosition is not { } last || position.CompareTo(last) > 0)
             {
                 LastPosition = position;
@@ -1257,11 +1338,23 @@ public sealed partial class TransportRelationIndex
         /// <summary>The PID the incarnation's records name, the first one when they name more than one.</summary>
         public int? ProcessId => processId;
 
+        /// <summary>The PIDs its records name after <see cref="ProcessId"/>, when they name more than one.</summary>
+        private List<int>? otherProcessIds;
+
         /// <summary>
         /// Whether its records name two PIDs. Such an incarnation is ambiguous whatever instances they bind to, so no
         /// holder it records matters, and a later process index cannot change that.
         /// </summary>
         public bool PidsDisagree { get; private set; }
+
+        /// <summary>Every PID its records name, the first first.</summary>
+        public IEnumerable<int> ProcessIds => processId is { } first ? [first, .. otherProcessIds ?? []] : [];
+
+        /// <summary>
+        /// Its records by the owner each binds to and how strongly, with the transport bytes they measured (revision 737);
+        /// none for an incarnation read back from a checkpoint, which keeps no such counts.
+        /// </summary>
+        public OwnerTally Owners { get; private set; } = new();
 
         /// <summary>The first native tick of the incarnation's lifetime, or unbounded below when no boundary precedes it.</summary>
         public long Start { get; } = Start;
@@ -1338,6 +1431,11 @@ public sealed partial class TransportRelationIndex
         /// </summary>
         public Incarnation? Within(Incarnation bounds, Dictionary<int, int>? mapped)
         {
+            if (Owners.Copy(mapped) is not { } owners)
+            {
+                return null;
+            }
+
             int holder = Holder;
             if (holder >= 0 && mapped is not null)
             {
@@ -1358,6 +1456,8 @@ public sealed partial class TransportRelationIndex
             return new(bounds.Start, bounds.End, bounds.OpenWitnessed, bounds.CloseWitnessed, bounds.Opening)
             {
                 processId = processId,
+                otherProcessIds = otherProcessIds is null ? null : [.. otherProcessIds],
+                Owners = owners,
                 PidsDisagree = PidsDisagree,
                 Holder = holder,
                 Ambiguous = Ambiguous,
@@ -1397,10 +1497,12 @@ public sealed partial class TransportRelationIndex
             Candidates = overlapping;
         }
 
-        public void Observe(Position position, int? owner, ProcessBinding binding, bool timed, ObservationKind kind, long? bytes)
+        public void Observe(
+            Position position, int? owner, ProcessBinding binding, bool timed, ObservationKind kind, long? bytes, OwnedRecord record)
         {
             long reading = position.Ticks;
             Records++;
+            Owners.Add(binding, record);
             if (!timed)
             {
                 Untimed++;
@@ -1431,6 +1533,10 @@ public sealed partial class TransportRelationIndex
                 {
                     Ambiguous = true;
                     PidsDisagree = true;
+                    if (!(otherProcessIds ??= []).Contains(pid))
+                    {
+                        otherProcessIds.Add(pid);
+                    }
                 }
 
                 processId ??= pid;

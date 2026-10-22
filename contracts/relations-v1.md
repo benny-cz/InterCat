@@ -137,6 +137,14 @@ Every record of an incarnation has that incarnation's other end (§4), so a coun
 sum over incarnations, plus the records with no end, and needs no second read of any record: how many records of a
 mechanism have no other end a policy admits is exactly how many of them a per-record read would find unadmitted.
 
+Since revision 737 each incarnation also counts its records by the owner each binds to and how strongly - or by
+none - with the transport bytes they measured, and an extension holds every PID its records name to binding alike,
+an incarnation naming two among them. With the activity's own counts (`entities-v1` §4a), the whole session's bytes
+by process and by each end of every channel, and how its records bind at their two ends, are then sums over
+incarnations and instances: a live generation's whole-session byte and peer rankings open no segment for them, and
+give exactly what a read of every segment gives. A record a byte view refuses leaves the bytes to that read, which
+says why. A checkpoint keeps none of these counts, so relations read back from one, extended or not, read the rows.
+
 ## 5a. Channels
 
 A **channel** is one connection incarnation, the instance §7.1 calls a channel; for UDP it is one datagram flow between

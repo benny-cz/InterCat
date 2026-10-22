@@ -258,6 +258,11 @@ Relations read from a checkpoint before format 1.4 count no incarnation's transf
 what the covered segments' records sent is not in it: a connection's summary over the whole session then reads its
 rows. §2's publishers and `icat checkpoint` replace such a checkpoint with one that counts them.
 
+No format keeps the counts of records by owner (`relations-v1` §5, `entities-v1` §4a, revision 737): derivations
+read back from a checkpoint keep none, nor once extended, and a whole-session byte or peer ranking of their
+generation reads its rows. Since that revision whether a segment was read is told by the identity its generation
+records for it, so an extension opens only the segments it adds.
+
 ## 5. What is not defined at this version
 
 - The overview's counts, which the persisted overview publishes beside the checkpoint (`contracts/overview-index-v1.md`,

@@ -112,6 +112,12 @@ and a group's own records are its members'. A brushed interval counts the same w
 time lies inside it. The derivation checkpoint keeps the counts (`contracts/derivation-checkpoint-v1.md` §1), and a
 later generation extends them only when every PID's counted readings bind alike under its instances.
 
+Since revision 737 the counts also keep every record by the instance it binds to and how strongly - or by none -
+with the transport bytes it measured, as a byte view measures them (`metrics-v1` §4): every record's bytes, before
+any evidence policy, and every record but a process's or a thread's lifecycle records for the counts of peers
+(`metrics-v1` §6.1). They extend with the counts, each instance's moved as its counts move. A checkpoint keeps none
+of them, so counts read back from one keep none, nor once extended.
+
 ## 5. Evidence policy
 
 `EN-EvidencePolicy` decides which strengths a result admits:

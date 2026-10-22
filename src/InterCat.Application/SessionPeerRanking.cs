@@ -71,7 +71,8 @@ public static class SessionPeerRanking
 
         // A time scope reads only the segments holding a reading in it, with the instances and channels the derivation or
         // the checkpoint holds (P25). The whole session is counted from how its records bind at their two ends, where a
-        // finished session's persisted overview keeps them, and otherwise reads every segment.
+        // finished session's persisted overview keeps them, or where the derivation counted them as it read every record
+        // (revision 737), and otherwise reads every segment.
         var generation = new GenerationSegments(store, manifest, clock);
         ProcessInstanceIndex processes = generation.Processes(cancellationToken);
         TransportRelationIndex relations = generation.Relations(cancellationToken);
@@ -107,9 +108,7 @@ public static class SessionPeerRanking
 
         // An interval no reading can fall in holds nothing, and no segment is read.
         var total = new PeerTally(instances, groupKeys.Count, groupings.Count);
-        if (interval is null
-            && generation.Derivation.PersistedOverview(store.Root) is { PeerBindings: { } kept }
-            && Resolve(kept, processes) is { } pairs)
+        if (interval is null && KeptPairs(store, generation, processes, relations, cancellationToken) is { } pairs)
         {
             foreach ((ProcessBinding owner, ProcessBinding peer, long records) in pairs)
             {
@@ -219,6 +218,90 @@ public static class SessionPeerRanking
         {
             tally.Unattributed += records;
         }
+    }
+
+    /// <summary>
+    /// How the whole session's records bind at their two ends, bound to <paramref name="processes"/>' instances: as a
+    /// finished session's persisted overview keeps them, or else as the derivation counted them (revision 737). Null when
+    /// neither holds them, and the segments are read instead.
+    /// </summary>
+    private static List<(ProcessBinding Owner, ProcessBinding Peer, long Records)>? KeptPairs(
+        SessionStore store,
+        GenerationSegments generation,
+        ProcessInstanceIndex processes,
+        TransportRelationIndex relations,
+        CancellationToken cancellationToken) =>
+        (generation.Derivation.PersistedOverview(store.Root) is { PeerBindings: { } kept } ? Resolve(kept, processes) : null)
+        ?? (generation.Activity(processes, cancellationToken) is { } activity ? DerivedPairs(processes, relations, activity) : null);
+
+    /// <summary>
+    /// How the whole session's records bind at their two ends, before any evidence policy, from the counts the derivation
+    /// keeps (revision 737): every record but a lifecycle record by the owner it binds to, from the activity, and none at
+    /// its other end, then each incarnation's records moved to the other end every one of them has (`relations-v1` §5).
+    /// Exactly what <see cref="KeptBindings"/> counts over every segment, however many pairs there are; null when the
+    /// activity or the relations keep no such counts, and the segments are read.
+    /// </summary>
+    internal static List<(ProcessBinding Owner, ProcessBinding Peer, long Records)>? DerivedPairs(
+        ProcessInstanceIndex processes,
+        TransportRelationIndex relations,
+        ProcessActivityIndex activity)
+    {
+        ArgumentNullException.ThrowIfNull(processes);
+        ArgumentNullException.ThrowIfNull(relations);
+        ArgumentNullException.ThrowIfNull(activity);
+        if (!activity.Counts(processes) || !relations.Binds(processes)
+            || activity.Owners() is not { } owners || relations.OwnersByPeer() is not { } incarnations)
+        {
+            return null;
+        }
+
+        var pairs = new Dictionary<(int Owner, RelationStrength OwnerStrength, int Peer, RelationStrength PeerStrength), long>();
+        foreach (RecordOwners owner in owners)
+        {
+            Add(Kept(owner.Instance, owner.Strength), (-1, 0), owner.Records);
+        }
+
+        foreach ((ProcessBinding peer, IReadOnlyList<RecordOwners> held) in incarnations)
+        {
+            (int Instance, RelationStrength Strength) other = peer.IsBound ? Kept(peer.Instance, peer.Strength) : (-1, 0);
+            if (other.Instance < 0)
+            {
+                continue;
+            }
+
+            foreach (RecordOwners owner in held)
+            {
+                (int Instance, RelationStrength Strength) own = Kept(owner.Instance, owner.Strength);
+                Add(own, (-1, 0), -owner.Records);
+                Add(own, other, owner.Records);
+            }
+        }
+
+        // Every incarnation's records are among the activity's, so no pair is left short of records unless the two were
+        // counted over different records, which would make neither right.
+        if (pairs.Values.Any(records => records < 0))
+        {
+            return null;
+        }
+
+        return [.. pairs.Where(entry => entry.Value > 0).Select(entry => (
+            Binding(entry.Key.Owner, entry.Key.OwnerStrength), Binding(entry.Key.Peer, entry.Key.PeerStrength), entry.Value))];
+
+        void Add((int Instance, RelationStrength Strength) owner, (int Instance, RelationStrength Strength) peer, long records)
+        {
+            var key = (owner.Instance, owner.Strength, peer.Instance, peer.Strength);
+            pairs[key] = pairs.GetValueOrDefault(key) + records;
+        }
+
+        static (int Instance, RelationStrength Strength) Kept(int instance, RelationStrength strength) =>
+            instance >= 0 && strength is RelationStrength.Direct or RelationStrength.Correlated
+                or RelationStrength.Candidate or RelationStrength.Conflicting
+                ? (instance, strength)
+                : (-1, 0);
+
+        static ProcessBinding Binding(int instance, RelationStrength strength) => instance < 0
+            ? ProcessBinding.Unresolved(ProcessBindingReason.NoOwner)
+            : new ProcessBinding(instance, strength, ProcessBindingReason.Bound);
     }
 
     /// <summary>

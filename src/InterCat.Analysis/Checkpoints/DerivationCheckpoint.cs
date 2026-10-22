@@ -125,10 +125,12 @@ public sealed class DerivationCheckpoint
         ArgumentNullException.ThrowIfNull(fieldSegments);
         return Same(Segments, segments) && Same(FieldSegments, fieldSegments);
 
+        // By the identities the segments declare, so none is opened to tell.
         static bool Same(IReadOnlyList<StoreDependency> covered, IReadOnlyList<SegmentReaderV1> offered) =>
             covered.Count == offered.Count
-            && offered.All(segment => segment.Published is not null)
-            && covered.ToHashSet().SetEquals(offered.Select(segment => segment.Published!));
+            && RpcCallIndex.IdentitiesOf(offered) is var identities
+            && identities.All(identity => identity is not null)
+            && covered.ToHashSet().SetEquals(identities!);
     }
 
     /// <summary>

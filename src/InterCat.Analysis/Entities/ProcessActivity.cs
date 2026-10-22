@@ -33,18 +33,61 @@ public sealed partial class ProcessActivityIndex
     /// <summary>The published files counted; null when one had no published identity.</summary>
     private readonly HashSet<StoreDependency>? read;
 
+    /// <summary>The records binding to no instance, with the transport bytes they measured (revision 737).</summary>
+    private readonly OwnerTally unowned;
+
     private ProcessActivityIndex(
         ProcessInstanceIndex processes,
         Dictionary<int, InstanceActivity> instances,
         Dictionary<int, PidSpan> pids,
         long withoutOwner,
-        HashSet<StoreDependency>? read)
+        HashSet<StoreDependency>? read,
+        OwnerTally unowned,
+        bool ownersKept)
     {
         this.processes = processes;
         this.instances = instances;
         this.pids = pids;
         RecordsWithoutOwner = withoutOwner;
         this.read = read;
+        this.unowned = unowned;
+        OwnersKept = ownersKept;
+    }
+
+    /// <summary>
+    /// Whether it counts every record by the owner it binds to and how strongly, with the transport bytes it measured
+    /// (revision 737): wherever the records were counted, and not where the counts were read back from a checkpoint, which
+    /// keeps no such counts.
+    /// </summary>
+    public bool OwnersKept { get; }
+
+    /// <summary>
+    /// Whether a byte view refuses a record counted here: one naming no accounting side, one §23 does not define, no unit
+    /// or a unit other than bytes. A view then reads the rows, which say why.
+    /// </summary>
+    public bool BytesRefused => unowned.BytesRefused || instances.Values.Any(activity => activity.Owned.BytesRefused);
+
+    /// <summary>
+    /// Every record by the instance it binds to and how strongly - or to none, at instance -1 - with the transport bytes it
+    /// measured: exactly what a pass binding each row by its owner counts (`entities-v1` §4, revision 737). The records are
+    /// all but a process's or a thread's lifecycle records; the bytes are every record's. Null when these counts keep no
+    /// owners (<see cref="OwnersKept"/>).
+    /// </summary>
+    public IReadOnlyList<RecordOwners>? Owners()
+    {
+        if (!OwnersKept)
+        {
+            return null;
+        }
+
+        var owners = new List<RecordOwners>();
+        foreach (InstanceActivity activity in instances.Values)
+        {
+            owners.AddRange(activity.Owned.Snapshot());
+        }
+
+        owners.AddRange(unowned.Snapshot());
+        return owners;
     }
 
     /// <summary>Records that name no owner under the binding rule: no instance can hold them (§4.1).</summary>
@@ -171,7 +214,7 @@ public sealed partial class ProcessActivityIndex
     {
         ArgumentNullException.ThrowIfNull(segments);
         ArgumentNullException.ThrowIfNull(processes);
-        var activity = new ProcessActivityIndex(processes, [], [], 0, PublishedAs(segments));
+        var activity = new ProcessActivityIndex(processes, [], [], 0, PublishedAs(segments), new(), ownersKept: true);
         foreach (SegmentReaderV1 segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -194,7 +237,11 @@ public sealed partial class ProcessActivityIndex
     {
         ArgumentNullException.ThrowIfNull(segments);
         ArgumentNullException.ThrowIfNull(processes);
-        if (read is null || PublishedAs(segments) is not { } offered || !read.IsSubsetOf(offered))
+
+        // Which segments were counted is told by the identities the segments declare, so one already counted is not opened
+        // again.
+        StoreDependency?[] offered = RpcCallIndex.IdentitiesOf(segments);
+        if (read is null || offered.Any(identity => identity is null) || !read.IsSubsetOf(offered!))
         {
             return null;
         }
@@ -213,12 +260,12 @@ public sealed partial class ProcessActivityIndex
         var moved = new Dictionary<int, InstanceActivity>(instances.Count);
         foreach ((int position, InstanceActivity activity) in instances)
         {
-            if (!mapped.TryGetValue(position, out int to) || moved.ContainsKey(to))
+            if (!mapped.TryGetValue(position, out int to) || moved.ContainsKey(to) || activity.Copy(mapped) is not { } copy)
             {
                 return null;
             }
 
-            moved[to] = activity.Copy();
+            moved[to] = copy;
         }
 
         var extended = new ProcessActivityIndex(
@@ -226,8 +273,11 @@ public sealed partial class ProcessActivityIndex
             moved,
             pids.ToDictionary(entry => entry.Key, entry => entry.Value.Copy()),
             RecordsWithoutOwner,
-            [.. read]);
-        foreach (SegmentReaderV1 segment in segments.Where(segment => !read.Contains(segment.Published!)))
+            [.. read],
+            unowned.Copy(mapped: null)!,
+            OwnersKept);
+        foreach (SegmentReaderV1 segment in Enumerable.Range(0, segments.Count).Where(index => !read.Contains(offered[index]!))
+            .Select(index => segments[index]))
         {
             cancellationToken.ThrowIfCancellationRequested();
             extended.Count(segment);
@@ -250,9 +300,28 @@ public sealed partial class ProcessActivityIndex
             var owners = new RecordOwnerColumns(segment);
             SegmentColumnSlice ticks = segment.Slice(SegmentColumnId.NativeTicks);
             SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+            var measured = new ByteDomainRows(segment, ByteDomain.TransportObserved);
             for (int row = 0; row < segment.RowCount; row++)
             {
                 var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+
+                // Every record by the owner it binds to, as a pass binding each row by its owner reads it (revision 737).
+                OwnedRecord record = OwnedRecord.Of(in measured, row, mechanism);
+                if (bindings[row] is { IsBound: true } owned)
+                {
+                    if (!instances.TryGetValue(owned.Instance, out InstanceActivity? holder))
+                    {
+                        holder = new();
+                        instances[owned.Instance] = holder;
+                    }
+
+                    holder.Owned.Add(owned, record);
+                }
+                else
+                {
+                    unowned.Add(bindings[row], record);
+                }
+
                 if (owners.At(row, mechanism) is not { } processId)
                 {
                     RecordsWithoutOwner++;
@@ -307,14 +376,21 @@ public sealed partial class ProcessActivityIndex
         return published;
     }
 
-    /// <summary>One instance's records, lifecycle records apart from the rest, per mechanism.</summary>
+    /// <summary>
+    /// One instance's records, lifecycle records apart from the rest, per mechanism; and every record binding to it by how
+    /// strongly, with the transport bytes they measured.
+    /// </summary>
     private sealed class InstanceActivity
     {
         public Dictionary<Mechanism, long> Direct { get; private init; } = [];
 
         public Dictionary<Mechanism, long> Bound { get; private init; } = [];
 
-        public InstanceActivity Copy() => new() { Direct = new(Direct), Bound = new(Bound) };
+        public OwnerTally Owned { get; private init; } = new();
+
+        /// <summary>A copy sharing nothing, its owner at the position <paramref name="mapped"/> gives it; null where it has none.</summary>
+        public InstanceActivity? Copy(IReadOnlyDictionary<int, int>? mapped) =>
+            Owned.Copy(mapped) is { } owned ? new() { Direct = new(Direct), Bound = new(Bound), Owned = owned } : null;
     }
 
     /// <summary>The earliest and latest reading of any record naming one PID, and how many of them bind to nothing.</summary>

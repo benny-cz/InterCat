@@ -135,6 +135,6 @@ public sealed partial class ProcessActivityIndex
             last = (instance, (int)mechanism);
         }
 
-        return new(processes, instances, pids, withoutOwner, read);
+        return new(processes, instances, pids, withoutOwner, read, new(), ownersKept: false);
     }
 }

@@ -422,15 +422,21 @@ public sealed partial class ProcessInstanceIndex
         }
 
         fieldSegments ??= [];
-        if (!evidence.ReadAllOf(segments, fieldSegments))
+
+        // Which segments were read is told by the identities the segments declare, so one already read is not opened again
+        // (P25): opening it would read its header, directories and readings.
+        StoreDependency?[] offered = RpcCallIndex.IdentitiesOf(segments);
+        StoreDependency?[] offeredFields = RpcCallIndex.IdentitiesOf(fieldSegments);
+        if (!evidence.ReadAllOf([.. offered, .. offeredFields]))
         {
             return null;
         }
 
         Evidence extended = evidence.Clone();
         extended.Read(
-            [.. segments.Where(segment => !evidence.HasRead(segment))],
-            [.. fieldSegments.Where(segment => !evidence.HasRead(segment))],
+            [.. Enumerable.Range(0, segments.Count).Where(index => !evidence.HasRead(offered[index])).Select(index => segments[index])],
+            [.. Enumerable.Range(0, fieldSegments.Count).Where(index => !evidence.HasRead(offeredFields[index]))
+                .Select(index => fieldSegments[index])],
             cancellationToken);
         return Build(extended, clock);
     }
@@ -859,16 +865,16 @@ public sealed partial class ProcessInstanceIndex
 
         public long WithoutOwner { get; private set; }
 
-        public bool HasRead(SegmentReaderV1 segment) => segment.Published is { } published && read.Contains(published);
+        public bool HasRead(StoreDependency? published) => published is not null && read.Contains(published);
 
         /// <summary>
-        /// Whether these segments include every segment this evidence was read from, each told apart by the file its
-        /// generation publishes it as.
+        /// Whether segments of these identities include every segment this evidence was read from, each told apart by the
+        /// file its generation publishes it as.
         /// </summary>
-        public bool ReadAllOf(IReadOnlyList<SegmentReaderV1> segments, IReadOnlyList<SegmentReaderV1> fieldSegments) =>
+        public bool ReadAllOf(IReadOnlyList<StoreDependency?> identities) =>
             !anonymous
-            && segments.Concat(fieldSegments).All(segment => segment.Published is not null)
-            && read.IsSubsetOf(segments.Concat(fieldSegments).Select(segment => segment.Published!));
+            && identities.All(identity => identity is not null)
+            && read.IsSubsetOf(identities.Select(identity => identity!));
 
         public Evidence Clone()
         {

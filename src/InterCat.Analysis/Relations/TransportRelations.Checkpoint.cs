@@ -182,7 +182,7 @@ public sealed partial class TransportRelationIndex
             last = key;
         }
 
-        return new(processes, ends, withoutEnd, read, transfersKept: false);
+        return new(processes, ends, withoutEnd, read, transfersKept: false, ownersKept: false);
     }
 
     private static UInt128 ReadAddress(IndexFileReader reader, byte family) =>

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 736 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 737 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,27 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 737 — S3, P25: a live generation's whole-session byte and peer rankings come from its derivation:**
+  - The activity and each incarnation count every record by the owner it binds to, with the transport bytes it
+    measured, extended between live generations; the bytes and peer bindings a persisted overview keeps are sums of
+    them, so a live generation's whole-session byte and peer rankings read no row. An extension now opens only the
+    segments it adds. At 1M rows in ten chunks a new generation's byte ranking took 104 ms with the extension over its
+    chunk, then 2.1 ms for bytes and for peers, where the rows took 218 and 332 ms. A derivation read back from a
+    checkpoint keeps no such counts, and reads the rows.
+  - Debug and Release each ran 2,963 tests with revision 473's 93 failures and 4 skips, and failed nothing else.
+    Twenty-nine of thirty-two mutations were caught: another domain's records measured, a unit other than bytes
+    taken, sizes dropped, lifecycle records counted among a peer count's records, received bytes taken as sent, an
+    unmeasured send as measured, the other side's bytes dropped (caught once the property test gave endpoint records
+    sizes of their own), a sum past what one holds not refused, a copy dropping the records binding to none or
+    keeping old positions, unbound records left uncounted, bound lifecycle records counted, an incarnation counting
+    no owners or its extension dropping them, an extension or a checkpoint read claiming owners, a relation's owners
+    given for another's records or past a refused record, the activity counting no owned or unowned records, its
+    copy left unmapped, its checkpoint read claiming owners, its refusal ignored, the bytes never or always taken
+    from the derivation, records moved to their other end left counted at none, the peers never taken from it, a
+    generation's instances made from every segment opened, and an extension reading every segment again. The other
+    three change nothing a session can show: a process connected to itself counted at its second end, which is its
+    first, and an owner or other end bound at a strength no rule binds at.
 
 - **Revision 736 — S3, P25: a whole session's connections to other hosts open no segment (derivation-checkpoint-v1 format 1.4):**
   - Each connection's sends, receives and bytes are counted as its relations are derived, extended between live
@@ -860,7 +881,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         at the scale gate's end is 263 MB at 10M rows, from 1.35 GB; a live session, and a focus that reads its rows,
         still cache segment readers within the reader cache's budget.
    - A live session still counts its overview from tiles until its writer finishes; since revision 710 it derives its
-     processes, relations and counts from the checkpoint its generation names, reading only the newest chunk.
+     processes, relations and counts from the checkpoint its generation names, reading only the newest chunk. Since
+     revision 737 its whole-session byte and peer rankings come from what its derivation counted, extended from the
+     generation before, and an extension opens only the segments it adds; a derivation read back from a checkpoint
+     keeps no such counts, and reads the rows.
    - A zoom of a live generation still builds a segment's tiles from its rows when first drawn; since revision 456 a
      finished generation's are persisted (`tile-index-v1`), with the records a column boundary can fall among, so its
      zooms open no segment, and since revision 457 neither do its brushes, which count from the tiles' tallies. Since revision 400 a zoom opens and tiles only the segments its interval meets, by the readings their headers

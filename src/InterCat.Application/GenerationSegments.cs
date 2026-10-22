@@ -36,15 +36,20 @@ internal sealed class GenerationSegments(SessionStore store, SessionManifestV1 m
     /// <summary>The source-field segments, each opened only when a derivation first reads it.</summary>
     public SegmentsOnDemand FieldsOnDemand => fieldsOnDemand ??= new(store, manifest, SessionSegments.FieldNames(manifest));
 
+    /// <summary>
+    /// The instances: already made, or the checkpoint's; else extended from an earlier generation's or the checkpoint's,
+    /// opening only the segments they add, or derived, opening every one.
+    /// </summary>
     public ProcessInstanceIndex Processes(CancellationToken cancellationToken) =>
         Derivation.DerivedProcesses
         ?? Saved()?.Processes
-        ?? Derivation.Processes(store.Root, All, clock, Fields, cancellationToken);
+        ?? Derivation.Processes(store.Root, OnDemand, clock, FieldsOnDemand, cancellationToken);
 
+    /// <summary>The channels, made as <see cref="Processes"/> are.</summary>
     public TransportRelationIndex Relations(CancellationToken cancellationToken) =>
         Derivation.DerivedRelations
         ?? Saved()?.Relations
-        ?? Derivation.Relations(store.Root, All, clock, Fields, cancellationToken);
+        ?? Derivation.Relations(store.Root, OnDemand, clock, FieldsOnDemand, cancellationToken);
 
     /// <summary>
     /// Each instance's records over the whole generation, by mechanism: those already counted, which taking the instances

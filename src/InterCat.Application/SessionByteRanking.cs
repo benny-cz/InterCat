@@ -131,6 +131,12 @@ public sealed record SessionByteMeasures(
     /// 3), opening no segment, rather than read from the segments; both give the same measures.
     /// </summary>
     public bool FromPersistedOverview { get; init; }
+
+    /// <summary>
+    /// Whether they were answered from the bytes the derivation counted as it read every record (revision 737), opening no
+    /// segment it had not read, rather than read from the segments again; both give the same measures.
+    /// </summary>
+    public bool FromDerivation { get; init; }
 }
 
 /// <summary>
@@ -171,11 +177,31 @@ public static class SessionByteRanking
         }
 
         // A time scope reads only the segments holding a reading in it, with the instances and channels the derivation or
-        // the checkpoint holds (P25); the whole session reads every segment.
+        // the checkpoint holds (P25).
         var generation = new GenerationSegments(store, manifest, clock);
         ProcessInstanceIndex processes = generation.Processes(cancellationToken);
         TransportRelationIndex relations = generation.Relations(cancellationToken);
         TimeRange? native = interval is { } presentation ? RankingScope.NativeInterval(clock, presentation) : null;
+
+        // The whole session's bytes are otherwise what the derivation counted as it read every record - extended from one
+        // live generation to the next - so a live view opens no segment for them that its derivation has not read (P25,
+        // revision 737). A refusal is the rows' to state, which say why.
+        if (interval is null
+            && generation.Activity(processes, cancellationToken) is { } activity
+            && DerivedBytes(processes, relations, activity) is { } derivedBytes)
+        {
+            try
+            {
+                if (FromKept(derivedBytes, processes, relations, policy, manifest) is { } counted)
+                {
+                    return counted with { FromPersistedOverview = false, FromDerivation = true };
+                }
+            }
+            catch (InvalidDataException refused) when (SegmentMeasurement.IsUnsummable(refused))
+            {
+                // Read from the rows below, to the reason they give.
+            }
+        }
 
         // The channels the overview draws, each with a dense slot and the instance holding each of its ends.
         int instances = processes.Instances.Count;
@@ -335,6 +361,154 @@ public static class SessionByteRanking
     }
 
     /// <summary>
+    /// The whole session's bytes before any evidence policy, as a persisted overview keeps them, from the counts the
+    /// derivation keeps (revision 737): each instance's at each strength from its activity, and each end of each paired
+    /// channel from the channel's two incarnations, its holder's own records alone. Exactly what <see cref="KeptPlan"/>
+    /// counts over every segment; null when the activity or the relations keep no such counts, a byte view refuses a
+    /// record, a sum passes what one holds, or an end's records bind at two strengths, and the segments are read.
+    /// </summary>
+    internal static OverviewProcessBytes? DerivedBytes(
+        ProcessInstanceIndex processes,
+        TransportRelationIndex relations,
+        ProcessActivityIndex activity)
+    {
+        ArgumentNullException.ThrowIfNull(processes);
+        ArgumentNullException.ThrowIfNull(relations);
+        ArgumentNullException.ThrowIfNull(activity);
+        if (!activity.Counts(processes) || !relations.Binds(processes) || activity.BytesRefused
+            || activity.Owners() is not { } owners)
+        {
+            return null;
+        }
+
+        // Each instance's bytes at each strength a policy can admit; any other record's, unbound.
+        TransportBytes unbound = TransportBytes.None;
+        var kept = new Dictionary<(int Instance, RelationStrength Strength), TransportBytes>();
+        foreach (RecordOwners owner in owners)
+        {
+            if (owner.Bytes.Refused)
+            {
+                return null;
+            }
+
+            if (owner.Bytes.IsEmpty)
+            {
+                continue;
+            }
+
+            if (owner.Instance < 0 || !KeptPlan.Keeps(owner.Strength))
+            {
+                if (Summed(unbound, Bytes(owner.Bytes)) is not { } sum)
+                {
+                    return null;
+                }
+
+                unbound = sum;
+            }
+            else
+            {
+                if (Summed(kept.GetValueOrDefault((owner.Instance, owner.Strength)), Bytes(owner.Bytes)) is not { } sum)
+                {
+                    return null;
+                }
+
+                kept[(owner.Instance, owner.Strength)] = sum;
+            }
+        }
+
+        // Each end of every paired channel, whatever its own strength: the records its holder binds, at the one strength
+        // they all bind at; a process connected to itself holds both ends, and its records are counted at the first.
+        var positionOf = new Dictionary<ProcessInstanceId, int>(processes.Instances.Count);
+        for (int position = 0; position < processes.Instances.Count; position++)
+        {
+            positionOf[processes.Instances[position].Id] = position;
+        }
+
+        var ends = new List<(string, ProcessInstanceId, RelationStrength, TransportBytes)>();
+        foreach (TransportRelation relation in relations.Relations)
+        {
+            if (!TransportRelationIndex.Relates(relation.Mechanism) || relation.Channel < 0 || relation.Channel >= relations.Channels)
+            {
+                continue;
+            }
+
+            if (relations.OwnersOf(relation) is not { } records)
+            {
+                return null;
+            }
+
+            int first = positionOf[relation.First.Id];
+            int second = positionOf[relation.Second.Id];
+            var atEnd = new TransportBytes?[2];
+            var strengthAt = new RelationStrength?[2];
+            foreach (RecordOwners owner in records)
+            {
+                int end = owner.Instance < 0 || !KeptPlan.Keeps(owner.Strength) ? -1
+                    : owner.Instance == first ? 0
+                    : owner.Instance == second ? 1
+                    : -1;
+                if (end < 0 || owner.Records == 0)
+                {
+                    continue;
+                }
+
+                if (owner.Bytes.Refused || (strengthAt[end] is { } noted && noted != owner.Strength))
+                {
+                    return null;
+                }
+
+                strengthAt[end] = owner.Strength;
+                if (!owner.Bytes.IsEmpty)
+                {
+                    if (Summed(atEnd[end], Bytes(owner.Bytes)) is not { } sum)
+                    {
+                        return null;
+                    }
+
+                    atEnd[end] = sum;
+                }
+            }
+
+            for (int end = 0; end < 2; end++)
+            {
+                if (atEnd[end] is { } bytes && bytes != TransportBytes.None)
+                {
+                    ends.Add((relation.StableKey, end == 0 ? relation.First.Id : relation.Second.Id, strengthAt[end]!.Value, bytes));
+                }
+            }
+        }
+
+        return new(unbound, kept.Where(entry => entry.Value != TransportBytes.None)
+            .Select(entry => (processes.Instances[entry.Key.Instance].Id, entry.Key.Strength, entry.Value)), ends);
+
+        static TransportBytes Bytes(TransportByteSums sums) => new(
+            sums.SentBytes, sums.SentMeasured, sums.SentUnmeasured, sums.ReceivedBytes, sums.ReceivedMeasured, sums.ReceivedUnmeasured)
+        {
+            OtherBytes = sums.OtherBytes,
+            OtherMeasured = sums.OtherMeasured,
+            OtherUnmeasured = sums.OtherUnmeasured,
+        };
+    }
+
+    /// <summary>Two sets of records' bytes together, the first none when null; null where a sum passes what one holds.</summary>
+    private static TransportBytes? Summed(TransportBytes? left, TransportBytes right)
+    {
+        if (left is null)
+        {
+            return right;
+        }
+
+        try
+        {
+            return left.Plus(right);
+        }
+        catch (InvalidDataException refused) when (SegmentMeasurement.IsUnsummable(refused))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// What a pass keeping the whole session's bytes before any evidence policy needs (overview-index-v1 minor 3): every
     /// paired channel - TCP connection or UDP flow - whatever its own strength, with the instances holding its two ends, and
     /// a slot for each instance at each strength a policy can admit. Null when the session has more paired channels than an
@@ -396,6 +570,9 @@ public static class SessionByteRanking
 
             return channels.Count > MaximumChannels ? null : new(processes, relations, slotOfChannel, channels);
         }
+
+        /// <summary>Whether a record binding at <paramref name="strength"/> keeps a slot of its instance's, as a policy can admit it.</summary>
+        public static bool Keeps(RelationStrength strength) => SlotOf(strength) >= 0;
 
         /// <summary>A binding strength's slot among an instance's, or -1 for one no evidence policy admits.</summary>
         private static int SlotOf(RelationStrength strength) => strength switch
