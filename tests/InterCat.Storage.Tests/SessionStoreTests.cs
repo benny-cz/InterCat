@@ -647,6 +647,34 @@ public sealed class SessionStoreTests
         Assert.Equal(5, unreadable.PointerOpens);
     }
 
+    [Fact(DisplayName = "I15: a file another program holds for a moment is waited for, and the generation naming it acquired, not the one kept to fall back to")]
+    public void AFileHeldForAMomentIsWaitedFor()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+
+        // Held as the session opens, as a scanner can hold a file just written, and let go while the open waits.
+        var held = new HeldFileDirectory(LocalOwnedDirectory.Open(session.Path), "segment-0002.icats", holds: 3);
+        SessionStore opened = SessionStore.OpenExisting(held);
+        Assert.Equal((2L, false), (opened.Current!.Generation, opened.Recovery.RolledBackToLastKnownGood));
+        Assert.Equal(4, held.Opens);
+
+        // Held for longer than the open waits: the generation kept to fall back to is read, saying why.
+        var kept = new HeldFileDirectory(LocalOwnedDirectory.Open(session.Path), "segment-0002.icats", holds: int.MaxValue);
+        SessionStore fallen = SessionStore.OpenExisting(kept);
+        Assert.Equal((1L, true), (fallen.Current!.Generation, fallen.Recovery.RolledBackToLastKnownGood));
+        Assert.Contains("'segment-0002.icats' could not be read: Simulated: another program holds the file.",
+            fallen.Recovery.RollbackReason, StringComparison.Ordinal);
+        Assert.Equal(6, kept.Opens);
+
+        // A file that is gone is not waited for: it will not come back.
+        var gone = new HeldFileDirectory(LocalOwnedDirectory.Open(session.Path), "segment-0002.icats", holds: int.MaxValue,
+            missing: true);
+        Assert.Equal((1L, true), (SessionStore.OpenExisting(gone).Current!.Generation, true));
+        Assert.Equal(1, gone.Opens);
+    }
+
     [Fact(DisplayName = "I15: a session no generation of which verifies is refused naming what is wrong once, and is left as it is")]
     public void ASessionNoGenerationOfWhichVerifiesSaysWhyOnce()
     {
@@ -1195,6 +1223,36 @@ public sealed class SessionStoreTests
             inner.ReplaceOwnedFile(sourceName, destinationName);
 
         public bool RemoveOwnedFile(string name) => inner.RemoveOwnedFile(name);
+
+        public IReadOnlyDictionary<string, OwnedFileFacts>? DescribeOwnedFiles() => inner.DescribeOwnedFiles();
+    }
+
+    /// <summary>
+    /// Holds one file as another program can, so its first <paramref name="holds"/> opens fail as a held file's do - or, when
+    /// <paramref name="missing"/>, as a missing one's; everything else is real.
+    /// </summary>
+    private sealed class HeldFileDirectory(IOwnedDirectory inner, string name, int holds, bool missing = false) : IOwnedDirectory
+    {
+        public int Opens { get; private set; }
+
+        public string Path => inner.Path;
+
+        public FileStream OpenOwnedFile(string file, FileMode mode, FileAccess access, FileShare share, FileOptions options)
+        {
+            if (file == name && ++Opens <= holds)
+            {
+                throw missing
+                    ? new FileNotFoundException("Simulated: the file is gone.", file)
+                    : new IOException("Simulated: another program holds the file.");
+            }
+
+            return inner.OpenOwnedFile(file, mode, access, share, options);
+        }
+
+        public void ReplaceOwnedFile(string sourceName, string destinationName) =>
+            inner.ReplaceOwnedFile(sourceName, destinationName);
+
+        public bool RemoveOwnedFile(string file) => inner.RemoveOwnedFile(file);
 
         public IReadOnlyDictionary<string, OwnedFileFacts>? DescribeOwnedFiles() => inner.DescribeOwnedFiles();
     }

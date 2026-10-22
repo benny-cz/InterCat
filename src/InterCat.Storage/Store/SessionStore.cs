@@ -2336,6 +2336,16 @@ public sealed partial class SessionStore
     private const int MaximumAcquisitions = 3;
 
     /// <summary>
+    /// The pauses before a generation one of whose files could not be opened - another program holding it, as a scanner
+    /// or a backup can one just written - is acquired again, before the generation kept to fall back to is: 0.31 s in all.
+    /// </summary>
+    private static readonly TimeSpan[] HeldPauses =
+    [
+        TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(40),
+        TimeSpan.FromMilliseconds(80), TimeSpan.FromMilliseconds(160),
+    ];
+
+    /// <summary>
     /// The columns a cached reader keeps when the cache trims: session time and mechanism, which every projection's time
     /// tiles read (S4). Every other column is read, and checked, again when a query next asks for it.
     /// </summary>
@@ -2357,6 +2367,16 @@ public sealed partial class SessionStore
             Unverified? currentProblem = TryAcquire(
                 directory, SessionPointerV1.FileName, out SessionManifestV1? manifest, out SessionPointerV1? pointed, measurements,
                 verified, hashContents);
+
+            // A file another program holds for a moment is not damaged: the generation naming it is acquired again once it
+            // may be let go, before the one kept to fall back to is.
+            for (int pause = 0; currentProblem is { Held: true } && pause < HeldPauses.Length; pause++)
+            {
+                Thread.Sleep(HeldPauses[pause]);
+                currentProblem = TryAcquire(
+                    directory, SessionPointerV1.FileName, out manifest, out pointed, measurements, verified, hashContents);
+            }
+
             if (currentProblem is null)
             {
                 return (manifest, false, null);
@@ -2411,8 +2431,11 @@ public sealed partial class SessionStore
             + "Its files are left as they are.";
     }
 
-    /// <summary>Why a generation did not verify, and the file that kept it from verifying.</summary>
-    private sealed record Unverified(string File, string Reason)
+    /// <summary>
+    /// Why a generation did not verify, and the file that kept it from verifying; <paramref name="Held"/> when that file is
+    /// there but could not be opened, as one another program holds cannot be.
+    /// </summary>
+    private sealed record Unverified(string File, string Reason, bool Held = false)
     {
         public override string ToString() => Reason;
     }
@@ -2574,7 +2597,8 @@ public sealed partial class SessionStore
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                return new(dependency.Name, Unreadable(dependency, exception, manifest.Generation));
+                return new(dependency.Name, Unreadable(dependency, exception, manifest.Generation),
+                    Held: exception is not (FileNotFoundException or DirectoryNotFoundException));
             }
         }
 

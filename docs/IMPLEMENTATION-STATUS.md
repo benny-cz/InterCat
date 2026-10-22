@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 713 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 714 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 714 — a session opened while one of its files is held for a moment is read whole (R10, `store-v1`):**
+  - A file a generation names that another program held as the session opened - a scanner, a backup - read the session
+    at its last-known-good generation as if the file were damaged, or refused it when that generation needed the same
+    file. The generation is now acquired again after pauses of 10 to 160 ms, 0.31 s in all, before it is fallen back
+    from; a missing file is not waited for. A held manifest is still read as missing.
+  - Debug and Release each ran 2,859 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    five mutations were caught: a held file not waited for, not known as held, or a missing one waited for; one
+    pause fewer; and a held file waited for without the generation being acquired again.
 
 - **Revision 713 — a live capture rides out a moment a file cannot be read or written (R10, ADR-027):**
   - A follow step that could not read or write a file - another command publishing into the session, a program holding

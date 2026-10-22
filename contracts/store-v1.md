@@ -162,6 +162,10 @@ present with the recorded length and digest.
 - Any of it fails and the pointer, read again, reads otherwise than it did - a writer published while it was read -
   or is there but cannot be read, as a platform can refuse to open a file while it is replaced → the generation the
   pointer names is acquired again, after a few milliseconds where it could not be read, up to three times in all.
+- A dependency is there but cannot be opened - another program holds it, as a scanner or a backup can a file just
+  written - → since revision 714 the generation is acquired again after pauses of 10, 20, 40, 80 and 160 ms, before
+  the last-known-good is; one that is missing is not waited for. Until then such a hold read a session at its
+  last-known-good, or refused it when that generation needed the same file, as if the file were damaged.
 - Any of it fails otherwise → the retained last-known-good pointer is verified the same way, and a success is
   reported as a rollback with the reason the newer one failed.
 - Both fail and either pointer exists → the session is refused. A store with a pointer that names

@@ -911,6 +911,7 @@
         "I15: a damaged variable chunk is refused when its column is read",
         "I15: a dependency that changed under a generation fails it rather than being read",
         "I15: a dictionary is sorted and unique, and a column resolves through it",
+        "I15: a file another program holds for a moment is waited for, and the generation naming it acquired, not the one kept to fall back to",
         "I15: a file read before the store hashes the session is refused in the words opening uses",
         "I15: a fresh reader hashes every dependency, so a change that kept a file's length and time is found",
         "I15: a generation over its row bound publishes several segments, each complete",
