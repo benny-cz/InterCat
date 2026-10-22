@@ -338,6 +338,66 @@ public sealed class RankingSelectorTests
             workspace.RankingNoteDetail, StringComparison.Ordinal);
     });
 
+    [Fact(DisplayName = "§5.2/§6.4: a brushed interval ranks the rail by the connections made and accepted within it, read beside its counts")]
+    public void ABrushRanksByTheConnectionsWithinIt() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Servers());
+        using WorkspaceViewModel workspace = Open(session);
+        workspace.RankBy = RankingMetric.ConnectionsAccepted;
+        await workspace.RankingReady;
+        Assert.Equal(["2 accepted", "0 accepted", "no TCP"], workspace.RungRows.Select(row => row.Figure));
+
+        // Inside [10, 15) the client made, and the service accepted, the first of the two connections alone.
+        var interval = new TimeRange(10, 15);
+        workspace.SelectInterval(interval);
+        await workspace.IntervalReady;
+        Assert.Equal(RankingMetric.ConnectionsAccepted, workspace.AppliedRanking);
+        Assert.Equal(["service.exe", "client.exe"], workspace.RungRows.Take(2).Select(row => row.Label));
+        Assert.Equal(["1 accepted", "0 accepted"], workspace.RungRows.Take(2).Select(row => row.Figure));
+        Assert.Equal("1 accepted on 4 TCP records", workspace.RankingNote);
+        Assert.Equal(
+            (await workspace.ExportAsync(ExportFormat.Json, Exported)).Content,
+            SessionExport.Build(session.Store, new([], interval, false, ExportFormat.Json, RankBy: RankingMetric.ConnectionsAccepted),
+                Exported).Content);
+
+        // Made, read for the interval brushed, ranks the client first.
+        workspace.RankBy = RankingMetric.ConnectionsMade;
+        await workspace.RankingReady;
+        Assert.Equal(["client.exe", "service.exe"], workspace.RungRows.Take(2).Select(row => row.Label));
+        Assert.Equal(["1 made", "0 made"], workspace.RungRows.Take(2).Select(row => row.Figure));
+    });
+
+    [Fact(DisplayName = "R21: a byte ranking says the bytes on records no process holds beneath the machine's rows, never as a row's")]
+    public void BytesNoProcessHoldsAreSaidBeneathTheRows() => SingleThreadedContext.Run(async () =>
+    {
+        // A client's send to a server, and a send made before its own process was created, which binds to no instance.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" },
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\service.exe" },
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 3).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 4).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 9, 600, 5).Between("127.0.0.1:53000", "10.0.0.9:443"),
+            Lifecycle(30, ObservationKind.Create, 600, 6) with { ResourceName = @"C:\Tools\late.exe" },
+        ]);
+        using WorkspaceViewModel workspace = Open(session);
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.RankingReady;
+        Assert.Equal("client.exe", workspace.RungRows[0].Label);
+        Assert.Equal(WorkspaceRowBuilder.DescribeSize(64), workspace.RungRows[0].Figure);
+        Assert.DoesNotContain(workspace.RungRows, row => row.Figure == WorkspaceRowBuilder.DescribeSize(9));
+        Assert.EndsWith($" {WorkspaceRowBuilder.DescribeSize(9)} more are on sends no process holds.", workspace.RankingNoteDetail,
+            StringComparison.Ordinal);
+
+        // A group's rows are its own processes', so nothing is said of records no process holds.
+        workspace.SelectedRung = workspace.RungRows[0];
+        Assert.True(workspace.Descend());
+        await workspace.RankingReady;
+        Assert.DoesNotContain("no process holds", workspace.RankingNoteDetail, StringComparison.Ordinal);
+    });
+
     /// <summary>
     /// client.exe connects twice to service.exe over loopback, each accepted there; resolver.exe sends UDP.
     /// </summary>
@@ -644,6 +704,13 @@ public sealed class RankingSelectorTests
             workspace.RungRows.Select(row => (row.Label, row.Figure)));
         Assert.Equal("100 B sent and received on 1 measured record", workspace.RungRows[0].RankedSpoken);
         Assert.Equal("200 B on 2 records · both ends", workspace.RankingNote);
+
+        // Its export says what its rows rank by: this process's own end on each, both directions, not a machine's groups.
+        SessionExportResult both = await workspace.ExportAsync(ExportFormat.Json, Exported);
+        Assert.Contains(WorkspaceExport.RankingCaveat(RankingMetric.EndpointBytes, DetailLevel.ProcessInstance), both.Context.Caveats);
+        Assert.StartsWith("Rows are ranked by bytes sent and received: transport-observed bytes on every one of this process's own "
+            + "records on each channel or connection to another host, both directions.",
+            WorkspaceExport.RankingCaveat(RankingMetric.EndpointBytes, DetailLevel.ProcessInstance), StringComparison.Ordinal);
 
         // It sent nothing, and no zero is stated for it.
         workspace.RankBy = RankingMetric.BytesSent;

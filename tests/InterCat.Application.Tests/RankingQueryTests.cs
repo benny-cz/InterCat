@@ -26,6 +26,25 @@ public sealed class RankingQueryTests
         RankingMetric.ActivePeers, RankingMetric.RpcErrors, RankingMetric.RpcCallTime, RankingMetric.RpcServeTime,
     ];
 
+    [Fact(DisplayName = "R18: a ranked export whose session cannot be read again names no query, saying why, and its rows stand")]
+    public void AnUnreadableSessionNamesNoQuery()
+    {
+        using var session = new TemporarySession();
+        (List<ObservationRowV1> rows, List<SourceFieldRowV1> fields) = RandomMachine(new Random(7));
+        Publish(session.Store, rows, rowsPerSegment: 20, fields: fields);
+        SessionExportResult export = SessionExport.Build(session.Store,
+            new([], null, false, ExportFormat.Json, RankBy: RankingMetric.BytesSent), Exported);
+        Assert.NotNull(export.Context.Query!.Identity);
+
+        // A segment of the generation the rows were read from, cut short since: naming their query reads it again.
+        string segment = Path.Combine(session.Path, SessionSegments.Names(session.Store.Current!)[0]);
+        File.WriteAllBytes(segment, File.ReadAllBytes(segment)[..^16]);
+        RankingQueryName unnamed = RankingQuery.Name(session.Store, export.Context, EvidencePolicy.IncludeCorrelated);
+        Assert.Null(unnamed.Identity);
+        Assert.StartsWith("The session could not be read to name the icat metric query these rows answer: ", unnamed.Unnamed,
+            StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "R18: the machine's rows ranked by a metric are the groups of the icat metric answer its export names, value for value")]
     public void TheMachinesRowsAreTheNamedAnswersGroups()
     {

@@ -378,6 +378,12 @@ public sealed class AggregateMembersWorkspaceTests
         GraphDisplayNode remainder = workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.Remainder);
         workspace.SelectGraphNode(remainder.Key);
         Assert.Equal($"Its {remainder.Members.Count} processes, the busiest first", workspace.MembersHeading);
+
+        // Its card says what it holds: the eleven least active, five of whose pairs are among themselves and the sixth of
+        // which reaches app011.exe, drawn on its own.
+        Assert.Equal(11, remainder.Members.Count);
+        Assert.Equal("11 processes folded together to keep the graph readable · 6 relationships, 5 among themselves. They are "
+            + "listed below.", workspace.SelectionSubtitle);
         ProcessNode[] folded = [.. processes.Where(process => remainder.Members.Contains(process.Id)).OrderByDescending(process => process.Records)];
         Assert.Equal(folded.Select(process => (process.NameWithPid, $"{process.Records} records · 1 relationship")),
             workspace.MemberRows.Select(row => (row.Name, row.Detail)));

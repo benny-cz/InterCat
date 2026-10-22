@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 716 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 717 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 717 — coverage pass over revisions 573–716 (who connected, ports, programs) (R10):**
+  - Of 8,728 reachable lines those revisions added, 204 ran in no test, most of them guards, Windows-only paths or
+    record declarations. The eleven a person reaches now run: a brushed ranking by connections; bytes on records no
+    process holds, said on the machine's rung alone; Other processes' card; a double click in an aggregate's process
+    list and in a chosen process's relationships; a process rung's export ranked by bytes sent and received; a pair of
+    programs no open was seen between, spoken; an export whose session cannot be read to name its query; icat ports
+    and icat programs on a missing folder; a follow stopped mid-pause; and a publication that cannot read its
+    fallback's manifest. None was wrong.
+  - Debug and Release each ran 2,873 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    fourteen mutations were caught: a publication removing manifests while its fallback's manifest cannot be read; a
+    follow sleeping out a pause it was stopped in; an unopened pair of programs spoken as if one connected; an
+    unreadable session's query thrown rather than named as unread; a process rung's export ranked by bytes both ways
+    stating a machine's caveat; a brushed connection ranking not read beside its counts, or not kept; bytes no
+    process holds left unsaid, or said on every rung; Other processes' card unsaid; a double click on a listed
+    process or relationship ignored; and icat ports and icat programs not naming a missing folder.
 
 - **Revision 716 — a held pointer or manifest is waited for, and the generation fallen back to is kept (R10, `store-v1`):**
   - A pointer or a manifest another program held for a moment read as missing: opening read the session at its

@@ -200,6 +200,49 @@ public sealed class ConnectionsInspectorWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.3: a double click on a relationship in a chosen process's list chooses the process at its other end, as Enter does")]
+    public async Task ADoubleClickOnARelationshipChoosesItsOtherEnd()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(Recording(session));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.ProcessId == 200).Id);
+            Dispatch();
+            ListBox peers = window.GetControl<ListBox>("PeersList");
+            Assert.Equal("← client.exe · PID 100", Texts(peers)[2]);
+
+            // A double click on the client's chooses the client, whose own relationships the list then holds, the keyboard
+            // on it; Esc comes back to the server, on the relationship it was left by.
+            _ = window.CaptureRenderedFrame();
+            Control client = peers.ContainerFromIndex(1)!;
+            Point at = client.TranslatePoint(new Point(client.Bounds.Width / 2, client.Bounds.Height / 2), window)!.Value;
+            for (int click = 0; click < 2; click++)
+            {
+                window.MouseDown(at, MouseButton.Left);
+                window.MouseUp(at, MouseButton.Left);
+            }
+
+            Dispatch();
+            Assert.Equal(100, workspace.SelectedProcess?.ProcessId);
+            Assert.Equal(["→ server.exe · PID 200", "1 made · TCP at 8080 · 3 records"], Texts(peers));
+            Assert.Same(peers.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(200, workspace.SelectedProcess?.ProcessId);
+            Assert.Same(peers.ContainerFromIndex(1), window.FocusManager?.GetFocusedElement());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§6.3/R15: a hub's relationships and its program's pairs are listed whole by a button under each list, the keyboard on the first row it adds")]
     public async Task AHubsListsAreListedWholeByAButton()
     {

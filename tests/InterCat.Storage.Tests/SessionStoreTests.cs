@@ -746,6 +746,17 @@ public sealed class SessionStoreTests
         held.Holds = 0;
         _ = Publish(store, ("segment-0004.icats", "fourth"));
         Assert.Equal(Manifests(3, 4), ManifestsIn(session.Path));
+
+        // The manifest of the generation kept to fall back to held as a publication reads what that generation needs, and
+        // let go as it walks back through the generations before it: none is let go on what was not read. A publication
+        // reads it first to check that the generation it extends is still the session's, and then for what it needs.
+        var manifest = new HeldFileDirectory(LocalOwnedDirectory.Open(session.Path), SessionManifestV1.FileNameFor(4), holds: 0);
+        SessionStore writer = SessionStore.Open(manifest, session.Store.SessionId, session.Store.SourceIdentity);
+        manifest.HeldFrom = manifest.Holds = manifest.Opens + 2;
+        _ = Publish(writer, ("segment-0005.icats", "fifth"));
+        Assert.Equal(Manifests(3, 4, 5), ManifestsIn(session.Path));
+        _ = Publish(writer, ("segment-0006.icats", "sixth"));
+        Assert.Equal(Manifests(5, 6), ManifestsIn(session.Path));
     }
 
     [Fact(DisplayName = "I15: no file is called an orphan, or removed as one, while the generation kept to fall back to cannot be read")]
@@ -1345,14 +1356,17 @@ public sealed class SessionStoreTests
     {
         public int Opens { get; private set; }
 
-        /// <summary>How many of the file's opens, counted from the first, are refused; raised to hold it from now on.</summary>
+        /// <summary>The last of the file's opens, counted from the first, that is refused; raised to hold it from now on.</summary>
         public int Holds { get; set; } = holds;
+
+        /// <summary>The first of the file's opens that is refused.</summary>
+        public int HeldFrom { get; set; } = 1;
 
         public string Path => inner.Path;
 
         public FileStream OpenOwnedFile(string file, FileMode mode, FileAccess access, FileShare share, FileOptions options)
         {
-            if (file == name && (only is null || access == only) && ++Opens <= Holds)
+            if (file == name && (only is null || access == only) && ++Opens >= HeldFrom && Opens <= Holds)
             {
                 throw missing
                     ? new FileNotFoundException("Simulated: the file is gone.", file)

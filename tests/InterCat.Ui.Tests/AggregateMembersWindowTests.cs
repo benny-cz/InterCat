@@ -117,6 +117,45 @@ public sealed class AggregateMembersWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.3: a double click on a process in an aggregate's list opens its rung, as Enter does")]
+    public async Task ADoubleClickOnAListedProcessOpensItsRung()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            workspace.SelectGraphNode(workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Key);
+            Dispatch();
+            ListBox members = window.GetControl<ListBox>("MemberList");
+            Assert.Equal("program1.exe · PID 101", Assert.IsType<MemberRow>(members.Items[0]).Name);
+
+            // A double click on the second opens its rung, through its group, and the list goes with the aggregate's choice.
+            _ = window.CaptureRenderedFrame();
+            Control second = members.ContainerFromIndex(1)!;
+            Point at = second.TranslatePoint(new Point(second.Bounds.Width / 2, second.Bounds.Height / 2), window)!.Value;
+            for (int click = 0; click < 2; click++)
+            {
+                window.MouseDown(at, MouseButton.Left);
+                window.MouseUp(at, MouseButton.Left);
+            }
+
+            Dispatch();
+            Assert.Equal(3, workspace.Crumbs.Count);
+            Assert.EndsWith("program0.exe · PID 100", workspace.Crumbs[^1].Label, StringComparison.Ordinal);
+            Assert.False(window.GetControl<Control>("MembersPanel").IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§6.3: a double click or Enter on an aggregate in the graph gives the keyboard to its processes in the inspector")]
     public async Task OpeningAnAggregateGivesItsListTheKeyboard()
     {

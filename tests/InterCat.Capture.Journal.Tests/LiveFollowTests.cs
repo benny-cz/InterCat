@@ -67,6 +67,27 @@ public sealed class LiveFollowTests
         Assert.Equal(4, JournalRederivation.Verify(derived).ObservationRows);
     }
 
+    [Fact(DisplayName = "§9: a follow stopped while it pauses stops at once, not once the pause is over")]
+    public async Task AFollowStoppedWhileItPausesStopsAtOnce()
+    {
+        using var evidenceDirectory = new TemporaryDirectory();
+        using var derivedDirectory = new TemporaryDirectory();
+        (SessionStore evidence, SessionStore derived, StoreDependency[] chunks) = await Recorded(evidenceDirectory, derivedDirectory);
+        using var stop = new CancellationTokenSource();
+        var follow = new LiveFollow(token => LiveSessionFollower.Open(evidence, derived, cancellationToken: token),
+            [TimeSpan.FromSeconds(30)], _ => stop.Cancel());
+        using (Hold(evidenceDirectory.Path, chunks[1]))
+        {
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+            _ = Assert.Throws<OperationCanceledException>(() => follow.CatchUp(cancellationToken: stop.Token));
+            Assert.True(System.Diagnostics.Stopwatch.GetElapsedTime(started) < TimeSpan.FromSeconds(10),
+                "A stop does not wait out the pause.");
+        }
+
+        // What was mirrored before it stopped stays.
+        Assert.Equal(1, LiveSessionFollower.Progress(derived.Current).Chunks);
+    }
+
     [Fact(DisplayName = "§9: a failure that is not about reading or writing a file ends the follow at once, untried again")]
     public async Task AFailureOfTheEvidenceItselfIsNotTriedAgain()
     {

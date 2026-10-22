@@ -117,6 +117,11 @@ public sealed class ProgramsCommandTests
         (refused, _, error) = await Run("programs", session.Path, "--program", " ");
         Assert.Equal(InterCatExitCode.InvalidInvocation, refused);
         Assert.Contains("--program takes a program's name", error, Ordinal);
+        string nowhere = Path.Combine(Path.GetTempPath(), "icat-programs-" + Guid.NewGuid().ToString("N"));
+        (refused, output, error) = await Run("programs", nowhere);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, refused);
+        Assert.Empty(output);
+        Assert.Contains($"No session directory at {nowhere}.", error, Ordinal);
         (refused, _, error) = await Run("programs", session.Path, "--limit", "0");
         Assert.Equal(InterCatExitCode.InvalidInvocation, refused);
         Assert.Contains("--limit expects a number of pairs of 1 or more; '0' is not one.", error, Ordinal);

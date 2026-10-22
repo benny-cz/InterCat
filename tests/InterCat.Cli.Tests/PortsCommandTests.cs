@@ -145,6 +145,12 @@ public sealed class PortsCommandTests
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
         Assert.Contains("--program takes a program's name as icat programs lists it", said, Ordinal);
 
+        // A folder that is not there is said to be not there.
+        string nowhere = Path.Combine(Path.GetTempPath(), "icat-ports-" + Guid.NewGuid().ToString("N"));
+        (code, _, said) = await Run("ports", nowhere);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains($"No session directory at {nowhere}.", said, Ordinal);
+
         // A name two programs share is refused, saying how each is listed; named as listed, one is, with each of its
         // processes' ports.
         using var twins = new TemporarySession();

@@ -46,6 +46,12 @@ public sealed class ProgramPairsTests
         Assert.Equal(
             ["browser.exe → server.exe", "browser.exe → browser.exe", "server.exe ⇄ agent.exe", "agent.exe and zeta.exe"],
             pairs.Select(pair => pair.Joined));
+
+        // A screen reader hears who connected in words, and of a pair no open was seen between, the two programs alone.
+        Assert.Equal(
+            ["browser.exe connected to server.exe", "browser.exe connected to browser.exe",
+                "server.exe and agent.exe, each connected to the other", "agent.exe and zeta.exe"],
+            pairs.Select(pair => pair.Spoken));
         Assert.Equal([16L, 8L, 5L, 5L], pairs.Select(pair => pair.Records));
         Assert.Equal([2, 2, 2, 1], pairs.Select(pair => pair.Relationships));
 
