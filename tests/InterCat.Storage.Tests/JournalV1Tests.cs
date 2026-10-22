@@ -16,6 +16,9 @@ public sealed class JournalV1Tests
     private static readonly CaptureId Capture = new(Guid.Parse("11111111-2222-4333-8444-555555555555"));
     private static readonly DateTimeOffset Created = new(2026, 9, 21, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>The most bytes of an extended item an admitted record keeps.</summary>
+    private const int AdmittedItemBytes = 64;
+
     [Fact(DisplayName = "I1: a journal-v1 file has exactly the bytes its golden corpus records")]
     public void GoldenFramingIsByteExact()
     {
@@ -150,6 +153,51 @@ public sealed class JournalV1Tests
 
         Assert.True(body.IsReturned);
         Assert.True(item.IsReturned);
+    }
+
+    [Fact(DisplayName = "R9: a batch's envelope buffers are rented again from their pool, their arrays never allocated anew")]
+    public void ABatchOfBuffersIsRentedAgain()
+    {
+        // A batch holds 4,096 envelopes at once, a body and an extended item each; the shared pool kept a few dozen arrays
+        // of a length per core, so it handed most of them out new. Warm, a batch's round trip allocates its leases alone.
+        byte[] projection = new byte[100];
+        byte[] item = new byte[AdmittedItemBytes];
+        var held = new EnvelopeBuffer[2 * 4_096];
+        long lease = Least(() =>
+        {
+            for (int index = 0; index < 1_024; index++)
+            {
+                EnvelopeBuffer.CopyOf(projection).Dispose();
+            }
+        }) / 1_024;
+        long batch = Least(() =>
+        {
+            for (int index = 0; index < held.Length; index += 2)
+            {
+                held[index] = EnvelopeBuffer.CopyOf(projection);
+                held[index + 1] = EnvelopeBuffer.CopyOf(item);
+            }
+
+            foreach (EnvelopeBuffer buffer in held)
+            {
+                buffer.Dispose();
+            }
+        });
+
+        Assert.Equal(held.Length * lease, batch);
+
+        static long Least(Action run)
+        {
+            long least = long.MaxValue;
+            for (int round = 0; round < 6; round++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                run();
+                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+
+            return least;
+        }
     }
 
     [Theory(DisplayName = "R16: journal quota accounts for pending records, batch frames and terminal exactly")]

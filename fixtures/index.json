@@ -2075,6 +2075,7 @@
       ],
       "R9": [
         "R9: a 16-byte IPv6 address compiles to an address slot at a fixed offset, and the fields after it stay reachable",
+        "R9: a batch's envelope buffers are rented again from their pool, their arrays never allocated anew",
         "R9: a process image after a bounded SID and an ANSI stop image are admitted without guessing offsets",
         "R9: a returned buffer refuses every read rather than handing out another owner's bytes",
         "R9: a writer that is disposed mid-batch returns the buffers it was holding",

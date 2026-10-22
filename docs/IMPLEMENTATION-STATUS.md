@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 719 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 720 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 720 — an envelope's bytes from a pool that keeps a batch's worth (R9, R11, §18.1):**
+  - A batch holds 4,096 envelopes at once, and the shared pool keeps a few dozen arrays of a length per core, so most
+    of a batch's bodies were allocated anew and dropped on return. Envelope bytes now come from a pool of their own
+    that keeps two batches' worth of each length up to 4 KiB: a batch's round trip allocates its leases alone, and a
+    replayed record 306 bytes where it allocated about 450.
+  - Debug and Release each ran 2,891 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    four mutations were caught: buffers rented from the shared pool, or returned to it; a pool keeping 32 arrays of
+    a length; and a pool keeping nothing longer than 64 bytes.
 
 - **Revision 719 — every record a journal holds is derived, or its plan refused as data (R3, `normalizer-plan-v1`, `segment-v1`):**
   - A record without its declared status, an eight-byte count of 2^63 or more, a status the capability report calls
@@ -857,10 +866,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - R11 beyond paint and aggregation: since revision 155 a test holds the window's four aggregate queries to no
      allocation per row, and since revision 291 it runs alone, where no other test can empty the derivation cache.
      Since revision 718 tests hold a journal's write and decode loops to what they hand on: writing a record allocates
-     its envelope, resolving and reading it nothing, deriving it its rows, and reading a row back the row. What stays:
-     a replay builds each record's envelope, about 450 bytes, some 190 of them its body's array, which the shared pool
-     cannot keep for the 4,096 records a batch holds at once (a pool or an arena of the batch's own would); compaction
-     reads rows back whole to write them again; and the callback's own admission keeps IC-019's Windows measurements.
+     its envelope, resolving and reading it nothing, deriving it its rows, and reading a row back the row. Since
+     revision 720 an envelope's bytes come from a pool that keeps two batches' worth, so a replayed record allocates
+     306 bytes, its envelope's objects, where it allocated about 450. What stays: compaction reads rows back whole to
+     write them again; and the callback's own admission keeps IC-019's Windows measurements.
      A pan still formats and lays out the ticks it draws, which §19.4 allows.
    - Theme modes (§6.1, §26.2, §26.3): light and dark follow the operating system since revision 138, and its
      high-contrast setting since revision 140; since revision 146 the user can choose one, kept in `app-settings-v1`.

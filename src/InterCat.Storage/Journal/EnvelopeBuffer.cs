@@ -10,6 +10,20 @@ namespace InterCat.Storage;
 /// </summary>
 public sealed class EnvelopeBuffer : IDisposable
 {
+    /// <summary>
+    /// The longest array the envelope pool keeps. An envelope's buffers - a metadata projection of at most a kilobyte,
+    /// an extended item of at most 64 bytes - are all this long or shorter; a longer one comes from the shared pool.
+    /// </summary>
+    private const int MaximumPooledLength = 4_096;
+
+    /// <summary>
+    /// The pool an envelope's bytes come from. A journal batch holds thousands of envelopes at once - a writer's 4,096
+    /// pending, a replay's 4,096 decoded - and the shared pool keeps a few dozen arrays of a length per core, so it handed
+    /// most of a batch's out new and dropped them as the batch returned them. This one keeps two batches' worth of each
+    /// length, so a capture's callback and a replay rent their arrays rather than allocate them (R9, R11).
+    /// </summary>
+    private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Create(MaximumPooledLength, 8_192);
+
     private byte[]? rented;
     private int length;
 
@@ -32,11 +46,13 @@ public sealed class EnvelopeBuffer : IDisposable
         ? throw new ObjectDisposedException(nameof(EnvelopeBuffer), ReturnedMessage)
         : length;
 
-    /// <summary>Rents a buffer of exactly this length from the shared pool.</summary>
+    /// <summary>Rents a buffer of exactly this length from the envelope pool, or the shared pool past its longest.</summary>
     public static EnvelopeBuffer Rent(int length)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(length);
-        return length == 0 ? Empty : new(ArrayPool<byte>.Shared.Rent(length), length);
+        return length == 0
+            ? Empty
+            : new(length <= MaximumPooledLength ? Pool.Rent(length) : ArrayPool<byte>.Shared.Rent(length), length);
     }
 
     /// <summary>
@@ -87,7 +103,7 @@ public sealed class EnvelopeBuffer : IDisposable
         }
 
         length = 0;
-        ArrayPool<byte>.Shared.Return(array);
+        (array.Length <= MaximumPooledLength ? Pool : ArrayPool<byte>.Shared).Return(array);
     }
 
     private const string ReturnedMessage =
