@@ -138,9 +138,11 @@ public sealed record JournalNormalizationPlanV1
             ?? throw new InvalidDataException($"Record {envelope.RecordOrdinal} names an unknown schema reference.");
         JournalPolicyV1 policy = table.FindPolicy(envelope.AdmissionPolicyReference)
             ?? throw new InvalidDataException($"Record {envelope.RecordOrdinal} names an unknown policy reference.");
+        // A stream past any source's index plus one names no descriptor, as one before the first does.
+        int source = envelope.StreamId <= int.MaxValue ? (int)envelope.StreamId - 1 : -1;
         AdmittedEventPlan? plan = null;
         if (byEvent.TryGetValue(
-            (checked((int)envelope.StreamId - 1), envelope.Header.ProviderId, envelope.Header.EventId, envelope.Header.Version),
+            (source, envelope.Header.ProviderId, envelope.Header.EventId, envelope.Header.Version),
             out AdmittedEventPlan[]? candidates))
         {
             foreach (AdmittedEventPlan candidate in candidates)

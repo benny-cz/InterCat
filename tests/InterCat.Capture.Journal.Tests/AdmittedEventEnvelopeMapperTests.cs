@@ -256,6 +256,34 @@ public sealed class AdmittedEventEnvelopeMapperTests
         static int Name(AdmittedEvent read) => read.CopyName(new char[AdmittedEvent.MaximumNameLength]);
     }
 
+    [Fact(DisplayName = "IC-011: a record naming a stream or an ordinal no admitted record has, or keeping more of an item than it held, is refused as data")]
+    public void ImpossibleIdentitiesAndItemsAreRefusedAsData()
+    {
+        AdmittedEventPlan plan = BuildEventPlan();
+        var mapper = new AdmittedEventEnvelopeMapper([BuildSource(plan)], ClockId.New());
+        AdmittedEvent admitted = BuildAdmitted();
+        admitted.BeginExtendedData(ExtendedDataAvailability.Captured, 1);
+        Assert.True(admitted.TryAppendExtendedItem(EtwExtendedDataTypes.ProcessStartKey, 0, [1, 2, 3, 4, 5, 6, 7, 8], 8));
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, CaptureId.New());
+        ExtendedItemV1 kept = envelope.ExtendedItems[0];
+
+        // Each copy shares the envelope's buffers, which the envelope alone returns.
+        (RecordEnvelopeV1 Record, string Reason)[] impossible =
+        [
+            (envelope with { StreamId = uint.MaxValue }, "names a stream or an ordinal no admitted record has"),
+            (envelope with { StreamId = 0 }, "names a stream or an ordinal no admitted record has"),
+            (envelope with { RecordOrdinal = ulong.MaxValue }, "names a stream or an ordinal no admitted record has"),
+            (envelope with { ExtendedItems = [kept with { OriginalLength = 4 }] }, "keeps more of an extended item than the item held"),
+        ];
+
+        Assert.Equal(8, AdmittedEventEnvelopeMapper.FromEnvelope(envelope, plan).GetExtendedItem(0).OriginalLength);
+        foreach ((RecordEnvelopeV1 record, string reason) in impossible)
+        {
+            InvalidDataException refused = Assert.Throws<InvalidDataException>(() => AdmittedEventEnvelopeMapper.FromEnvelope(record, plan));
+            Assert.Contains(reason, refused.Message, StringComparison.Ordinal);
+        }
+    }
+
     private static AdmittedEvent BuildAdmitted() => new()
     {
         SourceIndex = 4,

@@ -20,7 +20,9 @@ both IPv4 and IPv6 endpoint addresses. The catalog compiles none of these. The m
 length and SHA-256 digest; its bytes are not a cross-runtime canonical identity.
 
 Before replay, the plan must match every schema and policy in the journal's tables. Each record's stream,
-provider, event, version, schema reference and admission policy reference must match its selected plan.
+provider, event, version, schema reference and admission policy reference must match its selected plan. A record
+whose stream is no source's index plus one, whose ordinal is past what an admission count can be (2^63), or which
+keeps more of an extended item than the item held is refused as damaged evidence, naming the record (revision 721).
 The decoder then reads only the bounded approved projection; it does not use current TDH metadata,
 reopen the original ETL, or treat a matching PID as a process identity. A differing fingerprint or
 missing plan is a refusal, not a best-effort parse.

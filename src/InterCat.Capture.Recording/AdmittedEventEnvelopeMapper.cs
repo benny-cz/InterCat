@@ -225,6 +225,15 @@ public sealed class AdmittedEventEnvelopeMapper
                 + $"'{plan.BodyPolicy.PolicyId}'.");
         }
 
+        // An admitted record's stream is its source's index plus one, and its ordinal an admission count; a record naming
+        // a stream or an ordinal past what those can be was never admitted, and is refused as such rather than overflowing.
+        if (envelope.StreamId is 0 or > int.MaxValue || envelope.RecordOrdinal > long.MaxValue)
+        {
+            throw new InvalidDataException(
+                $"Record {envelope.RecordOrdinal} of stream {envelope.StreamId} names a stream or an ordinal no admitted "
+                + "record has.");
+        }
+
         var reader = new ProjectionReader(envelope.Body.Bytes.ReadOnlySpan);
         uint magic = reader.ReadUInt32();
         if (magic is not (ProjectionMagic or AddressedProjectionMagic))
@@ -234,7 +243,7 @@ public sealed class AdmittedEventEnvelopeMapper
 
         var admitted = new AdmittedEvent
         {
-            SourceIndex = checked((int)envelope.StreamId - 1),
+            SourceIndex = (int)envelope.StreamId - 1,
             EventId = envelope.Header.EventId,
             Version = envelope.Header.Version,
             Opcode = envelope.Header.Opcode,
@@ -243,7 +252,7 @@ public sealed class AdmittedEventEnvelopeMapper
             HeaderProcessId = envelope.Header.ProcessId,
             HeaderThreadId = envelope.Header.ThreadId,
             ProcessorNumber = envelope.BufferContext.ProcessorNumber,
-            RecordOrdinal = checked((long)envelope.RecordOrdinal),
+            RecordOrdinal = (long)envelope.RecordOrdinal,
             ActivityId = envelope.Header.ActivityId,
             RelatedActivityId = envelope.Header.RelatedActivityId,
             PointerSize = envelope.PointerSize,
@@ -305,6 +314,12 @@ public sealed class AdmittedEventEnvelopeMapper
         {
             ExtendedItemV1 extended = envelope.ExtendedItems[index];
             int length = Math.Min(extended.Bytes.Length, item.Length);
+            if (extended.OriginalLength < length)
+            {
+                throw new InvalidDataException(
+                    $"Record {envelope.RecordOrdinal} keeps more of an extended item than the item held.");
+            }
+
             extended.Bytes.ReadOnlySpan[..length].CopyTo(item);
             if (!admitted.TryAppendExtendedItem(
                 extended.Type,

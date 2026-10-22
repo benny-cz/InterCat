@@ -1676,6 +1676,7 @@
         "R20: a plan whose records could not be written as rows is refused before any is read",
         "R20: a plan with an empty place among its descriptors is refused when it is checked, not when it is read",
         "R20: a published journal re-derives byte-identical segments in a replacement generation",
+        "R20: a record of a stream past every source's is given no descriptor, refused as data",
         "R20: a record two retained descriptors both interpret is refused rather than given to either",
         "R20: a session read at its last complete generation is checked, and refused re-derivation before any replay",
         "R20: an in-place change after store open and a cancelled check never publish",

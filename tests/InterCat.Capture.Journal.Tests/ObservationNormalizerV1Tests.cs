@@ -644,6 +644,20 @@ public sealed class ObservationNormalizerV1Tests
         Assert.Same(any, plan.Resolve(one, mapper.Schemas));
     }
 
+    [Fact(DisplayName = "R20: a record of a stream past every source's is given no descriptor, refused as data")]
+    public void ARecordOfNoSourcesStreamIsRefused()
+    {
+        AdmittedEventPlan transfer = TransferPlan();
+        (ObservationNormalizerV1 _, SourceClockDescriptor clock) = Normalizer();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(transfer)], clock.Id);
+        JournalNormalizationPlanV1 plan = JournalNormalizationPlanV1.FromSources([Source(transfer)]);
+        using RecordEnvelopeV1 sent = mapper.ToEnvelope(Admitted(transfer), transfer, CaptureId.New());
+
+        Assert.Same(transfer, plan.Resolve(sent, mapper.Schemas));
+        Assert.Throws<InvalidDataException>(() => plan.Resolve(sent with { StreamId = uint.MaxValue }, mapper.Schemas));
+        Assert.Throws<InvalidDataException>(() => plan.Resolve(sent with { StreamId = 0 }, mapper.Schemas));
+    }
+
     [Fact(DisplayName = "R20: a plan is its contract and its descriptors, and a copy given other descriptors interprets by them")]
     public void APlanCopyInterpretsByItsOwnDescriptors()
     {
