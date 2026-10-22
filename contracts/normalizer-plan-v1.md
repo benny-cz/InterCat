@@ -13,8 +13,11 @@ The file is UTF-8 JSON with `contract: "normalizer-plan-v1"` and a `descriptors`
 is the complete `AdmittedEventPlan` value, ordered by source index, event id and version. Enum values are
 numeric and property names camel-case. Unknown JSON members, an unknown contract name, duplicate stream
 or provider/event/version keys, unsupported body policy, missing required members, more than 1,024
-descriptors or a file over 1 MiB are refused. The manifest records the file's exact length and SHA-256
-digest; its bytes are not a cross-runtime canonical identity.
+descriptors or a file over 1 MiB are refused. So, since revision 719, is a descriptor whose records could not be
+written as rows: one carrying a mechanism, layer, kind, direction, role, slot kind, source field, availability, domain
+or unit code §23 does not define; a byte slot without its domain or unit; a reported field said not to apply; or
+both IPv4 and IPv6 endpoint addresses. The catalog compiles none of these. The manifest records the file's exact
+length and SHA-256 digest; its bytes are not a cross-runtime canonical identity.
 
 Before replay, the plan must match every schema and policy in the journal's tables. Each record's stream,
 provider, event, version, schema reference and admission policy reference must match its selected plan.

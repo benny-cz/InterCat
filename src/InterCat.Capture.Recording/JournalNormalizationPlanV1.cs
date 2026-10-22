@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using InterCat.Capture.Windows;
+using InterCat.Domain;
 using InterCat.Storage;
 
 namespace InterCat.Capture.Recording;
@@ -236,9 +237,66 @@ public sealed record JournalNormalizationPlanV1
                 throw new InvalidDataException("A retained normalizer descriptor is incomplete, out of bounds or duplicated.");
             }
 
+            if (!Derivable(descriptor))
+            {
+                throw new InvalidDataException(
+                    $"The retained descriptor {descriptor.ProviderGuid:D}/{descriptor.EventId}/v{descriptor.Version} carries a "
+                    + "code §23 does not define, a byte field without its domain and unit, or both IPv4 and IPv6 "
+                    + "addresses, so no row could be derived from its records.");
+            }
+
             // One journal schema entry serves every opcode of a class at a version, so they must share its fingerprint.
             fingerprints[(descriptor.ProviderGuid, descriptor.EventId, descriptor.Version)] = descriptor.SchemaFingerprint;
             CaptureBodyAdmissionPolicies.EnsureSupported(descriptor.BodyPolicy);
         }
+    }
+
+    /// <summary>
+    /// Whether every row a descriptor's records derive can be written: its codes are ones §23 defines, a byte field
+    /// carries the domain and unit that label its value or its absence, a field it reports applies, and its endpoint
+    /// addresses are of one family. A descriptor the catalog compiles is all of these; one that is not would have the
+    /// segment refuse the first record it interprets, so the plan is refused before any is (R2, R3).
+    /// </summary>
+    private static bool Derivable(AdmittedEventPlan descriptor)
+    {
+        if (!Enum.IsDefined(descriptor.Mechanism)
+            || !Enum.IsDefined(descriptor.Layer)
+            || !Enum.IsDefined(descriptor.Kind)
+            || !Enum.IsDefined(descriptor.Direction))
+        {
+            return false;
+        }
+
+        bool narrow = false;
+        bool wide = false;
+        foreach (AdmittedSlotPlan? slot in descriptor.Slots)
+        {
+            if (slot is null
+                || !Enum.IsDefined(slot.Role)
+                || !Enum.IsDefined(slot.Kind)
+                || (slot.SourceField is { } field && !Enum.IsDefined(field))
+                || (slot.Role == FieldRole.ByteCount
+                    && (slot.ByteDomain is not { } domain || !Enum.IsDefined(domain) || slot.Unit is not { } unit || !Enum.IsDefined(unit))))
+            {
+                return false;
+            }
+
+            narrow |= slot is { Role: FieldRole.SourceEndpoint or FieldRole.DestinationEndpoint, Kind: AdmittedSlotKind.Numeric, Width: 4 };
+            wide |= slot.Kind == AdmittedSlotKind.Address128;
+        }
+
+        foreach (FieldCapability? reported in descriptor.FieldReport)
+        {
+            if (reported is null
+                || !Enum.IsDefined(reported.Availability)
+                || reported.Availability == FieldAvailability.NotApplicable
+                || (reported.ByteDomain is { } domain && !Enum.IsDefined(domain))
+                || (reported.Unit is { } unit && !Enum.IsDefined(unit)))
+            {
+                return false;
+            }
+        }
+
+        return !(narrow && wide);
     }
 }

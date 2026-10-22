@@ -220,6 +220,13 @@ product does not have (P11, R2).
 No column holds a status *domain*: §7.3 names one but §23 assigns it no enumeration, so a status is stored
 as the code the source reported and nothing claims which domain it is in. That enumeration is owed.
 
+Since revision 719 the first derivation says why a status or a byte measurement is absent in every case a record
+can present. A status the descriptor admits that the record did not carry is `EventLost`, as a byte value is; one the
+capability report names that the descriptor did not admit carries the report's reason, `NotExposed` where the report
+calls it present; and a source with no status is `NotApplicable`. An eight-byte byte value of 2^63 or more is no count
+a row can hold: it is null and `SchemaUnknown`, not decoded, with its slot's domain, side and unit. Before, each of
+these made a row this format refuses, which stopped the derivation at that record.
+
 ### `source-fields-v1` (table 2)
 
 This table carries the source correlation and object fields that do not fit `observation-v1`. Each row names

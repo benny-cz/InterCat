@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 718 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 719 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 719 — every record a journal holds is derived, or its plan refused as data (R3, `normalizer-plan-v1`, `segment-v1`):**
+  - A record without its declared status, an eight-byte count of 2^63 or more, a status the capability report calls
+    present that the descriptor did not admit, and a plan whose codes or labels a row cannot carry each made a row the
+    segment refused, which stopped a follow, a rebuild or an import at that record. Now the status is lost, the count
+    not decoded, the unadmitted status not exposed, and such a plan is refused when it is read, naming the descriptor.
+  - Debug and Release each ran 2,890 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    13 mutations were caught: a status slot forgotten, so a lost status read as the report's; a status reported
+    present but not admitted kept present; an impossible count kept, or read as lost; and a plan's mechanism,
+    direction, byte domain, byte unit, source field, reported field said not to apply, reported unit, mixed address
+    families or whole refusal left unchecked.
 
 - **Revision 718 — a journal's write and decode loops held to R11 (§19.4, `normalizer-plan-v1`):**
   - Resolving a record searched its plan with LINQ, reading its projection copied it into a stream, deriving its row

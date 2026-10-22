@@ -711,6 +711,100 @@ public sealed class ObservationNormalizerV1Tests
         Assert.Equal(FieldAvailability.NotApplicable, normalizer.ToRow(envelope, transfer).StatusAvailability);
     }
 
+    [Fact(DisplayName = "R3: a record that lost its declared status, or holds a count no size can be, derives a row that says so")]
+    public void ARecordsMissingStatusAndImpossibleCountAreSaidSo()
+    {
+        (ObservationNormalizerV1 normalizer, SourceClockDescriptor clock) = Normalizer();
+        AdmittedEventPlan completion = TransferPlan() with
+        {
+            Slots =
+            [
+                new("PID", FieldRole.ProcessAttribution, 0, 4, null, null, SlotTransform.None),
+                new("ExtraInformation", FieldRole.ByteCount, 4, 8, MeasurementUnit.Bytes, ByteDomain.CompletedIo, SlotTransform.None),
+                new("Status", FieldRole.Status, 12, 4, null, null, SlotTransform.None),
+            ],
+            FieldReport =
+            [
+                new("PID", FieldAvailability.Present, FieldRole.ProcessAttribution),
+                new("ExtraInformation", FieldAvailability.Present, FieldRole.ByteCount, Unit: MeasurementUnit.Bytes, ByteDomain: ByteDomain.CompletedIo),
+                new("Status", FieldAvailability.Present, FieldRole.Status),
+            ],
+        };
+        AdmittedEventPlan unadmitted = TransferPlan() with
+        {
+            FieldReport = [.. TransferPlan().FieldReport, new("Status", FieldAvailability.Present, FieldRole.Status)],
+        };
+        var mapper = new AdmittedEventEnvelopeMapper([Source(completion)], clock.Id);
+        AdmittedEvent lost = Admitted(completion);
+        lost.SetSlot(0, 42);
+        lost.SetSlot(1, -1);
+        AdmittedEvent whole = Admitted(completion);
+        whole.SetSlot(0, 42);
+        whole.SetSlot(1, long.MaxValue);
+        whole.SetSlot(2, 0);
+        using RecordEnvelopeV1 lostEnvelope = mapper.ToEnvelope(lost, completion, CaptureId.New());
+        using RecordEnvelopeV1 wholeEnvelope = mapper.ToEnvelope(whole, completion, CaptureId.New());
+        ObservationRowV1 partial = normalizer.ToRow(lostEnvelope, completion);
+        ObservationRowV1 complete = normalizer.ToRow(wholeEnvelope, completion);
+        ObservationRowV1 unexposed = normalizer.ToRow(wholeEnvelope, unadmitted with
+        {
+            SourceIndex = completion.SourceIndex,
+            ProviderGuid = completion.ProviderGuid,
+            EventId = completion.EventId,
+            Version = completion.Version,
+            PointerSize = completion.PointerSize,
+        });
+
+        Assert.Null(partial.Validate());
+        Assert.Equal((null, FieldAvailability.EventLost), (partial.StatusCode, partial.StatusAvailability));
+        Assert.Equal(
+            (null, FieldAvailability.SchemaUnknown, ByteDomain.CompletedIo, QualityLevel.UnknownQuality),
+            (partial.ByteValue, partial.ByteAvailability, partial.ByteDomain, partial.MeasurementQuality));
+        Assert.Null(complete.Validate());
+        Assert.Equal((0L, FieldAvailability.Present), (complete.StatusCode, complete.StatusAvailability));
+        Assert.Equal((long.MaxValue, FieldAvailability.Present), (complete.ByteValue, complete.ByteAvailability));
+        Assert.Null(unexposed.Validate());
+        Assert.Equal(FieldAvailability.NotExposed, unexposed.StatusAvailability);
+    }
+
+    [Fact(DisplayName = "R20: a plan whose records could not be written as rows is refused before any is read")]
+    public void APlanWhoseRowsCouldNotBeWrittenIsRefused()
+    {
+        AdmittedEventPlan transfer = TransferPlan();
+        AdmittedSlotPlan size = transfer.Slots[1];
+        FieldCapability reported = transfer.FieldReport[1];
+        AdmittedEventPlan[] refused =
+        [
+            transfer with { Mechanism = (Mechanism)999 },
+            transfer with { Layer = (ObservationLayer)99 },
+            transfer with { Kind = (ObservationKind)98 },
+            transfer with { Direction = (Direction)99 },
+            transfer with { Slots = [transfer.Slots[0], size with { ByteDomain = null }] },
+            transfer with { Slots = [transfer.Slots[0], size with { Unit = null }] },
+            transfer with { Slots = [transfer.Slots[0], size with { ByteDomain = (ByteDomain)99 }] },
+            transfer with { Slots = [transfer.Slots[0], size with { Unit = (MeasurementUnit)99 }] },
+            transfer with { Slots = [transfer.Slots[0], size with { Role = (FieldRole)99 }] },
+            transfer with { Slots = [transfer.Slots[0], size with { Kind = (AdmittedSlotKind)99 }] },
+            transfer with { Slots = [transfer.Slots[0], size, transfer.Slots[0] with { SourceField = (SourceField)999 }] },
+            transfer with { Slots = [transfer.Slots[0], null!] },
+            transfer with { FieldReport = [reported with { Availability = FieldAvailability.NotApplicable }] },
+            transfer with { FieldReport = [reported with { Availability = (FieldAvailability)99 }] },
+            transfer with { FieldReport = [reported with { ByteDomain = (ByteDomain)99 }] },
+            transfer with { FieldReport = [reported with { Unit = (MeasurementUnit)99 }] },
+            transfer with { FieldReport = [null!] },
+            transfer with { Slots = [.. Ipv6TransferPlan().Slots.Take(3), transfer.Slots[4]] },
+        ];
+
+        foreach (AdmittedEventPlan descriptor in refused)
+        {
+            InvalidDataException refusal = Assert.Throws<InvalidDataException>(() => JournalNormalizationPlanV1.FromSources([Source(descriptor)]));
+            Assert.Contains("no row could be derived from its records", refusal.Message, StringComparison.Ordinal);
+        }
+
+        Assert.Single(JournalNormalizationPlanV1.FromSources([Source(transfer)]).Descriptors);
+        Assert.Single(JournalNormalizationPlanV1.FromSources([Source(Ipv6TransferPlan())]).Descriptors);
+    }
+
     private static (ObservationNormalizerV1 Normalizer, SourceClockDescriptor Clock) Normalizer()
     {
         SourceClockDescriptor clock = new(

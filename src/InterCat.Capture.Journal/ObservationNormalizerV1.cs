@@ -146,11 +146,20 @@ public sealed class ObservationNormalizerV1
             StatusCode = slots.StatusCode,
 
             // §7.3 names a status domain that §23 assigns no enumeration, so a status is stored as the code
-            // the source reported and nothing claims which domain it is in. A source that exposes no status at
-            // all reports `NotApplicable` rather than an unexplained null.
-            StatusAvailability = slots.StatusCode is null
-                ? AvailabilityOf(plan, FieldRole.Status) ?? FieldAvailability.NotApplicable
-                : FieldAvailability.Present,
+            // the source reported and nothing claims which domain it is in. A status slot whose value the record
+            // lost is lost, as a byte slot's is; a status the capability report names but the descriptor did not
+            // admit says why, not exposed where the report says the source has one; and a source that exposes no
+            // status at all reports `NotApplicable` rather than an unexplained null.
+            StatusAvailability = slots.StatusCode is not null
+                ? FieldAvailability.Present
+                : slots.StatusDeclared
+                    ? FieldAvailability.EventLost
+                    : AvailabilityOf(plan, FieldRole.Status) switch
+                    {
+                        null => FieldAvailability.NotApplicable,
+                        FieldAvailability.Present => FieldAvailability.NotExposed,
+                        { } reported => reported,
+                    },
 
             // The payload names the owner for every currently validated source, so attribution is proven when
             // it is there and unknown when it is not. It is never inferred from the event header (§4.1).
@@ -296,7 +305,9 @@ public sealed class ObservationNormalizerV1
                 slot.ByteDomain,
                 side,
                 slot.Unit,
-                slots.ByteValue is null ? FieldAvailability.EventLost : FieldAvailability.Present);
+                slots.ByteValue is not null
+                    ? FieldAvailability.Present
+                    : slots.ByteNotDecoded ? FieldAvailability.SchemaUnknown : FieldAvailability.EventLost);
         }
 
         // The descriptor declared no admitted byte field. The capability report says whether the source has one
@@ -372,14 +383,26 @@ public sealed class ObservationNormalizerV1
                     break;
                 case FieldRole.ByteCount:
                     values.ByteSlot ??= slot;
-                    if (known)
+
+                    // An eight-byte value of 2^63 or more is no byte count a row can hold, so it is not decoded
+                    // rather than read as a negative size.
+                    if (known && raw >= 0)
                     {
                         values.ByteValue ??= raw;
                     }
+                    else if (known)
+                    {
+                        values.ByteNotDecoded = true;
+                    }
 
                     break;
-                case FieldRole.Status when known:
-                    values.StatusCode ??= raw;
+                case FieldRole.Status:
+                    values.StatusDeclared = true;
+                    if (known)
+                    {
+                        values.StatusCode ??= raw;
+                    }
+
                     break;
                 case FieldRole.SourceEndpoint when slot.Width == 4:
                     values.AddressFamily ??= 4;
@@ -459,7 +482,13 @@ public sealed class ObservationNormalizerV1
 
         public long? ByteValue { get; set; }
 
+        /// <summary>Whether a byte slot held a value no count can be, which is read as not decoded.</summary>
+        public bool ByteNotDecoded { get; set; }
+
         public long? StatusCode { get; set; }
+
+        /// <summary>Whether the descriptor admits a status, so a record without one lost it.</summary>
+        public bool StatusDeclared { get; set; }
 
         public string? ResourceName { get; set; }
 
