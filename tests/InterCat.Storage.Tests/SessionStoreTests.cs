@@ -616,12 +616,12 @@ public sealed class SessionStoreTests
         _ = Publish(session.Store, ("segment-0001.icats", "first"));
 
         // The pointer unreadable the first time it is opened, as a publication replacing it can leave it for an instant:
-        // read again, it names the generation, which is acquired.
+        // read again after a pause, it names the generation, which is acquired.
         var meeting = new UnreadablePointerDirectory(LocalOwnedDirectory.Open(session.Path), failures: 1);
         SessionStore opened = SessionStore.OpenExisting(meeting);
         Assert.Equal(1, opened.Current!.Generation);
         Assert.False(opened.Recovery.RolledBackToLastKnownGood);
-        Assert.Equal(3, meeting.PointerOpens);
+        Assert.Equal(2, meeting.PointerOpens);
 
         // A second generation, and a pointer that reads unreadable twice, once more as it is read again: the second
         // acquisition takes it, rather than the generation kept to fall back to.
@@ -631,20 +631,30 @@ public sealed class SessionStoreTests
         Assert.Equal((2L, false), (viewed.Current!.Generation, viewed.Recovery.RolledBackToLastKnownGood));
         Assert.Equal(3, twice.PointerOpens);
 
-        // A pointer that stays unreadable is what it is after three acquisitions: the generation kept is fallen back to.
+        // A pointer missing as it is first read, as before a session's first publication, and there when read again: the
+        // generation it names is acquired, not the one kept to fall back to.
+        var appearing = new HeldFileDirectory(LocalOwnedDirectory.Open(session.Path), SessionPointerV1.FileName, holds: 1,
+            missing: true);
+        SessionStore appeared = SessionStore.OpenExisting(appearing);
+        Assert.Equal((2L, false), (appeared.Current!.Generation, appeared.Recovery.RolledBackToLastKnownGood));
+        Assert.Equal(3, appearing.Opens);
+
+        // A pointer that stays unreadable through every pause, and once more as it is read again, is what it is: the
+        // generation kept is fallen back to.
         var stays = new UnreadablePointerDirectory(LocalOwnedDirectory.Open(session.Path), failures: int.MaxValue);
         SessionStore fallen = SessionStore.OpenExisting(stays);
         Assert.Equal((1L, true), (fallen.Current!.Generation, fallen.Recovery.RolledBackToLastKnownGood));
-        Assert.Equal(5, stays.PointerOpens);
+        Assert.Equal(7, stays.PointerOpens);
 
         using var alone = new TemporarySession();
         _ = Publish(alone.Store, ("segment-0001.icats", "first"));
         var unreadable = new UnreadablePointerDirectory(LocalOwnedDirectory.Open(alone.Path), failures: int.MaxValue);
         Assert.Equal(
-            $"This session cannot be read, because no generation of it verifies: '{SessionPointerV1.FileName}' is missing or "
-            + "unreadable. No earlier generation is kept to fall back to. Its files are left as they are.",
+            $"This session cannot be read, because no generation of it verifies: '{SessionPointerV1.FileName}' could not be "
+            + "read: Simulated: the pointer is being replaced. No earlier generation is kept to fall back to. Its files are "
+            + "left as they are.",
             Assert.Throws<InvalidDataException>(() => SessionStore.OpenExisting(unreadable)).Message);
-        Assert.Equal(5, unreadable.PointerOpens);
+        Assert.Equal(7, unreadable.PointerOpens);
     }
 
     [Fact(DisplayName = "I15: a file another program holds for a moment is waited for, and the generation naming it acquired, not the one kept to fall back to")]
@@ -664,8 +674,8 @@ public sealed class SessionStoreTests
         var kept = new HeldFileDirectory(LocalOwnedDirectory.Open(session.Path), "segment-0002.icats", holds: int.MaxValue);
         SessionStore fallen = SessionStore.OpenExisting(kept);
         Assert.Equal((1L, true), (fallen.Current!.Generation, fallen.Recovery.RolledBackToLastKnownGood));
-        Assert.Contains("'segment-0002.icats' could not be read: Simulated: another program holds the file.",
-            fallen.Recovery.RollbackReason, StringComparison.Ordinal);
+        Assert.Equal("'segment-0002.icats' could not be read: Simulated: another program holds the file",
+            fallen.Recovery.RollbackReason);
         Assert.Equal(6, kept.Opens);
 
         // A file that is gone is not waited for: it will not come back.
@@ -673,6 +683,105 @@ public sealed class SessionStoreTests
             missing: true);
         Assert.Equal((1L, true), (SessionStore.OpenExisting(gone).Current!.Generation, true));
         Assert.Equal(1, gone.Opens);
+    }
+
+    [Fact(DisplayName = "I15: a pointer or a manifest another program holds for a moment is waited for, as a file it names is")]
+    public void APointerOrManifestHeldForAMomentIsWaitedFor()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+        string manifest = SessionManifestV1.FileNameFor(2);
+
+        // Held as the session opens, as a scanner can hold a file just written, and let go while the open waits.
+        foreach (string name in new[] { SessionPointerV1.FileName, manifest })
+        {
+            var held = new HeldFileDirectory(LocalOwnedDirectory.Open(session.Path), name, holds: 3);
+            SessionStore opened = SessionStore.OpenExisting(held);
+            Assert.Equal((2L, false), (opened.Current!.Generation, opened.Recovery.RolledBackToLastKnownGood));
+            Assert.Equal(4, held.Opens);
+        }
+
+        // Held for longer than the open waits: the generation kept to fall back to is read, saying why.
+        var kept = new HeldFileDirectory(LocalOwnedDirectory.Open(session.Path), manifest, holds: int.MaxValue);
+        SessionStore fallen = SessionStore.OpenExisting(kept);
+        Assert.Equal((1L, true), (fallen.Current!.Generation, fallen.Recovery.RolledBackToLastKnownGood));
+        Assert.Equal($"generation 2 names manifest '{manifest}', which could not be read: Simulated: another program holds "
+            + "the file", fallen.Recovery.RollbackReason);
+        Assert.Equal(6, kept.Opens);
+
+        // A manifest that is gone is not waited for: it will not come back.
+        var gone = new HeldFileDirectory(LocalOwnedDirectory.Open(session.Path), manifest, holds: int.MaxValue, missing: true);
+        SessionStore missing = SessionStore.OpenExisting(gone);
+        Assert.Equal((1L, true), (missing.Current!.Generation, missing.Recovery.RolledBackToLastKnownGood));
+        Assert.Contains("which is missing or unreadable", missing.Recovery.RollbackReason, StringComparison.Ordinal);
+        Assert.Equal(1, gone.Opens);
+    }
+
+    [Fact(DisplayName = "I15: a publication keeps the generation it falls back to while another program holds the pointer naming it")]
+    public void APublicationKeepsItsFallbackWhileThePointerNamingItIsHeld()
+    {
+        using var session = new TemporarySession();
+        var held = new HeldFileDirectory(LocalOwnedDirectory.Open(session.Path), SessionPointerV1.PreviousFileName, holds: 0,
+            only: FileAccess.Read);
+        SessionStore store = SessionStore.Open(held, session.Store.SessionId, session.Store.SourceIdentity);
+        _ = Publish(store, ("segment-0001.icats", "first"));
+        _ = Publish(store, ("segment-0002.icats", "second"));
+        Assert.Equal(Manifests(1, 2), ManifestsIn(session.Path));
+
+        // A scanner holds the pointer to the generation kept to fall back to as soon as a publication writes it: which
+        // generation it names is not known just then, so none is let go.
+        held.Holds = int.MaxValue;
+        _ = Publish(store, ("segment-0003.icats", "third"));
+        Assert.Equal(Manifests(1, 2, 3), ManifestsIn(session.Path));
+
+        // So it can be fallen back to: the newest generation's own segment changed, the one before it is read.
+        string third = Path.Combine(session.Path, "segment-0003.icats");
+        File.WriteAllText(third, "THIRD");
+        SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
+        Assert.Equal((2L, true), (reopened.Current!.Generation, reopened.Recovery.RolledBackToLastKnownGood));
+
+        // Let go, the next publication lets every superseded generation go.
+        File.WriteAllText(third, "third");
+        held.Holds = 0;
+        _ = Publish(store, ("segment-0004.icats", "fourth"));
+        Assert.Equal(Manifests(3, 4), ManifestsIn(session.Path));
+    }
+
+    [Fact(DisplayName = "I15: no file is called an orphan, or removed as one, while the generation kept to fall back to cannot be read")]
+    public void NoFileIsAnOrphanWhileTheFallbackCannotBeRead()
+    {
+        // The first generation alone names an index, which the next does not carry.
+        using var session = new TemporarySession();
+        using (StoreStagingFile segment = Stage(session.Store, "segment-0001.icats", "first"))
+        using (StoreStagingFile overview = session.Store.Stage("overview-0000000001.bin", StoreDependencyKind.Index))
+        {
+            overview.Content.Write("an index"u8);
+            _ = segment.Complete();
+            _ = overview.Complete();
+            _ = session.Store.Commit([segment, overview], CommittedBoundary.None, Committed);
+        }
+
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+        string index = Path.Combine(session.Path, "overview-0000000001.bin");
+
+        // The pointer to the generation kept to fall back to, or its manifest, held as the session opens and as its
+        // orphans are removed: what that generation needs is not known, so nothing is called unneeded.
+        foreach (string name in new[] { SessionPointerV1.PreviousFileName, SessionManifestV1.FileNameFor(1) })
+        {
+            var held = new HeldFileDirectory(LocalOwnedDirectory.Open(session.Path), name, holds: int.MaxValue);
+            SessionStore opened = SessionStore.Open(held, session.Store.SessionId, session.Store.SourceIdentity);
+            Assert.Equal(2, opened.Current!.Generation);
+            Assert.Empty(opened.Recovery.OrphanFiles);
+            Assert.Empty(opened.RemoveOrphans(Committed));
+            Assert.True(File.Exists(index));
+        }
+
+        // Read, the index is no orphan: the generation kept to fall back to names it.
+        SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
+        Assert.Empty(reopened.Recovery.OrphanFiles);
+        Assert.Empty(reopened.RemoveOrphans(Committed));
+        Assert.True(File.Exists(index));
     }
 
     [Fact(DisplayName = "I15: a session no generation of which verifies is refused naming what is wrong once, and is left as it is")]
@@ -1231,15 +1340,19 @@ public sealed class SessionStoreTests
     /// Holds one file as another program can, so its first <paramref name="holds"/> opens fail as a held file's do - or, when
     /// <paramref name="missing"/>, as a missing one's; everything else is real.
     /// </summary>
-    private sealed class HeldFileDirectory(IOwnedDirectory inner, string name, int holds, bool missing = false) : IOwnedDirectory
+    private sealed class HeldFileDirectory(
+        IOwnedDirectory inner, string name, int holds, bool missing = false, FileAccess? only = null) : IOwnedDirectory
     {
         public int Opens { get; private set; }
+
+        /// <summary>How many of the file's opens, counted from the first, are refused; raised to hold it from now on.</summary>
+        public int Holds { get; set; } = holds;
 
         public string Path => inner.Path;
 
         public FileStream OpenOwnedFile(string file, FileMode mode, FileAccess access, FileShare share, FileOptions options)
         {
-            if (file == name && ++Opens <= holds)
+            if (file == name && (only is null || access == only) && ++Opens <= Holds)
             {
                 throw missing
                     ? new FileNotFoundException("Simulated: the file is gone.", file)

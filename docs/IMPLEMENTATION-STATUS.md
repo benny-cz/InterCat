@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 715 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 716 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 716 — a held pointer or manifest is waited for, and the generation fallen back to is kept (R10, `store-v1`):**
+  - A pointer or a manifest another program held for a moment read as missing: opening read the session at its
+    last-known-good, and a publication that read the pointer to that generation just after writing it removed that
+    generation's manifest as superseded, and with it the rollback. Both are now waited for as a held file is, after
+    pauses of 10 to 160 ms; while that pointer or its manifest still cannot be read, no manifest is removed and no
+    file is called an orphan or removed as one.
+  - Debug and Release each ran 2,867 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    fourteen mutations were caught, one by a case added once it survived: a held file read as missing, or a missing
+    one as held; a held pointer or manifest not waited for, or its reason given as a missing one's; a held pointer's
+    or dependency's reason ending in two periods; a pointer that reads otherwise not acquired again; a publication
+    removing manifests while the pointer to the generation it falls back to cannot be read; and the sweep judging
+    files unneeded, or removing them, while that pointer or its manifest cannot be read.
 
 - **Revision 715 — the capture card says what a failure means within its lines at the smallest window (§6.8):**
   - Rendered at 1080×700, the card's six-line detail showed a long Windows path where its newer statements said what a

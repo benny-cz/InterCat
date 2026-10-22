@@ -160,12 +160,14 @@ present with the recorded length and digest.
 
 - All of that passes → that generation is current.
 - Any of it fails and the pointer, read again, reads otherwise than it did - a writer published while it was read -
-  or is there but cannot be read, as a platform can refuse to open a file while it is replaced → the generation the
-  pointer names is acquired again, after a few milliseconds where it could not be read, up to three times in all.
-- A dependency is there but cannot be opened - another program holds it, as a scanner or a backup can a file just
-  written - → since revision 714 the generation is acquired again after pauses of 10, 20, 40, 80 and 160 ms, before
-  the last-known-good is; one that is missing is not waited for. Until then such a hold read a session at its
-  last-known-good, or refused it when that generation needed the same file, as if the file were damaged.
+  → the generation the pointer names is acquired again, up to three times in all.
+- A dependency, the manifest or the pointer is there but cannot be opened - another program holds it, as a scanner or
+  a backup can a file just written, or a platform refuses to open a file while it is replaced - → the generation is
+  acquired again after pauses of 10, 20, 40, 80 and 160 ms, before the last-known-good is; one that is missing is not
+  waited for, and a held one's reason is the platform's. A dependency is waited for since revision 714, the manifest
+  and the pointer since revision 716. Before, such a hold read a session at its last-known-good, or refused it when
+  that generation needed the same file, as if the file were damaged; a held pointer was read again after 5 and 10 ms
+  first.
 - Any of it fails otherwise → the retained last-known-good pointer is verified the same way, and a success is
   reported as a rollback with the reason the newer one failed.
 - Both fail and either pointer exists → the session is refused. A store with a pointer that names
@@ -612,6 +614,13 @@ square of its length: 16 MB after the default 10-minute capture.
   lease meanwhile waits up to one second for it instead of failing, and reports the guard only after that.
 
 A session written before this rule keeps its superseded manifests until its next publication walks the chain.
+
+**A pointer that cannot be read.** While the pointer to the last-known-good, or the manifest it names, is there but
+cannot be read - another program holding it, as a scanner can the pointer a publication has just written - what that
+generation needs is not known. Since revision 716 opening then reports no file as unneeded, `RemoveOrphans` removes
+none, and a publication removes no superseded manifest, until a later one reads it. Until then such a pointer counted
+as naming nothing, so a publication removed the last-known-good's manifest with the superseded ones, and with it the
+rollback the pointer was kept for.
 
 ## 10. Not yet implemented
 

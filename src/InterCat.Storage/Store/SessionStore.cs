@@ -1011,7 +1011,7 @@ public sealed partial class SessionStore
     private static string Unreadable(StoreDependency dependency, Exception exception, long generation) =>
         exception is FileNotFoundException
             ? string.Create(CultureInfo.InvariantCulture, $"'{dependency.Name}', which generation {generation} records, is missing")
-            : $"'{dependency.Name}' could not be read: {exception.Message}";
+            : $"'{dependency.Name}' could not be read: {exception.Message.TrimEnd().TrimEnd('.')}";
 
     /// <summary>Every lease still holding evidence at this moment. An expired one holds nothing.</summary>
     public IReadOnlyList<EvidenceLease> LiveLeases(DateTimeOffset? nowUtc = null)
@@ -1897,15 +1897,27 @@ public sealed partial class SessionStore
                 return 0;
             }
 
+            // The pointer to the generation kept to fall back to, written a moment ago, may be held by another program as
+            // a scanner can hold a file just written: which generation it names is then not known, so none is removed
+            // until a later publication reads it.
             var named = new HashSet<long> { kept.Generation };
-            if (Read<SessionPointerV1>(directory, SessionPointerV1.PreviousFileName) is { } previous
-                && previous.Validate() is null)
+            SessionPointerV1? previous = Read<SessionPointerV1>(directory, SessionPointerV1.PreviousFileName, out Exception? held);
+            if (held is not null)
+            {
+                return 0;
+            }
+
+            if (previous is not null && previous.Validate() is null)
             {
                 _ = named.Add(previous.Generation);
             }
 
             // Manifests are immutable, so the chain is read before the guard is taken; a reader waits only for deletion.
-            HashSet<string> keptFiles = Referenced(directory, kept);
+            if (Referenced(directory, kept, previous) is not { } keptFiles)
+            {
+                return 0;
+            }
+
             var superseded = new List<(string Manifest, string[] Indexes)>();
             long? generation = kept.PreviousGeneration is { } first && first < kept.Generation ? first : null;
             while (generation is { } older)
@@ -2369,7 +2381,8 @@ public sealed partial class SessionStore
                 verified, hashContents);
 
             // A file another program holds for a moment is not damaged: the generation naming it is acquired again once it
-            // may be let go, before the one kept to fall back to is.
+            // may be let go, before the one kept to fall back to is. So is a pointer that a platform refusing an open while
+            // a file is replaced leaves unreadable for an instant.
             for (int pause = 0; currentProblem is { Held: true } && pause < HeldPauses.Length; pause++)
             {
                 Thread.Sleep(HeldPauses[pause]);
@@ -2383,22 +2396,11 @@ public sealed partial class SessionStore
             }
 
             // A writer publishing while the pointer was read - the session's first generation, which a reader opening it
-            // empty can meet, or one replacing the generation it named - leaves it reading otherwise, or, where a platform
-            // refuses an open while a file is replaced, unreadable for an instant: the generation it names is acquired again
-            // before the one kept to fall back to is.
-            if (attempt < MaximumAcquisitions)
+            // empty can meet, or one replacing the generation it named - leaves it reading otherwise: the generation it
+            // names is acquired again before the one kept to fall back to is.
+            if (attempt < MaximumAcquisitions && Read<SessionPointerV1>(directory, SessionPointerV1.FileName) != pointed)
             {
-                SessionPointerV1? now = Read<SessionPointerV1>(directory, SessionPointerV1.FileName);
-                if (now != pointed)
-                {
-                    continue;
-                }
-
-                if (now is null && Exists(directory, SessionPointerV1.FileName))
-                {
-                    Thread.Sleep(5 * attempt);
-                    continue;
-                }
+                continue;
             }
 
             Unverified? previousProblem = TryAcquire(
@@ -2463,10 +2465,13 @@ public sealed partial class SessionStore
         bool hashContents = true)
     {
         manifest = null;
-        pointer = Read<SessionPointerV1>(directory, pointerName);
+        pointer = Read<SessionPointerV1>(directory, pointerName, out Exception? pointerUnreadable);
         if (pointer is null)
         {
-            return new(pointerName, $"'{pointerName}' is missing or unreadable");
+            return pointerUnreadable is null
+                ? new(pointerName, $"'{pointerName}' is missing or unreadable")
+                : new(pointerName, $"'{pointerName}' could not be read: {pointerUnreadable.Message.TrimEnd().TrimEnd('.')}",
+                    Held: true);
         }
 
         string? problem = pointer.Validate();
@@ -2480,11 +2485,17 @@ public sealed partial class SessionStore
             && string.Equals(verified.Digest, pointer.ManifestDigest, StringComparison.Ordinal)
             && string.Equals(
                 SessionManifestV1.FileNameFor(verified.Generation), pointer.ManifestName, StringComparison.OrdinalIgnoreCase);
-        SessionManifestV1? candidate = unchanged ? verified : Read<SessionManifestV1>(directory, pointer.ManifestName);
+        Exception? manifestUnreadable = null;
+        SessionManifestV1? candidate = unchanged
+            ? verified
+            : Read<SessionManifestV1>(directory, pointer.ManifestName, out manifestUnreadable);
         if (candidate is null)
         {
             return new(pointer.ManifestName, $"generation {pointer.Generation} names manifest '{pointer.ManifestName}', "
-                + "which is missing or unreadable");
+                + (manifestUnreadable is null
+                    ? "which is missing or unreadable"
+                    : "which could not be read: " + manifestUnreadable.Message.TrimEnd().TrimEnd('.')),
+                Held: manifestUnreadable is not null);
         }
 
         problem = unchanged ? null : candidate.Validate() ?? candidate.VerifyDigest();
@@ -2612,7 +2623,11 @@ public sealed partial class SessionStore
         var removed = new List<string>();
         var orphans = new List<string>();
         long orphanBytes = 0;
-        HashSet<string> referenced = Referenced(directory, manifest);
+        if (Referenced(directory, manifest) is not { } referenced)
+        {
+            return (removed, orphans, orphanBytes);
+        }
+
         foreach (string name in List(directory))
         {
             if (referenced.Contains(name))
@@ -2636,7 +2651,11 @@ public sealed partial class SessionStore
 
     private static IEnumerable<string> Orphans(IOwnedDirectory directory, SessionManifestV1? manifest)
     {
-        HashSet<string> referenced = Referenced(directory, manifest);
+        if (Referenced(directory, manifest) is not { } referenced)
+        {
+            return [];
+        }
+
         return List(directory).Where(name => !IsStaging(name)
             && !IsManagedStagingMarker(name)
             && !referenced.Contains(name));
@@ -2644,14 +2663,23 @@ public sealed partial class SessionStore
 
     /// <summary>
     /// Every file the session still needs: both pointers, the locks, the pins a person placed, and the manifest and
-    /// dependencies of each generation a pointer names.
+    /// dependencies of each generation a pointer names; null while the pointer to the generation kept to fall back to, or
+    /// its manifest, is there but cannot be read, as one another program holds cannot be, so what that generation needs
+    /// is not known and no file is judged unneeded.
     /// </summary>
     /// <remarks>
     /// The retained last-known-good counts. It is the whole point of keeping it: a sweep that treated the
     /// generation it names as unreferenced would let <c>RemoveOrphans</c> delete the one thing a rollback
     /// needs, and the next torn pointer would turn a recoverable interruption into a refused session.
     /// </remarks>
-    private static HashSet<string> Referenced(IOwnedDirectory directory, SessionManifestV1? manifest)
+    private static HashSet<string>? Referenced(IOwnedDirectory directory, SessionManifestV1? manifest)
+    {
+        SessionPointerV1? previous = Read<SessionPointerV1>(directory, SessionPointerV1.PreviousFileName, out Exception? held);
+        return held is null ? Referenced(directory, manifest, previous) : null;
+    }
+
+    /// <summary>What <see cref="Referenced(IOwnedDirectory, SessionManifestV1?)"/> finds, from the previous pointer as read.</summary>
+    private static HashSet<string>? Referenced(IOwnedDirectory directory, SessionManifestV1? manifest, SessionPointerV1? previous)
     {
         var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -2663,11 +2691,16 @@ public sealed partial class SessionStore
             RetentionPinsV1.LockFileName,
         };
         Add(referenced, manifest);
-        if (Read<SessionPointerV1>(directory, SessionPointerV1.PreviousFileName) is { } previous
-            && previous.Validate() is null)
+        if (previous is not null && previous.Validate() is null)
         {
             referenced.Add(previous.ManifestName);
-            Add(referenced, Read<SessionManifestV1>(directory, previous.ManifestName));
+            SessionManifestV1? kept = Read<SessionManifestV1>(directory, previous.ManifestName, out Exception? held);
+            if (held is not null)
+            {
+                return null;
+            }
+
+            Add(referenced, kept);
         }
 
         return referenced;
@@ -2911,8 +2944,16 @@ public sealed partial class SessionStore
     }
 
     private static T? Read<T>(IOwnedDirectory directory, string name)
+        where T : class => Read<T>(directory, name, out _);
+
+    /// <param name="unreadable">
+    /// Why a file that is there could not be opened or read, as one another program holds cannot be; null when it was
+    /// read, is missing, or was read and is not a document of its kind.
+    /// </param>
+    private static T? Read<T>(IOwnedDirectory directory, string name, out Exception? unreadable)
         where T : class
     {
+        unreadable = null;
         if (OwnedFileName.Validate(name) is not null || !Exists(directory, name))
         {
             return null;
@@ -2930,8 +2971,14 @@ public sealed partial class SessionStore
                 ? null
                 : JsonSerializer.Deserialize<T>(stream, SessionManifestV1.Json);
         }
-        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
+        catch (JsonException)
         {
+            return null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // One removed since it was found is missing, not held.
+            unreadable = exception is FileNotFoundException or DirectoryNotFoundException ? null : exception;
             return null;
         }
     }
