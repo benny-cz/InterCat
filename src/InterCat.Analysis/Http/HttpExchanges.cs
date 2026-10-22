@@ -139,8 +139,25 @@ public sealed partial class HttpExchangeIndex
     /// <summary>The rule that groups buffers into exchanges, named in every query identity that reads by it (R20).</summary>
     public const string GroupingRule = "http-exchange-v1";
 
+    /// <summary>
+    /// How far behind the latest buffer read a number's last use is kept, once its response has ended, for a later
+    /// generation to extend it (<see cref="Extend"/>): WinINet raises the buffer that ends a request body after the
+    /// response it belongs to, by about a delivery flush, far less than this. A later buffer of a number not kept is
+    /// grouped again in full.
+    /// </summary>
+    public const long LateWindowNanoseconds = 15_000_000_000;
+
     private readonly HttpExchange[] exchanges;
     private readonly (int Segment, int Row)[][] records;
+
+    /// <summary>
+    /// The published identities of the segments and source-field segments the exchanges were read from, for an extension
+    /// to tell they still begin a later generation's; null where nothing extends.
+    /// </summary>
+    private readonly (StoreDependency?[] Segments, StoreDependency?[] Fields)? read;
+
+    /// <summary>What a later generation's buffers can still change, for <see cref="Extend"/>; null where nothing extends.</summary>
+    private readonly ExchangeTail? tail;
 
     private HttpExchangeIndex(
         HttpExchange[] exchanges,
@@ -148,10 +165,14 @@ public sealed partial class HttpExchangeIndex
         HttpExchangeGroup[] groups,
         IReadOnlyList<string?> segmentNames,
         ProcessInstanceIndex processes,
-        long withoutExchange)
+        long withoutExchange,
+        (StoreDependency?[] Segments, StoreDependency?[] Fields)? read = null,
+        ExchangeTail? tail = null)
     {
         this.exchanges = exchanges;
         this.records = records;
+        this.read = read;
+        this.tail = tail;
         Groups = groups;
         SegmentNames = segmentNames;
         Processes = processes;
@@ -177,6 +198,19 @@ public sealed partial class HttpExchangeIndex
         IReadOnlyList<SegmentReaderV1> segments,
         IReadOnlyList<SegmentReaderV1> fieldSegments,
         ProcessInstanceIndex processes,
+        CancellationToken cancellationToken = default) =>
+        Derive(segments, fieldSegments, processes, clock: null, cancellationToken);
+
+    /// <summary>
+    /// <see cref="Derive(IReadOnlyList{SegmentReaderV1}, IReadOnlyList{SegmentReaderV1}, ProcessInstanceIndex, CancellationToken)"/>,
+    /// keeping, when <paramref name="clock"/> is the segments' clock, what a later generation's buffers can still change,
+    /// so that generation's exchanges extend these (<see cref="Extend"/>) rather than group every buffer again.
+    /// </summary>
+    public static HttpExchangeIndex Derive(
+        IReadOnlyList<SegmentReaderV1> segments,
+        IReadOnlyList<SegmentReaderV1> fieldSegments,
+        ProcessInstanceIndex processes,
+        SourceClockDescriptor? clock,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(segments);
@@ -194,16 +228,199 @@ public sealed partial class HttpExchangeIndex
         // Each number's buffers in time, then by place: a use of the number is its buffers from one that opens it to the
         // next that opens another (ADR-037, R22).
         var drafts = new List<(HttpExchange Exchange, (int Segment, int Row)[] Records)>();
+        var lastUses = new Dictionary<(int ProcessId, long Number), LastUse>();
         foreach (IGrouping<(int ProcessId, long Number), Buffer> number in buffers.GroupBy(buffer => (buffer.ProcessId, buffer.Number)))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            List<Buffer>? last = null;
+            int uses = 0;
             foreach ((List<Buffer> use, bool _) in Uses(number))
             {
                 drafts.Add(Exchange(use, processes));
+                last = use;
+                uses++;
+            }
+
+            lastUses[number.Key] = new([.. last!], uses == 1);
+        }
+
+        ExchangeTail? kept = clock is { } known && processes.Clock == known.Id
+            ? Kept(known, buffers.Count == 0 ? null : buffers.Max(buffer => buffer.Ticks), lastUses, [.. lastUses.Keys])
+            : null;
+        return Assemble(
+            drafts,
+            [.. segments.Select(segment => segment.Published?.Name)],
+            processes,
+            withoutExchange,
+            kept is null ? null : (RpcCallIndex.IdentitiesOf(segments), RpcCallIndex.IdentitiesOf(fieldSegments)),
+            kept);
+    }
+
+    /// <summary>
+    /// The exchanges of <paramref name="segments"/>, extended from these rather than grouped again, when the segments and the
+    /// source-field segments begin with every one these were grouped from, in the same order, as a live capture's next
+    /// generation's do (I14). Only the added segments and fields are read. Each number the added buffers name is told
+    /// apart again from its kept last use on, where it was kept - from its first buffer, where that use holds every buffer
+    /// of the number, and otherwise only when every added buffer reads after that use began - or from nothing, where no
+    /// buffer named it before; every other exchange stands, bound again to <paramref name="processes"/>. The result is
+    /// exactly
+    /// <see cref="Derive(IReadOnlyList{SegmentReaderV1}, IReadOnlyList{SegmentReaderV1}, ProcessInstanceIndex, SourceClockDescriptor?, CancellationToken)"/>'s
+    /// over the same segments. Null, for a full grouping to answer, when a segment read here is missing or another (after a
+    /// compaction or a retention), when an added buffer names a number read before and no longer kept, or reads before its
+    /// number's last use began while an earlier use holds some of the number's buffers, or when an added source field names
+    /// no added HTTP record: a record's fields are published with it, so such a field could move a buffer these grouped.
+    /// </summary>
+    public HttpExchangeIndex? Extend(
+        IReadOnlyList<SegmentReaderV1> segments,
+        IReadOnlyList<SegmentReaderV1> fieldSegments,
+        ProcessInstanceIndex processes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(fieldSegments);
+        ArgumentNullException.ThrowIfNull(processes);
+        if (tail is null || read is not { } before || processes.Clock != tail.Clock.Id)
+        {
+            return null;
+        }
+
+        StoreDependency?[] offered = RpcCallIndex.IdentitiesOf(segments);
+        StoreDependency?[] offeredFields = RpcCallIndex.IdentitiesOf(fieldSegments);
+        if (!RpcCallIndex.Begins(offered, before.Segments) || !RpcCallIndex.Begins(offeredFields, before.Fields))
+        {
+            return null;
+        }
+
+        Dictionary<RecordAddress, Place> places = ReadPlaces(
+            [.. Enumerable.Range(before.Fields.Length, fieldSegments.Count - before.Fields.Length).Select(position => fieldSegments[position])],
+            cancellationToken);
+        var added = new List<Buffer>();
+        var named = new HashSet<RecordAddress>();
+        long withoutExchange = WithoutExchange;
+        for (int position = before.Segments.Length; position < segments.Count; position++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            withoutExchange += Collect(segments[position], position, places, added, named);
+        }
+
+        foreach (RecordAddress address in places.Keys)
+        {
+            if (!named.Contains(address))
+            {
+                return null;
             }
         }
 
-        return Assemble(drafts, [.. segments.Select(segment => segment.Published?.Name)], processes, withoutExchange);
+        var drafts = new List<(HttpExchange Exchange, (int Segment, int Row)[] Records)>(exchanges.Length + added.Count);
+        var lastUses = new Dictionary<(int ProcessId, long Number), LastUse>(tail.Open);
+        var numbers = new HashSet<(int ProcessId, long Number)>(tail.Numbers);
+        var continued = new HashSet<(uint Stream, uint Epoch, ulong Ordinal)>();
+        foreach (IGrouping<(int ProcessId, long Number), Buffer> number in added.GroupBy(buffer => (buffer.ProcessId, buffer.Number)))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IEnumerable<Buffer> buffers = number;
+            bool whole = true;
+            if (tail.Open.TryGetValue(number.Key, out LastUse? kept))
+            {
+                // A use that holds every buffer of its number is told apart again with the added ones from nothing, as a
+                // full grouping would. Otherwise an earlier use holds some, and an added buffer read before the last use
+                // began could belong to it, or split the uses otherwise than a full grouping would.
+                if (!kept.Whole)
+                {
+                    foreach (Buffer buffer in number)
+                    {
+                        if (CompareBuffers(buffer, kept.Buffers[0]) <= 0)
+                        {
+                            return null;
+                        }
+                    }
+                }
+
+                Buffer first = kept.Buffers[0];
+                _ = continued.Add((first.Address.Stream, first.Address.Epoch, first.Address.Ordinal));
+                buffers = kept.Buffers.Concat(number);
+                whole = kept.Whole;
+            }
+            else if (!numbers.Add(number.Key))
+            {
+                return null;
+            }
+
+            List<Buffer>? lastUse = null;
+            int uses = 0;
+            foreach ((List<Buffer> use, bool _) in Uses(buffers))
+            {
+                drafts.Add(Exchange(use, processes));
+                lastUse = use;
+                uses++;
+            }
+
+            lastUses[number.Key] = new([.. lastUse!], whole && uses == 1);
+        }
+
+        // Every other exchange stands, bound again: a later generation's lifecycle records can bind its first buffer to an
+        // instance it did not have.
+        for (int index = 0; index < exchanges.Length; index++)
+        {
+            HttpExchange exchange = exchanges[index];
+            if (!continued.Contains(exchange.First))
+            {
+                drafts.Add((exchange with { Process = processes.Bind(exchange.ProcessId, exchange.FirstTicks, isLifecycleRecord: false) },
+                    records[index]));
+            }
+        }
+
+        long? latest = tail.LatestTicks;
+        foreach (Buffer buffer in added)
+        {
+            latest = latest is { } newest && newest >= buffer.Ticks ? newest : buffer.Ticks;
+        }
+
+        return Assemble(
+            drafts,
+            [.. offered.Select(identity => identity!.Name)],
+            processes,
+            withoutExchange,
+            (offered, offeredFields),
+            Kept(tail.Clock, latest, lastUses, numbers));
+    }
+
+    /// <summary>
+    /// What a later generation can still change: every number's last use whose response has not ended, or whose last buffer
+    /// reads within <see cref="LateWindowNanoseconds"/> of the latest read, and every number read so far.
+    /// </summary>
+    private static ExchangeTail Kept(
+        SourceClockDescriptor clock,
+        long? latest,
+        Dictionary<(int ProcessId, long Number), LastUse> lastUses,
+        HashSet<(int ProcessId, long Number)> numbers)
+    {
+        long watermark = long.MinValue;
+        if (latest is { } newest)
+        {
+            Int128 ticks = (Int128)LateWindowNanoseconds * clock.TicksPerSecond / 1_000_000_000;
+            long window = ticks > long.MaxValue ? long.MaxValue : (long)ticks;
+            watermark = newest < long.MinValue + window ? long.MinValue : newest - window;
+        }
+
+        var open = new Dictionary<(int ProcessId, long Number), LastUse>();
+        foreach (((int ProcessId, long Number) key, LastUse use) in lastUses)
+        {
+            if (!PartOf(use.Buffers, HttpPart.ResponseBody).Whole || use.Buffers.Max(buffer => buffer.Ticks) >= watermark)
+            {
+                open[key] = use;
+            }
+        }
+
+        return new(clock, latest, open, numbers);
+    }
+
+    /// <summary>The order a number's buffers are told apart in: by reading, then by place, then by ordinal.</summary>
+    private static int CompareBuffers(Buffer left, Buffer right)
+    {
+        int compared = left.Ticks.CompareTo(right.Ticks);
+        compared = compared != 0 ? compared : left.Sequence.CompareTo(right.Sequence);
+        return compared != 0 ? compared : left.Address.Ordinal.CompareTo(right.Address.Ordinal);
     }
 
     /// <summary>
@@ -214,7 +431,9 @@ public sealed partial class HttpExchangeIndex
         IEnumerable<(HttpExchange Exchange, (int Segment, int Row)[] Records)> drafts,
         string?[] segmentNames,
         ProcessInstanceIndex processes,
-        long withoutExchange)
+        long withoutExchange,
+        (StoreDependency?[] Segments, StoreDependency?[] Fields)? read = null,
+        ExchangeTail? tail = null)
     {
         // Grouped by instance, the bound first in index order and then the unbound by process ID; each group's exchanges in
         // reading order, by first buffer and then by its record.
@@ -259,7 +478,9 @@ public sealed partial class HttpExchangeIndex
             [.. groups],
             segmentNames,
             processes,
-            withoutExchange);
+            withoutExchange,
+            read,
+            tail);
     }
 
     /// <summary>
@@ -369,7 +590,7 @@ public sealed partial class HttpExchangeIndex
     }
 
     /// <summary>A part's buffers, whole when numbered from 0 in order with the first flagged first and the last flagged last.</summary>
-    private static HttpPartRecord PartOf(List<Buffer> use, HttpPart part)
+    private static HttpPartRecord PartOf(IEnumerable<Buffer> use, HttpPart part)
     {
         Buffer[] buffers = [.. use.Where(buffer => buffer.Part == part).OrderBy(buffer => buffer.Sequence)];
         bool whole = buffers.Length > 0
@@ -456,8 +677,16 @@ public sealed partial class HttpExchangeIndex
         return places;
     }
 
-    /// <summary>Collects a segment's HTTP records that name an exchange; returns how many named none.</summary>
-    private static long Collect(SegmentReaderV1 segment, int position, Dictionary<RecordAddress, Place> places, List<Buffer> buffers)
+    /// <summary>
+    /// Collects a segment's HTTP records that name an exchange; returns how many named none. Every HTTP record's address is
+    /// added to <paramref name="named"/>, when one is given.
+    /// </summary>
+    private static long Collect(
+        SegmentReaderV1 segment,
+        int position,
+        Dictionary<RecordAddress, Place> places,
+        List<Buffer> buffers,
+        HashSet<RecordAddress>? named = null)
     {
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
         long without = 0;
@@ -491,6 +720,7 @@ public sealed partial class HttpExchangeIndex
                 (uint)epochs.UnsignedAt(row)!.Value,
                 ordinals.UnsignedAt(row)!.Value,
                 new FactKey(factHigh.UnsignedAt(row)!.Value, factLow.UnsignedAt(row)!.Value));
+            _ = named?.Add(address);
             ushort eventId = segment.SchemaOf(row).EventId;
             if (eventId is < 2001 or > 2004
                 || !places.TryGetValue(address, out Place place) || place.Number is not { } number
@@ -520,6 +750,19 @@ public sealed partial class HttpExchangeIndex
     private readonly record struct RecordAddress(uint Stream, uint Epoch, ulong Ordinal, FactKey FactKey);
 
     private readonly record struct Place(long? Number, long? Sequence, long? Flags);
+
+    /// <summary>
+    /// What a later generation's buffers can still change: the clock its window is read on, the latest buffer read, each
+    /// kept number's last use, and every number read so far, kept or not.
+    /// </summary>
+    private sealed record ExchangeTail(
+        SourceClockDescriptor Clock,
+        long? LatestTicks,
+        Dictionary<(int ProcessId, long Number), LastUse> Open,
+        HashSet<(int ProcessId, long Number)> Numbers);
+
+    /// <summary>A number's last use, its buffers in reading order, and whether it holds every buffer of the number.</summary>
+    private sealed record LastUse(Buffer[] Buffers, bool Whole);
 
     private sealed record Buffer(
         RecordAddress Address,

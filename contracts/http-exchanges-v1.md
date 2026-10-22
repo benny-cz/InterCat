@@ -35,6 +35,26 @@ A release of a session's oldest interval (`contracts/store-v1.md` §8, ADR-043, 
 exchange one of whose buffers stays, and the use before a use opened only by repeating one of its buffers, so every
 exchange that stays is grouped, keyed and timed as before.
 
+## 2a. From one live generation to the next (revision 733)
+
+A live capture publishes a generation per chunk, and a later generation's exchanges are extended from the earlier
+generation's rather than grouped again, with exactly a full grouping's result, as RPC calls are (`operations-v1` §3a):
+
+- **What is kept.** Beside its exchanges a grouping keeps every number's last use whose response has not ended, or whose
+  last buffer reads within 15 seconds of the latest buffer read (the *late window*), with whether that use holds every
+  buffer of its number; and every number it has read.
+- **What extends.** A generation whose segments and source-field segments begin with the same files the earlier one
+  read - by name, length and digest - reads only its added segments and fields. A number the added buffers name is told
+  apart again from its kept last use on, or from nothing when no buffer named it before; every other exchange stands,
+  and all are bound again to the generation's instances by their first buffers' readings, as §3 binds them. A kept use
+  that holds every buffer of its number takes an added buffer however late, since the number is then grouped again
+  whole.
+- **What declines.** Anything an extension could not add exactly is grouped in full: a buffer of a number read before
+  and no longer kept; a buffer read before its number's kept last use began, while an earlier use holds some of the
+  number's buffers; a segment read before that the generation no longer names, or names with another length or
+  digest; and a source field naming no HTTP record the generation added. A record's source fields are published with
+  it, so such a field could move a buffer already grouped.
+
 ## 3. An exchange
 
 | Field | Meaning |
@@ -93,7 +113,8 @@ records name no exchange.
 A finished session's operation index keeps its exchanges (`contracts/operation-index-v1.md` minor 1): each with its
 parts, times and buffers' places, without its process binding, which a reopen makes from the checkpoint's instances as
 this grouping does. A reopen's first HTTP listing therefore groups no buffer, and answers as grouping every segment does.
-A live generation keeps none, and groups its exchanges from every record once.
+A live generation keeps none: since revision 733 it extends the exchanges of the generation before it (§2a), and groups
+them from every record only when nothing earlier was grouped in the same process, or an extension declines.
 
 ## 6. Not defined at this version
 

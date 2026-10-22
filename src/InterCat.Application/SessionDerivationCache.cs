@@ -148,11 +148,17 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     /// <summary>The other ends of the RPC calls already followed, or null before they are asked for.</summary>
     public RpcPeerIndex? DerivedRpcPeers => Volatile.Read(ref rpcPeers);
 
+    /// <summary>The HTTP exchanges already grouped, or null before they are asked for: what a later generation extends.</summary>
+    public HttpExchangeIndex? DerivedHttpExchanges => Volatile.Read(ref httpExchanges);
+
     /// <summary>Whether the RPC calls were extended from an earlier generation's rather than paired in full.</summary>
     internal bool RpcCallsExtended { get; private set; }
 
     /// <summary>Whether the calls' other ends were extended from an earlier generation's rather than read in full.</summary>
     internal bool RpcPeersExtended { get; private set; }
+
+    /// <summary>Whether the HTTP exchanges were extended from an earlier generation's rather than grouped in full.</summary>
+    internal bool HttpExchangesExtended { get; private set; }
 
     /// <summary>Whether the counts were extended from an earlier generation's rather than counted in full.</summary>
     internal bool ActivityExtended { get; private set; }
@@ -338,7 +344,8 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
 
     /// <summary>
     /// The generation's HTTP exchanges (ADR-037), taken on first use from the operation index the generation names when it
-    /// covers its segments and keeps them, or else grouped from its WinINet capture records, and bound to the same process
+    /// covers its segments and keeps them; or else extended from the latest earlier generation's, grouping again only the
+    /// numbers its added buffers name; or else grouped from its WinINet capture records; and bound to the same process
     /// instances as every other derivation of it.
     /// </summary>
     public HttpExchangeIndex HttpExchanges(
@@ -363,7 +370,10 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             }
 
             ProcessInstanceIndex instances = ProcessesLocked(directory, segments, clock, fields, cancellationToken);
-            HttpExchangeIndex grouped = HttpExchangeIndex.Derive(segments, fields, instances, cancellationToken);
+            HttpExchangeIndex? extended = SessionDerivationCache.Earlier(this, entry => entry.DerivedHttpExchanges)
+                ?.Extend(segments, fields, instances, cancellationToken);
+            HttpExchangesExtended = extended is not null;
+            HttpExchangeIndex grouped = extended ?? HttpExchangeIndex.Derive(segments, fields, instances, clock, cancellationToken);
             Volatile.Write(ref httpExchanges, grouped);
             return grouped;
         }

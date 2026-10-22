@@ -874,6 +874,7 @@
         "I13: every journal probe record has retained evidence or an explicit omission"
       ],
       "I14": [
+        "I14: HTTP exchanges extended chunk by chunk equal a grouping of every chunk at once",
         "I14: RPC calls and their other ends extended chunk by chunk equal a derivation of every chunk at once",
         "I14: a cancelled import leaves no spilled run behind",
         "I14: a canonical key changes with every field the envelope carries",
@@ -897,6 +898,8 @@
         "I14: a session reopened from its checkpoint and overview opens no segment and projects as a derivation of every segment",
         "I14: a tile index is used only where it describes each of the generation's segments by name, length and digest",
         "I14: a tile index written before tiles kept their bindings, directions and ends is refused, counted around, and published again",
+        "I14: an HTTP extension declines segments that do not begin with those it grouped",
+        "I14: an HTTP extension declines, for a full grouping, whatever could change an exchange it cannot regroup",
         "I14: an RPC extension declines, for a full derivation, whatever could change a call or a link already made",
         "I14: an RPC peer index gives its ALPC records to the first extension made from it, and a second extends from nothing",
         "I14: an RPC peers session keeps its links with its overview, and its first view draws them opening no segment",
@@ -915,6 +918,7 @@
         "I14: calls that would take more than an operation index may hold are not kept, and the index says so",
         "I14: counts decline to extend, for a full count, when a record already counted would bind otherwise",
         "I14: each generation of a live RPC peers capture extends its calls and their other ends, and projects as a fresh derivation would",
+        "I14: each generation of a live WinINet capture extends its HTTP exchanges, and lists them as a fresh derivation would",
         "I14: each generation of a live session extends the one before it and projects as a fresh derivation would",
         "I14: each instance's records extended chunk by chunk equal a count of every chunk at once",
         "I14: equal-time byte-identical records keep their multiplicity and gain no order",
@@ -2289,7 +2293,7 @@
     },
     "uncovered": {
       "P25": {
-        "reason": "Since revision 403 a zoom, a brush's counts, its lanes' bytes, a time scope's byte and peer rankings, an evidence page and a process's connections open only the segments they read; since revision 408 paired calls and grouped exchanges are read without opening one; and since revisions 440 and 441 a finished session keeps its RPC calls and HTTP exchanges in an operation index, so a reopen's first call ranking, RPC or HTTP listing, or brush derives none. A live generation's first RPC or HTTP view still derives its operations from every segment, and a zoom builds a met segment's tiles from its rows.",
+        "reason": "Since revision 403 a zoom, a brush's counts, its lanes' bytes, a time scope's byte and peer rankings, an evidence page and a process's connections open only the segments they read; since revision 408 paired calls and grouped exchanges are read without opening one; and since revisions 440 and 441 a finished session keeps its RPC calls and HTTP exchanges in an operation index, so a reopen's first call ranking, RPC or HTTP listing, or brush derives none. Since revisions 544 and 733 a live generation extends the RPC calls and HTTP exchanges of the generation before it, held in memory, over the segments it adds. A live generation opened with nothing derived before it still derives its operations from every segment, and a zoom of a live generation builds a met segment's tiles from its rows.",
         "plannedBy": "M5"
       }
     }

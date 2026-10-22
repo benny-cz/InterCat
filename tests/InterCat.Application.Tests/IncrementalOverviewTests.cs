@@ -100,6 +100,40 @@ public sealed class IncrementalOverviewTests
         Assert.Equal(12, Assert.Single(overview.Edges, edge => edge.Mechanism == Mechanism.Rpc).ObservationCount);
     }
 
+    [Fact(DisplayName = "I14: each generation of a live WinINet capture extends its HTTP exchanges, and lists them as a fresh derivation would")]
+    public void HttpGenerationsExtendAndListAsFresh()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = HttpExchangeRows();
+
+        // Three chunks of the capture, cut in time between buffers of open exchanges, each with its records' fields; the
+        // second use of each of two numbers begins in the last.
+        int[] cuts = [0, 7, 13, rows.Length];
+        var how = new List<bool>();
+        for (int index = 0; index + 1 < cuts.Length; index++)
+        {
+            ObservationRowV1[] chunk = rows[cuts[index]..cuts[index + 1]];
+            var ordinals = new HashSet<ulong>(chunk.Select(row => row.RawRecordOrdinal));
+            Publish(session.Store, chunk, fields: [.. fields.Where(field => ordinals.Contains(field.RawRecordOrdinal))]);
+            ProcessInstanceId client = Fresh(session.Store).Processes.Instances.Single(instance => instance.ProcessId == 4_242).Id;
+            string extended = Listed(session.Store, client);
+            how.Add(SessionDerivationCache.For(session.Store.Current!).HttpExchangesExtended);
+            SessionDerivationCache.Clear();
+            Assert.Equal(extended, Listed(session.Store, client));
+        }
+
+        // The first generation has nothing to extend; every later one extends from the one before it, which the fresh
+        // listing left in the cache, as the live follow's would.
+        Assert.Equal([false, true, true], how);
+        Assert.Equal(5, SessionHttpExchanges.Channels(session.Store,
+            Fresh(session.Store).Processes.Instances.Single(instance => instance.ProcessId == 4_242).Id).Channels.Single().Exchanges);
+
+        static string Listed(SessionStore store, ProcessInstanceId client) =>
+            JsonSerializer.Serialize(SessionHttpExchanges.Channels(store, client))
+            + JsonSerializer.Serialize(SessionHttpExchanges.Exchanges(store, HttpExchangeKeys.Channel(client)));
+    }
+
     /// <summary>
     /// Three chunks of a live RPC peers capture: the service control manager's three calls, linked through ALPC, and a
     /// fourth whose client stop and whose message's receive arrive in the third chunk.

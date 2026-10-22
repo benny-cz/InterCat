@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 732 · Branch: `main`
+Updated: 2026-10-22 · Plan revision: 733 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 733 — P25, I14: a live recording's HTTP exchanges extend from the generation before (§12.1 S3):**
+  - A live generation's HTTP exchanges are extended from the earlier generation's over the segments it adds, as its
+    RPC calls have been since revision 544, rather than grouped from every record at each publication. A grouping
+    keeps each number's open or recent last use and every number it has read, and declines to a full grouping wherever
+    an added buffer could change an exchange it cannot group again. A property test holds random chunked WinINet
+    captures, with late, lost and reused buffers, to a grouping of every chunk at once. A process that opens a live
+    session with nothing grouped before it still groups from every record.
+  - Debug and Release each ran 2,941 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    nine mutations were caught: a use holding every buffer of its number checked as if split, a buffer read before a
+    split use began taken in, a number no longer kept begun again, a field naming an earlier record taken in, every
+    ended number kept past the late window, an exchange whose response had not ended dropped, standing exchanges
+    left bound to the earlier generation's instances, a cache that never extends, and a full grouping that keeps
+    nothing to extend.
 
 - **Revision 732 — P13: a capture's configuration is fixed as it starts, and a refused provider is said (§9.3):**
   - A test finds in the IL of the broker's and recorders' assemblies that providers are enabled and their state asked
@@ -816,8 +830,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      reads their rows alone: a busy channel's zoom takes 4 to 9 ms after the first, where it took 123 to 167. Since
      revision 440 a finished session keeps its calls and their other ends in an operation index, so a reopen's first
      brush, ranking or listing pairs none, and since revision 441 its HTTP exchanges, so its first HTTP listing groups
-     none; since revision 544 a live generation's extends the previous generation's, reading only its added segments,
-     where it derived them over every segment, since a call's request and response can lie in different ones (P25).
+     none; since revision 544 a live generation's calls extend the previous generation's, and since revision 733 its
+     HTTP exchanges, reading only its added segments, where they were derived over every segment, since a call's
+     request and response, or an exchange's buffers, can lie in different ones (P25).
      A search reads the overview, never a segment.
    - An operation's focused count, and a channel's and owners' at once, still read their rows (§10.3: the tallies hold
      neither apart); since revisions 458, 459 and 460 a group's, a process's and a channel's count from the tile index.
