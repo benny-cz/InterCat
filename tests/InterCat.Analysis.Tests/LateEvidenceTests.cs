@@ -87,12 +87,15 @@ public sealed class LateEvidenceTests
         }
     }
 
-    [Fact(DisplayName = "I17: an answer over a held generation is refused once its lease lets go, and for another session's lease")]
+    [Fact(DisplayName = "I17: an answer over a held generation is refused once its lease lets go, for another session's lease, and where no generation was published")]
     public void AHeldGenerationIsReadOnlyWhileItsLeaseHoldsIt()
     {
         using var session = new TemporarySession();
-        Publish(session.Store, [Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 100, 100)]);
         MetricRequest count = Request(Metric.Observations);
+
+        // A folder in which no generation was published answers nothing, and says why.
+        Assert.Equal(SessionStore.NoGeneration, Assert.Throws<NoSessionException>(() => SessionMetrics.Evaluate(session.Store, count)).Message);
+        Publish(session.Store, [Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 100, 100)]);
 
         EvidenceLease released = session.Store.AcquireLease();
         Assert.Equal(1, SessionMetrics.Evaluate(session.Store, released, count).Value);

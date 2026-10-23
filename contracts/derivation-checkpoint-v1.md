@@ -190,7 +190,11 @@ owners      = held* ownedInstances length u32       ; held: one per incarnation 
 held        = count u32, pid i32*, byOwner          ; the PIDs ascending, only of an incarnation naming two or
                                                     ; more; byOwner: exactly the incarnation's records
 ownedInstances = count u32, (instance i32, byOwner)*, byOwner
-                                                    ; strictly ascending by instance, each naming only itself;
+                                                    ; strictly ascending by instance, each naming only itself:
+                                                    ; one per instance, exactly the records its tallies count,
+                                                    ; lifecycle records apart - as many direct as counted
+                                                    ; directly, the rest at the strength it binds them at
+                                                    ; (identity-v1), none binding to no instance;
                                                     ; the last: the records binding to no instance, naming none
 byOwner     = refused u8 (0, 1), count u32, owner*, unownedRecords i64 (>= 0), hasBytes u8 (0, 1), [ownedBytes]
                                                     ; refused: a byte view refuses a record of them
@@ -255,14 +259,16 @@ checkpoint when:
   - an ambiguous incarnation names a holder;
   - an end's latest position is missing although an incarnation holds records, or present although none does;
   - a holder is not an instance of the rebuilt instances;
-  - a tally names no rebuilt instance or an undefined mechanism, or a PID's first reading is after its last;
+  - a tally names no rebuilt instance or an undefined mechanism, or a PID's first reading is after its last; or an
+    instance has no tally, though a record binding to it witnesses each;
   - a transfer is negative, says more of its sends or receives stated no size than there are, counts more sends and
     receives than its incarnation's records, or states bytes beside a refused sum; or there is not one transfer per
     incarnation holding records;
   - an owner names no instance or an undefined strength, counts fewer records than none, or is out of order; an
     incarnation's records by owner are not its records, or its PIDs contradict whether its records name two; an
-    instance's name another instance, or the records binding to none name one; transport bytes are below none or
-    stated beside a refused sum; or the records by owner do not take the bytes they say they take.
+    instance's name another instance, are not the records its tallies count, bind at a strength the instance binds no
+    record at, or are missing; the records binding to none name one; transport bytes are below none or stated beside a
+    refused sum; or the records by owner do not take the bytes they say they take.
 
 A refused checkpoint is not used, and the overview says why in one caveat, because a
 slower open should be explainable. The answer is the same.

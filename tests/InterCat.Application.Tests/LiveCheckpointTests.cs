@@ -137,6 +137,37 @@ public sealed class LiveCheckpointTests
         Assert.Empty(Staged(session.Store, current + 1));
     }
 
+    [Fact(DisplayName = "S1: a live follow stopped while it stages a publication's indexes holds none of them: what it staged before it stopped is given up, for a cleanup to remove")]
+    public void AStoppedPublicationHoldsNothingStaged()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        ObservationRowV1[][] chunks = IncrementalOverviewTests.LiveChunks();
+        Publish(session.Store, chunks[0]);
+        Publish(session.Store, chunks[1]);
+        long current = session.Store.Current!.Generation;
+
+        // Stopped before it began, as it derives the generation; and as it stages the older chunk's tiles, once the checkpoint
+        // and the newer chunk's tiles are staged.
+        foreach (int stopAt in new[] { 0, 3 })
+        {
+            using var stop = new CancellationTokenSource();
+            if (stopAt == 0)
+            {
+                stop.Cancel();
+            }
+
+            var directory = new StoppingDirectory(LocalOwnedDirectory.Open(session.Path), stop, stopAt);
+            SessionStore store = SessionStore.Open(directory, session.Store.Current!.SessionId);
+            _ = Assert.ThrowsAny<OperationCanceledException>(() => LiveCheckpoints.Instance.Stage(store, current + 1, stop.Token));
+            Assert.Equal(stopAt, directory.Staged);
+            StagingCleanupReport left = session.Store.PreviewStagingCleanup();
+            Assert.Empty(left.ActiveFiles);
+            Assert.Equal(stopAt, left.AbandonedFiles.Count);
+            Assert.Equal(2 * stopAt, session.Store.CleanupAbandonedStaging().RemovedFiles.Count);
+        }
+    }
+
     /// <summary>What the live indexer stages into generation <paramref name="generation"/>, by name, given up again.</summary>
     private static string[] Staged(SessionStore store, long generation)
     {
@@ -172,6 +203,34 @@ public sealed class LiveCheckpointTests
     {
         Generation = 0, ManifestDigest = null, GraphIdentity = string.Empty, Caveats = [], Size = null,
     });
+
+    /// <summary>
+    /// Stops a live follow as the <paramref name="stopAt"/>th file is staged into the session, counting the files staged;
+    /// everything else is the real directory's.
+    /// </summary>
+    private sealed class StoppingDirectory(IOwnedDirectory inner, CancellationTokenSource stop, int stopAt) : IOwnedDirectory
+    {
+        public int Staged { get; private set; }
+
+        public string Path => inner.Path;
+
+        public FileStream OpenOwnedFile(string name, FileMode mode, FileAccess access, FileShare share, FileOptions options)
+        {
+            if (mode == FileMode.CreateNew && name.StartsWith(SessionStore.StagingPrefix, StringComparison.Ordinal)
+                && name.EndsWith(SessionStore.StagingSuffix, StringComparison.Ordinal) && ++Staged == stopAt)
+            {
+                stop.Cancel();
+            }
+
+            return inner.OpenOwnedFile(name, mode, access, share, options);
+        }
+
+        public void ReplaceOwnedFile(string sourceName, string destinationName) => inner.ReplaceOwnedFile(sourceName, destinationName);
+
+        public bool RemoveOwnedFile(string name) => inner.RemoveOwnedFile(name);
+
+        public IReadOnlyDictionary<string, OwnedFileFacts>? DescribeOwnedFiles() => inner.DescribeOwnedFiles();
+    }
 
     /// <summary>An indexer that stages, as the checkpoint of the generation before, bytes that are not one.</summary>
     private sealed class NotACheckpoint : ILiveIndexer

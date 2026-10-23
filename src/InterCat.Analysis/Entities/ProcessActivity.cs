@@ -391,6 +391,19 @@ public sealed partial class ProcessActivityIndex
         /// <summary>A copy sharing nothing, its owner at the position <paramref name="mapped"/> gives it; null where it has none.</summary>
         public InstanceActivity? Copy(IReadOnlyDictionary<int, int>? mapped) =>
             Owned.Copy(mapped) is { } owned ? new() { Direct = new(Direct), Bound = new(Bound), Owned = owned } : null;
+
+        /// <summary>
+        /// Whether <paramref name="owned"/> counts exactly the records counted here, lifecycle records apart: as many
+        /// binding directly as are counted directly, and as many binding at <paramref name="strength"/> as are counted
+        /// bound otherwise, none at another strength and none to no instance.
+        /// </summary>
+        public bool Holds(OwnerTally owned, RelationStrength strength) =>
+            owned.BindsOnlyAt(RelationStrength.Direct, strength)
+            && owned.RecordsAt(RelationStrength.Direct) == Counted(Direct)
+            && owned.RecordsAt(strength) == Counted(Bound);
+
+        private static long Counted(Dictionary<Mechanism, long> tally) =>
+            tally.Where(entry => OwnedRecord.Counts(entry.Key)).Sum(entry => entry.Value);
     }
 
     /// <summary>The earliest and latest reading of any record naming one PID, and how many of them bind to nothing.</summary>

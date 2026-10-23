@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-22 · Plan revision: 739 · Branch: `main`
+Updated: 2026-10-23 · Plan revision: 740 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 740 — coverage pass over revisions 718–739; a checkpoint's records by owner checked against its counts (R10, derivation-checkpoint-v1 §3); a failed byte read shared until noted (§6.4):**
+  - Of 1,762 reachable lines those revisions added, 61 ran in no test; of 1,774 now, 30, all guards no derivation
+    reaches or the ETL import's Windows path. Now run: a live follow stopped while it stages a publication's
+    checkpoint and chunks' tiles, which gives them up; a zoom over a live chunk whose readings go backwards; a metric
+    of a folder with no generation; an undefined policy asked of one mechanism's records; and a checkpoint giving
+    records by owner to an instance it counts none of. That one was read: a checkpoint whose records by owner are not
+    the records it counts, at the strengths each instance binds at, or that counts no records for an instance, is now
+    refused and the generation derived from its rows.
+  - The suites caught a race in the window: a byte read that failed before the ranking noted why was read again for
+    the inspector's description, leaving the ranking's note saying it was reading; a failed read is now shared until
+    its failure is noted, as a running or answered one is.
+  - Debug and Release each ran 2,983 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    seventeen mutations were caught: a checkpoint's records by owner taken unchecked, an instance with no records
+    counted or none by owner taken, an instance's direct or bound records or the strengths it binds them at
+    unchecked, any strength from direct up taken, records binding to none taken in an instance's, lifecycle records
+    counted among them or records summed across strengths, an undefined policy answered, a stopped follow keeping
+    the tiles it was writing, those it had staged or the checkpoint, a zoom passing over the rows of a chunk whose
+    readings go backwards, and a failed byte read read again before its failure was noted, or shared once it was.
 
 - **Revision 739 — S1, S4, P25: a live follow keeps each chunk's tiles (tile-index-v1 §6, store-v1 §5):**
   - Each live publication stages, beside its checkpoint, the tiles of the chunk the generation it extends added,

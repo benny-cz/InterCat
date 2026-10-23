@@ -46,6 +46,31 @@ public sealed class LiveBytesTests
         Assert.NotEmpty(workspace.RungRows);
     });
 
+    [Fact(DisplayName = "§6.4: a byte ranking's read that fails before anything noted why is shared, so the ranking and a description reading through it both say why; one whose failure was noted is read afresh when asked for")]
+    public void AFailedReadIsSharedUntilItsFailureIsNoted()
+    {
+        int started = 0;
+        var reads = new WorkspaceViewModel.RankingReads<SessionByteMeasures>((_, _, _) =>
+        {
+            started++;
+            return Task.FromException<SessionByteMeasures>(new InvalidDataException("Row 7 adds up to more than a sum holds."));
+        });
+
+        // A read that failed at once, as a small session's can before the window asks for it a second time: shared, so the
+        // ranking that started it is not left superseded with nothing to say.
+        Task<SessionByteMeasures> first = reads.Read(null!, null);
+        Assert.True(first.IsFaulted);
+        Assert.Same(first, reads.Read(null!, null));
+        Assert.Equal(1, started);
+        Assert.False(reads.FailedFor(null));
+
+        // Once why is noted, the ranking reads the scope no more on its own, and a read asked for afresh starts anew.
+        reads.Problem = first.Exception!.InnerException!.Message;
+        Assert.True(reads.FailedFor(null));
+        Assert.NotSame(first, reads.Read(null!, null));
+        Assert.Equal(2, started);
+    }
+
     [Fact(DisplayName = "§6.4/R15: a live publication's table and card state the last one's bytes, marked updating aloud as on screen, until its own are read; one whose own cannot be read says so")]
     public void ALivePublicationKeepsTheTablesBytes() => SingleThreadedContext.Run(async () =>
     {

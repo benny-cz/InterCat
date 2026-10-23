@@ -848,7 +848,7 @@ public sealed partial class WorkspaceViewModel
     /// One family's ranking measures, bytes or calls: this generation's for the whole session and for one interval once
     /// read, an earlier publication's standing in until they are, the one read in flight, and why the last one failed.
     /// </summary>
-    private sealed class RankingReads<T>(Func<SessionEvidenceSource, TimeRange?, CancellationToken, Task<T>> start)
+    internal sealed class RankingReads<T>(Func<SessionEvidenceSource, TimeRange?, CancellationToken, Task<T>> start)
         where T : class, IRankingMeasures
     {
         private (TimeRange? Scope, Task<T> Read, CancellationTokenSource Cancellation)? running;
@@ -922,10 +922,16 @@ public sealed partial class WorkspaceViewModel
         public bool Reads(TimeRange? scope) =>
             running is { } current && current.Scope == scope && !current.Read.IsFaulted && !current.Read.IsCanceled;
 
-        /// <summary>One read per scope: a read of the same scope still running is shared, and one of another is cancelled.</summary>
+        /// <summary>
+        /// One read per scope: a read of the same scope still running is shared, as is one that failed before any follower
+        /// of it noted why, so the ranking and a description reading through it say why alike rather than one of them
+        /// reading again and leaving the other's read superseded; one of another scope is cancelled, and a failure noted is
+        /// read afresh when asked for.
+        /// </summary>
         public Task<T> Read(SessionEvidenceSource source, TimeRange? scope)
         {
-            if (running is { } current && current.Scope == scope && !current.Read.IsFaulted && !current.Read.IsCanceled)
+            if (running is { } current && current.Scope == scope && !current.Read.IsCanceled
+                && (!current.Read.IsFaulted || Problem is null))
             {
                 return current.Read;
             }

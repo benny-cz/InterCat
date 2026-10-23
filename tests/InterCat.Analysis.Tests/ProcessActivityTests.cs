@@ -224,6 +224,17 @@ public sealed class ProcessActivityTests
             activity.MechanismsOf(secondHolder, EvidencePolicy.IncludeCandidates).ToArray());
         Assert.Equal(1, activity.RecordsWithoutOwner);
         Assert.Equal(0, activity.RecordsNotBound);
+
+        // A policy that is none of the four is refused by every count that takes one.
+        foreach (Action count in new Action[]
+        {
+            () => activity.RecordsOf(firstHolder, (EvidencePolicy)0),
+            () => activity.RecordsOf(firstHolder, (EvidencePolicy)5, Mechanism.Tcp),
+            () => activity.WithheldOf(secondHolder, (EvidencePolicy)0),
+        })
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(count);
+        }
     }
 
     /// <summary>Asserts two counts over the same instances, in the same order, answer alike under every policy.</summary>

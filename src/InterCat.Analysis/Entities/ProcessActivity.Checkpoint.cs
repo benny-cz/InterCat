@@ -72,8 +72,9 @@ public sealed partial class ProcessActivityIndex
 
     /// <summary>
     /// Reads what <see cref="WriteOwners"/> wrote, after which the counts keep every record by owner
-    /// (<see cref="OwnersKept"/>); refuses an instance out of order or naming none, a tally of other instances' records, and
-    /// one binding to none that names an instance.
+    /// (<see cref="OwnersKept"/>); refuses an instance out of order or naming none, a tally of other instances' records or
+    /// of records other than those counted for the instance, an instance counted and given none, and a tally of records
+    /// binding to none that names an instance.
     /// </summary>
     internal void ReadOwners(IndexFileReader reader)
     {
@@ -88,14 +89,21 @@ public sealed partial class ProcessActivityIndex
                 throw reader.Invalid("an instance's records by owner name another instance, none, or are out of order.");
             }
 
-            if (!instances.TryGetValue(instance, out InstanceActivity? activity))
+            // Every record binding to the instance is counted for it, a lifecycle record directly and any other as strongly as
+            // the instance binds them (identity-v1), so its records by owner are exactly what its counts hold.
+            InstanceActivity activity = instances[instance];
+            if (!activity.Holds(owned, StrengthOf(instance)))
             {
-                activity = new();
-                instances[instance] = activity;
+                throw reader.Invalid("an instance's records by owner are not the records counted for it.");
             }
 
             activity.Owned = owned;
             last = instance;
+        }
+
+        if (count != processes.Instances.Count)
+        {
+            throw reader.Invalid("an instance whose records are counted has none by owner.");
         }
 
         OwnerTally none = OwnerTally.Read(reader, processes.Instances.Count);
@@ -189,6 +197,12 @@ public sealed partial class ProcessActivityIndex
             }
 
             last = (instance, (int)mechanism);
+        }
+
+        // Every instance is witnessed by a record binding to it - its lifecycle records, or the first record naming its PID.
+        if (instances.Count != processes.Instances.Count)
+        {
+            throw reader.Invalid("an instance has no records counted for it, though a record binding to it witnesses each.");
         }
 
         return new(processes, instances, pids, withoutOwner, read, new(), ownersKept: false);

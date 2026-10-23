@@ -147,8 +147,11 @@ internal readonly record struct OwnedRecord(bool Counted, ByteDomainContribution
     public static OwnedRecord Of(in ByteDomainRows bytes, int row, Mechanism mechanism)
     {
         ByteDomainContribution contribution = bytes.At(row, out AccountingSide side, out long? value);
-        return new(mechanism is not (Mechanism.ProcessLifecycle or Mechanism.ThreadLifecycle), contribution, side, value);
+        return new(Counts(mechanism), contribution, side, value);
     }
+
+    /// <summary>Whether a record of <paramref name="mechanism"/> is counted among the records: unless a process's or a thread's lifecycle record.</summary>
+    public static bool Counts(Mechanism mechanism) => mechanism is not (Mechanism.ProcessLifecycle or Mechanism.ThreadLifecycle);
 }
 
 /// <summary>
@@ -172,6 +175,16 @@ internal sealed class OwnerTally
 
     /// <summary>Whether every instance it counts records of is <paramref name="instance"/>.</summary>
     public bool OwnedOnlyBy(int instance) => owners.All(owner => owner.Instance == instance);
+
+    /// <summary>How many records it counts binding to an instance at <paramref name="strength"/>.</summary>
+    public long RecordsAt(RelationStrength strength) => owners.Where(owner => owner.Strength == strength).Sum(owner => owner.Records);
+
+    /// <summary>
+    /// Whether every record it counts, and every byte, binds to an instance at <paramref name="first"/> or
+    /// <paramref name="second"/>: none binds to no instance or at another strength.
+    /// </summary>
+    public bool BindsOnlyAt(RelationStrength first, RelationStrength second) =>
+        unownedRecords == 0 && unownedBytes is null && owners.All(owner => owner.Strength == first || owner.Strength == second);
 
     public void Add(ProcessBinding binding, OwnedRecord record)
     {

@@ -55,23 +55,27 @@ public sealed class ChunkTilesTests
         viewer.ReleaseSegmentReaders();
     }
 
-    [Fact(DisplayName = "S4: a live generation opened cold draws the overview and the zooms a session of the same chunks recorded without tiles draws, opening only its newest chunk's segments")]
+    [Fact(DisplayName = "S4: a live generation opened cold draws the overview and the zooms a session of the same chunks recorded without tiles draws, opening only its newest chunk's segments and one whose readings go backwards")]
     public void ALiveGenerationOpenedColdDrawsFromChunksTiles()
     {
         using var session = new TemporarySession();
         using var twin = new TemporarySession();
-        ObservationRowV1[][] chunks = Chunks(new Random(29), 5, out _);
-        foreach (ObservationRowV1[] chunk in chunks)
+
+        // The second chunk's readings go backwards in the one segment it is published as, which keeps no tiles, so its rows
+        // are read.
+        ObservationRowV1[][] chunks = Chunks(new Random(29), 5, out int backwards, backwardsAt: 1);
+        for (int chunk = 0; chunk < chunks.Length; chunk++)
         {
-            _ = Publish(session.Store, chunk, rowsPerSegment: 7, indexer: LiveCheckpoints.Instance);
-            _ = Publish(twin.Store, chunk, rowsPerSegment: 7);
+            int rowsPerSegment = chunk == backwards ? chunks[chunk].Length : 7;
+            _ = Publish(session.Store, chunks[chunk], rowsPerSegment: rowsPerSegment, indexer: LiveCheckpoints.Instance);
+            _ = Publish(twin.Store, chunks[chunk], rowsPerSegment: rowsPerSegment);
         }
 
         Assert.Empty(ChunkTiles.NamedBy(twin.Store.Current!));
         SessionDerivationCache.Clear();
         SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         SessionOverviewBundle drawn = SessionOverviewProjector.Project(viewer);
-        Assert.InRange(viewer.SegmentReaderCache.Entries, 1, Newest(viewer.Current!) + NewestFields(viewer.Current!));
+        Assert.InRange(viewer.SegmentReaderCache.Entries, 2, Newest(viewer.Current!) + NewestFields(viewer.Current!) + 1);
         SessionDerivationCache.Clear();
         SessionOverviewBundle untiled = SessionOverviewProjector.Project(twin.Store);
         Assert.Equal(Text(untiled), Text(drawn));
@@ -86,7 +90,8 @@ public sealed class ChunkTilesTests
         {
             viewer.ReleaseSegmentReaders();
             SessionTimelineDetail zoomed = SessionTimelineQuery.Detail(viewer, interval, columns);
-            Assert.Equal(NewestMet(viewer, interval), viewer.SegmentReaderCache.Entries);
+            Assert.Equal(Met(viewer, interval, viewer.Current!.Generation) + Met(viewer, interval, backwards + 1),
+                viewer.SegmentReaderCache.Entries);
             Assert.Equal(Text(SessionTimelineQuery.Detail(twin.Store, interval, columns)), Text(zoomed));
         }
 
@@ -234,14 +239,16 @@ public sealed class ChunkTilesTests
     /// <summary>
     /// The chunks of a capture as a live follow publishes them: four processes' lifecycle records first, then their
     /// transfers among themselves and to other hosts, over TCP and UDP, a few with no session time, and in chunk
-    /// <paramref name="backwards"/> a last record read before the one ahead of it, so a segment holding both keeps no tiles.
+    /// <paramref name="backwards"/> - <paramref name="backwardsAt"/>, or one drawn - a last record read before the one ahead
+    /// of it, so a segment holding both keeps no tiles.
     /// </summary>
-    private static ObservationRowV1[][] Chunks(Random random, int count, out int backwards)
+    private static ObservationRowV1[][] Chunks(Random random, int count, out int backwards, int? backwardsAt = null)
     {
         var chunks = new ObservationRowV1[count][];
         ulong ordinal = 0;
         long ticks = 10;
-        backwards = random.Next(count);
+        int drawn = random.Next(count);
+        backwards = backwardsAt ?? drawn;
         for (int chunk = 0; chunk < count; chunk++)
         {
             int rows = 6 + random.Next(30);
@@ -285,12 +292,15 @@ public sealed class ChunkTilesTests
     private static int Newest(SessionManifestV1 manifest) =>
         SessionSegments.Names(manifest).Count(name => SessionSegments.PublishingGeneration(name) == manifest.Generation);
 
-    /// <summary>How many of the newest chunk's observation segments hold a native reading <paramref name="interval"/> meets.</summary>
-    private static int NewestMet(SessionStore store, TimeRange interval)
+    /// <summary>
+    /// How many of the observation segments generation <paramref name="chunk"/> published hold a native reading
+    /// <paramref name="interval"/> meets.
+    /// </summary>
+    private static int Met(SessionStore store, TimeRange interval, long chunk)
     {
         SessionManifestV1 manifest = store.Current!;
         (long First, long End) readings = SessionNativeInterval.Readings(interval, SessionSegments.SourceClock(store.Root, manifest)!.Value);
-        return SessionSegments.Names(manifest).Count(name => SessionSegments.PublishingGeneration(name) == manifest.Generation
+        return SessionSegments.Names(manifest).Count(name => SessionSegments.PublishingGeneration(name) == chunk
             && SessionNativeInterval.Meets(SessionSegments.NativeRange(store, manifest, name), readings));
     }
 

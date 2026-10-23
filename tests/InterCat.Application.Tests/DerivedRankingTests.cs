@@ -216,6 +216,29 @@ public sealed class DerivedRankingTests
         }
     }
 
+    [Fact(DisplayName = "§10.2: an owner's bytes past what a sum holds keep the derivation's bytes from being used, and the rows refuse them with why")]
+    public void BytesPastASumAreLeftToTheRows()
+    {
+        // Process 100 sends the paired connection two records each of more than half what a sum holds.
+        const long Half = (long.MaxValue / 2) + 1;
+        ObservationRowV1[] rows = [.. Conversation().Select(row => row.RawRecordOrdinal is 6 or 13 ? row with { ByteValue = Half } : row)];
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, rows, rowsPerSegment: 4);
+        (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(session.Store);
+        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(observations, TestClock, fields);
+        TransportRelationIndex relations = TransportRelationIndex.Derive(observations, processes);
+        ProcessActivityIndex activity = ProcessActivityIndex.Derive(observations, processes);
+
+        // No byte view refuses a record; the owner's sum is what refuses.
+        Assert.False(activity.BytesRefused);
+        RecordOwners sender = Assert.Single(activity.Owners()!, owner => owner.Bytes.Refused);
+        Assert.Equal(100, processes.Instances[sender.Instance].ProcessId);
+        Assert.Null(SessionByteRanking.DerivedBytes(processes, relations, activity));
+        Assert.True(SegmentMeasurement.IsUnsummable(Assert.Throws<InvalidDataException>(() => SessionByteRanking.Measure(session.Store, null))));
+        Assert.NotNull(SessionPeerRanking.DerivedPairs(processes, relations, activity));
+    }
+
     /// <summary>
     /// Asserts the bytes and peer bindings the derivation counted are what a pass over every segment counts under the same
     /// derivation; returns how many channel ends' bytes and how many records with another end that compared.
