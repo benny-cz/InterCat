@@ -125,6 +125,118 @@ public sealed class ChunkEndSpanTilesTests
         viewer.ReleaseSegmentReaders();
     }
 
+    [Theory(DisplayName = "S4: a live generation's channel focus counts a chunk from its tiles where its relations hold each span of the chunk's ends within one incarnation, whatever its owners bind to, and from its rows where a disconnect read later divides one, as every segment's rows count it: a paired channel's at both ends and at one, of its mechanism in one direction or of another, and a connection to another host's")]
+    [InlineData(5)]
+    [InlineData(77)]
+    public void ALiveChannelFocusCountsAsRowsDo(int seed)
+    {
+        SessionDerivationCache.Clear();
+        using var tiled = new TemporarySession();
+        using var plain = new TemporarySession();
+        var random = new Random(seed);
+        ObservationRowV1[][] chunks = Traffic(random, 6);
+        int focused = 0;
+        for (int chunk = 0; chunk < chunks.Length; chunk++)
+        {
+            int rowsPerSegment = 1 + random.Next(chunks[chunk].Length);
+            _ = Publish(tiled.Store, chunks[chunk], rowsPerSegment: rowsPerSegment, indexer: LiveCheckpoints.Instance);
+            _ = Publish(plain.Store, chunks[chunk], rowsPerSegment: rowsPerSegment);
+            if (chunk == 0)
+            {
+                continue;
+            }
+
+            SessionDerivationCache.Clear();
+            SessionStore live = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
+            SessionStore read = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(plain.Path));
+            TimeRange extent = SessionOverviewProjector.Project(live).Extent!.Value;
+            long middle = extent.StartTicks + random.NextInt64(Math.Max(1, extent.SpanTicks));
+            (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(plain.Store);
+            TransportRelationIndex relations = TransportRelationIndex.Derive(observations, ProcessInstanceIndex.Derive(observations, TestClock, fields));
+
+            // A few of the paired channels the policy admits - whole, at one end, of their mechanism in one direction, and of
+            // the other mechanism, which holds none of their records - and connections to another host.
+            var focuses = new List<TimelineFocus>();
+            foreach (TransportRelation relation in relations.Relations
+                .Where(relation => TransportRelationIndex.Relates(relation.Mechanism)
+                    && SessionOverviewProjector.Admitted(relation.Strength, EvidencePolicy.IncludeCandidates))
+                .OrderBy(_ => random.Next())
+                .Take(4))
+            {
+                focuses.Add(new TimelineFocus(relation.StableKey, []));
+                focuses.Add(new TimelineFocus(relation.StableKey, [], end: random.Next(2)));
+                focuses.Add(new TimelineFocus(relation.StableKey, [], mechanism: relation.Mechanism,
+                    direction: random.Next(2) == 0 ? Direction.Outbound : Direction.Inbound));
+                focuses.Add(new TimelineFocus(relation.StableKey, [], mechanism: relation.Mechanism == Mechanism.Tcp ? Mechanism.Udp : Mechanism.Tcp));
+            }
+
+            foreach (TransportConnection connection in relations.OneSided
+                .Where(connection => SessionOverviewProjector.Admitted(connection.Strength, EvidencePolicy.IncludeCandidates))
+                .Take(2))
+            {
+                focuses.Add(new TimelineFocus(connection.StableKey, []));
+            }
+
+            // At a column a few records wide, and at two, where a tile's records fall in one column and it counts whole from
+            // its channel tallies.
+            foreach (TimeRange interval in new[] { extent, new TimeRange(middle, extent.EndTicks) })
+            {
+                foreach (int columns in new[] { 64, 2 })
+                {
+                    foreach (TimelineFocus focus in focuses)
+                    {
+                        Assert.Equal(Text(SessionTimelineQuery.Focused(read, interval, columns, focus, EvidencePolicy.IncludeCandidates)),
+                            Text(SessionTimelineQuery.Focused(live, interval, columns, focus, EvidencePolicy.IncludeCandidates)));
+                        focused++;
+                    }
+                }
+            }
+
+            live.ReleaseSegmentReaders();
+            read.ReleaseSegmentReaders();
+        }
+
+        Assert.True(focused > 0, "No channel was focused.");
+    }
+
+    [Fact(DisplayName = "S4: a live generation opened cold counts a channel's focus from its chunks' tiles, at both ends and at one, opening only its newest chunk's segments, as a session of the same chunks recorded without tiles counts it")]
+    public void ALiveChannelFocusOpensOnlyTheNewestChunk()
+    {
+        using var session = new TemporarySession();
+        using var twin = new TemporarySession();
+        foreach (ObservationRowV1[] chunk in Steady(4))
+        {
+            _ = Publish(session.Store, chunk, rowsPerSegment: 100, indexer: LiveCheckpoints.Instance);
+            _ = Publish(twin.Store, chunk, rowsPerSegment: 100);
+        }
+
+        // The first chunk's connection, whose records every chunk carries.
+        (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(twin.Store);
+        TransportRelationIndex relations = TransportRelationIndex.Derive(observations, ProcessInstanceIndex.Derive(observations, TestClock, fields));
+        const string near = "10.0.0.1:40000";
+        TransportRelation first = Assert.Single(relations.Relations, relation => relation.FirstEndpoint == near || relation.SecondEndpoint == near);
+
+        SessionDerivationCache.Clear();
+        SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        TimeRange extent = SessionOverviewProjector.Project(viewer).Extent!.Value;
+        foreach (TimeRange interval in new[] { extent, new TimeRange(extent.StartTicks + (extent.SpanTicks / 3), extent.EndTicks) })
+        {
+            int newest = ChunkTilesTests.Met(viewer, interval, viewer.Current!.Generation);
+            foreach (int columns in new[] { 64, 2 })
+            {
+                foreach (TimelineFocus focus in new[] { new TimelineFocus(first.StableKey, []), new TimelineFocus(first.StableKey, [], end: 1) })
+                {
+                    viewer.ReleaseSegmentReaders();
+                    string counted = Text(SessionTimelineQuery.Focused(viewer, interval, columns, focus));
+                    Assert.Equal(newest, viewer.SegmentReaderCache.Entries);
+                    Assert.Equal(Text(SessionTimelineQuery.Focused(twin.Store, interval, columns, focus)), counted);
+                }
+            }
+        }
+
+        viewer.ReleaseSegmentReaders();
+    }
+
     [Theory(DisplayName = "S4: a chunk's tiles span each end's records within one incarnation, which a later derivation holds unless a disconnect read later falls among them, to the record: one before the last record of the end does, and one after it in the canonical order does not")]
     [InlineData(399, false)]
     [InlineData(400, true)]
@@ -569,6 +681,15 @@ public sealed class ChunkEndSpanTilesTests
         return ([.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))],
             [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))]);
     }
+
+    private static string Text(SessionFocusedTimeline timeline) => JsonSerializer.Serialize(new
+    {
+        timeline.Focus,
+        timeline.FocusLanes,
+        timeline.ChannelEndLanes,
+        timeline.DirectionLanes,
+        timeline.OwnerLane,
+    });
 
     private static string Text(SessionByteMeasures measures) => JsonSerializer.Serialize(new
     {

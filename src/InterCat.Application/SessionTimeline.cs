@@ -378,10 +378,10 @@ public static class SessionTimelineQuery
         TransportRelation? endRelation = focus is { OwnerProcesses.Count: 0 } ? rows?.Relation : null;
 
         // An owner or a channel's focus counts from the persisted tiles' tallies, opening no segment (S3); a live
-        // generation's owner focus from its chunks' tiles, wherever its instances bind a chunk's records as they were bound
-        // there, and the rest from rows. Any other focus reads its rows: each segment is counted by one worker into columns
-        // of its own, and the workers' columns are summed (SegmentPasses): at 10M records a group's lanes answer within
-        // §12's budget only side by side.
+        // generation's from its chunks' tiles, wherever its instances bind a chunk's records as they were bound there, or
+        // its relations hold each of the chunk's spans, and the rest from rows. Any other focus reads its rows: each segment
+        // is counted by one worker into columns of its own, and the workers' columns are summed (SegmentPasses): at 10M
+        // records a group's lanes answer within §12's budget only side by side.
         FocusTally? total = null;
         if (rows is not null)
         {
@@ -391,7 +391,7 @@ public static class SessionTimelineQuery
                     ? PersistedFocus(store, manifest, generation, rows, focus!, policy, laneOf, interval, columns, laneCount,
                         laneColumns, directionLanes, endRelation, cancellationToken)
                         ?? ChunkFocus(store, manifest, generation, rows, focus!, policy, laneOf, interval, columns, laneCount,
-                            laneColumns, directionLanes, clock, cancellationToken)
+                            laneColumns, directionLanes, endRelation, clock, cancellationToken)
                     : null;
             if (total is null)
             {
@@ -704,12 +704,13 @@ public static class SessionTimelineQuery
     }
 
     /// <summary>
-    /// An owner focus of a live generation, which persists no tiles of its own, from the tiles of its chunks
-    /// (`contracts/tile-index-v1.md` §6): each segment the interval meets counted from the section its chunk's tiles keep
-    /// where this generation's instances bind that chunk's records as the derivation that tiled it did, its owners read as
-    /// this generation's, and from its rows otherwise - the newest chunk's, a chunk whose tiles are gone, and one a record
-    /// read late binds otherwise. Null where no chunk's tiles count, or one could not be read, and every segment's rows are
-    /// read instead, as without them.
+    /// An owner or a channel's focus of a live generation, which persists no tiles of its own, from the tiles of its chunks
+    /// (`contracts/tile-index-v1.md` §6): each segment the interval meets counted from the section its chunk's tiles keep -
+    /// an owner focus's where this generation's instances bind that chunk's records as the derivation that tiled it did,
+    /// its owners read as this generation's, and a channel's where this generation's relations hold each span of the
+    /// chunk's ends' records within one incarnation, its channels read as this generation's - and from its rows otherwise:
+    /// the newest chunk's, a chunk whose tiles are gone, and one a record read late binds otherwise. Null where no chunk's
+    /// tiles count, or one could not be read, and every segment's rows are read instead, as without them.
     /// </summary>
     private static FocusTally? ChunkFocus(
         SessionStore store,
@@ -724,12 +725,14 @@ public static class SessionTimelineQuery
         int laneCount,
         int laneColumns,
         bool directionLanes,
+        TransportRelation? endRelation,
         SourceClockDescriptor clock,
         CancellationToken cancellationToken)
     {
-        // A channel's focus names no owner; a generation's own tile index, where it has one, was read before this.
+        // A host's focus names neither one channel nor an owner set alone; a generation's own tile index, where it has one,
+        // was read before this.
         SessionDerivation derivation = SessionDerivationCache.For(manifest);
-        if (rows.Members is not { } members)
+        if (rows.Channel is null && rows.Members is null)
         {
             return null;
         }
@@ -740,16 +743,20 @@ public static class SessionTimelineQuery
             return null;
         }
 
-        ProcessInstanceIndex processes = rows.Processes ?? generation.Processes(cancellationToken);
+        // An owner focus counts a chunk from its tiles where they bind its owners alike, and a channel's where they bind its
+        // channels alike, whatever their owners.
+        ProcessInstanceIndex? processes = rows.Members is null ? null : rows.Processes ?? generation.Processes(cancellationToken);
+        TransportRelationIndex? relations = rows.Channel is null ? null : rows.Relations ?? generation.Relations(cancellationToken);
         (long First, long End) readings = SessionNativeInterval.Readings(interval, clock);
-        var met = new List<(StoreDependency Segment, TileIndexFile? Tiles, int[]? Places)>();
+        var met = new List<(StoreDependency Segment, TileIndexFile? Tiles, int[]? Places, int[]? Channels)>();
         foreach (StoreDependency segment in SessionOverviewIndex.ObservationSegments(manifest))
         {
             if (SessionNativeInterval.Meets(SessionSegments.NativeRange(store, manifest, segment.Name), readings))
             {
                 TileIndexFile? tiles = chunks.FirstOrDefault(chunk => chunk.Describes(segment));
-                int[]? places = tiles is null ? null : derivation.ChunkOwners(tiles, processes);
-                met.Add((segment, places is null ? null : tiles, places));
+                int[]? places = tiles is null || processes is null ? null : derivation.ChunkOwners(tiles, processes);
+                int[]? channels = tiles is null || relations is null ? null : derivation.ChunkChannels(tiles, relations);
+                met.Add((segment, (relations is null ? places : channels) is null ? null : tiles, places, channels));
             }
         }
 
@@ -758,12 +765,12 @@ public static class SessionTimelineQuery
             return null;
         }
 
-        var total = new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, null);
+        var total = new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, endRelation);
         try
         {
             SegmentPasses.Run(
                 met,
-                () => new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, null),
+                () => new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, endRelation),
                 (segment, tally) =>
                 {
                     bool counted = false;
@@ -771,8 +778,13 @@ public static class SessionTimelineQuery
                     {
                         using TileReading reading = tiles.Read(store.Root);
                         reading.Rebound = segment.Places;
-                        counted = reading.CountGroup(reading.Section(segment.Segment.Name), tally.Focused, tally.Lanes,
-                            tally.Directions, members, laneOf, focus.Mechanism, focus.Direction, policy, cancellationToken);
+                        reading.ChannelsRebound = segment.Channels;
+                        TileSection section = reading.Section(segment.Segment.Name);
+                        counted = rows.Channel is { } channel
+                            ? reading.CountChannel(section, tally.Focused, tally.Ends, channel, focus.Mechanism, focus.Direction,
+                                focus.End, cancellationToken)
+                            : reading.CountGroup(section, tally.Focused, tally.Lanes, tally.Directions, rows.Members!, laneOf,
+                                focus.Mechanism, focus.Direction, policy, cancellationToken);
                     }
 
                     if (!counted)
@@ -1113,6 +1125,9 @@ internal sealed class FocusRows
 
     /// <summary>The instances an owner focus binds with; null when the focus names no owner.</summary>
     internal ProcessInstanceIndex? Processes => processes;
+
+    /// <summary>The channels a channel's or a host's focus reads among; null when the focus names neither.</summary>
+    internal TransportRelationIndex? Relations => relations;
 
     /// <summary>The number of the channel a channel focus reads, paired or one-sided; null for any other focus.</summary>
     internal int? Channel => channel;

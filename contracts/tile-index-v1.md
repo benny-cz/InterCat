@@ -8,7 +8,8 @@ zoom's byte lanes and an interval's bytes from its byte sums since revision 704,
 end from its byte tallies since revision 706, a group's byte lanes from them since revision 707, and a process's byte
 direction rows since revision 708; since revision 739 a live follow keeps each chunk's tiles (§6), since revision 744
 binds their owners, so a live generation's owner focuses and byte lanes count from them, and since revision 745 names
-the ends their records were made at, so its brushes count from them too. It holds §12.1 S4's deeper levels, beneath
+the ends their records were made at, so its brushes, and since revision 746 its channel focuses, count from them too.
+It holds §12.1 S4's deeper levels, beneath
 the persisted overview (`contracts/overview-index-v1.md`), which is the top level. For
 each observation segment of a generation, it keeps:
 
@@ -852,15 +853,17 @@ They differ from a generation's tile index in three ways.
   tally's, a byte tally's or a record's, read as the instance of its identity in the counting derivation. Where one does
   not - a lifecycle record read late that splits an instance, or gives a PID first seen by its records an instance of
   its own - the chunk's segments are read from their rows.
-- **A brush counts them where a later derivation also finds each span's channel.** A brush counts channels as well as
-  owners. Under a later derivation a span's records belong to one incarnation of its end, and so to its channel, or to
-  none while its other end is undecided, wherever the incarnation that holds the span's first record holds its last: an
-  end's lifecycle records - a connect, an accept, a disconnect - divide it into incarnations, and one read later than
-  the records it falls among divides a span it falls within. Where every span holds and every owner binds alike, a
-  brush - its counts and its bytes by process and channel end - counts the chunk's segments from these tiles, each
-  channel key, whether a tally's, a byte tally's or a record's, read as the channel its span binds to in the counting
-  derivation, and one whose span binds to none counted for none. Where a span does not hold, the chunk's segments are
-  read from their rows; so are those of tiles before minor 9.
+- **A brush or a channel's focus counts them where a later derivation also finds each span's channel.** A brush counts
+  channels as well as owners. Under a later derivation a span's records belong to one incarnation of its end, and so to
+  its channel, or to none while its other end is undecided, wherever the incarnation that holds the span's first record
+  holds its last: an end's lifecycle records - a connect, an accept, a disconnect - divide it into incarnations, and one
+  read later than the records it falls among divides a span it falls within. Where every span holds and every owner
+  binds alike, a brush - its counts and its bytes by process and channel end - counts the chunk's segments from these
+  tiles, each channel key, whether a tally's, a byte tally's or a record's, read as the channel its span binds to in the
+  counting derivation, and one whose span binds to none counted for none. A channel's focus - its records, at both ends
+  or at one, of one mechanism or source direction - counts them so wherever every span holds, whatever the chunk's
+  owners bind to, since it counts no owner. Where a span does not hold, the chunk's segments are read from their rows;
+  so are those of tiles before minor 9.
 - **They are carried.** store-v1 §5 names any other index only in the generation that published it. Each live
   publication stages, beside the checkpoint of the generation it extends (`contracts/derivation-checkpoint-v1.md` §2),
   the tiles of the chunk that generation added, and those of older chunks no tiles describe, newest first: chunks
@@ -901,3 +904,10 @@ warm and 45 cold, where the rows took 37 to 56 and 54 to 91. Over half the exten
 way. Naming the ends made staging the tiles of a chunk of 100,000 records take 200 to 248 ms where each record is
 another process's than the one before, from 133 to 154, and the chunks' tiles 9.0% of the segments' bytes, from 8.0%; on
 traffic in bursts, 141 to 165 ms and 12.3%.
+
+Since revision 746 a live generation's channel focuses count so too. At 1,000,000 records in ten chunks, on traffic in
+bursts, a channel's focus over the whole extent at 256 columns took 27 to 30 ms warm and 97 cold, opening the newest
+chunk's one segment, where every segment's rows took 49 to 58 and 208 and opened all ten. Where each record is another
+pair's than the one before, no narrow tile keeps channel tallies, and a chunk of one segment keeps no level spanning it,
+so its tiles' records are read: 135 to 146 ms warm and 207 cold, where the rows took 74 to 85 and 157, and a finished
+session's own tile index, counting its spanning level's tallies, 11 to 16.
