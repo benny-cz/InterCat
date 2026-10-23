@@ -2,6 +2,19 @@ using System.Text.Json;
 
 namespace InterCat.Capture.Journal;
 
+/// <summary>What the ticket beside a session directory says of the follow that derives into it (<see cref="LiveFollowTicket.StateOf"/>).</summary>
+public enum LiveFollowState
+{
+    /// <summary>No ticket: no capture is followed into the session, or its follow finished and removed it.</summary>
+    None = 0,
+
+    /// <summary>A running follow holds the ticket: a capture is recording, and its publications are derived into the session.</summary>
+    Running = 1,
+
+    /// <summary>The ticket outlived its follow, which ended before the session held everything its capture published.</summary>
+    Interrupted = 2,
+}
+
 /// <summary>
 /// Where a live session's evidence is, written while a viewer follows it (plan §3.1 step 6). A viewer that crashes loses
 /// no evidence: the broker stops the capture when its owner lease lapses and keeps it finalized. The viewer's own
@@ -117,6 +130,30 @@ public sealed record LiveFollowTicket
         }
 
         return [.. found.OrderByDescending(ticket => ticket.StartedUtc)];
+    }
+
+    /// <summary>
+    /// What the ticket beside a session directory says of the follow that derives into it: none, one running - a capture
+    /// another window or `icat capture` records - or one that ended early, whose ticket no follow holds. A ticket that
+    /// cannot be opened for writing at all tells nothing, and reads as none.
+    /// </summary>
+    public static LiveFollowState StateOf(string sessionDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionDirectory);
+        try
+        {
+            using var stream = new FileStream(PathFor(sessionDirectory), FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
+            return LiveFollowState.Interrupted;
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException or UnauthorizedAccessException)
+        {
+            return LiveFollowState.None;
+        }
+        catch (IOException)
+        {
+            // The follow that writes it holds it, sharing it only for reading.
+            return LiveFollowState.Running;
+        }
     }
 
     /// <summary>

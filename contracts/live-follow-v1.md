@@ -13,6 +13,8 @@ session directory holds only the files its store names (`contracts/store-v1.md`)
 - A follow writes its ticket when it knows both directories, before it mirrors the first chunk.
 - The follow holds the ticket open for reading and writing and shares it only for reading. A process that can open a
   ticket for writing therefore knows no follow holds it. A running follow's ticket cannot be removed by another process.
+- A window that opens a session tells the same way whether a follow still derives into it. While the ticket is held,
+  the window follows what that follow publishes, until the follow lets the ticket go (plan §6.4).
 - Each owner-lease renewal rewrites `ownerLeaseExpiresUtc` with the expiry the broker returned (broker-v1). A rewrite
   writes the ticket over the one there in a single write and never empties the file first; a ticket shorter than
   the one it replaces ends in spaces. A renewal whose rewrite fails therefore leaves the earlier expiry, which can

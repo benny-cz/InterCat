@@ -54,6 +54,28 @@ public sealed class InterruptedFollowTests
         Assert.Empty(LiveFollowTicket.FindInterrupted(root.Path));
     }
 
+    [Fact(DisplayName = "§19.3: a session's ticket says whether a capture is still recording into it, ended early, or neither")]
+    public void ATicketSaysWhetherACaptureStillRecords()
+    {
+        using var root = new TemporaryDirectory();
+        string session = Path.Combine(root.Path, "explore-1");
+        Assert.Equal(LiveFollowState.None, LiveFollowTicket.StateOf(session));
+        Assert.Equal(LiveFollowState.None, LiveFollowTicket.StateOf(Path.Combine(root.Path, "gone", "explore-1")));
+        LiveFollowTicket ticket = LiveFollowTicket.For(
+            Guid.NewGuid(), Path.Combine(root.Path, "evidence"), session, Now, Now.AddSeconds(30));
+        using (LiveFollowHold running = ticket.Hold())
+        {
+            // A running follow holds its ticket. Only Windows enforces the hold between two handles in one process, so
+            // elsewhere this one reads as a follow ended early.
+            Assert.Equal(OperatingSystem.IsWindows() ? LiveFollowState.Running : LiveFollowState.Interrupted, LiveFollowTicket.StateOf(session));
+        }
+
+        // A follow that ends early leaves its ticket for a finish; one that completes takes it.
+        Assert.Equal(LiveFollowState.Interrupted, LiveFollowTicket.StateOf(session));
+        ticket.Hold().Complete();
+        Assert.Equal(LiveFollowState.None, LiveFollowTicket.StateOf(session));
+    }
+
     [Fact(DisplayName = "§3.1: a renewal writes the new expiry over the ticket, never emptying it, and a released hold renews nothing")]
     public void ARenewalWritesOverTheTicket()
     {

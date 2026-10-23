@@ -41,6 +41,12 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// <summary>Stops following the shown session's RPC calls once another session, capture or close supersedes them.</summary>
     private CancellationTokenSource? rpcFollowing;
 
+    /// <summary>
+    /// While another process records the shown session, what stops the window following its publications: opening another
+    /// session, starting a capture or closing. Null while the window follows no such recording.
+    /// </summary>
+    private CancellationTokenSource? recordingWatch;
+
     /// <summary>Whether the package being made is the original, unredacted copy rather than a redacted session.</summary>
     private bool packagingOriginal;
 
@@ -2312,11 +2318,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         openingSession = true;
         OfferCardActions();
         StopFollowingRpcCalls();
+        StopWatchingRecording();
         try
         {
             CaptureStatus.Text = "Opening saved session";
             string? investigation = openingFromInvestigation;
-            (SessionStore store, SessionOverviewBundle overview) = await Task.Run(() =>
+            Func<string, LiveFollowState> recording = RecordingProbe;
+            (SessionStore store, SessionOverviewBundle overview, bool recordedElsewhere) = await Task.Run(() =>
             {
                 SessionStore opened = SessionOpener(path, expected);
 
@@ -2327,17 +2335,21 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                     : EvidencePolicy.IncludeCorrelated;
                 // The first view does not wait for its RPC calls to be followed through every segment's ALPC records: its
                 // graph draws them once they are (S3).
+                SessionOverviewBundle projected;
                 try
                 {
-                    return (opened, SessionOverviewProjector.Project(opened, policy, followRpcCalls: false));
+                    projected = SessionOverviewProjector.Project(opened, policy, followRpcCalls: false);
                 }
                 catch (InvalidDataException) when (!opened.VerifyContents().Verified)
                 {
                     // The first view read a file that fails its own checksum, and hashing what the generation names
                     // found files that changed after they were published. The hashing forgot them, so this projection's
                     // lease falls back to the last complete generation, as hashing at open once did.
-                    return (opened, SessionOverviewProjector.Project(opened, policy, followRpcCalls: false));
+                    projected = SessionOverviewProjector.Project(opened, policy, followRpcCalls: false);
                 }
+
+                // Another window's capture, or `icat capture`, may still be recording it: then the view follows it.
+                return (opened, projected, recording(path) == LiveFollowState.Running);
             });
             if (closed) return string.Empty;
             evidencePolicy = overview.Policy;
@@ -2346,10 +2358,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             CaptureSummary.Text = string.Empty;
             (string headline, string detail) = overview.Redaction is { } redaction
                 ? ("Redacted session package open", redaction.Statement(CultureInfo.CurrentCulture))
-                : status ?? ("Saved session open",
+                : status ?? (recordedElsewhere ? RecordedElsewhere : ("Saved session open",
                     // What the graph draws is said in its own header (GraphScope), so the card keeps one line and the
                     // smallest window's ranked list its room (§6.1).
-                    string.Create(CultureInfo.CurrentCulture, $"Published generation {overview.Generation:N0}."));
+                    string.Create(CultureInfo.CurrentCulture, $"Published generation {overview.Generation:N0}.")));
 
             // Opening on the last complete generation is stated, never passed off as the newest (S7).
             if (store.RollbackReason is { } fallback)
@@ -2365,6 +2377,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             if (overview.RpcCallsPending)
             {
                 RpcCallsFollowed = FollowRpcCallsAsync(path, overview);
+            }
+
+            if (recordedElsewhere)
+            {
+                WatchRecording(path, overview.SessionId);
             }
 
             // The session opened is where the keyboard goes, not back to the control that opened it.
@@ -2451,6 +2468,143 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         rpcFollowing?.Cancel();
         rpcFollowing?.Dispose();
         rpcFollowing = null;
+    }
+
+    /// <summary>Completes when the window stops following a session another process records; at once while it follows none.</summary>
+    internal Task RecordingWatched { get; private set; } = Task.CompletedTask;
+
+    /// <summary>How the window tells whether a capture is still recording into a session; a test stands in for that capture with it.</summary>
+    internal Func<string, LiveFollowState> RecordingProbe { get; set; } = LiveFollowTicket.StateOf;
+
+    /// <summary>How often the window looks for a newer generation of a session another process records: as often as one can be published.</summary>
+    internal TimeSpan RecordingWatchInterval { get; set; } = BrokerJournalPublicationPolicy.MinimumLiveInterval;
+
+    /// <summary>Whether the shown session is recorded by another process, whose publications the view follows.</summary>
+    private bool WatchesRecording => recordingWatch is not null;
+
+    /// <summary>Whether the view follows a recording: this window's own capture, or another process's.</summary>
+    private bool FollowsRecording => IsLive || WatchesRecording;
+
+    /// <summary>What the card says while the view follows a session another process records.</summary>
+    private static (string Headline, string Detail) RecordedElsewhere => ("Session open · still being recorded",
+        "Another InterCat capture, from another window or icat capture, is recording this session, and the view follows "
+        + "what it publishes.");
+
+    /// <summary>
+    /// Follows the shown session's recording by another process - another window's capture, or `icat capture` - as the
+    /// window follows its own (§19.3, ADR-057): the card, the health strip and Pause view say so, and each newer generation
+    /// it publishes is projected off the window's thread and shown, or held while records are read or the view is paused.
+    /// </summary>
+    private void WatchRecording(string path, Guid sessionId)
+    {
+        // The open that starts this offers the card's actions as it ends, and so withholds a package then.
+        recordingWatch = new CancellationTokenSource();
+        FollowButton.IsVisible = true;
+        UpdateHealthStrip();
+        RecordingWatched = WatchRecordingAsync(path, sessionId, recordingWatch.Token);
+    }
+
+    /// <summary>
+    /// Looks for a newer generation as often as a capture can publish one, until the recording's follow lets its ticket go.
+    /// Then the newest generation is shown as the session saved, and the card says the recording ended - or, where the
+    /// follow ended before the session held everything its capture published, that it stopped early, which the card
+    /// offering to finish it then says how to finish.
+    /// </summary>
+    private async Task WatchRecordingAsync(string path, Guid sessionId, CancellationToken stopped)
+    {
+        Func<string, LiveFollowState> recording = RecordingProbe;
+        while (true)
+        {
+            try
+            {
+                await Task.Delay(RecordingWatchInterval, stopped);
+
+                // The first view's RPC calls are followed once: a projection that follows them waits for that.
+                await RpcCallsFollowed;
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            long shown = Math.Max(displayedGeneration, heldUpdate?.Overview?.Generation ?? 0);
+            EvidencePolicy policy = evidencePolicy;
+            LiveFollowState state;
+            SessionOverviewBundle? newer;
+            try
+            {
+                (state, newer) = await Task.Run(() =>
+                {
+                    // The ticket first: a follow that ends publishes its last generation before letting it go.
+                    LiveFollowState now = recording(path);
+                    SessionStore store = SharedSessionStores.Open(path, sessionId);
+                    long newest;
+                    using (EvidenceLease lease = store.AcquireLease())
+                    {
+                        newest = lease.Manifest.Generation;
+                    }
+
+                    return (now, newest > shown ? SessionOverviewProjector.Project(store, policy, cancellationToken: stopped) : null);
+                }, stopped);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+                or UnauthorizedAccessException)
+            {
+                // A file held or replaced for a moment: the view stays as it is, and the next look tries again.
+                continue;
+            }
+
+            if (closed || stopped.IsCancellationRequested || displayedSessionId != sessionId)
+            {
+                return;
+            }
+
+            if (state == LiveFollowState.Running && newer is null)
+            {
+                // Nothing newer: the card keeps what it says, such as where an export was written.
+                continue;
+            }
+
+            (string headline, string detail) = RecordedElsewhere;
+            if (state != LiveFollowState.Running)
+            {
+                // The view follows nothing from here: the newest generation, published now or held while the view was
+                // paused, is the session as saved. It is shown, as this window's own capture shows its last, unless records
+                // are being read, which hold it until they are left.
+                StopWatchingRecording();
+                newer ??= heldUpdate?.Overview;
+                long saved = newer?.Generation ?? displayedGeneration;
+                (headline, detail) = state == LiveFollowState.Interrupted
+                    ? ("Saved session open", string.Create(CultureInfo.CurrentCulture,
+                        $"The capture recording it stopped before this session held all it published: generation {saved:N0} is the newest it holds."))
+                    : ("Saved session open", string.Create(CultureInfo.CurrentCulture,
+                        $"Its recording ended: generation {saved:N0} is the session as saved."));
+            }
+
+            ApplyCaptureUpdate(new(CaptureUiPhase.Complete, headline, detail, SessionPath: path, Overview: newer));
+            if (state != LiveFollowState.Running)
+            {
+                // A generation held while records are read stays held, now offered as the session saved; a package waits no
+                // longer.
+                UpdateHeldBanner();
+                UpdateHealthStrip();
+                UpdateEvidenceAction();
+                _ = RefreshInterruptedOfferAsync();
+                return;
+            }
+        }
+    }
+
+    /// <summary>Stops following a session another process records, as opening another, starting a capture or closing does.</summary>
+    private void StopWatchingRecording()
+    {
+        recordingWatch?.Cancel();
+        recordingWatch?.Dispose();
+        recordingWatch = null;
     }
 
     /// <summary>How a saved session's files are hashed after its first view; a test holds the hashing back with it.</summary>
@@ -3256,7 +3410,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
 
         if (!await FilesCheckedFirstAsync() || currentSessionPath is not { } source
-            || displayedOverview is not { } overview || IsLive || exporting)
+            || displayedOverview is not { } overview || FollowsRecording || exporting)
         {
             return;
         }
@@ -3290,7 +3444,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
 
         if (!await FilesCheckedFirstAsync() || currentSessionPath is not { } source
-            || displayedOverview is not { } shown || IsLive || exporting)
+            || displayedOverview is not { } shown || FollowsRecording || exporting)
         {
             return;
         }
@@ -3864,6 +4018,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         captureStop?.Dispose();
         captureStop = new CancellationTokenSource();
         StopFollowingRpcCalls();
+        StopWatchingRecording();
         int run = ++captureRunId;
         shownBeforeCapture = workspace.IsEmptyWorkspace ? null : new(displayedSessionId, displayedGeneration,
             currentSessionPath, displayedOverview, displayedChunks, growth, CaptureSummary.Text, CaptureSessionPath.Text,
@@ -4122,7 +4277,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// every second or two, with any notice its view appends - a rolling capture's release clipping a view that reached
     /// into what it gave up - which a screen reader said aloud each time, burying what else there was to hear (R15).
     /// </summary>
-    private bool SaysAloud(CaptureUiUpdate update) => update.Overview is null || !IsLive;
+    private bool SaysAloud(CaptureUiUpdate update) => update.Overview is null || !FollowsRecording;
 
     /// <summary>
     /// Writes a line of the capture card, which a screen reader announces as it changes, in silence unless
@@ -4145,7 +4300,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
         // A view paused while a capture recorded follows it again once the capture has ended: nothing more is published
         // to hold the view from, so the saved session is shown, unless the person is reading records of the view shown.
-        if (!IsLive) followLatest = true;
+        if (!FollowsRecording) followLatest = true;
 
         bool aloud = SaysAloud(update);
         Say(CaptureStatus, update.Headline, aloud);
@@ -4188,7 +4343,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         Offering.Offer(StopCaptureButton,
             update.Phase == CaptureUiPhase.Recording && captureStop?.IsCancellationRequested != true ? null : Stopping, StopDoes);
         KeepKeyboard();
-        FollowButton.IsVisible = IsLive;
+        FollowButton.IsVisible = FollowsRecording;
         liveHealth = IsLive ? update.LiveHealth : null;
         livePreview = update.Phase == CaptureUiPhase.Recording ? update.LivePreview : null;
 
@@ -4205,7 +4360,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             ShowAwaitingCapture(update.Phase);
         }
 
-        if (update.Overview is not null && !forceOverview && IsLive)
+        if (update.Overview is not null && !forceOverview && FollowsRecording)
         {
             lastPublicationUtc = DateTimeOffset.UtcNow;
         }
@@ -4293,7 +4448,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// </summary>
     private bool ToggleFollowLatest()
     {
-        if (!IsLive)
+        if (!FollowsRecording)
         {
             return false;
         }
@@ -4537,7 +4692,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
 
         evidencePolicy = policy;
-        if (IsLive && (!followLatest || workspace.HoldsGeneration))
+        if (FollowsRecording && (!followLatest || workspace.HoldsGeneration))
         {
             return true;
         }
@@ -4872,7 +5027,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             : (followLatest
                 ? $"Showing generation {displayedGeneration:N0} while you read records. "
                 : $"View paused at generation {displayedGeneration:N0}. ")
-                + (IsLive
+                + (FollowsRecording
                     ? $"Generation {heldUpdate!.Overview!.Generation:N0} is published; recording continues."
                     : $"Generation {heldUpdate!.Overview!.Generation:N0} is the session as saved.");
         FollowButton.Content = followLatest ? "Pause view (F)" : "Follow live (F)";
@@ -4884,7 +5039,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// </summary>
     private void UpdateHealthStrip()
     {
-        bool paused = IsLive && (!followLatest || heldUpdate is not null);
+        bool paused = FollowsRecording && (!followLatest || heldUpdate is not null);
         HealthStateText.Text = phase switch
         {
             CaptureUiPhase.Starting => "Starting capture",
@@ -4893,6 +5048,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             CaptureUiPhase.Recording => "Recording · following live",
             CaptureUiPhase.Finishing => "Stopping and saving",
             CaptureUiPhase.Unavailable => "Capture unavailable",
+            _ when WatchesRecording && paused && workspace.HoldsGeneration => "Recording elsewhere · view held while you read records",
+            _ when WatchesRecording && paused => "Recording elsewhere · view paused",
+            _ when WatchesRecording => "Recording elsewhere · following live",
             _ => displayedOverview is null ? "Ready"
                 : displayedOverview.Redaction is not null ? "Redacted package"
                 : displayedOverview.Demo ? "Demo session, generated by InterCat"
@@ -4901,12 +5059,12 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         // The dot restates the words beside it: the accent while the view follows a recording, caution while a live
         // view is held or paused or the capture is unavailable, muted otherwise. It borrows no mechanism's hue (§6.6),
         // and as classes over theme resources it follows a change of mode at once.
-        bool following = phase == CaptureUiPhase.Recording && !paused;
+        bool following = (phase == CaptureUiPhase.Recording || WatchesRecording) && !paused;
         HealthDot.Classes.Set("accent", following);
-        HealthDot.Classes.Set("caution", (IsLive && !following) || phase == CaptureUiPhase.Unavailable);
+        HealthDot.Classes.Set("caution", (FollowsRecording && !following) || phase == CaptureUiPhase.Unavailable);
         HealthLossText.Text = LossStatement();
         string admitted = IsLive && liveHealth is { } counters ? $"{counters.AdmittedRecords:N0} admitted · " : string.Empty;
-        HealthFreshnessText.Text = IsLive && lastPublicationUtc is { } last
+        HealthFreshnessText.Text = FollowsRecording && lastPublicationUtc is { } last
             ? admitted + $"last publication {Math.Max(0, (DateTimeOffset.UtcNow - last).TotalSeconds):0} s ago"
             : admitted.TrimEnd(' ', '·');
         UpdateSessionGrowth();
@@ -4983,7 +5141,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
         if (!overview.CoverageLedgerPublished)
         {
-            return IsLive ? LiveLossStatement(liveHealth) : "No coverage ledger · loss unknown";
+            return FollowsRecording ? LiveLossStatement(liveHealth) : "No coverage ledger · loss unknown";
         }
 
         // An interval package's ledger speaks only within its interval: what it says there, and that outside it nothing is
@@ -5225,7 +5383,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         // at a time: its own button cancels it, and the other waits.
         bool packagingRedacted = packaging is not null && !packagingOriginal;
         bool packagingCopy = packaging is not null && packagingOriginal;
-        bool canPackage = packaging is null && session && !IsLive && !openingSession;
+        bool canPackage = packaging is null && session && !FollowsRecording && !openingSession;
 
         // A redacted package is shared as it is (§11.3): a package is not built from a package, and its exact copy is that
         // package, pseudonymized, never an original or unredacted one.
@@ -5271,6 +5429,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     private string PackageUnavailable(bool session) =>
         packaging is not null ? "Another package is being made. Wait for it, or cancel it with its own button."
         : IsLive ? "Stop the capture first; a package holds a finished session."
+        : WatchesRecording ? "Another capture is still recording this session, and a package holds a finished session: share it once that recording ends."
         : session ? "Wait for the session to finish opening."
         : "Open or record a session first.";
 
@@ -5456,6 +5615,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         finishingCapture?.Cancel();
         packaging?.Cancel();
         StopFollowingRpcCalls();
+        StopWatchingRecording();
         captureStop?.Cancel();
         captureStop?.Dispose();
         workspace.PropertyChanged -= OnWorkspaceChanged;
