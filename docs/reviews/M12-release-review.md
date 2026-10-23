@@ -129,3 +129,11 @@ in the investigation its session was opened from, by a name it asks for, saying 
 investigation's Comparisons… lists them in the command line's words and opens one in InterCat's window as saved, or
 removes one. Saved comparison specifications are now in the window as on the command line; of the parts not built,
 difference timelines and graph overlays remain first, and nothing else above changes.
+
+## Addendum, revision 760
+
+A row's difference timeline ships on the command line (`icat compare --timeline <rank>`, `comparison-v1` §8d,
+ADR-062): each interval cut into as many equal columns, the k-th of one compared with the k-th of the other as two
+intervals are, each column judged by its own coverage and collection, read with the comparison so the columns add up
+to it. M12's baseline and difference timelines are met there; the window draws none yet, and graph overlays come next
+among what is not built. Nothing else above changes.

@@ -113,11 +113,20 @@ public static class ComparisonText
     /// </summary>
     public static double? DifferencePerSecond(ComparedRelationship row, IntervalComparison comparison)
     {
-        ArgumentNullException.ThrowIfNull(row);
         ArgumentNullException.ThrowIfNull(comparison);
+        return DifferencePerSecond(row, comparison.Baseline, comparison.Compared);
+    }
+
+    /// <summary>
+    /// <see cref="DifferencePerSecond(ComparedRelationship, IntervalComparison)"/> of two intervals named: a difference
+    /// timeline's column pair, whose rates are over each column.
+    /// </summary>
+    public static double? DifferencePerSecond(ComparedRelationship row, TimeRange baseline, TimeRange compared)
+    {
+        ArgumentNullException.ThrowIfNull(row);
         return row.Change == ComparisonChange.NotComparable
             ? null
-            : Rounded((row.Compared.PerSecond(comparison.Compared) ?? 0) - (row.Baseline.PerSecond(comparison.Baseline) ?? 0));
+            : Rounded((row.Compared.PerSecond(compared) ?? 0) - (row.Baseline.PerSecond(baseline) ?? 0));
     }
 
     /// <summary>
@@ -174,8 +183,18 @@ public static class ComparisonText
     /// </summary>
     public static string Change(ComparedRelationship row, IntervalComparison comparison, IFormatProvider? culture = null)
     {
-        ArgumentNullException.ThrowIfNull(row);
         ArgumentNullException.ThrowIfNull(comparison);
+        return Change(row, comparison.Baseline, comparison.Compared, comparison.Metric, culture);
+    }
+
+    /// <summary>
+    /// <see cref="Change(ComparedRelationship, IntervalComparison, IFormatProvider)"/> of two intervals named: a difference
+    /// timeline's column pair, whose rates are over each column.
+    /// </summary>
+    public static string Change(ComparedRelationship row, TimeRange baseline, TimeRange compared, ComparisonMetric metric,
+        IFormatProvider? culture = null)
+    {
+        ArgumentNullException.ThrowIfNull(row);
         culture ??= CultureInfo.CurrentCulture;
         switch (row.Change)
         {
@@ -189,10 +208,10 @@ public static class ComparisonText
                 return "not comparable";
         }
 
-        double then = row.Baseline.PerSecond(comparison.Baseline) ?? 0;
-        double now = row.Compared.PerSecond(comparison.Compared) ?? 0;
+        double then = row.Baseline.PerSecond(baseline) ?? 0;
+        double now = row.Compared.PerSecond(compared) ?? 0;
         double difference = Math.Abs(now - then);
-        string by = comparison.Metric == ComparisonMetric.BytesSent ? ByteRate(difference, culture) : Rate(difference, culture) + "/s";
+        string by = metric == ComparisonMetric.BytesSent ? ByteRate(difference, culture) : Rate(difference, culture) + "/s";
         string direction = row.Change == ComparisonChange.Increased ? "up" : "down";
         return row.FromLowerBound
             ? $"{direction} at least {by}"

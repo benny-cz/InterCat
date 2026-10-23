@@ -12,7 +12,7 @@ namespace InterCat.Application.Tests;
 /// Two intervals of one session compared relationship by relationship (`contracts/comparison-v1.md`, plan M12): rates
 /// over each whole interval, compared exactly, and a change stated only where both intervals measured alike.
 /// </summary>
-public sealed class SessionComparisonTests
+public sealed partial class SessionComparisonTests
 {
     // Five relationships, each a client's connection to a server of its own; then two more clients of the first server,
     // which the tests by executable run: the first client's next process, and another.

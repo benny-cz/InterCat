@@ -248,9 +248,158 @@ public sealed record IntervalComparison(
     public bool? SameHost { get; init; }
 }
 
+/// <summary>
+/// One column of a difference timeline (`contracts/comparison-v1.md` §8d): the k-th equal share of the baseline beside the
+/// k-th of the compared interval, with what the capture covered over each.
+/// </summary>
+public sealed record ComparisonColumn(
+    TimeRange Baseline,
+    TimeRange Compared,
+    IReadOnlyList<MechanismCoverage> BaselineCoverage,
+    IReadOnlyList<MechanismCoverage> ComparedCoverage);
+
+/// <summary>
+/// A comparison and its difference timeline (`contracts/comparison-v1.md` §8d, plan M12): each interval cut into as many
+/// equal columns, and the comparison's rows compared column by column - the k-th of the baseline's with the k-th of the
+/// compared interval's, by the same metric, each pair judged as two intervals are, by its own coverage and by whether the
+/// capture collected the row's mechanism alike in both - all read at one generation, so a row's columns add up to its
+/// values over the whole intervals.
+/// </summary>
+/// <param name="Whole">The comparison of the two whole intervals, its rows ranked as it ranks them.</param>
+/// <param name="Columns">The columns, the first of each interval first.</param>
+/// <param name="Cells">The ranked rows' columns, by the row's key, a cell a column, in order.</param>
+public sealed record ComparisonTimeline(
+    IntervalComparison Whole,
+    IReadOnlyList<ComparisonColumn> Columns,
+    IReadOnlyDictionary<string, IReadOnlyList<ComparedRelationship>> Cells)
+{
+    /// <summary>A row's columns, in order, each its measure over the two columns and how it changed, or why it cannot be said.</summary>
+    public IReadOnlyList<ComparedRelationship> Of(ComparedRelationship row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return Cells.TryGetValue(row.Key, out IReadOnlyList<ComparedRelationship>? cells) ? cells : [];
+    }
+}
+
 /// <summary>Compares two intervals of a session's generation row by row (`comparison-v1`, plan M12).</summary>
 public static class SessionComparison
 {
+    /// <summary>The most columns a difference timeline cuts each interval into: each is read as an interval of its own.</summary>
+    public const int MostTimelineColumns = 100;
+
+    /// <summary>Why a difference timeline is not cut finer than its intervals' ticks.</summary>
+    public const string ColumnsPastTicks = "Each column is a whole number of ticks, so neither interval may be shorter than its "
+        + "columns.";
+
+    /// <summary>
+    /// <see cref="Compare(SessionStore, TimeRange, TimeRange, ComparisonMetric, EvidencePolicy, ComparisonGrouping, CancellationToken)"/>
+    /// with its difference timeline (`comparison-v1` §8d): each interval cut into <paramref name="columns"/> equal columns,
+    /// and the first <paramref name="listed"/> rows of the comparison's ranking compared column by column, all read at the
+    /// comparison's one generation.
+    /// </summary>
+    public static ComparisonTimeline Timeline(
+        SessionStore store,
+        TimeRange baseline,
+        TimeRange compared,
+        int columns,
+        ComparisonMetric metric = ComparisonMetric.Records,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        ComparisonGrouping grouping = ComparisonGrouping.Process,
+        int listed = int.MaxValue,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (!Enum.IsDefined(metric)) throw new ArgumentOutOfRangeException(nameof(metric));
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (!Enum.IsDefined(grouping)) throw new ArgumentOutOfRangeException(nameof(grouping));
+        Columned(baseline, compared, columns, listed);
+        TimeRange[] asked = [baseline, compared, .. Cut(baseline, columns), .. Cut(compared, columns)];
+        for (int attempt = 1; attempt <= Attempts; attempt++)
+        {
+            if (ReadSession(store, asked, metric, policy, betweenReads: null, cancellationToken) is { } read)
+            {
+                IntervalComparison whole = Of(read, 0, 1, metric, policy, grouping);
+                return TimelineOf(whole, listed, [.. Enumerable.Range(0, columns).Select(column => new ComparisonColumn(
+                    read.Asked[2 + column], read.Asked[2 + columns + column],
+                    read.Intervals[2 + column].Coverage, read.Intervals[2 + columns + column].Coverage))],
+                    column => Rows(read, 2 + column, 2 + columns + column, metric, grouping, everyRow: true).Rows);
+            }
+        }
+
+        throw new InvalidOperationException(Unsettled);
+    }
+
+    /// <summary>
+    /// <see cref="CompareCaptures"/> with its difference timeline (`comparison-v1` §8d): each capture's interval cut into
+    /// <paramref name="columns"/> equal columns of its own clock, and the first <paramref name="listed"/> rows of the
+    /// comparison's ranking compared column by column, each capture read at one generation of its own.
+    /// </summary>
+    public static ComparisonTimeline CaptureTimeline(
+        SessionStore baselineStore,
+        TimeRange baseline,
+        SessionStore comparedStore,
+        TimeRange compared,
+        int columns,
+        ComparisonMetric metric = ComparisonMetric.Records,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        int listed = int.MaxValue,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(baselineStore);
+        ArgumentNullException.ThrowIfNull(comparedStore);
+        if (!Enum.IsDefined(metric)) throw new ArgumentOutOfRangeException(nameof(metric));
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        Columned(baseline, compared, columns, listed);
+        SessionRead first = Settled(baselineStore, [baseline, .. Cut(baseline, columns)], metric, policy, cancellationToken);
+        SessionRead second = Settled(comparedStore, [compared, .. Cut(compared, columns)], metric, policy, cancellationToken);
+        if (first.Overview.SessionId == second.Overview.SessionId)
+        {
+            throw new ArgumentException(OneSession, nameof(baselineStore));
+        }
+
+        IntervalComparison whole = OfCaptures(first, second, 0, 0, metric, policy);
+        return TimelineOf(whole, listed, [.. Enumerable.Range(1, columns).Select(column => new ComparisonColumn(
+            first.Asked[column], second.Asked[column], first.Intervals[column].Coverage, second.Intervals[column].Coverage))],
+            column => CaptureRows(first, second, 1 + column, 1 + column, metric, everyRow: true).Rows);
+    }
+
+    /// <summary>Refuses a timeline of no column, of more than it reads, of columns shorter than a tick, or of no row.</summary>
+    private static void Columned(TimeRange baseline, TimeRange compared, int columns, int listed)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(columns, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(columns, MostTimelineColumns);
+        ArgumentOutOfRangeException.ThrowIfLessThan(listed, 1);
+        if (baseline.SpanTicks < columns || compared.SpanTicks < columns)
+        {
+            throw new ArgumentException(ColumnsPastTicks, nameof(columns));
+        }
+    }
+
+    /// <summary>An interval cut into <paramref name="columns"/> equal columns, end to end, as the timeline cuts its own.</summary>
+    private static TimeRange[] Cut(TimeRange interval, int columns) =>
+        [.. Enumerable.Range(0, columns).Select(column => TimelineColumns.IntervalOf(interval, columns, column))];
+
+    /// <summary>
+    /// The difference timeline of a comparison's first <paramref name="listed"/> rows: each column's cells, by the row's key,
+    /// from the column's every row, quiet ones too.
+    /// </summary>
+    private static ComparisonTimeline TimelineOf(IntervalComparison whole, int listed, IReadOnlyList<ComparisonColumn> columns,
+        Func<int, List<ComparedRelationship>> rowsOf)
+    {
+        Dictionary<string, ComparedRelationship[]> cells = whole.Relationships.Take(listed)
+            .ToDictionary(row => row.Key, _ => new ComparedRelationship[columns.Count], StringComparer.Ordinal);
+        for (int column = 0; column < columns.Count; column++)
+        {
+            foreach (ComparedRelationship cell in rowsOf(column))
+            {
+                if (cells.TryGetValue(cell.Key, out ComparedRelationship[]? row)) row[column] = cell;
+            }
+        }
+
+        return new(whole, columns, cells.ToDictionary(entry => entry.Key,
+            entry => (IReadOnlyList<ComparedRelationship>)Array.AsReadOnly(entry.Value), StringComparer.Ordinal));
+    }
+
     /// <summary>How many times a comparison reads a session that publishes between its reads before it says so.</summary>
     internal const int Attempts = 3;
 
@@ -315,57 +464,19 @@ public static class SessionComparison
         EvidencePolicy policy,
         ComparisonGrouping grouping,
         Action? betweenReads,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) =>
+        ReadSession(store, [baseline, compared], metric, policy, betweenReads, cancellationToken) is { } read
+            ? Of(read, 0, 1, metric, policy, grouping)
+            : null;
+
+    /// <summary>The comparison of a session read's interval <paramref name="before"/> with its interval <paramref name="after"/>.</summary>
+    private static IntervalComparison Of(
+        SessionRead read, int before, int after, ComparisonMetric metric, EvidencePolicy policy, ComparisonGrouping grouping)
     {
-        if (ReadSession(store, [baseline, compared], metric, policy, betweenReads, cancellationToken) is not { } read)
-        {
-            return null;
-        }
-
         SessionOverviewBundle overview = read.Overview;
-        IntervalRead before = read.Intervals[0], after = read.Intervals[1];
-        var judge = new Judge(metric, baseline.SpanTicks, compared.SpanTicks, mechanism => Judged(mechanism)
-            .Select(judged => SessionCoverage.CollectedOtherwise(read.Ledger, judged, read.Native))
-            .FirstOrDefault(reason => reason is not null));
-
-        // Each relationship's measure over both intervals, and each process's connections to another host's, measured at
-        // this machine's end: their records, and what was sent across or there.
-        bool bytes = metric == ComparisonMetric.BytesSent;
-        (CommunicationEdge Edge, Reach First, Reach Second)[] edges =
-            [.. overview.Edges.Select(edge => (edge, before.Edges[edge.Key], after.Edges[edge.Key]))];
-        (OtherHostReach Reach, Reach First, Reach Second)[] hosts = [.. read.Reaches
-            .Select(entry => (entry.Value, before.Hosts.GetValueOrDefault(entry.Key), after.Hosts.GetValueOrDefault(entry.Key)))];
-        ComparedRelationship RowOf(Reach first, Reach second, Mechanism mechanism) => judge.Row(
-            Measure(first, bytes, CoverageOf(mechanism, before.Coverage)),
-            Measure(second, bytes, CoverageOf(mechanism, after.Coverage)),
-            mechanism);
-
-        var rows = new List<ComparedRelationship>();
-        int quiet = 0;
-        UnmatchedRows unmatched = new(0, 0, 0);
-        if (grouping == ComparisonGrouping.Process)
-        {
-            foreach ((CommunicationEdge edge, Reach first, Reach second) in edges)
-            {
-                if (first.Records == 0 && second.Records == 0) quiet++;
-                else rows.Add(RowOf(first, second, edge.Mechanism) with { Relationship = edge });
-            }
-
-            foreach ((OtherHostReach reach, Reach first, Reach second) in hosts)
-            {
-                if (first.Records == 0 && second.Records == 0) quiet++;
-                else rows.Add(RowOf(first, second, reach.Link.Mechanism) with { Host = reach });
-            }
-        }
-        else
-        {
-            ByExecutable grouped = ByExecutable.Of(overview, edges, hosts);
-            unmatched = grouped.Unmatched;
-            quiet = Executables(grouped, RowOf, rows);
-        }
-
-        return new(overview.SessionId, overview.Generation, metric, policy, baseline, compared, before.Coverage,
-            after.Coverage, Array.AsReadOnly(Ranked(rows)))
+        (List<ComparedRelationship> rows, int quiet, UnmatchedRows unmatched) = Rows(read, before, after, metric, grouping, everyRow: false);
+        return new(overview.SessionId, overview.Generation, metric, policy, read.Asked[before], read.Asked[after],
+            read.Intervals[before].Coverage, read.Intervals[after].Coverage, Array.AsReadOnly(Ranked(rows)))
         {
             Processes = overview.Nodes.ToDictionary(node => node.Id),
             Quiet = quiet,
@@ -374,6 +485,61 @@ public static class SessionComparison
             Unmatched = unmatched,
         };
     }
+
+    /// <summary>
+    /// The rows of a session read's interval <paramref name="before"/> compared with its interval <paramref name="after"/>,
+    /// judged by both intervals' coverage and by whether the capture collected each mechanism alike in both: each row with
+    /// a record in either, or with <paramref name="everyRow"/> each the overview draws, a quiet one too; how many were
+    /// quiet; and by executable, what no executable groups.
+    /// </summary>
+    private static (List<ComparedRelationship> Rows, int Quiet, UnmatchedRows Unmatched) Rows(
+        SessionRead read, int before, int after, ComparisonMetric metric, ComparisonGrouping grouping, bool everyRow)
+    {
+        SessionOverviewBundle overview = read.Overview;
+        IntervalRead then = read.Intervals[before], now = read.Intervals[after];
+        IReadOnlyList<TimeRange> native = NativeOf(read, before, after);
+        var judge = new Judge(metric, read.Asked[before].SpanTicks, read.Asked[after].SpanTicks, mechanism => Judged(mechanism)
+            .Select(judged => SessionCoverage.CollectedOtherwise(read.Ledger, judged, native))
+            .FirstOrDefault(reason => reason is not null));
+
+        // Each relationship's measure over both intervals, and each process's connections to another host's, measured at
+        // this machine's end: their records, and what was sent across or there.
+        bool bytes = metric == ComparisonMetric.BytesSent;
+        (CommunicationEdge Edge, Reach First, Reach Second)[] edges =
+            [.. overview.Edges.Select(edge => (edge, then.Edges[edge.Key], now.Edges[edge.Key]))];
+        (OtherHostReach Reach, Reach First, Reach Second)[] hosts = [.. read.Reaches
+            .Select(entry => (entry.Value, then.Hosts.GetValueOrDefault(entry.Key), now.Hosts.GetValueOrDefault(entry.Key)))];
+        ComparedRelationship RowOf(Reach first, Reach second, Mechanism mechanism) => judge.Row(
+            Measure(first, bytes, CoverageOf(mechanism, then.Coverage)),
+            Measure(second, bytes, CoverageOf(mechanism, now.Coverage)),
+            mechanism);
+
+        var rows = new List<ComparedRelationship>();
+        int quiet = 0;
+        if (grouping == ComparisonGrouping.Executable)
+        {
+            ByExecutable grouped = ByExecutable.Of(overview, edges, hosts);
+            return (rows, Executables(grouped, RowOf, rows, everyRow), grouped.Unmatched);
+        }
+
+        foreach ((CommunicationEdge edge, Reach first, Reach second) in edges)
+        {
+            if (first.Records == 0 && second.Records == 0) quiet++;
+            if (everyRow || first.Records != 0 || second.Records != 0) rows.Add(RowOf(first, second, edge.Mechanism) with { Relationship = edge });
+        }
+
+        foreach ((OtherHostReach reach, Reach first, Reach second) in hosts)
+        {
+            if (first.Records == 0 && second.Records == 0) quiet++;
+            if (everyRow || first.Records != 0 || second.Records != 0) rows.Add(RowOf(first, second, reach.Link.Mechanism) with { Host = reach });
+        }
+
+        return (rows, quiet, new(0, 0, 0));
+    }
+
+    /// <summary>The native intervals of a read's intervals at <paramref name="indexes"/>, those its clock could place.</summary>
+    private static IReadOnlyList<TimeRange> NativeOf(SessionRead read, params int[] indexes) =>
+        [.. indexes.Select(index => read.Native[index]).OfType<TimeRange>()];
 
     /// <summary>Why two captures cannot be compared when both name one session.</summary>
     public const string OneSession = "Both captures are one session; compare two of its intervals as one session instead.";
@@ -403,34 +569,24 @@ public static class SessionComparison
         ArgumentOutOfRangeException.ThrowIfLessThan(baseline.SpanTicks, 1, nameof(baseline));
         ArgumentOutOfRangeException.ThrowIfLessThan(compared.SpanTicks, 1, nameof(compared));
 
-        SessionRead first = Settled(baselineStore, baseline, metric, policy, cancellationToken);
-        SessionRead second = Settled(comparedStore, compared, metric, policy, cancellationToken);
+        SessionRead first = Settled(baselineStore, [baseline], metric, policy, cancellationToken);
+        SessionRead second = Settled(comparedStore, [compared], metric, policy, cancellationToken);
         if (first.Overview.SessionId == second.Overview.SessionId)
         {
             throw new ArgumentException(OneSession, nameof(baselineStore));
         }
 
-        var judge = new Judge(metric, baseline.SpanTicks, compared.SpanTicks, mechanism => Judged(mechanism)
-            .Select(judged => SessionCoverage.CollectedOtherwise(first.Ledger, first.Native, second.Ledger, second.Native, judged))
-            .FirstOrDefault(reason => reason is not null));
-        IntervalRead before = first.Intervals[0], after = second.Intervals[0];
-        bool bytes = metric == ComparisonMetric.BytesSent;
-        ComparedRelationship RowOf(Reach then, Reach now, Mechanism mechanism) => judge.Row(
-            Measure(then, bytes, CoverageOf(mechanism, before.Coverage)),
-            Measure(now, bytes, CoverageOf(mechanism, after.Coverage)),
-            mechanism);
+        return OfCaptures(first, second, 0, 0, metric, policy);
+    }
 
-        // Each capture's rows by executable, the baseline's in the first interval and the compared capture's in the second,
-        // paired by their keys: the paths both captures group processes by.
-        ByExecutable grouped = ByExecutable.Merge(
-            ByExecutable.Of(first.Overview,
-                [.. first.Overview.Edges.Select(edge => (edge, before.Edges[edge.Key], default(Reach)))],
-                [.. first.Reaches.Select(entry => (entry.Value, before.Hosts.GetValueOrDefault(entry.Key), default(Reach)))]),
-            ByExecutable.Of(second.Overview,
-                [.. second.Overview.Edges.Select(edge => (edge, default(Reach), after.Edges[edge.Key]))],
-                [.. second.Reaches.Select(entry => (entry.Value, default(Reach), after.Hosts.GetValueOrDefault(entry.Key)))]));
-        var rows = new List<ComparedRelationship>();
-        int quiet = Executables(grouped, RowOf, rows);
+    /// <summary>
+    /// Two captures' comparison: the baseline capture's read interval <paramref name="before"/> with the compared capture's
+    /// read interval <paramref name="after"/>, by executable.
+    /// </summary>
+    private static IntervalComparison OfCaptures(
+        SessionRead first, SessionRead second, int before, int after, ComparisonMetric metric, EvidencePolicy policy)
+    {
+        (List<ComparedRelationship> rows, int quiet, UnmatchedRows unmatched) = CaptureRows(first, second, before, after, metric, everyRow: false);
 
         // An executable is named over both captures' groups, with the fewest folders that tell two of one name apart.
         var paths = new Dictionary<string, string?>(StringComparer.Ordinal);
@@ -440,28 +596,62 @@ public static class SessionComparison
         }
 
         Dictionary<string, string> labels = ExecutableNames.Label([.. paths.Select(path => (path.Key, path.Value))]);
-        return new(second.Overview.SessionId, second.Overview.Generation, metric, policy, baseline, compared, before.Coverage,
-            after.Coverage, Array.AsReadOnly(Ranked(rows)))
+        return new(second.Overview.SessionId, second.Overview.Generation, metric, policy, first.Asked[before], second.Asked[after],
+            first.Intervals[before].Coverage, second.Intervals[after].Coverage, Array.AsReadOnly(Ranked(rows)))
         {
             Processes = first.Overview.Nodes.Concat(second.Overview.Nodes).DistinctBy(node => node.Id).ToDictionary(node => node.Id),
             Quiet = quiet,
             Grouping = ComparisonGrouping.Executable,
             Groups = paths.ToDictionary(path => path.Key,
                 path => new ProcessGroup(path.Key, labels[path.Key], LaneGrouping.Executable, path.Value), StringComparer.Ordinal),
-            Unmatched = grouped.Unmatched,
+            Unmatched = unmatched,
             BaselineSessionId = first.Overview.SessionId,
             BaselineGeneration = first.Overview.Generation,
             SameHost = (first.Clock, second.Clock) is ({ } one, { } other) ? one.HostId == other.HostId : null,
         };
     }
 
-    /// <summary>One capture's interval read at one generation, read again where it publishes between reads.</summary>
+    /// <summary>
+    /// Two captures' rows by executable: the baseline capture's read interval <paramref name="before"/> with the compared
+    /// capture's read interval <paramref name="after"/>, each judged by its own capture's coverage, and the two captures by
+    /// whether they collected each mechanism through the same descriptors; each with a record in either, or with
+    /// <paramref name="everyRow"/> each the captures' executables share or hold alone.
+    /// </summary>
+    private static (List<ComparedRelationship> Rows, int Quiet, UnmatchedRows Unmatched) CaptureRows(
+        SessionRead first, SessionRead second, int before, int after, ComparisonMetric metric, bool everyRow)
+    {
+        IReadOnlyList<TimeRange> thenNative = NativeOf(first, before), nowNative = NativeOf(second, after);
+        var judge = new Judge(metric, first.Asked[before].SpanTicks, second.Asked[after].SpanTicks, mechanism => Judged(mechanism)
+            .Select(judged => SessionCoverage.CollectedOtherwise(first.Ledger, thenNative, second.Ledger, nowNative, judged))
+            .FirstOrDefault(reason => reason is not null));
+        IntervalRead then = first.Intervals[before], now = second.Intervals[after];
+        bool bytes = metric == ComparisonMetric.BytesSent;
+        ComparedRelationship RowOf(Reach earlier, Reach later, Mechanism mechanism) => judge.Row(
+            Measure(earlier, bytes, CoverageOf(mechanism, then.Coverage)),
+            Measure(later, bytes, CoverageOf(mechanism, now.Coverage)),
+            mechanism);
+
+        // Each capture's rows by executable, the baseline's in its interval and the compared capture's in its own, paired
+        // by their keys: the paths both captures group processes by.
+        ByExecutable grouped = ByExecutable.Merge(
+            ByExecutable.Of(first.Overview,
+                [.. first.Overview.Edges.Select(edge => (edge, then.Edges[edge.Key], default(Reach)))],
+                [.. first.Reaches.Select(entry => (entry.Value, then.Hosts.GetValueOrDefault(entry.Key), default(Reach)))]),
+            ByExecutable.Of(second.Overview,
+                [.. second.Overview.Edges.Select(edge => (edge, default(Reach), now.Edges[edge.Key]))],
+                [.. second.Reaches.Select(entry => (entry.Value, default(Reach), now.Hosts.GetValueOrDefault(entry.Key)))]));
+        var rows = new List<ComparedRelationship>();
+        return (rows, Executables(grouped, RowOf, rows, everyRow), grouped.Unmatched);
+    }
+
+    /// <summary>One capture's intervals read at one generation, read again where it publishes between reads.</summary>
     private static SessionRead Settled(
-        SessionStore store, TimeRange interval, ComparisonMetric metric, EvidencePolicy policy, CancellationToken cancellationToken)
+        SessionStore store, IReadOnlyList<TimeRange> intervals, ComparisonMetric metric, EvidencePolicy policy,
+        CancellationToken cancellationToken)
     {
         for (int attempt = 1; attempt <= Attempts; attempt++)
         {
-            if (ReadSession(store, [interval], metric, policy, betweenReads: null, cancellationToken) is { } read)
+            if (ReadSession(store, intervals, metric, policy, betweenReads: null, cancellationToken) is { } read)
             {
                 return read;
             }
@@ -534,24 +724,24 @@ public static class SessionComparison
             overview.Edges.ToDictionary(edge => edge.Key, edge => Sum(counts[index].EdgeRecords.GetValueOrDefault(edge.Key),
                 sent[index] is { } bytes ? SentAcross(edge, bytes) : default), StringComparer.Ordinal),
             Reached(held[index])))];
-        TimeRange[] native = [.. intervals
-            .Select(interval => clock is { } readings ? RankingScope.NativeInterval(readings, interval) : null)
-            .OfType<TimeRange>()];
-        return new(overview, measured, [.. reaches.OrderBy(entry => entry.Key, StringComparer.Ordinal)], ledger, clock, native);
+        TimeRange?[] native = [.. intervals
+            .Select(interval => clock is { } readings ? RankingScope.NativeInterval(readings, interval) : null)];
+        return new(overview, intervals, measured, [.. reaches.OrderBy(entry => entry.Key, StringComparer.Ordinal)], ledger, clock,
+            native);
     }
 
     /// <summary>
-    /// The rows of a comparison by executable, in <paramref name="rows"/>: each tally with a record in either interval,
-    /// judged by <paramref name="rowOf"/>. Returns how many had none, which are quiet.
+    /// The rows of a comparison by executable, in <paramref name="rows"/>: each tally with a record in either interval, or
+    /// with <paramref name="everyRow"/> each, judged by <paramref name="rowOf"/>. Returns how many had none, which are quiet.
     /// </summary>
     private static int Executables(ByExecutable grouped, Func<Reach, Reach, Mechanism, ComparedRelationship> rowOf,
-        List<ComparedRelationship> rows)
+        List<ComparedRelationship> rows, bool everyRow)
     {
         int quiet = 0;
         foreach (ExecutableTally tally in grouped.Tallies)
         {
             if (tally.First.Records == 0 && tally.Second.Records == 0) quiet++;
-            else rows.Add(rowOf(tally.First, tally.Second, tally.Mechanism) with
+            if (everyRow || tally.First.Records != 0 || tally.Second.Records != 0) rows.Add(rowOf(tally.First, tally.Second, tally.Mechanism) with
             {
                 Executables = tally.Relationship,
                 ExecutableHost = tally.Reach,
@@ -817,17 +1007,19 @@ public static class SessionComparison
     }
 
     /// <summary>
-    /// Every read of one session a comparison makes, of one generation: its overview, each interval's measures in the order
-    /// asked, its processes' connections to other hosts by the census's keys, in key order, and the ledger, clock and native
-    /// intervals that judge whether its intervals were collected alike.
+    /// Every read of one session a comparison makes, of one generation: its overview, the intervals asked and each one's
+    /// measures in that order, its processes' connections to other hosts by the census's keys, in key order, and the ledger,
+    /// clock and native intervals - each asked interval's, null where the clock places none - that judge whether its
+    /// intervals were collected alike.
     /// </summary>
     private sealed record SessionRead(
         SessionOverviewBundle Overview,
+        IReadOnlyList<TimeRange> Asked,
         IReadOnlyList<IntervalRead> Intervals,
         IReadOnlyList<KeyValuePair<string, OtherHostReach>> Reaches,
         CoverageLedgerV1? Ledger,
         SourceClockDescriptor? Clock,
-        IReadOnlyList<TimeRange> Native);
+        IReadOnlyList<TimeRange?> Native);
 
     /// <summary>
     /// One interval of a session: what the capture covered over it, each relationship's records there with what was sent

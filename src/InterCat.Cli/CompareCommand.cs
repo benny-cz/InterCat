@@ -16,6 +16,9 @@ internal static class CompareCommand
 {
     private const int DefaultLimit = 50;
 
+    /// <summary>How many columns a row's difference timeline cuts each interval into unless --columns says.</summary>
+    private const int DefaultColumns = 10;
+
     public static async Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken)
     {
         if (command.TryTakeFlag("--help") || command.TryTakeFlag("-h"))
@@ -31,6 +34,8 @@ internal static class CompareCommand
         string? baselineSessionText = command.TakeOption("--baseline-session");
         string? workspaceText = command.TakeOption("--workspace");
         string? savedText = command.TakeOption("--saved");
+        string? timelineText = command.TakeOption("--timeline");
+        string? columnsText = command.TakeOption("--columns");
         string? limitText = command.TakeOption("--limit");
         bool json = command.TryTakeFlag("--json");
         string? output = command.TakeOption("--output");
@@ -57,6 +62,13 @@ internal static class CompareCommand
         int limit = DefaultLimit;
         bool invalidLimit = limitText is not null
             && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit) || limit < 1);
+        int rank = 0;
+        bool invalidRank = timelineText is not null
+            && (!int.TryParse(timelineText, NumberStyles.None, CultureInfo.InvariantCulture, out rank) || rank < 1);
+        int columns = DefaultColumns;
+        bool invalidColumns = columnsText is not null
+            && (!int.TryParse(columnsText, NumberStyles.None, CultureInfo.InvariantCulture, out columns) || columns < 1
+                || columns > SessionComparison.MostTimelineColumns);
         ExportFormat? format = formatText switch
         {
             null => output?.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) == true ? ExportFormat.Csv : ExportFormat.Json,
@@ -87,6 +99,15 @@ internal static class CompareCommand
                 ? "--baseline-session compares two captures by executable: a process of one capture is never another's."
             : null;
         problem ??= invalidLimit ? $"--limit expects a number of relationships of 1 or more; '{limitText}' is not one."
+            : invalidRank ? $"--timeline names a row by its rank, 1 for the most changed; '{timelineText}' is not one."
+            : columnsText is not null && timelineText is null
+                ? "--columns cuts a row's difference timeline, which --timeline <rank> asks for."
+            : invalidColumns
+                ? $"--columns cuts each interval into 1 to {SessionComparison.MostTimelineColumns} columns; '{columnsText}' is not one."
+            : timelineText is not null && limitText is not null ? "--limit lists rows and --timeline one row's columns; pass one of them."
+            : timelineText is not null && redacted
+                ? "A redacted report holds each row over the whole intervals, never a row's timeline; pass one of --timeline and "
+                    + "--share-redacted."
             : output is null && fileOnly is not null ? $"{fileOnly} shapes a file written with --output <path>, which was not given."
             : output is not null && json ? "--json prints the comparison and --output writes it to a file; pass one of them."
             : format is null ? $"--format writes json or csv; '{formatText}' is neither."
@@ -145,18 +166,39 @@ internal static class CompareCommand
         }
 
         IntervalComparison comparison;
+        ComparisonTimeline? timeline = null;
         try
         {
             SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
-            comparison = baselinePath is null
-                ? SessionComparison.Compare(store, baseline!.Value, compared!.Value, metric!.Value, grouping: grouping!.Value,
-                    cancellationToken: cancellationToken)
-                : SessionComparison.CompareCaptures(SessionStore.OpenExisting(LocalOwnedDirectory.Open(baselinePath)),
-                    baseline!.Value, store, compared!.Value, metric!.Value, cancellationToken: cancellationToken);
+            SessionStore? baselineStore = baselinePath is null ? null : SessionStore.OpenExisting(LocalOwnedDirectory.Open(baselinePath));
+
+            // A row's difference timeline is read with the comparison, at its generation, the rows to its rank kept.
+            if (timelineText is not null)
+            {
+                timeline = baselineStore is null
+                    ? SessionComparison.Timeline(store, baseline!.Value, compared!.Value, columns, metric!.Value,
+                        grouping: grouping!.Value, listed: rank, cancellationToken: cancellationToken)
+                    : SessionComparison.CaptureTimeline(baselineStore, baseline!.Value, store, compared!.Value, columns, metric!.Value,
+                        listed: rank, cancellationToken: cancellationToken);
+                comparison = timeline.Whole;
+            }
+            else
+            {
+                comparison = baselineStore is null
+                    ? SessionComparison.Compare(store, baseline!.Value, compared!.Value, metric!.Value, grouping: grouping!.Value,
+                        cancellationToken: cancellationToken)
+                    : SessionComparison.CompareCaptures(baselineStore, baseline!.Value, store, compared!.Value, metric!.Value,
+                        cancellationToken: cancellationToken);
+            }
         }
         catch (ArgumentException exception) when (exception.Message.StartsWith(SessionComparison.OneSession, StringComparison.Ordinal))
         {
             ConsoleUi.Failure(SessionComparison.OneSession);
+            return InterCatExitCode.InvalidInvocation;
+        }
+        catch (ArgumentException exception) when (exception.Message.StartsWith(SessionComparison.ColumnsPastTicks, StringComparison.Ordinal))
+        {
+            ConsoleUi.Failure(SessionComparison.ColumnsPastTicks);
             return InterCatExitCode.InvalidInvocation;
         }
         catch (InvalidDataException exception)
@@ -170,22 +212,43 @@ internal static class CompareCommand
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
+        // The row a timeline is asked of must be one the comparison ranks.
+        ComparedRelationship? timed = null;
+        if (timeline is not null)
+        {
+            if (rank > comparison.Relationships.Count)
+            {
+                ConsoleUi.Failure($"--timeline {rank} names no row: the comparison compares "
+                    + $"{CountText.Of(comparison.Relationships.Count, "row")}.");
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            timed = comparison.Relationships[rank - 1];
+        }
+
         if (destination is not null)
         {
             // A file holds every row unless --limit says how many: it is read whole, not scrolled.
             int written = limitText is null ? int.MaxValue : limit;
             string content = redacted
                 ? RedactedShareExport.Comparison(format!.Value, comparison, DateTimeOffset.UtcNow, written)
-                : Document(comparison, path, baselinePath, saved, written);
+                : Document(comparison, path, baselinePath, saved, written, timeline, timed, rank);
             await ExportFileWriter.WriteAsync(destination, content, overwrite, cancellationToken).ConfigureAwait(false);
             PrintWritten(comparison, destination, baselinePath, saved, redacted, format!.Value,
                 Math.Min(written, comparison.Relationships.Count));
+            if (timeline is not null) ConsoleUi.Field("Timeline", $"of row {rank}, " + Columned(timeline, CultureInfo.CurrentCulture));
             return InterCatExitCode.Success;
         }
 
         if (json)
         {
-            Console.Out.WriteLine(Document(comparison, path, baselinePath, saved, limit));
+            Console.Out.WriteLine(Document(comparison, path, baselinePath, saved, limit, timeline, timed, rank));
+            return InterCatExitCode.Success;
+        }
+
+        if (timeline is not null)
+        {
+            PrintTimeline(timeline, timed!, rank, path, baselinePath, saved);
             return InterCatExitCode.Success;
         }
 
@@ -193,11 +256,95 @@ internal static class CompareCommand
         return InterCatExitCode.Success;
     }
 
+    /// <summary>What a difference timeline's columns are, said beneath them in place of what the whole intervals' rates are.</summary>
+    internal const string TimelineNote = "Each column compares the baseline's share with the compared interval's share in the "
+        + "same place, as two intervals are compared: its rates are over the column, and a change is stated only where both "
+        + "columns covered the row's mechanism through the same sources, so a column the capture did not collect never reads "
+        + "as activity that stopped or started; a reason speaks of the column's share of each interval. The columns add up to "
+        + "the whole intervals.";
+
+    /// <summary>
+    /// How a difference timeline cuts the intervals: "10 columns of each interval, 1.0 s of the baseline and 2.0 s of the
+    /// compared interval each".
+    /// </summary>
+    private static string Columned(ComparisonTimeline timeline, CultureInfo culture)
+    {
+        int count = timeline.Columns.Count;
+        return CountText.Of(count, "column") + " of each interval, "
+            + WorkspaceTime.FormatDuration(timeline.Whole.Baseline.SpanTicks / count, culture) + " of the baseline and "
+            + WorkspaceTime.FormatDuration(timeline.Whole.Compared.SpanTicks / count, culture) + " of the compared interval"
+            + (count == 1 ? string.Empty : " each");
+    }
+
+    /// <summary>
+    /// A row's difference timeline (`comparison-v1` §8d): what was compared, as the comparison says it, the row and how its
+    /// whole intervals compare, then each column pair - the k-th of the baseline beside the k-th of the compared interval -
+    /// with its values and change, each reason once beneath them.
+    /// </summary>
+    private static void PrintTimeline(ComparisonTimeline timeline, ComparedRelationship row, int rank, string path,
+        string? baselinePath, SavedRun? saved)
+    {
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        IntervalComparison comparison = timeline.Whole;
+        ConsoleUi.Heading("Difference timeline");
+        if (saved is not null) ConsoleUi.Field("Saved as", saved.Describe(culture));
+        ConsoleUi.Field(baselinePath is null ? "Session" : "Compared session", path);
+        ConsoleUi.Field("Generation", ConsoleUi.Count(comparison.Generation));
+        if (baselinePath is not null)
+        {
+            ConsoleUi.Field("Baseline session", baselinePath);
+            ConsoleUi.Field("Its generation", ConsoleUi.Count(comparison.BaselineGeneration!.Value));
+        }
+
+        ConsoleUi.Field("Baseline", ComparisonText.Interval(comparison.Baseline, culture: culture)
+            + (baselinePath is null ? string.Empty : " of the baseline's session"));
+        ConsoleUi.Field("Compared", ComparisonText.Interval(comparison.Compared, culture: culture));
+        ConsoleUi.Field("Compared by", ComparedBy(comparison.Metric));
+        ConsoleUi.Field("Grouped by", GroupedBy(comparison.Grouping));
+        ConsoleUi.Field("Row", string.Create(culture, $"{rank:N0} of {comparison.Relationships.Count:N0}, ")
+            + ComparisonText.Ends(row, comparison, "and") + " over " + ComparisonText.Over(row));
+        ConsoleUi.Field("Whole intervals", ComparisonText.Value(row.Baseline, comparison.Baseline, comparison.Metric, culture) + " → "
+            + ComparisonText.Value(row.Compared, comparison.Compared, comparison.Metric, culture) + ", "
+            + ComparisonText.Change(row, comparison, culture));
+        ConsoleUi.Field("Columns", Columned(timeline, culture));
+
+        // Each reason two columns' values cannot be compared is said once, beneath the table, and each column names it.
+        var reasons = new List<string>();
+        IReadOnlyList<ComparedRelationship> cells = timeline.Of(row);
+        ConsoleUi.Table(
+            ["Column", "Baseline", "Value", "Compared", "Value", "Change"],
+            [.. cells.Select((cell, index) =>
+            {
+                ComparisonColumn column = timeline.Columns[index];
+                return (IReadOnlyList<string>)
+                [
+                    string.Create(culture, $"{index + 1:N0}"),
+                    WorkspaceTime.FormatHalfOpenRange(column.Baseline, culture),
+                    ComparisonText.Value(cell.Baseline, column.Baseline, comparison.Metric, culture),
+                    WorkspaceTime.FormatHalfOpenRange(column.Compared, culture),
+                    ComparisonText.Value(cell.Compared, column.Compared, comparison.Metric, culture),
+                    ComparisonText.Change(cell, column.Baseline, column.Compared, comparison.Metric, culture) + Numbered(cell, reasons, culture),
+                ];
+            })]);
+        for (int index = 0; index < reasons.Count; index++)
+        {
+            ConsoleUi.Note(string.Create(culture, $"[{index + 1}] {reasons[index]}"));
+        }
+
+        ConsoleUi.Note(TimelineNote);
+        foreach (string note in ComparisonText.Notes([row], comparison.Metric).Where(note => note != ComparisonText.RatesNote)
+            .Concat(ComparisonText.Grouping(comparison, culture)))
+        {
+            ConsoleUi.Note(note);
+        }
+    }
+
     /// <summary>
     /// The comparison as `comparison-v1` §8 states it, with the session it was read from and the saved comparison it ran, as
-    /// many rows as the limit.
+    /// many rows as the limit, and a row's difference timeline where one was asked for (§8d).
     /// </summary>
-    private static string Document(IntervalComparison comparison, string path, string? baselinePath, SavedRun? saved, int limit) =>
+    private static string Document(IntervalComparison comparison, string path, string? baselinePath, SavedRun? saved, int limit,
+        ComparisonTimeline? timeline = null, ComparedRelationship? timed = null, int rank = 0) =>
         JsonSerializer.Serialize(new
         {
             Contract = "comparison-v1",
@@ -205,6 +352,23 @@ internal static class CompareCommand
             BaselineSessionPath = baselinePath,
             Saved = saved is null ? null : new { Workspace = saved.WorkspacePath, saved.Comparison.Name, saved.Comparison.Revision },
             Comparison = Json(comparison, limit),
+            Timeline = timeline is null || timed is null ? null : new
+            {
+                Rank = rank,
+                timed.Key,
+                Columns = timeline.Of(timed).Select((cell, index) => new
+                {
+                    BaselineInterval = timeline.Columns[index].Baseline,
+                    ComparedInterval = timeline.Columns[index].Compared,
+                    Baseline = Side(cell.Baseline, timeline.Columns[index].Baseline),
+                    Compared = Side(cell.Compared, timeline.Columns[index].Compared),
+                    cell.Change,
+                    cell.FromLowerBound,
+                    DifferencePerSecond = ComparisonText.DifferencePerSecond(cell, timeline.Columns[index].Baseline,
+                        timeline.Columns[index].Compared),
+                    cell.Reason,
+                }),
+            },
         }, JsonContracts.Indented);
 
     /// <summary>The comparison as `comparison-v1` states it, its rows the most changed first, as many as the limit.</summary>
@@ -270,17 +434,18 @@ internal static class CompareCommand
 
         // An executable is its group: its key, the name the window gives it, and the path its image was witnessed at.
         static object Executable(ProcessGroup group) => new { Group = group.Key, group.Name, Path = group.Detail };
-
-        static object Side(ComparedMeasure measure, TimeRange interval) => new
-        {
-            measure.Records,
-            measure.Value,
-            measure.Measured,
-            measure.Unmeasured,
-            PerSecond = ComparisonText.Rounded(measure.PerSecond(interval)),
-            measure.Coverage,
-        };
     }
+
+    /// <summary>A row's measure over one interval, or one column of it, as `comparison-v1` §8 states it.</summary>
+    private static object Side(ComparedMeasure measure, TimeRange interval) => new
+    {
+        measure.Records,
+        measure.Value,
+        measure.Measured,
+        measure.Unmeasured,
+        PerSecond = ComparisonText.Rounded(measure.PerSecond(interval)),
+        measure.Coverage,
+    };
 
     /// <summary>
     /// What a file written holds: where it went, its contract, the two intervals and what they were compared by, and how
@@ -460,8 +625,10 @@ internal static class CompareCommand
         ConsoleUi.Line("    [--rank-by records|bytes-sent] [--group-by process|executable] [--limit <n>] [--json]");
         ConsoleUi.Line("    [--baseline-session <session-directory>]");
         ConsoleUi.Line("    [--output <path> [--share-redacted] [--format json|csv] [--overwrite]]");
+        ConsoleUi.Line("    [--timeline <rank> [--columns <1-100>]]");
         ConsoleUi.Line("icat compare --workspace <workspace> --saved <name> [--limit <n>] [--json]");
         ConsoleUi.Line("    [--output <path> [--share-redacted] [--format json|csv] [--overwrite]]");
+        ConsoleUi.Line("    [--timeline <rank> [--columns <1-100>]]");
         ConsoleUi.Line("  Read-only comparison of two intervals of a session, relationship by relationship: how each one's");
         ConsoleUi.Line("  records, or the bytes its two ends sent across it, changed from the baseline to the interval, as");
         ConsoleUi.Line("  rates over each whole interval, the most changed first. Each bound is in 100-nanosecond session");
@@ -479,6 +646,10 @@ internal static class CompareCommand
         ConsoleUi.Line("  --saved runs a comparison saved in an investigation (icat workspace comparison): its sessions,");
         ConsoleUi.Line("  intervals, ranking and grouping as saved, each session read where the investigation finds it");
         ConsoleUi.Line("  now, at the generation it holds then.");
+        ConsoleUi.Line("  --timeline shows one row's difference timeline instead of the table, the row by its rank, 1 for");
+        ConsoleUi.Line($"  the most changed: each interval cut into --columns equal columns, {DefaultColumns} by default, the");
+        ConsoleUi.Line("  baseline's k-th compared with the compared interval's k-th as two intervals are, each column");
+        ConsoleUi.Line("  judged by what the capture covered there; read with the comparison, its columns add up to it.");
         ConsoleUi.Line($"  --limit lists at most that many, {DefaultLimit} by default; a file written with --output holds");
         ConsoleUi.Line("  every row unless --limit is given. --output writes the --json document to a file, complete");
         ConsoleUi.Line("  before it replaces anything; with --share-redacted it writes a metadata-only, pseudonymized");

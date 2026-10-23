@@ -80,7 +80,8 @@ programs rather than processes, each one's processes together, so a process that
 and *Another saved capture…* sets a saved capture's whole recording as the baseline. An investigation keeps a
 comparison under a name (`icat workspace comparison`), and `icat compare --workspace <file> --saved <name>` runs it
 again on its sessions as they are then. In the window, *Save in the investigation…* keeps the comparison shown, and
-the investigation's *Comparisons…* opens it again.
+the investigation's *Comparisons…* opens it again. `--timeline <rank>` shows when a row changed: each interval cut
+into as many equal columns, compared column by column.
 
 F1 in the window lists every key it takes.
 

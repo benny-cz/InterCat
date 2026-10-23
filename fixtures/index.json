@@ -869,6 +869,7 @@
         "I12: the same PID and creation on another capture's clock is another instance",
         "I12: the window compares its scope with another saved capture by executable, and says why a folder is none",
         "I12: two captures pair their rows by path alone, never by PID, and keep each capture's processes apart",
+        "I12: two captures' difference timeline cuts each capture's interval on its own clock, its rows paired by path",
         "I12: without a start key, only a record in a reused PID's earliest lifetime resolves"
       ],
       "I13": [
@@ -1071,6 +1072,7 @@
       ],
       "I16": [
         "I16: a comparison names the generation it answers, reading a session that publishes again until one does",
+        "I16: a difference timeline is read with its comparison at one generation, each row's columns adding up to it",
         "I16: a ranked export names its generation's manifest and the query icat metric prints, in JSON and CSV",
         "I16: a result names the materialized request it answers, so two spellings are one request",
         "I16: an evidence export names the icat evidence command that lists its records under the policy the window counts by",
@@ -1776,6 +1778,7 @@
         "R21: a content capture whose content source was not enabled refuses its start, saying why, as no other capture does",
         "R21: a coverage ledger round-trips every outcome and refuses unknown members",
         "R21: a descriptor the schema does not declare is refused with a reason",
+        "R21: a difference timeline judges each column by its own coverage, comparing nothing where a column was not collected",
         "R21: a field behind a variable-length field is reported unknown, never guessed",
         "R21: a fixed binary length TDH reports is restored to a rebuilt manifest, and nothing else is changed",
         "R21: a generation with no coverage ledger yet says so plainly, and one limited interval is named as one",
@@ -2218,6 +2221,7 @@
         "R18: icat channels pages the busiest channels first, channels of as many records by key, and its JSON names that order",
         "R18: icat channels says how each channel was paired - its rule, strength, lifetime and coverage - in the inspector's words",
         "R18: icat checkpoint says what came of it in its report alone, and that it publishes one only when the generation names none",
+        "R18: icat compare --timeline states a row's difference timeline column by column, adding up to the row",
         "R18: icat compare refuses what names no comparison, saying what it takes",
         "R18: icat compare states each row's values, rates and change, the most changed first, its JSON the same",
         "R18: icat demo writes the demo saying it was generated, as icat session then says of each of its sessions",

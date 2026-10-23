@@ -263,6 +263,13 @@ public sealed class CompareCommandTests
         (_, text, _) = await Run("compare", second.Path, "--baseline", "0:10s", "--interval", "0:10s", "--json");
         Assert.Equal(JsonValueKind.Null, JsonDocument.Parse(text).RootElement.GetProperty("baselineSessionPath").ValueKind);
 
+        // Its difference timeline cuts each capture's interval on its own clock, the pair's columns judged across both.
+        (code, text, said) = await Run([.. compare, "--timeline", "1", "--columns", "2"]);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Baseline session +" + Regex.Escape(first.Path) + @"\r?$", text);
+        Assert.Matches(@"(?m)^  Row +1 of 1, client\.exe and server\.exe over TCP\r?$", text);
+        Assert.Matches(@"(?m)^  1 +\[0\.0+, 5\.0+\) s +10 · 2\.00/s +\[0\.0+, 5\.0+\) s +18 · 3\.60/s +up 1\.60/s \(\+80%\)\r?$", text);
+
         // Shared redacted, it says it compared two captures, each on its own clock, and names neither session.
         DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-captures-");
         try
@@ -334,6 +341,11 @@ public sealed class CompareCommandTests
             (_, string direct, _) = await Run("compare", first.Path, "--baseline", "0:10s", "--interval", "10s:30s");
             Assert.Equal(direct, Unsaved(text));
             Assert.Contains("icat compare --workspace <workspace> --saved <name> --json returns each row", text, Ordinal);
+            (code, text, said) = await Run("compare", "--workspace", workspace, "--saved", "Before the update", "--timeline", "1",
+                "--columns", "2");
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches(@"(?m)^  Saved as +'Before the update', comparison revision 1 of ", text);
+            Assert.Matches(@"(?m)^  Columns +2 columns of each interval, 5\.0+ s of the baseline and 10\.0+ s of the compared interval each\r?$", text);
             (_, text, _) = await Run("compare", "--workspace", workspace, "--saved", "Before the update", "--json");
             JsonElement root = JsonDocument.Parse(text).RootElement;
             JsonElement saved = root.GetProperty("saved");
@@ -455,6 +467,96 @@ public sealed class CompareCommandTests
         finally
         {
             folder.Delete(recursive: true);
+        }
+    }
+
+    [Fact(DisplayName = "R18: icat compare --timeline states a row's difference timeline column by column, adding up to the row")]
+    public async Task IcatCompareStatesARowsDifferenceTimeline()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(), coverage: Ledger());
+        session.Store.ReleaseSegmentReaders();
+        string[] compare = ["compare", session.Path, "--baseline", "0:10s", "--interval", "10s:30s"];
+
+        // The most changed row, 100's connections to 142.250.1.1: its connect at half a second, then from the tenth a send
+        // each two seconds, each answered.
+        (InterCatExitCode code, string text, string said) = await Run([.. compare, "--timeline", "1", "--columns", "2"]);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Row +1 of 4, PID 100 → 142\.250\.1\.1 over TCP at 443\r?$", text);
+        Assert.Matches(@"(?m)^  Whole intervals +1 · 0\.10/s → 20 · 1\.00/s, up 0\.90/s \(\+900%\)\r?$", text);
+        Assert.Matches(@"(?m)^  Columns +2 columns of each interval, 5\.0+ s of the baseline and 10\.0+ s of the compared interval each\r?$", text);
+        Assert.Matches(@"(?m)^  1 +\[0\.0+, 5\.0+\) s +1 · 0\.20/s +\[10\.0+, 20\.0+\) s +10 · 1\.00/s +up 0\.80/s \(\+400%\)\r?$", text);
+        Assert.Matches(@"(?m)^  2 +\[5\.0+, 10\.0+\) s +0 +\[20\.0+, 30\.0+\) s +10 · 1\.00/s +appeared\r?$", text);
+        string flowing = Regex.Replace(text, @"\s+", " ");
+        Assert.Contains(CompareCommand.TimelineNote, flowing, Ordinal);
+        Assert.DoesNotContain(ComparisonText.RatesNote, flowing, Ordinal);
+
+        // As JSON, the comparison with the row's columns, each with its two intervals, adding up to the row.
+        (_, text, _) = await Run([.. compare, "--timeline", "1", "--columns", "2", "--json"]);
+        JsonElement root = JsonDocument.Parse(text).RootElement;
+        JsonElement timeline = root.GetProperty("timeline");
+        JsonElement first = root.GetProperty("comparison").GetProperty("rows")[0];
+        Assert.Equal((1, first.GetProperty("key").GetString()), (timeline.GetProperty("rank").GetInt32(), timeline.GetProperty("key").GetString()));
+        JsonElement[] columns = [.. timeline.GetProperty("columns").EnumerateArray()];
+        Assert.Equal(["Increased", "Appeared"], columns.Select(column => column.GetProperty("change").GetString()));
+        Assert.Equal((0L, 50_000_000L, 100_000_000L, 200_000_000L), (columns[0].GetProperty("baselineInterval").GetProperty("startTicks").GetInt64(),
+            columns[0].GetProperty("baselineInterval").GetProperty("endTicks").GetInt64(),
+            columns[0].GetProperty("comparedInterval").GetProperty("startTicks").GetInt64(),
+            columns[0].GetProperty("comparedInterval").GetProperty("endTicks").GetInt64()));
+        Assert.Equal((first.GetProperty("baseline").GetProperty("records").GetInt64(), first.GetProperty("compared").GetProperty("records").GetInt64()),
+            (columns.Sum(column => column.GetProperty("baseline").GetProperty("records").GetInt64()),
+                columns.Sum(column => column.GetProperty("compared").GetProperty("records").GetInt64())));
+        Assert.Equal((0.8, 1.0), (columns[0].GetProperty("differencePerSecond").GetDouble(), columns[1].GetProperty("differencePerSecond").GetDouble()));
+        (_, text, _) = await Run([.. compare, "--json"]);
+        Assert.Equal(JsonValueKind.Null, JsonDocument.Parse(text).RootElement.GetProperty("timeline").ValueKind);
+
+        // Ten columns by default; written to a file with the comparison, every row with it.
+        (_, text, _) = await Run([.. compare, "--timeline", "2"]);
+        Assert.Matches(@"(?m)^  Columns +10 columns of each interval, 1\.0+ s of the baseline and 2\.0+ s of the compared interval each\r?$", text);
+        Assert.Matches(@"(?m)^  10 +\[9\.0+, 10\.0+\) s ", text);
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-timeline-");
+        try
+        {
+            string file = Path.Combine(folder.FullName, "timeline.json");
+            (code, text, said) = await Run([.. compare, "--timeline", "2", "--output", file]);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches(@"(?m)^  Timeline +of row 2, 10 columns of each interval, ", text);
+            JsonElement written = JsonDocument.Parse(File.ReadAllText(file)).RootElement;
+            Assert.Equal((2, 10, 4), (written.GetProperty("timeline").GetProperty("rank").GetInt32(),
+                written.GetProperty("timeline").GetProperty("columns").GetArrayLength(),
+                written.GetProperty("comparison").GetProperty("rows").GetArrayLength()));
+            Assert.Equal(written.GetProperty("comparison").GetProperty("rows")[1].GetProperty("key").GetString(),
+                written.GetProperty("timeline").GetProperty("key").GetString());
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+
+        // Refused: a rank the comparison has no row of, columns without a timeline, too many or too fine columns, and a
+        // timeline with --limit or in a redacted report.
+        (string[] Args, string Said)[] refused =
+        [
+            ([.. compare, "--timeline", "5"], "x --timeline 5 names no row: the comparison compares 4 rows."),
+            ([.. compare, "--timeline", "0"], "x --timeline names a row by its rank, 1 for the most changed; '0' is not one."),
+            ([.. compare, "--timeline", "first"], "x --timeline names a row by its rank, 1 for the most changed; 'first' is not one."),
+            ([.. compare, "--columns", "2"], "x --columns cuts a row's difference timeline, which --timeline <rank> asks for."),
+            ([.. compare, "--timeline", "1", "--columns", "101"], "x --columns cuts each interval into 1 to 100 columns; '101' is not one."),
+            ([.. compare, "--timeline", "1", "--columns", "0"], "x --columns cuts each interval into 1 to 100 columns; '0' is not one."),
+            (["compare", session.Path, "--baseline", "0:3", "--interval", "10s:30s", "--timeline", "1", "--columns", "4"],
+                "x " + SessionComparison.ColumnsPastTicks),
+            ([.. compare, "--timeline", "1", "--limit", "3"], "x --limit lists rows and --timeline one row's columns; pass one of them."),
+            ([.. compare, "--timeline", "1", "--output", Path.Combine(Path.GetTempPath(), "never.json"), "--share-redacted"],
+                "x A redacted report holds each row over the whole intervals, never a row's timeline; pass one of --timeline and "
+                    + "--share-redacted."),
+        ];
+        foreach ((string[] args, string expected) in refused)
+        {
+            (code, string output, string error) = await Run(args);
+            string invocation = "icat " + string.Join(' ', args);
+            Assert.True(code == InterCatExitCode.InvalidInvocation, $"{invocation} exited {code}.");
+            Assert.True(output.Length == 0, $"{invocation} wrote to stdout:\n{output}");
+            Assert.StartsWith(expected, error, Ordinal);
         }
     }
 

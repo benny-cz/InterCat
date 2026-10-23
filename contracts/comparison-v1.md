@@ -5,15 +5,16 @@ Status: **implemented** for two intervals of one session's generation, on the co
 §8b); its rows are of processes or, since revision 755, of executables (§2a); and since revision 756 two captures
 compare, by executable (§2b) - on the command line, and since revision 757 in the window too. Since revision 758 an
 investigation saves a comparison under a name and the command line runs it, and since revision 759 the window saves
-and reopens one (§8c). Difference timelines and graph overlays are not defined at this version (§9).
+and reopens one (§8c). Since revision 760 the command line states a row's difference timeline (§8d). Graph overlays
+are not defined at this version (§9).
 
 This contract fixes what plan §15's M12 asks of a comparison - normalized rates beside absolute counts, ranked changed
 relations, unavailable measurement told apart from disappeared activity, and side-by-side values with an explicit reason
 wherever no change can be stated - for two intervals of one generation, compared row by row, and two captures. It owns
 no bytes: every value is read from the generation's published segments and indexes through the queries the window and
 the command line already answer (`metrics-v1`, `relations-v1`, `coverage-v2`), and a comparison changes none of them.
-ADR-058 records the decisions, ADR-059 how rows are grouped by executable, ADR-060 how two captures compare and ADR-061
-how a comparison is saved.
+ADR-058 records the decisions, ADR-059 how rows are grouped by executable, ADR-060 how two captures compare, ADR-061
+how a comparison is saved and ADR-062 how a difference timeline is cut.
 
 ## 1. A request
 
@@ -154,8 +155,10 @@ icat compare <session-directory> --baseline <start:end> --interval <start:end>
     [--rank-by records|bytes-sent] [--group-by process|executable] [--limit <n>] [--json]
     [--baseline-session <session-directory>]
     [--output <path> [--share-redacted] [--format json|csv] [--overwrite]]
+    [--timeline <rank> [--columns <1-100>]]
 icat compare --workspace <workspace> --saved <name> [--limit <n>] [--json]
     [--output <path> [--share-redacted] [--format json|csv] [--overwrite]]
+    [--timeline <rank> [--columns <1-100>]]
 ```
 
 Each bound is a count of ticks or a time with its unit, as every `--interval` takes it. Its text states both intervals
@@ -171,6 +174,7 @@ its change, or `not comparable [n]` naming its reason once beneath the table.
 | `contract`, `sessionPath` | `comparison-v1`, and the session's folder. |
 | `baselineSessionPath` | Of two captures, the baseline's session folder; null otherwise. |
 | `saved` | Of a saved comparison run (§8c), `{ workspace, name, revision }`: the investigation's file, the comparison's name and the revision run; null otherwise. Since revision 758. |
+| `timeline` | With `--timeline <rank>`, the ranked row's difference timeline (§8d): `{ rank, key, columns }`, each column `{ baselineInterval, comparedInterval, baseline, compared, change, fromLowerBound, differencePerSecond, reason }`, its measures as a row's; null otherwise. Since revision 760. |
 | `comparison.sessionId`, `generation` | The generation every value was read from: of two captures, the compared interval's. |
 | `baselineSessionId`, `baselineGeneration`, `sameHost` | Of two captures, the baseline's session and generation, and whether the two name one host identity, null where either names none; all null of one session. |
 | `metric`, `policy` | §3, §1. |
@@ -291,11 +295,30 @@ InterCat's window, and the Compare window on that interval, the saved baseline o
 what it was saved with - another capture's read from its folder where the investigation finds it, which must hold its
 capture - or says which session to relink. It removes one too, keeping its revisions.
 
+## 8d. A difference timeline
+
+A row's difference timeline (plan M12's baseline and difference timelines, ADR-062) cuts each interval into the same
+number of equal columns, end to end - the k-th column of each the same share of its interval, in its own session's
+ticks - and compares the row's k-th baseline column with its k-th compared column as two intervals are compared (§3 to
+§5): by the same metric, its rates over each column, a change stated only where both columns covered the row's
+mechanism and the capture collected it alike in both, and elsewhere both values with the reason, which speaks of each
+column's share of its interval. A quiet column is compared too, so a column the capture did not collect never reads as
+nothing happening. It is read with the comparison, at its generation - of two captures, each at its own - so the row's
+columns add up to its values over the whole intervals.
+
+`icat compare ... --timeline <rank> [--columns <n>]` states the ranked row's timeline in place of the table: the row,
+its values over the whole intervals, how the intervals are cut - 10 columns unless `--columns` says, 1 to 100, each at
+least a tick long - and a line per column with its two intervals, values and change, each reason once beneath them;
+`--json` and `--output` write the comparison with it (§8). A rank past the rows compared is refused, as are
+`--columns` without `--timeline`, a timeline with `--limit`, and one in a redacted report, which holds rows over the
+whole intervals only.
+
 ## 9. Not defined at this version
 
 - **Another capture's interval in the window** other than its whole recording: the command line's `--baseline` takes
   any.
 - **A bounded change under a gap.** The losses a ledger counts bound the records a mechanism lost, not a row's (§5); a
   bound per row would need what a lost record could have moved.
-- Difference timelines, graph overlays, recurring patterns, outliers and causal navigation (plan M12).
+- **A difference timeline in the window, or in a redacted report.** The command line states one (§8d).
+- Graph overlays, recurring patterns, outliers and causal navigation (plan M12).
 - Wall-clock bounds, which `icat timeline --wall-clock` states; a comparison takes session ticks.
