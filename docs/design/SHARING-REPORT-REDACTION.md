@@ -16,7 +16,8 @@ session rather than read one view of it.
 | Report context | New random report ID, rung, half-open session-relative interval, export time, completeness, count of applied filters, and the ranking a ranked export was ordered by: one of `records`, `bytes-sent`, `bytes-received`, `bytes-sent-and-received`, `rpc-calls-made`, `rpc-calls-served`, `rpc-errors`, `rpc-call-time-median`, `rpc-serve-time-median` or `active-peers` (plan revisions 189-200); each mechanism's coverage over the report's time scope, its state and the fact behind it, with the same in the inspector's words (`coverageSummary`, CSV `scope_coverage`; plan revision 372); and how many of InterCat's own processes a ranked view set aside, with their records over the whole session, two counts that name no process (`setAside`, CSV `set_aside_processes` and `set_aside_records`; plan revision 417) | Original session/capture ID, generation, breadcrumb, scope prose, filter names/values/reasons, source caveats, and the coverage ledger's provider names and IDs |
 | Ranked rows | Count, known byte total, mechanism, coverage, accounting side, descent level; under a byte ranking, the ranked byte sum and how many records measured it or recorded no size (plan revision 189); under an RPC call ranking, the calls completed, the stops paired with no start and the failed calls (plan revision 190) | Key/label/detail replaced by one random `entity-*` token keyed to row identity within this report |
 | Evidence records | Relative presentation ticks, mechanism, layer, kind, direction, numeric byte/status values with domains/availability, quality and owner-binding classifications | Raw record ID/ordinal, journal/segment coordinate, native clock, provider/schema IDs, header/owner PID, machine/user/executable/resource names, endpoint address and port, original files |
-| Relationships | Random `record-*`, `process-*`, `executable-*`, `endpoint-*`, `resource-*`, `identifier-*`, `activity-*` tokens | Original identifiers and any mapping back to them; only policy-admitted process instances receive owner tokens |
+| Comparisons (plan revision 754, `comparison-v1` §8b) | What was compared by, under which evidence policy, byte domain and accounting; each interval's half-open relative ticks, its coverage and the sources it is missing; that no alignment applies; the rows compared and listed, and the quiet ones; and each row's rank, kind, mechanism and which end connected, its records, value, measured and unmeasured counts and rate in each interval with its mechanism's coverage there, its change, whether a lower bound decided it, its difference of rates, and its reason | Row key, process names, PIDs, executable paths, addresses, ports, and the session's identity, generation and folder; a row's ends are random `process-*`, `executable-*` and `host-*` tokens |
+| Relationships | Random `record-*`, `process-*`, `executable-*`, `endpoint-*`, `resource-*`, `identifier-*`, `activity-*` and `host-*` tokens | Original identifiers and any mapping back to them; only policy-admitted process instances receive owner tokens |
 
 Tokens use 96 cryptographically random bits, collision-checked within a report, and are generated afresh for every
 export. Equal values of the same kind map to one token *within* that report; mirrored endpoints and related
@@ -32,10 +33,20 @@ quotes the ledger's provider names or identifiers; the redacted session package 
 with a secret and pins each reason's words, so a new or reworded reason fails it and is reviewed against this policy
 before a report carries it. Coverage nothing judged is an empty list and a null summary, never a claim.
 
+A comparison row's reason is one of `comparison-v1` §5's sentences: bytes asked of RPC calls; an interval's coverage -
+a mechanism's name, its state's words and one of the coverage reasons above; the capture's sources changing between
+two numbered epochs; or sends that recorded no size, counted. Its only variable parts are mechanism names, those
+reasons, epoch numbers and counts; the comparison's tests pin every sentence's words, so a new or reworded one fails
+them and is weighed against this policy before a report carries it. An executable's token is keyed by the path its
+process group is keyed by, so two processes of one executable share it and an executable of the same name at another
+path does not; a process whose executable was not witnessed has none.
+
 The renderer uses dedicated allowlisted DTOs and never serializes an `ObservationRowV1`, `SessionEvidenceRecord`,
-`LadderRow` or `ExportContext` directly. Any newly added source field is omitted until a deliberate policy revision
-and leak test admit it. The CLI flag is `icat export --share-redacted`; the Desktop uses a separate button and
-confirmation before the save picker. Both save complete UTF-8 files through adjacent staging.
+`LadderRow`, `ExportContext` or `IntervalComparison` directly. Any newly added source field is omitted until a
+deliberate policy revision and leak test admit it. The CLI flags are `icat export --share-redacted` and, for a
+comparison, `icat compare --output <path> --share-redacted`; the Desktop uses a separate button - the main window's,
+and the Compare window's Share redacted… - and the same confirmation before the save picker. All of them save complete
+UTF-8 files through adjacent staging.
 
 ## Limits and reviewer checklist
 

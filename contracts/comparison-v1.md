@@ -1,8 +1,9 @@
 # InterCat comparison v1
 
 Status: **implemented** for two intervals of one session's generation, on the command line (`icat compare`, revision
-752) and in the window (Compare with…, revision 753, §8a). Comparing two captures, difference timelines, graph
-overlays and saved comparison specifications are not defined at this version (§9).
+752), in the window (Compare with…, revision 753, §8a), and as a redacted report to share from either (revision 754,
+§8b). Comparing two captures, difference timelines, graph overlays and saved comparison specifications are not defined
+at this version (§9).
 
 This contract fixes what plan §15's M12 asks of a comparison - normalized rates beside absolute counts, ranked changed
 relations, unavailable measurement told apart from disappeared activity, and side-by-side values with an explicit reason
@@ -106,6 +107,7 @@ twice lists its rows alike.
 ```
 icat compare <session-directory> --baseline <start:end> --interval <start:end>
     [--rank-by records|bytes-sent] [--limit <n>] [--json]
+    [--output <path> [--share-redacted] [--format json|csv] [--overwrite]]
 ```
 
 Each bound is a count of ticks or a time with its unit, as every `--interval` takes it. Its text states both intervals
@@ -134,6 +136,12 @@ perSecond, coverage }`; `change`; `fromLowerBound`; `differencePerSecond`, null 
 null where a change is stated. A rate is for presentation, rounded half to even to three decimal places; the integers
 it comes from are the row's (`metrics-v1` §7).
 
+`--output <path>` writes the `--json` document to a file instead, complete before it replaces anything, and refuses a
+file that is there unless `--overwrite` is given; a file holds every row unless `--limit` is given, being read whole
+rather than scrolled. With `--share-redacted` it writes §8b's report instead, as JSON, or as CSV with `--format csv`
+or a path ending `.csv`; the comparison itself is written as JSON only, and `--json` and `--output` are not given
+together.
+
 ## 8a. The window
 
 Compare with… (Ctrl+B), beside the time scope where it is an interval - a brush, or the visible range while the
@@ -150,6 +158,42 @@ the rows need. Enter, a double click or Show in the window closes it and opens w
 relationship as a double click on its edge opens it, or the process whose connections to another host it compares,
 whose inspector lists the hosts it reached. Esc closes it, choosing nothing.
 
+Share redacted… saves the comparison shown as §8b's report, every row of it rather than the 200 listed: it says first
+what such a report keeps and leaves out, as the main window's redacted report does, then asks for the file - JSON, or
+CSV by its name - and says beside its buttons where the report went, or why it could not be written, the comparison's
+own status still saying what it found.
+
+## 8b. A redacted report
+
+A comparison shares as a metadata-only report of the sharing report's contract (`intercat-share-report-v1`, kind
+`comparison`) under its redaction policy (`docs/design/SHARING-REPORT-REDACTION.md`): pseudonymized, not anonymous. It
+records what plan M12 asks a shared comparison to record - its scope, byte domain, accounting, missing sources and
+alignment revision:
+
+| Field | Meaning |
+|---|---|
+| `comparison.comparedBy`, `evidencePolicy` | §3, §1. |
+| `byteDomain`, `accounting` | `TransportObserved` and `SendSide` under `BytesSent`; null under `Records`. |
+| `alignmentRevision`, `alignment` | Null, and why: both intervals are of one session, read on its own clock, so no alignment of captures applies. |
+| `baseline`, `compared` | Each interval's relative `startTicks` and `endTicks`; its `coverage`, every mechanism's state and reason, and `coverageSummary`, the same in words; and its `missingSources`, each mechanism it did not collect in full, or cannot show it did: not collected, a partial gap, or unknown. |
+| `rowsCompared`, `rowsListed`, `complete`, `quiet` | The rows compared and those the report lists, whether it lists them all, and the quiet ones (§2). |
+| `ratesMeaning`, `intervalUnit`, `exportedUtc` | What a rate is over (§4), the ticks' unit, and when the report was written. |
+
+Each row: its `rank`, `kind` and `mechanism`; its ends as random tokens, consistent within the report only -
+`sourceToken` and `targetToken` for processes, a reach's target null; `sourceExecutableToken` and
+`targetExecutableToken` for their executables, keyed by the path a process's group is keyed by, so two processes of
+one executable share one and an executable of the same name elsewhere has another, and none where no executable was
+witnessed; and `hostToken` for another host's address; `connected`; `baseline` and `compared`, each `{ records, value,
+measured, unmeasured, perSecond, coverage }`; `change`; `fromLowerBound`; `differencePerSecond`; and `reason`, one of
+§5's sentences, whose only variable parts are mechanism names, a coverage reason of `coverage-v2` §4, epoch numbers
+and counts. No process name, PID, executable path, address, port, row key, session identity, generation or session
+folder is written.
+
+CSV writes the same a line a row: on every line the policy and its disclosures, what was compared and both intervals,
+then the row, then each interval's missing sources (`Udp:NotCollected;Http:UnknownCoverage`) and coverage in words,
+and what a rate is over; a comparison with no row writes one line without one (`row_present=false`), so all of that is
+still said.
+
 ## 9. Not defined at this version
 
 - **Two captures.** Entity matching across sessions needs a qualified mapping (plan M12): an executable's name alone is
@@ -157,6 +201,6 @@ whose inspector lists the hosts it reached. Esc closes it, choosing nothing.
   compared as two intervals' epochs are here (§5).
 - **A bounded change under a gap.** The losses a ledger counts bound the records a mechanism lost, not a row's (§5); a
   bound per row would need what a lost record could have moved.
-- Difference timelines, graph overlays, saved comparison specifications, recurring patterns, outliers, causal
-  navigation and redacted comparison reports (plan M12).
+- Difference timelines, graph overlays, saved comparison specifications, recurring patterns, outliers and causal
+  navigation (plan M12).
 - Wall-clock bounds, which `icat timeline --wall-clock` states; a comparison takes session ticks.

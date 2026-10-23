@@ -25,7 +25,9 @@ public static class RedactedShareExport
         + "free-text filters, breadcrumbs and caveats.";
     public const string Retained = "Rung, relative time, observed counts and sizes, mechanism, direction, status, "
         + "quality, and what the capture covered over the scope and for each row; how many of InterCat's own processes a "
-        + "ranking set aside, and their records; randomly pseudonymized entity, owner, endpoint and activity relationships.";
+        + "ranking set aside, and their records; a comparison's two intervals, each row's counts and rates in each, its "
+        + "change, or why none is stated, and the sources each interval is missing; randomly pseudonymized entity, owner, "
+        + "endpoint, process, executable, host and activity relationships.";
 
     private static readonly JsonSerializerOptions Json = CreateJson();
 
@@ -69,6 +71,48 @@ public static class RedactedShareExport
                 Context = SafeContext(context), Records = safe,
             }, Json),
             ExportFormat.Csv => EvidenceCsv(reportId, context, safe),
+            _ => throw new ArgumentOutOfRangeException(nameof(format)),
+        };
+    }
+
+    /// <summary>
+    /// What a shared comparison says of the clock its two intervals are read on: one session's own, so no alignment of
+    /// captures applies and no alignment revision is named (plan M12).
+    /// </summary>
+    public const string NoAlignment = "None: both intervals are of one session and read on its own clock, so no alignment "
+        + "between captures applies.";
+
+    /// <summary>
+    /// A comparison of two intervals of one session as a report to share (`contracts/comparison-v1.md` §8b, plan M12): what
+    /// it compared by, under which evidence policy, byte domain and accounting; each interval's relative time, what the
+    /// capture covered over it and the sources it is missing there; that no alignment applies; and its rows, the most
+    /// changed first, at most <paramref name="limit"/>, each one's ends random tokens, with its measure over each interval
+    /// and its change, or why none is stated. No name, PID, address, port, key, session identity or generation is written.
+    /// </summary>
+    public static string Comparison(ExportFormat format, IntervalComparison comparison, DateTimeOffset exportedUtc,
+        int limit = int.MaxValue)
+    {
+        ArgumentNullException.ThrowIfNull(comparison);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        var tokens = new Tokens();
+        Guid reportId = Guid.NewGuid();
+        SharedComparisonRow[] rows = [.. comparison.Relationships.Take(limit)
+            .Select((row, index) => Safe(row, index + 1, comparison, tokens))];
+        bool bytes = comparison.Metric == ComparisonMetric.BytesSent;
+        var scope = new SharedComparison(
+            exportedUtc, "100-nanosecond session-relative presentation ticks", comparison.Metric, comparison.Policy,
+            bytes ? ByteDomain.TransportObserved : null, bytes ? AccountingSide.SendSide : null, null, NoAlignment,
+            ComparisonText.RatesNote, Shared(comparison.Baseline, comparison.BaselineCoverage),
+            Shared(comparison.Compared, comparison.ComparedCoverage), comparison.Relationships.Count, rows.Length,
+            rows.Length == comparison.Relationships.Count, comparison.Quiet);
+        return format switch
+        {
+            ExportFormat.Json => JsonSerializer.Serialize(new
+            {
+                Contract, Kind = "comparison", ReportId = reportId, Redaction = PolicyDescription(), Comparison = scope,
+                Rows = rows,
+            }, Json),
+            ExportFormat.Csv => ComparisonCsv(reportId, scope, rows),
             _ => throw new ArgumentOutOfRangeException(nameof(format)),
         };
     }
@@ -153,6 +197,96 @@ public static class RedactedShareExport
     /// </summary>
     private sealed record SharedCoverage(Mechanism Mechanism, CoverageState State, string Reason);
 
+    /// <summary>
+    /// One interval of a shared comparison: its relative ticks; what the capture covered over it, each mechanism's state
+    /// and the fact behind it, and the same in the inspector's words; and the sources it is missing - each mechanism it
+    /// did not collect in full, or cannot show it did.
+    /// </summary>
+    private static SharedInterval Shared(TimeRange interval, IReadOnlyList<MechanismCoverage> coverage)
+    {
+        SharedCoverage[] each = [.. coverage.Select(entry => new SharedCoverage(entry.Mechanism, entry.State, entry.Reason))];
+        return new(interval.StartTicks, interval.EndTicks, each,
+            CoverageText.Describe(coverage) is { Length: > 0 } said ? said : null,
+            [.. each.Where(entry => entry.State is CoverageState.PartialGap or CoverageState.NotCollected
+                or CoverageState.UnknownCoverage)]);
+    }
+
+    /// <summary>
+    /// One row of a comparison with its ends as tokens: a process by its instance, its executable by the path its group is
+    /// keyed by - none where no executable was witnessed - and another host by its address.
+    /// </summary>
+    private static SharedComparisonRow Safe(ComparedRelationship row, int rank, IntervalComparison comparison, Tokens tokens)
+    {
+        ProcessNode source = comparison.Processes[row.Relationship?.SourceId ?? row.Host!.Link.Process];
+        ProcessNode? target = row.Relationship is { } edge ? comparison.Processes[edge.TargetId] : null;
+        string? Executable(ProcessNode? node) => node is null || node.GroupKey == ProcessGroup.UnwitnessedExecutableKey
+            ? null
+            : tokens.For("executable", node.GroupKey);
+        SharedMeasure Measured(ComparedMeasure measure, TimeRange interval) => new(measure.Records, measure.Value,
+            measure.Measured, measure.Unmeasured, ComparisonText.Rounded(measure.PerSecond(interval)),
+            new(measure.Coverage.Mechanism, measure.Coverage.State, measure.Coverage.Reason));
+        return new(
+            rank, row.Host is null ? "Processes" : "OtherHost", row.Mechanism,
+            tokens.For("process", source.Id.ToString()), Executable(source),
+            target is null ? null : tokens.For("process", target.Id.ToString()), Executable(target),
+            row.Host is { } host ? tokens.For("host", host.Address.Address) : null,
+            ComparisonText.Connected(row),
+            Measured(row.Baseline, comparison.Baseline), Measured(row.Compared, comparison.Compared),
+            row.Change, row.FromLowerBound, ComparisonText.DifferencePerSecond(row, comparison), row.Reason);
+    }
+
+    /// <summary>
+    /// What a shared comparison compared (admitted in revision 754): enumerations, fixed sentences, each interval's
+    /// relative ticks and coverage, and counts of its rows - nothing that names the session, its generation, a process or a
+    /// host. No alignment revision is named: both intervals are of one clock.
+    /// </summary>
+    private sealed record SharedComparison(
+        DateTimeOffset ExportedUtc,
+        string IntervalUnit,
+        ComparisonMetric ComparedBy,
+        EvidencePolicy EvidencePolicy,
+        ByteDomain? ByteDomain,
+        AccountingSide? Accounting,
+        string? AlignmentRevision,
+        string Alignment,
+        string RatesMeaning,
+        SharedInterval Baseline,
+        SharedInterval Compared,
+        int RowsCompared,
+        int RowsListed,
+        bool Complete,
+        int Quiet);
+
+    private sealed record SharedInterval(long StartTicks, long EndTicks, SharedCoverage[] Coverage, string? CoverageSummary,
+        SharedCoverage[] MissingSources);
+
+    /// <summary>
+    /// One row of a shared comparison (admitted in revision 754): its rank, kind and mechanism; its ends as random tokens -
+    /// two processes and their executables, or a process, its executable and another host; which end connected or called;
+    /// its measure over each interval; and its change, or why none is stated, one of `comparison-v1` §5's fixed sentences,
+    /// whose only variable parts are mechanism names, a coverage reason of `coverage-v2` §4, epoch numbers and counts.
+    /// </summary>
+    private sealed record SharedComparisonRow(
+        int Rank,
+        string Kind,
+        Mechanism Mechanism,
+        string SourceToken,
+        string? SourceExecutableToken,
+        string? TargetToken,
+        string? TargetExecutableToken,
+        string? HostToken,
+        string Connected,
+        SharedMeasure Baseline,
+        SharedMeasure Compared,
+        ComparisonChange Change,
+        bool FromLowerBound,
+        double? DifferencePerSecond,
+        string? Reason);
+
+    /// <summary>A row's measure over one interval: counts, its rate rounded to three places, and its mechanism's coverage there.</summary>
+    private sealed record SharedMeasure(long Records, long? Value, long Measured, long Unmeasured, double? PerSecond,
+        SharedCoverage Coverage);
+
     private sealed record SharedObservation(
         string RecordToken, string? OwnerToken, string? ExecutableToken,
         string? SourceEndpointToken, string? DestinationEndpointToken,
@@ -236,6 +370,63 @@ public static class RedactedShareExport
         return csv.ToString();
     }
 
+    /// <summary>
+    /// A shared comparison as CSV: on every line the policy and its disclosures, what was compared and each interval,
+    /// then a row's cells, then each interval's missing sources and coverage in words, and what its rates mean; a
+    /// comparison with no row writes one line without one, so all of that is still said.
+    /// </summary>
+    private static string ComparisonCsv(Guid reportId, SharedComparison scope, IReadOnlyList<SharedComparisonRow> rows)
+    {
+        var csv = new StringBuilder();
+        Line(csv, ComparisonHeader);
+        string[] context =
+        [
+            Contract, reportId.ToString("N"), Policy, "comparison",
+            scope.ExportedUtc.ToString("O", CultureInfo.InvariantCulture), "false", "false", "false",
+            "Random tokens are consistent within this report only; no source-to-token mapping is included.",
+            Omitted, Retained, Warning, scope.IntervalUnit, scope.ComparedBy.ToString(), scope.EvidencePolicy.ToString(),
+            scope.ByteDomain?.ToString() ?? string.Empty, scope.Accounting?.ToString() ?? string.Empty,
+            Cell(scope.AlignmentRevision), scope.Alignment, Number(scope.Baseline.StartTicks), Number(scope.Baseline.EndTicks),
+            Number(scope.Compared.StartTicks), Number(scope.Compared.EndTicks), Number(scope.RowsCompared),
+            Number(scope.RowsListed), scope.Complete ? "true" : "false", Number(scope.Quiet),
+        ];
+        string[] said =
+        [
+            Missing(scope.Baseline), Missing(scope.Compared), Cell(scope.Baseline.CoverageSummary),
+            Cell(scope.Compared.CoverageSummary), scope.RatesMeaning,
+        ];
+        if (rows.Count == 0)
+            Line(csv, [.. context, "false", .. Enumerable.Repeat(string.Empty, 25), .. said]);
+        foreach (SharedComparisonRow row in rows)
+            Line(csv, [.. context, "true", Number(row.Rank), row.Kind, row.Mechanism.ToString(), row.SourceToken,
+                Cell(row.SourceExecutableToken), Cell(row.TargetToken), Cell(row.TargetExecutableToken), Cell(row.HostToken),
+                row.Connected, .. Measure(row.Baseline), .. Measure(row.Compared), row.Change.ToString(),
+                row.FromLowerBound ? "true" : "false", Number(row.DifferencePerSecond), Cell(row.Reason), .. said]);
+        return csv.ToString();
+
+        static string[] Measure(SharedMeasure measure) =>
+        [
+            Number(measure.Records), Number(measure.Value), Number(measure.Measured), Number(measure.Unmeasured),
+            Number(measure.PerSecond), measure.Coverage.State.ToString(),
+        ];
+
+        // Each source an interval is missing, as its mechanism and state: "Udp:NotCollected;Http:UnknownCoverage".
+        static string Missing(SharedInterval interval) =>
+            string.Join(';', interval.MissingSources.Select(entry => $"{entry.Mechanism}:{entry.State}"));
+    }
+
+    private static readonly string[] ComparisonHeader =
+        ["contract", "report_id", "policy", "kind", "exported_utc", "original_sources_included", "raw_locators_included",
+            "content_bytes_included", "token_scope", "omitted", "retained", "warning", "interval_unit", "compared_by",
+            "evidence_policy", "byte_domain", "accounting", "alignment_revision", "alignment", "baseline_start_ticks",
+            "baseline_end_ticks", "compared_start_ticks", "compared_end_ticks", "rows_compared", "rows_listed", "complete",
+            "quiet", "row_present", "rank", "row_kind", "mechanism", "source_token", "source_executable_token",
+            "target_token", "target_executable_token", "host_token", "connected", "baseline_records", "baseline_value",
+            "baseline_measured", "baseline_unmeasured", "baseline_per_second", "baseline_coverage_state", "compared_records",
+            "compared_value", "compared_measured", "compared_unmeasured", "compared_per_second", "compared_coverage_state",
+            "change", "from_lower_bound", "difference_per_second", "reason", "baseline_missing_sources",
+            "compared_missing_sources", "baseline_coverage", "compared_coverage", "rates_meaning"];
+
     private static readonly string[] ContextHeader =
         ["contract", "report_id", "policy", "kind", "rung", "interval_start_ticks", "interval_end_ticks",
             "complete", "filter_count", "exported_utc", "original_sources_included", "raw_locators_included",
@@ -257,9 +448,9 @@ public static class RedactedShareExport
     private static string Number<T>(T value) where T : struct, IFormattable =>
         value.ToString(null, CultureInfo.InvariantCulture);
 
-    private static void Line(StringBuilder csv, IReadOnlyList<string> cells)
+    private static void Line(StringBuilder csv, string[] cells)
     {
-        for (int index = 0; index < cells.Count; index++)
+        for (int index = 0; index < cells.Length; index++)
         {
             if (index > 0) csv.Append(',');
             string cell = cells[index];

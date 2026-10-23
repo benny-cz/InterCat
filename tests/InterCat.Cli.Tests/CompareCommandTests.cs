@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using InterCat.Analysis.Tests;
@@ -149,12 +150,117 @@ public sealed class CompareCommandTests
         Assert.DoesNotContain("An arrow points", text, Ordinal);
     }
 
+    [Fact(DisplayName = "I22: icat compare --output writes the comparison whole, or with --share-redacted a report that names no process")]
+    public async Task IcatCompareWritesTheComparisonOrARedactedReport()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(), coverage: Ledger());
+        session.Store.ReleaseSegmentReaders();
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-output-");
+        try
+        {
+            string[] compare = ["compare", session.Path, "--baseline", "0:10s", "--interval", "10s:30s"];
+
+            // A report to share: every row, each end a token, with what the capture covered; the processes' PIDs, the
+            // hosts' addresses and the session's folder stay behind.
+            string report = Path.Combine(folder.FullName, "share.json");
+            (InterCatExitCode code, string text, string said) = await Run([.. compare, "--output", report, "--share-redacted"]);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches(@"(?m)^  Written to +" + Regex.Escape(report) + @"\r?$", text);
+            Assert.Matches(@"(?m)^  Contract +intercat-share-report-v1, as JSON\r?$", text);
+            Assert.Matches(@"(?m)^  Rows +4, every one compared\r?$", text);
+            Assert.Contains("no name, PID, address or port is written", Regex.Replace(text, @"\s+", " "), Ordinal);
+            Assert.Contains("Coverage in the baseline: covered for TCP", text, Ordinal);
+            string written = File.ReadAllText(report);
+            foreach (string kept in new[] { "PID ", "142.250.1.1", "10.0.0.5", "127.0.0.1", "192.168.1.10", session.Path })
+                Assert.DoesNotContain(kept, written, Ordinal);
+            using (JsonDocument json = JsonDocument.Parse(written))
+            {
+                Assert.Equal(("comparison", 4, true), (json.RootElement.GetProperty("kind").GetString(),
+                    json.RootElement.GetProperty("rows").GetArrayLength(),
+                    json.RootElement.GetProperty("comparison").GetProperty("complete").GetBoolean()));
+                Assert.Equal(["OtherHost", "Processes", "OtherHost", "Processes"],
+                    json.RootElement.GetProperty("rows").EnumerateArray().Select(row => row.GetProperty("kind").GetString()));
+            }
+
+            // A file there is replaced only when asked, and then with as many rows as --limit asks.
+            (code, text, said) = await Run([.. compare, "--output", report, "--share-redacted"]);
+            Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, text));
+            Assert.StartsWith($"x {report} already exists. Pass --overwrite to replace it.", said, Ordinal);
+            Assert.Equal(written, File.ReadAllText(report));
+            (code, text, _) = await Run([.. compare, "--output", report, "--share-redacted", "--overwrite", "--limit", "1"]);
+            Assert.Equal(InterCatExitCode.Success, code);
+            Assert.Matches(@"(?m)^  Rows +1 of 4 compared, the most changed; --limit 4 writes every one\r?$", text);
+            using (JsonDocument json = JsonDocument.Parse(File.ReadAllText(report)))
+            {
+                Assert.Equal((1, false), (json.RootElement.GetProperty("rows").GetArrayLength(),
+                    json.RootElement.GetProperty("comparison").GetProperty("complete").GetBoolean()));
+            }
+
+            // As CSV by its name, a line a row.
+            string csv = Path.Combine(folder.FullName, "share.csv");
+            (code, text, _) = await Run([.. compare, "--output", csv, "--share-redacted"]);
+            Assert.Equal(InterCatExitCode.Success, code);
+            Assert.Matches(@"(?m)^  Contract +intercat-share-report-v1, as CSV\r?$", text);
+            string[] lines = File.ReadAllText(csv).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+            Assert.Equal(5, lines.Length);
+            Assert.StartsWith("contract,report_id,policy,kind,", lines[0], Ordinal);
+
+            // Unredacted, the file is the --json document, every row unless --limit says otherwise.
+            string full = Path.Combine(folder.FullName, "full.json");
+            (code, text, _) = await Run([.. compare, "--output", full]);
+            Assert.Equal(InterCatExitCode.Success, code);
+            Assert.Matches(@"(?m)^  Contract +comparison-v1, as JSON\r?$", text);
+            Assert.DoesNotContain("pseudonymized", text, Ordinal);
+            (_, string printed, _) = await Run([.. compare, "--json"]);
+            Assert.Equal(printed.TrimEnd(), File.ReadAllText(full));
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Fact(DisplayName = "R18: a file icat compare writes holds every row unless --limit is given, where the screen lists fifty")]
+    public async Task AFileHoldsEveryRowUnlessLimited()
+    {
+        // Fifty-one processes each reached another host once, in the compared interval alone.
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Enumerable.Range(0, 51).Select(index => Timed(Transfer((15 * Second) + index,
+            ObservationKind.Send, AccountingSide.SendSide, 10, 1_000 + index)
+            .Between(string.Create(CultureInfo.InvariantCulture, $"192.168.1.10:{20_000 + index}"), "142.250.1.1:443")))],
+            coverage: Ledger());
+        session.Store.ReleaseSegmentReaders();
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-every-");
+        try
+        {
+            string[] compare = ["compare", session.Path, "--baseline", "0:10s", "--interval", "10s:30s"];
+            (_, string printed, _) = await Run([.. compare, "--json"]);
+            Assert.Equal(50, JsonDocument.Parse(printed).RootElement.GetProperty("comparison").GetProperty("rows").GetArrayLength());
+            string report = Path.Combine(folder.FullName, "share.json");
+            (InterCatExitCode code, string text, string said) = await Run([.. compare, "--output", report, "--share-redacted"]);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches(@"(?m)^  Rows +51, every one compared\r?$", text);
+            Assert.Equal(51, JsonDocument.Parse(File.ReadAllText(report)).RootElement.GetProperty("rows").GetArrayLength());
+            string full = Path.Combine(folder.FullName, "full.json");
+            (code, _, _) = await Run([.. compare, "--output", full]);
+            Assert.Equal(InterCatExitCode.Success, code);
+            Assert.Equal(51, JsonDocument.Parse(File.ReadAllText(full)).RootElement.GetProperty("comparison").GetProperty("rows")
+                .GetArrayLength());
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
     [Fact(DisplayName = "R18: icat compare refuses what names no comparison, saying what it takes")]
     public async Task IcatCompareRefusesWhatNamesNoComparison()
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows(), coverage: Ledger());
         session.Store.ReleaseSegmentReaders();
+        string never = Path.Combine(Path.GetTempPath(), $"intercat-compare-{Guid.NewGuid():N}.json");
         (string[] Args, string Said)[] refused =
         [
             (["compare", "--baseline", "0:1", "--interval", "1:2"], "x A session directory is required: icat compare <directory>."),
@@ -167,6 +273,18 @@ public sealed class CompareCommandTests
             (["compare", session.Path, "--baseline", "0:1", "--interval", "1:2", "--limit", "0"],
                 "x --limit expects a number of relationships of 1 or more; '0' is not one."),
             (["compare", Path.Combine(session.Path, "missing"), "--baseline", "0:1", "--interval", "1:2"], "x No session directory at "),
+            (["compare", session.Path, "--baseline", "0:1", "--interval", "1:2", "--share-redacted"],
+                "x --share-redacted shapes a file written with --output <path>, which was not given."),
+            (["compare", session.Path, "--baseline", "0:1", "--interval", "1:2", "--format", "csv"],
+                "x --format shapes a file written with --output <path>, which was not given."),
+            (["compare", session.Path, "--baseline", "0:1", "--interval", "1:2", "--overwrite"],
+                "x --overwrite shapes a file written with --output <path>, which was not given."),
+            (["compare", session.Path, "--baseline", "0:1", "--interval", "1:2", "--output", never, "--json"],
+                "x --json prints the comparison and --output writes it to a file; pass one of them."),
+            (["compare", session.Path, "--baseline", "0:1", "--interval", "1:2", "--output", never, "--share-redacted", "--format", "xml"],
+                "x --format writes json or csv; 'xml' is neither."),
+            (["compare", session.Path, "--baseline", "0:1", "--interval", "1:2", "--output", never + ".csv"],
+                "x Only a redacted report is written as CSV: pass --share-redacted with it, or write the comparison as JSON."),
         ];
         foreach ((string[] args, string expected) in refused)
         {
@@ -177,6 +295,7 @@ public sealed class CompareCommandTests
             Assert.StartsWith(expected, error, Ordinal);
         }
 
+        Assert.False(File.Exists(never) || File.Exists(never + ".csv"));
         (InterCatExitCode helped, string help, _) = await Run("compare", "--help");
         Assert.Equal(InterCatExitCode.Success, helped);
         Assert.Contains("icat compare <session-directory> --baseline <start:end> --interval <start:end>", help, Ordinal);

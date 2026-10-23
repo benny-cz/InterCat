@@ -25,9 +25,10 @@ internal sealed record BaselineChoice(string Label, TimeRange? Interval)
 /// relationship, and each process's connections to another host, that had a record in either, by records or by bytes sent
 /// across, as rates over each whole interval, the most changed first, in the words `icat compare` uses (R18). A change is
 /// stated only where both intervals measured alike; elsewhere both values stand, with the reason beneath the rows. Enter
-/// on a row closes the window with it, and the workspace opens what it compares. Nothing is written.
+/// on a row closes the window with it, and the workspace opens what it compares. Nothing is written but a redacted report
+/// a person asks for and saves where they choose.
 /// </summary>
-internal sealed class SessionCompareWindow : Window, IDisposable
+internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindow
 {
     private readonly string path;
     private readonly Guid sessionId;
@@ -47,7 +48,14 @@ internal sealed class SessionCompareWindow : Window, IDisposable
     private readonly TextBlock notes = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
     private readonly Button compare = new() { Content = "Compare" };
     private readonly Button show = new() { Content = "Show in the window", Classes = { "primary" } };
+    private readonly Button share = new() { Content = "Share redacted…" };
     private readonly Button close = new() { Content = "Close" };
+    private readonly TextBlock saved = new()
+    {
+        TextWrapping = TextWrapping.Wrap,
+        FontSize = 11,
+        VerticalAlignment = VerticalAlignment.Center,
+    };
     private IReadOnlyList<ComparisonRow> listed = [];
     private readonly Grid heading;
 
@@ -56,6 +64,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable
     private double[] widths = [0, 0, 0, 0, 0];
     private CancellationTokenSource? reading;
     private bool comparing;
+    private bool sharing;
     private bool shownOnce;
     private bool closed;
     private bool disposed;
@@ -108,7 +117,10 @@ internal sealed class SessionCompareWindow : Window, IDisposable
         AutomationProperties.SetName(notes, "How the comparison reads");
         AutomationProperties.SetName(compare, "Compare again");
         AutomationProperties.SetName(show, "Show the chosen row in the window");
+        AutomationProperties.SetName(share, "Share the comparison as a redacted report");
         AutomationProperties.SetName(close, "Close the comparison");
+        AutomationProperties.SetName(saved, "What sharing the comparison did");
+        AutomationProperties.SetLiveSetting(saved, AutomationLiveSetting.Polite);
         AccessibleItems.Name(rows);
 
         // A row reads by its two ends, whose names can be long: it wraps within the list rather than running past its edge,
@@ -127,6 +139,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable
         metric.SelectionChanged += (_, _) => _ = CompareAsync();
         compare.Click += (_, _) => _ = CompareAsync();
         show.Click += (_, _) => ChooseSelected();
+        share.Click += (_, _) => _ = ShareAsync();
         close.Click += (_, _) => Close();
         rows.SelectionChanged += (_, _) => OfferShow();
         rows.DoubleTapped += (_, _) => ChooseSelected();
@@ -181,13 +194,17 @@ internal sealed class SessionCompareWindow : Window, IDisposable
         table.Children.Add(heading);
         table.Children.Add(rows);
 
-        var footer = new StackPanel
+        // What sharing did is said beside the buttons, so the comparison's own status keeps saying what it found.
+        var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
             Spacing = 8,
-            Children = { show, compare, close },
+            Children = { show, share, compare, close },
         };
+        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 12 };
+        Grid.SetColumn(buttons, 1);
+        footer.Children.Add(saved);
+        footer.Children.Add(buttons);
         var said = new StackPanel { Spacing = 6, Children = { reasons, notes } };
         var grid = new Grid
         {
@@ -209,8 +226,10 @@ internal sealed class SessionCompareWindow : Window, IDisposable
         grid.Children.Add(footer);
         Content = grid;
 
+        Choices = new PathChoices(this);
         Offering.Offer(compare, null, CompareDoes);
         OfferShow();
+        OfferShare();
         Opened += (_, _) =>
         {
             baseline.Focus();
@@ -221,6 +240,15 @@ internal sealed class SessionCompareWindow : Window, IDisposable
 
     /// <summary>The comparison shown, the latest one read; null before one is.</summary>
     public IntervalComparison? Shown { get; private set; }
+
+    /// <summary>Where the window asks for the file a redacted report is saved to; a test answers in a person's place.</summary>
+    internal PathChoices Choices { get; set; }
+
+    /// <summary>What the window says sharing the comparison did.</summary>
+    public string SharingSaid => saved.Text ?? string.Empty;
+
+    /// <summary>Completes when the latest report asked for has been saved, declined or refused.</summary>
+    public Task Shared { get; private set; } = Task.CompletedTask;
 
     /// <summary>The rows shown, as the list shows them.</summary>
     public IReadOnlyList<ComparisonRow> Rows => listed;
@@ -281,6 +309,17 @@ internal sealed class SessionCompareWindow : Window, IDisposable
     /// <summary>What Compare does, offered.</summary>
     internal const string CompareDoes = "Read both intervals again, as the session holds them now.";
 
+    /// <summary>Why there is nothing to share until a comparison is shown.</summary>
+    internal const string NothingToShare = "Compare the two intervals first.";
+
+    /// <summary>Why sharing waits while a report is saved.</summary>
+    private const string Sharing = "A redacted report is being saved.";
+
+    /// <summary>What Share redacted… does, offered.</summary>
+    internal const string ShareDoes = "Save this comparison as a metadata-only, pseudonymized report to share, every row "
+        + "compared in it: processes, executables and other hosts become random tokens, and no name, PID, address or port "
+        + "is kept. What it keeps and leaves out is said before its file is chosen.";
+
     /// <summary>What Show in the window does, offered.</summary>
     internal const string ShowDoes = "Close the comparison and open what the chosen row compares: a relationship's process "
         + "and channel, or the process whose connections to another host it compares, whose inspector lists the hosts it reached.";
@@ -319,6 +358,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable
     public Task CompareAsync()
     {
         if (closed) return Task.CompletedTask;
+        saved.Text = string.Empty;
         reading?.Cancel();
         var request = new CancellationTokenSource();
         reading = request;
@@ -335,6 +375,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable
             comparing = false;
             Offering.Offer(compare, null, CompareDoes);
             OfferShow();
+            OfferShare();
             status.Text = WriteBaseline;
             return;
         }
@@ -344,6 +385,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable
         comparing = true;
         Offering.Offer(compare, Comparing, CompareDoes);
         OfferShow();
+        OfferShare();
         try
         {
             CancellationToken token = request.Token;
@@ -372,9 +414,68 @@ internal sealed class SessionCompareWindow : Window, IDisposable
                 comparing = false;
                 Offering.Offer(compare, null, CompareDoes);
                 OfferShow();
+                OfferShare();
             }
         }
     }
+
+    /// <summary>
+    /// Saves the comparison shown as a redacted report to share (`comparison-v1` §8b): what such a report keeps and leaves
+    /// out is said first, then its file is chosen - JSON, or CSV by its name - and it is written whole, every row compared
+    /// in it, before it replaces anything; beside the buttons, where it went or why it could not be.
+    /// </summary>
+    public Task ShareAsync()
+    {
+        if (closed || sharing || comparing || Shown is null) return Task.CompletedTask;
+        Shared = SaveReportAsync(Shown);
+        return Shared;
+    }
+
+    private async Task SaveReportAsync(IntervalComparison comparison)
+    {
+        sharing = true;
+        OfferShare();
+        try
+        {
+            if (!await MainWindow.RedactedSharePrompt().ShowDialog<bool>(this) || closed) return;
+            string? file = await Choices.SaveFileAsync(new()
+            {
+                Title = "Save redacted comparison report",
+                SuggestedFileName = RedactedShareExport.SuggestedName("json"),
+                DefaultExtension = "json",
+                FileTypeChoices =
+                [
+                    new("JSON, self-describing") { Patterns = ["*.json"] },
+                    new("CSV, one row per line") { Patterns = ["*.csv"] },
+                ],
+            });
+            if (file is null || closed) return;
+            ExportFormat format = file.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? ExportFormat.Csv : ExportFormat.Json;
+            string report = RedactedShareExport.Comparison(format, comparison, DateTimeOffset.UtcNow);
+            await ExportFileWriter.WriteAsync(file, report, overwrite: true, lifetime.Token);
+            if (!closed)
+            {
+                saved.Text = $"Saved a redacted report of {Spoken.Count(comparison.Relationships.Count, "row")} to {file}. "
+                    + "Review it before sharing it.";
+            }
+        }
+        catch (OperationCanceledException) when (closed)
+        {
+            // Closing the window let the report go; the file it would have replaced is as it was.
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            if (!closed) saved.Text = "Could not save the redacted report: " + exception.Message;
+        }
+        finally
+        {
+            sharing = false;
+            if (!closed) OfferShare();
+        }
+    }
+
+    /// <summary>Says where the window says what sharing did why the system's dialog to choose the file did not open.</summary>
+    void IChoosingWindow.PickerFailed(string why) => saved.Text = why;
 
     /// <summary>Lets go of the comparison shown, its rows, coverage, reasons and notes.</summary>
     private void Clear()
@@ -459,6 +560,13 @@ internal sealed class SessionCompareWindow : Window, IDisposable
         if (closed || !firstShown && FocusManager?.GetFocusedElement() is Visual focused && this.IsVisualAncestorOf(focused)) return;
         (rows.ContainerFromIndex(rows.SelectedIndex) ?? (Control)close).Focus(NavigationMethod.Tab);
     }, Avalonia.Threading.DispatcherPriority.Loaded);
+
+    /// <summary>Offers sharing the comparison shown, or says why not: while one is read or saved, or with none shown.</summary>
+    private void OfferShare() => Offering.Offer(share,
+        comparing ? Comparing
+        : sharing ? Sharing
+        : Shown is null ? NothingToShare
+        : null, ShareDoes);
 
     /// <summary>Offers showing the chosen row, or says why not: while a comparison is read, or with no row chosen.</summary>
     private void OfferShow() => Offering.Offer(show,

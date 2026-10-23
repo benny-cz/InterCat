@@ -70,6 +70,9 @@ with fewer descriptors, a release gives up the oldest records, and losses fall w
   epochs as rule 3 compares one ledger's.
 - The window's comparison view reads this comparison, in the command line's words (revision 753); difference
   timelines and graph overlays will too, rather than re-deriving it.
+- A comparison shares as a metadata-only report under the sharing report's redaction policy (revision 754): its
+  ends are random tokens, and it records its byte domain, accounting, each interval's missing sources and that no
+  alignment applies, as M12 asks a shared report to.
 
 ## Alternatives considered
 

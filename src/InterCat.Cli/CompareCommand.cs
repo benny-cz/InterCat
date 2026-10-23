@@ -16,10 +16,7 @@ internal static class CompareCommand
 {
     private const int DefaultLimit = 50;
 
-    public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
-        Task.FromResult(Run(command, cancellationToken));
-
-    private static InterCatExitCode Run(CommandLine command, CancellationToken cancellationToken)
+    public static async Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken)
     {
         if (command.TryTakeFlag("--help") || command.TryTakeFlag("-h"))
         {
@@ -32,6 +29,10 @@ internal static class CompareCommand
         string? rankByText = command.TakeOption("--rank-by");
         string? limitText = command.TakeOption("--limit");
         bool json = command.TryTakeFlag("--json");
+        string? output = command.TakeOption("--output");
+        string? formatText = command.TakeOption("--format");
+        bool redacted = command.TryTakeFlag("--share-redacted");
+        bool overwrite = command.TryTakeFlag("--overwrite");
         string? directory = command.TakePositional();
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
         TimeRange? baseline = TickInterval.Read(baselineText, out string? baselineTooWide);
@@ -45,31 +46,53 @@ internal static class CompareCommand
         int limit = DefaultLimit;
         bool invalidLimit = limitText is not null
             && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit) || limit < 1);
-        if (directory is null || hasUnknown || baseline is null || compared is null || metric is null || invalidLimit)
+        ExportFormat? format = formatText switch
         {
-            ConsoleUi.Failure(directory is null ? "A session directory is required: icat compare <directory>."
-                : hasUnknown ? command.Refusal(unknown!)
-                : baseline is null ? baselineTooWide?.Replace("--interval", "--baseline", StringComparison.Ordinal)
-                    ?? "--baseline is required: " + TickInterval.Takes + "."
-                : compared is null ? comparedTooWide ?? "--interval is required: " + TickInterval.Takes + "."
-                : metric is null ? $"--rank-by compares records or bytes-sent; '{rankByText}' is neither."
-                : $"--limit expects a number of relationships of 1 or more; '{limitText}' is not one.");
+            null => output?.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) == true ? ExportFormat.Csv : ExportFormat.Json,
+            "json" => ExportFormat.Json,
+            "csv" => ExportFormat.Csv,
+            _ => null,
+        };
+        string? fileOnly = redacted ? "--share-redacted" : formatText is not null ? "--format" : overwrite ? "--overwrite" : null;
+        string? problem = directory is null ? "A session directory is required: icat compare <directory>."
+            : hasUnknown ? command.Refusal(unknown!)
+            : baseline is null ? baselineTooWide?.Replace("--interval", "--baseline", StringComparison.Ordinal)
+                ?? "--baseline is required: " + TickInterval.Takes + "."
+            : compared is null ? comparedTooWide ?? "--interval is required: " + TickInterval.Takes + "."
+            : metric is null ? $"--rank-by compares records or bytes-sent; '{rankByText}' is neither."
+            : invalidLimit ? $"--limit expects a number of relationships of 1 or more; '{limitText}' is not one."
+            : output is null && fileOnly is not null ? $"{fileOnly} shapes a file written with --output <path>, which was not given."
+            : output is not null && json ? "--json prints the comparison and --output writes it to a file; pass one of them."
+            : format is null ? $"--format writes json or csv; '{formatText}' is neither."
+            : format == ExportFormat.Csv && !redacted
+                ? "Only a redacted report is written as CSV: pass --share-redacted with it, or write the comparison as JSON."
+            : null;
+        if (problem is not null)
+        {
+            ConsoleUi.Failure(problem);
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 
-        string path = Path.GetFullPath(directory);
+        string path = Path.GetFullPath(directory!);
         if (!Directory.Exists(path))
         {
             ConsoleUi.Failure($"No session directory at {path}.");
             return InterCatExitCode.InvalidInvocation;
         }
 
+        string? destination = output is null ? null : Path.GetFullPath(output);
+        if (destination is not null && File.Exists(destination) && !overwrite)
+        {
+            ConsoleUi.Failure($"{destination} already exists. Pass --overwrite to replace it.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         IntervalComparison comparison;
         try
         {
-            comparison = SessionComparison.Compare(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), baseline.Value,
-                compared.Value, metric.Value, cancellationToken: cancellationToken);
+            comparison = SessionComparison.Compare(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), baseline!.Value,
+                compared!.Value, metric!.Value, cancellationToken: cancellationToken);
         }
         catch (InvalidDataException exception)
         {
@@ -82,20 +105,35 @@ internal static class CompareCommand
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
+        if (destination is not null)
+        {
+            // A file holds every row unless --limit says how many: it is read whole, not scrolled.
+            int written = limitText is null ? int.MaxValue : limit;
+            string content = redacted
+                ? RedactedShareExport.Comparison(format!.Value, comparison, DateTimeOffset.UtcNow, written)
+                : Document(comparison, path, written);
+            await ExportFileWriter.WriteAsync(destination, content, overwrite, cancellationToken).ConfigureAwait(false);
+            PrintWritten(comparison, destination, redacted, format!.Value, Math.Min(written, comparison.Relationships.Count));
+            return InterCatExitCode.Success;
+        }
+
         if (json)
         {
-            Console.Out.WriteLine(JsonSerializer.Serialize(new
-            {
-                Contract = "comparison-v1",
-                SessionPath = path,
-                Comparison = Json(comparison, limit),
-            }, JsonContracts.Indented));
+            Console.Out.WriteLine(Document(comparison, path, limit));
             return InterCatExitCode.Success;
         }
 
         Print(comparison, path, limit);
         return InterCatExitCode.Success;
     }
+
+    /// <summary>The comparison as `comparison-v1` §8 states it, with the session it was read from, as many rows as the limit.</summary>
+    private static string Document(IntervalComparison comparison, string path, int limit) => JsonSerializer.Serialize(new
+    {
+        Contract = "comparison-v1",
+        SessionPath = path,
+        Comparison = Json(comparison, limit),
+    }, JsonContracts.Indented);
 
     /// <summary>The comparison as `comparison-v1` states it, its rows the most changed first, as many as the limit.</summary>
     private static object Json(IntervalComparison comparison, int limit)
@@ -121,27 +159,19 @@ internal static class CompareCommand
                 Source = End(comparison.Processes[row.Relationship?.SourceId ?? row.Host!.Link.Process]),
                 Target = row.Relationship is { } edge ? End(comparison.Processes[edge.TargetId]) : null,
                 Address = row.Host?.Address.Address,
-                Connected = row.Relationship is { } joined
-                    ? Connected(joined.SourceConnected > 0, joined.TargetConnected > 0)
-                    : Connected(row.Host!.Address.Connected > 0, row.Host.Address.Accepted > 0),
+                Connected = ComparisonText.Connected(row),
                 AcceptedPorts = row.Relationship?.AcceptedPorts ?? row.Host!.Address.AcceptedPorts,
                 HostPorts = row.Host?.Address.Ports ?? [],
                 Baseline = Side(row.Baseline, comparison.Baseline),
                 Compared = Side(row.Compared, comparison.Compared),
                 row.Change,
                 row.FromLowerBound,
-                DifferencePerSecond = row.Change == ComparisonChange.NotComparable
-                    ? null
-                    : Rounded((row.Compared.PerSecond(comparison.Compared) ?? 0) - (row.Baseline.PerSecond(comparison.Baseline) ?? 0)),
+                DifferencePerSecond = ComparisonText.DifferencePerSecond(row, comparison),
                 row.Reason,
             }),
         };
 
         static object End(ProcessNode node) => new { Instance = node.Id, node.ProcessId, node.Name };
-
-        // A rate is for presentation, rounded half to even to three decimal places; the integers it comes from are the
-        // row's (metrics-v1 §7).
-        static double? Rounded(double? perSecond) => perSecond is { } value ? Math.Round(value, 3, MidpointRounding.ToEven) : null;
 
         static object Side(ComparedMeasure measure, TimeRange interval) => new
         {
@@ -149,22 +179,49 @@ internal static class CompareCommand
             measure.Value,
             measure.Measured,
             measure.Unmeasured,
-            PerSecond = Rounded(measure.PerSecond(interval)),
+            PerSecond = ComparisonText.Rounded(measure.PerSecond(interval)),
             measure.Coverage,
         };
     }
 
     /// <summary>
-    /// Which end made a row's connections or calls, as the capture saw them: its arrow, in words. A process's connections
-    /// to another host are from the process where it connected, and to it where it accepted them.
+    /// What a file written holds: where it went, its contract, the two intervals and what they were compared by, and how
+    /// many of the rows compared it lists; of a redacted report, that it is pseudonymized, not anonymous, and what the
+    /// capture covered over each interval, which the report states too.
     /// </summary>
-    private static string Connected(bool source, bool target) => (source, target) switch
+    private static void PrintWritten(IntervalComparison comparison, string destination, bool redacted, ExportFormat format,
+        int rows)
     {
-        (true, false) => "SourceToTarget",
-        (false, true) => "TargetToSource",
-        (true, true) => "Both",
-        _ => "Unobserved",
-    };
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        ConsoleUi.Heading(redacted ? "Redacted comparison report" : "Comparison");
+        ConsoleUi.Field("Written to", destination);
+        ConsoleUi.Field("Contract", (redacted ? RedactedShareExport.Contract : "comparison-v1")
+            + (format == ExportFormat.Csv ? ", as CSV" : ", as JSON"));
+        ConsoleUi.Field("Baseline", ComparisonText.Interval(comparison.Baseline, culture: culture));
+        ConsoleUi.Field("Compared", ComparisonText.Interval(comparison.Compared, culture: culture));
+        ConsoleUi.Field("Compared by", ComparedBy(comparison.Metric));
+        int all = comparison.Relationships.Count;
+        ConsoleUi.Field("Rows", rows == all
+            ? ConsoleUi.Count(all) + (all == 1 ? ", the one compared" : ", every one compared")
+            : string.Create(culture, $"{rows:N0} of {all:N0} compared, the most changed; --limit {all:N0} writes every one"));
+        if (!redacted) return;
+        ConsoleUi.Note("Metadata-only pseudonymized report: processes, executables and other hosts are random tokens, and no "
+            + "name, PID, address or port is written. Counts, times and patterns can still identify a workload. Review it "
+            + "before sharing it.");
+        foreach (string? coverage in new[]
+        {
+            ComparisonText.Coverage("the baseline", comparison.BaselineCoverage),
+            ComparisonText.Coverage("the compared interval", comparison.ComparedCoverage),
+        })
+        {
+            if (coverage is not null) ConsoleUi.Note(coverage);
+        }
+    }
+
+    /// <summary>What a comparison compared each row by, in words.</summary>
+    private static string ComparedBy(ComparisonMetric metric) => metric == ComparisonMetric.BytesSent
+        ? "bytes sent across per second, each transfer counted once at its sender"
+        : "records per second, both ends' records";
 
     private static void Print(IntervalComparison comparison, string path, int limit)
     {
@@ -174,9 +231,7 @@ internal static class CompareCommand
         ConsoleUi.Field("Generation", ConsoleUi.Count(comparison.Generation));
         ConsoleUi.Field("Baseline", ComparisonText.Interval(comparison.Baseline, culture: culture));
         ConsoleUi.Field("Compared", ComparisonText.Interval(comparison.Compared, culture: culture));
-        ConsoleUi.Field("Compared by", comparison.Metric == ComparisonMetric.BytesSent
-            ? "bytes sent across per second, each transfer counted once at its sender"
-            : "records per second, both ends' records");
+        ConsoleUi.Field("Compared by", ComparedBy(comparison.Metric));
         int hosts = comparison.Relationships.Count(row => row.Host is not null);
         ConsoleUi.Field("Rows", ConsoleUi.Count(comparison.Relationships.Count - hosts) + " between processes · "
             + ConsoleUi.Count(hosts) + " to other hosts, with records in either interval"
@@ -255,6 +310,7 @@ internal static class CompareCommand
     {
         ConsoleUi.Line("icat compare <session-directory> --baseline <start:end> --interval <start:end>");
         ConsoleUi.Line("    [--rank-by records|bytes-sent] [--limit <n>] [--json]");
+        ConsoleUi.Line("    [--output <path> [--share-redacted] [--format json|csv] [--overwrite]]");
         ConsoleUi.Line("  Read-only comparison of two intervals of a session, relationship by relationship: how each one's");
         ConsoleUi.Line("  records, or the bytes its two ends sent across it, changed from the baseline to the interval, as");
         ConsoleUi.Line("  rates over each whole interval, the most changed first. Each bound is in 100-nanosecond session");
@@ -263,6 +319,10 @@ internal static class CompareCommand
         ConsoleUi.Line("  same sources; elsewhere both values are shown with why they cannot be compared, so a mechanism");
         ConsoleUi.Line("  the capture did not collect in one interval never reads as activity that stopped. Sends that");
         ConsoleUi.Line("  recorded no size make a lower bound, which states a change only where it alone decides it.");
-        ConsoleUi.Line($"  --limit lists at most that many, {DefaultLimit} by default.");
+        ConsoleUi.Line($"  --limit lists at most that many, {DefaultLimit} by default; a file written with --output holds");
+        ConsoleUi.Line("  every row unless --limit is given. --output writes the --json document to a file, complete");
+        ConsoleUi.Line("  before it replaces anything; with --share-redacted it writes a metadata-only, pseudonymized");
+        ConsoleUi.Line("  report to share instead, as JSON or, with --format csv or a .csv path, CSV: processes,");
+        ConsoleUi.Line("  executables and other hosts become random tokens, and no name, PID, address or port is kept.");
     }
 }

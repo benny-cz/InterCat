@@ -67,6 +67,45 @@ public static class ComparisonText
     }
 
     /// <summary>
+    /// Which end made a row's connections or calls, as the capture saw them, in `comparison-v1` §6's words: its arrow. A
+    /// process's connections to another host are from the process where it connected, and to it where it accepted them.
+    /// </summary>
+    public static string Connected(ComparedRelationship row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        (bool source, bool target) = row.Relationship is { } edge
+            ? (edge.SourceConnected > 0, edge.TargetConnected > 0)
+            : (row.Host!.Address.Connected > 0, row.Host.Address.Accepted > 0);
+        return (source, target) switch
+        {
+            (true, false) => "SourceToTarget",
+            (false, true) => "TargetToSource",
+            (true, true) => "Both",
+            _ => "Unobserved",
+        };
+    }
+
+    /// <summary>
+    /// A rate as a comparison's file states it, rounded half to even to three decimal places, for presentation: the
+    /// integers it comes from are the row's (`metrics-v1` §7). Null where the value is unknown.
+    /// </summary>
+    public static double? Rounded(double? perSecond) =>
+        perSecond is { } value ? Math.Round(value, 3, MidpointRounding.ToEven) : null;
+
+    /// <summary>
+    /// How much a row's rate changed, the compared interval's less the baseline's, rounded as <see cref="Rounded"/>; null
+    /// where no change is stated.
+    /// </summary>
+    public static double? DifferencePerSecond(ComparedRelationship row, IntervalComparison comparison)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        ArgumentNullException.ThrowIfNull(comparison);
+        return row.Change == ComparisonChange.NotComparable
+            ? null
+            : Rounded((row.Compared.PerSecond(comparison.Compared) ?? 0) - (row.Baseline.PerSecond(comparison.Baseline) ?? 0));
+    }
+
+    /// <summary>
     /// What a row ran over and the ports its connections arrived at: a relationship's at the end that accepted each, and of
     /// another host its ports the process connected to and the process's own the host's connections arrived at, each once,
     /// the lowest first: "TCP at 443"; the mechanism alone where none was seen arriving.

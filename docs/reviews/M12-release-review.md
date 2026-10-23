@@ -64,8 +64,7 @@ read-only command over a session folder.
 - A baseline and difference timeline, graph overlays and saved comparison specifications.
 - Recurring communication patterns, outlier detection with its baseline, sample size and uncertainty, causal navigation
   over evidence-backed links, and bottleneck views.
-- Annotations and bookmarks across a comparison, and shareable redacted comparison reports recording scope, byte domain,
-  accounting, missing sources and alignment revision.
+- Annotations and bookmarks across a comparison.
 
 ## Verdict
 
@@ -80,3 +79,12 @@ The window's view of the comparison ships: Compare with… (Ctrl+B), beside the 
 compares it with the same length just before or after it, the whole recording or an interval typed, by records or
 bytes sent across, in `icat compare`'s words, and Enter on a row opens what it compares (`comparison-v1` §8a). The
 window is now among the supported environments; nothing else above changes.
+
+## Addendum, revision 754
+
+A comparison shares as a redacted report, from the command line (`icat compare --output <path> --share-redacted`) or
+the window (Share redacted…), under the sharing report's redaction policy (`comparison-v1` §8b): its processes,
+executables and other hosts are random tokens, and it records its scope, byte domain, accounting, each interval's
+missing sources and that no alignment applies, the last of the deliverables this review listed as reports. Its leak
+tests give every name, path, key and address a secret and every PID and port a number a leak would show, and find none
+of them in JSON or CSV. Nothing else above changes.

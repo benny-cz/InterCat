@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -294,6 +295,88 @@ public sealed class SessionCompareWindowTests
         owner.Close();
     }
 
+    [AvaloniaFact(DisplayName = "I22: Share redacted… asks first, then saves every row compared where chosen, naming no process")]
+    public async Task ShareRedactedSavesTheComparisonAsAReport()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(), coverage: Ledger());
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-share-");
+        using var comparing = new SessionCompareWindow(session.Path, overview.SessionId, new TimeRange(12 * Second, 16 * Second),
+            new TimeRange(0, 30 * Second), recorded: true, SessionClock.Session(TimeZoneInfo.Utc), EvidencePolicy.IncludeCorrelated);
+        var choices = new AnsweredChoices(comparing);
+        comparing.Choices = choices;
+        try
+        {
+            // Nothing is shared before a comparison is shown.
+            Button share = Labelled(comparing, "Share redacted…");
+            Assert.Equal(SessionCompareWindow.NothingToShare, Offers.WhyNot(share));
+            _ = comparing.ShowDialog<ComparedRelationship?>(owner);
+            await Until(() => comparing.Shown is not null);
+            await comparing.Compared;
+            Dispatch();
+            Assert.Equal(SessionCompareWindow.ShareDoes, Offers.Offered(share));
+            string found = comparing.Said;
+
+            // Declined, no file is asked for, and nothing is said.
+            Click(share);
+            Press(await Prompt(comparing), "Cancel");
+            await comparing.Shared;
+            Assert.Equal((0, string.Empty), (choices.Asked, comparing.SharingSaid));
+
+            // Asked for, every row compared is saved where chosen, and where is said beside the buttons, the comparison's
+            // own status still saying what it found.
+            string report = Path.Combine(folder.FullName, "comparison.json");
+            choices.Answer(report);
+            Click(share);
+            Press(await Prompt(comparing), "Choose report file");
+            await comparing.Shared;
+            Dispatch();
+            Assert.Equal(("Save redacted comparison report", RedactedShareExport.SuggestedName("json")),
+                (choices.Saves[0].Title, choices.Saves[0].SuggestedFileName));
+            Assert.Equal($"Saved a redacted report of 2 rows to {report}. Review it before sharing it.", comparing.SharingSaid);
+            Assert.Equal(found, comparing.Said);
+            string written = File.ReadAllText(report);
+            foreach (string kept in new[] { "client.exe", "server.exe", "worker.exe", "queue.exe", "127.0.0.1", "PID ", session.Path })
+                Assert.DoesNotContain(kept, written, StringComparison.OrdinalIgnoreCase);
+            using (JsonDocument json = JsonDocument.Parse(written))
+            {
+                Assert.Equal(("comparison", 2), (json.RootElement.GetProperty("kind").GetString(),
+                    json.RootElement.GetProperty("rows").GetArrayLength()));
+            }
+
+            Save(comparing, "compare-shared.png");
+
+            // A name ending .csv saves CSV; a file that cannot be written is said, and sharing may be asked for again.
+            string csv = Path.Combine(folder.FullName, "comparison.csv");
+            choices.Answer(csv);
+            Click(share);
+            Press(await Prompt(comparing), "Choose report file");
+            await comparing.Shared;
+            Assert.StartsWith("contract,report_id,policy,kind,", File.ReadAllText(csv), StringComparison.Ordinal);
+            choices.Answer(folder.FullName);
+            Click(share);
+            Press(await Prompt(comparing), "Choose report file");
+            await comparing.Shared;
+            Dispatch();
+            Assert.StartsWith("Could not save the redacted report: ", comparing.SharingSaid, StringComparison.Ordinal);
+            Assert.Equal(SessionCompareWindow.ShareDoes, Offers.Offered(share));
+
+            // Comparing again lets what was said of the report before go.
+            comparing.CompareByBytes(true);
+            await comparing.Compared;
+            Assert.Equal(string.Empty, comparing.SharingSaid);
+        }
+        finally
+        {
+            comparing.Close();
+            owner.Close();
+            folder.Delete(recursive: true);
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R3: a lower bound reads at least, in the window as on the command line")]
     public void ALowerBoundReadsAtLeast()
     {
@@ -369,6 +452,22 @@ public sealed class SessionCompareWindowTests
 
     private static Button Labelled(Window window, string label) =>
         window.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, label));
+
+    private static void Click(Button button)
+    {
+        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Dispatch();
+    }
+
+    /// <summary>The prompt <paramref name="owner"/> opened, once it has.</summary>
+    private static async Task<Window> Prompt(Window owner)
+    {
+        await Until(() => owner.OwnedWindows.Count == 1);
+        return owner.OwnedWindows[0];
+    }
+
+    /// <summary>Presses a prompt's button by what it says.</summary>
+    private static void Press(Window prompt, string label) => Click(Labelled(prompt, label));
 
     private static async Task Until(Func<bool> condition)
     {
