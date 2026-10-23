@@ -2099,7 +2099,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 return Leading($"{graphFocus.Description}: " + Counted(drawn.Count, "process", "processes") + " drawn"
                     + (nodes == drawn.Count ? string.Empty : " as " + Counted(nodes, "node", "nodes"))
                     + (outside > 0 ? string.Create(CultureInfo.CurrentCulture, $" · {outside:N0} more in Rest of the machine") : string.Empty)
-                    + GraphScopeNote(brief: true) + OtherHostsNote, NowMarked);
+                    + GraphScopeNote(brief: true) + RpcCallsFollowing(brief: true) + OtherHostsNote, NowMarked);
             }
 
             int relationships = wholeSnapshot.Edges.Count;
@@ -2114,7 +2114,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return Leading((graphDisplay.Nodes.Any(node => node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers
                     or GraphNodeKind.Remainder or GraphNodeKind.OtherHostsOnly)
                 ? text + " · drawn as " + Counted(graphDisplay.Nodes.Count(node => !node.IsHost), "node", "nodes")
-                : text) + GraphScopeNote(brief: true) + OtherHostsNote, NowMarked);
+                : text) + GraphScopeNote(brief: true) + RpcCallsFollowing(brief: true) + OtherHostsNote, NowMarked);
         }
     }
 
@@ -2135,10 +2135,19 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// them, never every observation, which the timeline holds (R21).
     /// </summary>
     public string GraphScope => GraphScopeNote(brief: false) is { Length: > 0 } scope
-        ? GraphSummary + ". " + scope
+        ? GraphSummary + ". " + scope + RpcCallsFollowing(brief: false)
         : EmptyCensus is { } census
-            ? GraphSummary + ". " + RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture)
-            : GraphSummary;
+            ? GraphSummary + ". " + RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture) + RpcCallsFollowing(brief: false)
+            : RpcCallsFollowing(brief: false) is { Length: > 0 } following ? GraphSummary + "." + following : GraphSummary;
+
+    /// <summary>
+    /// What the graph says while the session's RPC calls are still being followed through ALPC (S3): a clause after its
+    /// summary, or a sentence after its scope, each with its own separator. Empty once they are followed, and for a view
+    /// whose session had none to follow.
+    /// </summary>
+    private string RpcCallsFollowing(bool brief) => !realOverview || !wholeSnapshot.RpcCallsPending ? string.Empty
+        : brief ? " · RPC calls still being followed"
+        : " Which process called which over RPC is still being followed through ALPC; those edges are drawn when it is done.";
 
     /// <summary>
     /// Why the machine's graph draws no relationship, said beneath it where the empty pane would otherwise be read as a
@@ -2149,7 +2158,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// </summary>
     public string? GraphEmptyExplanation => graphFocus.Neighborhood is null && !graphDisplay.Nodes.Any(node => node.IsHost)
         && EmptyCensus is { } census
-        ? RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture)
+        ? RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture) + RpcCallsFollowing(brief: false)
         : null;
 
     /// <summary>Whether the graph says beneath it why it draws no relationship (<see cref="GraphEmptyExplanation"/>).</summary>
@@ -2180,7 +2189,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         bool calls = wholeSnapshot.Edges.Any(edge => edge.Mechanism == Mechanism.Rpc);
         if (brief)
         {
-            return calls ? " · paired TCP, UDP and RPC calls" : " · paired TCP and UDP only";
+            // Calls still being followed are not left out: the summary's next clause says they are to come.
+            return calls ? " · paired TCP, UDP and RPC calls"
+                : wholeSnapshot.RpcCallsPending ? " · paired TCP and UDP" : " · paired TCP and UDP only";
         }
 
         var drawn = new List<string>(3) { "admitted paired TCP and UDP" };

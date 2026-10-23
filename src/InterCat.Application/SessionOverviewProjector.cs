@@ -151,6 +151,14 @@ public sealed record SessionOverviewBundle(
     /// session's listening ports, as `icat ports` lists them. Empty for an overview no session was projected for.
     /// </summary>
     public IReadOnlyList<PortListener> Listeners { get; init; } = [];
+
+    /// <summary>
+    /// Whether the session's RPC calls were still to be followed through ALPC when this overview was projected, so its
+    /// graph draws none of the edges a served call makes: a first view shown without waiting for every call to be linked
+    /// (S3), which a projection that follows them replaces. False wherever the overview draws them, or the capture
+    /// collected no ALPC to follow them through.
+    /// </summary>
+    public bool RpcCallsPending { get; init; }
 }
 
 /// <summary>
@@ -163,10 +171,16 @@ public static class SessionOverviewProjector
     public const int MaximumTimelineBuckets = 64;
     public const int MaximumChannels = 4_096;
 
+    /// <param name="followRpcCalls">
+    /// False for a first view that does not wait for the session's RPC calls to be followed through ALPC (S3): where the
+    /// generation keeps no links and none are followed yet, its graph draws no RPC edge and says that they are still to
+    /// come (<see cref="SessionOverviewBundle.RpcCallsPending"/>), and a projection that follows them draws them.
+    /// </param>
     public static SessionOverviewBundle Project(
         SessionStore store,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         int maximumChannels = MaximumChannels,
+        bool followRpcCalls = true,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -295,10 +309,15 @@ public static class SessionOverviewProjector
         // reads nothing for them, so its first view opens no segment on their account.
         // Links an overview kept before it kept their callers (overview-index-v1 minor 6) say nothing of who called, and an
         // overview never changes an answer: their calls are followed again, as where it kept no links.
+        // A view that does not wait for them draws them only from links kept or already followed (S3): following every call
+        // reads every segment's ALPC records, which a session still being recorded keeps no summary of.
         bool alpc = RpcPeerEdges.Collected(store.Root, manifest, coverage);
-        RpcPeerEdge[] rpc = !alpc ? []
-            : counted.RpcLinks is { } kept && RpcPeerEdges.NameCallers(kept) ? [.. RpcPeerEdges.Of(kept, policy)]
-            : [.. RpcPeerEdges.Of(derivation.RpcPeers(store.Root, Segments(), clock, Fields(), cancellationToken), policy)];
+        RpcPeerIndex? followed = derivation.DerivedRpcPeers;
+        bool keptLinks = counted.RpcLinks is { } kept && RpcPeerEdges.NameCallers(kept);
+        bool pending = alpc && !keptLinks && followed is null && !followRpcCalls;
+        RpcPeerEdge[] rpc = !alpc || pending ? []
+            : keptLinks ? [.. RpcPeerEdges.Of(counted.RpcLinks!, policy)]
+            : [.. RpcPeerEdges.Of(followed ?? derivation.RpcPeers(store.Root, Segments(), clock, Fields(), cancellationToken), policy)];
         edges = [.. edges, .. rpc.Select(edge => new CommunicationEdge(
             edge.Key, edge.First, edge.Second, Mechanism.Rpc, edge.Records, null, edge.Strength)
         {
@@ -362,6 +381,11 @@ public static class SessionOverviewProjector
                 "RPC edges join a process and the process that served its calls, each call linked through its one ALPC "
                     + "message (rpc-call-peer-v1). An edge counts the call records at its two ends; the ALPC records that "
                     + "link them are its evidence, not a second count.",
+            }),
+            .. (!pending ? [] : new[]
+            {
+                "Which process called which over RPC is still being followed through ALPC, so the graph draws no RPC edge "
+                    + "yet: it draws them once every call has been linked to the call that served it.",
             }),
             "An edge's source and target are a stable display order, not a claim about direction: which process made its "
                 + "connections is said only where the capture saw them open (relations-v1 section 5), which called which over "
@@ -435,7 +459,7 @@ public static class SessionOverviewProjector
         (string? pinned, IReadOnlyList<RetentionPin> pins) = PinsOf(store);
         return new SessionOverviewBundle(
             $"session:{manifest.SessionId:N}:generation:{manifest.Generation}:digest:{manifest.Digest}"
-                + $":relation:{TransportRelationIndex.RelationRule}:policy:{policy}",
+                + $":relation:{TransportRelationIndex.RelationRule}:policy:{policy}" + (pending ? ":rpc:pending" : string.Empty),
             manifest.SessionId,
             manifest.Generation,
             extent,
@@ -480,6 +504,7 @@ public static class SessionOverviewProjector
             IntervalCoverage = coverage is { HoldsRecordsOutsideItsEpochs: true }
                 ? Array.AsReadOnly([.. SessionCoverage.ByMechanism(coverage with { HoldsRecordsOutsideItsEpochs = false })])
                 : null,
+            RpcCallsPending = pending,
         };
 
         // Opened as they are read: a derivation extending the checkpoint a live generation names reads only the segments

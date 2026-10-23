@@ -701,6 +701,12 @@ public sealed record WorkspaceSnapshot(
     public RelationshipCensus? Census { get; init; }
 
     /// <summary>
+    /// Whether the session's RPC calls were still being followed through ALPC when it was projected, so its graph draws no
+    /// RPC edge yet (<see cref="SessionOverviewBundle.RpcCallsPending"/>).
+    /// </summary>
+    public bool RpcCallsPending { get; init; }
+
+    /// <summary>
     /// Each process's connections to other hosts, by transport, over the whole session, under the policy the snapshot was
     /// projected under: what the graph draws to its Other hosts node (§6.3). Empty for a snapshot not projected from a
     /// session.

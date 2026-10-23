@@ -38,6 +38,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// <summary>The package being made, while one is; its cancellation is its share button's second meaning.</summary>
     private CancellationTokenSource? packaging;
 
+    /// <summary>Stops following the shown session's RPC calls once another session, capture or close supersedes them.</summary>
+    private CancellationTokenSource? rpcFollowing;
+
     /// <summary>Whether the package being made is the original, unredacted copy rather than a redacted session.</summary>
     private bool packagingOriginal;
 
@@ -2308,6 +2311,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
         openingSession = true;
         OfferCardActions();
+        StopFollowingRpcCalls();
         try
         {
             CaptureStatus.Text = "Opening saved session";
@@ -2321,16 +2325,18 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 EvidencePolicy policy = investigation is not null && LayoutKeptIn(investigation, opened.SessionId) is { } kept
                     ? kept.Settings.Policy
                     : EvidencePolicy.IncludeCorrelated;
+                // The first view does not wait for its RPC calls to be followed through every segment's ALPC records: its
+                // graph draws them once they are (S3).
                 try
                 {
-                    return (opened, SessionOverviewProjector.Project(opened, policy));
+                    return (opened, SessionOverviewProjector.Project(opened, policy, followRpcCalls: false));
                 }
                 catch (InvalidDataException) when (!opened.VerifyContents().Verified)
                 {
                     // The first view read a file that fails its own checksum, and hashing what the generation names
                     // found files that changed after they were published. The hashing forgot them, so this projection's
                     // lease falls back to the last complete generation, as hashing at open once did.
-                    return (opened, SessionOverviewProjector.Project(opened, policy));
+                    return (opened, SessionOverviewProjector.Project(opened, policy, followRpcCalls: false));
                 }
             });
             if (closed) return string.Empty;
@@ -2356,6 +2362,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             ApplyCaptureUpdate(new(CaptureUiPhase.Complete, headline, detail, SessionPath: path, Overview: overview),
                 forceOverview: true);
             SessionFilesChecked = VerifySessionFilesAsync(path, store, run);
+            if (overview.RpcCallsPending)
+            {
+                RpcCallsFollowed = FollowRpcCallsAsync(path, overview);
+            }
 
             // The session opened is where the keyboard goes, not back to the control that opened it.
             lastKeyboard = null;
@@ -2381,6 +2391,67 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
     /// <summary>Completes when the latest saved session's files have been hashed and any fallback has been opened.</summary>
     internal Task SessionFilesChecked { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Completes when the shown session's RPC calls have been followed and their edges drawn, or that was given up.</summary>
+    internal Task RpcCallsFollowed { get; private set; } = Task.CompletedTask;
+
+    /// <summary>How the shown session is projected again following its RPC calls; a test holds the following back with it.</summary>
+    internal Func<SessionStore, EvidencePolicy, CancellationToken, SessionOverviewBundle> RpcCallsFollower { get; set; } =
+        (store, policy, cancellationToken) => SessionOverviewProjector.Project(store, policy, cancellationToken: cancellationToken);
+
+    /// <summary>
+    /// Follows the shown session's RPC calls through ALPC once its first view is drawn without them (S3): its generation is
+    /// projected again off the window's thread, following them, and its graph gains the edges their links make while the
+    /// view keeps its rung, selection, pins and interval, as a newer publication of it does. Another session, capture or
+    /// evidence policy shown meanwhile is left as it is, and opening another or starting a capture stops the following.
+    /// </summary>
+    private async Task FollowRpcCallsAsync(string path, SessionOverviewBundle shown)
+    {
+        // The calls are followed once for the session shown, whatever policy counts them: a policy chosen meanwhile projects
+        // from the same links, so it waits for this following rather than starting another.
+        rpcFollowing ??= new CancellationTokenSource();
+        CancellationToken stopped = rpcFollowing.Token;
+        SessionOverviewBundle followed;
+        try
+        {
+            Func<SessionStore, EvidencePolicy, CancellationToken, SessionOverviewBundle> follow = RpcCallsFollower;
+            followed = await Task.Run(() => follow(SharedSessionStores.Open(path, shown.SessionId), shown.Policy, stopped), stopped);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            // The view keeps its other relationships, and says why the calls' are not drawn.
+            if (!closed && ReferenceEquals(displayedOverview, shown))
+            {
+                CaptureDetail.Text = "Its RPC calls could not be followed through ALPC, so the graph draws none of their edges: "
+                    + exception.Message;
+            }
+
+            return;
+        }
+
+        // A newer publication, another session or another choice may have come meanwhile; only the view it follows changes.
+        if (closed || displayedOverview is not { RpcCallsPending: true } current || current.SessionId != followed.SessionId
+            || current.Policy != followed.Policy || current.Generation > followed.Generation)
+        {
+            return;
+        }
+
+        ReplaceWorkspace(new CaptureUiUpdate(phase, CaptureStatus.Text ?? string.Empty, CaptureDetail.Text ?? string.Empty,
+            SessionPath: path, Overview: followed, OverviewChunks: displayedChunks), followed, forceOverview: false);
+    }
+
+    /// <summary>Stops following the shown session's RPC calls, as opening another, starting a capture or closing does.</summary>
+    private void StopFollowingRpcCalls()
+    {
+        rpcFollowing?.Cancel();
+        rpcFollowing?.Dispose();
+        rpcFollowing = null;
+    }
 
     /// <summary>How a saved session's files are hashed after its first view; a test holds the hashing back with it.</summary>
     internal Func<SessionStore, StoreContentReport> SessionFilesVerifier { get; set; } = store => store.VerifyContents();
@@ -3792,6 +3863,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
         captureStop?.Dispose();
         captureStop = new CancellationTokenSource();
+        StopFollowingRpcCalls();
         int run = ++captureRunId;
         shownBeforeCapture = workspace.IsEmptyWorkspace ? null : new(displayedSessionId, displayedGeneration,
             currentSessionPath, displayedOverview, displayedChunks, growth, CaptureSummary.Text, CaptureSessionPath.Text,
@@ -4473,8 +4545,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         SessionOverviewBundle overview;
         try
         {
-            overview = await Task.Run(
-                () => SessionOverviewProjector.Project(SharedSessionStores.Open(path, shown.SessionId), policy));
+            overview = await Task.Run(() => SessionOverviewProjector.Project(
+                SharedSessionStores.Open(path, shown.SessionId), policy, followRpcCalls: false));
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
             or UnauthorizedAccessException)
@@ -4499,6 +4571,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
         ReplaceWorkspace(new CaptureUiUpdate(phase, CaptureStatus.Text ?? string.Empty, CaptureDetail.Text ?? string.Empty,
             SessionPath: path, Overview: overview, OverviewChunks: displayedChunks), overview, forceOverview: false);
+        if (overview.RpcCallsPending)
+        {
+            RpcCallsFollowed = FollowRpcCallsAsync(path, overview);
+        }
 
         // A member opened from its investigation keeps its choice there, as it keeps a pin or its ranking (§26.3).
         if (layoutHome is { } home)
@@ -5379,6 +5455,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         offerRecheck.Stop();
         finishingCapture?.Cancel();
         packaging?.Cancel();
+        StopFollowingRpcCalls();
         captureStop?.Cancel();
         captureStop?.Dispose();
         workspace.PropertyChanged -= OnWorkspaceChanged;

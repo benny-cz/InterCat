@@ -62,6 +62,7 @@ public static class OverviewWorkspace
             MechanismCoverage = overview.MechanismCoverage,
             RowsNoProcessHolds = overview.RowsNoProcessHolds,
             Census = overview.Census,
+            RpcCallsPending = overview.RpcCallsPending,
             HostLinks = overview.HostLinks,
             Listeners = overview.Listeners,
             ConnectionOpensRecorded = overview.ConnectionOpensRecorded,
