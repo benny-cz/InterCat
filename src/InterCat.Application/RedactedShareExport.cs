@@ -101,10 +101,11 @@ public static class RedactedShareExport
         bool bytes = comparison.Metric == ComparisonMetric.BytesSent;
         var scope = new SharedComparison(
             exportedUtc, "100-nanosecond session-relative presentation ticks", comparison.Metric, comparison.Policy,
-            bytes ? ByteDomain.TransportObserved : null, bytes ? AccountingSide.SendSide : null, null, NoAlignment,
-            ComparisonText.RatesNote, Shared(comparison.Baseline, comparison.BaselineCoverage),
+            comparison.Grouping, bytes ? ByteDomain.TransportObserved : null, bytes ? AccountingSide.SendSide : null, null,
+            NoAlignment, ComparisonText.RatesNote, Shared(comparison.Baseline, comparison.BaselineCoverage),
             Shared(comparison.Compared, comparison.ComparedCoverage), comparison.Relationships.Count, rows.Length,
-            rows.Length == comparison.Relationships.Count, comparison.Quiet);
+            rows.Length == comparison.Relationships.Count, comparison.Quiet,
+            comparison.Grouping == ComparisonGrouping.Executable ? comparison.Unmatched : null);
         return format switch
         {
             ExportFormat.Json => JsonSerializer.Serialize(new
@@ -212,24 +213,33 @@ public static class RedactedShareExport
     }
 
     /// <summary>
-    /// One row of a comparison with its ends as tokens: a process by its instance, its executable by the path its group is
-    /// keyed by - none where no executable was witnessed - and another host by its address.
+    /// One row of a comparison with its ends as tokens: a process by its instance, an executable by the path its group is
+    /// keyed by - none where no executable was witnessed - and another host by its address. A row of executables names no
+    /// process.
     /// </summary>
     private static SharedComparisonRow Safe(ComparedRelationship row, int rank, IntervalComparison comparison, Tokens tokens)
     {
-        ProcessNode source = comparison.Processes[row.Relationship?.SourceId ?? row.Host!.Link.Process];
-        ProcessNode? target = row.Relationship is { } edge ? comparison.Processes[edge.TargetId] : null;
-        string? Executable(ProcessNode? node) => node is null || node.GroupKey == ProcessGroup.UnwitnessedExecutableKey
+        string Process(ProcessInstanceId id) => tokens.For("process", id.ToString());
+        string? Executable(string? group) => group is null || group == ProcessGroup.UnwitnessedExecutableKey
             ? null
-            : tokens.For("executable", node.GroupKey);
+            : tokens.For("executable", group);
+        string? Of(ProcessInstanceId id) => Executable(comparison.Processes[id].GroupKey);
+        string Host(string address) => tokens.For("host", address);
+        (string Kind, string? Source, string? SourceExecutable, string? Target, string? TargetExecutable, string? Host) ends = row switch
+        {
+            { Relationship: { } edge } =>
+                ("Processes", Process(edge.SourceId), Of(edge.SourceId), Process(edge.TargetId), Of(edge.TargetId), null),
+            { Host: { } reach } =>
+                ("OtherHost", Process(reach.Link.Process), Of(reach.Link.Process), null, null, Host(reach.Address.Address)),
+            { Executables: { } pair } => ("Executables", null, Executable(pair.Source), null, Executable(pair.Target), null),
+            _ => ("ExecutableToOtherHost", null, Executable(row.ExecutableHost!.Executable), null, null,
+                Host(row.ExecutableHost.Address)),
+        };
         SharedMeasure Measured(ComparedMeasure measure, TimeRange interval) => new(measure.Records, measure.Value,
             measure.Measured, measure.Unmeasured, ComparisonText.Rounded(measure.PerSecond(interval)),
             new(measure.Coverage.Mechanism, measure.Coverage.State, measure.Coverage.Reason));
         return new(
-            rank, row.Host is null ? "Processes" : "OtherHost", row.Mechanism,
-            tokens.For("process", source.Id.ToString()), Executable(source),
-            target is null ? null : tokens.For("process", target.Id.ToString()), Executable(target),
-            row.Host is { } host ? tokens.For("host", host.Address.Address) : null,
+            rank, ends.Kind, row.Mechanism, ends.Source, ends.SourceExecutable, ends.Target, ends.TargetExecutable, ends.Host,
             ComparisonText.Connected(row),
             Measured(row.Baseline, comparison.Baseline), Measured(row.Compared, comparison.Compared),
             row.Change, row.FromLowerBound, ComparisonText.DifferencePerSecond(row, comparison), row.Reason);
@@ -245,6 +255,7 @@ public static class RedactedShareExport
         string IntervalUnit,
         ComparisonMetric ComparedBy,
         EvidencePolicy EvidencePolicy,
+        ComparisonGrouping GroupedBy,
         ByteDomain? ByteDomain,
         AccountingSide? Accounting,
         string? AlignmentRevision,
@@ -255,7 +266,8 @@ public static class RedactedShareExport
         int RowsCompared,
         int RowsListed,
         bool Complete,
-        int Quiet);
+        int Quiet,
+        UnmatchedRows? Unmatched);
 
     private sealed record SharedInterval(long StartTicks, long EndTicks, SharedCoverage[] Coverage, string? CoverageSummary,
         SharedCoverage[] MissingSources);
@@ -270,7 +282,7 @@ public static class RedactedShareExport
         int Rank,
         string Kind,
         Mechanism Mechanism,
-        string SourceToken,
+        string? SourceToken,
         string? SourceExecutableToken,
         string? TargetToken,
         string? TargetExecutableToken,
@@ -385,10 +397,11 @@ public static class RedactedShareExport
             scope.ExportedUtc.ToString("O", CultureInfo.InvariantCulture), "false", "false", "false",
             "Random tokens are consistent within this report only; no source-to-token mapping is included.",
             Omitted, Retained, Warning, scope.IntervalUnit, scope.ComparedBy.ToString(), scope.EvidencePolicy.ToString(),
-            scope.ByteDomain?.ToString() ?? string.Empty, scope.Accounting?.ToString() ?? string.Empty,
+            scope.GroupedBy.ToString(), scope.ByteDomain?.ToString() ?? string.Empty, scope.Accounting?.ToString() ?? string.Empty,
             Cell(scope.AlignmentRevision), scope.Alignment, Number(scope.Baseline.StartTicks), Number(scope.Baseline.EndTicks),
             Number(scope.Compared.StartTicks), Number(scope.Compared.EndTicks), Number(scope.RowsCompared),
-            Number(scope.RowsListed), scope.Complete ? "true" : "false", Number(scope.Quiet),
+            Number(scope.RowsListed), scope.Complete ? "true" : "false", Number(scope.Quiet), Number(scope.Unmatched?.Rows),
+            Number(scope.Unmatched?.BaselineRecords), Number(scope.Unmatched?.ComparedRecords),
         ];
         string[] said =
         [
@@ -398,7 +411,7 @@ public static class RedactedShareExport
         if (rows.Count == 0)
             Line(csv, [.. context, "false", .. Enumerable.Repeat(string.Empty, 25), .. said]);
         foreach (SharedComparisonRow row in rows)
-            Line(csv, [.. context, "true", Number(row.Rank), row.Kind, row.Mechanism.ToString(), row.SourceToken,
+            Line(csv, [.. context, "true", Number(row.Rank), row.Kind, row.Mechanism.ToString(), Cell(row.SourceToken),
                 Cell(row.SourceExecutableToken), Cell(row.TargetToken), Cell(row.TargetExecutableToken), Cell(row.HostToken),
                 row.Connected, .. Measure(row.Baseline), .. Measure(row.Compared), row.Change.ToString(),
                 row.FromLowerBound ? "true" : "false", Number(row.DifferencePerSecond), Cell(row.Reason), .. said]);
@@ -418,9 +431,10 @@ public static class RedactedShareExport
     private static readonly string[] ComparisonHeader =
         ["contract", "report_id", "policy", "kind", "exported_utc", "original_sources_included", "raw_locators_included",
             "content_bytes_included", "token_scope", "omitted", "retained", "warning", "interval_unit", "compared_by",
-            "evidence_policy", "byte_domain", "accounting", "alignment_revision", "alignment", "baseline_start_ticks",
-            "baseline_end_ticks", "compared_start_ticks", "compared_end_ticks", "rows_compared", "rows_listed", "complete",
-            "quiet", "row_present", "rank", "row_kind", "mechanism", "source_token", "source_executable_token",
+            "evidence_policy", "grouped_by", "byte_domain", "accounting", "alignment_revision", "alignment",
+            "baseline_start_ticks", "baseline_end_ticks", "compared_start_ticks", "compared_end_ticks", "rows_compared",
+            "rows_listed", "complete", "quiet", "unmatched_rows", "unmatched_baseline_records", "unmatched_compared_records",
+            "row_present", "rank", "row_kind", "mechanism", "source_token", "source_executable_token",
             "target_token", "target_executable_token", "host_token", "connected", "baseline_records", "baseline_value",
             "baseline_measured", "baseline_unmeasured", "baseline_per_second", "baseline_coverage_state", "compared_records",
             "compared_value", "compared_measured", "compared_unmeasured", "compared_per_second", "compared_coverage_state",

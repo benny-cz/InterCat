@@ -390,7 +390,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         {
             CancellationToken token = request.Token;
             IntervalComparison comparison = await Task.Run(() => SessionComparison.Compare(
-                SharedSessionStores.Open(path, sessionId), chosenBaseline, compared, by, policy, token), token);
+                SharedSessionStores.Open(path, sessionId), chosenBaseline, compared, by, policy, cancellationToken: token), token);
             if (closed || !ReferenceEquals(reading, request)) return;
             Show(comparison);
         }

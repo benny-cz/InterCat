@@ -45,18 +45,23 @@ public static class ComparisonText
     /// A row's two ends, the one that made its connections or calls first, as the overview names a relationship: "browser.exe
     /// · PID 100 → server.exe · PID 200", "a ⇄ b" where each made some, and the two joined by <paramref name="unopened"/>
     /// where the capture saw none open. Another host is named by its address: "browser.exe · PID 100 → 142.250.1.1", and
-    /// "10.0.0.5 → svchost.exe · PID 300" where the process accepted the host's connections.
+    /// "10.0.0.5 → svchost.exe · PID 300" where the process accepted the host's connections. An executable is named as the
+    /// window's groups name it: "browser.exe → server.exe", its folders added where two of one name are compared.
     /// </summary>
     public static string Ends(ComparedRelationship row, IntervalComparison comparison, string unopened)
     {
         ArgumentNullException.ThrowIfNull(row);
         ArgumentNullException.ThrowIfNull(comparison);
         ArgumentException.ThrowIfNullOrEmpty(unopened);
-        (string source, string target, bool fromSource, bool fromTarget) = row.Relationship is { } edge
-            ? (CollectorText.Named(comparison.Processes[edge.SourceId]), CollectorText.Named(comparison.Processes[edge.TargetId]),
-                edge.SourceConnected > 0, edge.TargetConnected > 0)
-            : (CollectorText.Named(comparison.Processes[row.Host!.Link.Process]), row.Host.Address.Address,
-                row.Host.Address.Connected > 0, row.Host.Address.Accepted > 0);
+        (string source, string target) = row switch
+        {
+            { Relationship: { } edge } =>
+                (CollectorText.Named(comparison.Processes[edge.SourceId]), CollectorText.Named(comparison.Processes[edge.TargetId])),
+            { Host: { } host } => (CollectorText.Named(comparison.Processes[host.Link.Process]), host.Address.Address),
+            { Executables: { } pair } => (comparison.Groups[pair.Source].Name, comparison.Groups[pair.Target].Name),
+            _ => (comparison.Groups[row.ExecutableHost!.Executable].Name, row.ExecutableHost.Address),
+        };
+        (bool fromSource, bool fromTarget) = Opened(row);
         return (fromSource, fromTarget) switch
         {
             (true, false) => $"{source} → {target}",
@@ -73,10 +78,7 @@ public static class ComparisonText
     public static string Connected(ComparedRelationship row)
     {
         ArgumentNullException.ThrowIfNull(row);
-        (bool source, bool target) = row.Relationship is { } edge
-            ? (edge.SourceConnected > 0, edge.TargetConnected > 0)
-            : (row.Host!.Address.Connected > 0, row.Host.Address.Accepted > 0);
-        return (source, target) switch
+        return Opened(row) switch
         {
             (true, false) => "SourceToTarget",
             (false, true) => "TargetToSource",
@@ -84,6 +86,19 @@ public static class ComparisonText
             _ => "Unobserved",
         };
     }
+
+    /// <summary>
+    /// Whether a row's source made connections or calls to its target, and whether its target made some to its source, as
+    /// the capture saw them open: of another host, whether the process, or the executable's processes, connected to it, and
+    /// whether they accepted its connections.
+    /// </summary>
+    private static (bool Source, bool Target) Opened(ComparedRelationship row) => row switch
+    {
+        { Relationship: { } edge } => (edge.SourceConnected > 0, edge.TargetConnected > 0),
+        { Host: { } host } => (host.Address.Connected > 0, host.Address.Accepted > 0),
+        { Executables: { } pair } => (pair.SourceConnected > 0, pair.TargetConnected > 0),
+        _ => (row.ExecutableHost!.Connected > 0, row.ExecutableHost.Accepted > 0),
+    };
 
     /// <summary>
     /// A rate as a comparison's file states it, rounded half to even to three decimal places, for presentation: the
@@ -113,10 +128,15 @@ public static class ComparisonText
     public static string Over(ComparedRelationship row)
     {
         ArgumentNullException.ThrowIfNull(row);
-        return row.Relationship is { } edge
-            ? DirectionText.Over(edge.Mechanism, edge.AcceptedPorts)
-            : DirectionText.Over(row.Host!.Link.Mechanism,
-                [.. row.Host.Address.Ports.Concat(row.Host.Address.AcceptedPorts).Distinct().Order()]);
+        return row switch
+        {
+            { Relationship: { } edge } => DirectionText.Over(edge.Mechanism, edge.AcceptedPorts),
+            { Host: { } host } => DirectionText.Over(host.Link.Mechanism,
+                [.. host.Address.Ports.Concat(host.Address.AcceptedPorts).Distinct().Order()]),
+            { Executables: { } pair } => DirectionText.Over(pair.Mechanism, pair.AcceptedPorts),
+            _ => DirectionText.Over(row.ExecutableHost!.Mechanism,
+                [.. row.ExecutableHost.Ports.Concat(row.ExecutableHost.AcceptedPorts).Distinct().Order()]),
+        };
     }
 
     /// <summary>
@@ -187,13 +207,13 @@ public static class ComparisonText
     {
         ArgumentNullException.ThrowIfNull(listed);
         List<string> notes = [RatesNote];
-        bool hosts = listed.Any(row => row.Host is not null);
+        bool hosts = listed.Any(row => row.Host is not null || row.ExecutableHost is not null);
         if (metric == ComparisonMetric.BytesSent)
         {
             notes.Add("Bytes are transport-observed."
                 + (hosts
-                    ? " Of another host, only what the process sent there is counted: what the host sent has no sender among "
-                        + "this machine's records."
+                    ? " Of another host, only what " + (listed.Any(row => row.ExecutableHost is not null) ? "an executable's processes" : "the process")
+                        + " sent there is counted: what the host sent has no sender among this machine's records."
                     : string.Empty)
                 + (listed.Any(row => !row.Baseline.Exact || !row.Compared.Exact)
                     ? " A value marked ≥ is a lower bound: sends that recorded no size are counted apart, never as zero, and a "
@@ -201,8 +221,7 @@ public static class ComparisonText
                     : string.Empty));
         }
 
-        if (listed.Any(row => row.Relationship is { SourceConnected: > 0 } or { TargetConnected: > 0 }
-            || row.Host?.Address is { Connected: > 0 } or { Accepted: > 0 }))
+        if (listed.Any(row => Opened(row) is (true, _) or (_, true)))
         {
             notes.Add("An arrow points at what was connected to, or called, where the capture saw it; ⇄ joins two that each did "
                 + "so to the other.");
@@ -211,6 +230,34 @@ public static class ComparisonText
         if (hosts)
         {
             notes.Add("Another host is named by its address: who is at it is not observed.");
+        }
+
+        return notes;
+    }
+
+    /// <summary>
+    /// What a comparison by executable says of how its rows are grouped, beneath them: by the path each executable's image
+    /// was witnessed at, and what processes of no witnessed executable held, which no row holds. Nothing for a comparison
+    /// by process.
+    /// </summary>
+    public static IReadOnlyList<string> Grouping(IntervalComparison comparison, IFormatProvider? culture = null)
+    {
+        ArgumentNullException.ThrowIfNull(comparison);
+        culture ??= CultureInfo.CurrentCulture;
+        if (comparison.Grouping != ComparisonGrouping.Executable)
+        {
+            return [];
+        }
+
+        List<string> notes = ["Each row is an executable's processes together, grouped by the path their image was witnessed "
+            + "at, never by a name alone."];
+        if (comparison.Unmatched is { Rows: > 0 } unmatched)
+        {
+            notes.Add(string.Create(culture, $"Processes whose executable was not witnessed are in no row, since no path groups "
+                + $"them: {unmatched.Rows:N0} of their relationships and connections to other hosts, with "
+                + $"{unmatched.BaselineRecords:N0} ")
+                + CountText.Agree(unmatched.BaselineRecords, "record", "records")
+                + string.Create(culture, $" in the baseline and {unmatched.ComparedRecords:N0} in the compared interval."));
         }
 
         return notes;

@@ -2,15 +2,16 @@
 
 Status: **implemented** for two intervals of one session's generation, on the command line (`icat compare`, revision
 752), in the window (Compare with…, revision 753, §8a), and as a redacted report to share from either (revision 754,
-§8b). Comparing two captures, difference timelines, graph overlays and saved comparison specifications are not defined
-at this version (§9).
+§8b); its rows are of processes or, on the command line since revision 755, of executables (§2a). Comparing two
+captures, difference timelines, graph overlays and saved comparison specifications are not defined at this version
+(§9).
 
 This contract fixes what plan §15's M12 asks of a comparison - normalized rates beside absolute counts, ranked changed
 relations, unavailable measurement told apart from disappeared activity, and side-by-side values with an explicit reason
 wherever no change can be stated - for its first form: two intervals of one generation, compared row by row. It owns
 no bytes: every value is read from the generation's published segments and indexes through the queries the window and
 the command line already answer (`metrics-v1`, `relations-v1`, `coverage-v2`), and a comparison changes none of them.
-ADR-058 records the decisions.
+ADR-058 records the decisions, and ADR-059 how rows are grouped by executable.
 
 ## 1. A request
 
@@ -20,6 +21,7 @@ ADR-058 records the decisions.
 - A **metric** (§3), `Records` by default.
 - An **evidence policy**, `IncludeCorrelated` by default, which admits relationships and records as the overview admits
   them.
+- A **grouping**: a row per process, `Process`, by default, or per executable, `Executable` (§2a).
 
 ## 2. Rows
 
@@ -36,6 +38,27 @@ Every such row with at least one record in either interval is compared; the othe
 no row. A relationship's records in an interval are those a brushed ranking counts there (both ends' records, the
 interval's own); a reach's are its connections' records whose session time falls in the interval, as `icat evidence
 --host` lists them. A record without a usable session time is in no interval.
+
+## 2a. By executable
+
+Grouped by **executable**, a row is an executable's: every relationship the overview draws between a process of one
+executable and a process of another - or of the same one - over one mechanism, together, keyed
+`executables:<mechanism>:<first>|<second>` by the two executables' group keys in ordinal order; or every connection an
+executable's processes made over one transport to one other host's address, together, keyed
+`executable-hosts:<mechanism>:<executable>@<address>`. An executable is the overview's group: the path its processes'
+image was witnessed at, letter case aside, named as the window names its groups, with the fewest folders that tell two
+of one name apart. It is a grouping, never an identity (P6, ADR-059): its processes stay distinct and none is taken
+for another, so an executable whose process restarted between the two intervals keeps one row, both processes in it.
+
+A row's records, bytes, coverage and change are §3 to §5's, summed over its processes' relationships or connections:
+what each sent across, each transfer at its sender, a lower bound where any send recorded no size. Who made a
+relationship's connections or calls is summed in its two directions, from the executable whose key orders first to the
+other and back, and the ports its connections arrived at are each port any of them did.
+
+A process whose executable was not witnessed is in **no row**: no path groups it with any other, and grouping it with
+the other unwitnessed processes would merge strangers. Its relationships and connections to other hosts with a record
+in either interval are counted apart (`unmatched`), with their records in each interval, and said beneath the rows;
+one with none is not counted, and quiet counts executable rows only.
 
 ## 3. Metrics
 
@@ -106,7 +129,7 @@ twice lists its rows alike.
 
 ```
 icat compare <session-directory> --baseline <start:end> --interval <start:end>
-    [--rank-by records|bytes-sent] [--limit <n>] [--json]
+    [--rank-by records|bytes-sent] [--group-by process|executable] [--limit <n>] [--json]
     [--output <path> [--share-redacted] [--format json|csv] [--overwrite]]
 ```
 
@@ -124,8 +147,10 @@ its change, or `not comparable [n]` naming its reason once beneath the table.
 | `comparison.sessionId`, `generation` | The generation every value was read from. |
 | `metric`, `policy` | §3, §1. |
 | `byteDomain`, `accounting` | `TransportObserved` and `SendSide` under `BytesSent`; null under `Records`. |
+| `groupedBy` | `Process` or `Executable` (§2a). |
 | `baseline`, `compared` | Each interval (`startTicks`, `endTicks`, `spanTicks`) and its coverage: every mechanism's state and reason, never one rolled-up state. |
 | `relationships`, `quiet` | The rows in all, and the quiet ones (§2). |
+| `unmatched` | By executable, what no executable groups: `{ rows, baselineRecords, comparedRecords }` (§2a); null by process. |
 | `rows` | The rows, ranked (§7), as many as `--limit`. |
 
 Each row: `key`; `kind`, `Processes` or `OtherHost`; `mechanism`; `source` and `target`, each `{ instance, processId,
@@ -134,7 +159,9 @@ name }`, a reach's target null and its `address` named; `connected`, `SourceToTa
 `hostPorts`, a reach's ports at the host; `baseline` and `compared`, each `{ records, value, measured, unmeasured,
 perSecond, coverage }`; `change`; `fromLowerBound`; `differencePerSecond`, null where not comparable; and `reason`,
 null where a change is stated. A rate is for presentation, rounded half to even to three decimal places; the integers
-it comes from are the row's (`metrics-v1` §7).
+it comes from are the row's (`metrics-v1` §7). By executable, `kind` is `Executables` or `ExecutableToOtherHost`, and
+`source` and `target` are each `{ group, name, path }`: the executable's group key, the name the window gives it, and
+the path its image was witnessed at.
 
 `--output <path>` writes the `--json` document to a file instead, complete before it replaces anything, and refuses a
 file that is there unless `--overwrite` is given; a file holds every row unless `--limit` is given, being read whole
@@ -172,11 +199,12 @@ alignment revision:
 
 | Field | Meaning |
 |---|---|
-| `comparison.comparedBy`, `evidencePolicy` | §3, §1. |
+| `comparison.comparedBy`, `evidencePolicy`, `groupedBy` | §3, §1, §2a. |
 | `byteDomain`, `accounting` | `TransportObserved` and `SendSide` under `BytesSent`; null under `Records`. |
 | `alignmentRevision`, `alignment` | Null, and why: both intervals are of one session, read on its own clock, so no alignment of captures applies. |
 | `baseline`, `compared` | Each interval's relative `startTicks` and `endTicks`; its `coverage`, every mechanism's state and reason, and `coverageSummary`, the same in words; and its `missingSources`, each mechanism it did not collect in full, or cannot show it did: not collected, a partial gap, or unknown. |
 | `rowsCompared`, `rowsListed`, `complete`, `quiet` | The rows compared and those the report lists, whether it lists them all, and the quiet ones (§2). |
+| `unmatched` | By executable, the relationships and connections no executable groups and their records in each interval (§2a); null by process. |
 | `ratesMeaning`, `intervalUnit`, `exportedUtc` | What a rate is over (§4), the ticks' unit, and when the report was written. |
 
 Each row: its `rank`, `kind` and `mechanism`; its ends as random tokens, consistent within the report only -
@@ -187,7 +215,8 @@ witnessed; and `hostToken` for another host's address; `connected`; `baseline` a
 measured, unmeasured, perSecond, coverage }`; `change`; `fromLowerBound`; `differencePerSecond`; and `reason`, one of
 §5's sentences, whose only variable parts are mechanism names, a coverage reason of `coverage-v2` §4, epoch numbers
 and counts. No process name, PID, executable path, address, port, row key, session identity, generation or session
-folder is written.
+folder is written. A row by executable, `Executables` or `ExecutableToOtherHost`, names no process: its process tokens
+are null, and each executable's token is keyed by its group, as a process row's executable token is.
 
 CSV writes the same a line a row: on every line the policy and its disclosures, what was compared and both intervals,
 then the row, then each interval's missing sources (`Udp:NotCollected;Http:UnknownCoverage`) and coverage in words,

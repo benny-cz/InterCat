@@ -27,6 +27,7 @@ internal static class CompareCommand
         string? baselineText = command.TakeOption("--baseline");
         string? intervalText = command.TakeOption("--interval");
         string? rankByText = command.TakeOption("--rank-by");
+        string? groupByText = command.TakeOption("--group-by");
         string? limitText = command.TakeOption("--limit");
         bool json = command.TryTakeFlag("--json");
         string? output = command.TakeOption("--output");
@@ -41,6 +42,12 @@ internal static class CompareCommand
         {
             null or "records" => ComparisonMetric.Records,
             "bytes-sent" => ComparisonMetric.BytesSent,
+            _ => null,
+        };
+        ComparisonGrouping? grouping = groupByText switch
+        {
+            null or "process" => ComparisonGrouping.Process,
+            "executable" => ComparisonGrouping.Executable,
             _ => null,
         };
         int limit = DefaultLimit;
@@ -60,6 +67,7 @@ internal static class CompareCommand
                 ?? "--baseline is required: " + TickInterval.Takes + "."
             : compared is null ? comparedTooWide ?? "--interval is required: " + TickInterval.Takes + "."
             : metric is null ? $"--rank-by compares records or bytes-sent; '{rankByText}' is neither."
+            : grouping is null ? $"--group-by compares process or executable rows; '{groupByText}' is neither."
             : invalidLimit ? $"--limit expects a number of relationships of 1 or more; '{limitText}' is not one."
             : output is null && fileOnly is not null ? $"{fileOnly} shapes a file written with --output <path>, which was not given."
             : output is not null && json ? "--json prints the comparison and --output writes it to a file; pass one of them."
@@ -92,7 +100,7 @@ internal static class CompareCommand
         try
         {
             comparison = SessionComparison.Compare(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), baseline!.Value,
-                compared!.Value, metric!.Value, cancellationToken: cancellationToken);
+                compared!.Value, metric!.Value, grouping: grouping!.Value, cancellationToken: cancellationToken);
         }
         catch (InvalidDataException exception)
         {
@@ -147,21 +155,41 @@ internal static class CompareCommand
             comparison.Policy,
             ByteDomain = bytes ? ByteDomain.TransportObserved : (ByteDomain?)null,
             Accounting = bytes ? AccountingSide.SendSide : (AccountingSide?)null,
+            GroupedBy = comparison.Grouping,
             Baseline = new { Interval = comparison.Baseline, Coverage = comparison.BaselineCoverage },
             Compared = new { Interval = comparison.Compared, Coverage = comparison.ComparedCoverage },
             Relationships = comparison.Relationships.Count,
             comparison.Quiet,
+            Unmatched = comparison.Grouping == ComparisonGrouping.Executable ? comparison.Unmatched : null,
             Rows = comparison.Relationships.Take(limit).Select(row => new
             {
                 row.Key,
-                Kind = row.Host is null ? "Processes" : "OtherHost",
+                Kind = row switch
+                {
+                    { Relationship: not null } => "Processes",
+                    { Host: not null } => "OtherHost",
+                    { Executables: not null } => "Executables",
+                    _ => "ExecutableToOtherHost",
+                },
                 row.Mechanism,
-                Source = End(comparison.Processes[row.Relationship?.SourceId ?? row.Host!.Link.Process]),
-                Target = row.Relationship is { } edge ? End(comparison.Processes[edge.TargetId]) : null,
-                Address = row.Host?.Address.Address,
+                Source = row switch
+                {
+                    { Relationship: { } edge } => End(comparison.Processes[edge.SourceId]),
+                    { Host: { } host } => End(comparison.Processes[host.Link.Process]),
+                    { Executables: { } pair } => Executable(comparison.Groups[pair.Source]),
+                    _ => Executable(comparison.Groups[row.ExecutableHost!.Executable]),
+                },
+                Target = row switch
+                {
+                    { Relationship: { } edge } => End(comparison.Processes[edge.TargetId]),
+                    { Executables: { } pair } => Executable(comparison.Groups[pair.Target]),
+                    _ => null,
+                },
+                Address = row.Host?.Address.Address ?? row.ExecutableHost?.Address,
                 Connected = ComparisonText.Connected(row),
-                AcceptedPorts = row.Relationship?.AcceptedPorts ?? row.Host!.Address.AcceptedPorts,
-                HostPorts = row.Host?.Address.Ports ?? [],
+                AcceptedPorts = row.Relationship?.AcceptedPorts ?? row.Host?.Address.AcceptedPorts
+                    ?? row.Executables?.AcceptedPorts ?? row.ExecutableHost!.AcceptedPorts,
+                HostPorts = row.Host?.Address.Ports ?? row.ExecutableHost?.Ports ?? [],
                 Baseline = Side(row.Baseline, comparison.Baseline),
                 Compared = Side(row.Compared, comparison.Compared),
                 row.Change,
@@ -172,6 +200,9 @@ internal static class CompareCommand
         };
 
         static object End(ProcessNode node) => new { Instance = node.Id, node.ProcessId, node.Name };
+
+        // An executable is its group: its key, the name the window gives it, and the path its image was witnessed at.
+        static object Executable(ProcessGroup group) => new { Group = group.Key, group.Name, Path = group.Detail };
 
         static object Side(ComparedMeasure measure, TimeRange interval) => new
         {
@@ -200,6 +231,7 @@ internal static class CompareCommand
         ConsoleUi.Field("Baseline", ComparisonText.Interval(comparison.Baseline, culture: culture));
         ConsoleUi.Field("Compared", ComparisonText.Interval(comparison.Compared, culture: culture));
         ConsoleUi.Field("Compared by", ComparedBy(comparison.Metric));
+        ConsoleUi.Field("Grouped by", GroupedBy(comparison.Grouping));
         int all = comparison.Relationships.Count;
         ConsoleUi.Field("Rows", rows == all
             ? ConsoleUi.Count(all) + (all == 1 ? ", the one compared" : ", every one compared")
@@ -218,6 +250,11 @@ internal static class CompareCommand
         }
     }
 
+    /// <summary>What a comparison's rows are of, in words: processes, or executables.</summary>
+    private static string GroupedBy(ComparisonGrouping grouping) => grouping == ComparisonGrouping.Executable
+        ? "executable, each one's processes together by the path their image was witnessed at"
+        : "process";
+
     /// <summary>What a comparison compared each row by, in words.</summary>
     private static string ComparedBy(ComparisonMetric metric) => metric == ComparisonMetric.BytesSent
         ? "bytes sent across per second, each transfer counted once at its sender"
@@ -232,8 +269,10 @@ internal static class CompareCommand
         ConsoleUi.Field("Baseline", ComparisonText.Interval(comparison.Baseline, culture: culture));
         ConsoleUi.Field("Compared", ComparisonText.Interval(comparison.Compared, culture: culture));
         ConsoleUi.Field("Compared by", ComparedBy(comparison.Metric));
-        int hosts = comparison.Relationships.Count(row => row.Host is not null);
-        ConsoleUi.Field("Rows", ConsoleUi.Count(comparison.Relationships.Count - hosts) + " between processes · "
+        ConsoleUi.Field("Grouped by", GroupedBy(comparison.Grouping));
+        int hosts = comparison.Relationships.Count(row => row.Host is not null || row.ExecutableHost is not null);
+        string between = comparison.Grouping == ComparisonGrouping.Executable ? " between executables · " : " between processes · ";
+        ConsoleUi.Field("Rows", ConsoleUi.Count(comparison.Relationships.Count - hosts) + between
             + ConsoleUi.Count(hosts) + " to other hosts, with records in either interval"
             + (comparison.Quiet > 0 ? " · " + ConsoleUi.Count(comparison.Quiet) + " quiet in both" : string.Empty));
         foreach (string? coverage in new[]
@@ -249,6 +288,7 @@ internal static class CompareCommand
         {
             ConsoleUi.Note("No relationship the overview draws, and no process's connections to another host, has a record in "
                 + "either interval, so none is compared.");
+            foreach (string grouped in ComparisonText.Grouping(comparison, culture)) ConsoleUi.Note(grouped);
             return;
         }
 
@@ -276,7 +316,7 @@ internal static class CompareCommand
                 + $"--limit {comparison.Relationships.Count:N0} lists every one."));
         }
 
-        foreach (string note in ComparisonText.Notes(listed, comparison.Metric))
+        foreach (string note in ComparisonText.Notes(listed, comparison.Metric).Concat(ComparisonText.Grouping(comparison, culture)))
         {
             ConsoleUi.Note(note);
         }
@@ -309,7 +349,7 @@ internal static class CompareCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat compare <session-directory> --baseline <start:end> --interval <start:end>");
-        ConsoleUi.Line("    [--rank-by records|bytes-sent] [--limit <n>] [--json]");
+        ConsoleUi.Line("    [--rank-by records|bytes-sent] [--group-by process|executable] [--limit <n>] [--json]");
         ConsoleUi.Line("    [--output <path> [--share-redacted] [--format json|csv] [--overwrite]]");
         ConsoleUi.Line("  Read-only comparison of two intervals of a session, relationship by relationship: how each one's");
         ConsoleUi.Line("  records, or the bytes its two ends sent across it, changed from the baseline to the interval, as");
@@ -319,6 +359,9 @@ internal static class CompareCommand
         ConsoleUi.Line("  same sources; elsewhere both values are shown with why they cannot be compared, so a mechanism");
         ConsoleUi.Line("  the capture did not collect in one interval never reads as activity that stopped. Sends that");
         ConsoleUi.Line("  recorded no size make a lower bound, which states a change only where it alone decides it.");
+        ConsoleUi.Line("  --group-by executable compares executables rather than processes: each one's processes");
+        ConsoleUi.Line("  together, by the path their image was witnessed at, so a process that restarted is one row;");
+        ConsoleUi.Line("  processes whose executable was not witnessed are in no row, and are counted apart.");
         ConsoleUi.Line($"  --limit lists at most that many, {DefaultLimit} by default; a file written with --output holds");
         ConsoleUi.Line("  every row unless --limit is given. --output writes the --json document to a file, complete");
         ConsoleUi.Line("  before it replaces anything; with --share-redacted it writes a metadata-only, pseudonymized");

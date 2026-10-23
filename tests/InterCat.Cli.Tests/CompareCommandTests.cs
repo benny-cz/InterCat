@@ -127,6 +127,89 @@ public sealed class CompareCommandTests
         Assert.Matches(@"(?m)^  Rows +0 between processes · 0 to other hosts, with records in either interval · 4 quiet in both\r?$", text);
     }
 
+    [Fact(DisplayName = "R22: icat compare --group-by executable states each executable's processes together, grouped by path")]
+    public async Task IcatCompareGroupsByExecutable()
+    {
+        // client.exe's process exchanged with server.exe until it exited at 9 s, and its next process from 11 s; two
+        // processes no record names the executable of exchanged every other second throughout.
+        using var session = new TemporarySession();
+        List<ObservationRowV1> rows =
+        [
+            Timed(Lifecycle(1, ObservationKind.Inventory, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Lifecycle(2, ObservationKind.Inventory, 200, 2) with { ResourceName = @"C:\Tools\server.exe" }),
+            Timed(Lifecycle(9 * Second, ObservationKind.Exit, 100, (ulong)(9 * Second))),
+            Timed(Lifecycle(10 * Second, ObservationKind.Create, 150, (ulong)(10 * Second)) with { ResourceName = @"C:\Tools\client.exe" }),
+        ];
+        for (long at = 1; at < 9; at++) rows.AddRange(Exchange(at * Second, 100, 200, "127.0.0.1:50000", "127.0.0.1:8080", 8));
+        for (long at = 11; at < 19; at++) rows.AddRange(Exchange(at * Second, 150, 200, "127.0.0.1:50001", "127.0.0.1:8080", 8));
+        for (long at = 1; at < 19; at += 2) rows.AddRange(Exchange((at * Second) + 7, 300, 400, "127.0.0.1:50002", "127.0.0.1:9090", 8));
+        Publish(session.Store, [.. rows.OrderBy(row => row.NativeTicks)], coverage: Ledger());
+        session.Store.ReleaseSegmentReaders();
+
+        string[] compare = ["compare", session.Path, "--baseline", "0:10s", "--interval", "10s:20s", "--group-by", "executable"];
+        (InterCatExitCode code, string text, string said) = await Run(compare);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Grouped by +executable, each one's processes together by the path their image was witnessed at\r?$", text);
+        Assert.Matches(@"(?m)^  Rows +1 between executables · 0 to other hosts, with records in either interval\r?$", text);
+        Assert.Matches(@"(?m)^  client\.exe and server\.exe +TCP +16 · 1\.60/s +16 · 1\.60/s +unchanged\r?$", text);
+        string flowing = Regex.Replace(text, @"\s+", " ");
+        Assert.Contains("Each row is an executable's processes together, grouped by the path their image was witnessed at, never "
+            + "by a name alone.", flowing, Ordinal);
+        Assert.Contains("Processes whose executable was not witnessed are in no row, since no path groups them: 1 of their "
+            + "relationships and connections to other hosts, with 10 records in the baseline and 8 in the compared interval.",
+            flowing, Ordinal);
+
+        // By process, the restart is a relationship that disappeared and another that appeared, and nothing is counted apart.
+        (_, text, _) = await Run("compare", session.Path, "--baseline", "0:10s", "--interval", "10s:20s");
+        Assert.Matches(@"(?m)^  Grouped by +process\r?$", text);
+        Assert.Contains(" disappeared", text, Ordinal);
+        Assert.DoesNotContain("Processes whose executable was not witnessed", text, Ordinal);
+        Assert.DoesNotContain("Each row is an executable's", text, Ordinal);
+
+        // The same as JSON: each end an executable's group, name and path, and what no path groups counted.
+        (_, text, _) = await Run([.. compare, "--json"]);
+        JsonElement comparison = JsonDocument.Parse(text).RootElement.GetProperty("comparison");
+        Assert.Equal("Executable", comparison.GetProperty("groupedBy").GetString());
+        Assert.Equal((1, 10L, 8L), (comparison.GetProperty("unmatched").GetProperty("rows").GetInt32(),
+            comparison.GetProperty("unmatched").GetProperty("baselineRecords").GetInt64(),
+            comparison.GetProperty("unmatched").GetProperty("comparedRecords").GetInt64()));
+        JsonElement row = Assert.Single(comparison.GetProperty("rows").EnumerateArray());
+        Assert.Equal(("Executables", "Unchanged", "Unobserved"), (row.GetProperty("kind").GetString(), row.GetProperty("change").GetString(),
+            row.GetProperty("connected").GetString()));
+        Assert.Equal(("executable:C:\\TOOLS\\CLIENT.EXE", "client.exe", @"C:\Tools\client.exe"), (row.GetProperty("source").GetProperty("group").GetString(),
+            row.GetProperty("source").GetProperty("name").GetString(), row.GetProperty("source").GetProperty("path").GetString()));
+        Assert.Equal("server.exe", row.GetProperty("target").GetProperty("name").GetString());
+        Assert.Equal(JsonValueKind.Null, row.GetProperty("address").ValueKind);
+        (_, text, _) = await Run("compare", session.Path, "--baseline", "0:10s", "--interval", "10s:20s", "--json");
+        Assert.Equal(("Process", JsonValueKind.Null), (JsonDocument.Parse(text).RootElement.GetProperty("comparison").GetProperty("groupedBy").GetString(),
+            JsonDocument.Parse(text).RootElement.GetProperty("comparison").GetProperty("unmatched").ValueKind));
+
+        // Shared redacted, an executable is a token and no process is named.
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-executables-");
+        try
+        {
+            string report = Path.Combine(folder.FullName, "share.json");
+            (code, _, said) = await Run([.. compare, "--output", report, "--share-redacted"]);
+            Assert.True(code == InterCatExitCode.Success, said);
+            string written = File.ReadAllText(report);
+            foreach (string kept in new[] { "client.exe", "server.exe", "Tools", "TOOLS", "PID " })
+                Assert.DoesNotContain(kept, written, Ordinal);
+            JsonElement shared = JsonDocument.Parse(written).RootElement;
+            Assert.Equal("Executable", shared.GetProperty("comparison").GetProperty("groupedBy").GetString());
+            Assert.Equal(1, shared.GetProperty("comparison").GetProperty("unmatched").GetProperty("rows").GetInt32());
+            JsonElement sharedRow = Assert.Single(shared.GetProperty("rows").EnumerateArray());
+            Assert.Equal(("Executables", JsonValueKind.Null, JsonValueKind.Null), (sharedRow.GetProperty("kind").GetString(),
+                sharedRow.GetProperty("sourceToken").ValueKind, sharedRow.GetProperty("targetToken").ValueKind));
+            Assert.StartsWith("executable-", sharedRow.GetProperty("sourceExecutableToken").GetString(), Ordinal);
+            Assert.StartsWith("executable-", sharedRow.GetProperty("targetExecutableToken").GetString(), Ordinal);
+            Assert.NotEqual(sharedRow.GetProperty("sourceExecutableToken").GetString(), sharedRow.GetProperty("targetExecutableToken").GetString());
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
     [Fact(DisplayName = "R3: icat compare marks a lower bound, stating a change from it only where the bound decides it")]
     public async Task IcatCompareMarksALowerBound()
     {
@@ -272,6 +355,8 @@ public sealed class CompareCommandTests
                 "x --rank-by compares records or bytes-sent; 'calls' is neither."),
             (["compare", session.Path, "--baseline", "0:1", "--interval", "1:2", "--limit", "0"],
                 "x --limit expects a number of relationships of 1 or more; '0' is not one."),
+            (["compare", session.Path, "--baseline", "0:1", "--interval", "1:2", "--group-by", "thread"],
+                "x --group-by compares process or executable rows; 'thread' is neither."),
             (["compare", Path.Combine(session.Path, "missing"), "--baseline", "0:1", "--interval", "1:2"], "x No session directory at "),
             (["compare", session.Path, "--baseline", "0:1", "--interval", "1:2", "--share-redacted"],
                 "x --share-redacted shapes a file written with --output <path>, which was not given."),

@@ -14,7 +14,8 @@ namespace InterCat.Application.Tests;
 /// </summary>
 public sealed class SessionComparisonTests
 {
-    // Five relationships, each a client's connection to a server of its own.
+    // Five relationships, each a client's connection to a server of its own; then two more clients of the first server,
+    // which the tests by executable run: the first client's next process, and another.
     private static readonly (int Client, int Server, string ClientEnd, string ServerEnd)[] Pairs =
     [
         (100, 200, "127.0.0.1:50000", "127.0.0.1:8080"),
@@ -22,7 +23,12 @@ public sealed class SessionComparisonTests
         (500, 600, "127.0.0.1:50002", "127.0.0.1:7070"),
         (700, 800, "127.0.0.1:50003", "127.0.0.1:6060"),
         (900, 1_000, "127.0.0.1:50004", "127.0.0.1:5050"),
+        (150, 200, "127.0.0.1:50005", "127.0.0.1:8080"),
+        (300, 200, "127.0.0.1:50006", "127.0.0.1:8080"),
     ];
+
+    private const string ClientPath = @"C:\Tools\client.exe", OtherClientPath = @"D:\Other\client.exe";
+    private const string ServerPath = @"C:\Tools\server.exe";
 
     [Fact]
     public void AnIntervalComparedWithItselfIsUnchangedEverywhere()
@@ -125,6 +131,104 @@ public sealed class SessionComparisonTests
         // Intervals in which neither address was reached list neither, counting both as quiet.
         IntervalComparison later = SessionComparison.Compare(session.Store, new(200, 300), new(300, 400));
         Assert.Equal((0, 2), (later.Relationships.Count, later.Quiet));
+    }
+
+    [Fact(DisplayName = "R22: by executable, two processes run from one path share a row and two paths of one name do not")]
+    public void ByExecutableAProcessThatRestartedIsInItsExecutablesRow()
+    {
+        // client.exe's process exchanged with server.exe until it exited at 99 and its next process from 100; another
+        // executable of the same name, run from another folder, exchanged with the server in the compared interval alone.
+        using var session = new TemporarySession();
+        Publish(session.Store, Sorted(
+        [
+            Started(1, 100, ClientPath, ObservationKind.Inventory), Started(1, 200, ServerPath, ObservationKind.Inventory, slot: 15),
+            Timed(Lifecycle(99, ObservationKind.Exit, 100, (99 * 16) + 14)),
+            Started(100, 150, ClientPath, ObservationKind.Create), Started(100, 300, OtherClientPath, ObservationKind.Create, slot: 15),
+            .. Connects(5, pair: 0), .. Every(10, 99, 10, pair: 0), .. Connects(105, pair: 5), .. Every(110, 200, 10, pair: 5),
+            .. Connects(145, pair: 6), .. Every(150, 200, 10, pair: 6),
+        ]), coverage: Covered());
+
+        // By process, the restart reads as one relationship that disappeared and another that appeared.
+        IntervalComparison processes = SessionComparison.Compare(session.Store, new(0, 100), new(100, 200));
+        Assert.Equal(ComparisonGrouping.Process, processes.Grouping);
+        Assert.Equal(
+            [ComparisonChange.Appeared, ComparisonChange.Appeared, ComparisonChange.Disappeared],
+            processes.Relationships.Select(row => row.Change).Order());
+
+        // By executable, client.exe's two processes are one row, their rate unchanged; the other client.exe is a row of its
+        // own, named apart; and no process is taken for another, each still its own instance.
+        IntervalComparison executables = SessionComparison.Compare(session.Store, new(0, 100), new(100, 200),
+            grouping: ComparisonGrouping.Executable);
+        Assert.Equal(ComparisonGrouping.Executable, executables.Grouping);
+        Assert.Equal(4, executables.Processes.Count);
+        Assert.All(executables.Relationships, row => Assert.Null(row.Relationship));
+        ComparedRelationship[] rows = [.. executables.Relationships];
+        Assert.Equal(2, rows.Length);
+        ComparedRelationship other = rows[0], restarted = rows[1];
+        Assert.Equal((ComparisonChange.Appeared, ComparisonChange.Unchanged), (other.Change, restarted.Change));
+        Assert.Equal((20L, 20L), (restarted.Baseline.Records, restarted.Compared.Records));
+        Assert.Equal((2, 0), (restarted.Executables!.SourceConnected, restarted.Executables.TargetConnected));
+        Assert.Equal([(ushort)8080], restarted.Executables.AcceptedPorts);
+        Assert.Equal(("executable:" + ClientPath.ToUpperInvariant(), "executable:" + ServerPath.ToUpperInvariant()),
+            (restarted.Executables!.Source, restarted.Executables.Target));
+        Assert.Equal(("executable:" + ServerPath.ToUpperInvariant(), "executable:" + OtherClientPath.ToUpperInvariant()),
+            (other.Executables!.Source, other.Executables.Target));
+        Assert.Equal((0, 1), (other.Executables.SourceConnected, other.Executables.TargetConnected));
+        Assert.Equal("executables:tcp:" + restarted.Executables.Source + "|" + restarted.Executables.Target, restarted.Key);
+        string[] names = [executables.Groups[other.Executables.Target].Name, executables.Groups[restarted.Executables.Source].Name];
+        Assert.Equal(["client.exe (Other)", "client.exe (Tools)"], names);
+        Assert.Equal(new UnmatchedRows(0, 0, 0), executables.Unmatched);
+
+        // By bytes, what both executables' processes sent across their relationships, together.
+        IntervalComparison bytes = SessionComparison.Compare(session.Store, new(0, 100), new(100, 200), ComparisonMetric.BytesSent,
+            grouping: ComparisonGrouping.Executable);
+        ComparedRelationship sent = bytes.Relationships.Single(row => row.Executables!.Source == restarted.Executables.Source);
+        Assert.Equal((ComparisonChange.Unchanged, 72L, 72L), (sent.Change, sent.Baseline.Value, sent.Compared.Value));
+    }
+
+    [Fact(DisplayName = "R21: by executable, what a process of no witnessed executable is at an end of is counted apart, never grouped")]
+    public void ByExecutableWhatNoPathGroupsIsCountedApart()
+    {
+        const string Local = "192.168.1.10:50000", NextLocal = "192.168.1.10:50001", Search = "142.250.1.1:443";
+        using var session = new TemporarySession();
+        Publish(session.Store, Sorted(
+        [
+            Started(1, 100, ClientPath, ObservationKind.Inventory), Started(1, 150, ClientPath, ObservationKind.Inventory, slot: 15),
+            // client.exe's two processes each connected to one other host and sent to it in both intervals, the second
+            // twice as often in the compared one; two processes no record names the executable of exchanged throughout,
+            // once more in the baseline, and two others only after both intervals.
+            Timed(Transfer(2, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, (2 * 16) + 8).Between(Local, Search)),
+            Timed(Transfer(3, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 150, (3 * 16) + 10).Between(NextLocal, Search)),
+            .. Outbound(10, 200, 10, Local, Search, slot: 8),
+            .. Outbound(15, 100, 20, NextLocal, Search, slot: 10, owner: 150),
+            .. Outbound(105, 200, 10, NextLocal, Search, slot: 10, owner: 150),
+            .. Every(0, 200, 20, pair: 2), .. Exchange(30, pair: 2), .. Exchange(250, pair: 3),
+        ]), coverage: Covered());
+
+        IntervalComparison comparison = SessionComparison.Compare(session.Store, new(0, 100), new(100, 200),
+            grouping: ComparisonGrouping.Executable);
+        ComparedRelationship reach = Assert.Single(comparison.Relationships);
+        Assert.Equal(("executable:" + ClientPath.ToUpperInvariant(), "142.250.1.1", 2, 0),
+            (reach.ExecutableHost!.Executable, reach.ExecutableHost.Address, reach.ExecutableHost.Connected, reach.ExecutableHost.Accepted));
+        Assert.Equal([(ushort)443], reach.ExecutableHost.Ports);
+        Assert.Equal((30L, 40L, ComparisonChange.Increased), (reach.Baseline.Records, reach.Compared.Records, reach.Change));
+        Assert.Equal("executable-hosts:tcp:" + reach.ExecutableHost.Executable + "@142.250.1.1", reach.Key);
+
+        // By bytes, what both processes sent there, together: every send measured its size.
+        ComparedRelationship sent = Assert.Single(SessionComparison.Compare(session.Store, new(0, 100), new(100, 200),
+            ComparisonMetric.BytesSent, grouping: ComparisonGrouping.Executable).Relationships);
+        Assert.Equal((1_400L, 14L, 2_000L, 20L, ComparisonChange.Increased),
+            (sent.Baseline.Value, sent.Baseline.Measured, sent.Compared.Value, sent.Compared.Measured, sent.Change));
+
+        // The processes of no witnessed executable are in no row: their relationship with a record in either interval, and
+        // its records, are counted apart, and the one with none is not counted at all, no executable's row holding it.
+        Assert.Equal(new UnmatchedRows(1, 12, 10), comparison.Unmatched);
+        Assert.Equal(0, comparison.Quiet);
+
+        // By process, every row is there, the unwitnessed processes' relationships among them, and nothing is counted apart.
+        IntervalComparison processes = SessionComparison.Compare(session.Store, new(0, 100), new(100, 200));
+        Assert.Equal((3, 1), (processes.Relationships.Count, processes.Quiet));
+        Assert.Equal(new UnmatchedRows(0, 0, 0), processes.Unmatched);
     }
 
     [Fact(DisplayName = "R21: a mechanism the capture stopped collecting makes a relationship not comparable, never disappeared")]
@@ -367,7 +471,7 @@ public sealed class SessionComparisonTests
         // generation's, is read whole by the next attempt.
         int published = 0;
         IntervalComparison comparison = SessionComparison.Compare(session.Store, new(0, 100), new(100, 200), ComparisonMetric.Records,
-            EvidencePolicy.IncludeCorrelated, () =>
+            EvidencePolicy.IncludeCorrelated, ComparisonGrouping.Process, () =>
             {
                 if (published++ == 0)
                 {
@@ -380,7 +484,7 @@ public sealed class SessionComparisonTests
         // A session that publishes between every attempt's reads is refused in words.
         long next = 1_000;
         InvalidOperationException unsettled = Assert.Throws<InvalidOperationException>(() => SessionComparison.Compare(session.Store,
-            new(0, 100), new(100, 200), ComparisonMetric.Records, EvidencePolicy.IncludeCorrelated,
+            new(0, 100), new(100, 200), ComparisonMetric.Records, EvidencePolicy.IncludeCorrelated, ComparisonGrouping.Process,
             () => Publish(session.Store, Exchange(next++, pair: 2)), CancellationToken.None));
         Assert.Equal(1_000 + SessionComparison.Attempts, next);
         Assert.Equal(SessionComparison.Unsettled, unsettled.Message);
@@ -396,6 +500,8 @@ public sealed class SessionComparisonTests
         Assert.Throws<ArgumentOutOfRangeException>(() => SessionComparison.Compare(session.Store, new(0, 1), new(0, 1), (ComparisonMetric)0));
         Assert.Throws<ArgumentOutOfRangeException>(() => SessionComparison.Compare(session.Store, new(0, 1), new(0, 1),
             policy: (EvidencePolicy)99));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SessionComparison.Compare(session.Store, new(0, 1), new(0, 1),
+            grouping: (ComparisonGrouping)0));
         Assert.Throws<ArgumentNullException>(() => SessionComparison.Compare(null!, new(0, 1), new(0, 1)));
     }
 
@@ -467,6 +573,18 @@ public sealed class SessionComparisonTests
         ];
     }
 
+    /// <summary>A pair's client connecting to its server at a tick: its connect and the server's accept.</summary>
+    private static ObservationRowV1[] Connects(long ticks, int pair)
+    {
+        (int client, int server, string clientEnd, string serverEnd) = Pairs[pair];
+        ulong ordinal = (ulong)((ticks * 16) + (pair * 2));
+        return
+        [
+            Timed(Transfer(ticks, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, client, ordinal).Between(clientEnd, serverEnd)),
+            Timed(Transfer(ticks, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, server, ordinal + 1).Between(serverEnd, clientEnd)),
+        ];
+    }
+
     /// <summary>A pair's exchanges from <paramref name="from"/> up to <paramref name="to"/>, one each <paramref name="step"/> ticks.</summary>
     private static IEnumerable<ObservationRowV1> Every(long from, long to, long step, int pair, long? bytes = 8)
     {
@@ -481,17 +599,26 @@ public sealed class SessionComparisonTests
 
     /// <summary>
     /// A process's sends of 100 B to another host from <paramref name="from"/> up to <paramref name="to"/>, one each
-    /// <paramref name="step"/> ticks, each answered by a receive of 1,000 B, their ordinals in <paramref name="slot"/>.
+    /// <paramref name="step"/> ticks, each answered by a receive of 1,000 B, their ordinals in <paramref name="slot"/>; the
+    /// process is PID 100 unless <paramref name="owner"/> names another.
     /// </summary>
-    private static IEnumerable<ObservationRowV1> Outbound(long from, long to, long step, string local, string remote, int slot)
+    private static IEnumerable<ObservationRowV1> Outbound(long from, long to, long step, string local, string remote, int slot,
+        int owner = 100)
     {
         for (long ticks = from; ticks < to; ticks += step)
         {
             ulong ordinal = (ulong)((ticks * 16) + slot);
-            yield return Timed(Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 100, 100, ordinal).Between(local, remote));
-            yield return Timed(Transfer(ticks, ObservationKind.Receive, AccountingSide.ReceiveSide, 1_000, 100, ordinal + 1).Between(local, remote));
+            yield return Timed(Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 100, owner, ordinal).Between(local, remote));
+            yield return Timed(Transfer(ticks, ObservationKind.Receive, AccountingSide.ReceiveSide, 1_000, owner, ordinal + 1).Between(local, remote));
         }
     }
+
+    /// <summary>
+    /// A process's start or rundown at a tick naming the image it ran, as a creation or a rundown carries it; its ordinal in
+    /// <paramref name="slot"/>, 14 or 15, which no exchange of the pairs takes.
+    /// </summary>
+    private static ObservationRowV1 Started(long ticks, int processId, string path, ObservationKind kind, int slot = 14) =>
+        Timed(Lifecycle(ticks, kind, processId, (ulong)((ticks * 16) + slot)) with { ResourceName = path });
 
     /// <summary>Records in the order the source read them.</summary>
     private static ObservationRowV1[] Sorted(IEnumerable<ObservationRowV1> rows) => [.. rows.OrderBy(row => row.RawRecordOrdinal)];

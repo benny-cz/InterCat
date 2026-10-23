@@ -88,3 +88,12 @@ executables and other hosts are random tokens, and it records its scope, byte do
 missing sources and that no alignment applies, the last of the deliverables this review listed as reports. Its leak
 tests give every name, path, key and address a secret and every PID and port a number a leak would show, and find none
 of them in JSON or CSV. Nothing else above changes.
+
+## Addendum, revision 755
+
+A comparison groups its rows by executable on request (`icat compare --group-by executable`, `comparison-v1` §2a,
+ADR-059): each executable's processes together by the path their image was witnessed at, a grouping and never an
+identity, so a process that restarted between the two intervals keeps one row instead of one disappeared and one
+appeared, and processes of no witnessed executable are counted apart rather than merged. This is M12's entity grouping
+for one session; the mapping two captures need pairs their rows by the same keys and follows. Nothing else above
+changes.

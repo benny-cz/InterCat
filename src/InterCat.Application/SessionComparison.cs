@@ -19,6 +19,21 @@ public enum ComparisonMetric
     BytesSent = 2,
 }
 
+/// <summary>What a comparison's rows are of (`contracts/comparison-v1.md` §2a): processes, or the executables they ran.</summary>
+public enum ComparisonGrouping
+{
+    /// <summary>Each process's relationships and connections to other hosts, as the overview draws them: a row per process.</summary>
+    Process = 1,
+
+    /// <summary>
+    /// Each executable's: its processes' relationships and connections to other hosts together, grouped by the path their
+    /// image was witnessed at and never by a name alone (plan M12's entity grouping) - a grouping, never an identity (P6,
+    /// ADR-059), so an executable whose process restarted between the intervals keeps one row, neither process taken for
+    /// the other.
+    /// </summary>
+    Executable = 2,
+}
+
 /// <summary>
 /// How a row's measure changed from the baseline interval to the compared one, each a rate over its whole interval
 /// (`comparison-v1` §4). A change is stated only where both values are of the same measurement.
@@ -80,8 +95,63 @@ public sealed record OtherHostReach(HostLink Link, HostAddress Address)
 }
 
 /// <summary>
+/// Two executables' relationship over one mechanism (`comparison-v1` §2a): every relationship the overview draws between a
+/// process of one and a process of the other, together - the two may be one executable, whose processes relate to each
+/// other - with who made its connections or calls as the overview saw them open, and the ports they arrived at.
+/// </summary>
+/// <param name="Key">Its key: its mechanism and the two executables' group keys, in ordinal order.</param>
+/// <param name="Source">The group key of the executable whose key orders first.</param>
+/// <param name="Target">The other executable's group key; the source's own where the processes are of one executable.</param>
+/// <param name="Mechanism">The mechanism its relationships are of.</param>
+public sealed record ExecutableRelationship(string Key, string Source, string Target, Mechanism Mechanism)
+{
+    /// <summary>How many connections or calls the source's processes made to the target's, as the overview saw them open.</summary>
+    public int SourceConnected { get; init; }
+
+    /// <summary>How many the target's processes made to the source's, counted alike.</summary>
+    public int TargetConnected { get; init; }
+
+    /// <summary>The ports its connections arrived at, at the end that accepted each, each once, the lowest first.</summary>
+    public IReadOnlyList<ushort> AcceptedPorts { get; init; } = [];
+}
+
+/// <summary>
+/// One executable's processes' connections over one transport to one other host's address, together (`comparison-v1`
+/// §2a), as the census counts each process's. Who is at the address is not observed (P7).
+/// </summary>
+/// <param name="Key">Its key: its mechanism, the executable's group key and the address.</param>
+/// <param name="Executable">The executable's group key.</param>
+/// <param name="Mechanism">The transport the connections ran over.</param>
+/// <param name="Address">The other host's address, with no port.</param>
+public sealed record ExecutableReach(string Key, string Executable, Mechanism Mechanism, string Address)
+{
+    /// <summary>How many of the connections its processes opened by a connect, as the capture saw them open.</summary>
+    public int Connected { get; init; }
+
+    /// <summary>How many its processes accepted from the address.</summary>
+    public int Accepted { get; init; }
+
+    /// <summary>The ports at the address its processes' connections ran to, each once, the lowest first.</summary>
+    public IReadOnlyList<ushort> Ports { get; init; } = [];
+
+    /// <summary>Its processes' own ports the accepted connections arrived at, each once, the lowest first.</summary>
+    public IReadOnlyList<ushort> AcceptedPorts { get; init; } = [];
+}
+
+/// <summary>
+/// What a comparison by executable could not group (`comparison-v1` §2a): the relationships and connections to other
+/// hosts with a record in either interval that a process of no witnessed executable is at an end of, and their records
+/// in each. No path names its executable, so it is neither grouped with another process nor taken for another's.
+/// </summary>
+/// <param name="Rows">How many such relationships and connections to other hosts there were.</param>
+/// <param name="BaselineRecords">Their records in the baseline.</param>
+/// <param name="ComparedRecords">Their records in the compared interval.</param>
+public sealed record UnmatchedRows(int Rows, long BaselineRecords, long ComparedRecords);
+
+/// <summary>
 /// One row of a comparison - a relationship between two of the session's processes, or one process's connections to another
-/// host - with its measure over each interval and how it changed, or why its two values cannot be compared (<see cref="Reason"/>).
+/// host, or under a comparison by executable the same of executables - with its measure over each interval and how it
+/// changed, or why its two values cannot be compared (<see cref="Reason"/>).
 /// </summary>
 public sealed record ComparedRelationship(
     ComparedMeasure Baseline,
@@ -95,11 +165,18 @@ public sealed record ComparedRelationship(
     /// <summary>The process's connections to another host the row compares; null for a relationship between two processes.</summary>
     public OtherHostReach? Host { get; init; }
 
+    /// <summary>The two executables' relationship the row compares, in a comparison by executable; null otherwise.</summary>
+    public ExecutableRelationship? Executables { get; init; }
+
+    /// <summary>An executable's processes' connections to another host the row compares, in a comparison by executable.</summary>
+    public ExecutableReach? ExecutableHost { get; init; }
+
     /// <summary>Its key: the relationship's, or the connections' to the other host.</summary>
-    public string Key => Relationship?.Key ?? Host!.Key;
+    public string Key => Relationship?.Key ?? Host?.Key ?? Executables?.Key ?? ExecutableHost!.Key;
 
     /// <summary>The mechanism its records are of.</summary>
-    public Mechanism Mechanism => Relationship?.Mechanism ?? Host!.Link.Mechanism;
+    public Mechanism Mechanism =>
+        Relationship?.Mechanism ?? Host?.Link.Mechanism ?? Executables?.Mechanism ?? ExecutableHost!.Mechanism;
 
     /// <summary>
     /// Whether the change rests on a lower bound: one interval's value left sends without a size out, and the bound alone
@@ -145,6 +222,15 @@ public sealed record IntervalComparison(
 
     /// <summary>How many of the overview's relationships and connections to other hosts had no record in either interval, and so no row.</summary>
     public int Quiet { get; init; }
+
+    /// <summary>What its rows are of: processes, or the executables they ran.</summary>
+    public ComparisonGrouping Grouping { get; init; } = ComparisonGrouping.Process;
+
+    /// <summary>The executables the overview groups processes by, by key, which name a comparison by executable's rows.</summary>
+    public IReadOnlyDictionary<string, ProcessGroup> Groups { get; init; } = new Dictionary<string, ProcessGroup>();
+
+    /// <summary>In a comparison by executable, what no executable groups; nothing in a comparison by process.</summary>
+    public UnmatchedRows Unmatched { get; init; } = new(0, 0, 0);
 }
 
 /// <summary>Compares two intervals of a session's generation row by row (`comparison-v1`, plan M12).</summary>
@@ -159,8 +245,9 @@ public static class SessionComparison
 
     /// <summary>
     /// Compares <paramref name="compared"/> with <paramref name="baseline"/>, each a half-open interval of 100-nanosecond
-    /// presentation ticks, under <paramref name="policy"/>, by <paramref name="metric"/>. Every count is of one generation:
-    /// a live session that publishes between reads is read again, and one that keeps doing so is refused in words.
+    /// presentation ticks, under <paramref name="policy"/>, by <paramref name="metric"/>, a row per process or, by
+    /// <paramref name="grouping"/>, per executable. Every count is of one generation: a live session that publishes between
+    /// reads is read again, and one that keeps doing so is refused in words.
     /// </summary>
     public static IntervalComparison Compare(
         SessionStore store,
@@ -168,11 +255,12 @@ public static class SessionComparison
         TimeRange compared,
         ComparisonMetric metric = ComparisonMetric.Records,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        ComparisonGrouping grouping = ComparisonGrouping.Process,
         CancellationToken cancellationToken = default) =>
-        Compare(store, baseline, compared, metric, policy, betweenReads: null, cancellationToken);
+        Compare(store, baseline, compared, metric, policy, grouping, betweenReads: null, cancellationToken);
 
     /// <summary>
-    /// <see cref="Compare(SessionStore, TimeRange, TimeRange, ComparisonMetric, EvidencePolicy, CancellationToken)"/>,
+    /// <see cref="Compare(SessionStore, TimeRange, TimeRange, ComparisonMetric, EvidencePolicy, ComparisonGrouping, CancellationToken)"/>,
     /// with <paramref name="betweenReads"/> run after each attempt's first read, which a test publishes through.
     /// </summary>
     internal static IntervalComparison Compare(
@@ -181,18 +269,20 @@ public static class SessionComparison
         TimeRange compared,
         ComparisonMetric metric,
         EvidencePolicy policy,
+        ComparisonGrouping grouping,
         Action? betweenReads,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(store);
         if (!Enum.IsDefined(metric)) throw new ArgumentOutOfRangeException(nameof(metric));
         if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (!Enum.IsDefined(grouping)) throw new ArgumentOutOfRangeException(nameof(grouping));
         ArgumentOutOfRangeException.ThrowIfLessThan(baseline.SpanTicks, 1, nameof(baseline));
         ArgumentOutOfRangeException.ThrowIfLessThan(compared.SpanTicks, 1, nameof(compared));
 
         for (int attempt = 1; attempt <= Attempts; attempt++)
         {
-            if (Read(store, baseline, compared, metric, policy, betweenReads, cancellationToken) is { } comparison)
+            if (Read(store, baseline, compared, metric, policy, grouping, betweenReads, cancellationToken) is { } comparison)
             {
                 return comparison;
             }
@@ -208,6 +298,7 @@ public static class SessionComparison
         TimeRange compared,
         ComparisonMetric metric,
         EvidencePolicy policy,
+        ComparisonGrouping grouping,
         Action? betweenReads,
         CancellationToken cancellationToken)
     {
@@ -270,41 +361,50 @@ public static class SessionComparison
             .Select(judged => SessionCoverage.CollectedOtherwise(ledger, judged, native))
             .FirstOrDefault(reason => reason is not null));
 
+        // Each relationship's measure over both intervals, and each process's connections to another host's, measured at
+        // this machine's end: their records, and what was sent across or there.
+        bool bytes = metric == ComparisonMetric.BytesSent;
+        (CommunicationEdge Edge, Reach First, Reach Second)[] edges = [.. overview.Edges.Select(edge => (edge,
+            Sum(before.EdgeRecords.GetValueOrDefault(edge.Key), beforeBytes is null ? default : SentAcross(edge, beforeBytes)),
+            Sum(after.EdgeRecords.GetValueOrDefault(edge.Key), afterBytes is null ? default : SentAcross(edge, afterBytes))))];
+        Dictionary<string, Reach> then = Reached(beforeHosts), now = Reached(afterHosts);
+        (OtherHostReach Reach, Reach First, Reach Second)[] hosts = [.. reaches.OrderBy(entry => entry.Key, StringComparer.Ordinal)
+            .Select(entry => (entry.Value, then.GetValueOrDefault(entry.Key), now.GetValueOrDefault(entry.Key)))];
+        ComparedRelationship RowOf(Reach first, Reach second, Mechanism mechanism) => judge.Row(
+            Measure(first, bytes, CoverageOf(mechanism, before.MechanismCoverage)),
+            Measure(second, bytes, CoverageOf(mechanism, after.MechanismCoverage)),
+            mechanism);
+
         var rows = new List<ComparedRelationship>();
         int quiet = 0;
-        foreach (CommunicationEdge edge in overview.Edges)
+        UnmatchedRows unmatched = new(0, 0, 0);
+        if (grouping == ComparisonGrouping.Process)
         {
-            long first = before.EdgeRecords.GetValueOrDefault(edge.Key);
-            long second = after.EdgeRecords.GetValueOrDefault(edge.Key);
-            if (first == 0 && second == 0)
+            foreach ((CommunicationEdge edge, Reach first, Reach second) in edges)
             {
-                quiet++;
-                continue;
+                if (first.Records == 0 && second.Records == 0) quiet++;
+                else rows.Add(RowOf(first, second, edge.Mechanism) with { Relationship = edge });
             }
 
-            rows.Add(judge.Row(
-                Measure(first, beforeBytes is null ? null : SentAcross(edge, beforeBytes), CoverageOf(edge.Mechanism, before.MechanismCoverage)),
-                Measure(second, afterBytes is null ? null : SentAcross(edge, afterBytes), CoverageOf(edge.Mechanism, after.MechanismCoverage)),
-                edge.Mechanism) with { Relationship = edge });
+            foreach ((OtherHostReach reach, Reach first, Reach second) in hosts)
+            {
+                if (first.Records == 0 && second.Records == 0) quiet++;
+                else rows.Add(RowOf(first, second, reach.Link.Mechanism) with { Host = reach });
+            }
         }
-
-        // A process's connections to another host, measured at this machine's end: their records, and what it sent there.
-        Dictionary<string, Reach> then = Reached(beforeHosts), now = Reached(afterHosts);
-        bool bytes = metric == ComparisonMetric.BytesSent;
-        foreach ((string key, OtherHostReach reach) in reaches.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+        else
         {
-            Reach first = then.GetValueOrDefault(key), second = now.GetValueOrDefault(key);
-            if (first.Records == 0 && second.Records == 0)
+            ByExecutable grouped = ByExecutable.Of(overview, edges, hosts);
+            unmatched = grouped.Unmatched;
+            foreach (ExecutableTally tally in grouped.Tallies)
             {
-                quiet++;
-                continue;
+                if (tally.First.Records == 0 && tally.Second.Records == 0) quiet++;
+                else rows.Add(RowOf(tally.First, tally.Second, tally.Mechanism) with
+                {
+                    Executables = tally.Relationship,
+                    ExecutableHost = tally.Reach,
+                });
             }
-
-            Mechanism mechanism = reach.Link.Mechanism;
-            rows.Add(judge.Row(
-                Measure(first.Records, bytes ? (first.Sent, first.Measured, first.Unmeasured) : null, CoverageOf(mechanism, before.MechanismCoverage)),
-                Measure(second.Records, bytes ? (second.Sent, second.Measured, second.Unmeasured) : null, CoverageOf(mechanism, after.MechanismCoverage)),
-                mechanism) with { Host = reach });
         }
 
         // The comparable rows first, the most changed first; then those that cannot be compared, the busiest first; each
@@ -318,8 +418,19 @@ public static class SessionComparison
         {
             Processes = overview.Nodes.ToDictionary(node => node.Id),
             Quiet = quiet,
+            Grouping = grouping,
+            Groups = overview.Groups.ToDictionary(group => group.Key, StringComparer.Ordinal),
+            Unmatched = unmatched,
         };
     }
+
+    /// <summary>A row's records over one interval with what was sent across, or none sent where bytes are not read.</summary>
+    private static Reach Sum(long records, (long Sent, long Measured, long Unmeasured) bytes) =>
+        new(records, bytes.Sent, bytes.Measured, bytes.Unmeasured);
+
+    /// <summary>A row's measure over one interval: its records, and under a byte comparison what was sent across.</summary>
+    private static ComparedMeasure Measure(Reach reach, bool bytes, MechanismCoverage coverage) =>
+        Measure(reach.Records, bytes ? (reach.Sent, reach.Measured, reach.Unmeasured) : null, coverage);
 
     /// <summary>
     /// A row's measure over one interval: its records, and under a byte comparison what was sent across, each transfer
@@ -394,6 +505,124 @@ public static class SessionComparison
         return judged.Length == 0
             ? new(mechanism, CoverageState.UnknownCoverage, "its coverage over this interval was not judged")
             : judged.MaxBy(entry => entry.State)!;
+    }
+
+    /// <summary>
+    /// One executable row being summed: its relationship or its reach, and its processes' records over each interval with
+    /// what they sent across or there.
+    /// </summary>
+    private sealed class ExecutableTally(Mechanism mechanism)
+    {
+        public Mechanism Mechanism { get; } = mechanism;
+        public Reach First { get; set; }
+        public Reach Second { get; set; }
+        public ExecutableRelationship? Relationship { get; set; }
+        public ExecutableReach? Reach { get; set; }
+
+        public void Add(Reach first, Reach second)
+        {
+            First = new(First.Records + first.Records, SegmentMeasurement.AddBytes(First.Sent, first.Sent),
+                First.Measured + first.Measured, First.Unmeasured + first.Unmeasured);
+            Second = new(Second.Records + second.Records, SegmentMeasurement.AddBytes(Second.Sent, second.Sent),
+                Second.Measured + second.Measured, Second.Unmeasured + second.Unmeasured);
+        }
+    }
+
+    /// <summary>
+    /// The relationships and connections to other hosts of a session's processes summed by executable (`comparison-v1`
+    /// §2a): each pair of executables' relationships over one mechanism, each executable's connections over one transport to
+    /// one address, by key, and what a process of no witnessed executable is at an end of, counted apart.
+    /// </summary>
+    private sealed record ByExecutable(IReadOnlyList<ExecutableTally> Tallies, UnmatchedRows Unmatched)
+    {
+        public static ByExecutable Of(
+            SessionOverviewBundle overview,
+            IReadOnlyList<(CommunicationEdge Edge, Reach First, Reach Second)> edges,
+            IReadOnlyList<(OtherHostReach Reach, Reach First, Reach Second)> hosts)
+        {
+            Dictionary<ProcessInstanceId, string> groups = overview.Nodes
+                .Where(node => node.GroupKey != ProcessGroup.UnwitnessedExecutableKey)
+                .ToDictionary(node => node.Id, node => node.GroupKey);
+            var tallies = new SortedDictionary<string, ExecutableTally>(StringComparer.Ordinal);
+            var accepted = new Dictionary<string, SortedSet<ushort>>(StringComparer.Ordinal);
+            var ports = new Dictionary<string, SortedSet<ushort>>(StringComparer.Ordinal);
+            int unmatched = 0;
+            long unmatchedFirst = 0, unmatchedSecond = 0;
+            void Unmatched(Reach first, Reach second)
+            {
+                if (first.Records == 0 && second.Records == 0) return;
+                unmatched++;
+                unmatchedFirst += first.Records;
+                unmatchedSecond += second.Records;
+            }
+
+            foreach ((CommunicationEdge edge, Reach first, Reach second) in edges)
+            {
+                if (!groups.TryGetValue(edge.SourceId, out string? from) || !groups.TryGetValue(edge.TargetId, out string? to))
+                {
+                    Unmatched(first, second);
+                    continue;
+                }
+
+                // The pair is keyed in ordinal order, whichever of its processes the overview drew first; who connected to
+                // whom follows the processes into it.
+                bool ordered = string.CompareOrdinal(from, to) <= 0;
+                (string source, string target) = ordered ? (from, to) : (to, from);
+                string key = string.Create(CultureInfo.InvariantCulture,
+                    $"executables:{MechanismText.Name(edge.Mechanism).ToLowerInvariant()}:{source}|{target}");
+                if (!tallies.TryGetValue(key, out ExecutableTally? tally))
+                {
+                    tally = new(edge.Mechanism) { Relationship = new(key, source, target, edge.Mechanism) };
+                    tallies[key] = tally;
+                    accepted[key] = [];
+                }
+
+                tally.Add(first, second);
+                tally.Relationship = tally.Relationship! with
+                {
+                    SourceConnected = tally.Relationship.SourceConnected + (ordered ? edge.SourceConnected : edge.TargetConnected),
+                    TargetConnected = tally.Relationship.TargetConnected + (ordered ? edge.TargetConnected : edge.SourceConnected),
+                };
+                accepted[key].UnionWith(edge.AcceptedPorts);
+            }
+
+            foreach ((OtherHostReach reach, Reach first, Reach second) in hosts)
+            {
+                if (!groups.TryGetValue(reach.Link.Process, out string? executable))
+                {
+                    Unmatched(first, second);
+                    continue;
+                }
+
+                Mechanism mechanism = reach.Link.Mechanism;
+                string key = string.Create(CultureInfo.InvariantCulture,
+                    $"executable-hosts:{MechanismText.Name(mechanism).ToLowerInvariant()}:{executable}@{reach.Address.Address}");
+                if (!tallies.TryGetValue(key, out ExecutableTally? tally))
+                {
+                    tally = new(mechanism) { Reach = new(key, executable, mechanism, reach.Address.Address) };
+                    tallies[key] = tally;
+                    accepted[key] = [];
+                    ports[key] = [];
+                }
+
+                tally.Add(first, second);
+                tally.Reach = tally.Reach! with
+                {
+                    Connected = tally.Reach.Connected + reach.Address.Connected,
+                    Accepted = tally.Reach.Accepted + reach.Address.Accepted,
+                };
+                accepted[key].UnionWith(reach.Address.AcceptedPorts);
+                ports[key].UnionWith(reach.Address.Ports);
+            }
+
+            foreach ((string key, ExecutableTally tally) in tallies)
+            {
+                if (tally.Relationship is { } pair) tally.Relationship = pair with { AcceptedPorts = [.. accepted[key]] };
+                if (tally.Reach is { } reach) tally.Reach = reach with { AcceptedPorts = [.. accepted[key]], Ports = [.. ports[key]] };
+            }
+
+            return new([.. tallies.Values], new(unmatched, unmatchedFirst, unmatchedSecond));
+        }
     }
 
     /// <summary>One interval's read of the connections to other hosts, with the session and generation it was read from.</summary>

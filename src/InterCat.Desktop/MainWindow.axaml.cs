@@ -1221,9 +1221,12 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             return;
         }
 
-        bool opened = chosen.Relationship is { } relationship
-            ? workspace.OpenRelationship(relationship.Key)
-            : workspace.OpenProcessRung(chosen.Host!.Link.Process);
+        bool opened = chosen switch
+        {
+            { Relationship: { } relationship } => workspace.OpenRelationship(relationship.Key),
+            { Host: { } host } => workspace.OpenProcessRung(host.Link.Process),
+            _ => false,
+        };
         if (opened) FocusRail();
     }
 

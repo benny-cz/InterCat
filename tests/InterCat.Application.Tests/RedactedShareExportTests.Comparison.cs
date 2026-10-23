@@ -232,6 +232,85 @@ public sealed partial class RedactedShareExportTests
         Assert.Throws<ArgumentOutOfRangeException>(() => RedactedShareExport.Comparison(format, comparison, Exported, limit: 0));
     }
 
+    [Theory(DisplayName = "I22: a shared comparison by executable names each executable by a token, never its path or a process")]
+    [InlineData(ExportFormat.Json)]
+    [InlineData(ExportFormat.Csv)]
+    public void ASharedComparisonByExecutableNamesNoPath(ExportFormat format)
+    {
+        // Two executables whose paths hold the secret related, and the first reached another host; processes of no
+        // witnessed executable were in no row.
+        string first = "executable:C:\\" + Secret.ToUpperInvariant() + "\\APP.EXE";
+        string second = "executable:D:\\" + Secret.ToUpperInvariant() + "\\APP.EXE";
+        IntervalComparison comparison = SecretComparison() with
+        {
+            Grouping = ComparisonGrouping.Executable,
+            Groups = new Dictionary<string, ProcessGroup>
+            {
+                [first] = new(first, "app.exe (" + Secret + ")", LaneGrouping.Executable, "C:\\" + Secret + "\\app.exe"),
+                [second] = new(second, "app.exe (" + Secret + "2)", LaneGrouping.Executable, "D:\\" + Secret + "\\app.exe"),
+            },
+            Unmatched = new UnmatchedRows(3, 12, 9),
+            Relationships =
+            [
+                new ComparedRelationship(new(10, 10, 10, 0, TcpCovered), new(20, 20, 20, 0, TcpCovered), ComparisonChange.Increased, null)
+                {
+                    Executables = new ExecutableRelationship("executables:tcp:" + first + "|" + second, first, second, Mechanism.Tcp)
+                    {
+                        SourceConnected = 2,
+                        AcceptedPorts = [49321],
+                    },
+                },
+                new ComparedRelationship(new(0, 0, 0, 0, TcpCovered), new(4, 4, 4, 0, TcpCovered), ComparisonChange.Appeared, null)
+                {
+                    ExecutableHost = new ExecutableReach("executable-hosts:tcp:" + first + "@10.98.76.54", first, Mechanism.Tcp,
+                        "10.98.76.54") { Connected = 1, Ports = [49321] },
+                },
+            ],
+        };
+        string report = RedactedShareExport.Comparison(format, comparison, Exported);
+
+        AssertSafe(report);
+        Assert.DoesNotContain(Secret, report, StringComparison.OrdinalIgnoreCase);
+        foreach (string secret in new[] { "app.exe", "APP.EXE", "10.98.76.54", "executables:", "executable-hosts:" })
+            Assert.DoesNotContain(secret, report, StringComparison.Ordinal);
+        Assert.DoesNotContain("49321", RandomValues().Replace(report, "#"), StringComparison.Ordinal);
+        if (format == ExportFormat.Json)
+        {
+            using JsonDocument json = JsonDocument.Parse(report);
+            JsonElement stated = json.RootElement.GetProperty("comparison");
+            Assert.Equal("Executable", stated.GetProperty("groupedBy").GetString());
+            Assert.Equal((3, 12L, 9L), (stated.GetProperty("unmatched").GetProperty("rows").GetInt32(),
+                stated.GetProperty("unmatched").GetProperty("baselineRecords").GetInt64(),
+                stated.GetProperty("unmatched").GetProperty("comparedRecords").GetInt64()));
+            (JsonElement pair, JsonElement reach) = (json.RootElement.GetProperty("rows")[0], json.RootElement.GetProperty("rows")[1]);
+            Assert.Equal(("Executables", "ExecutableToOtherHost"), (pair.GetProperty("kind").GetString(), reach.GetProperty("kind").GetString()));
+            foreach (JsonElement row in new[] { pair, reach })
+            {
+                Assert.Equal((JsonValueKind.Null, JsonValueKind.Null), (row.GetProperty("sourceToken").ValueKind, row.GetProperty("targetToken").ValueKind));
+            }
+
+            Assert.Equal(pair.GetProperty("sourceExecutableToken").GetString(), reach.GetProperty("sourceExecutableToken").GetString());
+            Assert.NotEqual(pair.GetProperty("sourceExecutableToken").GetString(), pair.GetProperty("targetExecutableToken").GetString());
+            Assert.Equal("SourceToTarget", pair.GetProperty("connected").GetString());
+            Assert.StartsWith("host-", reach.GetProperty("hostToken").GetString(), StringComparison.Ordinal);
+        }
+        else
+        {
+            string[] lines = Csv.Lines(report);
+            string[] header = Csv.Cells(lines[0]);
+            Assert.All(lines, line => Assert.Equal(header.Length, Csv.Cells(line).Length));
+            string[] row = Csv.Cells(lines[1]);
+            string Of(string column) => row[Array.IndexOf(header, column)];
+            Assert.Equal(("Executable", "3", "12", "9", string.Empty), (Of("grouped_by"), Of("unmatched_rows"),
+                Of("unmatched_baseline_records"), Of("unmatched_compared_records"), Of("source_token")));
+        }
+
+        // By process, nothing is counted apart, and the report says none: no unmatched rows, not zero of them.
+        using JsonDocument byProcess = JsonDocument.Parse(RedactedShareExport.Comparison(ExportFormat.Json, SecretComparison(), Exported));
+        Assert.Equal(("Process", JsonValueKind.Null), (byProcess.RootElement.GetProperty("comparison").GetProperty("groupedBy").GetString(),
+            byProcess.RootElement.GetProperty("comparison").GetProperty("unmatched").ValueKind));
+    }
+
     private static (string?, string?, string?) Coverage(JsonElement entry) => (entry.GetProperty("mechanism").GetString(),
         entry.GetProperty("state").GetString(), entry.GetProperty("reason").GetString());
 
