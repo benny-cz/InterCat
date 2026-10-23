@@ -19,19 +19,17 @@ public sealed partial class RpcCallIndex
 
     /// <summary>
     /// The index's calls in the canonical order of their first records (§3): at each place in that order, the call's
-    /// position in the index. It is the order an operation index holds them in, which no process binding changes.
+    /// position in the index. It is the order an operation index holds them in, which no process binding changes. A
+    /// call's rank is its place in it, so each is put there.
     /// </summary>
     internal int[] InCanonicalOrder()
     {
-        int[] ranks = new int[entries.Length];
         int[] order = new int[entries.Length];
         for (int index = 0; index < entries.Length; index++)
         {
-            ranks[index] = entries[index].FirstRank;
-            order[index] = index;
+            order[entries[index].FirstRank] = index;
         }
 
-        Array.Sort(ranks, order);
         return order;
     }
 

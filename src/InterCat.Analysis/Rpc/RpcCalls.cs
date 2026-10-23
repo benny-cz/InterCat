@@ -200,6 +200,12 @@ public sealed partial class RpcCallIndex
     /// <summary>What a later generation's records can still change, for <see cref="Extend"/>; null where nothing extends.</summary>
     private readonly CallTail? tail;
 
+    /// <summary>Where the calls of the index these were extended from went, for their other ends; null for a derivation.</summary>
+    private readonly CallLineage? lineage;
+
+    /// <summary>Stands for this index in the lineage of one extended from it, which so keeps none of this one.</summary>
+    private readonly object stamp = new();
+
     private RpcCallIndex(
         Entry[] entries,
         Guid[] interfaces,
@@ -211,13 +217,15 @@ public sealed partial class RpcCallIndex
         RpcCallGroup[] groups,
         RpcCallCounts totals,
         (StoreDependency?[] Segments, StoreDependency?[] Fields)? read = null,
-        CallTail? tail = null)
+        CallTail? tail = null,
+        CallLineage? lineage = null)
     {
         this.entries = entries;
         this.interfaces = interfaces;
         this.segmentNames = segmentNames;
         this.read = read;
         this.tail = tail;
+        this.lineage = lineage;
         this.clock = clock;
         Processes = processes;
         CallRecords = callRecords;
@@ -449,6 +457,12 @@ public sealed partial class RpcCallIndex
         return (group.First, (int)group.Counts.Calls);
     }
 
+    /// <summary>Where the calls of <paramref name="earlier"/> went in these, when these were extended from it; null otherwise.</summary>
+    internal CallLineage? LineageFrom(RpcCallIndex earlier) => lineage is { } known && ReferenceEquals(known.From, earlier.stamp) ? known : null;
+
+    /// <summary>The reading of a call's stop; that of no record where it has none.</summary>
+    internal long StopTicksAt(int call) => entries[call].StopTicks;
+
     /// <summary>What the peer rule reads of one call (`contracts/operations-v1.md` §5c).</summary>
     internal PeerFacts FactsOf(int call)
     {
@@ -562,7 +576,8 @@ public sealed partial class RpcCallIndex
             otherRecords,
             cancellationToken,
             read: (IdentitiesOf(segments), IdentitiesOf(fieldSegments)),
-            tail: new(latest, Kept(collected, order, tails), []));
+            tail: new(latest, Kept(collected, order, tails), [], [], []),
+            kept: KeptRanks(tails, order.Length));
     }
 
     /// <summary>
@@ -641,14 +656,9 @@ public sealed partial class RpcCallIndex
         // Every kept key is paired again with the added records, from its kept records on, each of which begins where the
         // key had no call open; the calls those records made are withdrawn and replaced.
         var tracked = new List<CallRecord>(added.Count);
-        var withdrawn = new HashSet<RecordAddress>();
         foreach (CallRecord[] kept in tail.Keys.Values)
         {
             tracked.AddRange(kept);
-            foreach (CallRecord record in kept)
-            {
-                _ = withdrawn.Add(record.Address);
-            }
         }
 
         tracked.AddRange(added);
@@ -665,57 +675,471 @@ public sealed partial class RpcCallIndex
             CollectionsMarshal.AsSpan(tracked), order, cancellationToken, boundary: BoundaryOf(tracked, order, Watermark(latest, clock)),
             tails: tails);
         walked.Sort(static (left, right) => left.FirstRank.CompareTo(right.FirstRank));
+        return Extended(
+            walked,
+            KeptRanks(tails, order.Length),
+            processes,
+            [.. known],
+            [.. offered.Select(identity => identity!.Name)],
+            CallRecords + added.Count,
+            otherRecords,
+            (offered, offeredFields),
+            new(latest, Kept(tracked, order, tails), [], [], []),
+            cancellationToken);
+    }
 
-        // The calls that stand, in the canonical order of their first records, and those paired again, merged into it.
-        var drafted = new Entry[entries.Length - CountWithdrawn(withdrawn) + walked.Count];
-        int at = 0;
-        int next = 0;
-        foreach (int stands in tail.Canonical)
+    /// <summary>
+    /// These calls with the calls paired again, <paramref name="walked"/>, in place of those the kept records made: the
+    /// result of <see cref="Extend"/>. A call's rank in the canonical order of first records (§3) is its rank here, less
+    /// the withdrawn calls before it, more the calls paired again before it, so first records are compared only where a
+    /// call paired again falls among those that stand. Where every standing call binds to <paramref name="processes"/> as
+    /// it binds here, each group's standing calls are carried in their order and the calls paired again for it dealt in by
+    /// rank; otherwise every call is bound and grouped again, as a derivation does.
+    /// </summary>
+    /// <param name="walked">The calls paired again, in canonical order, each ranked by its first record in their walk.</param>
+    /// <param name="kept">By rank in that walk, whether a later generation pairs the record again.</param>
+    private RpcCallIndex Extended(
+        List<Entry> walked,
+        bool[] kept,
+        ProcessInstanceIndex processes,
+        Guid[] known,
+        string?[] names,
+        long callRecords,
+        long otherRecords,
+        (StoreDependency?[] Segments, StoreDependency?[] Fields) read,
+        CallTail next,
+        CancellationToken cancellationToken)
+    {
+        CallTail before = tail!;
+        int[] withdrawn = before.KeptCalls;
+        int[] follows = new int[walked.Count];
+        int lower = 0;
+        int below = 0;
+        for (int index = 0; index < walked.Count; index++)
         {
-            if (withdrawn.Contains(entries[stands].FirstAddress))
+            lower = FirstNotBefore(walked[index], lower, before.Canonical);
+            while (below < withdrawn.Length && withdrawn[below] < lower)
+            {
+                below++;
+            }
+
+            follows[index] = lower - below;
+        }
+
+        int[] ranks = new int[entries.Length];
+        int standing = 0;
+        int dealt = 0;
+        int skipped = 0;
+        for (int rank = 0; rank < entries.Length; rank++)
+        {
+            if (skipped < withdrawn.Length && withdrawn[skipped] == rank)
+            {
+                ranks[rank] = -1;
+                skipped++;
+                continue;
+            }
+
+            while (dealt < walked.Count && follows[dealt] <= standing)
+            {
+                dealt++;
+            }
+
+            ranks[rank] = standing++ + dealt;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        for (int index = 0; index < walked.Count; index++)
+        {
+            walked[index] = walked[index] with
+            {
+                Process = processes.Bind(walked[index].ProcessId, walked[index].FirstTicks, isLifecycleRecord: false),
+            };
+        }
+
+        int[] withdrawnAt = [.. withdrawn.Select(rank => before.Canonical[rank])];
+        Array.Sort(withdrawnAt);
+        int[] moved = new int[entries.Length];
+        int[] walkedAt = new int[walked.Count];
+        int[] canonical = new int[standing + walked.Count];
+        Placed placed = Rebound(processes) is { } mapped
+            && Carried(walked, ranks, follows, mapped, known, withdrawnAt, moved, walkedAt, canonical, cancellationToken) is { } carried
+            ? carried
+            : Regrouped(walked, ranks, follows, processes, known, moved, walkedAt, canonical, cancellationToken);
+
+        // The calls paired again that a later generation pairs again in turn, by their ranks.
+        var keptCalls = new List<int>();
+        for (int index = 0; index < walked.Count; index++)
+        {
+            if (kept[walked[index].FirstRank])
+            {
+                keptCalls.Add(follows[index] + index);
+            }
+        }
+
+        return new(placed.Entries, known, names, clock, processes, callRecords, otherRecords, placed.Groups, placed.Totals, read,
+            next with { Canonical = canonical, KeptCalls = [.. keptCalls], Durations = placed.Durations },
+            Lineage(walked, withdrawnAt, moved, walkedAt));
+    }
+
+    /// <summary>The first rank, from <paramref name="from"/> on, whose call's first record is not before <paramref name="call"/>'s.</summary>
+    private int FirstNotBefore(in Entry call, int from, int[] canonical)
+    {
+        // Most calls paired again follow every call that stands, so the search gallops from where the last one fell.
+        int low = from;
+        int high = from;
+        int step = 1;
+        while (high < canonical.Length && CompareFirstRecords(entries[canonical[high]], call) < 0)
+        {
+            low = high + 1;
+            high = (int)Math.Min(canonical.Length, (long)high + step);
+            step *= 2;
+        }
+
+        while (low < high)
+        {
+            int middle = low + ((high - low) / 2);
+            if (CompareFirstRecords(entries[canonical[middle]], call) < 0)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        return low;
+    }
+
+    /// <summary>
+    /// How each instance a standing call binds to here is numbered in <paramref name="processes"/>, when every reading a
+    /// group's calls bind by binds there as here: to the same instance, as strongly, or to none for the same reason. Null
+    /// when one could bind otherwise, which moves its call to another group.
+    /// </summary>
+    private Dictionary<int, int>? Rebound(ProcessInstanceIndex processes)
+    {
+        // A group's calls are in reading order, so its first and last call bound its readings.
+        var spans = new Dictionary<int, (long First, long Last)>();
+        foreach (RpcCallGroup group in Groups)
+        {
+            long first = entries[group.First].FirstTicks;
+            long last = entries[group.First + (int)group.Counts.Calls - 1].FirstTicks;
+            spans[group.ProcessId] = spans.TryGetValue(group.ProcessId, out (long First, long Last) seen)
+                ? (Math.Min(seen.First, first), Math.Max(seen.Last, last))
+                : (first, last);
+        }
+
+        var mapped = new Dictionary<int, int>();
+        foreach ((int processId, (long first, long last)) in spans)
+        {
+            if (!Processes.BindsAlike(processes, processId, first, last, mapped, sameReasons: true))
+            {
+                return null;
+            }
+        }
+
+        return mapped;
+    }
+
+    /// <summary>
+    /// The extended calls where every standing call binds as here: each group's standing calls carried in their order,
+    /// its instance numbered as <paramref name="mapped"/> says, and the calls paired again for it dealt in by rank. Null
+    /// where two groups would come to one, which only binding again sorts out.
+    /// </summary>
+    private Placed? Carried(
+        List<Entry> walked,
+        int[] ranks,
+        int[] follows,
+        Dictionary<int, int> mapped,
+        Guid[] known,
+        int[] withdrawnAt,
+        int[] moved,
+        int[] walkedAt,
+        int[] canonical,
+        CancellationToken cancellationToken)
+    {
+        var slots = new Dictionary<GroupKey, (int Group, List<int> Paired)>();
+        for (int group = 0; group < Groups.Count; group++)
+        {
+            RpcCallGroup standing = Groups[group];
+            ProcessBinding binding = standing.Process;
+            if (binding.IsBound)
+            {
+                if (!mapped.TryGetValue(binding.Instance, out int instance))
+                {
+                    return null;
+                }
+
+                binding = binding with { Instance = instance };
+            }
+
+            if (!slots.TryAdd(new(standing.ProcessId, binding, standing.Side, entries[standing.First].Interface), (group, [])))
+            {
+                return null;
+            }
+        }
+
+        for (int index = 0; index < walked.Count; index++)
+        {
+            ref (int Group, List<int> Paired) slot = ref CollectionsMarshal.GetValueRefOrAddDefault(slots, GroupKey.Of(walked[index]), out bool joins);
+            if (!joins)
+            {
+                slot = (-1, []);
+            }
+
+            slot.Paired.Add(index);
+        }
+
+        GroupKey[] keys = [.. slots.Keys];
+        Array.Sort(keys, GroupKeyOrder.Instance);
+        Entry[] carried = GC.AllocateUninitializedArray<Entry>(canonical.Length);
+        var groups = new List<(RpcCallGroup Group, long[] Durations)>(keys.Length);
+        var totals = new Tally();
+        int at = 0;
+        foreach (GroupKey key in keys)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            (int group, List<int> paired) = slots[key];
+            int from = group < 0 ? 0 : Groups[group].First;
+            int to = group < 0 ? 0 : from + (int)Groups[group].Counts.Calls;
+            int skip = LowerBound(withdrawnAt, from);
+            int first = at;
+            var tally = new Tally();
+            var removed = new List<long>();
+            var added = new List<long>();
+            int dealt = 0;
+            int position = from;
+            while (true)
+            {
+                while (position < to && skip < withdrawnAt.Length && withdrawnAt[skip] == position)
+                {
+                    if (entries[position].State == RpcCallState.Completed)
+                    {
+                        removed.Add(Duration(clock, entries[position]));
+                    }
+
+                    moved[position++] = -1;
+                    skip++;
+                }
+
+                int standingRank = position < to ? ranks[entries[position].FirstRank] : int.MaxValue;
+                int pairedRank = dealt < paired.Count ? follows[paired[dealt]] + paired[dealt] : int.MaxValue;
+                if (standingRank == int.MaxValue && pairedRank == int.MaxValue)
+                {
+                    break;
+                }
+
+                if (standingRank < pairedRank)
+                {
+                    carried[at] = entries[position] with { FirstRank = standingRank, Process = key.Process };
+                    moved[position++] = at;
+                    canonical[standingRank] = at;
+                }
+                else
+                {
+                    int index = paired[dealt++];
+                    carried[at] = walked[index] with { FirstRank = pairedRank };
+                    walkedAt[index] = at;
+                    canonical[pairedRank] = at;
+                    if (carried[at].State == RpcCallState.Completed)
+                    {
+                        added.Add(Duration(clock, carried[at]));
+                    }
+                }
+
+                tally.Add(carried[at]);
+                totals.Add(carried[at]);
+                at++;
+            }
+
+            // A group whose every call was withdrawn, and none paired again for it, is gone.
+            if (at > first)
+            {
+                long[] durations = Merged(group < 0 ? [] : tail!.Durations[group], removed, added);
+                groups.Add((Grouped(carried[first], known, tally, durations, first), durations));
+            }
+        }
+
+        (RpcCallGroup Group, long[] Durations)[] ordered = InDisplayOrder(groups);
+        return new(carried, [.. ordered.Select(group => group.Group)], totals.Counts(), [.. ordered.Select(group => group.Durations)]);
+    }
+
+    /// <summary>
+    /// The extended calls bound and grouped again, every one: where a standing call may bind otherwise than here, as a
+    /// rundown or a process start read late can make it.
+    /// </summary>
+    private Placed Regrouped(
+        List<Entry> walked,
+        int[] ranks,
+        int[] follows,
+        ProcessInstanceIndex processes,
+        Guid[] known,
+        int[] moved,
+        int[] walkedAt,
+        int[] canonical,
+        CancellationToken cancellationToken)
+    {
+        var drafted = new Entry[canonical.Length];
+        int[] origins = new int[canonical.Length];
+        int at = 0;
+        for (int position = 0; position < entries.Length; position++)
+        {
+            int rank = ranks[entries[position].FirstRank];
+            moved[position] = -1;
+            if (rank >= 0)
+            {
+                origins[at] = position;
+                drafted[at++] = entries[position] with { FirstRank = rank };
+            }
+        }
+
+        int standing = at;
+        for (int index = 0; index < walked.Count; index++)
+        {
+            drafted[at++] = walked[index] with { FirstRank = follows[index] + index };
+        }
+
+        int[] placed = new int[drafted.Length];
+        Placed regrouped = Place(drafted, processes, known, clock, placed, canonical, kept: null, keptCalls: null, cancellationToken);
+        for (int draft = 0; draft < standing; draft++)
+        {
+            moved[origins[draft]] = placed[draft];
+        }
+
+        for (int index = 0; index < walked.Count; index++)
+        {
+            walkedAt[index] = placed[standing + index];
+        }
+
+        return regrouped;
+    }
+
+    /// <summary>
+    /// Where these calls went in the index extended from them, for its other ends to follow: a standing call to its place,
+    /// and a withdrawn server call to the call paired again from its first record when the peer rule reads the two alike -
+    /// the same start, on the same thread, of the same interface and procedure - as a server call still open is paired
+    /// again, unchanged, generation after generation. The other calls paired again are new to the rule, and the earliest
+    /// start of a server call it reads differently bounds which links can change.
+    /// </summary>
+    private CallLineage Lineage(List<Entry> walked, int[] withdrawnAt, int[] moved, int[] walkedAt)
+    {
+        var pairedFrom = new Dictionary<RecordAddress, int>(walked.Count);
+        for (int index = 0; index < walked.Count; index++)
+        {
+            pairedFrom[walked[index].FirstAddress] = index;
+        }
+
+        bool[] repairs = new bool[walked.Count];
+        long restarted = long.MaxValue;
+        foreach (int position in withdrawnAt)
+        {
+            ref readonly Entry withdrawn = ref entries[position];
+            if (withdrawn.Side != RpcCallSide.Server || withdrawn.StartSegment < 0)
             {
                 continue;
             }
 
-            while (next < walked.Count && CompareFirstRecords(walked[next], entries[stands]) < 0)
+            if (pairedFrom.TryGetValue(withdrawn.FirstAddress, out int index) && ServesAlike(withdrawn, walked[index]))
             {
-                drafted[at] = walked[next++] with { FirstRank = at };
-                at++;
+                moved[position] = walkedAt[index];
+                repairs[index] = true;
+            }
+            else
+            {
+                restarted = Math.Min(restarted, withdrawn.StartTicks);
+            }
+        }
+
+        var paired = new List<int>();
+        for (int index = 0; index < walked.Count; index++)
+        {
+            if (repairs[index])
+            {
+                continue;
             }
 
-            drafted[at] = entries[stands] with { FirstRank = at };
-            at++;
+            paired.Add(walkedAt[index]);
+            if (walked[index].Side == RpcCallSide.Server && walked[index].StartSegment >= 0)
+            {
+                restarted = Math.Min(restarted, walked[index].StartTicks);
+            }
         }
 
-        while (next < walked.Count)
-        {
-            drafted[at] = walked[next++] with { FirstRank = at };
-            at++;
-        }
+        return new(stamp, moved, [.. paired], restarted);
 
-        return Assemble(
-            drafted,
-            processes,
-            [.. known],
-            [.. offered.Select(identity => identity!.Name)],
-            clock,
-            CallRecords + added.Count,
-            otherRecords,
-            cancellationToken,
-            read: (offered, offeredFields),
-            tail: new(latest, Kept(tracked, order, tails), []));
+        static bool ServesAlike(in Entry one, in Entry other) =>
+            other.Side == RpcCallSide.Server
+            && other.StartSegment >= 0
+            && one.ProcessId == other.ProcessId
+            && one.StartThread == other.StartThread
+            && one.StartTicks == other.StartTicks
+            && one.Interface == other.Interface
+            && one.HasProcedure == other.HasProcedure
+            && one.Procedure == other.Procedure;
     }
 
-    /// <summary>How many of the calls these hold began with a withdrawn record.</summary>
-    private int CountWithdrawn(HashSet<RecordAddress> withdrawn)
+    /// <summary>The sorted <paramref name="durations"/> without <paramref name="removed"/> and with <paramref name="added"/>, sorted.</summary>
+    private static long[] Merged(long[] durations, List<long> removed, List<long> added)
     {
-        int count = 0;
-        foreach (Entry entry in entries)
+        removed.Sort();
+        added.Sort();
+        long[] merged = new long[durations.Length - removed.Count + added.Count];
+        int kept = 0;
+        int skip = 0;
+        int next = 0;
+        int at = 0;
+        while (kept < durations.Length || next < added.Count)
         {
-            count += withdrawn.Contains(entry.FirstAddress) ? 1 : 0;
+            if (kept < durations.Length && skip < removed.Count && durations[kept] == removed[skip])
+            {
+                kept++;
+                skip++;
+            }
+            else if (next < added.Count && (kept >= durations.Length || added[next] < durations[kept]))
+            {
+                merged[at++] = added[next++];
+            }
+            else
+            {
+                merged[at++] = durations[kept++];
+            }
         }
 
-        return count;
+        return skip == removed.Count && at == merged.Length
+            ? merged
+            : throw new InvalidOperationException("A withdrawn call's duration is not among its group's.");
+    }
+
+    /// <summary>The first place in sorted <paramref name="values"/> holding <paramref name="value"/> or more.</summary>
+    private static int LowerBound(int[] values, int value)
+    {
+        int found = Array.BinarySearch(values, value);
+        if (found < 0)
+        {
+            return ~found;
+        }
+
+        while (found > 0 && values[found - 1] == value)
+        {
+            found--;
+        }
+
+        return found;
+    }
+
+    /// <summary>Which ranks of a walk the kept keys hold: the records a later generation pairs again.</summary>
+    private static bool[] KeptRanks(Dictionary<CallKey, List<int>> tails, int ranks)
+    {
+        bool[] kept = new bool[ranks];
+        foreach (List<int> held in tails.Values)
+        {
+            foreach (int rank in held)
+            {
+                kept[rank] = true;
+            }
+        }
+
+        return kept;
     }
 
     /// <summary>
@@ -817,6 +1241,7 @@ public sealed partial class RpcCallIndex
     /// <param name="placed">When given, receives where each drafted call is in the index made.</param>
     /// <param name="read">The segments and source-field segments read, when the index made may be extended.</param>
     /// <param name="tail">What a later generation can still change, when the index made may be extended.</param>
+    /// <param name="kept">With <paramref name="tail"/>, by each call's rank, whether a later generation pairs its first record again.</param>
     private static RpcCallIndex Assemble(
         Span<Entry> drafted,
         ProcessInstanceIndex processes,
@@ -828,7 +1253,28 @@ public sealed partial class RpcCallIndex
         CancellationToken cancellationToken,
         int[]? placed = null,
         (StoreDependency?[] Segments, StoreDependency?[] Fields)? read = null,
-        CallTail? tail = null)
+        CallTail? tail = null,
+        bool[]? kept = null)
+    {
+        int[]? canonical = tail is null ? null : new int[drafted.Length];
+        List<int>? keptCalls = tail is null ? null : [];
+        Placed assembled = Place(drafted, processes, interfaces, clock, placed, canonical, kept, keptCalls, cancellationToken);
+        return new(assembled.Entries, interfaces, segmentNames, clock, processes, callRecords, otherRecords, assembled.Groups,
+            assembled.Totals, read,
+            tail is null ? null : tail with { Canonical = canonical!, KeptCalls = [.. keptCalls!], Durations = assembled.Durations });
+    }
+
+    /// <summary>Binds each call by its first record's reading, deals the calls into their groups in reading order and counts them.</summary>
+    private static Placed Place(
+        Span<Entry> drafted,
+        ProcessInstanceIndex processes,
+        Guid[] interfaces,
+        SourceClockDescriptor clock,
+        int[]? placed,
+        int[]? canonical,
+        bool[]? kept,
+        List<int>? keptCalls,
+        CancellationToken cancellationToken)
     {
         for (int index = 0; index < drafted.Length; index++)
         {
@@ -838,11 +1284,9 @@ public sealed partial class RpcCallIndex
             };
         }
 
-        int[]? canonical = tail is null ? null : new int[drafted.Length];
-        Entry[] entries = InGroupsInReadingOrder(drafted, cancellationToken, placed, canonical);
-        (RpcCallGroup[] groups, RpcCallCounts totals) = Group(entries, interfaces, clock);
-        return new(entries, interfaces, segmentNames, clock, processes, callRecords, otherRecords, groups, totals, read,
-            tail is null ? null : tail with { Canonical = canonical! });
+        Entry[] entries = InGroupsInReadingOrder(drafted, cancellationToken, placed, canonical, kept, keptCalls);
+        (RpcCallGroup[] groups, RpcCallCounts totals, long[][] durations) = Group(entries, interfaces, clock);
+        return new(entries, groups, totals, durations);
     }
 
     /// <summary>
@@ -1359,9 +1803,20 @@ public sealed partial class RpcCallIndex
     /// Every call's first record has a canonical rank of its own, so the calls are taken in rank order by placing each at
     /// its rank, and dealt into their groups in that order: nothing is compared but the groups' identities.
     /// </summary>
+    /// <remarks>
+    /// Each call placed is ranked by its place in that order, so <see cref="Entry.FirstRank"/> numbers the index's calls
+    /// from 0 without a gap, whatever the drafts were ranked by.
+    /// </remarks>
     /// <param name="canonical">When given, receives the index's call positions in the canonical order of their first records.</param>
+    /// <param name="kept">When given, by each draft's rank, whether a later generation pairs its first record again.</param>
+    /// <param name="keptCalls">With <paramref name="kept"/>, receives the ranks of those calls, in order.</param>
     private static Entry[] InGroupsInReadingOrder(
-        ReadOnlySpan<Entry> drafted, CancellationToken cancellationToken, int[]? placed = null, int[]? canonical = null)
+        ReadOnlySpan<Entry> drafted,
+        CancellationToken cancellationToken,
+        int[]? placed = null,
+        int[]? canonical = null,
+        bool[]? kept = null,
+        List<int>? keptCalls = null)
     {
         var numbered = new Dictionary<GroupKey, int>();
         int[] provisional = new int[drafted.Length];
@@ -1422,7 +1877,7 @@ public sealed partial class RpcCallIndex
             }
 
             int at = next[final[provisional[index]]]++;
-            entries[at] = drafted[index];
+            entries[at] = drafted[index] with { FirstRank = ranked };
             if (placed is not null)
             {
                 placed[index] = at;
@@ -1430,17 +1885,28 @@ public sealed partial class RpcCallIndex
 
             if (canonical is not null)
             {
-                canonical[ranked++] = at;
+                canonical[ranked] = at;
             }
+
+            if (kept is not null && kept[drafted[index].FirstRank])
+            {
+                keptCalls!.Add(ranked);
+            }
+
+            ranked++;
         }
 
         return entries;
     }
 
-    /// <summary>Counts each group of consecutive entries, and every entry, and orders the groups by calls.</summary>
-    private static (RpcCallGroup[] Groups, RpcCallCounts Totals) Group(Entry[] entries, Guid[] interfaces, SourceClockDescriptor clock)
+    /// <summary>
+    /// Counts each group of consecutive entries, and every entry, and orders the groups by calls; each group's completed
+    /// calls' durations, sorted, come in the groups' order, for an extension to carry.
+    /// </summary>
+    private static (RpcCallGroup[] Groups, RpcCallCounts Totals, long[][] Durations) Group(
+        Entry[] entries, Guid[] interfaces, SourceClockDescriptor clock)
     {
-        var groups = new List<RpcCallGroup>();
+        var groups = new List<(RpcCallGroup Group, long[] Durations)>();
         var totals = new Tally();
         int first = 0;
         while (first < entries.Length)
@@ -1464,27 +1930,36 @@ public sealed partial class RpcCallIndex
                 }
             }
 
-            Entry head = entries[first];
-            groups.Add(new()
-            {
-                ProcessId = head.ProcessId,
-                Process = head.Process,
-                Side = head.Side,
-                Interface = head.Interface < 0 ? null : interfaces[head.Interface],
-                Counts = tally.Counts(),
-                Durations = Distribution(durations),
-                First = first,
-            });
+            durations.Sort();
+            long[] sorted = [.. durations];
+            groups.Add((Grouped(entries[first], interfaces, tally, sorted, first), sorted));
             first = end;
         }
 
-        return ([.. groups
-            .OrderByDescending(group => group.Counts.Calls)
-            .ThenBy(group => group.ProcessId)
-            .ThenBy(group => group.Process.Instance)
-            .ThenBy(group => group.Side)
-            .ThenBy(group => group.Interface)], totals.Counts());
+        (RpcCallGroup Group, long[] Durations)[] ordered = InDisplayOrder(groups);
+        return ([.. ordered.Select(group => group.Group)], totals.Counts(), [.. ordered.Select(group => group.Durations)]);
     }
+
+    /// <summary>The group whose first call is <paramref name="head"/>, at <paramref name="first"/>, counted and timed.</summary>
+    private static RpcCallGroup Grouped(in Entry head, Guid[] interfaces, Tally tally, long[] durations, int first) => new()
+    {
+        ProcessId = head.ProcessId,
+        Process = head.Process,
+        Side = head.Side,
+        Interface = head.Interface < 0 ? null : interfaces[head.Interface],
+        Counts = tally.Counts(),
+        Durations = Distribution(durations),
+        First = first,
+    };
+
+    /// <summary>Groups taken in the order of their identities, the one with the most calls first, then by PID, instance, side and interface.</summary>
+    private static (RpcCallGroup Group, long[] Durations)[] InDisplayOrder(List<(RpcCallGroup Group, long[] Durations)> groups) =>
+        [.. groups
+            .OrderByDescending(group => group.Group.Counts.Calls)
+            .ThenBy(group => group.Group.ProcessId)
+            .ThenBy(group => group.Group.Process.Instance)
+            .ThenBy(group => group.Group.Side)
+            .ThenBy(group => group.Group.Interface)];
 
     internal static RpcCallDurations? Distribution(List<long> durations)
     {
@@ -1502,8 +1977,13 @@ public sealed partial class RpcCallIndex
             durations[^1]);
     }
 
+    /// <summary>The distribution of durations already sorted.</summary>
+    private static RpcCallDurations? Distribution(long[] sorted) => sorted.Length == 0
+        ? null
+        : new(sorted.Length, sorted[0], NearestRank(sorted, 50), NearestRank(sorted, 95), sorted[^1]);
+
     /// <summary>The smallest duration at least <paramref name="percent"/>% of the durations do not exceed.</summary>
-    private static long NearestRank(List<long> sorted, int percent) =>
+    private static long NearestRank(IReadOnlyList<long> sorted, int percent) =>
         sorted[(int)Math.Max(0, ((((long)sorted.Count * percent) + 99) / 100) - 1)];
 
     /// <summary>Where one record is: its raw locator and fact key, without the capture every record here shares.</summary>
@@ -1592,9 +2072,28 @@ public sealed partial class RpcCallIndex
     /// <summary>
     /// What a later generation's records can still change (<see cref="Extend"/>): the latest reading of any call record
     /// read; the records of each key with a call open, or with a record within the late window of that reading, from a
-    /// record before which it had no call open; and the index's calls in the canonical order of their first records.
+    /// record before which it had no call open; the index's calls in the canonical order of their first records; the
+    /// ranks of the calls those kept records made, which a later generation withdraws and pairs again; and each group's
+    /// completed calls' durations, sorted, by the groups' order.
     /// </summary>
-    private sealed record CallTail(long? LatestTicks, Dictionary<CallKey, CallRecord[]> Keys, int[] Canonical);
+    private sealed record CallTail(
+        long? LatestTicks, Dictionary<CallKey, CallRecord[]> Keys, int[] Canonical, int[] KeptCalls, long[][] Durations);
+
+    /// <summary>Calls bound, dealt into their groups in reading order and counted; each group's sorted durations by the groups' order.</summary>
+    private readonly record struct Placed(Entry[] Entries, RpcCallGroup[] Groups, RpcCallCounts Totals, long[][] Durations);
+
+    /// <summary>
+    /// Where the calls of the index an index was extended from went in it (<see cref="Lineage"/>), for the calls' other
+    /// ends to be extended alike.
+    /// </summary>
+    /// <param name="From">The index extended from, by its <see cref="stamp"/>, which keeps none of it.</param>
+    /// <param name="Moved">By that index's position, this one's for the same call, or -1 for a call withdrawn.</param>
+    /// <param name="Paired">The positions of the calls paired again that no call moved to.</param>
+    /// <param name="Restarted">
+    /// The earliest start of a server call withdrawn or paired again that the peer rule reads differently; the latest
+    /// reading there is where none was.
+    /// </param>
+    internal sealed record CallLineage(object From, int[] Moved, int[] Paired, long Restarted);
 
     /// <summary>
     /// A key with a call open: the rank of its run's first start, how many starts await their stop, and, once the id has
@@ -1613,7 +2112,10 @@ public sealed partial class RpcCallIndex
         /// <summary>The call's identity: its first record's raw locator and fact key.</summary>
         public RecordAddress FirstAddress { get; init; }
 
-        /// <summary>Where its first record is in the canonical order of every call record (§3).</summary>
+        /// <summary>
+        /// Where its first record is in the canonical order (§3): in an index, the call's place among the index's calls,
+        /// from 0; in a walk's drafts, the record's place among the records walked.
+        /// </summary>
         public int FirstRank { get; init; }
 
         public int ProcessId { get; init; }
@@ -1691,7 +2193,7 @@ public sealed partial class RpcCallIndex
         private long noActivityId;
         private long ambiguous;
 
-        public void Add(Entry entry)
+        public void Add(in Entry entry)
         {
             calls++;
             started += entry.StartSegment >= 0 ? 1 : 0;

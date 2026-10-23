@@ -534,15 +534,17 @@ public sealed partial class ProcessInstanceIndex
     /// <summary>
     /// Maps each instance of <paramref name="processId"/> that binds a reading in <c>[first, last]</c> here to the
     /// instance of <paramref name="later"/> that binds the same reading there, when every reading in that range binds
-    /// alike in both: to corresponding instances with the same strength, or to none in both. False when any reading
-    /// would bind otherwise, so a caller that kept decisions made with this index knows they no longer hold.
+    /// alike in both: to corresponding instances with the same strength, or to none in both - for the same reason, when
+    /// <paramref name="sameReasons"/> asks, as a caller that keeps what an unbound binding says does. False when any
+    /// reading would bind otherwise, so a caller that kept decisions made with this index knows they no longer hold.
     /// </summary>
     /// <remarks>
     /// A binding changes only where a lifetime starts or ends: the instance found is the last one starting at or before
     /// the reading, and it binds while its lifetime holds the reading. So the two indexes bind alike across the range
     /// when they bind alike at its first reading and at every lifetime boundary inside it, in either index.
     /// </remarks>
-    internal bool BindsAlike(ProcessInstanceIndex later, int processId, long first, long last, Dictionary<int, int> mapped)
+    internal bool BindsAlike(
+        ProcessInstanceIndex later, int processId, long first, long last, Dictionary<int, int> mapped, bool sameReasons = false)
     {
         ArgumentNullException.ThrowIfNull(later);
         ArgumentNullException.ThrowIfNull(mapped);
@@ -567,6 +569,11 @@ public sealed partial class ProcessInstanceIndex
 
             if (!here.IsBound)
             {
+                if (sameReasons && here.Reason != there.Reason)
+                {
+                    return false;
+                }
+
                 continue;
             }
 

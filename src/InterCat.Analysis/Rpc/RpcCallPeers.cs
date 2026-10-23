@@ -111,6 +111,12 @@ public sealed partial class RpcPeerIndex
     private readonly RpcPeerState[] states;
     private readonly int[] peers;
 
+    /// <summary>
+    /// By call, the server call a client call's link reached before a server call two reached was taken from both; -1 for
+    /// any other call. Null where nothing extends.
+    /// </summary>
+    private readonly int[]? reached;
+
     /// <summary>The published identities of the source-field segments the message ids were read from; null where nothing extends.</summary>
     private readonly StoreDependency?[]? fieldsRead;
 
@@ -127,11 +133,13 @@ public sealed partial class RpcPeerIndex
         long sends,
         long receives,
         StoreDependency?[]? fieldsRead = null,
-        Evidence? evidence = null)
+        Evidence? evidence = null,
+        int[]? reached = null)
     {
         this.calls = calls;
         this.states = states;
         this.peers = peers;
+        this.reached = reached;
         this.fieldsRead = fieldsRead;
         this.evidence = evidence;
         AlpcSends = sends;
@@ -170,10 +178,13 @@ public sealed partial class RpcPeerIndex
     /// The other ends of <paramref name="calls"/>, extended from these rather than read again, when the calls' segments
     /// and the source-field segments begin with every one these were read from, in the same order, as a live capture's
     /// next generation's do (I14): only the added segments' ALPC records and message ids are read, merged into those read
-    /// already, and every call is linked again. The result is exactly <see cref="Derive"/>'s over the same segments. Null,
-    /// for a full derivation to answer, when these keep no records to extend (read from an operation index, or given up to
-    /// a later extension already), when a segment read here is missing or another, or when an added message id names no
-    /// added ALPC record: a record's fields are published with it, so such an id could change a link these hold.
+    /// already. Where <paramref name="calls"/> were extended from these calls, a call that stands keeps what it reached
+    /// when everything the rule reads for it is earlier than any record added and any server call's start withdrawn or
+    /// paired again, and only the other calls are linked again; otherwise every call is. The result is exactly
+    /// <see cref="Derive"/>'s over the same segments. Null, for a full derivation to answer, when these keep no records to
+    /// extend (read from an operation index, or given up to a later extension already), when a segment read here is
+    /// missing or another, or when an added message id names no added ALPC record: a record's fields are published with
+    /// it, so such an id could change a link these hold.
     /// </summary>
     public RpcPeerIndex? Extend(
         RpcCallIndex calls,
@@ -227,14 +238,34 @@ public sealed partial class RpcPeerIndex
         sent.AsSpan().Sort(BySender);
         Message[] received = [.. receives.Where(receive => receive.HasId)];
         received.AsSpan().Sort(ById);
+        RpcCallIndex.CallLineage? lineage = calls.LineageFrom(this.calls);
         var merged = new Evidence(
             Merge(before.Sent, sent, BySender),
             Merge(before.Received, received, ById),
-            ServerStarts(calls, segments),
+            lineage is null ? ServerStarts(calls, segments) : ServerStartsMoved(before.Started, lineage, calls, segments),
             Window(calls),
             before.Sends + sends.Count,
             before.Receives + receives.Count);
-        return Link(calls, segments, merged, offeredFields, cancellationToken);
+        // Other ends followed while no ALPC was read keep nothing a call reached, so every call is linked again.
+        if (lineage is null || reached is null)
+        {
+            return Link(calls, segments, merged, offeredFields, cancellationToken);
+        }
+
+        // What a call reached can change only where the rule reads a record added, or a server call's start that is new
+        // to it or gone.
+        long changed = lineage.Restarted;
+        foreach (Message message in sent)
+        {
+            changed = Math.Min(changed, message.Ticks);
+        }
+
+        foreach (Message message in received)
+        {
+            changed = Math.Min(changed, message.Ticks);
+        }
+
+        return Relink(calls, segments, merged, offeredFields, lineage, changed, cancellationToken);
     }
 
     /// <summary>
@@ -249,80 +280,206 @@ public sealed partial class RpcPeerIndex
         CancellationToken cancellationToken)
     {
         int count = calls.Count;
-        var states = new RpcPeerState[count];
-        int[] peers = new int[count];
-        Array.Fill(peers, -1);
         if (evidence.Sends + evidence.Receives == 0)
         {
+            var states = new RpcPeerState[count];
+            int[] peers = new int[count];
             Array.Fill(states, RpcPeerState.NoAlpcEvidence);
+            Array.Fill(peers, -1);
             return new(calls, states, peers, 0, 0, fieldsRead, evidence);
         }
 
-        ReadOnlySpan<Message> sent = evidence.Sent;
-        ReadOnlySpan<Message> received = evidence.Received;
-        ReadOnlySpan<ServerStart> started = evidence.Started;
-        long window = evidence.Window;
-        int[] claims = new int[count];
-        for (int call = 0; call < count; call++)
+        var resolved = new RpcPeerState[count];
+        int[] reached = new int[count];
+        Array.Fill(reached, -1);
+        foreach (RpcCallGroup group in calls.Groups)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            RpcCallIndex.PeerFacts client = calls.FactsOf(call);
-            if (client.Side != RpcCallSide.Client)
+            if (group.Side != RpcCallSide.Client)
             {
                 continue;
             }
 
-            (states[call], peers[call]) = Resolve(calls, segments, client, sent, received, started, window);
-            if (peers[call] >= 0)
+            (int first, int calling) = (group.First, (int)group.Counts.Calls);
+            for (int call = first; call < first + calling; call++)
             {
-                claims[peers[call]]++;
+                cancellationToken.ThrowIfCancellationRequested();
+                (resolved[call], reached[call]) = Resolve(calls, segments, calls.FactsOf(call), evidence);
             }
         }
 
-        // A server call two client calls reached is neither's: which one it served cannot be told.
-        for (int call = 0; call < count; call++)
+        return Settled(calls, resolved, reached, evidence, fieldsRead);
+    }
+
+    /// <summary>
+    /// Links the calls <paramref name="lineage"/> extended from these: a client call that stands keeps what it reached
+    /// when it stopped no later than <paramref name="changed"/> - every send, receive and server start the rule reads for
+    /// it is earlier than that, and so are the server call it reached and its start - and every other client call is
+    /// linked again from <paramref name="evidence"/>.
+    /// </summary>
+    private RpcPeerIndex Relink(
+        RpcCallIndex extended,
+        IReadOnlyList<SegmentReaderV1> segments,
+        Evidence evidence,
+        StoreDependency?[] fieldsRead,
+        RpcCallIndex.CallLineage lineage,
+        long changed,
+        CancellationToken cancellationToken)
+    {
+        int count = extended.Count;
+        var resolved = new RpcPeerState[count];
+        int[] reaches = new int[count];
+        Array.Fill(reaches, -1);
+        foreach (RpcCallGroup group in calls.Groups)
         {
-            if (peers[call] >= 0 && calls.FactsOf(call).Side == RpcCallSide.Client && claims[peers[call]] > 1)
+            if (group.Side != RpcCallSide.Client)
             {
-                states[call] = RpcPeerState.ServerCallShared;
-                peers[call] = -1;
+                continue;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            (int first, int calling) = (group.First, (int)group.Counts.Calls);
+            for (int call = first; call < first + calling; call++)
+            {
+                int at = lineage.Moved[call];
+                if (at < 0)
+                {
+                    continue;
+                }
+
+                RpcPeerState state = states[call];
+                int server = reached![call] < 0 ? -1 : lineage.Moved[reached[call]];
+                if (state == RpcPeerState.NotCompleted || (extended.StopTicksAt(at) <= changed && (reached[call] < 0 || server >= 0)))
+                {
+                    resolved[at] = state == RpcPeerState.ServerCallShared ? RpcPeerState.Served : state;
+                    reaches[at] = server;
+                    continue;
+                }
+
+                (resolved[at], reaches[at]) = Resolve(extended, segments, extended.FactsOf(at), evidence);
             }
         }
 
-        for (int call = 0; call < count; call++)
+        foreach (int at in lineage.Paired)
         {
-            if (peers[call] >= 0 && calls.FactsOf(call).Side == RpcCallSide.Client && states[call] == RpcPeerState.Served)
+            RpcCallIndex.PeerFacts facts = extended.FactsOf(at);
+            if (facts.Side == RpcCallSide.Client)
             {
-                peers[peers[call]] = call;
+                (resolved[at], reaches[at]) = Resolve(extended, segments, facts, evidence);
             }
         }
 
-        // A server call is served when a linked client call reached it, and not reached otherwise.
-        for (int call = 0; call < count; call++)
+        return Settled(extended, resolved, reaches, evidence, fieldsRead);
+    }
+
+    /// <summary>
+    /// The other ends once every client call is resolved: a server call two client calls reached is neither's, since
+    /// which one it served cannot be told; a server call is served when a linked client call reached it, and not reached
+    /// otherwise.
+    /// </summary>
+    /// <param name="resolved">By call, what each client call reached, a server call two reached included.</param>
+    /// <param name="reached">By call, the server call a client call reached; -1 for any other.</param>
+    private static RpcPeerIndex Settled(
+        RpcCallIndex calls, RpcPeerState[] resolved, int[] reached, Evidence evidence, StoreDependency?[] fieldsRead)
+    {
+        int count = calls.Count;
+        int[] claims = new int[count];
+        foreach (int server in reached)
         {
-            if (calls.FactsOf(call).Side == RpcCallSide.Server)
+            if (server >= 0)
+            {
+                claims[server]++;
+            }
+        }
+
+        var states = new RpcPeerState[count];
+        int[] peers = new int[count];
+        Array.Fill(peers, -1);
+        foreach (RpcCallGroup group in calls.Groups)
+        {
+            if (group.Side != RpcCallSide.Client)
+            {
+                continue;
+            }
+
+            (int first, int calling) = (group.First, (int)group.Counts.Calls);
+            for (int call = first; call < first + calling; call++)
+            {
+                int server = reached[call];
+                states[call] = server >= 0 && claims[server] > 1 ? RpcPeerState.ServerCallShared : resolved[call];
+                if (states[call] == RpcPeerState.Served)
+                {
+                    peers[call] = server;
+                    peers[server] = call;
+                }
+            }
+        }
+
+        foreach (RpcCallGroup group in calls.Groups)
+        {
+            if (group.Side != RpcCallSide.Server)
+            {
+                continue;
+            }
+
+            (int first, int calling) = (group.First, (int)group.Counts.Calls);
+            for (int call = first; call < first + calling; call++)
             {
                 states[call] = peers[call] >= 0 ? RpcPeerState.Served : RpcPeerState.NotReached;
             }
         }
 
-        return new(calls, states, peers, evidence.Sends, evidence.Receives, fieldsRead, evidence);
+        return new(calls, states, peers, evidence.Sends, evidence.Receives, fieldsRead, evidence, reached);
     }
 
-    /// <summary>Two sorted runs of messages as one, in <paramref name="order"/>: what sorting them together gives.</summary>
+    /// <summary>
+    /// Two sorted runs of messages as one, in <paramref name="order"/>: what sorting them together gives. The second is
+    /// a generation's added records, few beside the first, so the first is copied in runs between where each falls.
+    /// </summary>
     private static Message[] Merge(Message[] first, Message[] second, Comparison<Message> order)
     {
         var merged = new Message[first.Length + second.Length];
-        int left = 0;
-        int right = 0;
-        for (int at = 0; at < merged.Length; at++)
+        int from = 0;
+        int at = 0;
+        foreach (Message added in second)
         {
-            merged[at] = right >= second.Length || (left < first.Length && order(first[left], second[right]) <= 0)
-                ? first[left++]
-                : second[right++];
+            int upTo = After(first, from, added, order);
+            Array.Copy(first, from, merged, at, upTo - from);
+            at += upTo - from;
+            from = upTo;
+            merged[at++] = added;
         }
 
+        Array.Copy(first, from, merged, at, first.Length - from);
         return merged;
+
+        // The first place from `start` on whose message sorts after `added`: a run that equals it goes first.
+        static int After(Message[] sorted, int start, Message added, Comparison<Message> order)
+        {
+            int low = start;
+            int high = start;
+            int step = 1;
+            while (high < sorted.Length && order(sorted[high], added) <= 0)
+            {
+                low = high + 1;
+                high = (int)Math.Min(sorted.Length, (long)high + step);
+                step *= 2;
+            }
+
+            while (low < high)
+            {
+                int middle = low + ((high - low) / 2);
+                if (order(sorted[middle], added) <= 0)
+                {
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle;
+                }
+            }
+
+            return low;
+        }
     }
 
     /// <summary>
@@ -379,9 +536,70 @@ public sealed partial class RpcPeerIndex
         }
 
         ServerStart[] started = [.. servers];
-        started.AsSpan().Sort(static (left, right) => (left.ProcessId, left.ThreadId, left.Ticks, left.Call).CompareTo((right.ProcessId, right.ThreadId, right.Ticks, right.Call)));
+        started.AsSpan().Sort(ByThread);
         return started;
     }
+
+    /// <summary>
+    /// The server calls' starts of calls extended by <paramref name="lineage"/>: those read already, at the places their
+    /// calls moved to, less those of the calls withdrawn, with those of the calls paired again merged in. Two starts
+    /// read alike sort by their calls, whose places can trade order as their groups move, so such a run is sorted again.
+    /// </summary>
+    private static ServerStart[] ServerStartsMoved(
+        ServerStart[] before, RpcCallIndex.CallLineage lineage, RpcCallIndex calls, IReadOnlyList<SegmentReaderV1> segments)
+    {
+        var added = new List<ServerStart>();
+        foreach (int call in lineage.Paired)
+        {
+            RpcCallIndex.PeerFacts facts = calls.FactsOf(call);
+            if (facts.Side == RpcCallSide.Server && facts.StartSegment >= 0)
+            {
+                added.Add(new(facts.ProcessId, ThreadOf(segments, facts), facts.StartTicks, call));
+            }
+        }
+
+        added.Sort(ByThread);
+        var started = new ServerStart[before.Length + added.Count];
+        int at = 0;
+        int next = 0;
+        foreach (ServerStart start in before)
+        {
+            int moved = lineage.Moved[start.Call];
+            if (moved < 0)
+            {
+                continue;
+            }
+
+            ServerStart carried = start with { Call = moved };
+            while (next < added.Count && ByThread(added[next], carried) < 0)
+            {
+                started[at++] = added[next++];
+            }
+
+            started[at++] = carried;
+        }
+
+        while (next < added.Count)
+        {
+            started[at++] = added[next++];
+        }
+
+        Array.Resize(ref started, at);
+        for (int place = 1; place < started.Length; place++)
+        {
+            if (ByThread(started[place - 1], started[place]) > 0)
+            {
+                started.AsSpan().Sort(ByThread);
+                break;
+            }
+        }
+
+        return started;
+    }
+
+    /// <summary>Server starts as the rule looks them up: by the thread that began them, their reading and their call.</summary>
+    private static readonly Comparison<ServerStart> ByThread =
+        static (left, right) => (left.ProcessId, left.ThreadId, left.Ticks, left.Call).CompareTo((right.ProcessId, right.ThreadId, right.Ticks, right.Call));
 
     /// <summary>The server-start window in the calls' clock ticks.</summary>
     private static long Window(RpcCallIndex calls) =>
@@ -535,6 +753,11 @@ public sealed partial class RpcPeerIndex
             ? first + position
             : throw new ArgumentOutOfRangeException(nameof(positions), position, "No call of the group is at this position."));
     }
+
+    /// <summary>What a client call reached, and the server call when it was served; -1 when not.</summary>
+    private static (RpcPeerState State, int Server) Resolve(
+        RpcCallIndex calls, IReadOnlyList<SegmentReaderV1> segments, RpcCallIndex.PeerFacts client, Evidence evidence) =>
+        Resolve(calls, segments, client, evidence.Sent, evidence.Received, evidence.Started, evidence.Window);
 
     private static (RpcPeerState State, int Server) Resolve(
         RpcCallIndex calls,

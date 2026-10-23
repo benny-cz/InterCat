@@ -85,6 +85,54 @@ public sealed class IncrementalRpcTests
         Assert.True(followed > 0);
     }
 
+    [Theory(DisplayName = "I14: RPC calls and their other ends extended through processes that exit, return and appear, server calls held open for chunks and server calls two clients reach equal a derivation of every chunk at once, and write the same operation index")]
+    [InlineData(5, false)]
+    [InlineData(20_261_023, false)]
+    [InlineData(17, true)]
+    public void ExtendingThroughChurnEqualsPairingAgain(int seed, bool sparse)
+    {
+        var random = new Random(seed);
+        int extended = 0;
+        int shared = 0;
+        int rebound = 0;
+        for (int trial = 0; trial < 12; trial++)
+        {
+            // Every chunk is published into one session, as a live capture's generations are, so an operation index can
+            // name the segments.
+            using var session = new TemporarySession();
+            RpcCallIndex? calls = null;
+            RpcPeerIndex? peers = null;
+            foreach ((ObservationRowV1[] rows, SourceFieldRowV1[] fieldRows) in RandomRpcCaptures.Chunks(random, sparse, churn: true))
+            {
+                Publish(session.Store, rows, rowsPerSegment: random.Next(1, rows.Length + 1), fields: fieldRows);
+                (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = IncrementalDerivationTests.SegmentsOf(session.Store);
+                ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(observations, TestClock, fields);
+                RpcCallIndex fullCalls = RpcCallIndex.Derive(observations, fields, processes, TestClock);
+                RpcPeerIndex fullPeers = RpcPeerIndex.Derive(fullCalls, observations, fields);
+                RpcCallIndex? next = calls?.Extend(observations, fields, processes);
+                RpcPeerIndex? nextPeers = next is null ? null : peers!.Extend(next, observations, fields);
+                if (next is null || nextPeers is null)
+                {
+                    (calls, peers) = (fullCalls, fullPeers);
+                    continue;
+                }
+
+                extended++;
+                rebound += calls!.Groups.Select(group => group.Process).Except(next.Groups.Select(group => group.Process)).Any() ? 1 : 0;
+                AssertSameCalls(fullCalls, next, observations);
+                AssertSamePeers(fullPeers, fullCalls, nextPeers, next, observations);
+                Assert.Equal(Written(session.Store, fullCalls, fullPeers, processes), Written(session.Store, next, nextPeers, processes));
+                shared += (int)next.Groups.Sum(group => nextPeers.CountsOf(group).Unresolved.GetValueOrDefault(RpcPeerState.ServerCallShared));
+                (calls, peers) = (next, nextPeers);
+            }
+        }
+
+        // Most chunks extend; processes come and go between them, so groups are bound to other instances; and two clients
+        // reach one server call.
+        Assert.True(extended > 20, $"{extended} extensions.");
+        Assert.True(rebound > 0 && shared > 0, $"{rebound} extensions bound groups otherwise, {shared} calls shared a server call.");
+    }
+
     [Fact(DisplayName = "I14: an RPC extension declines, for a full derivation, whatever could change a call or a link already made")]
     public void RpcExtensionDeclinesWhatItCannotAdd()
     {
@@ -192,6 +240,197 @@ public sealed class IncrementalRpcTests
         Assert.Null(RpcPeerIndex.Derive(bareCalls, bareSegments, []).Extend(bareTwinCalls, bareTwinSegments, []));
     }
 
+    [Fact(DisplayName = "I14: a call made after its process exited is grouped by why it binds to none, and an extension groups it again once its PID is used again, though the call stands")]
+    public void AnExtensionGroupsAgainWhatBindsForAnotherReason()
+    {
+        // A client's call, its exit, and a call of its PID after it; twenty seconds later the PID is used again.
+        ObservationRowV1[] first =
+        [
+            Lifecycle(2, ObservationKind.Create, 410, 1),
+            RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 410, 2, Activity(1), ServiceControlInterface),
+            RpcCall(120, ObservationKind.RequestEnd, Direction.Outbound, 410, 3, Activity(1), status: 0),
+            Lifecycle(200, ObservationKind.Exit, 410, 4, exitCode: 0),
+            RpcCall(300, ObservationKind.RequestStart, Direction.Outbound, 410, 5, Activity(2), ServiceControlInterface),
+            RpcCall(320, ObservationKind.RequestEnd, Direction.Outbound, 410, 6, Activity(2), status: 0),
+        ];
+        ObservationRowV1[] later =
+        [
+            Lifecycle(200_000_400, ObservationKind.Create, 410, 7),
+            RpcCall(200_000_500, ObservationKind.RequestStart, Direction.Outbound, 410, 8, Activity(3), ServiceControlInterface),
+        ];
+        (RpcCallIndex? extended, _) = Extended(first, [], later, []);
+
+        // The call after the exit stands - it is long behind the window - yet it now falls between two instances, so it
+        // is grouped as a full derivation groups it, not where it was.
+        using var all = new TemporarySession();
+        Publish(all.Store, [.. first, .. later]);
+        (SegmentReaderV1[] segments, SegmentReaderV1[] fields) = IncrementalDerivationTests.SegmentsOf(all.Store);
+        RpcCallIndex derived = RpcCallIndex.Derive(segments, fields, ProcessInstanceIndex.Derive(segments, TestClock, fields), TestClock);
+        Assert.NotNull(extended);
+        Assert.Equal(derived.Groups, extended.Groups);
+        Assert.Contains(extended.Groups, group => group.Process.Reason == ProcessBindingReason.BetweenInstances && group.Counts.Calls == 1);
+        Assert.DoesNotContain(extended.Groups, group => group.Process.Reason == ProcessBindingReason.AfterExit);
+    }
+
+    [Fact(DisplayName = "I14: an exit and a process start read late split a group whose calls stand between the two instances they bound to")]
+    public void LifecycleReadLateSplitsAStandingGroup()
+    {
+        // Two calls of one client, bound to its one instance, and a call twenty seconds later.
+        ObservationRowV1[] first =
+        [
+            Lifecycle(2, ObservationKind.Create, 410, 1),
+            RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 410, 2, Activity(1), ServiceControlInterface),
+            RpcCall(120, ObservationKind.RequestEnd, Direction.Outbound, 410, 3, Activity(1), status: 0),
+            RpcCall(300, ObservationKind.RequestStart, Direction.Outbound, 410, 4, Activity(2), ServiceControlInterface),
+            RpcCall(320, ObservationKind.RequestEnd, Direction.Outbound, 410, 5, Activity(2), status: 0),
+            RpcCall(200_000_000, ObservationKind.RequestStart, Direction.Outbound, 400, 6, Activity(3), ServiceControlInterface),
+        ];
+
+        // The client's exit between them and its PID's next process, read a chunk late: the first call binds as it did, the
+        // second to the new instance, though both stand.
+        ObservationRowV1[] later = [Lifecycle(200, ObservationKind.Exit, 410, 7, exitCode: 0), Lifecycle(250, ObservationKind.Create, 410, 8)];
+        (RpcCallIndex? extended, _) = Extended(first, [], later, []);
+        using var all = new TemporarySession();
+        Publish(all.Store, [.. first, .. later]);
+        (SegmentReaderV1[] segments, SegmentReaderV1[] fields) = IncrementalDerivationTests.SegmentsOf(all.Store);
+        RpcCallIndex derived = RpcCallIndex.Derive(segments, fields, ProcessInstanceIndex.Derive(segments, TestClock, fields), TestClock);
+        Assert.NotNull(extended);
+        Assert.Equal(derived.Groups, extended.Groups);
+        Assert.Equal([RelationStrength.Correlated, RelationStrength.Candidate],
+            extended.Groups.Where(group => group.ProcessId == 410).Select(group => group.Process.Strength).Order());
+    }
+
+    [Fact(DisplayName = "I14: a server call paired again from a key kept open, read late, links a client call that stands, whose message reached its thread before it")]
+    public void AServerCallPairedAgainLinksAStandingClient()
+    {
+        // A server call open since before a client's call, whose message the server's thread receives; nothing begins
+        // there after it, so the call reaches no server call. A call twenty seconds later puts both behind the window.
+        Guid served = Activity(9);
+        ObservationRowV1 client = RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 400, 1, Activity(1), ServiceControlInterface);
+        ObservationRowV1 send = Alpc(102, ObservationKind.Send, 400, 401, 2);
+        ObservationRowV1 receive = Alpc(104, ObservationKind.Receive, 1_960, 1_961, 3);
+        ObservationRowV1 open = RpcCall(50, ObservationKind.RequestStart, Direction.Inbound, 1_960, 4, served, ServiceControlInterface);
+        ObservationRowV1[] first =
+        [
+            Lifecycle(1, ObservationKind.Inventory, 400, 20),
+            Lifecycle(1, ObservationKind.Inventory, 1_960, 21),
+            open,
+            client,
+            send,
+            receive,
+            RpcCall(120, ObservationKind.RequestEnd, Direction.Outbound, 400, 5, Activity(1), status: 0),
+            RpcCall(200_000_000, ObservationKind.RequestStart, Direction.Outbound, 420, 6, Activity(2), ServiceControlInterface),
+        ];
+        SourceFieldRowV1[] fields =
+        [
+            Field(client, SourceField.RpcProcedureNumber, 7),
+            Field(open, SourceField.RpcProcedureNumber, 7),
+            Field(send, SourceField.AlpcMessageId, 51),
+            Field(receive, SourceField.AlpcMessageId, 51),
+        ];
+
+        // A start of the open call's key on that thread, read late: the key is kept, so its calls are paired again - an
+        // ambiguous run - and the new one begins after the message was received, within the window, before the client's
+        // call stopped.
+        ObservationRowV1 begun = RpcCall(106, ObservationKind.RequestStart, Direction.Inbound, 1_960, 7, served, ServiceControlInterface);
+        (RpcCallIndex? calls, RpcPeerIndex? peers) = Extended(first, fields, [begun], [Field(begun, SourceField.RpcProcedureNumber, 7)]);
+        Assert.NotNull(calls);
+        Assert.NotNull(peers);
+        Assert.Equal((2L, 1L), (calls.Totals.Ambiguous, peers.CountsOf(calls.Groups.Single(group => group.ProcessId == 400)).Served));
+        Assert.Equal(0L, Unresolved(calls, peers, RpcPeerState.NoServerCall));
+    }
+
+    [Fact(DisplayName = "I14: a server call two clients reached is the other's again when a send read late undoes one client's link, though the other client's call stands")]
+    public void ALinkUndoneLateFreesItsServerCall()
+    {
+        // Two clients' messages are received on the thread that then begins one server call, so it is neither's; a call
+        // twenty seconds later puts both long behind the window.
+        ObservationRowV1 first = RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 400, 1, Activity(1), ServiceControlInterface);
+        ObservationRowV1 second = RpcCall(101, ObservationKind.RequestStart, Direction.Outbound, 410, 2, Activity(2), ServiceControlInterface);
+        ObservationRowV1 firstSend = Alpc(102, ObservationKind.Send, 400, 401, 3);
+        ObservationRowV1 secondSend = Alpc(103, ObservationKind.Send, 410, 411, 4);
+        ObservationRowV1 firstReceive = Alpc(104, ObservationKind.Receive, 1_960, 1_961, 5);
+        ObservationRowV1 secondReceive = Alpc(105, ObservationKind.Receive, 1_960, 1_961, 6);
+        ObservationRowV1 served = RpcCall(106, ObservationKind.RequestStart, Direction.Inbound, 1_960, 7, Activity(3), ServiceControlInterface);
+        ObservationRowV1[] rows =
+        [
+            Lifecycle(1, ObservationKind.Inventory, 400, 20),
+            Lifecycle(1, ObservationKind.Inventory, 410, 21),
+            Lifecycle(1, ObservationKind.Inventory, 1_960, 22),
+            first,
+            second,
+            firstSend,
+            secondSend,
+            firstReceive,
+            secondReceive,
+            served,
+            RpcCall(110, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 8, Activity(3), status: 0),
+            RpcCall(120, ObservationKind.RequestEnd, Direction.Outbound, 400, 9, Activity(1), status: 0),
+            RpcCall(124, ObservationKind.RequestEnd, Direction.Outbound, 410, 10, Activity(2), status: 0),
+            RpcCall(200_000_000, ObservationKind.RequestStart, Direction.Outbound, 420, 11, Activity(4), ServiceControlInterface),
+        ];
+        SourceFieldRowV1[] fields =
+        [
+            Field(first, SourceField.RpcProcedureNumber, 7),
+            Field(second, SourceField.RpcProcedureNumber, 7),
+            Field(served, SourceField.RpcProcedureNumber, 7),
+            Field(firstSend, SourceField.AlpcMessageId, 31),
+            Field(secondSend, SourceField.AlpcMessageId, 32),
+            Field(firstReceive, SourceField.AlpcMessageId, 31),
+            Field(secondReceive, SourceField.AlpcMessageId, 32),
+        ];
+        using var before = new TemporarySession();
+        Publish(before.Store, rows, fields: fields);
+        (SegmentReaderV1[] earlier, SegmentReaderV1[] earlierFields) = IncrementalDerivationTests.SegmentsOf(before.Store);
+        RpcCallIndex earlierCalls = RpcCallIndex.Derive(earlier, earlierFields, ProcessInstanceIndex.Derive(earlier, TestClock, earlierFields), TestClock);
+        RpcPeerIndex earlierPeers = RpcPeerIndex.Derive(earlierCalls, earlier, earlierFields);
+        Assert.Equal(2L, Unresolved(earlierCalls, earlierPeers, RpcPeerState.ServerCallShared));
+
+        // A second send on the second client's thread within its call, read a chunk late: that call no longer links, so
+        // the server call served the first, whose call stands, its every record read before the late send.
+        ObservationRowV1 late = Alpc(123, ObservationKind.Send, 410, 411, 12);
+        (RpcCallIndex? calls, RpcPeerIndex? peers) = Extended(rows, fields, [late], [Field(late, SourceField.AlpcMessageId, 33)]);
+        Assert.NotNull(calls);
+        Assert.NotNull(peers);
+        Assert.Equal((0L, 1L), (Unresolved(calls, peers, RpcPeerState.ServerCallShared), Unresolved(calls, peers, RpcPeerState.SeveralSends)));
+        Assert.Equal(1L, peers.CountsOf(calls.Groups.Single(group => group.ProcessId == 400)).Served);
+        Assert.Equal([(400, 1_960)], peers.Links().Select(link => (link.ClientProcessId, link.ServerProcessId)));
+    }
+
+    [Fact(DisplayName = "I14: other ends followed while no ALPC was read are all linked again once a generation reads some")]
+    public void OtherEndsFollowedWithoutAlpcAreLinkedAgain()
+    {
+        // A completed call, then one twenty seconds later; no ALPC record in either.
+        ObservationRowV1 calling = RpcCall(200_000_000, ObservationKind.RequestStart, Direction.Outbound, 400, 3, Activity(2), ServiceControlInterface);
+        ObservationRowV1[] rows =
+        [
+            Lifecycle(1, ObservationKind.Inventory, 400, 20),
+            Lifecycle(1, ObservationKind.Inventory, 1_960, 21),
+            RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 400, 1, Activity(1), ServiceControlInterface),
+            RpcCall(120, ObservationKind.RequestEnd, Direction.Outbound, 400, 2, Activity(1), status: 0),
+            calling,
+        ];
+
+        // The later call's message, and the server call it reached: now that ALPC was read, the first call sent nothing.
+        ObservationRowV1 send = Alpc(200_000_002, ObservationKind.Send, 400, 401, 4);
+        ObservationRowV1 receive = Alpc(200_000_003, ObservationKind.Receive, 1_960, 1_961, 5);
+        ObservationRowV1 start = RpcCall(200_000_006, ObservationKind.RequestStart, Direction.Inbound, 1_960, 6, Activity(3), ServiceControlInterface);
+        ObservationRowV1[] added =
+        [
+            send,
+            receive,
+            start,
+            RpcCall(200_000_010, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 7, Activity(3), status: 0),
+            RpcCall(200_000_020, ObservationKind.RequestEnd, Direction.Outbound, 400, 8, Activity(2), status: 0),
+        ];
+        (RpcCallIndex? calls, RpcPeerIndex? peers) = Extended(rows, [Field(calling, SourceField.RpcProcedureNumber, 7)], added,
+            [Field(send, SourceField.AlpcMessageId, 41), Field(receive, SourceField.AlpcMessageId, 41), Field(start, SourceField.RpcProcedureNumber, 7)]);
+        Assert.NotNull(calls);
+        Assert.NotNull(peers);
+        Assert.Equal((0L, 1L, 1), (Unresolved(calls, peers, RpcPeerState.NoAlpcEvidence), Unresolved(calls, peers, RpcPeerState.NoSend),
+            peers.Links().Count()));
+    }
+
     [Fact(DisplayName = "I14: an RPC peer index gives its ALPC records to the first extension made from it, and a second extends from nothing")]
     public void APeerIndexIsExtendedOnce()
     {
@@ -261,6 +500,20 @@ public sealed class IncrementalRpcTests
 
     private static Guid Activity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 7);
 
+    /// <summary>How many client calls the other ends say <paramref name="state"/> of.</summary>
+    private static long Unresolved(RpcCallIndex calls, RpcPeerIndex peers, RpcPeerState state) =>
+        calls.Groups.Where(group => group.Side == RpcCallSide.Client).Sum(group => peers.CountsOf(group).Unresolved.GetValueOrDefault(state));
+
+    /// <summary>The operation index the calls, their other ends and the session's exchanges write, for its current generation.</summary>
+    private static byte[] Written(SessionStore store, RpcCallIndex calls, RpcPeerIndex peers, ProcessInstanceIndex processes)
+    {
+        (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = IncrementalDerivationTests.SegmentsOf(store);
+        using var written = new MemoryStream();
+        _ = OperationIndex.Write(written, store.SessionId, store.Current!.Generation, [.. observations.Select(segment => segment.Published!)],
+            [.. fields.Select(segment => segment.Published!)], calls, peers, HttpExchangeIndex.Derive(observations, fields, processes));
+        return written.ToArray();
+    }
+
     private static void AssertSameCalls(RpcCallIndex expected, RpcCallIndex actual, IReadOnlyList<SegmentReaderV1> segments)
     {
         Assert.Equal((expected.CallRecords, expected.OtherRpcRecords), (actual.CallRecords, actual.OtherRpcRecords));
@@ -302,11 +555,20 @@ public sealed class IncrementalRpcTests
 /// <summary>
 /// Random live captures of RPC calls and the ALPC messages that link them, cut into chunks as a live capture publishes
 /// them: most records in the chunk of their reading, some delivered a chunk or two late, and in a sparse capture some
-/// delivered after the late window behind the latest record (<see cref="RpcCallIndex.LateWindowNanoseconds"/>).
+/// delivered after the late window behind the latest record (<see cref="RpcCallIndex.LateWindowNanoseconds"/>). A
+/// churning capture also has a client exit and its PID used again, a client that first calls halfway through, server
+/// calls held open for chunks, and server calls two clients reach.
 /// </summary>
 internal static class RandomRpcCaptures
 {
     private const int Server = 1_960;
+
+    /// <summary>A churning capture's client whose process exits and whose PID is used again.</summary>
+    private const int Reused = 410;
+
+    /// <summary>A churning capture's client that first calls halfway through, numbered between the others.</summary>
+    private const int Joining = 405;
+
     private static readonly int[] Clients = [400, 410, 420];
     private static readonly Guid[] Interfaces =
     [
@@ -315,7 +577,7 @@ internal static class RandomRpcCaptures
         Guid.Parse("e1af8308-5d1f-11c9-91a4-08002b14a0fa"),
     ];
 
-    public static List<(ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)> Chunks(Random random, bool sparse)
+    public static List<(ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)> Chunks(Random random, bool sparse, bool churn = false)
     {
         ulong ordinal = 0;
         long message = 1;
@@ -333,10 +595,34 @@ internal static class RandomRpcCaptures
         long spacing = sparse ? 30_000_000 : 40;
         var lastActivity = new Dictionary<int, Guid>();
         int calls = random.Next(8, 30);
+        bool joined = false;
         for (int call = 0; call < calls; call++)
         {
             long at = 100 + (call * spacing) + random.Next(0, 30);
             int client = Clients[random.Next(Clients.Length)];
+            if (churn)
+            {
+                if (call == calls / 3)
+                {
+                    records.Add((Lifecycle(at - 1, ObservationKind.Exit, Reused, ++ordinal, exitCode: 0), []));
+                }
+                else if (call == 2 * calls / 3)
+                {
+                    records.Add((Lifecycle(at - 1, ObservationKind.Create, Reused, ++ordinal), []));
+                }
+
+                if (call >= calls / 2 && random.NextDouble() < 0.3)
+                {
+                    if (!joined)
+                    {
+                        records.Add((Lifecycle(at - 1, ObservationKind.Create, Joining, ++ordinal), []));
+                        joined = true;
+                    }
+
+                    client = Joining;
+                }
+            }
+
             Guid rpcInterface = Interfaces[random.Next(Interfaces.Length)];
             long procedure = random.Next(0, 3);
 
@@ -378,9 +664,26 @@ internal static class RandomRpcCaptures
                 records.Add((served, random.NextDouble() < 0.95 ? [Field(served, SourceField.RpcProcedureNumber, servedProcedure)] : []));
             }
 
+            // Another client sometimes reaches the same server call, its message received on the server's thread just
+            // before the call begins.
+            if (churn && random.NextDouble() < 0.12)
+            {
+                int other = client == Clients[0] ? Clients[1] : Clients[0];
+                long otherId = message++;
+                ObservationRowV1 otherStart = RpcCall(at + 1, ObservationKind.RequestStart, Direction.Outbound, other, ++ordinal, NewActivity(++activity), rpcInterface);
+                ObservationRowV1 otherSend = Alpc(at + 2, ObservationKind.Send, other, other + 1, ++ordinal);
+                ObservationRowV1 otherReceive = Alpc(at + 4, ObservationKind.Receive, Server, Server + 1, ++ordinal);
+                records.Add((otherStart, [Field(otherStart, SourceField.RpcProcedureNumber, procedure)]));
+                records.Add((otherSend, [Field(otherSend, SourceField.AlpcMessageId, otherId)]));
+                records.Add((otherReceive, [Field(otherReceive, SourceField.AlpcMessageId, otherId)]));
+                records.Add((RpcCall(at + 24, ObservationKind.RequestEnd, Direction.Outbound, other, ++ordinal, otherStart.ActivityId, status: 0), []));
+            }
+
             if (random.NextDouble() > 0.05)
             {
-                records.Add((RpcCall(at + 10, ObservationKind.RequestEnd, Direction.Inbound, Server, ++ordinal, serverActivity, status: 0), []));
+                // A churning capture's server call is sometimes held open for chunks, and paired again each generation.
+                long stopped = at + 10 + (churn && random.NextDouble() < 0.15 ? spacing * random.Next(3, 12) : 0);
+                records.Add((RpcCall(stopped, ObservationKind.RequestEnd, Direction.Inbound, Server, ++ordinal, serverActivity, status: 0), []));
             }
 
             if (random.NextDouble() > 0.08)

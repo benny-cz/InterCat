@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-23 · Plan revision: 741 · Branch: `main`
+Updated: 2026-10-23 · Plan revision: 742 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,28 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 742 — I14, P25: extending RPC calls and their other ends between live generations binds, groups and links again only what a generation's records can change:**
+  - A call index ranks its calls by their first records' canonical order and keeps the ranks of the calls a later
+    generation withdraws and each group's sorted durations, so an extension compares first records only where a call
+    paired again falls, carries each group's standing calls in order where every binding holds, renumbering their
+    instance, and binds and groups every call again only where a late lifecycle record changes a binding. The other
+    ends carry server starts and links to where the calls went, and link again only the client calls whose evidence
+    could have changed.
+  - At 800,000 calls in Release an extension by 60,000 records took 0.45 s for the calls and 0.38 s for their other
+    ends; it now takes 0.16–0.32 s and 0.07 s. Copying 144 bytes a call forward is what still grows with the session;
+    this container charges up to 28 µs for each fresh page it touches.
+  - Debug and Release each ran 2,996 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    thirty mutations were caught: a call paired again ranked without the calls withdrawn before it, or a standing
+    call without those paired again; a withdrawn call kept; bindings left unchecked, checked at a group's first call
+    only, or unbound ones checked without their reason; a group's instance not renumbered, the calls paired again
+    dealt first, the canonical order, a group's durations or its withdrawn calls' durations not carried, or an
+    emptied group kept; a regrouped call's place lost; every call paired again kept, a derivation's kept calls taken
+    by place, its calls ranked by record, an operation index written in the index's order, or durations left
+    unsorted; a server call paired again left unmoved, or a new one's start ignored; added sends or receives
+    ignored, every standing link kept, a shared call carried as shared, calls paired again left unlinked, a server
+    call shared only by three, a server call not linked back, new starts lost, or the messages after the last added
+    one dropped.
 
 - **Revision 741 — S3, P25: a session's first view in the window does not wait for its RPC calls to be followed; a staged live operation index measured and set aside:**
   - A session that collected ALPC and keeps no links, as one still being recorded and opened cold keeps none, is drawn
@@ -978,10 +1000,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      HTTP exchanges, reading only its added segments, where they were derived over every segment, since a call's
      request and response, or an exchange's buffers, can lie in different ones (P25).
      A search reads the overview, never a segment.
-     A viewer opening a live generation cold still pairs every call and follows every ALPC message when a view asks
-     for them; since revision 741 the window's first view does not wait for that (S3). A staged whole-state operation
-     index, measured then, cost a publication 400–500 ms at 25,000 calls; what would make the following cheap is
-     pairing and linking only what added records can change, keeping what no longer can chunk by chunk.
+     A viewer opening a live generation cold still pairs every call and follows every ALPC message once when a view
+     asks for them; since revision 741 the window's first view does not wait for that (S3), and since revision 742
+     each generation after it binds, groups and links again only what its records can change, copying the rest
+     forward. A staged whole-state operation index, measured in revision 741, cost a publication 400–500 ms at
+     25,000 calls.
    - An operation's focused count, and a channel's and owners' at once, still read their rows (§10.3: the tallies hold
      neither apart); since revisions 458, 459 and 460 a group's, a process's and a channel's count from the tile index.
      A focus on the whole session's records of one source direction reads rows too; since revision 461 one mechanism's
@@ -1040,8 +1063,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      1. Done in revision 186: durations of client calls and server executions by cohort and statistic (ADR-033).
      2. Done in revision 544, once a live RPC peers capture needed it: calls and their other ends extend between live
         generations, pairing again only the keys a late record can touch, and since revision 440 a finished session
-        keeps them in its operation index. A generation of 80,000 calls projects in 0.18 s, from 0.58; binding,
-        grouping and linking every call again remain linear in a generation.
+        keeps them in its operation index. A generation of 80,000 calls projects in 0.18 s, from 0.58; since revision
+        742 an extension binds, groups and links again only what the added records can change: at 800,000 calls
+        0.16–0.32 s for the calls and 0.07 s for their other ends, from 0.45 and 0.38, copying the rest forward.
      3. Resolve an RPC call's other end through ALPC (ADR-034) as an opt-in profile - collection alone measured Moderate
         in revision 188, so never Explore - in order: done in revision 218, ADR-035 for a private, uniquely named, owned
         system logger in the capture's one session, checked in the product's session conditions; done in revisions
