@@ -148,7 +148,7 @@ public sealed class ChunkTilesTests
 
         // A bound of no row tiles the newest chunk alone: the bound counts only past the first.
         SessionManifestV1 seventh = session.Store.Current!;
-        List<StoreStagingFile> bounded = ChunkTiles.Stage(session.Store, seventh, 8, default, maximumRows: 0);
+        List<StoreStagingFile> bounded = ChunkTiles.Stage(session.Store, seventh, 8, null, default, maximumRows: 0);
         Assert.Equal([ChunkTileFiles.FileNameFor(7, 8)], bounded.Select(file => file.PublishedName));
         foreach (StoreStagingFile file in bounded)
         {
@@ -156,7 +156,7 @@ public sealed class ChunkTilesTests
         }
 
         // A bound of one row too: the newest chunk holds more.
-        bounded = ChunkTiles.Stage(session.Store, seventh, 8, default, maximumRows: 1);
+        bounded = ChunkTiles.Stage(session.Store, seventh, 8, null, default, maximumRows: 1);
         Assert.Equal([ChunkTileFiles.FileNameFor(7, 8)], bounded.Select(file => file.PublishedName));
         foreach (StoreStagingFile file in bounded)
         {
@@ -199,8 +199,8 @@ public sealed class ChunkTilesTests
         Assert.Same(later, SessionDerivationCache.For(session.Store.Current!).TiledChunks(session.Store.Root));
     }
 
-    [Fact(DisplayName = "S4: a chunk's tiles bind no record: they state the derivation of no instance and no channel, which a derivation of the session's records does not match, and a live generation names no tile index a brush or a focus could count bindings from")]
-    public void AChunksTilesBindNoRecord()
+    [Fact(DisplayName = "S4: a chunk's tiles bind no channel and state a derivation no derivation of the session's records and relations matches, and a live generation names no tile index a brush could count bindings from")]
+    public void AChunksTilesBindNoChannel()
     {
         SessionDerivationCache.Clear();
         using var session = new TemporarySession();
@@ -215,7 +215,8 @@ public sealed class ChunkTilesTests
         Assert.True(TileDerivation.Unbound.Matches(none, TransportRelationIndex.Derive([], none)));
         (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(session.Store);
         ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(observations, TestClock, fields);
-        Assert.False(TileDerivation.Unbound.Matches(processes, TransportRelationIndex.Derive(observations, processes)));
+        TransportRelationIndex relations = TransportRelationIndex.Derive(observations, processes);
+        Assert.False(TileDerivation.Unbound.Matches(processes, relations));
 
         StoreDependency[] named = ChunkTiles.NamedBy(manifest);
         Assert.Equal(chunks.Length - 1, named.Length);
@@ -223,9 +224,9 @@ public sealed class ChunkTilesTests
         {
             TileIndexFile file = SessionTileIndex.Open(session.Store.Root, tiles, manifest.SessionId);
             Assert.Equal(
-                (TileDerivation.Unbound.BindingRule, TileDerivation.Unbound.RelationRule, 0, 0),
-                (file.Derivation.BindingRule, file.Derivation.RelationRule, file.Derivation.Instances, file.Derivation.Channels));
-            Assert.Equal(TileDerivation.Unbound.Fingerprint, file.Derivation.Fingerprint);
+                (ProcessInstanceIndex.BindingRule, SessionTileIndex.ChunkRelationRule, 0),
+                (file.Derivation.BindingRule, file.Derivation.RelationRule, file.Derivation.Channels));
+            Assert.False(file.Derivation.Matches(processes, relations));
             long chunk = ChunkTileFiles.SegmentsGenerationOf(tiles.Name)!.Value;
             Assert.Equal(
                 [.. SessionSegments.Names(manifest).Where(name => SessionSegments.PublishingGeneration(name) == chunk)],
@@ -296,7 +297,7 @@ public sealed class ChunkTilesTests
     /// How many of the observation segments generation <paramref name="chunk"/> published hold a native reading
     /// <paramref name="interval"/> meets.
     /// </summary>
-    private static int Met(SessionStore store, TimeRange interval, long chunk)
+    internal static int Met(SessionStore store, TimeRange interval, long chunk)
     {
         SessionManifestV1 manifest = store.Current!;
         (long First, long End) readings = SessionNativeInterval.Readings(interval, SessionSegments.SourceClock(store.Root, manifest)!.Value);

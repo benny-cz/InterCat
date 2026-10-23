@@ -266,6 +266,9 @@ public sealed partial class ProcessInstanceIndex
     /// <summary>What this derivation read, kept so a later generation can extend it rather than read it again.</summary>
     private readonly Evidence evidence;
 
+    /// <summary>Each instance's place by its identity, made when first asked for.</summary>
+    private Dictionary<ProcessInstanceId, int>? positions;
+
     private ProcessInstanceIndex(
         IReadOnlyList<ProcessInstance> instances,
         Dictionary<int, int[]> instancesByPid,
@@ -327,6 +330,82 @@ public sealed partial class ProcessInstanceIndex
         }
 
         return null;
+    }
+
+    /// <summary>The place among <see cref="Instances"/> of the instance <paramref name="id"/> names; -1 for none.</summary>
+    public int PositionOf(ProcessInstanceId id)
+    {
+        Dictionary<ProcessInstanceId, int> known = LazyInitializer.EnsureInitialized(ref positions,
+            () => Instances.Select((instance, at) => (instance.Id, at)).ToDictionary(entry => entry.Id, entry => entry.at));
+        return known.TryGetValue(id, out int position) ? position : -1;
+    }
+
+    /// <summary>
+    /// Whether every record of <paramref name="processId"/> read from <paramref name="first"/> to <paramref name="last"/>
+    /// native ticks, both included, binds alike: to the same instance, as strongly but a lifecycle record, which binds to
+    /// it directly; or to none. <paramref name="binding"/> is the binding at <paramref name="first"/> of a record but a
+    /// lifecycle record. False for a PID no record of the evidence names.
+    /// </summary>
+    /// <remarks>
+    /// Lifetimes are half-open and a record binds to the PID's lifetime holding its reading - a lifecycle record to the one
+    /// it creates, ends or confirms, whose lifetime holds it - so a PID's binding changes only where one of its lifetimes
+    /// starts or ends: it binds alike across the range when it binds at each such reading inside it as at its first.
+    /// </remarks>
+    public bool BindsUniformly(int processId, long first, long last, out ProcessBinding binding)
+    {
+        if (!instancesByPid.TryGetValue(processId, out int[]? indexes) || last < first)
+        {
+            binding = ProcessBinding.Unresolved(ProcessBindingReason.NoOwner);
+            return false;
+        }
+
+        binding = BindWithin(Instances, indexes, first, isLifecycleRecord: false);
+        foreach (int index in indexes)
+        {
+            if (!Alike(binding, Instances[index].LifetimeStartNativeTicks)
+                || !Alike(binding, Instances[index].LifetimeEndNativeTicks))
+            {
+                return false;
+            }
+        }
+
+        return true;
+
+        bool Alike(ProcessBinding bound, long? boundary)
+        {
+            if (boundary is not { } reading || reading <= first || reading > last)
+            {
+                return true;
+            }
+
+            // A record binding to the same instance binds as strongly: its strength is the instance's place among the PID's.
+            ProcessBinding there = BindWithin(Instances, indexes, reading, isLifecycleRecord: false);
+            return there.IsBound == bound.IsBound && (!there.IsBound || there.Instance == bound.Instance);
+        }
+    }
+
+    /// <summary>
+    /// Each row's owner PID, the process its binding reads (<see cref="RecordAttribution"/>), or -1 for a row that names
+    /// none; and whether it is a lifecycle record, which binds to the exact instance it creates, ends or confirms rather
+    /// than by its reading.
+    /// </summary>
+    public static void OwnerProcessesOf(SegmentReaderV1 segment, Span<int> processIds, Span<bool> lifecycle)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        if (processIds.Length < segment.RowCount || lifecycle.Length < segment.RowCount)
+        {
+            throw new ArgumentException($"The buffers must hold the segment's {segment.RowCount:N0} rows.", nameof(processIds));
+        }
+
+        var owners = new RecordOwnerColumns(segment);
+        SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+        SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.ObservationKind);
+        for (int row = 0; row < segment.RowCount; row++)
+        {
+            var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+            processIds[row] = owners.At(row, mechanism) ?? -1;
+            lifecycle[row] = IsLifecycleRecord(mechanism, (ObservationKind)kinds.UnsignedAt(row)!.Value);
+        }
     }
 
     /// <summary>

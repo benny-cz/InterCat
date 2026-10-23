@@ -609,14 +609,18 @@ public sealed partial class SessionTileIndexTests
     private static string PathOf(TemporarySession session) =>
         Path.Combine(session.Path, SessionTileIndex.NamedBy(session.Store.Current!)!.Name);
 
-    /// <summary>Where the current generation's tile index says its spanning section lies, from the end of its directory.</summary>
+    /// <summary>
+    /// Where the current generation's tile index says its spanning section lies, from the end of its directory: before the
+    /// count of the owners it certifies, none for an index bound under its own generation's derivation.
+    /// </summary>
     private static (long Offset, long Length) SpanningOf(TemporarySession session)
     {
         byte[] bytes = File.ReadAllBytes(PathOf(session));
         ReadOnlySpan<byte> footer = bytes.AsSpan(bytes.Length - SessionTileIndex.FooterLength);
         long directory = BinaryPrimitives.ReadInt64LittleEndian(footer);
         int length = BinaryPrimitives.ReadInt32LittleEndian(footer[8..]);
-        ReadOnlySpan<byte> trailer = bytes.AsSpan((int)(directory + length - 16), 16);
+        Assert.Equal(0, BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan((int)(directory + length - 4), 4)));
+        ReadOnlySpan<byte> trailer = bytes.AsSpan((int)(directory + length - 20), 16);
         return (BinaryPrimitives.ReadInt64LittleEndian(trailer), BinaryPrimitives.ReadInt64LittleEndian(trailer[8..]));
     }
 
@@ -678,6 +682,13 @@ public sealed partial class SessionTileIndexTests
             WriteI64(listed, made is null ? 0 : output.Length);
             WriteI64(listed, made?.Length ?? 0);
             output.Write(made ?? []);
+        }
+
+        // Since minor 8 the directory ends with the owners a chunk's tiles certify, as the source's does.
+        if (minor >= SessionTileIndex.CertifiedMinor)
+        {
+            int listedLength = BinaryPrimitives.ReadInt32LittleEndian(footer[8..]);
+            listed.Write(bytes.AsSpan(at + 16, directory + listedLength - (at + 16)));
         }
 
         byte[] list = listed.ToArray();

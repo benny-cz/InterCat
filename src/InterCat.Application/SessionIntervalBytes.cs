@@ -400,13 +400,14 @@ public static class SessionIntervalByteQuery
         CancellationToken cancellationToken)
     {
         SessionDerivation derivation = SessionDerivationCache.For(manifest);
-        if (derivation.PersistedTiles(store.Root) is not { } tiles || tiles.Minor < minor)
+        if (derivation.PersistedTiles(store.Root) is not { } tiles)
         {
-            return null;
+            return ChunkColumns(store, manifest, generation, rows, minor, interval, machineSlots, laneSlots, into, readRows,
+                cancellationToken);
         }
 
         StoreDependency[] segments = SessionOverviewIndex.ObservationSegments(manifest);
-        if (!segments.All(tiles.Describes)
+        if (tiles.Minor < minor || !segments.All(tiles.Describes)
             || !tiles.Derivation.Matches(rows.Processes ?? generation.Processes(cancellationToken), generation.Relations(cancellationToken)))
         {
             return null;
@@ -482,6 +483,84 @@ public static class SessionIntervalByteQuery
             || exception is IOException or UnauthorizedAccessException)
         {
             derivation.RefuseTiles(exception.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A group's lanes or a process's direction rows of a live generation, which persists no tiles of its own, from the
+    /// tiles of its chunks (`contracts/tile-index-v1.md` §6): each segment the interval meets measured from the section its
+    /// chunk's tiles keep where this generation's instances bind that chunk's records as the derivation that tiled it did,
+    /// its owners read as this generation's, and from its rows by <paramref name="readRows"/> otherwise. Null where no
+    /// chunk's tiles count, or a part of them could not be read; the columns are then measured from the segments, and are
+    /// the same.
+    /// </summary>
+    private static LaneByteTally? ChunkColumns(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        GenerationSegments generation,
+        FocusRows rows,
+        ushort minor,
+        TimeRange interval,
+        int machineSlots,
+        int laneSlots,
+        Func<LaneByteTally, ByteColumns> into,
+        Action<SegmentReaderV1, LaneByteTally> readRows,
+        CancellationToken cancellationToken)
+    {
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        IReadOnlyList<TileIndexFile> chunks = derivation.TiledChunks(store.Root);
+        if (chunks.Count == 0)
+        {
+            return null;
+        }
+
+        ProcessInstanceIndex processes = rows.Processes ?? generation.Processes(cancellationToken);
+        (long First, long End) readings = SessionNativeInterval.Readings(interval, generation.Clock);
+        var met = new List<(StoreDependency Segment, TileIndexFile? Tiles, int[]? Places)>();
+        foreach (StoreDependency segment in SessionOverviewIndex.ObservationSegments(manifest))
+        {
+            if (SessionNativeInterval.Meets(SessionSegments.NativeRange(store, manifest, segment.Name), readings))
+            {
+                TileIndexFile? tiles = chunks.FirstOrDefault(chunk => chunk.Minor >= minor && chunk.Describes(segment));
+                int[]? places = tiles is null ? null : derivation.ChunkOwners(tiles, processes);
+                met.Add((segment, places is null ? null : tiles, places));
+            }
+        }
+
+        if (met.All(segment => segment.Tiles is null))
+        {
+            return null;
+        }
+
+        var total = new LaneByteTally(machineSlots, laneSlots);
+        try
+        {
+            SegmentPasses.Run(
+                met,
+                () => new LaneByteTally(machineSlots, laneSlots),
+                (segment, tally) =>
+                {
+                    bool measured = false;
+                    if (segment.Tiles is { } tiles)
+                    {
+                        using TileReading reading = tiles.Read(store.Root);
+                        reading.Rebound = segment.Places;
+                        measured = reading.MeasureColumns(reading.Section(segment.Segment.Name), interval, into(tally), cancellationToken);
+                    }
+
+                    if (!measured)
+                    {
+                        readRows(SessionSegments.Open(store, manifest, segment.Segment.Name), tally);
+                    }
+                },
+                total.Add,
+                cancellationToken);
+            return total;
+        }
+        catch (Exception exception) when ((exception is InvalidDataException && !SegmentMeasurement.IsUnsummable(exception))
+            || exception is IOException or UnauthorizedAccessException)
+        {
             return null;
         }
     }
@@ -597,7 +676,7 @@ public static class SessionIntervalByteQuery
         {
             var layout = new TimelineColumns(interval, columns, tallyMechanisms: false);
             int[] laneOfCode = LanesOfCodes(mechanisms);
-            TransportByteTally total = PersistedLanes(store, manifest, layout, laneOfCode, mechanisms.Count,
+            TransportByteTally total = PersistedLanes(store, manifest, layout, laneOfCode, mechanisms.Count, clock,
                     (segment, tally) => MeasureLanes(segment, layout, laneOfCode, mechanisms.Count, tally, cancellationToken),
                     cancellationToken)
                 ?? TallyLanes(SessionNativeInterval.Segments(store, manifest, interval, clock), layout, laneOfCode, mechanisms.Count,
@@ -710,17 +789,18 @@ public static class SessionIntervalByteQuery
         TimelineColumns layout,
         int[] laneOfCode,
         int lanes,
+        SourceClockDescriptor clock,
         Action<SegmentReaderV1, TransportByteTally> readRows,
         CancellationToken cancellationToken)
     {
         SessionDerivation derivation = SessionDerivationCache.For(manifest);
-        if (derivation.PersistedTiles(store.Root) is not { Minor: >= SessionTileIndex.SummedMinor } tiles)
+        if (derivation.PersistedTiles(store.Root) is not { } tiles)
         {
-            return null;
+            return ChunkLanes(store, manifest, layout, laneOfCode, lanes, clock, readRows, cancellationToken);
         }
 
         StoreDependency[] segments = SessionOverviewIndex.ObservationSegments(manifest);
-        if (!segments.All(tiles.Describes))
+        if (tiles.Minor < SessionTileIndex.SummedMinor || !segments.All(tiles.Describes))
         {
             return null;
         }
@@ -766,6 +846,68 @@ public static class SessionIntervalByteQuery
 
         // A segment its section keeps no bytes of is measured from its rows, as without the index: what refuses a row
         // refuses it here too, and is no fault of the index's.
+        foreach (string name in rowsRead)
+        {
+            readRows(SessionSegments.Open(store, manifest, name), sums.Tally);
+        }
+
+        return sums.Tally;
+    }
+
+    /// <summary>
+    /// The lanes of a live generation, which persists no tiles of its own, from the tiles of its chunks
+    /// (`contracts/tile-index-v1.md` §6), which keep byte sums since they were first kept: each segment the interval meets
+    /// summed from the section its chunk's tiles keep, whose byte sums bind no record, and from its rows by
+    /// <paramref name="readRows"/> where none keeps its bytes - the newest chunk's, one whose tiles are gone, and one whose
+    /// rows a measurement refuses. Null where no chunk's tiles describe a segment the interval meets, or a part of them could
+    /// not be read; the bytes are then read from the segments, and are the same.
+    /// </summary>
+    private static TransportByteTally? ChunkLanes(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        TimelineColumns layout,
+        int[] laneOfCode,
+        int lanes,
+        SourceClockDescriptor clock,
+        Action<SegmentReaderV1, TransportByteTally> readRows,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<TileIndexFile> chunks = SessionDerivationCache.For(manifest).TiledChunks(store.Root);
+        (long First, long End) readings = SessionNativeInterval.Readings(layout.Interval, clock);
+        (StoreDependency Segment, TileIndexFile? Tiles)[] met = [.. SessionOverviewIndex.ObservationSegments(manifest)
+            .Where(segment => SessionNativeInterval.Meets(SessionSegments.NativeRange(store, manifest, segment.Name), readings))
+            .Select(segment => (segment, chunks.FirstOrDefault(chunk => chunk.Describes(segment))))];
+        if (met.All(segment => segment.Tiles is null))
+        {
+            return null;
+        }
+
+        var sums = new ByteLanes(layout, laneOfCode, lanes);
+        var rowsRead = new List<string>();
+        try
+        {
+            foreach ((StoreDependency segment, TileIndexFile? tiles) in met)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                bool summed = false;
+                if (tiles is not null)
+                {
+                    using TileReading reading = tiles.Read(store.Root);
+                    summed = reading.SumInto(reading.Section(segment.Name), sums, layout.Interval, cancellationToken);
+                }
+
+                if (!summed)
+                {
+                    rowsRead.Add(segment.Name);
+                }
+            }
+        }
+        catch (Exception exception) when ((exception is InvalidDataException && !SegmentMeasurement.IsUnsummable(exception))
+            || exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+
         foreach (string name in rowsRead)
         {
             readRows(SessionSegments.Open(store, manifest, name), sums.Tally);
@@ -864,7 +1006,7 @@ public static class SessionIntervalByteQuery
 
         // Every record's bytes, or one mechanism's, are what the tile index's byte sums hold, each in a lane of one: a
         // finished session's interval then opens no segment.
-        if (rows is null && PersistedLanes(store, manifest, layout, LaneOfScope(scope.Mechanism), 1,
+        if (rows is null && PersistedLanes(store, manifest, layout, LaneOfScope(scope.Mechanism), 1, clock,
                 (segment, tally) => MeasureSegment(segment, layout, null, scope, tally, cancellationToken), cancellationToken)
             is { } kept)
         {

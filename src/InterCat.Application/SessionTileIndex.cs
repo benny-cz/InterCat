@@ -82,16 +82,30 @@ internal static class SessionTileIndex
     private const ushort Major = 1;
 
     /// <summary>
-    /// Minor 6 keeps each tile's transport-observed bytes tallied by owner, channel and accounting side; minor 5, revision
-    /// 704's, keeps each tile's transport-observed bytes by mechanism and accounting side, and each record's measure; minor
-    /// 4, revision 701's, keeps a level spanning the generation's segments after their sections; minor 3, revision 460's,
-    /// keeps each record's end of its channel beside its direction, and each tile's owner and channel tallies apart, its
-    /// channels by mechanism, direction and end; minor 2, revision 459's, kept each record's direction and tallied owners by
-    /// it; minor 1, revision 457's, kept each tile's tallies and each record's owner and channel; minor 0, revision 456's,
-    /// kept none of these. Minors 3 to 5 are still read, what they keep counted and summed from them and the rest read from
-    /// the segments, and are published again.
+    /// Minor 8, revision 744's, ends the directory with what a chunk's tiles bound each owner's records to, so a later
+    /// derivation that binds them alike counts their owners from them; minor 7, revision 708's, keeps each byte tally's
+    /// source direction; minor 6 keeps each tile's transport-observed bytes tallied by owner, channel and accounting side;
+    /// minor 5, revision 704's, keeps each tile's transport-observed bytes by mechanism and accounting side, and each
+    /// record's measure; minor 4, revision 701's, keeps a level spanning the generation's segments after their sections;
+    /// minor 3, revision 460's, keeps each record's end of its channel beside its direction, and each tile's owner and
+    /// channel tallies apart, its channels by mechanism, direction and end; minor 2, revision 459's, kept each record's
+    /// direction and tallied owners by it; minor 1, revision 457's, kept each tile's tallies and each record's owner and
+    /// channel; minor 0, revision 456's, kept none of these. Minors 3 to 7 are still read, what they keep counted and
+    /// summed from them and the rest read from the segments, and are published again.
     /// </summary>
-    internal const ushort Minor = 7;
+    internal const ushort Minor = 8;
+
+    /// <summary>
+    /// The first minor whose directory ends with the owners a chunk's tiles certify (`tile-index-v1` §6): none for an index
+    /// bound under its own generation's derivation.
+    /// </summary>
+    internal const ushort CertifiedMinor = 8;
+
+    /// <summary>
+    /// What a chunk's tiles state they bind owners under (§6): the binding rule, the derivation's instances and no channel,
+    /// under no relation rule, so no derivation of a session's relations matches it.
+    /// </summary>
+    internal const string ChunkRelationRule = "";
 
     /// <summary>The earliest minor read: its sections hold every binding, direction and end a query counts.</summary>
     private const ushort EarliestReadMinor = 3;
@@ -287,7 +301,7 @@ internal static class SessionTileIndex
         ArgumentNullException.ThrowIfNull(processes);
         ArgumentNullException.ThrowIfNull(relations);
         return WriteCore(destination, sessionId, derivedGeneration, segments, processes, relations,
-            stated ?? Derivation(processes, relations), spanningEntries, cancellationToken);
+            stated ?? Derivation(processes, relations), spanningEntries, certify: false, cancellationToken);
     }
 
     /// <summary>
@@ -305,7 +319,157 @@ internal static class SessionTileIndex
         IReadOnlyList<(StoreDependency Dependency, SegmentReaderV1 Reader)> segments,
         CancellationToken cancellationToken) =>
         WriteCore(destination, sessionId, derivedGeneration, segments, null, null, TileDerivation.Unbound,
-            MaximumSpanningEntries, cancellationToken);
+            MaximumSpanningEntries, certify: false, cancellationToken);
+
+    /// <summary>
+    /// Writes the tiles of <paramref name="segments"/> as a chunk's tiles (§6) whose records' owners bind under
+    /// <paramref name="processes"/>, the derivation of the generation that tiles them, and whose channels bind to none: as
+    /// <see cref="Write"/> writes them, its directory ending with what it bound each owner's records to, over which readings.
+    /// A later derivation of the session binds them alike or not; where it does, an owner focus counts them from these tiles
+    /// (<see cref="Rebind"/>).
+    /// </summary>
+    /// <returns>How many bytes were written.</returns>
+    public static long WriteChunk(
+        Stream destination,
+        Guid sessionId,
+        long derivedGeneration,
+        IReadOnlyList<(StoreDependency Dependency, SegmentReaderV1 Reader)> segments,
+        ProcessInstanceIndex processes,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(processes);
+        return WriteCore(destination, sessionId, derivedGeneration, segments, processes, null, ChunkDerivation(processes),
+            MaximumSpanningEntries, certify: true, cancellationToken);
+    }
+
+    /// <summary>
+    /// What a chunk's tiles bound under <paramref name="processes"/> state they bind: its instances, in their order, and no
+    /// channel, under no relation rule, so no derivation of a session's relations matches it.
+    /// </summary>
+    internal static TileDerivation ChunkDerivation(ProcessInstanceIndex processes)
+    {
+        ArgumentNullException.ThrowIfNull(processes);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        Text(hash, ProcessInstanceIndex.BindingRule);
+        Text(hash, ChunkRelationRule);
+        Number(hash, processes.Instances.Count);
+        Span<byte> identity = stackalloc byte[16];
+        foreach (ProcessInstance instance in processes.Instances)
+        {
+            _ = instance.Id.Value.TryWriteBytes(identity);
+            hash.AppendData(identity);
+        }
+
+        Number(hash, 0);
+        return new(ProcessInstanceIndex.BindingRule, ChunkRelationRule, processes.Instances.Count, 0, hash.GetHashAndReset());
+    }
+
+    /// <summary>
+    /// The instance each owner a chunk's tiles certify binds to under <paramref name="processes"/>, by its place under the
+    /// derivation that bound them; null unless <paramref name="processes"/> binds every record they hold as they bound it
+    /// (§6): a record of no instance to none, and one of an instance to the instance of the same identity, as strongly. A
+    /// record binds to the instance of its PID whose lifetime holds its reading - a lifecycle record directly, to the one it
+    /// creates, ends or confirms, whose lifetime holds it too - so the records of one owner bind alike wherever every
+    /// reading from their first to their last binds to one instance.
+    /// </summary>
+    internal static int[]? Rebind(TileIndexFile file, ProcessInstanceIndex processes)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(processes);
+        // A chunk's tiles bound under a live derivation state no relation rule; those of an index or of no instance do.
+        if (file.Derivation.Channels != 0
+            || !string.Equals(file.Derivation.RelationRule, ChunkRelationRule, StringComparison.Ordinal)
+            || !string.Equals(file.Derivation.BindingRule, ProcessInstanceIndex.BindingRule, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        int[] instances = new int[file.Derivation.Instances];
+        Array.Fill(instances, -1);
+        foreach (OwnerCertificate owner in file.Certified)
+        {
+            if (owner.Key == 0)
+            {
+                // Records bound to no instance are counted for none, so they must bind to none still.
+                if (!processes.BindsUniformly(owner.ProcessId, owner.First, owner.Last, out ProcessBinding none) || none.IsBound)
+                {
+                    return null;
+                }
+
+                continue;
+            }
+
+            // The PID binds only to instances of its own, so binding to the instance of that identity holds its PID too.
+            int position = processes.PositionOf(owner.Instance);
+            var strength = (RelationStrength)(owner.Key & 7);
+            if (position < 0
+                || !processes.BindsUniformly(owner.ProcessId, owner.First, owner.Last, out ProcessBinding bound)
+                || !bound.IsBound || bound.Instance != position
+                || (owner.Lifecycle ? strength != RelationStrength.Direct : bound.Strength != strength))
+            {
+                return null;
+            }
+
+            int earlier = (int)(owner.Key >> 3) - 1;
+            if (instances[earlier] >= 0 && instances[earlier] != position)
+            {
+                return null;
+            }
+
+            instances[earlier] = position;
+        }
+
+        return instances;
+    }
+
+    /// <summary>
+    /// Adds to <paramref name="certified"/> what <paramref name="segment"/>'s timed records bound to, the records its
+    /// tiles hold: for each owner key, PID and whether they are lifecycle records, the first and last native reading among
+    /// them. A record naming no PID binds to none under every derivation, so it needs none.
+    /// </summary>
+    private static void Certify(
+        SegmentReaderV1 segment,
+        PackedOwners owners,
+        Dictionary<(uint Key, int ProcessId, bool Lifecycle), (long First, long Last)> certified,
+        CancellationToken cancellationToken)
+    {
+        using RentedRows<int> processIds = RentedRows<int>.For(segment);
+        using RentedRows<bool> lifecycle = RentedRows<bool>.For(segment);
+        ProcessInstanceIndex.OwnerProcessesOf(segment, processIds.Span, lifecycle.Span);
+        SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+        SegmentColumnSlice readings = segment.Slice(SegmentColumnId.NativeTicks);
+        for (int row = 0; row < segment.RowCount; row++)
+        {
+            if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+            int processId = processIds.Span[row];
+            if (processId < 0 || times.SignedAt(row) is null)
+            {
+                continue;
+            }
+
+            long reading = readings.SignedAt(row)!.Value;
+            // A lifecycle record names its PID, and so binds to an instance (entities-v1 §4).
+            uint key = OwnerKey(owners.Raw(row));
+            (uint, int, bool) owner = (key, processId, lifecycle.Span[row]);
+            certified[owner] = certified.TryGetValue(owner, out (long First, long Last) seen)
+                ? (Math.Min(seen.First, reading), Math.Max(seen.Last, reading))
+                : (reading, reading);
+        }
+    }
+
+    /// <summary>
+    /// The owners <paramref name="certified"/> holds as a chunk's directory states them, in order of key and PID - a
+    /// lifecycle record's key binds directly, so its owner is never another's of the same key - each with its instance's
+    /// identity under <paramref name="processes"/>, which a later derivation must hold too.
+    /// </summary>
+    private static OwnerCertificate[] Certificates(
+        Dictionary<(uint Key, int ProcessId, bool Lifecycle), (long First, long Last)> certified, ProcessInstanceIndex processes) =>
+    [
+        .. certified.OrderBy(entry => entry.Key.Key).ThenBy(entry => entry.Key.ProcessId)
+            .Select(entry => new OwnerCertificate(entry.Key.Key, entry.Key.ProcessId,
+                entry.Key.Key == 0 ? default : processes.Instances[(int)(entry.Key.Key >> 3) - 1].Id,
+                entry.Key.Lifecycle, entry.Value.First, entry.Value.Last)),
+    ];
 
     private static long WriteCore(
         Stream destination,
@@ -316,6 +480,7 @@ internal static class SessionTileIndex
         TransportRelationIndex? relations,
         TileDerivation derivation,
         long spanningEntries,
+        bool certify,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(destination);
@@ -347,11 +512,12 @@ internal static class SessionTileIndex
             [.. segments.OrderBy(segment => segment.Dependency.Name, StringComparer.Ordinal)];
         SpanningLevel? spanning = SpanningLevel.Plan([.. ordered.Select(segment => segment.Reader)], spanningEntries,
             cancellationToken);
+        Dictionary<(uint Key, int ProcessId, bool Lifecycle), (long First, long Last)>? certified = certify ? [] : null;
         foreach ((StoreDependency dependency, SegmentReaderV1 reader) in ordered)
         {
             cancellationToken.ThrowIfCancellationRequested();
             long offset = writer.Written;
-            WriteSection(writer, reader, processes, relations, spanning, cancellationToken);
+            WriteSection(writer, reader, processes, relations, spanning, certified, cancellationToken);
             entries.Str8(dependency.Name);
             entries.I64(dependency.LengthBytes);
             entries.Str8(dependency.Digest);
@@ -369,6 +535,21 @@ internal static class SessionTileIndex
         bool spans = writer.Written > spanningOffset;
         entries.I64(spans ? spanningOffset : 0);
         entries.I64(writer.Written - spanningOffset);
+
+        // Since minor 8 the directory ends with what a chunk's tiles bound each owner's records to: none for an index
+        // bound under its own generation's derivation.
+        OwnerCertificate[] owners = certified is null ? [] : Certificates(certified, processes!);
+        entries.I32(owners.Length);
+        foreach (OwnerCertificate owner in owners)
+        {
+            entries.U32(owner.Key);
+            entries.I32(owner.ProcessId);
+            entries.Identity(owner.Instance.Value);
+            entries.Flag(owner.Lifecycle);
+            entries.I64(owner.First);
+            entries.I64(owner.Last);
+        }
+
         entries.Flush();
         long directoryOffset = writer.Written;
         byte[] listed = directory.ToArray();
@@ -398,6 +579,7 @@ internal static class SessionTileIndex
         ProcessInstanceIndex? processes,
         TransportRelationIndex? relations,
         SpanningLevel? spanning,
+        Dictionary<(uint Key, int ProcessId, bool Lifecycle), (long First, long Last)>? certified,
         CancellationToken cancellationToken)
     {
         SegmentTimeTiles tiles = SegmentTimeTiles.Of(segment, cancellationToken);
@@ -412,9 +594,13 @@ internal static class SessionTileIndex
         byte[] byteTallies = [];
         if (usable)
         {
-            // A chunk's tiles bind no record: every row's bindings are none (§6).
+            // A chunk's tiles bind no channel, and their owners under the derivation that tiles them, or none (§6).
             PackedOwners owners = processes is null ? new(new uint[segment.RowCount]) : SegmentBindings.OwnersOf(segment, processes);
             PackedChannels channels = relations is null ? new(new uint[segment.RowCount]) : SegmentBindings.ChannelsOf(segment, relations);
+            if (certified is not null)
+            {
+                Certify(segment, owners, certified, cancellationToken);
+            }
 
             // Which end of its channel each row was made at, as a channel focus reading the row finds it.
             using RentedRows<sbyte> ends = RentedRows<sbyte>.For(segment);
@@ -1194,6 +1380,30 @@ internal static class SessionTileIndex
             }
         }
 
+        // Since minor 8 it ends with what a chunk's tiles bound each owner's records to (§6), once each, in order.
+        OwnerCertificate[] certified = [];
+        if (minor >= CertifiedMinor)
+        {
+            int count = reader.I32();
+            if (count < 0 || count > reader.Remaining / OwnerCertificate.Bytes)
+            {
+                throw Invalid("its directory states more certified owners than it holds.");
+            }
+
+            certified = new OwnerCertificate[count];
+            for (int index = 0; index < count; index++)
+            {
+                OwnerCertificate owner = new(reader.U32(), reader.I32(), new ProcessInstanceId(reader.Identity()), reader.Flag(),
+                    reader.I64(), reader.I64());
+                if (!owner.Holds(instances) || (index > 0 && owner.CompareTo(certified[index - 1]) <= 0))
+                {
+                    throw Invalid("its directory does not certify its owners once each, in order.");
+                }
+
+                certified[index] = owner;
+            }
+        }
+
         reader.RequireEnd();
         if (end != directoryOffset)
         {
@@ -1201,7 +1411,10 @@ internal static class SessionTileIndex
         }
 
         return new TileIndexFile(dependency, derivedGeneration, minor,
-            new TileDerivation(bindingRule, relationRule, instances, channels, fingerprint), entries, spanning, cachedBlocks);
+            new TileDerivation(bindingRule, relationRule, instances, channels, fingerprint), entries, spanning, cachedBlocks)
+        {
+            Certified = certified,
+        };
     }
 
     internal static byte[] Read(FileStream stream, long offset, int length)
@@ -2481,6 +2694,35 @@ internal sealed record TileDerivation(string BindingRule, string RelationRule, i
 }
 
 /// <summary>
+/// What a chunk's tiles bound one owner's records to (`contracts/tile-index-v1.md` §6): the owner key they keep, 0 for
+/// none; the PID whose records they are; the instance the key names, by identity; whether they are lifecycle records,
+/// which bind directly to the instance they create, end or confirm; and the native readings of the first and last of them.
+/// </summary>
+internal readonly record struct OwnerCertificate(uint Key, int ProcessId, ProcessInstanceId Instance, bool Lifecycle, long First, long Last)
+    : IComparable<OwnerCertificate>
+{
+    /// <summary>The bytes one takes in a directory.</summary>
+    public const int Bytes = 4 + 4 + 16 + 1 + 8 + 8;
+
+    /// <summary>
+    /// Whether it is one a derivation of <paramref name="instances"/> instances can have bound: a key of one of them, or none
+    /// with no identity, of a PID; a lifecycle record's bound directly; and readings in order.
+    /// </summary>
+    public bool Holds(int instances) =>
+        ProcessId >= 0 && First <= Last
+        && (Key == 0
+            ? Instance == default && !Lifecycle
+            : Key >> 3 is var place && place >= 1 && place <= (uint)instances && Enum.IsDefined((RelationStrength)(Key & 7))
+                && (!Lifecycle || (RelationStrength)(Key & 7) == RelationStrength.Direct));
+
+    /// <summary>The order a directory states them in: by key, then PID, then the lifecycle records after the others.</summary>
+    public int CompareTo(OwnerCertificate other) =>
+        Key != other.Key ? Key.CompareTo(other.Key)
+        : ProcessId != other.ProcessId ? ProcessId.CompareTo(other.ProcessId)
+        : Lifecycle.CompareTo(other.Lifecycle);
+}
+
+/// <summary>
 /// Where one segment's section lies, and the segment it describes, as the directory lists it; or, named by no segment,
 /// where the level spanning them lies.
 /// </summary>
@@ -2772,6 +3014,12 @@ internal sealed class TileIndexFile
     /// <summary>What it says its records' bindings were made under: a brush counts its tallies only for that derivation.</summary>
     public TileDerivation Derivation { get; }
 
+    /// <summary>
+    /// What a chunk's tiles bound each owner's records to (§6), which a later derivation must bind them to as well before
+    /// an owner focus counts them from these tiles; none for an index bound under its own generation's derivation.
+    /// </summary>
+    public IReadOnlyList<OwnerCertificate> Certified { get; init; } = [];
+
     /// <summary>The segments it holds a section of, by name.</summary>
     public IReadOnlyCollection<string> Segments => entries.Keys;
 
@@ -3020,6 +3268,27 @@ internal sealed class TileIndexFile
 /// </summary>
 internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisposable
 {
+    /// <summary>
+    /// Where a chunk's tiles count owners for a later derivation (§6, <see cref="SessionTileIndex.Rebind"/>): for each
+    /// instance their keys name, by its place under the derivation that bound them, its place under the one counting; null
+    /// where they count for the derivation that bound them. Every owner key read - a tally's, a byte tally's, a record's -
+    /// is read as the counting derivation's.
+    /// </summary>
+    internal int[]? Rebound { get; set; }
+
+    /// <summary>An owner key the file keeps, as the derivation counting holds it (<see cref="Rebound"/>).</summary>
+    internal uint OwnerOf(uint key)
+    {
+        if (key == 0 || Rebound is not { } places)
+        {
+            return key;
+        }
+
+        int place = places[(int)(key >> 3) - 1];
+        return place >= 0 ? (((uint)place + 1) << 3) | (key & 7)
+            : throw SessionTileIndex.Invalid("it keeps an owner its directory does not certify.");
+    }
+
     // For each level, the last block of owner tallies and of channel tallies read and checked, kept while a query descends
     // below it and comes back.
     private readonly TallyBlocks ownerBlocks = new();
@@ -4508,7 +4777,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             }
 
             (byteOwners[byteEntries], byteChannels[byteEntries], byteDirections[byteEntries], byteSides[byteEntries]) =
-                ((uint)owner, (uint)channel, (byte)direction, (byte)side);
+                (OwnerOf((uint)owner), (uint)channel, (byte)direction, (byte)side);
             (byteMeasured[byteEntries], byteUnmeasured[byteEntries], byteTotals[byteEntries]) =
                 ((long)measured, (long)unmeasured, (long)total);
             byteEntries++;
@@ -4574,7 +4843,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             }
 
             (ownerKeys[ownerEntries], ownerSlots[ownerEntries], ownerDirections[ownerEntries], ownerCounts[ownerEntries]) =
-                ((uint)owner, (byte)(kind >> 3), (byte)(kind & 7), (long)count);
+                (OwnerOf((uint)owner), (byte)(kind >> 3), (byte)(kind & 7), (long)count);
             ownerEntries++;
         }
 
@@ -4859,12 +5128,14 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         private readonly ulong kinds;
         private readonly bool measures;
         private readonly bool kept;
+        private readonly TileReading source;
         private VarintReader at;
         private long reading;
         private long counted;
 
         public RecordCursor(TileReading source, TileSection section, TileBlock block, int position)
         {
+            this.source = source;
             this.section = section;
             this.block = block;
             this.position = position;
@@ -4941,7 +5212,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
             counted++;
             (next, slot, direction, end, owner, channel) =
-                (reading, (int)(kind >> 5), (int)kind & 7, (((int)kind >> 3) & 3) - 1, (uint)ownerKey, (uint)channelKey);
+                (reading, (int)(kind >> 5), (int)kind & 7, (((int)kind >> 3) & 3) - 1, source.OwnerOf((uint)ownerKey), (uint)channelKey);
             return true;
         }
 

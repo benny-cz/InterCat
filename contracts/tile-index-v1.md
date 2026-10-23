@@ -1,13 +1,14 @@
 # InterCat tile index v1
 
 Status: **implemented** in plan revision 456, minor 1 in revision 457, minor 2 in revision 459, minor 3 in revision 460,
-minor 4 in revision 701, minor 5 in revision 704, minor 6 in revision 706 and minor 7 in revision 708; a group's lanes
-count from it since revision 458, a process's direction rows since revision 459, a channel's ends since revision 460,
-every query from a level spanning the segments since revision 701, a zoom's byte lanes and an interval's bytes from its
-byte sums since revision 704, a brush's bytes by process and channel end from its byte tallies since revision 706, a
-group's byte lanes from them since revision 707, and a process's byte direction rows since revision 708; and since
-revision 739 a live follow keeps each chunk's tiles (§6). It holds
-§12.1 S4's deeper levels, beneath the persisted overview (`contracts/overview-index-v1.md`), which is the top level. For
+minor 4 in revision 701, minor 5 in revision 704, minor 6 in revision 706, minor 7 in revision 708 and minor 8 in
+revision 744; a group's lanes count from it since revision 458, a process's direction rows since revision 459, a
+channel's ends since revision 460, every query from a level spanning the segments since revision 701, a zoom's byte
+lanes and an interval's bytes from its byte sums since revision 704, a brush's bytes by process and channel end from its
+byte tallies since revision 706, a group's byte lanes from them since revision 707, and a process's byte direction rows
+since revision 708; since revision 739 a live follow keeps each chunk's tiles (§6), and since revision 744 binds their
+owners, so a live generation's owner focuses and byte lanes count from them. It holds §12.1 S4's deeper levels, beneath
+the persisted overview (`contracts/overview-index-v1.md`), which is the top level. For
 each observation segment of a generation, it keeps:
 
 - the segment's timeline tiles at decimal levels, each with what its records' owners and channels bind to, tallied, and
@@ -247,7 +248,7 @@ footer        the last 32 bytes
 |---|---|---|
 | 0 | 8 | magic `ICATTILE` |
 | 8 | 2 | major, 1 |
-| 10 | 2 | minor, 7 |
+| 10 | 2 | minor, 8 |
 | 12 | 4 | reserved, zero |
 | 16 | 16 | session (`guid`) |
 | 32 | 8 | the generation whose segments it describes |
@@ -268,15 +269,21 @@ footer        the last 32 bytes
 ### Directory
 
 The derivation the bindings were made under, then one entry per segment's section, in ordinal order of segment name,
-then where the spanning section lies:
+then where the spanning section lies, then the owners a chunk's tiles certify (§6):
 
 ```text
 str8 binding rule    str8 relation rule    i32 instances    i32 channels    32 bytes fingerprint
 str8 segment name    i64 segment length    str8 segment digest    i64 section offset    i64 section length    (per section)
 i64 spanning section offset    i64 spanning section length    (both 0 where there is none)
+i32 certified owners
+u32 owner key    i32 PID    guid instance    u8 lifecycle    i64 first reading    i64 last reading    (per certified owner)
 ```
 
-A segment's name is never empty. Minor 3's directory ends after its sections' entries.
+A segment's name is never empty. Minor 3's directory ends after its sections' entries, and minors 4 to 7's after where
+the spanning section lies. Since minor 8 it ends with the owners a chunk's tiles certify: none for an index bound under
+its own generation's derivation. They are in order of owner key, then PID, then lifecycle flag, 0 before 1, each once.
+An owner key is 0, with an all-zero instance and a lifecycle flag of 0, or names one of the directory's instances, with
+its identity; a lifecycle owner's binds directly. The readings are native, the first no later than the last.
 
 The rules are `ProcessInstanceIndex.BindingRule` and `TransportRelationIndex.RelationRule` of the build that wrote
 the index. The fingerprint is SHA-256 over:
@@ -290,6 +297,11 @@ the index. The fingerprint is SHA-256 over:
 
 Two derivations with the same rules, instances and channels in the same order bind every record of the same segments
 alike, so one's bindings count for the other.
+
+A chunk's tiles bound under a live derivation (§6) state the binding rule, an empty relation rule, their instances and
+no channel. Their fingerprint is SHA-256 over the binding rule's UTF-8 bytes followed by a zero byte, a zero byte for
+the empty relation rule, the number of instances as an `i32` and each instance's identity as a `guid`, in the
+derivation's order, and the number of channels, 0, as an `i32`. No derivation of a session's relations matches it.
 
 ### Sections
 
@@ -518,7 +530,12 @@ A reader refuses an index, or a part of it, that:
 - holds a spanning finest tile with records or children, or whose readings do not lie within one tile of its width,
   after the one before it's;
 - states the extent of a section whose own header says another earliest or latest reading or another count of timed
-  records, or says it keeps no tiles: found when a range the spanning section leaves reads that section.
+  records, or says it keeps no tiles: found when a range the spanning section leaves reads that section;
+- since minor 8, states more certified owners than its directory holds, or fewer than none; certifies owners out of
+  order or twice, or an owner no derivation of its instances binds: a PID below 0, a first reading after the last, a
+  key of 0 with an instance or a lifecycle flag, a key beyond its instances or of a strength §23 does not define, or a
+  lifecycle owner not bound directly; and, read for a later derivation, keeps an owner key its directory does not
+  certify.
 
 A zoom or a brush that meets any of these stops reading the index for the generation, says why, and counts from the
 segments. The window opens a session without hashing a file that checks itself. The command line opens a session
@@ -791,12 +808,26 @@ chunk-tiles-<the segments' generation:D10>-<publishing generation:D10>.bin
 
 They differ from a generation's tile index in three ways.
 
-- **They bind no record.** Their directory states the derivation of no instance and no channel, fingerprinted as any
-  derivation is (§3), and every record's owner and channel key is 0, so no tile tallies an owner or a channel. A later
-  derivation of the session binds those records otherwise, so the tiles serve only what no binding changes - their
-  records' readings, mechanisms, directions, ends and measures. A brush, a focus or a byte tally counts bindings only
-  under the derivation a directory states (§4), and a derivation of a session's records never is that one; a
-  derivation of none is, under which every record binds to none, as here.
+- **They bind their owners, certified, and no channel.** Since minor 8 a live follow binds the owners of the records of
+  each chunk it tiles under the derivation of the generation that tiles it, and their channels to none: every record's
+  channel key is 0, and no tile tallies a channel. Their directory states that derivation's binding rule and instances
+  under an empty relation rule and no channel (§3), which no derivation of a session's relations matches, so no brush
+  counts from them. It certifies each owner that the records its tiles hold bind to, none of a section that keeps no
+  tiles: for each owner key, PID and kind - lifecycle records apart - the instance's identity and the first and last
+  native reading of those records. A record naming no PID binds to none under every derivation, and needs none. Tiles
+  staged where the generation's instances could not be derived bind no record, under the derivation of no instance and
+  no channel, as every chunk's did before minor 8; they serve only what no binding changes.
+- **A later derivation counts their owners where it binds them alike.** Each owner they certify must bind under it as it
+  bound: a key of 0 to no instance at every reading from its first to its last, and any other key to the instance of the
+  same identity and PID at every such reading, as strongly, a lifecycle record directly. A record binds to the instance
+  of its PID whose lifetime holds its reading, a lifecycle record to the one it creates, ends or confirms, whose
+  lifetime holds it too, and lifetimes are half-open, so that is decided from the derivation's instances alone: at each
+  owner's first reading and wherever one of its PID's lifetimes starts or ends among its readings. Where every owner
+  binds alike, an owner focus - a group's lanes, one process's with its direction rows - and the bytes of a group's
+  lanes and of a process's direction rows count the chunk's segments from these tiles, each owner key, whether a
+  tally's, a byte tally's or a record's, read as the instance of its identity in the counting derivation. Where one does
+  not - a lifecycle record read late that splits an instance, or gives a PID first seen by its records an instance of
+  its own - the chunk's segments are read from their rows.
 - **They are carried.** store-v1 §5 names any other index only in the generation that published it. Each live
   publication stages, beside the checkpoint of the generation it extends (`contracts/derivation-checkpoint-v1.md` §2),
   the tiles of the chunk that generation added, and those of older chunks no tiles describe, newest first: chunks
@@ -819,3 +850,13 @@ the rows'. At 1,000,000 records published in ten chunks of 100,000, the nine chu
 bytes and tiling one took 34 to 94 ms of a publication's second or so; a cold open's overview counted from them in 7
 ms, opening the newest chunk's one segment, where every segment's rows took 42 ms and opened all ten, and a zoom of
 the whole extent at 256 columns took 17 ms and opened no other.
+
+Since minor 8 a live generation's owner focuses and byte lanes count so too, and its zooms' byte lanes and an interval's
+bytes add up the byte sums of any chunk's tiles, which bind nothing. At 1,000,000 records in ten chunks, of four hundred
+processes whose records come in bursts of a pair's fifty, a group's lanes over the whole extent took 28 to 33 ms warm
+and 88 ms cold, where every segment's rows took 38 to 49 and 195, opening the newest chunk's one segment where the rows
+opened all ten; at 4,000,000 records in forty chunks, 28 to 40 ms warm and 104 cold where the rows took 43 to 62. Where
+each record is another process's than the one before, which no narrow tile tallies, the tiles' records are read instead,
+and the same group took 88 to 100 ms warm at 1,000,000 records where the rows took 51 to 59, as a finished session's own
+tile index takes 75 to 80. Binding the owners made tiling a chunk of 100,000 records take 133 to 154 ms, from 34 to 94,
+and the chunks' tiles 8.0% of the segments' bytes, from 7.4%.

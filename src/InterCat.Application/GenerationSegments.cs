@@ -22,6 +22,9 @@ internal sealed class GenerationSegments(SessionStore store, SessionManifestV1 m
 
     public SessionDerivation Derivation { get; } = SessionDerivationCache.For(manifest);
 
+    /// <summary>The source clock the generation's readings are placed by.</summary>
+    public SourceClockDescriptor Clock => clock;
+
     /// <summary>Every observation segment the generation names, opened on first use.</summary>
     public SegmentReaderV1[] All => segments ??=
         [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];

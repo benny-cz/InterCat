@@ -1,12 +1,15 @@
+using InterCat.Analysis;
 using InterCat.Storage;
 
 namespace InterCat.Application;
 
 /// <summary>
 /// The tiles a live follow keeps of each chunk it publishes (`contracts/tile-index-v1.md` §6): a tile index of the
-/// observation segments one generation added, binding no record, staged into a later generation and carried by every
-/// generation after it that names those segments (store-v1 §5). A reader of a session still being recorded counts its
-/// overview and its timeline from the tiles of every chunk but the newest, whose rows it reads (§12.1 S1, S4).
+/// observation segments one generation added, its records' owners bound and certified under the derivation that tiles
+/// them and their channels bound to none, staged into a later generation and carried by every generation after it that
+/// names those segments (store-v1 §5). A reader of a session still being recorded counts its overview and its timeline
+/// from the tiles of every chunk but the newest, whose rows it reads, and an owner focus from those whose owners its own
+/// derivation binds alike (§12.1 S1, S4).
 /// </summary>
 internal static class ChunkTiles
 {
@@ -56,13 +59,16 @@ internal static class ChunkTiles
     /// Stages into generation <paramref name="generation"/> the tiles of the chunks of <paramref name="manifest"/>, the
     /// generation it extends, that no chunk tiles describe: newest first, as many as
     /// <see cref="MaximumChunksPerPublication"/> and <see cref="MaximumRowsPerPublication"/> allow. A chunk that cannot be
-    /// tiled is passed over, and a later publication tiles it: tiles save a reader time and never change an answer.
+    /// tiled is passed over, and a later publication tiles it: tiles save a reader time and never change an answer. Their
+    /// records' owners bind under <paramref name="processes"/>, <paramref name="manifest"/>'s instances, each owner
+    /// certified so a later derivation that binds it alike counts it from them; without it they bind no owner.
     /// <paramref name="maximumRows"/> is <see cref="MaximumRowsPerPublication"/> but in a test of that bound.
     /// </summary>
     public static List<StoreStagingFile> Stage(
         SessionStore store,
         SessionManifestV1 manifest,
         long generation,
+        ProcessInstanceIndex? processes,
         CancellationToken cancellationToken,
         long maximumRows = MaximumRowsPerPublication)
     {
@@ -87,7 +93,10 @@ internal static class ChunkTiles
                         .Where(segment => SessionSegments.PublishingGeneration(segment.Name) == chunk)
                         .Select(segment => (segment, SessionSegments.Open(store, manifest, segment.Name)))];
                     file = store.Stage(ChunkTileFiles.FileNameFor(chunk, generation), StoreDependencyKind.Index);
-                    _ = SessionTileIndex.WriteUnbound(file.Content, manifest.SessionId, manifest.Generation, segments, cancellationToken);
+                    _ = processes is null
+                        ? SessionTileIndex.WriteUnbound(file.Content, manifest.SessionId, manifest.Generation, segments, cancellationToken)
+                        : SessionTileIndex.WriteChunk(file.Content, manifest.SessionId, manifest.Generation, segments, processes,
+                            cancellationToken);
                     _ = file.Complete();
                     staged.Add(file);
                     file = null;

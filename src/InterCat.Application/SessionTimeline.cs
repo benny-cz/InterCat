@@ -377,9 +377,11 @@ public static class SessionTimelineQuery
         // A channel has exactly two ends, each with its total and two directional bands: six series at most.
         TransportRelation? endRelation = focus is { OwnerProcesses.Count: 0 } ? rows?.Relation : null;
 
-        // An owner or a channel's focus counts from the persisted tiles' tallies, opening no segment (S3). Any other focus
-        // reads its rows: each segment is counted by one worker into columns of its own, and the workers' columns are summed
-        // (SegmentPasses): at 10M records a group's lanes answer within §12's budget only side by side.
+        // An owner or a channel's focus counts from the persisted tiles' tallies, opening no segment (S3); a live
+        // generation's owner focus from its chunks' tiles, wherever its instances bind a chunk's records as they were bound
+        // there, and the rest from rows. Any other focus reads its rows: each segment is counted by one worker into columns
+        // of its own, and the workers' columns are summed (SegmentPasses): at 10M records a group's lanes answer within
+        // §12's budget only side by side.
         FocusTally? total = null;
         if (rows is not null)
         {
@@ -388,6 +390,8 @@ public static class SessionTimelineQuery
                 : tiledFocus
                     ? PersistedFocus(store, manifest, generation, rows, focus!, policy, laneOf, interval, columns, laneCount,
                         laneColumns, directionLanes, endRelation, cancellationToken)
+                        ?? ChunkFocus(store, manifest, generation, rows, focus!, policy, laneOf, interval, columns, laneCount,
+                            laneColumns, directionLanes, clock, cancellationToken)
                     : null;
             if (total is null)
             {
@@ -695,6 +699,93 @@ public static class SessionTimelineQuery
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {
             derivation.RefuseTiles(exception.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// An owner focus of a live generation, which persists no tiles of its own, from the tiles of its chunks
+    /// (`contracts/tile-index-v1.md` §6): each segment the interval meets counted from the section its chunk's tiles keep
+    /// where this generation's instances bind that chunk's records as the derivation that tiled it did, its owners read as
+    /// this generation's, and from its rows otherwise - the newest chunk's, a chunk whose tiles are gone, and one a record
+    /// read late binds otherwise. Null where no chunk's tiles count, or one could not be read, and every segment's rows are
+    /// read instead, as without them.
+    /// </summary>
+    private static FocusTally? ChunkFocus(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        GenerationSegments generation,
+        FocusRows rows,
+        TimelineFocus focus,
+        EvidencePolicy policy,
+        int[]? laneOf,
+        TimeRange interval,
+        int columns,
+        int laneCount,
+        int laneColumns,
+        bool directionLanes,
+        SourceClockDescriptor clock,
+        CancellationToken cancellationToken)
+    {
+        // A channel's focus names no owner; a generation's own tile index, where it has one, was read before this.
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        if (rows.Members is not { } members)
+        {
+            return null;
+        }
+
+        IReadOnlyList<TileIndexFile> chunks = derivation.TiledChunks(store.Root);
+        if (chunks.Count == 0)
+        {
+            return null;
+        }
+
+        ProcessInstanceIndex processes = rows.Processes ?? generation.Processes(cancellationToken);
+        (long First, long End) readings = SessionNativeInterval.Readings(interval, clock);
+        var met = new List<(StoreDependency Segment, TileIndexFile? Tiles, int[]? Places)>();
+        foreach (StoreDependency segment in SessionOverviewIndex.ObservationSegments(manifest))
+        {
+            if (SessionNativeInterval.Meets(SessionSegments.NativeRange(store, manifest, segment.Name), readings))
+            {
+                TileIndexFile? tiles = chunks.FirstOrDefault(chunk => chunk.Describes(segment));
+                int[]? places = tiles is null ? null : derivation.ChunkOwners(tiles, processes);
+                met.Add((segment, places is null ? null : tiles, places));
+            }
+        }
+
+        if (met.All(segment => segment.Tiles is null))
+        {
+            return null;
+        }
+
+        var total = new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, null);
+        try
+        {
+            SegmentPasses.Run(
+                met,
+                () => new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, null),
+                (segment, tally) =>
+                {
+                    bool counted = false;
+                    if (segment.Tiles is { } tiles)
+                    {
+                        using TileReading reading = tiles.Read(store.Root);
+                        reading.Rebound = segment.Places;
+                        counted = reading.CountGroup(reading.Section(segment.Segment.Name), tally.Focused, tally.Lanes,
+                            tally.Directions, members, laneOf, focus.Mechanism, focus.Direction, policy, cancellationToken);
+                    }
+
+                    if (!counted)
+                    {
+                        CountFocus(SessionSegments.Open(store, manifest, segment.Segment.Name), rows, laneOf, tally, cancellationToken);
+                    }
+                },
+                total.Add,
+                cancellationToken);
+            return total;
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
             return null;
         }
     }

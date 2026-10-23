@@ -117,6 +117,7 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     private string? operationsProblem;
     private OperationIndex? operationIndex;
     private TileIndexFile[]? chunkTiles;
+    private (ProcessInstanceIndex Processes, Dictionary<TileIndexFile, int[]?> Places)? chunkOwners;
     private bool operationIndexRead;
     private SessionContentIndex? content;
 
@@ -552,6 +553,34 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
 
     /// <summary>The chunk tiles this generation's queries opened, which a later generation's take where it names them too.</summary>
     internal TileIndexFile[]? OpenedChunkTiles => Volatile.Read(ref chunkTiles);
+
+    /// <summary>
+    /// Where <paramref name="file"/>, a chunk's tiles, counts its owners under <paramref name="processes"/>, this generation's
+    /// instances: each instance's place by its place under the derivation that tiled the chunk, or null where
+    /// <paramref name="processes"/> does not bind the chunk's records as that one did (`contracts/tile-index-v1.md` §6).
+    /// Decided once for each file a generation's queries read.
+    /// </summary>
+    internal int[]? ChunkOwners(TileIndexFile file, ProcessInstanceIndex processes)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(processes);
+        lock (gate)
+        {
+            if (chunkOwners is not { } known || !ReferenceEquals(known.Processes, processes))
+            {
+                known = (processes, []);
+                chunkOwners = known;
+            }
+
+            if (!known.Places.TryGetValue(file, out int[]? places))
+            {
+                places = SessionTileIndex.Rebind(file, processes);
+                known.Places[file] = places;
+            }
+
+            return places;
+        }
+    }
 
     /// <summary>
     /// The tiles of the chunks this generation names (`contracts/tile-index-v1.md` §6), each opened and checked once: taken
