@@ -126,9 +126,16 @@
           <TextBlock x:Name="RankingScope" Text="{Binding RankingScopeText}" Foreground="{DynamicResource Ink.Accent}" FontSize="11"
                      TextWrapping="Wrap" IsVisible="{Binding ShowsRankingScope}"
                      AutomationProperties.Name="The time range the ranking counts" />
-          <Button x:Name="KeepRangeButton" Content="Keep this range" Click="KeepVisibleRange" FontSize="11"
-                  Padding="8,2" HorizontalAlignment="Left" IsVisible="{Binding CanKeepVisibleRange}"
-                  AutomationProperties.HelpText="Keep the visible range as the analysis interval, so zooming and panning no longer change what the ranking counts" />
+          <!-- The scope can be kept, and compared with another interval (comparison-v1): the same length before or after it,
+               the whole recording, or one typed. -->
+          <WrapPanel>
+            <Button x:Name="KeepRangeButton" Content="Keep this range" Click="KeepVisibleRange" FontSize="11"
+                    Padding="8,2" Margin="0,0,6,0" IsVisible="{Binding CanKeepVisibleRange}"
+                    AutomationProperties.HelpText="Keep the visible range as the analysis interval, so zooming and panning no longer change what the ranking counts" />
+            <Button x:Name="CompareButton" Content="Compare with… (Ctrl+B)" Click="CompareIntervals" FontSize="11"
+                    Padding="8,2" IsVisible="{Binding CanCompareIntervals}"
+                    AutomationProperties.HelpText="Compare what each relationship and each process's connections to other hosts did in this range with another range: the same length before or after it, the whole recording, or one you type" />
+          </WrapPanel>
           <!-- §6.8: an evidence policy other than the default is never invisible, and one action restores the default. -->
           <StackPanel x:Name="EvidencePolicyPanel" Spacing="4" IsVisible="{Binding CountsCandidates}">
             <TextBlock x:Name="EvidencePolicyText" Text="{Binding EvidencePolicyNote}" Foreground="{DynamicResource Ink.Accent}"

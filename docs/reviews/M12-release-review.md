@@ -61,7 +61,7 @@ read-only command over a session folder.
 
 - Comparing two captures: a qualified entity mapping between sessions, with each capture's ledger compared as two
   intervals' epochs are (`comparison-v1` §9).
-- The window's comparison view, a baseline and difference timeline, graph overlays and saved comparison specifications.
+- A baseline and difference timeline, graph overlays and saved comparison specifications.
 - Recurring communication patterns, outlier detection with its baseline, sample size and uncertainty, causal navigation
   over evidence-backed links, and bottleneck views.
 - Annotations and bookmarks across a comparison, and shareable redacted comparison reports recording scope, byte domain,
@@ -73,3 +73,10 @@ The interval comparison is ready to ship on the command line: it states only wha
 shows everything else side by side with its reason, which is M12's fallback where captures are not comparable. M12 is
 not complete; the parts listed above follow, the window's view of this comparison first, since the person this product
 serves works in the window.
+
+## Addendum, revision 753
+
+The window's view of the comparison ships: Compare with… (Ctrl+B), beside the time scope where it is an interval,
+compares it with the same length just before or after it, the whole recording or an interval typed, by records or
+bytes sent across, in `icat compare`'s words, and Enter on a row opens what it compares (`comparison-v1` §8a). The
+window is now among the supported environments; nothing else above changes.

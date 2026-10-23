@@ -68,7 +68,8 @@ with fewer descriptors, a release gives up the oldest records, and losses fall w
   its values are still shown side by side, the busiest first.
 - A later comparison of two captures keeps rules 2 to 8, adds a qualified entity mapping, and compares the two ledgers'
   epochs as rule 3 compares one ledger's.
-- The window's comparison view, difference timelines and graph overlays read this comparison rather than re-deriving it.
+- The window's comparison view reads this comparison, in the command line's words (revision 753); difference
+  timelines and graph overlays will too, rather than re-deriving it.
 
 ## Alternatives considered
 

@@ -744,6 +744,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 if (e.Handled && rebuilt) FocusRail();
                 break;
             }
+            case Key.B when e.KeyModifiers == KeyModifiers.Control && viewModel.CanCompareIntervals:
+                // The time scope compared with another interval, as Compare with… does.
+                _ = CompareIntervalsAsync();
+                e.Handled = true;
+                break;
             case Key.C when e.KeyModifiers == KeyModifiers.None && viewModel.HasSelectedContent:
                 OpenContent();
                 e.Handled = true;
@@ -1191,6 +1196,35 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         {
             _ = viewModel.KeepVisibleRange();
         }
+    }
+
+    private async void CompareIntervals(object? sender, RoutedEventArgs eventArgs) => await CompareIntervalsAsync();
+
+    /// <summary>
+    /// Compares the time scope with another interval (`comparison-v1`), and opens what the row chosen there compares: a
+    /// relationship as a double click on its edge opens it, or the process whose connections to another host it compares,
+    /// whose inspector lists the hosts it reached; the rail then has the keyboard, and Esc climbs back.
+    /// </summary>
+    internal async Task CompareIntervalsAsync()
+    {
+        WorkspaceViewModel viewModel = workspace;
+        if (!viewModel.CanCompareIntervals || viewModel.ScopeInterval is not { } compared || currentSessionPath is null
+            || displayedSessionId is not { } sessionId)
+        {
+            return;
+        }
+
+        using var comparing = new SessionCompareWindow(currentSessionPath, sessionId, compared, viewModel.ComparableTime,
+            viewModel.ComparesWithinRecording, viewModel.TimeBase, viewModel.EvidencePolicy);
+        if (await comparing.ShowDialog<ComparedRelationship?>(this) is not { } chosen || closed)
+        {
+            return;
+        }
+
+        bool opened = chosen.Relationship is { } relationship
+            ? workspace.OpenRelationship(relationship.Key)
+            : workspace.OpenProcessRung(chosen.Host!.Link.Process);
+        if (opened) FocusRail();
     }
 
     private void ToggleTables(object? sender, RoutedEventArgs eventArgs)

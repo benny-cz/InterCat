@@ -1876,6 +1876,7 @@
         "R21: the timeline counts a connection's records apart, the same records its evidence reads",
         "R21: the timeline counts an exchange's buffers apart, the same records its evidence reads",
         "R21: the window says one direction's bytes in a connection's words, a count of no size agreeing with its noun, and none recorded as such",
+        "R21: the window's comparison says why a row cannot be compared, each reason once beneath the rows",
         "R21: total-machine processor time is readable or explicitly unavailable",
         "R21: two clocks aligned through one compare as that alignment allows: its drift between them, and their roundings",
         "R21: two clocks' instants are ordered only beyond their combined uncertainty, and never when it is unknown",
@@ -2001,6 +2002,7 @@
         "R3: a group with only unknown contributions is unmeasured, never ranked below a measured zero",
         "R3: a grouped rate divides every group by the same whole interval",
         "R3: a live recording publishes its clock against the wall clock when it starts and stops, and its boot",
+        "R3: a lower bound reads at least, in the window as on the command line",
         "R3: a mapping's uncertainty adds its bounds, combines its random parts in quadrature, and is unknown when any part is",
         "R3: a matched observation without bytes stays unknown",
         "R3: a negative duration is a defect, never a clamped zero",
@@ -2153,6 +2155,7 @@
         "R9: writing a batch returns every buffer the records held"
       ],
       "R18": [
+        "R18: Compare with… states each row as icat compare does, the most changed first, and Enter opens the row's relationship",
         "R18: a channel's export stops at its limit and says so, the rest left to a brushed interval or icat export --limit",
         "R18: a cited command's value is taken whole, in double quotes where a shell would split or read it",
         "R18: a compaction not published is said once, in words that keep the session whole, wherever it is said, and why last",

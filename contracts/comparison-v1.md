@@ -1,8 +1,8 @@
 # InterCat comparison v1
 
 Status: **implemented** for two intervals of one session's generation, on the command line (`icat compare`, revision
-752). Comparing two captures, the window's view of a comparison, difference timelines, graph overlays and saved
-comparison specifications are not defined at this version (§9).
+752) and in the window (Compare with…, revision 753, §8a). Comparing two captures, difference timelines, graph
+overlays and saved comparison specifications are not defined at this version (§9).
 
 This contract fixes what plan §15's M12 asks of a comparison - normalized rates beside absolute counts, ranked changed
 relations, unavailable measurement told apart from disappeared activity, and side-by-side values with an explicit reason
@@ -134,6 +134,22 @@ perSecond, coverage }`; `change`; `fromLowerBound`; `differencePerSecond`, null 
 null where a change is stated. A rate is for presentation, rounded half to even to three decimal places; the integers
 it comes from are the row's (`metrics-v1` §7).
 
+## 8a. The window
+
+Compare with… (Ctrl+B), beside the time scope where it is an interval - a brush, or the visible range while the
+timeline is zoomed - compares that interval with a baseline: the same length just before it or just after it, where
+that lies within the session's time; the whole recording, or the span of its records where its capture recorded no
+stop; or an interval typed in seconds of session time. It compares by records or by bytes sent across, under the
+evidence policy the window counts by, and reads the session afresh at each choice, a newer choice letting an earlier
+one go (ADR-057).
+
+Its rows are §8's, in `icat compare`'s words (R18), but for two processes the capture saw open no connection between,
+which it joins by "↔" as the window's relationship table joins them; it lists the 200 most changed and counts the
+rest. It says above them what the capture covered over each interval, and beneath them each reason once and the notes
+the rows need. Enter, a double click or Show in the window closes it and opens what the chosen row compares: a
+relationship as a double click on its edge opens it, or the process whose connections to another host it compares,
+whose inspector lists the hosts it reached. Esc closes it, choosing nothing.
+
 ## 9. Not defined at this version
 
 - **Two captures.** Entity matching across sessions needs a qualified mapping (plan M12): an executable's name alone is
@@ -141,6 +157,6 @@ it comes from are the row's (`metrics-v1` §7).
   compared as two intervals' epochs are here (§5).
 - **A bounded change under a gap.** The losses a ledger counts bound the records a mechanism lost, not a row's (§5); a
   bound per row would need what a lost record could have moved.
-- The window's comparison view, difference timelines, graph overlays, saved comparison specifications, recurring
-  patterns, outliers, causal navigation and redacted comparison reports (plan M12).
+- Difference timelines, graph overlays, saved comparison specifications, recurring patterns, outliers, causal
+  navigation and redacted comparison reports (plan M12).
 - Wall-clock bounds, which `icat timeline --wall-clock` states; a comparison takes session ticks.

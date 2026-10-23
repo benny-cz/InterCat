@@ -60,6 +60,8 @@ internal static class WindowKeys
         new("Anywhere", "L", "lay the graph out afresh, keeping pinned nodes where they are"),
         new("Anywhere", "Delete", "remove the chosen filter"),
         new("Anywhere", "Ctrl+E", "export the view shown"),
+        new("Anywhere", "Ctrl+B", "compare the time scope with another interval - the same length before or after it, the "
+            + "whole recording, or one typed - as Compare with… does"),
         new("Anywhere", "Ctrl+R", "start the capture chosen, as Start exploring does"),
         new("Anywhere", "Ctrl+O", "open a saved session, as Open saved session does"),
         new("Anywhere", "F", "pause the live view, or follow it again"),

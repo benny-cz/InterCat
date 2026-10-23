@@ -169,21 +169,27 @@ internal static class CompareCommand
     private static void Print(IntervalComparison comparison, string path, int limit)
     {
         CultureInfo culture = CultureInfo.CurrentCulture;
-        bool bytes = comparison.Metric == ComparisonMetric.BytesSent;
         ConsoleUi.Heading("Comparison of two intervals");
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(comparison.Generation));
-        ConsoleUi.Field("Baseline", Interval(comparison.Baseline, culture));
-        ConsoleUi.Field("Compared", Interval(comparison.Compared, culture));
-        ConsoleUi.Field("Compared by", bytes
+        ConsoleUi.Field("Baseline", ComparisonText.Interval(comparison.Baseline, culture: culture));
+        ConsoleUi.Field("Compared", ComparisonText.Interval(comparison.Compared, culture: culture));
+        ConsoleUi.Field("Compared by", comparison.Metric == ComparisonMetric.BytesSent
             ? "bytes sent across per second, each transfer counted once at its sender"
             : "records per second, both ends' records");
         int hosts = comparison.Relationships.Count(row => row.Host is not null);
         ConsoleUi.Field("Rows", ConsoleUi.Count(comparison.Relationships.Count - hosts) + " between processes · "
             + ConsoleUi.Count(hosts) + " to other hosts, with records in either interval"
             + (comparison.Quiet > 0 ? " · " + ConsoleUi.Count(comparison.Quiet) + " quiet in both" : string.Empty));
-        Coverage("the baseline", comparison.BaselineCoverage);
-        Coverage("the compared interval", comparison.ComparedCoverage);
+        foreach (string? coverage in new[]
+        {
+            ComparisonText.Coverage("the baseline", comparison.BaselineCoverage),
+            ComparisonText.Coverage("the compared interval", comparison.ComparedCoverage),
+        })
+        {
+            if (coverage is not null) ConsoleUi.Note(coverage);
+        }
+
         if (comparison.Relationships.Count == 0)
         {
             ConsoleUi.Note("No relationship the overview draws, and no process's connections to another host, has a record in "
@@ -198,11 +204,11 @@ internal static class CompareCommand
             ["Relationship", "Over", "Baseline", "Compared", "Change"],
             [.. listed.Select(row => (IReadOnlyList<string>)
             [
-                row.Relationship is { } edge ? OverviewCommand.Joined(edge, comparison.Processes) : Reached(row.Host!, comparison),
-                row.Relationship is { } over ? DirectionText.Over(over.Mechanism, over.AcceptedPorts) : HostOver(row.Host!),
-                Value(row.Baseline, comparison.Baseline, bytes, culture),
-                Value(row.Compared, comparison.Compared, bytes, culture),
-                Change(row, comparison, bytes, reasons, culture),
+                ComparisonText.Ends(row, comparison, "and"),
+                ComparisonText.Over(row),
+                ComparisonText.Value(row.Baseline, comparison.Baseline, comparison.Metric, culture),
+                ComparisonText.Value(row.Compared, comparison.Compared, comparison.Metric, culture),
+                ComparisonText.Change(row, comparison, culture) + Numbered(row, reasons, culture),
             ])]);
         for (int index = 0; index < reasons.Count; index++)
         {
@@ -215,162 +221,35 @@ internal static class CompareCommand
                 + $"--limit {comparison.Relationships.Count:N0} lists every one."));
         }
 
-        ConsoleUi.Note("Rates are over each whole interval, never over the part of it the capture covered. A change is stated "
-            + "only where both intervals covered a relationship's mechanism through the same sources; elsewhere both values "
-            + "stand with the reason they cannot be compared, so a mechanism the capture did not collect in one interval never "
-            + "reads as activity that stopped or started.");
-        // Each note says what the listed rows need: of other hosts, bounds and arrows only where a row shows one.
-        bool hostsListed = listed.Any(row => row.Host is not null);
-        if (bytes)
+        foreach (string note in ComparisonText.Notes(listed, comparison.Metric))
         {
-            ConsoleUi.Note("Bytes are transport-observed."
-                + (hostsListed
-                    ? " Of another host, only what the process sent there is counted: what the host sent has no sender among "
-                        + "this machine's records."
-                    : string.Empty)
-                + (listed.Any(row => !row.Baseline.Exact || !row.Compared.Exact)
-                    ? " A value marked ≥ is a lower bound: sends that recorded no size are counted apart, never as zero, and a "
-                        + "change is stated from a bound only where the bound alone decides it."
-                    : string.Empty));
-        }
-
-        if (listed.Any(row => row.Relationship is { SourceConnected: > 0 } or { TargetConnected: > 0 }
-            || row.Host?.Address is { Connected: > 0 } or { Accepted: > 0 }))
-        {
-            ConsoleUi.Note("An arrow points at what was connected to, or called, where the capture saw it; ⇄ joins two that each "
-                + "did so to the other.");
-        }
-
-        if (hostsListed)
-        {
-            ConsoleUi.Note("Another host is named by its address: who is at it is not observed.");
+            ConsoleUi.Note(note);
         }
 
         ConsoleUi.Note("icat compare <directory> --json returns each row with both intervals' coverage.");
     }
 
     /// <summary>
-    /// A process's connections to another host as the row names them, the end that made them first, as icat overview names
-    /// a relationship: "browser.exe · PID 100 → 142.250.1.1", "10.0.0.5 → svchost.exe · PID 300" where the process
-    /// accepted them, "⇄" where it did both, and "and" where the capture saw none open.
+    /// The number a row whose values cannot be compared names its reason by, " [1]", said once beneath the table; nothing
+    /// for a row whose change is stated.
     /// </summary>
-    private static string Reached(OtherHostReach host, IntervalComparison comparison)
+    private static string Numbered(ComparedRelationship row, List<string> reasons, CultureInfo culture)
     {
-        string process = CollectorText.Named(comparison.Processes[host.Link.Process]);
-        return (host.Address.Connected > 0, host.Address.Accepted > 0) switch
+        if (row.Change != ComparisonChange.NotComparable)
         {
-            (true, false) => $"{process} → {host.Address.Address}",
-            (false, true) => $"{host.Address.Address} → {process}",
-            (true, true) => $"{process} ⇄ {host.Address.Address}",
-            _ => $"{process} and {host.Address.Address}",
-        };
+            return string.Empty;
+        }
+
+        string reason = row.Reason ?? "its two values are not of the same measurement";
+        int number = reasons.IndexOf(reason) + 1;
+        if (number == 0)
+        {
+            reasons.Add(reason);
+            number = reasons.Count;
+        }
+
+        return string.Create(culture, $" [{number}]");
     }
-
-    /// <summary>
-    /// The transport and ports of a process's connections to another host: the host's ports it connected to, and its own
-    /// ports the host's connections arrived at, each once, the lowest first: "TCP at 443".
-    /// </summary>
-    private static string HostOver(OtherHostReach host) =>
-        DirectionText.Over(host.Link.Mechanism, [.. host.Address.Ports.Concat(host.Address.AcceptedPorts).Distinct().Order()]);
-
-    /// <summary>An interval as the comparison states it: "[0.000, 10.000) s, 10.000 s long".</summary>
-    private static string Interval(TimeRange interval, CultureInfo culture) =>
-        WorkspaceTime.FormatHalfOpenRange(interval, culture) + ", " + WorkspaceTime.FormatDuration(interval.SpanTicks, culture)
-        + " long";
-
-    /// <summary>What the capture covered over one interval, in the words icat overview states it (R5, R21).</summary>
-    private static void Coverage(string interval, IReadOnlyList<MechanismCoverage> coverage)
-    {
-        string described = CoverageText.Describe(coverage);
-        if (described.StartsWith("Coverage", StringComparison.Ordinal))
-        {
-            ConsoleUi.Note("Coverage in " + interval + described["Coverage".Length..]);
-        }
-    }
-
-    /// <summary>
-    /// One interval's measure as a cell: "1,200 · 120/s"; under bytes "1.2 MiB · 120 KiB/s", "≥300 B · ≥30 B/s" for a lower
-    /// bound, "nothing sent" for no send, or how many sends recorded no size where none measured one.
-    /// </summary>
-    private static string Value(ComparedMeasure measure, TimeRange interval, bool bytes, CultureInfo culture)
-    {
-        if (!bytes)
-        {
-            return measure.Records == 0 ? "0" : $"{ConsoleUi.Count(measure.Records)} · {Rate(measure.PerSecond(interval)!.Value, culture)}/s";
-        }
-
-        if (measure.Value is not { } sent)
-        {
-            return string.Create(culture, $"{measure.Unmeasured:N0} unmeasured {CountText.Agree(measure.Unmeasured, "send", "sends")}");
-        }
-
-        if (measure.None)
-        {
-            return "nothing sent";
-        }
-
-        string bound = measure.Exact ? string.Empty : "≥";
-        return $"{bound}{ByteSizeText.Of(sent, culture)} · {bound}{ByteRate(measure.PerSecond(interval)!.Value, culture)}";
-    }
-
-    /// <summary>
-    /// How a row changed: "unchanged", "up 90/s (+300%)", "down at least 1 KiB/s", "appeared", "disappeared", or "not
-    /// comparable [1]", naming the reason beneath the table.
-    /// </summary>
-    private static string Change(
-        ComparedRelationship row, IntervalComparison comparison, bool bytes, List<string> reasons, CultureInfo culture)
-    {
-        switch (row.Change)
-        {
-            case ComparisonChange.Unchanged:
-                return "unchanged";
-            case ComparisonChange.Appeared:
-                return "appeared";
-            case ComparisonChange.Disappeared:
-                return "disappeared";
-            case ComparisonChange.NotComparable:
-                string reason = row.Reason ?? "its two values are not of the same measurement";
-                int number = reasons.IndexOf(reason) + 1;
-                if (number == 0)
-                {
-                    reasons.Add(reason);
-                    number = reasons.Count;
-                }
-
-                return string.Create(culture, $"not comparable [{number}]");
-        }
-
-        double then = row.Baseline.PerSecond(comparison.Baseline) ?? 0;
-        double now = row.Compared.PerSecond(comparison.Compared) ?? 0;
-        double difference = Math.Abs(now - then);
-        string by = bytes ? ByteRate(difference, culture) : Rate(difference, culture) + "/s";
-        string direction = row.Change == ComparisonChange.Increased ? "up" : "down";
-        return row.FromLowerBound
-            ? $"{direction} at least {by}"
-            : $"{direction} {by} ({Percent((now - then) / then * 100, culture)})";
-    }
-
-    /// <summary>A rate of records as a cell states it, to two significant digits below one: "120", "12.5", "0.25", "0.00028".</summary>
-    private static string Rate(double perSecond, CultureInfo culture) => perSecond switch
-    {
-        0 => "0",
-        >= 100 => perSecond.ToString("N0", culture),
-        >= 10 => perSecond.ToString("N1", culture),
-        >= 1 => perSecond.ToString("N2", culture),
-        _ => perSecond.ToString("F" + Math.Min(15, 1 - (int)Math.Floor(Math.Log10(perSecond))).ToString(CultureInfo.InvariantCulture), culture),
-    };
-
-    /// <summary>A rate of bytes: "120 KiB/s", "3 B/s", or "under 1 B/s" for less than a byte a second.</summary>
-    private static string ByteRate(double perSecond, CultureInfo culture) => perSecond switch
-    {
-        0 => "0 B/s",
-        < 1 => "under 1 B/s",
-        _ => ByteSizeText.Of((long)Math.Round(perSecond), culture) + "/s",
-    };
-
-    /// <summary>A relative change with its sign: "+300%", "-75%", "+2.5%" below ten percent.</summary>
-    private static string Percent(double percent, CultureInfo culture) =>
-        percent.ToString(Math.Abs(percent) >= 10 ? "+#,0;-#,0" : "+0.0;-0.0", culture) + "%";
 
     private static void PrintHelp()
     {

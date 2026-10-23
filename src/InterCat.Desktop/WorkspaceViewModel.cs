@@ -1645,6 +1645,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(ScopeInterval));
         OnPropertyChanged(nameof(ScopeFollowsView));
         OnPropertyChanged(nameof(CanKeepVisibleRange));
+        OnPropertyChanged(nameof(CanCompareIntervals));
         OnPropertyChanged(nameof(ShowsRankingScope));
         OnPropertyChanged(nameof(RankingScopeText));
         OnPropertyChanged(nameof(IntervalLabel));

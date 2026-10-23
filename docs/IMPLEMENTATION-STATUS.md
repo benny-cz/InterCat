@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-23 · Plan revision: 752 · Branch: `main`
+Updated: 2026-10-23 · Plan revision: 753 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -58,7 +58,8 @@ operations.
 M3's exit gate is met for its measured scope ([the M3 exit review](reviews/M3-exit-review.md), revision 252): RPC over
 ALPC without duplicate volume, content truncation and encryption states, and per-build coverage published; pipe and
 shared-section topology remain explicitly unavailable and move to M7 and M9. M4 began with its workspace (revision
-253), and M12 with `icat compare` (revision 752); M4, M5 and M12 are not complete. All three of
+253), and M12 with `icat compare` (revision 752) and the window's Compare with… (revision 753); M4, M5 and M12 are
+not complete. All three of
 §11.3's sharing
 presets exist: a metadata-only **report**, a reopenable redacted **session package**, and an exact, unredacted
 **original evidence package**. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
@@ -105,9 +106,38 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3 IPC breadth and content | Exit gate met for its measured scope ([review](reviews/M3-exit-review.md), revision 252) | Pipe and shared-section topology unavailable (to M7/M9); RPC over TCP, HTTP/2, compressed responses and asynchronous WinINet unmeasured; timing profile unavailable. |
 | M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions; since revision 258 (ADR-041) `icat workspace correlate` proposes candidate joins between captures, since revision 259 the investigation window aligns sessions and lists candidates, since revision 260 (`workspace-v4`) a person's decisions about candidates are kept revisions, flagged when the alignments change, since revision 261 the window draws the merged time, a lane per session, since revision 262 two captures of one host that ran at once are flagged, since revision 263 (ADR-042) an investigation is packaged with its sessions, since revision 264 (`workspace-v5`) two instants a person reads in both measure the clocks' rate, since revision 265 (`workspace-v6`) a session is aligned through another, since revision 266 (`workspace-v7`) a person confirms two host identities are one host, since revision 267 the window compares two instants, since revision 268 it zooms the merged time and opens a column's records, since revision 269 (`workspace-v8`) candidates mirror through known address translations, since revision 270 (`workspace-v9`) a person keeps notes, pinned on the merged time, since revision 271 (`workspace-v10`) saved views of it, since revision 276 a capture that ends before its last publication, as a killed broker's does, still names its boot and start's wall clock to align by, since revision 277 candidate joins and the merged time name the generation of each capture they read (I16), since revision 347 its window lists what it keeps of each session's view, as `icat workspace show` does, since revision 381 its merged time hatches, and says, where a session's capture saw nothing (R21), since revision 383 its candidate joins say what each compared capture covered of TCP and UDP, and since revision 384 `icat workspace timeline` draws its merged time as the window does (R18), and since revision 428 its axis ticks round instants of the 1–2–5 ladder, each named where it is drawn, and its words say times in the digits their span needs; since revision 430 its Align dialog opens on the alignment in force; since revision 496 a session it opens is shown in front of it, its window InterCat's peer | A known two-host exchange (needs a second host); alignment from shared markers, which waits on a marker both captures record (M7, M11). |
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
-| M12 comparative | In progress: since revision 752 `icat compare` compares two intervals of a session row by row - each relationship between two processes and each process's connections to another host's address - by records or by bytes sent across, as counts and as rates over each whole interval compared exactly, the most changed first, stating a change only where both intervals covered the row's mechanism through the same descriptors and both values with the reason elsewhere (`comparison-v1`, ADR-058, [the release review](reviews/M12-release-review.md)) | Two captures through a qualified entity mapping; the window's comparison view, difference timelines, graph overlays and saved specifications; patterns, outliers and causal navigation; redacted comparison reports. |
+| M12 comparative | In progress: since revision 752 `icat compare` compares two intervals of a session row by row - each relationship between two processes and each process's connections to another host's address - by records or by bytes sent across, as counts and as rates over each whole interval compared exactly, the most changed first, stating a change only where both intervals covered the row's mechanism through the same descriptors and both values with the reason elsewhere (`comparison-v1`, ADR-058, [the release review](reviews/M12-release-review.md)); since revision 753 the window's Compare with… (Ctrl+B) compares its time scope with the same length before or after it, the whole recording or a typed interval, in the same words, and opens the row chosen | Two captures through a qualified entity mapping; difference timelines, graph overlays and saved specifications; patterns, outliers and causal navigation; redacted comparison reports. |
 
 ## Recent slices
+
+- **Revision 753 — M12: the window compares its time scope with another interval (Compare with…, Ctrl+B):**
+  - Beside the time scope, wherever it is an interval - a brush, or the visible range while the timeline is zoomed -
+    Compare with… (Ctrl+B) opens a comparison of that interval with the same length just before it, by default, or
+    just after it, where either lies within the session's time; the whole recording, or the span of its records; or an
+    interval typed in seconds. It compares by records or by bytes sent across, under the window's evidence policy, and
+    reads the session afresh at each choice.
+  - Its rows, values, changes and reasons are `icat compare`'s, from words the command line and the window now share
+    (`ComparisonText`): the most changed first, at most 200 listed and the rest counted, each interval's coverage
+    above them and each reason once beneath them, numbered from the rows. The value columns are as wide as their
+    widest cell, measured, so they line up with the heading. Enter, a double click or Show in the window opens what
+    the chosen row compares: a relationship as a double click on its edge opens it, or the process whose connections
+    to another host it compares; Esc closes it. F1 lists Ctrl+B.
+  - Debug and Release each ran 3,082 tests with revision 473's 93 failures and 4 skips, and failed nothing else; the
+    fixture index names the three new R3, R18 and R21 tests. All forty-two mutations were caught, three of them once
+    a test named the case they found untested - two ends that each connected to the other, a change down, and a
+    lower bound said in words - and a fourth found choosing a baseline to type kept the last baseline's rows, which
+    it now lets go: in the shared words, coverage said without its interval, ends reversed or joined one way, a
+    host's accepted connections or their ports left out, a zero stated as a rate, nothing sent left unsaid, a bound
+    unmarked, appeared said as up, at least left unsaid, down said as up, rates too coarse, a byte rate unrounded,
+    and the note on other hosts said with none listed; in the rows, a reason numbered afresh, one not given left
+    blank, unopened ends joined by and, a reason unspoken, and a bound's mark read out; in the window, a baseline
+    before offered always or one after never, a recording unnamed, the typed one unoffered or its rows kept, the
+    metric ignored, a typed end taken as its start, the list uncapped, the quiet or the more left unsaid, the first
+    row not given the keyboard, Show never offered, Enter ignored, the columns unmeasured, and the heading unsized;
+    in the workspace, the whole session offered for comparing, a recording assumed, a process's rung not opened, and
+    the scope's change unannounced; and in the main window, Ctrl+B ignored, and a host's row or a relationship's not
+    opened. A name the comparison first gave the way to a process's rung, OpenProcess, matched the call P20's
+    fitness test refuses, and is OpenProcessRung.
 
 - **Revision 752 — M12: two intervals of a session compared row by row (`icat compare`, `comparison-v1`, ADR-058):**
   - What changed between two moments of a capture was read by setting two tables side by side and dividing by hand,

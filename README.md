@@ -69,11 +69,11 @@ machine's ranked rows, the `icat metric` command whose answer they are. A sessio
 that reopens with pseudonymous names, addresses and ports, or byte for byte as the original evidence; a support bundle
 holds no content, name or path.
 
-**Comparing.** `icat compare` sets two intervals of a session side by side: how each relationship, and each process's
-connections to another host, changed from the first to the second, by its records or the bytes sent across, as rates
-over each whole interval, the most changed first. A change is stated only where the capture measured both intervals
-alike; where it did not - a mechanism not collected in one, records lost, sources changed - both values stand, with
-the reason.
+**Comparing.** *Compare with…* (Ctrl+B), beside a brushed or zoomed time scope, and `icat compare` set two intervals
+of a session side by side: how each relationship, and each process's connections to another host, changed from the
+first to the second, by its records or the bytes sent across, as rates over each whole interval, the most changed
+first. A change is stated only where the capture measured both intervals alike; where it did not - a mechanism not
+collected in one, records lost, sources changed - both values stand, with the reason.
 
 F1 in the window lists every key it takes.
 
