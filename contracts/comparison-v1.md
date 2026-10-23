@@ -2,20 +2,21 @@
 
 Status: **implemented** for two intervals of one session's generation, on the command line (`icat compare`, revision
 752), in the window (Compare with…, revision 753, §8a), and as a redacted report to share from either (revision 754,
-§8b); its rows are of processes or, on the command line since revision 755, of executables (§2a). Comparing two
-captures, difference timelines, graph overlays and saved comparison specifications are not defined at this version
-(§9).
+§8b); its rows are of processes or, on the command line since revision 755, of executables (§2a); and since revision
+756 the command line compares two captures, by executable (§2b). Difference timelines, graph overlays and saved
+comparison specifications are not defined at this version (§9).
 
 This contract fixes what plan §15's M12 asks of a comparison - normalized rates beside absolute counts, ranked changed
 relations, unavailable measurement told apart from disappeared activity, and side-by-side values with an explicit reason
-wherever no change can be stated - for its first form: two intervals of one generation, compared row by row. It owns
+wherever no change can be stated - for two intervals of one generation, compared row by row, and two captures. It owns
 no bytes: every value is read from the generation's published segments and indexes through the queries the window and
 the command line already answer (`metrics-v1`, `relations-v1`, `coverage-v2`), and a comparison changes none of them.
 ADR-058 records the decisions, and ADR-059 how rows are grouped by executable.
 
 ## 1. A request
 
-- A session, read one generation at a time (§6).
+- A session, read one generation at a time (§6); or two, the baseline's interval of one and the compared interval of
+  the other (§2b), each read one generation at a time.
 - A **baseline** and a **compared** interval, each half-open (I3) in 100-nanosecond presentation ticks, as every
   `--interval` takes them. They may differ in length, overlap, or be the same interval.
 - A **metric** (§3), `Records` by default.
@@ -59,6 +60,24 @@ A process whose executable was not witnessed is in **no row**: no path groups it
 the other unwitnessed processes would merge strangers. Its relationships and connections to other hosts with a record
 in either interval are counted apart (`unmatched`), with their records in each interval, and said beneath the rows;
 one with none is not counted, and quiet counts executable rows only.
+
+## 2b. Two captures
+
+`--baseline-session` reads the baseline interval from another capture than the compared one. Two captures compare by
+executable (§2a) only: a process of one capture is never another's, and nothing observed maps the processes of one
+onto the other's (P6, R22). Each capture's rows are its own processes', grouped by the path their image was witnessed
+at, and a row of one is paired with the other's of the same key - the same paths, letter case aside. That pairing is a
+grouping, never an identity: the file at a path may differ between the captures, and two captures of different host
+identities pair a path all the same, which the comparison says (`sameHost`, evidence of one host and never proof of
+it). Executables are named over both captures' groups, so two of one name, one in each, are told apart. ADR-060
+records the decisions.
+
+Each interval is in its own session's presentation ticks, its rate over its own whole interval, so no alignment of the
+two clocks is applied or needed; each capture is read at one generation of its own (§6). A row's coverage in each
+interval is its own capture's (§5's rules 2 and 3). Rule 4 applies to each capture's own epochs over its interval, and
+then across them: where the two captures collected the row's mechanism through different descriptors their counts were
+not made alike, and the row states both values with that reason, so a changed capture profile never reads as a
+workload change. Two stores holding one session are refused: its intervals compare as one session's.
 
 ## 3. Metrics
 
@@ -117,7 +136,8 @@ neither an upper nor a lower bound of the row's own (§9).
 Every read a comparison makes - the overview, both intervals' counts, byte measures and connections, and the ledger and
 clock that judge them - is of one generation, which the answer names (I16). A session that publishes between reads is
 read again, up to three times; one that publishes between each attempt's reads is refused in words. A directory that
-begins holding another session is refused.
+begins holding another session is refused. Of two captures, each is read at one generation of its own, and the answer
+names both.
 
 ## 7. Ranking
 
@@ -130,6 +150,7 @@ twice lists its rows alike.
 ```
 icat compare <session-directory> --baseline <start:end> --interval <start:end>
     [--rank-by records|bytes-sent] [--group-by process|executable] [--limit <n>] [--json]
+    [--baseline-session <session-directory>]
     [--output <path> [--share-redacted] [--format json|csv] [--overwrite]]
 ```
 
@@ -144,7 +165,9 @@ its change, or `not comparable [n]` naming its reason once beneath the table.
 | Field | Meaning |
 |---|---|
 | `contract`, `sessionPath` | `comparison-v1`, and the session's folder. |
-| `comparison.sessionId`, `generation` | The generation every value was read from. |
+| `baselineSessionPath` | Of two captures, the baseline's session folder; null otherwise. |
+| `comparison.sessionId`, `generation` | The generation every value was read from: of two captures, the compared interval's. |
+| `baselineSessionId`, `baselineGeneration`, `sameHost` | Of two captures, the baseline's session and generation, and whether the two name one host identity, null where either names none; all null of one session. |
 | `metric`, `policy` | §3, §1. |
 | `byteDomain`, `accounting` | `TransportObserved` and `SendSide` under `BytesSent`; null under `Records`. |
 | `groupedBy` | `Process` or `Executable` (§2a). |
@@ -201,7 +224,8 @@ alignment revision:
 |---|---|
 | `comparison.comparedBy`, `evidencePolicy`, `groupedBy` | §3, §1, §2a. |
 | `byteDomain`, `accounting` | `TransportObserved` and `SendSide` under `BytesSent`; null under `Records`. |
-| `alignmentRevision`, `alignment` | Null, and why: both intervals are of one session, read on its own clock, so no alignment of captures applies. |
+| `alignmentRevision`, `alignment` | Null, and why: both intervals are of one session, read on its own clock, so no alignment of captures applies; or, of two captures, each interval is read on its own capture's clock and rates over whole intervals need no alignment. |
+| `captures`, `sameHost` | 1, or 2 where the baseline is another capture's, and then whether the two name one host identity, never which; null of one session. |
 | `baseline`, `compared` | Each interval's relative `startTicks` and `endTicks`; its `coverage`, every mechanism's state and reason, and `coverageSummary`, the same in words; and its `missingSources`, each mechanism it did not collect in full, or cannot show it did: not collected, a partial gap, or unknown. |
 | `rowsCompared`, `rowsListed`, `complete`, `quiet` | The rows compared and those the report lists, whether it lists them all, and the quiet ones (§2). |
 | `unmatched` | By executable, the relationships and connections no executable groups and their records in each interval (§2a); null by process. |
@@ -225,9 +249,7 @@ still said.
 
 ## 9. Not defined at this version
 
-- **Two captures.** Entity matching across sessions needs a qualified mapping (plan M12): an executable's name alone is
-  no identity, and a process of one capture is never taken for another's by it. Two captures' coverage ledgers would be
-  compared as two intervals' epochs are here (§5).
+- **Two captures in the window**, and the window's comparison by executable: the command line's only (§2a, §2b).
 - **A bounded change under a gap.** The losses a ledger counts bound the records a mechanism lost, not a row's (§5); a
   bound per row would need what a lost record could have moved.
 - Difference timelines, graph overlays, saved comparison specifications, recurring patterns, outliers and causal

@@ -702,14 +702,15 @@ internal static class TestSessions
 /// <summary>A session directory that exists for one test and is removed after it.</summary>
 internal sealed class TemporarySession : IDisposable
 {
-    public TemporarySession()
+    /// <summary>A session in a folder of its own: the tests' one session, or <paramref name="session"/> where another capture is.</summary>
+    public TemporarySession(Guid? session = null)
     {
         Path = System.IO.Path.Combine(
             System.IO.Path.GetTempPath(),
             "InterCat.Analysis.Tests.Metrics",
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path);
-        Store = SessionStore.Open(LocalOwnedDirectory.Open(Path), TestSessions.Session, "metric-tests");
+        Store = SessionStore.Open(LocalOwnedDirectory.Open(Path), session ?? TestSessions.Session, "metric-tests");
     }
 
     public string Path { get; }

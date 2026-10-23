@@ -199,7 +199,48 @@ public static class SessionCoverage
     /// it, which may be none - their coverage then says it was not collected - and when the generation publishes no ledger,
     /// whose coverage is unknown.
     /// </summary>
-    public static string? CollectedOtherwise(CoverageLedgerV1? ledger, Mechanism mechanism, IReadOnlyList<TimeRange> nativeIntervals)
+    public static string? CollectedOtherwise(CoverageLedgerV1? ledger, Mechanism mechanism, IReadOnlyList<TimeRange> nativeIntervals) =>
+        Collected(ledger, mechanism, nativeIntervals, "the capture").Otherwise;
+
+    /// <summary>
+    /// Why counts of <paramref name="mechanism"/> in two captures were not made alike (plan M12's changed capture profile):
+    /// either capture's epochs over its own native intervals did not all collect it through the same descriptors, or the
+    /// two captures collected it through different ones. Null when each collected one set of descriptors of it and the two
+    /// sets are the same, or where a capture publishes no ledger, or none of its epochs spans its intervals - whose coverage
+    /// then says what is not known.
+    /// </summary>
+    public static string? CollectedOtherwise(
+        CoverageLedgerV1? first,
+        IReadOnlyList<TimeRange> firstIntervals,
+        CoverageLedgerV1? second,
+        IReadOnlyList<TimeRange> secondIntervals,
+        Mechanism mechanism)
+    {
+        ArgumentNullException.ThrowIfNull(firstIntervals);
+        ArgumentNullException.ThrowIfNull(secondIntervals);
+        (string? firstOtherwise, HashSet<(Guid, int, int, int?)>? collected) =
+            Collected(first, mechanism, firstIntervals, "the baseline's capture");
+        if (firstOtherwise is not null)
+        {
+            return firstOtherwise;
+        }
+
+        (string? secondOtherwise, HashSet<(Guid, int, int, int?)>? otherCollected) =
+            Collected(second, mechanism, secondIntervals, "the compared interval's capture");
+        return secondOtherwise
+            ?? (collected is not null && otherCollected is not null && !collected.SetEquals(otherCollected)
+                ? $"the two captures collected {MechanismText.InSentence(mechanism)} through other descriptors, so their counts "
+                    + "were not made alike"
+                : null);
+    }
+
+    /// <summary>
+    /// The descriptors of <paramref name="mechanism"/> the epochs spanning <paramref name="nativeIntervals"/> collected, and
+    /// why its counts there were not made alike where two of those epochs collected it otherwise, said of
+    /// <paramref name="capture"/>. No descriptors where the ledger is absent or no epoch spans the intervals.
+    /// </summary>
+    private static (string? Otherwise, HashSet<(Guid, int, int, int?)>? Descriptors) Collected(
+        CoverageLedgerV1? ledger, Mechanism mechanism, IReadOnlyList<TimeRange> nativeIntervals, string capture)
     {
         ArgumentNullException.ThrowIfNull(nativeIntervals);
         if (!Enum.IsDefined(mechanism))
@@ -209,7 +250,7 @@ public static class SessionCoverage
 
         if (ledger is null)
         {
-            return null;
+            return (null, null);
         }
 
         ledger.Validate();
@@ -234,13 +275,13 @@ public static class SessionCoverage
             }
             else if (!descriptors.SetEquals(earlier.Descriptors))
             {
-                return string.Create(CultureInfo.InvariantCulture,
-                    $"the capture collected {MechanismText.InSentence(mechanism)} through other descriptors in its epoch "
-                    + $"{epoch.Epoch} than in its epoch {earlier.Epoch}, so its counts there were not made alike");
+                return (string.Create(CultureInfo.InvariantCulture,
+                    $"{capture} collected {MechanismText.InSentence(mechanism)} through other descriptors in its epoch "
+                    + $"{epoch.Epoch} than in its epoch {earlier.Epoch}, so its counts there were not made alike"), null);
             }
         }
 
-        return null;
+        return (null, first?.Descriptors);
     }
 
     /// <summary>The worst of several states on the ordered lattice; nothing to span is unknown.</summary>

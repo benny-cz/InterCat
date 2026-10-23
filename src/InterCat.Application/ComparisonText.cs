@@ -249,8 +249,22 @@ public static class ComparisonText
             return [];
         }
 
-        List<string> notes = ["Each row is an executable's processes together, grouped by the path their image was witnessed "
-            + "at, never by a name alone."];
+        List<string> notes = comparison.BaselineSessionId is null
+            ? ["Each row is an executable's processes together, grouped by the path their image was witnessed at, never by a "
+                + "name alone."]
+            :
+            [
+                "Each row pairs the processes each capture ran from one path, grouped by the path their image was witnessed at "
+                    + "and never by a name alone: a grouping, not an identity - the file at a path may differ between the "
+                    + "captures, and no process of one is taken for the other's.",
+                comparison.SameHost switch
+                {
+                    true => "Both captures name one host identity, which is evidence of one host and no proof of it.",
+                    false => "The captures name two host identities: a path is paired across them all the same, and the "
+                        + "programs at it may differ.",
+                    null => "A capture names no host identity, so whether the two are of one host is not known.",
+                },
+            ];
         if (comparison.Unmatched is { Rows: > 0 } unmatched)
         {
             notes.Add(string.Create(culture, $"Processes whose executable was not witnessed are in no row, since no path groups "

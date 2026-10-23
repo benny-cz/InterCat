@@ -309,6 +309,34 @@ public sealed partial class RedactedShareExportTests
         using JsonDocument byProcess = JsonDocument.Parse(RedactedShareExport.Comparison(ExportFormat.Json, SecretComparison(), Exported));
         Assert.Equal(("Process", JsonValueKind.Null), (byProcess.RootElement.GetProperty("comparison").GetProperty("groupedBy").GetString(),
             byProcess.RootElement.GetProperty("comparison").GetProperty("unmatched").ValueKind));
+        Assert.Equal((1, JsonValueKind.Null, RedactedShareExport.NoAlignment), (byProcess.RootElement.GetProperty("comparison")
+            .GetProperty("captures").GetInt32(), byProcess.RootElement.GetProperty("comparison").GetProperty("sameHost").ValueKind,
+            byProcess.RootElement.GetProperty("comparison").GetProperty("alignment").GetString()));
+
+        // Of two captures, each interval is on its own capture's clock; whether they name one host is said, never which.
+        string across = RedactedShareExport.Comparison(format, comparison with
+        {
+            BaselineSessionId = Guid.Parse("0c0c0c0c-0000-4000-8000-5ec2e75ec0de"), BaselineGeneration = 7, SameHost = true,
+        }, Exported);
+        AssertSafe(across);
+        Assert.DoesNotContain("0c0c0c0c", across, StringComparison.OrdinalIgnoreCase);
+        if (format == ExportFormat.Json)
+        {
+            using JsonDocument json = JsonDocument.Parse(across);
+            JsonElement stated = json.RootElement.GetProperty("comparison");
+            Assert.Equal((2, true, RedactedShareExport.NoAlignmentAcross, JsonValueKind.Null), (stated.GetProperty("captures").GetInt32(),
+                stated.GetProperty("sameHost").GetBoolean(), stated.GetProperty("alignment").GetString(),
+                stated.GetProperty("alignmentRevision").ValueKind));
+            Assert.False(stated.TryGetProperty("baselineGeneration", out _));
+        }
+        else
+        {
+            string[] lines = Csv.Lines(across);
+            string[] header = Csv.Cells(lines[0]);
+            string[] row = Csv.Cells(lines[1]);
+            Assert.Equal(("2", "true", RedactedShareExport.NoAlignmentAcross), (row[Array.IndexOf(header, "captures")],
+                row[Array.IndexOf(header, "same_host")], row[Array.IndexOf(header, "alignment")]));
+        }
     }
 
     private static (string?, string?, string?) Coverage(JsonElement entry) => (entry.GetProperty("mechanism").GetString(),

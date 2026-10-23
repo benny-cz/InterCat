@@ -50,8 +50,8 @@ read-only command over a session folder.
 
 | Exit test | Verdict | Evidence |
 |---|---|---|
-| Identical captures compare as equal | Met for intervals: an interval compared with itself is unchanged everywhere, by records and by bytes | `SessionComparisonTests.AnIntervalComparedWithItselfIsUnchangedEverywhere` |
-| Changed capture profiles cannot masquerade as workload changes | Met within a session | "R21: a mechanism the capture stopped collecting makes a relationship not comparable, never disappeared"; "R21: a capture whose sources collected a mechanism otherwise in one interval states no change of it"; RPC calls judged by ALPC's coverage too (`RpcCallsAreComparedByTheirRecordsAloneJudgedByRpcAndAlpc`) |
+| Identical captures compare as equal | Met: an interval compared with itself, and since revision 756 two captures of the same records, are unchanged everywhere, by records and by bytes | `SessionComparisonTests.AnIntervalComparedWithItselfIsUnchangedEverywhere`; "I14: two captures of the same records compare as equal, row by row" |
+| Changed capture profiles cannot masquerade as workload changes | Met within a session and, since revision 756, across captures | "R21: a capture that collected a mechanism otherwise than the other states no change of it"; "R21: a mechanism the capture stopped collecting makes a relationship not comparable, never disappeared"; "R21: a capture whose sources collected a mechanism otherwise in one interval states no change of it"; RPC calls judged by ALPC's coverage too (`RpcCallsAreComparedByTheirRecordsAloneJudgedByRpcAndAlpc`) |
 | Differing durations normalize correctly | Met | `RatesAreOverEachWholeIntervalAndTheMostChangedRankFirst`: twice the records in twice the time is unchanged, compared in integers |
 | Uncertainty propagates | Met for coverage and unmeasured sizes | A partial gap or unknown coverage states both values and its reason (`CoverageShortOfCoveredStatesBothValuesAndNoChange`); "R3: a byte comparison's lower bound decides a change only where the bound alone exceeds the other rate"; "R21: icat compare says why it states no change, each reason once beneath the table, never a zero" |
 | A synthetic known dependency is traversable, and unrelated simultaneous events are not labeled causal | Not built | Causal navigation is not built. Nothing a comparison states is causal: it states rates and their reasons only. |
@@ -59,8 +59,6 @@ read-only command over a session folder.
 
 ## Not built, in M12's order
 
-- Comparing two captures: a qualified entity mapping between sessions, with each capture's ledger compared as two
-  intervals' epochs are (`comparison-v1` §9).
 - A baseline and difference timeline, graph overlays and saved comparison specifications.
 - Recurring communication patterns, outlier detection with its baseline, sample size and uncertainty, causal navigation
   over evidence-backed links, and bottleneck views.
@@ -96,4 +94,14 @@ ADR-059): each executable's processes together by the path their image was witne
 identity, so a process that restarted between the two intervals keeps one row instead of one disappeared and one
 appeared, and processes of no witnessed executable are counted apart rather than merged. This is M12's entity grouping
 for one session; the mapping two captures need pairs their rows by the same keys and follows. Nothing else above
+changes.
+
+## Addendum, revision 756
+
+Two captures compare (`icat compare --baseline-session`, `comparison-v1` §2b, ADR-060): by executable only, each
+capture's processes grouped by path and paired across the captures by it, a grouping that says whether the two name
+one host identity and never claims an identity; each interval on its own capture's clock, each capture read at its own
+generation; and a change stated only where both captures covered the row's mechanism and collected it through the same
+descriptors. The first two exit tests are now met across captures, each by a named test, and comparing two captures
+leaves the list of what is not built. The window compares neither two captures nor executables yet; nothing else above
 changes.

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using InterCat.Analysis.Tests;
+using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -208,6 +209,91 @@ public sealed class CompareCommandTests
         {
             folder.Delete(recursive: true);
         }
+    }
+
+    [Fact(DisplayName = "I12: icat compare --baseline-session compares two captures by executable, paired by path")]
+    public async Task IcatCompareComparesTwoCaptures()
+    {
+        // client.exe exchanged with server.exe each second in the first capture, and twice a second in the second, of
+        // another host, where each ran under another PID.
+        using var first = new TemporarySession();
+        using var second = new TemporarySession(Guid.Parse("0c0c0c0c-0000-4000-8000-000000000756"));
+        ObservationRowV1[] Capture(int client, int server, long every)
+        {
+            List<ObservationRowV1> rows =
+            [
+                Timed(Lifecycle(1, ObservationKind.Inventory, client, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+                Timed(Lifecycle(2, ObservationKind.Inventory, server, 2) with { ResourceName = @"C:\Tools\server.exe" }),
+            ];
+            for (long at = Second / 2; at < 10 * Second; at += every)
+            {
+                rows.AddRange(Exchange(at, client, server, "127.0.0.1:50000", "127.0.0.1:8080", 8));
+            }
+
+            return [.. rows.OrderBy(row => row.NativeTicks)];
+        }
+
+        Publish(first.Store, Capture(100, 200, Second), coverage: Ledger());
+        Publish(second.Store, Capture(300, 400, Second / 2), coverage: Ledger(), clock: ClockFor(Clock, "another-host"));
+        first.Store.ReleaseSegmentReaders();
+        second.Store.ReleaseSegmentReaders();
+
+        string[] compare = ["compare", second.Path, "--baseline", "0:10s", "--interval", "0:10s", "--baseline-session", first.Path];
+        (InterCatExitCode code, string text, string said) = await Run(compare);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Compared session +" + Regex.Escape(second.Path) + @"\r?$", text);
+        Assert.Matches(@"(?m)^  Baseline session +" + Regex.Escape(first.Path) + @"\r?$", text);
+        Assert.Matches(@"(?m)^  Baseline +\[0\.0+, 10\.0+\) s, 10\.0+ s long of the baseline's session\r?$", text);
+        Assert.Matches(@"(?m)^  Grouped by +executable, each one's processes together by the path their image was witnessed at\r?$", text);
+        Assert.Matches(@"(?m)^  client\.exe and server\.exe +TCP +20 · 2\.00/s +38 · 3\.80/s +up 1\.80/s \(\+90%\)\r?$", text);
+        string flowing = Regex.Replace(text, @"\s+", " ");
+        Assert.Contains("Each row pairs the processes each capture ran from one path, grouped by the path their image was witnessed "
+            + "at and never by a name alone: a grouping, not an identity", flowing, Ordinal);
+        Assert.Contains("The captures name two host identities", flowing, Ordinal);
+
+        // As JSON, both sessions and the generation each was read at.
+        (_, text, _) = await Run([.. compare, "--json"]);
+        JsonElement root = JsonDocument.Parse(text).RootElement;
+        Assert.Equal((second.Path, first.Path), (root.GetProperty("sessionPath").GetString(), root.GetProperty("baselineSessionPath").GetString()));
+        JsonElement comparison = root.GetProperty("comparison");
+        Assert.Equal((TestSessions.Session, Guid.Parse("0c0c0c0c-0000-4000-8000-000000000756"), false, "Executable"),
+            (comparison.GetProperty("baselineSessionId").GetGuid(), comparison.GetProperty("sessionId").GetGuid(),
+                comparison.GetProperty("sameHost").GetBoolean(), comparison.GetProperty("groupedBy").GetString()));
+        Assert.Equal(1, comparison.GetProperty("baselineGeneration").GetInt64());
+        (_, text, _) = await Run("compare", second.Path, "--baseline", "0:10s", "--interval", "0:10s", "--json");
+        Assert.Equal(JsonValueKind.Null, JsonDocument.Parse(text).RootElement.GetProperty("baselineSessionPath").ValueKind);
+
+        // Shared redacted, it says it compared two captures, each on its own clock, and names neither session.
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-captures-");
+        try
+        {
+            string report = Path.Combine(folder.FullName, "share.json");
+            (code, _, said) = await Run([.. compare, "--output", report, "--share-redacted"]);
+            Assert.True(code == InterCatExitCode.Success, said);
+            string written = File.ReadAllText(report);
+            foreach (string kept in new[] { first.Path, second.Path, TestSessions.Session.ToString(), "0c0c0c0c", "client.exe" })
+                Assert.DoesNotContain(kept, written, OrdinalIgnoreCase);
+            JsonElement shared = JsonDocument.Parse(written).RootElement.GetProperty("comparison");
+            Assert.Equal((2, false, RedactedShareExport.NoAlignmentAcross), (shared.GetProperty("captures").GetInt32(),
+                shared.GetProperty("sameHost").GetBoolean(), shared.GetProperty("alignment").GetString()));
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+
+        // Refused: one session as both captures, and two captures compared by process.
+        (code, text, said) = await Run("compare", first.Path, "--baseline", "0:1s", "--interval", "1s:2s", "--baseline-session", first.Path);
+        Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, text));
+        Assert.StartsWith("x " + SessionComparison.OneSession, said, Ordinal);
+        (code, text, said) = await Run([.. compare, "--group-by", "process"]);
+        Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, text));
+        Assert.StartsWith("x --baseline-session compares two captures by executable: a process of one capture is never another's.",
+            said, Ordinal);
+        (code, _, said) = await Run("compare", second.Path, "--baseline", "0:1s", "--interval", "1s:2s", "--baseline-session",
+            Path.Combine(first.Path, "missing"));
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.StartsWith("x No session directory at ", said, Ordinal);
     }
 
     [Fact(DisplayName = "R3: icat compare marks a lower bound, stating a change from it only where the bound decides it")]

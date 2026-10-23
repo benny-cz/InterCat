@@ -83,6 +83,13 @@ public static class RedactedShareExport
         + "between captures applies.";
 
     /// <summary>
+    /// What a shared comparison of two captures says of their clocks: each interval is read on its own capture's, and rates
+    /// over each whole interval need no alignment of the two, so no alignment revision is named (plan M12).
+    /// </summary>
+    public const string NoAlignmentAcross = "None: each interval is read on its own capture's clock, and rates over each whole "
+        + "interval need no alignment of the two captures.";
+
+    /// <summary>
     /// A comparison of two intervals of one session as a report to share (`contracts/comparison-v1.md` §8b, plan M12): what
     /// it compared by, under which evidence policy, byte domain and accounting; each interval's relative time, what the
     /// capture covered over it and the sources it is missing there; that no alignment applies; and its rows, the most
@@ -101,8 +108,9 @@ public static class RedactedShareExport
         bool bytes = comparison.Metric == ComparisonMetric.BytesSent;
         var scope = new SharedComparison(
             exportedUtc, "100-nanosecond session-relative presentation ticks", comparison.Metric, comparison.Policy,
-            comparison.Grouping, bytes ? ByteDomain.TransportObserved : null, bytes ? AccountingSide.SendSide : null, null,
-            NoAlignment, ComparisonText.RatesNote, Shared(comparison.Baseline, comparison.BaselineCoverage),
+            comparison.Grouping, comparison.BaselineSessionId is null ? 1 : 2, comparison.SameHost,
+            bytes ? ByteDomain.TransportObserved : null, bytes ? AccountingSide.SendSide : null, null,
+            comparison.BaselineSessionId is null ? NoAlignment : NoAlignmentAcross, ComparisonText.RatesNote, Shared(comparison.Baseline, comparison.BaselineCoverage),
             Shared(comparison.Compared, comparison.ComparedCoverage), comparison.Relationships.Count, rows.Length,
             rows.Length == comparison.Relationships.Count, comparison.Quiet,
             comparison.Grouping == ComparisonGrouping.Executable ? comparison.Unmatched : null);
@@ -256,6 +264,8 @@ public static class RedactedShareExport
         ComparisonMetric ComparedBy,
         EvidencePolicy EvidencePolicy,
         ComparisonGrouping GroupedBy,
+        int Captures,
+        bool? SameHost,
         ByteDomain? ByteDomain,
         AccountingSide? Accounting,
         string? AlignmentRevision,
@@ -397,7 +407,8 @@ public static class RedactedShareExport
             scope.ExportedUtc.ToString("O", CultureInfo.InvariantCulture), "false", "false", "false",
             "Random tokens are consistent within this report only; no source-to-token mapping is included.",
             Omitted, Retained, Warning, scope.IntervalUnit, scope.ComparedBy.ToString(), scope.EvidencePolicy.ToString(),
-            scope.GroupedBy.ToString(), scope.ByteDomain?.ToString() ?? string.Empty, scope.Accounting?.ToString() ?? string.Empty,
+            scope.GroupedBy.ToString(), Number(scope.Captures),
+            scope.SameHost is { } sameHost ? sameHost ? "true" : "false" : string.Empty, scope.ByteDomain?.ToString() ?? string.Empty, scope.Accounting?.ToString() ?? string.Empty,
             Cell(scope.AlignmentRevision), scope.Alignment, Number(scope.Baseline.StartTicks), Number(scope.Baseline.EndTicks),
             Number(scope.Compared.StartTicks), Number(scope.Compared.EndTicks), Number(scope.RowsCompared),
             Number(scope.RowsListed), scope.Complete ? "true" : "false", Number(scope.Quiet), Number(scope.Unmatched?.Rows),
@@ -431,7 +442,7 @@ public static class RedactedShareExport
     private static readonly string[] ComparisonHeader =
         ["contract", "report_id", "policy", "kind", "exported_utc", "original_sources_included", "raw_locators_included",
             "content_bytes_included", "token_scope", "omitted", "retained", "warning", "interval_unit", "compared_by",
-            "evidence_policy", "grouped_by", "byte_domain", "accounting", "alignment_revision", "alignment",
+            "evidence_policy", "grouped_by", "captures", "same_host", "byte_domain", "accounting", "alignment_revision", "alignment",
             "baseline_start_ticks", "baseline_end_ticks", "compared_start_ticks", "compared_end_ticks", "rows_compared",
             "rows_listed", "complete", "quiet", "unmatched_rows", "unmatched_baseline_records", "unmatched_compared_records",
             "row_present", "rank", "row_kind", "mechanism", "source_token", "source_executable_token",

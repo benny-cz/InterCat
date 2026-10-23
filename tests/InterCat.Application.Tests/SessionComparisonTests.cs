@@ -25,10 +25,14 @@ public sealed class SessionComparisonTests
         (900, 1_000, "127.0.0.1:50004", "127.0.0.1:5050"),
         (150, 200, "127.0.0.1:50005", "127.0.0.1:8080"),
         (300, 200, "127.0.0.1:50006", "127.0.0.1:8080"),
+        (100, 400, "127.0.0.1:50007", "127.0.0.1:9090"),
     ];
 
     private const string ClientPath = @"C:\Tools\client.exe", OtherClientPath = @"D:\Other\client.exe";
-    private const string ServerPath = @"C:\Tools\server.exe";
+    private const string ServerPath = @"C:\Tools\server.exe", WorkerPath = @"C:\Tools\worker.exe";
+
+    /// <summary>Another capture than the tests' one session, which every other temporary session holds.</summary>
+    private static readonly Guid OtherCapture = Guid.Parse("0c0c0c0c-0000-4000-8000-000000000756");
 
     [Fact]
     public void AnIntervalComparedWithItselfIsUnchangedEverywhere()
@@ -229,6 +233,146 @@ public sealed class SessionComparisonTests
         IntervalComparison processes = SessionComparison.Compare(session.Store, new(0, 100), new(100, 200));
         Assert.Equal((3, 1), (processes.Relationships.Count, processes.Quiet));
         Assert.Equal(new UnmatchedRows(0, 0, 0), processes.Unmatched);
+    }
+
+    [Fact(DisplayName = "I14: two captures of the same records compare as equal, row by row")]
+    public void TwoCapturesOfTheSameRecordsCompareAsEqual()
+    {
+        using var first = new TemporarySession();
+        using var second = new TemporarySession(OtherCapture);
+        ObservationRowV1[] rows = Sorted(
+        [
+            Started(1, 100, ClientPath, ObservationKind.Inventory), Started(1, 200, ServerPath, ObservationKind.Inventory, slot: 15),
+            .. Connects(5, pair: 0), .. Every(10, 200, 10, pair: 0),
+            Timed(Transfer(3, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, (3 * 16) + 8)
+                .Between("192.168.1.10:50000", "142.250.1.1:443")),
+            .. Outbound(10, 200, 20, "192.168.1.10:50000", "142.250.1.1:443", slot: 8),
+        ]);
+
+        // The first capture published its records in two generations, the second in one.
+        Publish(first.Store, rows[..20], coverage: Covered());
+        Publish(first.Store, rows[20..]);
+        Publish(second.Store, rows, coverage: Covered());
+
+        foreach (ComparisonMetric metric in Enum.GetValues<ComparisonMetric>())
+        {
+            IntervalComparison same = SessionComparison.CompareCaptures(first.Store, new(0, 200), second.Store, new(0, 200), metric);
+            Assert.Equal(2, same.Relationships.Count);
+            Assert.All(same.Relationships, row =>
+            {
+                Assert.Equal((ComparisonChange.Unchanged, (string?)null), (row.Change, row.Reason));
+                Assert.Equal(row.Baseline, row.Compared);
+            });
+            Assert.Equal((ComparisonGrouping.Executable, (Guid?)TestSessions.Session, OtherCapture, true),
+                (same.Grouping, same.BaselineSessionId, same.SessionId, same.SameHost));
+            Assert.Equal((2L, 1L), (same.BaselineGeneration, same.Generation));
+
+            // Each pair's and each host's connections are both captures' together: a connect in each.
+            Assert.Equal(2, same.Relationships.Single(row => row.ExecutableHost is not null).ExecutableHost!.Connected);
+            Assert.Equal(2, same.Relationships.Single(row => row.Executables is not null).Executables!.SourceConnected);
+        }
+
+        // Of one session twice, there are no two captures to compare.
+        ArgumentException one = Assert.Throws<ArgumentException>(() =>
+            SessionComparison.CompareCaptures(first.Store, new(0, 100), first.Store, new(100, 200)));
+        Assert.StartsWith(SessionComparison.OneSession, one.Message, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "I12: two captures pair their rows by path alone, never by PID, and keep each capture's processes apart")]
+    public void TwoCapturesPairTheirRowsByPath()
+    {
+        // The baseline's capture: client.exe, PID 100, to server.exe, PID 200; worker.exe, PID 300, to another host; and two
+        // processes no record names the executable of. The compared capture, of another host: client.exe as PID 300, its
+        // exchanges with server.exe, PID 400, twice as often; another client.exe, from another folder, as PID 100.
+        using var first = new TemporarySession();
+        using var second = new TemporarySession(OtherCapture);
+        Publish(first.Store, Sorted(
+        [
+            Started(1, 100, ClientPath, ObservationKind.Inventory), Started(1, 200, ServerPath, ObservationKind.Inventory, slot: 15),
+            Started(2, 300, WorkerPath, ObservationKind.Inventory),
+            .. Connects(5, pair: 0), .. Every(10, 200, 10, pair: 0),
+            .. Outbound(10, 100, 10, "192.168.1.10:50000", "142.250.1.1:443", slot: 8, owner: 300),
+            .. Every(0, 200, 20, pair: 2),
+        ]), coverage: Covered());
+        Publish(second.Store, Sorted(
+        [
+            Started(1, 300, ClientPath, ObservationKind.Inventory), Started(1, 400, ServerPath, ObservationKind.Inventory, slot: 15),
+            Started(2, 100, OtherClientPath, ObservationKind.Inventory),
+            .. Connects(5, pair: 1), .. Every(10, 200, 5, pair: 1), .. Every(100, 200, 10, pair: 7),
+        ]), coverage: Covered(), clock: ClockFor(Clock, "another-host"));
+
+        IntervalComparison comparison = SessionComparison.CompareCaptures(first.Store, new(0, 200), second.Store, new(0, 200));
+        Assert.Equal(
+            [
+                ("executables:tcp:executable:" + ClientPath.ToUpperInvariant() + "|executable:" + ServerPath.ToUpperInvariant(),
+                    ComparisonChange.Increased, 40L, 78L),
+                ("executables:tcp:executable:" + ServerPath.ToUpperInvariant() + "|executable:" + OtherClientPath.ToUpperInvariant(),
+                    ComparisonChange.Appeared, 0L, 20L),
+                ("executable-hosts:tcp:executable:" + WorkerPath.ToUpperInvariant() + "@142.250.1.1", ComparisonChange.Disappeared, 18L, 0L),
+            ],
+            comparison.Relationships.Select(row => (row.Key, row.Change, row.Baseline.Records, row.Compared.Records)));
+
+        // The pair's connections are both captures' together, its client connecting in each, to 8080 in one and 9090 in the
+        // other.
+        ExecutableRelationship pair = comparison.Relationships[0].Executables!;
+        Assert.Equal((2, 0), (pair.SourceConnected, pair.TargetConnected));
+        Assert.Equal([(ushort)8080, (ushort)9090], pair.AcceptedPorts);
+
+        // Executables are named over both captures: the baseline's one client.exe is told apart from the other's.
+        Assert.Equal(["client.exe (Other)", "client.exe (Tools)", "server.exe", "worker.exe"], new[]
+        {
+            OtherClientPath, ClientPath, ServerPath, WorkerPath,
+        }.Select(path => comparison.Groups["executable:" + path.ToUpperInvariant()].Name));
+
+        // Each capture's processes stay its own, PID 100 and PID 300 in each a process of its own; the processes no path
+        // groups are counted apart; and the two captures name two host identities.
+        Assert.Equal(8, comparison.Processes.Count);
+        Assert.Equal(2, comparison.Processes.Values.Count(process => process.ProcessId == 100));
+        Assert.Equal(new UnmatchedRows(1, 20, 0), comparison.Unmatched);
+        Assert.Equal(false, comparison.SameHost);
+    }
+
+    [Fact(DisplayName = "R21: a capture that collected a mechanism otherwise than the other states no change of it")]
+    public void CapturesCollectedOtherwiseAreNotComparable()
+    {
+        using var first = new TemporarySession();
+        using var second = new TemporarySession(OtherCapture);
+        ObservationRowV1[] rows = Sorted(
+        [
+            Started(1, 100, ClientPath, ObservationKind.Inventory), Started(1, 200, ServerPath, ObservationKind.Inventory, slot: 15),
+            .. Every(10, 200, 10, pair: 0),
+        ]);
+        Publish(first.Store, rows, coverage: Ledger(Epoch(1, 0, 1_000_000, 10)));
+        Publish(second.Store, rows, coverage: Ledger(Epoch(1, 0, 1_000_000, 10, 12)));
+
+        // The second capture collected TCP through one more descriptor, so its counts are of more than the first's.
+        ComparedRelationship across = Assert.Single(SessionComparison.CompareCaptures(first.Store, new(0, 200), second.Store,
+            new(0, 200)).Relationships);
+        Assert.Equal((ComparisonChange.NotComparable, "The two captures collected TCP through other descriptors, so their counts "
+            + "were not made alike."), (across.Change, across.Reason));
+
+        // A capture whose own epochs collected it otherwise says which, before the two are weighed.
+        using var changed = new TemporarySession(Guid.Parse("0d0d0d0d-0000-4000-8000-000000000756"));
+        Publish(changed.Store, rows, coverage: Ledger(Epoch(1, 0, 99, 10), Epoch(2, 100, 1_000_000, 12)));
+        ComparedRelationship within = Assert.Single(SessionComparison.CompareCaptures(changed.Store, new(0, 200), first.Store,
+            new(0, 200)).Relationships);
+        Assert.Equal("The baseline's capture collected TCP through other descriptors in its epoch 2 than in its epoch 1, so its "
+            + "counts there were not made alike.", within.Reason);
+        ComparedRelationship compared = Assert.Single(SessionComparison.CompareCaptures(first.Store, new(0, 200), changed.Store,
+            new(0, 200)).Relationships);
+        Assert.StartsWith("The compared interval's capture collected TCP through other descriptors", compared.Reason, StringComparison.Ordinal);
+
+        // A capture that did not collect TCP at all says so of its own interval, whatever the other covered.
+        using var silent = new TemporarySession(Guid.Parse("0f0f0f0f-0000-4000-8000-000000000756"));
+        Publish(silent.Store, rows, coverage: Ledger(Epoch(1, 0, 1_000_000)));
+        Assert.Equal("TCP was not collected over the compared interval: no admitted descriptor records it.",
+            Assert.Single(SessionComparison.CompareCaptures(first.Store, new(0, 200), silent.Store, new(0, 200)).Relationships).Reason);
+
+        // Two captures that collected it alike state its change.
+        using var alike = new TemporarySession(Guid.Parse("0e0e0e0e-0000-4000-8000-000000000756"));
+        Publish(alike.Store, rows, coverage: Ledger(Epoch(1, 0, 1_000_000, 10)));
+        Assert.Equal(ComparisonChange.Unchanged, Assert.Single(SessionComparison.CompareCaptures(first.Store, new(0, 200), alike.Store,
+            new(0, 200)).Relationships).Change);
     }
 
     [Fact(DisplayName = "R21: a mechanism the capture stopped collecting makes a relationship not comparable, never disappeared")]

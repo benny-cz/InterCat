@@ -66,10 +66,21 @@ public sealed class SupportBundleWindowTests
             Assert.Equal(SupportBundle.Holds(1, capabilities: false), root.GetProperty("holds").EnumerateArray().Select(hold => hold.GetString()));
             JsonElement shown = root.GetProperty("sessions").EnumerateArray().Single();
             Assert.Equal((Path.GetFileName(session.Path), 2L), (shown.GetProperty("folder").GetString(), shown.GetProperty("rows").GetInt64()));
-            foreach (string needle in new[] { "alice", "leaky-tool", "Secret Tools", "10.11.12.13", "40404", "10.99.98.97", "50505",
+            foreach (string needle in new[] { "alice", "leaky-tool", "Secret Tools", "10.11.12.13", "10.99.98.97",
                 Path.GetDirectoryName(session.Path)! })
             {
                 Assert.DoesNotContain(needle, written, StringComparison.OrdinalIgnoreCase);
+            }
+
+            // The bundle's own write time and the session folder's random name may hold a port's digits by chance - a time
+            // once read ".1440404" - so the ports are looked for everywhere else.
+            string elsewhere = System.Text.RegularExpressions.Regex.Replace(
+                written.Replace(Path.GetFileName(session.Path), "#", StringComparison.OrdinalIgnoreCase),
+                @"\d{4}-\d{2}-\d{2}T[0-9:.]+(?:Z|[+-]\d{2}:\d{2})", "#");
+            Assert.Contains("#", elsewhere, StringComparison.Ordinal);
+            foreach (string port in new[] { "40404", "50505" })
+            {
+                Assert.DoesNotContain(port, elsewhere, StringComparison.Ordinal);
             }
         }
         finally

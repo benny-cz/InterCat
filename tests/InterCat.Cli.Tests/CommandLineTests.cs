@@ -2041,10 +2041,18 @@ public sealed class CommandLineTests : IDisposable
             Assert.Contains(session.GetProperty("dependencies").EnumerateArray(),
                 dependency => dependency.GetProperty("kind").GetString() == "Segment");
 
-            // Nothing a record holds, nor the host's name or the folders above the session.
-            foreach (string needle in new[] { "alice", "leaky-tool", "Secret Tools", "10.11.12.13", "40404", "10.99.98.97", "50505", folder })
+            // Nothing a record holds, nor the host's name or the folders above the session. The bundle's own times may hold a
+            // port's digits by chance - one once read ".1440404" - so the ports are looked for everywhere else.
+            foreach (string needle in new[] { "alice", "leaky-tool", "Secret Tools", "10.11.12.13", "10.99.98.97", folder })
             {
                 Assert.DoesNotContain(needle, written, StringComparison.OrdinalIgnoreCase);
+            }
+
+            string untimed = Regex.Replace(written, @"\d{4}-\d{2}-\d{2}T[0-9:.]+(?:Z|[+-]\d{2}:\d{2})", "#");
+            Assert.Contains("#", untimed, StringComparison.Ordinal);
+            foreach (string port in new[] { "40404", "50505" })
+            {
+                Assert.DoesNotContain(port, untimed, StringComparison.Ordinal);
             }
 
             // Printed, the bundle is the answer on stdout, and its listing goes to stderr beside it.
