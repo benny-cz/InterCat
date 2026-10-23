@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-23 · Plan revision: 749 · Branch: `main`
+Updated: 2026-10-23 · Plan revision: 750 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,26 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 750 — R11, §20.1: a compaction copies each segment's columns as they are, rather than reading its rows back whole:**
+  - A live compaction step rewrites up to 250,000 rows. It read each row back whole, an object of some 380 bytes, and
+    wrote it again: measured with sessions in memory, 1.4 to 1.7 s and 1.5 KB allocated per row. It now copies each
+    source segment's columns into the new segment's as they are, a schema or a name taken once for each code that
+    names it, and cuts its segments at the rows and bytes writing the rows one by one would: 0.7 to 1.0 s and 1.1 KB
+    per row, its segments and dictionaries byte for byte the same.
+  - Building a segment, which every publication does, sorts its rows' places with their keys through a comparer rather
+    than a delegate, and writes each column with its encoding chosen once rather than row by row. Most of what a step
+    still costs here is hashing each segment twice, for its own trailer and for the manifest, and making it durable,
+    at this machine's processor and disk.
+  - Debug and Release each ran 3,055 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    twenty mutations were caught: a segment cut a row past its bound, or by bytes without its rows' names or their
+    widening to observation-v2; a copy not widening the segment, or widening it only from the second IPv6 column; a
+    field's discriminator dropped; a schema interned as another; a copied name's bytes left unstaged, an absent name
+    staged as present, a chunked name's length read from its offset or a name's counted in characters; copied rows
+    or field rows left uncounted, or copied without flushing a full segment first; and, in building any segment, two
+    rows of one place let through, a plain column gathered past what was staged, a time block's last reading taken
+    from its first row, a column's known values left uncounted, every schema code written as the first, or the
+    earliest reading taken from the last row.
 
 - **Revision 749 — coverage pass over revisions 741–748 (R10):**
   - Of 1,430 reachable lines those revisions added, 49 ran in no test; of 1,422 now, 14. They are a ticket held by a
@@ -1325,8 +1345,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      Since revision 718 tests hold a journal's write and decode loops to what they hand on: writing a record allocates
      its envelope, resolving and reading it nothing, deriving it its rows, and reading a row back the row. Since
      revision 720 an envelope's bytes come from a pool that keeps two batches' worth, so a replayed record allocates
-     306 bytes, its envelope's objects, where it allocated about 450. What stays: compaction reads rows back whole to
-     write them again; and the callback's own admission keeps IC-019's Windows measurements.
+     306 bytes, its envelope's objects, where it allocated about 450. Since revision 750 a compaction copies each
+     segment's columns as they are rather than reading its rows back whole. What stays: the callback's own admission
+     keeps IC-019's Windows measurements.
      A pan still formats and lays out the ticks it draws, which §19.4 allows.
    - Theme modes (§6.1, §26.2, §26.3): light and dark follow the operating system since revision 138, and its
      high-contrast setting since revision 140; since revision 146 the user can choose one, kept in `app-settings-v1`.

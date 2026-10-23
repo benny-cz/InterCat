@@ -798,6 +798,17 @@ public sealed class SegmentReaderV1
             : Encoding.UTF8.GetString(ChunkOf(column).Span.Slice((int)offset, (int)length));
     }
 
+    /// <summary>
+    /// The dictionary a dictionary-coded column's codes name, for a copy that carries each code's value once rather than
+    /// row by row. A dictionary that was not supplied is refused, as a row's text is.
+    /// </summary>
+    internal SegmentDictionaryV1 DictionaryOf(SegmentColumnDescriptor column) =>
+        dictionaries.TryGetValue(column.DictionaryId, out SegmentDictionaryV1? dictionary)
+            ? dictionary
+            : throw new InvalidOperationException(
+                $"Column {column.Id} references dictionary {column.DictionaryId}, which was not supplied. "
+                + "A code is not rendered as a name.");
+
     /// <summary>The descriptor schema behind a row, resolved through the segment's schema dictionary.</summary>
     public (Guid ProviderId, ushort EventId, byte Version, string Fingerprint) SchemaOf(int row)
     {

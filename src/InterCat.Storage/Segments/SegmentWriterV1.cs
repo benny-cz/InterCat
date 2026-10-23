@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using InterCat.Domain;
@@ -154,6 +155,21 @@ public sealed class SegmentWriterV1
     }
 
     /// <summary>
+    /// Copies <paramref name="count"/> rows of a published observation segment, from <paramref name="first"/>, into the
+    /// columns as <see cref="Add"/> stages the rows the segment's reader materializes, without materializing them: a
+    /// compaction's copy (§20.1, R11). The segment is the same once built.
+    /// </summary>
+    public void AddRows(SegmentReaderV1 source, int first, int count) => builder.CopyRows(source, first, count, discriminator: null);
+
+    /// <summary>
+    /// How many rows of <paramref name="source"/> from <paramref name="first"/> can be added before this segment holds
+    /// <paramref name="rowBound"/> rows or stages <paramref name="byteBound"/> bytes: at least one, at most
+    /// <paramref name="available"/>.
+    /// </summary>
+    public int RowsUnder(SegmentReaderV1 source, int first, int available, int rowBound, long byteBound) =>
+        builder.RowsUnder(source, first, available, rowBound, byteBound);
+
+    /// <summary>
     /// Writes the segment. Rows are sorted into the canonical order — time, then the raw locator, then the
     /// fact key — which is total, so the file is a function of its row set rather than of arrival order.
     /// </summary>
@@ -208,6 +224,17 @@ public sealed class SourceFieldWriterV1
         builder.SetUInt8(SegmentColumnId.FieldAvailability, at, checked((byte)row.Availability));
         builder.EndRow(new(row.NativeTicks, row.RawStreamId, row.RawSourceEpoch, row.RawRecordOrdinal, row.FactKey, (ushort)row.Field));
     }
+
+    /// <summary>
+    /// Copies <paramref name="count"/> rows of a published `source-fields-v1` segment, from <paramref name="first"/>, as
+    /// <see cref="Add"/> stages the rows its reader materializes, without materializing them (§20.1, R11).
+    /// </summary>
+    public void AddRows(SegmentReaderV1 source, int first, int count) =>
+        builder.CopyRows(source, first, count, discriminator: SegmentColumnId.SourceField);
+
+    /// <inheritdoc cref="SegmentWriterV1.RowsUnder"/>
+    public int RowsUnder(SegmentReaderV1 source, int first, int available, int rowBound, long byteBound) =>
+        builder.RowsUnder(source, first, available, rowBound, byteBound);
 
     /// <summary>
     /// Writes the segment in canonical order — time, raw locator, fact key, then field — which is total because one
@@ -290,14 +317,14 @@ internal sealed class SegmentTableBuilder
     /// The bytes the segment would take if it were built now. Until a row uses a column the narrower table lacks, that is
     /// the narrower table's layout, so a segment of IPv4 records flushes where it always did.
     /// </summary>
-    public long StagedBytes
+    public long StagedBytes => StagedBytesOf(rowCount, stagedTextBytes, widened);
+
+    /// <summary>What <see cref="StagedBytes"/> would be with these rows, text bytes and widening staged.</summary>
+    private long StagedBytesOf(int rows, long textBytes, bool wide)
     {
-        get
-        {
-            StagedLayout layout = widened || narrowLayout is not { } narrow ? wideLayout : narrow;
-            return layout.FixedBytes + ((long)rowCount * layout.WidthPerRow)
-                + ((long)layout.NullableColumns * ((rowCount + 7) / 8)) + stagedTextBytes;
-        }
+        StagedLayout layout = wide || narrowLayout is not { } narrow ? wideLayout : narrow;
+        return layout.FixedBytes + ((long)rows * layout.WidthPerRow)
+            + ((long)layout.NullableColumns * ((rows + 7) / 8)) + textBytes;
     }
 
     private int TimeBlockCount => Math.Max(1, (rowCount + SegmentFormatV1.RowsPerTimeBlock - 1) / SegmentFormatV1.RowsPerTimeBlock);
@@ -356,16 +383,18 @@ internal sealed class SegmentTableBuilder
             (table, columns) = (narrow.Table, [.. columns.Take(narrow.Columns)]);
         }
 
+        // The rows' places sorted with the rows: sorted[row] is the place of the row order[row] staged.
         int[] order = new int[rowCount];
         for (int index = 0; index < rowCount; index++)
         {
             order[index] = index;
         }
 
-        Array.Sort(order, (left, right) => SortKey.Compare(keys[left], keys[right]));
+        SortKey[] sorted = [.. keys];
+        sorted.AsSpan().Sort(order.AsSpan(), default(SortKeyOrder));
         for (int index = 1; index < rowCount; index++)
         {
-            if (SortKey.Compare(keys[order[index - 1]], keys[order[index]]) == 0)
+            if (SortKey.Compare(sorted[index - 1], sorted[index]) == 0)
             {
                 throw new InvalidOperationException(
                     table is SegmentTableId.ObservationV1 or SegmentTableId.ObservationV2
@@ -471,10 +500,10 @@ internal sealed class SegmentTableBuilder
         }
 
         chunk.CopyTo(file.AsSpan(chunkOffset));
-        long minTicks = keys[order[0]].NativeTicks;
-        long maxTicks = keys[order[rowCount - 1]].NativeTicks;
+        long minTicks = sorted[0].NativeTicks;
+        long maxTicks = sorted[rowCount - 1].NativeTicks;
         Guid segmentId = identity.SegmentIdFor(table, ordinal, rowCount, minTicks, maxTicks);
-        WriteTimeBlocks(file, order);
+        WriteTimeBlocks(file, sorted);
         WriteDirectory(file, plan);
         WriteHeader(file, segmentId, minTicks, maxTicks, chunkOffset, chunk.Length, fileLength);
         SHA256.HashData(
@@ -649,47 +678,69 @@ internal sealed class SegmentTableBuilder
             ? file.AsSpan(descriptor.NullBitmapOffset, descriptor.NullBitmapLength)
             : [];
         int position = positions[descriptor.Id];
-        int known = 0;
-        int chunkCursor = 0;
+        bool[] staged = presence[position];
 
-        for (int row = 0; row < rowCount; row++)
+        // A row has a value in a column that is not nullable, and in a nullable one where its staged presence says so.
+        int known = rowCount;
+        if (descriptor.Nullable)
         {
-            int source = order[row];
-            bool present = !descriptor.Nullable || (source < presence[position].Length && presence[position][source]);
-            if (present && descriptor.Nullable)
+            known = 0;
+            for (int row = 0; row < rowCount; row++)
             {
-                bitmap[row >> 3] |= (byte)(1 << (row & 7));
-            }
-
-            if (present)
-            {
-                known++;
-            }
-
-            switch (descriptor.Encoding)
-            {
-                case SegmentColumnEncoding.Dictionary when descriptor.Id == schemaColumn:
+                int source = order[row];
+                if (source < staged.Length && staged[source])
                 {
-                    uint local = BinaryPrimitives.ReadUInt32LittleEndian(values[position].AsSpan(source * sizeof(uint)));
-                    _ = schemaDictionary!.TryGetCode(schemaEntries[(int)local], out uint code);
-                    BinaryPrimitives.WriteUInt32LittleEndian(destination[(row * sizeof(uint))..], code);
-                    break;
+                    bitmap[row >> 3] |= (byte)(1 << (row & 7));
+                    known++;
+                }
+            }
+        }
+
+        switch (descriptor.Encoding)
+        {
+            case SegmentColumnEncoding.Dictionary when descriptor.Id == schemaColumn:
+            {
+                // Each staged code's published one, looked up once per descriptor rather than once per row.
+                uint[] published = new uint[schemaEntries.Count];
+                for (int local = 0; local < published.Length; local++)
+                {
+                    _ = schemaDictionary!.TryGetCode(schemaEntries[local], out published[local]);
                 }
 
-                case SegmentColumnEncoding.Dictionary:
+                ReadOnlySpan<byte> codes = values[position];
+                for (int row = 0; row < rowCount; row++)
                 {
+                    uint local = BinaryPrimitives.ReadUInt32LittleEndian(codes[(order[row] * sizeof(uint))..]);
+                    BinaryPrimitives.WriteUInt32LittleEndian(destination[(row * sizeof(uint))..], published[local]);
+                }
+
+                break;
+            }
+
+            case SegmentColumnEncoding.Dictionary:
+            {
+                for (int row = 0; row < rowCount; row++)
+                {
+                    int source = order[row];
                     uint code = 0;
-                    if (present && textDictionary is not null)
+                    if (source < staged.Length && staged[source] && textDictionary is not null)
                     {
                         _ = textDictionary.TryGetCode(texts[source]!, out code);
                     }
 
                     BinaryPrimitives.WriteUInt32LittleEndian(destination[(row * sizeof(uint))..], code);
-                    break;
                 }
 
-                case SegmentColumnEncoding.VariableReference:
+                break;
+            }
+
+            case SegmentColumnEncoding.VariableReference:
+            {
+                int chunkCursor = 0;
+                for (int row = 0; row < rowCount; row++)
                 {
+                    int source = order[row];
+                    bool present = source < staged.Length && staged[source];
                     int length = present ? Encoding.UTF8.GetByteCount(texts[source]!) : 0;
                     BinaryPrimitives.WriteUInt32LittleEndian(
                         destination[(row * 2 * sizeof(uint))..],
@@ -698,21 +749,14 @@ internal sealed class SegmentTableBuilder
                         destination[((row * 2 * sizeof(uint)) + sizeof(uint))..],
                         (uint)length);
                     chunkCursor += length;
-                    break;
                 }
 
-                default:
-                {
-                    int width = SegmentFormatV1.WidthOf(descriptor.Type);
-                    ReadOnlySpan<byte> stored = values[position].AsSpan();
-                    if ((source + 1) * width <= stored.Length)
-                    {
-                        stored.Slice(source * width, width).CopyTo(destination[(row * width)..]);
-                    }
-
-                    break;
-                }
+                break;
             }
+
+            default:
+                Gather(destination, values[position], order, SegmentFormatV1.WidthOf(descriptor.Type));
+                break;
         }
 
         return descriptor with
@@ -724,7 +768,48 @@ internal sealed class SegmentTableBuilder
         };
     }
 
-    private void WriteTimeBlocks(byte[] file, int[] order)
+    /// <summary>
+    /// A plain column's values in the rows' sorted order: the staged value of the row each place names, and zero for a row
+    /// the column staged none for, an absent IPv6 address being one.
+    /// </summary>
+    private static void Gather(Span<byte> destination, byte[] staged, int[] order, int width)
+    {
+        switch (width)
+        {
+            case sizeof(byte):
+                Gather<byte>(destination, staged, order);
+                break;
+            case sizeof(ushort):
+                Gather<ushort>(destination, staged, order);
+                break;
+            case sizeof(uint):
+                Gather<uint>(destination, staged, order);
+                break;
+            case sizeof(ulong):
+                Gather<ulong>(destination, staged, order);
+                break;
+            default:
+                Gather<UInt128>(destination, staged, order);
+                break;
+        }
+    }
+
+    private static void Gather<T>(Span<byte> destination, byte[] staged, int[] order)
+        where T : unmanaged
+    {
+        Span<T> into = MemoryMarshal.Cast<byte, T>(destination);
+        ReadOnlySpan<T> from = MemoryMarshal.Cast<byte, T>(staged.AsSpan());
+        for (int row = 0; row < into.Length; row++)
+        {
+            int source = order[row];
+            if (source < from.Length)
+            {
+                into[row] = from[source];
+            }
+        }
+    }
+
+    private void WriteTimeBlocks(byte[] file, SortKey[] sorted)
     {
         int offset = SegmentFormatV1.HeaderLength + (columns.Count * SegmentFormatV1.ColumnEntryLength);
         for (int block = 0; block < TimeBlockCount; block++)
@@ -734,8 +819,8 @@ internal sealed class SegmentTableBuilder
             Span<byte> entry = file.AsSpan(offset + (block * SegmentFormatV1.TimeBlockEntryLength));
             BinaryPrimitives.WriteUInt32LittleEndian(entry, (uint)first);
             BinaryPrimitives.WriteUInt32LittleEndian(entry[4..], (uint)count);
-            BinaryPrimitives.WriteInt64LittleEndian(entry[8..], keys[order[first]].NativeTicks);
-            BinaryPrimitives.WriteInt64LittleEndian(entry[16..], keys[order[first + count - 1]].NativeTicks);
+            BinaryPrimitives.WriteInt64LittleEndian(entry[8..], sorted[first].NativeTicks);
+            BinaryPrimitives.WriteInt64LittleEndian(entry[16..], sorted[first + count - 1].NativeTicks);
             BinaryPrimitives.WriteUInt64LittleEndian(entry[24..], 0);
         }
     }
@@ -818,25 +903,259 @@ internal sealed class SegmentTableBuilder
             throw new ArgumentOutOfRangeException(nameof(id), id, $"This column is not part of this table's {table} layout.");
         }
 
-        int required = (row + 1) * width;
-        if (values[position].Length < required)
-        {
-            Array.Resize(ref values[position], Math.Max(required, Math.Max(64, values[position].Length * 2)));
-        }
-
-        return values[position].AsSpan(row * width, width);
+        return Values(position, (row + 1) * width).AsSpan(row * width, width);
     }
 
     private void MarkPresent(SegmentColumnId id, int row, bool present)
     {
         int position = positions[id];
-        if (presence[position].Length <= row)
+        Presence(position, row + 1)[row] = present;
+        widened |= present && narrower is { } narrow && position >= narrow.Columns;
+    }
+
+    /// <summary>A column's staged bytes, grown to hold at least <paramref name="required"/>.</summary>
+    private byte[] Values(int position, int required)
+    {
+        if (values[position].Length < required)
         {
-            Array.Resize(ref presence[position], Math.Max(row + 1, Math.Max(64, presence[position].Length * 2)));
+            Array.Resize(ref values[position], Math.Max(required, Math.Max(64, values[position].Length * 2)));
         }
 
-        presence[position][row] = present;
-        widened |= present && narrower is { } narrow && position >= narrow.Columns;
+        return values[position];
+    }
+
+    /// <summary>A column's staged presence, grown to hold at least <paramref name="rows"/> rows.</summary>
+    private bool[] Presence(int position, int rows)
+    {
+        if (presence[position].Length < rows)
+        {
+            Array.Resize(ref presence[position], Math.Max(rows, Math.Max(64, presence[position].Length * 2)));
+        }
+
+        return presence[position];
+    }
+
+    /// <summary>
+    /// How many rows of <paramref name="source"/> from <paramref name="first"/> a copy can take before this segment holds
+    /// <paramref name="rowBound"/> rows or stages <paramref name="byteBound"/> bytes, which a derivation checks before
+    /// each row it adds and flushes at: at least one, the caller having checked before the first, and at most
+    /// <paramref name="available"/>. Each row's text and IPv6 addresses count as they would were it added.
+    /// </summary>
+    public int RowsUnder(SegmentReaderV1 source, int first, int available, int rowBound, long byteBound)
+    {
+        RequireSource(source, first, available);
+        SegmentColumnDescriptor? text = textColumn is { } textId ? source.Column(textId) : null;
+        TextLengths? lengths = text is null ? null : new TextLengths(source, text);
+        SegmentColumnPresence textPresence = text is null ? default : source.Presence(text.Id);
+        SegmentColumnId[] widening = narrower is { } narrow
+            ? [.. columns.Skip(narrow.Columns).Select(column => column.Id).Where(source.HasColumn)]
+            : [];
+        int rows = rowCount;
+        long textBytes = stagedTextBytes;
+        bool wide = widened;
+        int taken = 0;
+        while (taken < available && (taken == 0 || (rows < rowBound && StagedBytesOf(rows, textBytes, wide) < byteBound)))
+        {
+            int row = first + taken;
+            if (lengths is not null && textPresence.HasValue(row))
+            {
+                textBytes += lengths.At(row);
+            }
+
+            for (int column = 0; !wide && column < widening.Length; column++)
+            {
+                wide = source.Presence(widening[column]).HasValue(row);
+            }
+
+            rows++;
+            taken++;
+        }
+
+        return taken;
+    }
+
+    /// <summary>
+    /// Copies <paramref name="count"/> rows of <paramref name="source"/> from <paramref name="first"/> - a published segment
+    /// of this table, or of the table it extends - into the columns as the rows its reader materializes would be staged
+    /// one by one, without materializing them (§20.1 compaction, R11): each plain column's bytes, which a segment stores as
+    /// they are staged here, a null as zero; each row's presence in a nullable column; the schema and the text each row
+    /// names, interned here in the rows' order; and each row's place in canonical order, its discriminator read from
+    /// <paramref name="discriminator"/> where the table has one. The rows were checked when that segment was written, and
+    /// are read through its checksums; a column the source's table lacks stays absent, as for a row without it.
+    /// </summary>
+    public void CopyRows(SegmentReaderV1 source, int first, int count, SegmentColumnId? discriminator)
+    {
+        RequireSource(source, first, count);
+        if (count > SegmentFormatV1.MaximumRowsPerSegment - rowCount)
+        {
+            throw new InvalidOperationException(
+                $"A segment holds at most {SegmentFormatV1.MaximumRowsPerSegment} rows. This one holds {rowCount}, and "
+                + $"the derivation flushes it rather than writing {count} more past the bound.");
+        }
+
+        int at = rowCount;
+        for (int position = 0; position < columns.Count; position++)
+        {
+            SegmentColumnSpec column = columns[position];
+            if (source.Column(column.Id) is not { } from)
+            {
+                continue;
+            }
+
+            if (column.Id == schemaColumn)
+            {
+                CopySchemas(source, from, position, first, count, at);
+                continue;
+            }
+
+            if (column.Id == textColumn)
+            {
+                CopyTexts(source, from, position, first, count, at);
+                continue;
+            }
+
+            int width = SegmentFormatV1.WidthOf(column.Type);
+            source.ValueBytes(column.Id).Slice(first * width, count * width)
+                .CopyTo(Values(position, (at + count) * width).AsSpan(at * width));
+            if (column.Nullable)
+            {
+                SegmentColumnPresence present = source.Presence(column.Id);
+                bool[] into = Presence(position, at + count);
+                bool any = false;
+                for (int row = 0; row < count; row++)
+                {
+                    into[at + row] = present.HasValue(first + row);
+                    any |= into[at + row];
+                }
+
+                widened |= any && narrower is { } narrow && position >= narrow.Columns;
+            }
+        }
+
+        ReadOnlySpan<byte> ticks = source.ValueBytes(SegmentColumnId.NativeTicks);
+        ReadOnlySpan<byte> streams = source.ValueBytes(SegmentColumnId.RawStreamId);
+        ReadOnlySpan<byte> epochs = source.ValueBytes(SegmentColumnId.RawSourceEpoch);
+        ReadOnlySpan<byte> ordinals = source.ValueBytes(SegmentColumnId.RawRecordOrdinal);
+        ReadOnlySpan<byte> highs = source.ValueBytes(SegmentColumnId.FactKeyHigh);
+        ReadOnlySpan<byte> lows = source.ValueBytes(SegmentColumnId.FactKeyLow);
+        ReadOnlySpan<byte> discriminators = discriminator is { } id ? source.ValueBytes(id) : default;
+        keys.EnsureCapacity(at + count);
+        for (int row = first; row < first + count; row++)
+        {
+            keys.Add(new(
+                BinaryPrimitives.ReadInt64LittleEndian(ticks[(row * sizeof(long))..]),
+                BinaryPrimitives.ReadUInt32LittleEndian(streams[(row * sizeof(uint))..]),
+                BinaryPrimitives.ReadUInt32LittleEndian(epochs[(row * sizeof(uint))..]),
+                BinaryPrimitives.ReadUInt64LittleEndian(ordinals[(row * sizeof(ulong))..]),
+                new(BinaryPrimitives.ReadUInt64LittleEndian(highs[(row * sizeof(ulong))..]),
+                    BinaryPrimitives.ReadUInt64LittleEndian(lows[(row * sizeof(ulong))..])),
+                discriminator is null ? (ushort)0 : BinaryPrimitives.ReadUInt16LittleEndian(discriminators[(row * sizeof(ushort))..])));
+        }
+
+        rowCount += count;
+    }
+
+    /// <summary>The rows' schema codes, each distinct code's descriptor interned once, at its first row.</summary>
+    private void CopySchemas(SegmentReaderV1 source, SegmentColumnDescriptor from, int position, int first, int count, int at)
+    {
+        SegmentDictionaryV1 dictionary = source.DictionaryOf(from);
+        uint[] local = new uint[dictionary.Count];
+        Array.Fill(local, uint.MaxValue);
+        ReadOnlySpan<byte> codes = source.ValueBytes(from.Id);
+        Span<byte> into = Values(position, (at + count) * sizeof(uint)).AsSpan(at * sizeof(uint), count * sizeof(uint));
+        for (int row = 0; row < count; row++)
+        {
+            uint code = BinaryPrimitives.ReadUInt32LittleEndian(codes[((first + row) * sizeof(uint))..]);
+            if (code >= (uint)local.Length || local[code] == uint.MaxValue)
+            {
+                (Guid providerId, ushort eventId, byte version, string fingerprint) =
+                    SegmentFormatV1.ParseSchemaEntry(dictionary[code]);
+                local[code] = InternSchema(providerId, eventId, version, fingerprint);
+            }
+
+            BinaryPrimitives.WriteUInt32LittleEndian(into[(row * sizeof(uint))..], local[code]);
+        }
+    }
+
+    /// <summary>
+    /// The rows' texts: a dictionary-coded column's values taken once each, a referenced one's read row by row. Every row
+    /// staged stages its text, a null where it has none, so these follow the rows before them.
+    /// </summary>
+    private void CopyTexts(SegmentReaderV1 source, SegmentColumnDescriptor from, int position, int first, int count, int at)
+    {
+        SegmentColumnPresence present = source.Presence(from.Id);
+        bool[] into = Presence(position, at + count);
+        var lengths = new TextLengths(source, from);
+        texts.EnsureCapacity(at + count);
+        for (int row = 0; row < count; row++)
+        {
+            string? text = present.HasValue(first + row) ? lengths.Text(first + row) : null;
+            texts.Add(text);
+            if (text is not null)
+            {
+                stagedTextBytes += lengths.At(first + row);
+            }
+
+            into[at + row] = text is not null;
+        }
+    }
+
+    private void RequireSource(SegmentReaderV1 source, int first, int count)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (source.Table != table && (narrower is not { } narrow || source.Table != narrow.Table))
+        {
+            throw new ArgumentException($"A {source.Table} segment's rows are not copied into a {table} segment.", nameof(source));
+        }
+
+        if (first < 0 || count < 1 || first > source.RowCount - count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), count, $"Rows {first} to {first + count} are not the segment's {source.RowCount}.");
+        }
+    }
+
+    /// <summary>
+    /// A text column's values and their UTF-8 lengths: a dictionary-coded column's per code, each taken once; a referenced
+    /// one's length from its reference, which is the length of the bytes it names.
+    /// </summary>
+    private sealed class TextLengths
+    {
+        private readonly SegmentReaderV1 source;
+        private readonly SegmentColumnDescriptor column;
+        private readonly SegmentDictionaryV1? dictionary;
+        private readonly int[] lengths;
+
+        public TextLengths(SegmentReaderV1 source, SegmentColumnDescriptor column)
+        {
+            this.source = source;
+            this.column = column;
+            dictionary = column.Encoding == SegmentColumnEncoding.Dictionary ? source.DictionaryOf(column) : null;
+            lengths = new int[dictionary?.Count ?? 0];
+            Array.Fill(lengths, -1);
+        }
+
+        public string Text(int row) => dictionary is not null ? dictionary[Code(row)] : source.TextValue(column.Id, row)!;
+
+        public int At(int row)
+        {
+            if (dictionary is null)
+            {
+                return (int)BinaryPrimitives.ReadUInt32LittleEndian(
+                    source.ValueBytes(column.Id)[((row * 2 * sizeof(uint)) + sizeof(uint))..]);
+            }
+
+            // The dictionary refuses a code past its entries before one is looked up here.
+            uint code = Code(row);
+            string text = dictionary[code];
+            if (lengths[code] < 0)
+            {
+                lengths[code] = Encoding.UTF8.GetByteCount(text);
+            }
+
+            return lengths[code];
+        }
+
+        private uint Code(int row) => BinaryPrimitives.ReadUInt32LittleEndian(source.ValueBytes(column.Id)[(row * sizeof(uint))..]);
     }
 
     /// <summary>What a table layout costs: its fixed header, directory and trailer, its bytes per row, its null bitmaps.</summary>
@@ -873,6 +1192,12 @@ internal readonly record struct SortKey(
         order = order != 0 ? order : left.FactKey.Low.CompareTo(right.FactKey.Low);
         return order != 0 ? order : left.Discriminator.CompareTo(right.Discriminator);
     }
+}
+
+/// <summary>The canonical order as a comparer a sort calls without a delegate.</summary>
+internal readonly struct SortKeyOrder : IComparer<SortKey>
+{
+    public int Compare(SortKey left, SortKey right) => SortKey.Compare(left, right);
 }
 
 /// <summary>One column as a segment's directory records it, including its availability counters (§10.2).</summary>

@@ -173,8 +173,9 @@ public static class SegmentCompaction
     }
 
     /// <summary>
-    /// Adds every row of the planned runs to a compaction builder, observations before fields within each unit. Each run
-    /// ends its segments, so no output spans the time of a unit the compaction did not coalesce.
+    /// Adds every row of the planned runs to a compaction builder, observations before fields within each unit, copying
+    /// each segment's columns as they are rather than reading its rows back whole (R11). Each run ends its segments, so no
+    /// output spans the time of a unit the compaction did not coalesce.
     /// </summary>
     private static (DerivedGenerationBuilder Builder, long Rows, long FieldRows) ReadRuns(
         SessionStore store,
@@ -195,22 +196,14 @@ public static class SegmentCompaction
                     foreach (string name in unit.Files.Where(IsObservationSegment))
                     {
                         SegmentReaderV1 segment = Open(name);
-                        for (int row = 0; row < segment.RowCount; row++)
-                        {
-                            builder!.AddRow(segment.Row(row));
-                        }
-
+                        builder!.AddRows(segment);
                         rows += segment.RowCount;
                     }
 
                     foreach (string name in unit.Files.Where(IsFieldSegment))
                     {
                         SegmentReaderV1 segment = Open(name);
-                        for (int row = 0; row < segment.RowCount; row++)
-                        {
-                            builder!.AddFieldRow(segment.FieldRow(row));
-                        }
-
+                        builder!.AddFieldRows(segment);
                         fieldRows += segment.RowCount;
                     }
                 }

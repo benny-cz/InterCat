@@ -742,8 +742,64 @@ public sealed class DerivedGenerationBuilder : IDisposable
         RowCount++;
     }
 
+    /// <summary>
+    /// Adds every row of a published observation segment, as they are: as <see cref="AddRow"/> adds the rows its reader
+    /// materializes - a full segment flushed before the row that would pass its bound - without materializing them. A
+    /// compaction's copy (§20.1, R11), whose segments are those adding the rows one by one would publish.
+    /// </summary>
+    public void AddRows(SegmentReaderV1 segment)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(segment);
+        if (completed)
+        {
+            throw new InvalidOperationException("This generation has already been published.");
+        }
+
+        for (int row = 0; row < segment.RowCount;)
+        {
+            if (open.RowCount >= options.RowsPerSegment || open.StagedBytes >= options.StagedBytesPerSegment)
+            {
+                FlushSegment();
+            }
+
+            int count = open.RowsUnder(segment, row, segment.RowCount - row, options.RowsPerSegment, options.StagedBytesPerSegment);
+            open.AddRows(segment, row, count);
+            row += count;
+            RowCount += count;
+        }
+    }
+
     /// <summary>How many source field rows have been derived so far, across every fields segment.</summary>
     public long FieldRowCount { get; private set; }
+
+    /// <summary>
+    /// Adds every row of a published `source-fields-v1` segment, as they are, as <see cref="AddFieldRow"/> adds the rows
+    /// its reader materializes, without materializing them (§20.1, R11).
+    /// </summary>
+    public void AddFieldRows(SegmentReaderV1 segment)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentNullException.ThrowIfNull(segment);
+        if (completed)
+        {
+            throw new InvalidOperationException("This generation has already been published.");
+        }
+
+        for (int row = 0; row < segment.RowCount;)
+        {
+            if (openFields.RowCount >= options.RowsPerSegment || openFields.StagedBytes >= options.StagedBytesPerSegment)
+            {
+                FlushFieldSegment();
+            }
+
+            int count = openFields.RowsUnder(
+                segment, row, segment.RowCount - row, options.RowsPerSegment, options.StagedBytesPerSegment);
+            openFields.AddRows(segment, row, count);
+            row += count;
+            FieldRowCount += count;
+        }
+    }
 
     /// <summary>
     /// Adds one source correlation or object field of an observation already added. It is staged into
