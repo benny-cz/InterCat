@@ -259,8 +259,9 @@ public sealed class SessionCompareWindowTests
         // made at 10.5 s, is quiet in both.
         CultureInfo culture = CultureInfo.CurrentCulture;
         Assert.StartsWith($"The {WorkspaceTime.FormatDuration(4 * Second, culture)} after it, ", comparing.Offered[0], StringComparison.Ordinal);
-        Assert.Equal(3, comparing.Offered.Count);
+        Assert.Equal(4, comparing.Offered.Count);
         Assert.StartsWith("The whole session, ", comparing.Offered[1], StringComparison.Ordinal);
+        Assert.Equal(SessionCompareWindow.ChooseCapture, comparing.Offered[^1]);
         Assert.Equal($"Generation {1.ToString("N0", culture)} · 1 relationship between processes compared, the most changed first "
             + "· 1 quiet in both", comparing.Said);
         comparing.Close();
@@ -324,7 +325,7 @@ public sealed class SessionCompareWindowTests
             Click(share);
             Press(await Prompt(comparing), "Cancel");
             await comparing.Shared;
-            Assert.Equal((0, string.Empty), (choices.Asked, comparing.SharingSaid));
+            Assert.Equal((0, string.Empty), (choices.Asked, comparing.Done));
 
             // Asked for, every row compared is saved where chosen, and where is said beside the buttons, the comparison's
             // own status still saying what it found.
@@ -336,7 +337,7 @@ public sealed class SessionCompareWindowTests
             Dispatch();
             Assert.Equal(("Save redacted comparison report", RedactedShareExport.SuggestedName("json")),
                 (choices.Saves[0].Title, choices.Saves[0].SuggestedFileName));
-            Assert.Equal($"Saved a redacted report of 2 rows to {report}. Review it before sharing it.", comparing.SharingSaid);
+            Assert.Equal($"Saved a redacted report of 2 rows to {report}. Review it before sharing it.", comparing.Done);
             Assert.Equal(found, comparing.Said);
             string written = File.ReadAllText(report);
             foreach (string kept in new[] { "client.exe", "server.exe", "worker.exe", "queue.exe", "127.0.0.1", "PID ", session.Path })
@@ -361,19 +362,172 @@ public sealed class SessionCompareWindowTests
             Press(await Prompt(comparing), "Choose report file");
             await comparing.Shared;
             Dispatch();
-            Assert.StartsWith("Could not save the redacted report: ", comparing.SharingSaid, StringComparison.Ordinal);
+            Assert.StartsWith("Could not save the redacted report: ", comparing.Done, StringComparison.Ordinal);
             Assert.Equal(SessionCompareWindow.ShareDoes, Offers.Offered(share));
 
             // Comparing again lets what was said of the report before go.
             comparing.CompareByBytes(true);
             await comparing.Compared;
-            Assert.Equal(string.Empty, comparing.SharingSaid);
+            Assert.Equal(string.Empty, comparing.Done);
         }
         finally
         {
             comparing.Close();
             owner.Close();
             folder.Delete(recursive: true);
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R22: the window compares executables, a restarted process's executable one row, and opens its rung")]
+    public async Task TheWindowComparesExecutables()
+    {
+        // client.exe's process exchanged with server.exe until it exited at 9.5 s, and its next process from 10.5 s; the
+        // session's records begin at its start, so the ten seconds before the scope are within it.
+        using var session = new TemporarySession();
+        List<ObservationRowV1> rows =
+        [
+            Timed(Lifecycle(0, ObservationKind.Inventory, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Lifecycle(0, ObservationKind.Inventory, 200, 2) with { ResourceName = @"C:\Tools\server.exe" }),
+            .. Opened(Second / 2, 100, 200, "127.0.0.1:50000", "127.0.0.1:8080"),
+            Timed(Lifecycle(95 * Second / 10, ObservationKind.Exit, 100, (ulong)(95 * Second / 10))),
+            Timed(Lifecycle(105 * Second / 10, ObservationKind.Create, 150, (ulong)(105 * Second / 10)) with
+            {
+                ResourceName = @"C:\Tools\client.exe",
+            }),
+            .. Opened(105 * Second / 10 + 100, 150, 200, "127.0.0.1:50001", "127.0.0.1:8080"),
+        ];
+        for (long at = 1; at < 9; at++) rows.AddRange(Exchange(at * Second, 100, 200, "127.0.0.1:50000", "127.0.0.1:8080"));
+        for (long at = 11; at < 19; at++) rows.AddRange(Exchange(at * Second, 150, 200, "127.0.0.1:50001", "127.0.0.1:8080"));
+        Publish(session.Store, [.. rows.OrderBy(row => row.NativeTicks)], coverage: Ledger());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            Assert.True(await window.OpenSessionAsync(session.Path));
+            Dispatch();
+            var workspace = (WorkspaceViewModel)window.DataContext!;
+            await workspace.LayoutReady;
+            workspace.SelectInterval(new TimeRange(10 * Second, 20 * Second));
+            Dispatch();
+            Task opened = window.CompareIntervalsAsync();
+            SessionCompareWindow comparing = await Opened(window);
+            await comparing.Compared;
+            Dispatch();
+
+            // By process, the restart is a relationship that disappeared and another that appeared.
+            Assert.Equal(["appeared", "disappeared"], comparing.Rows.Select(row => row.ChangeCell).Order());
+            Assert.Equal(SessionCompareWindow.RowsDoes, Offers.Offered(RowsChoice(comparing)));
+
+            // By executable, the two processes are client.exe's one row, unchanged, as its notes say why.
+            comparing.CompareByExecutable(true);
+            await comparing.Compared;
+            Dispatch();
+            ComparisonRow row = Assert.Single(comparing.Rows);
+            Assert.Equal("client.exe → server.exe | TCP at 8080 | unchanged", $"{row.Ends} | {row.Over} | {row.ChangeCell}");
+            Assert.StartsWith($"Generation {1.ToString("N0", CultureInfo.CurrentCulture)} · 1 relationship between executables compared",
+                comparing.Said, StringComparison.Ordinal);
+            Assert.Contains(comparing.GetLogicalDescendants().OfType<TextBlock>(), block => block.Text?.Contains(
+                "Each row is an executable's processes together, grouped by the path their image was witnessed at", StringComparison.Ordinal) == true);
+            Save(comparing, "compare-executables.png");
+
+            // Show in the window opens client.exe's rung, its processes listed.
+            Assert.Equal(SessionCompareWindow.ShowDoes, Offers.Offered(Labelled(comparing, "Show in the window")));
+            Click(Labelled(comparing, "Show in the window"));
+            await opened;
+            Dispatch();
+            Assert.Contains(workspace.Crumbs, crumb => crumb.Label.Contains("client.exe", StringComparison.Ordinal));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "I12: the window compares its scope with another saved capture by executable, and says why a folder is none")]
+    public async Task TheWindowComparesWithAnotherCapture()
+    {
+        // The same exchanges in two captures: this session's, and another saved beside it. The scope is all of this session,
+        // as long as all of the other.
+        using var other = new TemporarySession();
+        using var session = new TemporarySession(Guid.Parse("0c0c0c0c-0000-4000-8000-000000000757"));
+        Publish(other.Store, Rows(), coverage: Ledger());
+        Publish(session.Store, Rows(), coverage: Ledger());
+        DirectoryInfo empty = Directory.CreateTempSubdirectory("intercat-compare-none-");
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        using var comparing = new SessionCompareWindow(session.Path, overview.SessionId, overview.Extent!.Value,
+            overview.Extent.Value, recorded: false, SessionClock.Session(TimeZoneInfo.Utc), EvidencePolicy.IncludeCorrelated)
+        {
+            // As a window grouped by terminal session would, it cannot open an executable's rows.
+            WhyNotShown = row => row.Executables is not null || row.ExecutableHost is not null ? "Not in this window." : null,
+        };
+        var choices = new AnsweredChoices(comparing);
+        comparing.Choices = choices;
+        try
+        {
+            _ = comparing.ShowDialog<ComparedRelationship?>(owner);
+            await Until(() => comparing.Shown is not null);
+            await comparing.Compared;
+            Dispatch();
+            string found = comparing.Said;
+            Assert.Equal(SessionCompareWindow.ShowDoes, Offers.Offered(Labelled(comparing, "Show in the window")));
+            int choose = comparing.Offered.ToList().IndexOf(SessionCompareWindow.ChooseCapture);
+            Assert.True(choose > 0);
+
+            // Declined, a folder that holds no session, and this session's own folder: each leaves the baseline as it was.
+            foreach ((string[] Answer, string? Said) attempt in new (string[], string?)[]
+            {
+                ([], null),
+                ([empty.FullName], "That folder holds no session to compare with: "),
+                ([session.Path], "That folder holds the session shown: choose another capture, or an interval of this one."),
+            })
+            {
+                choices.AnswerFolders(attempt.Answer);
+                comparing.ChooseBaseline(choose);
+                await comparing.CaptureChosen;
+                Dispatch();
+                Assert.Equal((0, found), (comparing.Offered.ToList().IndexOf(SelectedBaseline(comparing)), comparing.Said));
+                if (attempt.Said is null) Assert.Equal(string.Empty, comparing.Done);
+                else Assert.StartsWith(attempt.Said, comparing.Done, StringComparison.Ordinal);
+            }
+
+            // Another capture's folder offers its whole session as the baseline, the rows by executable, which two captures
+            // compare by alone.
+            choices.AnswerFolders(other.Path);
+            comparing.ChooseBaseline(choose);
+            await comparing.CaptureChosen;
+            await comparing.Compared;
+            Dispatch();
+            string offered = $"The whole session of {Path.GetFileName(other.Path)}, ";
+            Assert.StartsWith(offered, comparing.Offered[choose], StringComparison.Ordinal);
+            Assert.Equal(SessionCompareWindow.ChooseCapture, comparing.Offered[choose + 1]);
+            Assert.True(comparing.ComparesExecutables);
+            Assert.Equal(SessionCompareWindow.AcrossCaptures, Offers.WhyNot(RowsChoice(comparing)));
+            Assert.Equal(TestSessions.Session, comparing.Shown!.BaselineSessionId);
+            Assert.StartsWith("Generation 1, the baseline capture's 1 · ", comparing.Said, StringComparison.Ordinal);
+            Assert.Contains(comparing.GetLogicalDescendants().OfType<TextBlock>(), block => block.Text?.Contains(
+                "Each row pairs the processes each capture ran from one path", StringComparison.Ordinal) == true);
+            Assert.All(comparing.Rows, row => Assert.Equal("unchanged", row.ChangeCell));
+            Assert.Equal("Not in this window.", Offers.WhyNot(Labelled(comparing, "Show in the window")));
+
+            // Choosing another capture again keeps one offered, the latest; an interval of this session lets the rows be
+            // chosen again.
+            choices.AnswerFolders(other.Path);
+            comparing.ChooseBaseline(choose + 1);
+            await comparing.CaptureChosen;
+            await comparing.Compared;
+            Assert.Single(comparing.Offered, label => label.StartsWith(offered, StringComparison.Ordinal));
+            comparing.ChooseBaseline(0);
+            await comparing.Compared;
+            Assert.Equal(SessionCompareWindow.RowsDoes, Offers.Offered(RowsChoice(comparing)));
+            Assert.Null(comparing.Shown!.BaselineSessionId);
+        }
+        finally
+        {
+            comparing.Close();
+            owner.Close();
+            empty.Delete(recursive: true);
         }
     }
 
@@ -452,6 +606,15 @@ public sealed class SessionCompareWindowTests
 
     private static Button Labelled(Window window, string label) =>
         window.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, label));
+
+    /// <summary>The window's choice of what each row compares.</summary>
+    private static ComboBox RowsChoice(Window window) => window.GetLogicalDescendants().OfType<ComboBox>()
+        .Single(choice => AutomationProperties.GetName(choice)?.StartsWith("What each row compares", StringComparison.Ordinal) == true);
+
+    /// <summary>The baseline the window has chosen, by its label.</summary>
+    private static string SelectedBaseline(Window window) => window.GetLogicalDescendants().OfType<ComboBox>()
+        .Single(choice => AutomationProperties.GetName(choice) == "The baseline the analysis interval is compared with")
+        .SelectedItem!.ToString()!;
 
     private static void Click(Button button)
     {

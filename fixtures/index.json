@@ -867,6 +867,7 @@
         "I12: same-tick exit and reuse bind their lifecycle records by observation identity",
         "I12: source start keys, image paths and a parent's start key survive publication and bind exactly",
         "I12: the same PID and creation on another capture's clock is another instance",
+        "I12: the window compares its scope with another saved capture by executable, and says why a folder is none",
         "I12: two captures pair their rows by path alone, never by PID, and keep each capture's processes apart",
         "I12: without a start key, only a record in a reused PID's earliest lifetime resolves"
       ],
@@ -1903,6 +1904,7 @@
         "R22: a candidate with another for either connection is ambiguous, and loopback joins only one host's captures",
         "R22: a capture is one member however many copies of it there are, and a store's source name makes none the same",
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",
+        "R22: a comparison's row by executable opens the executable's rung where the window has one, and says why not",
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
         "R22: a content capture holds its processes from before it records, checked through the handles that hold them, and holds none it refuses",
         "R22: a content capture whose plan changed between its review and its start is not started, naming what changed",
@@ -1984,6 +1986,7 @@
         "R22: the investigation window states a known address translation, and a candidate joins through it",
         "R22: the investigation window takes a person's word that two host identities are one host, and its withdrawal",
         "R22: the processes a person may choose are this sign-in's, each with the start a client can read, never the client itself",
+        "R22: the window compares executables, a restarted process's executable one row, and opens its rung",
         "R22: the window starts a content capture only after its review, with a plan prepared again that keeps what was reviewed",
         "R22: the window's live view of an Explore capture shaped as Windows delivers it relates its loopback connections over IPv4 and IPv6",
         "R22: two boots of one host that overlap in the investigation's time say an alignment is wrong",

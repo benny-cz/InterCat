@@ -1,9 +1,12 @@
 using System.Globalization;
 using InterCat.Analysis;
+using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
 using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
+using static InterCat.Analysis.Tests.TestSessions;
 
 namespace InterCat.Desktop.Tests;
 
@@ -90,6 +93,53 @@ public sealed class ComparisonRowsTests
         };
         Assert.Equal(["Its two values are not of the same measurement."], ComparisonRows.Of(unexplained, culture).Reasons);
     }
+
+    [Fact(DisplayName = "R22: a comparison's row by executable opens the executable's rung where the window has one, and says why not")]
+    public void AnExecutablesRowOpensItsRungWhereTheWindowHasOne() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = TerminalSessions();
+        Publish(session.Store, rows, fields: fields);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var source = new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity, source);
+        await workspace.LayoutReady;
+        string client = "executable:" + @"C:\Tools\client.exe".ToUpperInvariant();
+        string elsewhere = "executable:" + @"C:\Tools\worker.exe".ToUpperInvariant();
+        ComparedRelationship Reach(string executable) => new(Measure(1), Measure(1), ComparisonChange.Unchanged, null)
+        {
+            ExecutableHost = new ExecutableReach($"executable-hosts:tcp:{executable}@10.0.0.5", executable, Mechanism.Tcp, "10.0.0.5"),
+        };
+        ComparedRelationship Pair(string first, string second) => new(Measure(1), Measure(1), ComparisonChange.Unchanged, null)
+        {
+            Executables = new ExecutableRelationship($"executables:tcp:{first}|{second}", first, second, Mechanism.Tcp),
+        };
+
+        // An executable a process of this session ran is shown, and a pair either of whose executables one did; one no
+        // process ran - another capture's - is not, and says why. A process's row is always shown.
+        const string NoneRan = "No process of the session shown ran this executable.";
+        Assert.Equal(((string?)null, NoneRan, (string?)null, NoneRan),
+            (workspace.WhyNotShown(Reach(client)), workspace.WhyNotShown(Reach(elsewhere)), workspace.WhyNotShown(Pair(elsewhere, client)),
+                workspace.WhyNotShown(Pair(elsewhere, elsewhere))));
+        Assert.Null(workspace.WhyNotShown(new ComparedRelationship(Measure(1), Measure(1), ComparisonChange.Unchanged, null)
+        {
+            Relationship = overview.Edges[0],
+        }));
+
+        // A host's row opens its executable's rung, and a pair the executable that ran here, client.exe, its processes listed;
+        // one no process ran opens nothing.
+        Assert.False(workspace.OpenCompared(Reach(elsewhere)));
+        Assert.True(workspace.OpenCompared(Reach(client)));
+        Assert.True(workspace.OpenCompared(Pair(elsewhere, client)));
+        Assert.Contains(workspace.Crumbs, crumb => crumb.Label.Contains("client.exe", StringComparison.Ordinal));
+
+        // Grouped by terminal session, the window has no executable's rung to open, and says how to get one.
+        using var bySession = new WorkspaceViewModel(WorkspaceGrouping.Regroup(OverviewWorkspace.From(overview), LaneGrouping.UserSession),
+            WorkspaceGrouping.Identity(overview.GraphIdentity, LaneGrouping.UserSession), source);
+        await bySession.LayoutReady;
+        Assert.StartsWith("The window groups processes by terminal session", bySession.WhyNotShown(Reach(client)), StringComparison.Ordinal);
+        Assert.False(bySession.OpenCompared(Reach(client)));
+    });
 
     private static ComparedMeasure Measure(long records) => new(records, records, records, 0, Covered);
 

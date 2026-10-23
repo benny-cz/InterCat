@@ -2,9 +2,9 @@
 
 Status: **implemented** for two intervals of one session's generation, on the command line (`icat compare`, revision
 752), in the window (Compare with…, revision 753, §8a), and as a redacted report to share from either (revision 754,
-§8b); its rows are of processes or, on the command line since revision 755, of executables (§2a); and since revision
-756 the command line compares two captures, by executable (§2b). Difference timelines, graph overlays and saved
-comparison specifications are not defined at this version (§9).
+§8b); its rows are of processes or, since revision 755, of executables (§2a); and since revision 756 two captures
+compare, by executable (§2b) - on the command line, and since revision 757 in the window too. Difference timelines,
+graph overlays and saved comparison specifications are not defined at this version (§9).
 
 This contract fixes what plan §15's M12 asks of a comparison - normalized rates beside absolute counts, ranked changed
 relations, unavailable measurement told apart from disappeared activity, and side-by-side values with an explicit reason
@@ -213,6 +213,18 @@ what such a report keeps and leaves out, as the main window's redacted report do
 CSV by its name - and says beside its buttons where the report went, or why it could not be written, the comparison's
 own status still saying what it found.
 
+Rows chooses each process, or each executable's processes together (§2a). Another saved capture… asks for a saved
+session's folder and offers its whole recording, or the span of its records where it recorded no stop, as the
+baseline, the latest chosen the one offered: two captures compare by executable alone (§2b), and Rows says so while
+one is the baseline. A folder that holds no session, or holds the session shown, is said beside the buttons, and the
+baseline chosen before is chosen again, its comparison still the one shown. The status names both captures'
+generations, and the notes say how the rows pair them.
+
+For a row of executables, Show in the window opens an executable's rung, its processes listed - of a pair, the first
+the session shown ran - where the window groups processes by executable. Where it groups them by terminal session, or
+no process of the session shown ran the executable, as of another capture's, Show says why instead, and Enter and a
+double click open nothing.
+
 ## 8b. A redacted report
 
 A comparison shares as a metadata-only report of the sharing report's contract (`intercat-share-report-v1`, kind
@@ -249,7 +261,8 @@ still said.
 
 ## 9. Not defined at this version
 
-- **Two captures in the window**, and the window's comparison by executable: the command line's only (§2a, §2b).
+- **Another capture's interval in the window** other than its whole recording: the command line's `--baseline` takes
+  any.
 - **A bounded change under a gap.** The losses a ledger counts bound the records a mechanism lost, not a row's (§5); a
   bound per row would need what a lost record could have moved.
 - Difference timelines, graph overlays, saved comparison specifications, recurring patterns, outliers and causal

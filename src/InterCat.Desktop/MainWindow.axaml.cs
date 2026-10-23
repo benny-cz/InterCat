@@ -1215,19 +1215,16 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
 
         using var comparing = new SessionCompareWindow(currentSessionPath, sessionId, compared, viewModel.ComparableTime,
-            viewModel.ComparesWithinRecording, viewModel.TimeBase, viewModel.EvidencePolicy);
+            viewModel.ComparesWithinRecording, viewModel.TimeBase, viewModel.EvidencePolicy)
+        {
+            WhyNotShown = viewModel.WhyNotShown,
+        };
         if (await comparing.ShowDialog<ComparedRelationship?>(this) is not { } chosen || closed)
         {
             return;
         }
 
-        bool opened = chosen switch
-        {
-            { Relationship: { } relationship } => workspace.OpenRelationship(relationship.Key),
-            { Host: { } host } => workspace.OpenProcessRung(host.Link.Process),
-            _ => false,
-        };
-        if (opened) FocusRail();
+        if (workspace.OpenCompared(chosen)) FocusRail();
     }
 
     private void ToggleTables(object? sender, RoutedEventArgs eventArgs)

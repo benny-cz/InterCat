@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Automation;
@@ -7,6 +8,7 @@ using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
@@ -14,9 +16,21 @@ using InterCat.Domain;
 
 namespace InterCat.Desktop;
 
-/// <summary>A baseline the comparison offers: an interval it names, or, without one, one typed in seconds.</summary>
+/// <summary>
+/// A baseline the comparison offers: an interval it names - of this session, or of another capture, whose folder and
+/// session it names too - or, without one, one typed in seconds, or another capture to choose.
+/// </summary>
 internal sealed record BaselineChoice(string Label, TimeRange? Interval)
 {
+    /// <summary>The folder of the other capture the interval is of; null for an interval of this session.</summary>
+    public string? CapturePath { get; init; }
+
+    /// <summary>The session the other capture's folder held when it was chosen.</summary>
+    public Guid? CaptureSession { get; init; }
+
+    /// <summary>Whether choosing it asks for another capture's folder.</summary>
+    public bool ChoosesCapture { get; init; }
+
     public override string ToString() => Label;
 }
 
@@ -41,6 +55,8 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     private readonly TextBox to = new() { Watermark = "to, s", Width = 110 };
     private readonly StackPanel typed;
     private readonly ComboBox metric = new() { MinWidth = 260 };
+    private readonly ComboBox rowsOf = new() { MinWidth = 260 };
+    private readonly ObservableCollection<BaselineChoice> baselines;
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontWeight = FontWeight.SemiBold };
     private readonly TextBlock coverage = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
     private readonly ListBox rows = new();
@@ -50,7 +66,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     private readonly Button show = new() { Content = "Show in the window", Classes = { "primary" } };
     private readonly Button share = new() { Content = "Share redacted…" };
     private readonly Button close = new() { Content = "Close" };
-    private readonly TextBlock saved = new()
+    private readonly TextBlock done = new()
     {
         TextWrapping = TextWrapping.Wrap,
         FontSize = 11,
@@ -65,6 +81,8 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     private CancellationTokenSource? reading;
     private bool comparing;
     private bool sharing;
+    private int lastBaseline;
+    private bool reverting;
     private bool shownOnce;
     private bool closed;
     private bool disposed;
@@ -91,11 +109,14 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
         CultureInfo culture = CultureInfo.CurrentCulture;
-        baseline.ItemsSource = Baselines(compared, within, recorded, clock, culture);
+        baselines = new(Baselines(compared, within, recorded, clock, culture));
+        baseline.ItemsSource = baselines;
         baseline.SelectedIndex = 0;
         TrimmedChoices.Apply(baseline);
         metric.ItemsSource = new[] { "Records per second", "Bytes sent across per second" };
         metric.SelectedIndex = 0;
+        rowsOf.ItemsSource = new[] { "Each process", "Each executable, its processes together" };
+        rowsOf.SelectedIndex = 0;
         typed = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -109,6 +130,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         AutomationProperties.SetName(from, "The baseline's start, in seconds of session time");
         AutomationProperties.SetName(to, "The baseline's end, in seconds of session time");
         AutomationProperties.SetName(metric, "What each row is compared by");
+        AutomationProperties.SetName(rowsOf, "What each row compares: one process, or one executable's processes together");
         AutomationProperties.SetName(status, "What the comparison found");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(coverage, "What the capture covered over each interval");
@@ -119,8 +141,8 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         AutomationProperties.SetName(show, "Show the chosen row in the window");
         AutomationProperties.SetName(share, "Share the comparison as a redacted report");
         AutomationProperties.SetName(close, "Close the comparison");
-        AutomationProperties.SetName(saved, "What sharing the comparison did");
-        AutomationProperties.SetLiveSetting(saved, AutomationLiveSetting.Polite);
+        AutomationProperties.SetName(done, "What the window's last action did");
+        AutomationProperties.SetLiveSetting(done, AutomationLiveSetting.Polite);
         AccessibleItems.Name(rows);
 
         // A row reads by its two ends, whose names can be long: it wraps within the list rather than running past its edge,
@@ -133,10 +155,22 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         // saying what to write.
         baseline.SelectionChanged += (_, _) =>
         {
+            if (Chosen is { ChoosesCapture: true })
+            {
+                typed.IsVisible = false;
+                _ = ChooseCaptureAsync();
+                return;
+            }
+
+            lastBaseline = baseline.SelectedIndex;
             typed.IsVisible = Chosen is { Interval: null };
-            _ = CompareAsync();
+            OfferRows();
+
+            // Put back after another capture was declined or refused, the comparison shown is still this baseline's.
+            if (!reverting) _ = CompareAsync();
         };
         metric.SelectionChanged += (_, _) => _ = CompareAsync();
+        rowsOf.SelectionChanged += (_, _) => _ = CompareAsync();
         compare.Click += (_, _) => _ = CompareAsync();
         show.Click += (_, _) => ChooseSelected();
         share.Click += (_, _) => _ = ShareAsync();
@@ -174,7 +208,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         var fields = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("Auto,*"),
-            RowDefinitions = new RowDefinitions("Auto,Auto,Auto"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"),
             ColumnSpacing = 12,
             RowSpacing = 6,
         };
@@ -186,6 +220,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         });
         Place(fields, 1, "Baseline", new StackPanel { Spacing = 6, Children = { baseline, typed } });
         Place(fields, 2, "Compared by", metric);
+        Place(fields, 3, "Rows", rowsOf);
 
         var table = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 4 };
         heading = Line(Headings, FontWeight.SemiBold, widths);
@@ -194,7 +229,8 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         table.Children.Add(heading);
         table.Children.Add(rows);
 
-        // What sharing did is said beside the buttons, so the comparison's own status keeps saying what it found.
+        // What sharing, or choosing another capture, did is said beside the buttons, so the comparison's own status keeps
+        // saying what it found.
         var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -203,7 +239,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         };
         var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 12 };
         Grid.SetColumn(buttons, 1);
-        footer.Children.Add(saved);
+        footer.Children.Add(done);
         footer.Children.Add(buttons);
         var said = new StackPanel { Spacing = 6, Children = { reasons, notes } };
         var grid = new Grid
@@ -227,6 +263,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         Content = grid;
 
         Choices = new PathChoices(this);
+        OfferRows();
         Offering.Offer(compare, null, CompareDoes);
         OfferShow();
         OfferShare();
@@ -241,14 +278,29 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     /// <summary>The comparison shown, the latest one read; null before one is.</summary>
     public IntervalComparison? Shown { get; private set; }
 
-    /// <summary>Where the window asks for the file a redacted report is saved to; a test answers in a person's place.</summary>
+    /// <summary>Where the window asks for a redacted report's file or another capture's folder; a test answers in a person's place.</summary>
     internal PathChoices Choices { get; set; }
 
-    /// <summary>What the window says sharing the comparison did.</summary>
-    public string SharingSaid => saved.Text ?? string.Empty;
+    /// <summary>What the window says its last action did, beside its buttons: sharing the comparison, or choosing another capture.</summary>
+    public string Done => done.Text ?? string.Empty;
 
     /// <summary>Completes when the latest report asked for has been saved, declined or refused.</summary>
     public Task Shared { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
+    /// Why the window that opened the comparison cannot open what a row compares, which Show in the window then says; null
+    /// where every row can be opened.
+    /// </summary>
+    public Func<ComparedRelationship, string?>? WhyNotShown { get; init; }
+
+    /// <summary>Completes when the latest other capture asked for has been chosen, declined or refused.</summary>
+    public Task CaptureChosen { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Chooses what each row compares: each executable's processes together, or each process.</summary>
+    public void CompareByExecutable(bool executables) => rowsOf.SelectedIndex = executables ? 1 : 0;
+
+    /// <summary>Whether the rows compare executables, rather than processes.</summary>
+    public bool ComparesExecutables => rowsOf.SelectedIndex == 1;
 
     /// <summary>The rows shown, as the list shows them.</summary>
     public IReadOnlyList<ComparisonRow> Rows => listed;
@@ -320,6 +372,16 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         + "compared in it: processes, executables and other hosts become random tokens, and no name, PID, address or port "
         + "is kept. What it keeps and leaves out is said before its file is chosen.";
 
+    /// <summary>The baseline that asks for another capture's folder.</summary>
+    internal const string ChooseCapture = "Another saved capture…";
+
+    /// <summary>Why the rows compare executables while the baseline is another capture's.</summary>
+    internal const string AcrossCaptures = "Two captures compare by executable: a process of one capture is never another's.";
+
+    /// <summary>What the Rows choice does, offered.</summary>
+    internal const string RowsDoes = "Compare each process, or each executable's processes together - grouped by the path their "
+        + "image was witnessed at, so a process that restarted stays one row.";
+
     /// <summary>What Show in the window does, offered.</summary>
     internal const string ShowDoes = "Close the comparison and open what the chosen row compares: a relationship's process "
         + "and channel, or the process whose connections to another host it compares, whose inspector lists the hosts it reached.";
@@ -348,6 +410,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
 
         offered.Add(new((recorded ? "The whole recording, " : "The whole session, ") + clock.HalfOpenRange(within, culture), within));
         offered.Add(new("Another interval, typed in seconds…", null));
+        offered.Add(new(ChooseCapture, null) { ChoosesCapture = true });
         return offered;
     }
 
@@ -358,7 +421,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     public Task CompareAsync()
     {
         if (closed) return Task.CompletedTask;
-        saved.Text = string.Empty;
+        done.Text = string.Empty;
         reading?.Cancel();
         var request = new CancellationTokenSource();
         reading = request;
@@ -366,9 +429,92 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         return Compared;
     }
 
+    /// <summary>
+    /// Asks for another saved capture's folder and offers its whole recording, or the span of its records, as the baseline,
+    /// rows by executable; a folder that holds no session, or this one, is said, and the baseline chosen before stays.
+    /// </summary>
+    private Task ChooseCaptureAsync()
+    {
+        CaptureChosen = ChooseAsync();
+        return CaptureChosen;
+
+        async Task ChooseAsync()
+        {
+            string? folder = await Choices.OpenFolderAsync(new FolderPickerOpenOptions { Title = "Choose the saved capture to compare with" });
+            if (closed) return;
+            if (folder is null)
+            {
+                Revert();
+                return;
+            }
+
+            try
+            {
+                (Guid session, TimeRange? whole, bool recordedThere) = await Task.Run(() =>
+                {
+                    SessionOverviewBundle overview = SessionOverviewProjector.Project(SharedSessionStores.Open(folder), policy,
+                        cancellationToken: lifetime.Token);
+                    return (overview.SessionId, overview.Recording ?? overview.Extent, overview.Recording is not null);
+                }, lifetime.Token);
+                if (closed) return;
+                string? refused = session == sessionId
+                    ? "That folder holds the session shown: choose another capture, or an interval of this one."
+                    : whole is not { SpanTicks: > 0 } ? "That capture holds no records to compare with." : null;
+                if (refused is not null)
+                {
+                    Revert();
+                    done.Text = refused;
+                    return;
+                }
+
+                CultureInfo culture = CultureInfo.CurrentCulture;
+                string name = Path.GetFileName(Path.TrimEndingDirectorySeparator(folder));
+                var chosen = new BaselineChoice((recordedThere ? "The whole recording of " : "The whole session of ") + name + ", "
+                    + WorkspaceTime.FormatHalfOpenRange(whole!.Value, culture), whole)
+                {
+                    CapturePath = folder,
+                    CaptureSession = session,
+                };
+
+                // One other capture is offered at a time, the latest chosen, just before the choice that asks for another.
+                if (baselines.FirstOrDefault(choice => choice.CapturePath is not null) is { } earlier) baselines.Remove(earlier);
+                baselines.Insert(baselines.Count - 1, chosen);
+                baseline.SelectedItem = chosen;
+            }
+            catch (OperationCanceledException) when (closed)
+            {
+                // Closing the window let the capture go.
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+                or UnauthorizedAccessException or ArgumentException)
+            {
+                if (closed) return;
+                Revert();
+                done.Text = "That folder holds no session to compare with: " + exception.Message;
+            }
+        }
+
+        // The baseline chosen before is chosen again, its comparison still the one shown.
+        void Revert()
+        {
+            reverting = true;
+            baseline.SelectedIndex = lastBaseline;
+            reverting = false;
+        }
+    }
+
+    /// <summary>Offers choosing what rows compare, or says why not: two captures compare by executable alone.</summary>
+    private void OfferRows()
+    {
+        bool across = Chosen is { CapturePath: not null };
+        if (across) rowsOf.SelectedIndex = 1;
+        Offering.Offer(rowsOf, across ? AcrossCaptures : null, RowsDoes);
+    }
+
     private async Task ReadAsync(CancellationTokenSource request)
     {
-        TimeRange? against = Chosen?.Interval ?? Typed();
+        BaselineChoice? choice = Chosen;
+        TimeRange? against = choice?.Interval ?? Typed();
         if (against is not { } chosenBaseline)
         {
             Clear();
@@ -381,6 +527,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         }
 
         ComparisonMetric by = metric.SelectedIndex == 1 ? ComparisonMetric.BytesSent : ComparisonMetric.Records;
+        ComparisonGrouping grouping = rowsOf.SelectedIndex == 1 ? ComparisonGrouping.Executable : ComparisonGrouping.Process;
         status.Text = "Comparing the two intervals…";
         comparing = true;
         Offering.Offer(compare, Comparing, CompareDoes);
@@ -389,8 +536,11 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         try
         {
             CancellationToken token = request.Token;
-            IntervalComparison comparison = await Task.Run(() => SessionComparison.Compare(
-                SharedSessionStores.Open(path, sessionId), chosenBaseline, compared, by, policy, cancellationToken: token), token);
+            IntervalComparison comparison = await Task.Run(() => choice is { CapturePath: { } other, CaptureSession: { } otherSession }
+                ? SessionComparison.CompareCaptures(SharedSessionStores.Open(other, otherSession), chosenBaseline,
+                    SharedSessionStores.Open(path, sessionId), compared, by, policy, token)
+                : SessionComparison.Compare(SharedSessionStores.Open(path, sessionId), chosenBaseline, compared, by, policy,
+                    grouping, token), token);
             if (closed || !ReferenceEquals(reading, request)) return;
             Show(comparison);
         }
@@ -455,7 +605,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
             await ExportFileWriter.WriteAsync(file, report, overwrite: true, lifetime.Token);
             if (!closed)
             {
-                saved.Text = $"Saved a redacted report of {Spoken.Count(comparison.Relationships.Count, "row")} to {file}. "
+                done.Text = $"Saved a redacted report of {Spoken.Count(comparison.Relationships.Count, "row")} to {file}. "
                     + "Review it before sharing it.";
             }
         }
@@ -465,7 +615,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            if (!closed) saved.Text = "Could not save the redacted report: " + exception.Message;
+            if (!closed) done.Text = "Could not save the redacted report: " + exception.Message;
         }
         finally
         {
@@ -475,7 +625,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     }
 
     /// <summary>Says where the window says what sharing did why the system's dialog to choose the file did not open.</summary>
-    void IChoosingWindow.PickerFailed(string why) => saved.Text = why;
+    void IChoosingWindow.PickerFailed(string why) => done.Text = why;
 
     /// <summary>Lets go of the comparison shown, its rows, coverage, reasons and notes.</summary>
     private void Clear()
@@ -517,18 +667,26 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
 
         rows.ItemsSource = listed;
         rows.SelectedIndex = listed.Count > 0 ? 0 : -1;
-        int hosts = comparison.Relationships.Count(row => row.Host is not null);
+        int hosts = comparison.Relationships.Count(row => row.Host is not null || row.ExecutableHost is not null);
         int between = comparison.Relationships.Count - hosts;
+        bool executables = comparison.Grouping == ComparisonGrouping.Executable;
         string[] parts =
         [
-            .. between > 0 ? [Spoken.Count(between, "relationship") + " between processes"] : Array.Empty<string>(),
-            .. hosts > 0 ? [Spoken.Count(hosts, "process's connections to another host", "processes' connections to other hosts")]
+            .. between > 0 ? [Spoken.Count(between, "relationship") + (executables ? " between executables" : " between processes")]
+                : Array.Empty<string>(),
+            .. hosts > 0
+                ? [executables
+                    ? Spoken.Count(hosts, "executable's connections to another host", "executables' connections to other hosts")
+                    : Spoken.Count(hosts, "process's connections to another host", "processes' connections to other hosts")]
                 : Array.Empty<string>(),
         ];
+        string generation = comparison.BaselineGeneration is { } baselineGeneration
+            ? string.Create(culture, $"Generation {comparison.Generation:N0}, the baseline capture's {baselineGeneration:N0} · ")
+            : string.Create(culture, $"Generation {comparison.Generation:N0} · ");
         status.Text = comparison.Relationships.Count == 0
             ? "No relationship, and no process's connections to another host, has a record in either interval, so none is "
                 + "compared."
-            : string.Create(culture, $"Generation {comparison.Generation:N0} · ") + string.Join(" and ", parts)
+            : generation + string.Join(" and ", parts)
                 + " compared, the most changed first"
                 + (comparison.Quiet > 0 ? string.Create(culture, $" · {comparison.Quiet:N0} quiet in both") : string.Empty);
         coverage.Text = string.Join("\n", new[]
@@ -544,6 +702,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
                     ? [string.Create(culture, $"{shownRows.Count - listed.Count:N0} more, less changed, are not listed.")]
                     : Array.Empty<string>(),
                 .. ComparisonText.Notes([.. listed.Select(row => row.Compared)], comparison.Metric),
+                .. ComparisonText.Grouping(comparison, culture),
             ]);
         KeepKeyboard(firstShown: !shownOnce);
         shownOnce = true;
@@ -568,18 +727,22 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         : Shown is null ? NothingToShare
         : null, ShareDoes);
 
-    /// <summary>Offers showing the chosen row, or says why not: while a comparison is read, or with no row chosen.</summary>
-    private void OfferShow() => Offering.Offer(show,
+    /// <summary>
+    /// Offers showing the chosen row, or says why not: while a comparison is read, with no row chosen, or where the window
+    /// that opened the comparison cannot open what the row compares.
+    /// </summary>
+    private void OfferShow() => Offering.Offer(show, WhyNotShow(), ShowDoes);
+
+    private string? WhyNotShow() =>
         comparing ? Comparing
         : rows.SelectedIndex < 0 || rows.SelectedIndex >= listed.Count ? NoRowChosen
-        : null, ShowDoes);
+        : WhyNotShown?.Invoke(listed[rows.SelectedIndex].Compared);
 
-    /// <summary>Closes the window with the chosen row, which the workspace opens.</summary>
+    /// <summary>Closes the window with the chosen row, which the workspace opens, where it can.</summary>
     private void ChooseSelected()
     {
-        int index = rows.SelectedIndex;
-        if (index < 0 || index >= listed.Count) return;
-        Close(listed[index].Compared);
+        if (WhyNotShow() is not null) return;
+        Close(listed[rows.SelectedIndex].Compared);
     }
 
     /// <summary>A label and its control on one row of the fields.</summary>

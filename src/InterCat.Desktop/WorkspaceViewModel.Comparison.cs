@@ -32,4 +32,54 @@ public sealed partial class WorkspaceViewModel
     public bool OpenProcessRung(ProcessInstanceId processId) =>
         wholeSnapshot.Processes.FirstOrDefault(process => process.Id == processId) is { } process
         && DescendAlong([process.GroupKey, process.Id.ToString()], selectedInterval);
+
+    /// <summary>
+    /// Opens an executable's rung, its processes listed, from wherever the ladder is, as a comparison's row by executable
+    /// opens it. False where the window groups processes otherwise, or no process of the session ran the executable.
+    /// </summary>
+    public bool OpenExecutableRung(string groupKey) =>
+        WhyNoExecutableRung(groupKey) is null && DescendAlong([groupKey], selectedInterval);
+
+    /// <summary>
+    /// Opens what a comparison's row compares: a relationship as a double click on its edge opens it, a process's
+    /// connections to other hosts by the process's rung, and an executable's by its rung - of a pair of executables, the
+    /// first the session ran. False where the row names nothing the window can open.
+    /// </summary>
+    public bool OpenCompared(ComparedRelationship row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return row switch
+        {
+            { Relationship: { } relationship } => OpenRelationship(relationship.Key),
+            { Host: { } host } => OpenProcessRung(host.Link.Process),
+            { Executables: { } pair } => OpenExecutableRung(WhyNoExecutableRung(pair.Source) is null ? pair.Source : pair.Target),
+            { ExecutableHost: { } reach } => OpenExecutableRung(reach.Executable),
+            _ => false,
+        };
+    }
+
+    /// <summary>
+    /// Why the window cannot open what a comparison's row compares, said where Show in the window is offered: an
+    /// executable's rung where the window groups processes by terminal session, or where no process of this session ran
+    /// it, as of another capture. Null where it can.
+    /// </summary>
+    public string? WhyNotShown(ComparedRelationship row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return row switch
+        {
+            { Executables: { } pair } => WhyNoExecutableRung(pair.Source) is null ? null : WhyNoExecutableRung(pair.Target),
+            { ExecutableHost: { } reach } => WhyNoExecutableRung(reach.Executable),
+            _ => null,
+        };
+    }
+
+    /// <summary>Why the ladder has no rung of the executable a group key names; null where it has.</summary>
+    private string? WhyNoExecutableRung(string groupKey) =>
+        Grouping != LaneGrouping.Executable
+            ? "The window groups processes by terminal session, so it has no executable's rung to open; group them by "
+                + "executable to open it."
+            : wholeSnapshot.Groups.Any(group => group.Key == groupKey)
+                ? null
+                : "No process of the session shown ran this executable.";
 }

@@ -43,8 +43,8 @@ its own host.
 
 - Identical captures compare as equal, and a capture profile that changed between them states no change of what it
   changed - M12's first two exit tests across captures - each by a named test.
-- The window can offer another saved session as a baseline, comparing by executable; difference timelines and graph
-  overlays will read either form.
+- The window offers another saved capture's whole recording as a baseline, comparing by executable (revision 757);
+  difference timelines and graph overlays will read either form.
 
 ## Alternatives considered
 

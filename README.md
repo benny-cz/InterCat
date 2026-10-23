@@ -76,7 +76,8 @@ first. A change is stated only where the capture measured both intervals alike; 
 collected in one, records lost, sources changed - both values stand, with the reason. Either can save the comparison
 as a redacted report to share, its processes, executables and hosts random tokens. `--group-by executable` compares
 programs rather than processes, each one's processes together, so a process that restarted stays one row, and
-`--baseline-session` compares two captures that way, each on its own clock.
+`--baseline-session` compares two captures that way, each on its own clock. In the window, Rows compares executables,
+and *Another saved capture…* sets a saved capture's whole recording as the baseline.
 
 F1 in the window lists every key it takes.
 

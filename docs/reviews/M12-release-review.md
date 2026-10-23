@@ -105,3 +105,10 @@ generation; and a change stated only where both captures covered the row's mecha
 descriptors. The first two exit tests are now met across captures, each by a named test, and comparing two captures
 leaves the list of what is not built. The window compares neither two captures nor executables yet; nothing else above
 changes.
+
+## Addendum, revision 757
+
+The window compares by executable (Rows) and with another saved capture (Another saved capture…, its whole recording
+the baseline), in the command line's words, opening an executable's rung where it groups processes by executable and
+saying why not where it cannot (`comparison-v1` §8a). Both forms of the comparison are now in the window; nothing else
+above changes.
