@@ -101,6 +101,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private HoverCard? hoverCard;
     private GraphDisplay? hoverCardDisplay;
     private bool hoverCardPinned;
+    private GraphComparisonOverlay? hoverCardOverlay;
 
     // Label text carries its brush, so it is laid out per theme mode as well as per text, and drawn without allocating.
     private readonly PaneText labels = new(512);
@@ -117,6 +118,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private readonly List<Rect> chosenLabels = [];
     private readonly List<(Point From, Point To)> drawnLeaders = [];
     private readonly List<Rect> drawnHeads = [];
+    private readonly Dictionary<string, (Point At, GraphComparisonMarked Marked)> drawnMarks = new(StringComparer.Ordinal);
     private readonly Dictionary<GraphDisplayNode, string> details = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<GraphDisplayNode, string> names = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<GraphDisplayNode> repeats = new(ReferenceEqualityComparer.Instance);
@@ -184,6 +186,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             ContextRimPen = new(MutedTextBrush, 1);
             SampleRingPen = new(TextBrush, 2);
             LeaderPen = new(MutedTextBrush, 1);
+            ComparisonMarkPen = new(TextBrush, 1.25);
+            SharedComparisonDashes = new(ComparisonMarkPen, 2, 1.6);
         }
 
         public IBrush NodeBrush { get; }
@@ -213,6 +217,12 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         /// <summary>The hairline that ties a name set away from its node to the node.</summary>
         public Pen LeaderPen { get; }
+
+        /// <summary>The ring a comparison's mark on an edge is drawn in (§8e), and its broken form for a mark of more than the edge.</summary>
+        public Pen ComparisonMarkPen { get; }
+
+        public Dashes SharedComparisonDashes { get; }
+
 
         /// <summary>Mechanism fills and edge pens, cached per semantic key within this mode.</summary>
         public Dictionary<Mechanism, SolidColorBrush> MechanismBrushes { get; } = [];
@@ -736,6 +746,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         IReadOnlySet<string> cellNodes = viewModel.CellGraphNodes;
         List<Rect> heads = drawnHeads;
         heads.Clear();
+        GraphComparisonOverlay? overlay = viewModel.ComparisonOverlay;
+        Dictionary<string, (Point At, GraphComparisonMarked Marked)> marks = drawnMarks;
+        marks.Clear();
         for (int edgeIndex = 0; edgeIndex < display.Edges.Count; edgeIndex++)
         {
             GraphDisplayEdge edge = display.Edges[edgeIndex];
@@ -800,6 +813,12 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             {
                 Point middle = new((source.X + target.X) / 2, (source.Y + target.Y) / 2);
                 context.DrawEllipse(Brushes.Transparent, RingPen(edge.Mechanism), middle, 5, 5);
+            }
+
+            if (overlay is not null && overlay.Edges.TryGetValue(edge.Key, out GraphComparisonMarked? marked))
+            {
+                marks[edge.Key] = (ComparisonMarkAt(source, target, sourceReach, targetReach, edge.Lane, RingsMiddle(edge.Strength)),
+                    marked);
             }
         }
 
@@ -948,6 +967,14 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         DrawLabels(context, display, order, points, radii, new(selected, partlySelected, chosenHit, partlyChosenHit),
             focused);
+
+        // A comparison's marks are drawn last, over the labels, so none is hidden: a person asked for them, and Clear takes
+        // them away (§8e).
+        foreach ((Point at, GraphComparisonMarked marked) in marks.Values)
+        {
+            DrawComparisonMark(context, at, marked);
+        }
+
         if (viewModel.GraphLayoutProblem is { } problem)
         {
             if (!string.Equals(problemFor, problem, StringComparison.Ordinal))
@@ -968,6 +995,60 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>Where the mark a node the search finds carries is drawn: at its upper right, opposite a pin's head.</summary>
     internal static Point SearchMarkAt(Point center, double radius) =>
         new(center.X + (radius * 0.75), center.Y - (radius * 0.75));
+
+    /// <summary>The radius of a comparison's mark on an edge (§8e).</summary>
+    internal const double ComparisonMarkRadius = 7.5;
+
+    /// <summary>How far apart along their strokes the marks of edges drawn beside one another are, per lane between them.</summary>
+    private const double ComparisonMarkStagger = 18;
+
+    /// <summary>
+    /// Where a comparison's mark is drawn on an edge whose lane runs from <paramref name="source"/> to
+    /// <paramref name="target"/> (§8e): on its stroke at its middle, off a middle ring where the edge carries one, which it
+    /// must not hide, and staggered along the stroke by its <paramref name="lane"/>, so the marks of edges drawn beside one
+    /// another never overlap - kept off the nodes at its ends, <paramref name="sourceReach"/> and
+    /// <paramref name="targetReach"/> along it, where the stroke shows enough of itself.
+    /// </summary>
+    internal static Point ComparisonMarkAt(Point source, Point target, double sourceReach, double targetReach, double lane,
+        bool ringed)
+    {
+        double dx = target.X - source.X;
+        double dy = target.Y - source.Y;
+        double length = Math.Sqrt((dx * dx) + (dy * dy));
+        if (length < 1)
+        {
+            return source;
+        }
+
+        double shift = (lane * ComparisonMarkStagger) + (ringed ? (lane < 0 ? -1 : 1) * (5 + ComparisonMarkRadius + 1) : 0);
+        double low = sourceReach + ComparisonMarkRadius + 1;
+        double high = length - targetReach - ComparisonMarkRadius - 1;
+        double at = low <= high ? Math.Clamp((length / 2) + shift, low, high) : length / 2;
+        return new Point(source.X + (dx / length * at), source.Y + (dy / length * at));
+    }
+
+    /// <summary>
+    /// A comparison's mark on an edge (§8e): a disc of the pane's own surface ringed in the ink - broken where the mark is of
+    /// more than the edge, an executable's processes together - holding the mark's glyph, laid out once like the labels, so
+    /// it reads over any stroke in either theme and never by colour alone (R14).
+    /// </summary>
+    internal void DrawComparisonMark(DrawingContext context, Point at, GraphComparisonMarked marked)
+    {
+        if (marked.Shared)
+        {
+            DrawDashedCircle(context, PlotBrush, Current.SharedComparisonDashes, at, ComparisonMarkRadius);
+        }
+        else
+        {
+            context.DrawEllipse(PlotBrush, Current.ComparisonMarkPen, at, ComparisonMarkRadius, ComparisonMarkRadius);
+        }
+
+        TextLayout glyph = labels.Get(GraphComparisonOverlay.Glyph(marked.Mark), 10, TextBrush);
+        glyph.Draw(context, new Point(at.X - (glyph.Width / 2), at.Y - (glyph.Height / 2)));
+    }
+
+    /// <summary>Where the last frame drew each comparison mark, by its edge's key; a test reads it.</summary>
+    internal IReadOnlyDictionary<string, (Point At, GraphComparisonMarked Marked)> DrawnComparisonMarks => drawnMarks;
 
     /// <summary>
     /// §6.3's Other hosts node: a resource, not a process, so it is drawn square rather than round, with a globe's lines
@@ -1167,11 +1248,13 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             }
 
             bool pinned = viewModel.IsGraphNodePinned(hovered);
-            if (hoverCard is null || !ReferenceEquals(hoverCardDisplay, viewModel.GraphDisplay) || hoverCardPinned != pinned)
+            if (hoverCard is null || !ReferenceEquals(hoverCardDisplay, viewModel.GraphDisplay) || hoverCardPinned != pinned
+                || !ReferenceEquals(hoverCardOverlay, viewModel.ComparisonOverlay))
             {
                 hoverCard = viewModel.DescribeGraphHover(hovered);
                 hoverCardDisplay = viewModel.GraphDisplay;
                 hoverCardPinned = pinned;
+                hoverCardOverlay = viewModel.ComparisonOverlay;
             }
 
             return hoverCard;

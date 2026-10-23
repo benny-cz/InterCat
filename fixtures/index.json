@@ -1399,6 +1399,7 @@
       ],
       "P6": [
         "P6: a PID seen only in its own records is one provisional instance, never an invented start",
+        "P6: a comparison by executable marks every edge of its processes by their executables' row, and says the mark is of more than the edge",
         "P6: an end held by two processes, or by records that bind to none, leaves its peers unresolved",
         "P6: reusable values never resolve an instance without lifecycle evidence",
         "P6: when lifecycle evidence cannot tell incarnations apart, only an other end they all agree on is named"
@@ -1478,9 +1479,12 @@
         "R13: the merged time chooses the column under a click, zooms around the pointer under the wheel, and opens a column double-clicked in InterCat's window, in front"
       ],
       "R14": [
+        "R14: a comparison's mark is its glyph in a ringed disc, the ring broken where the mark is of more than its edge",
+        "R14: a comparison's mark sits on its edge's stroke, off a middle ring, staggered by its lane, and clear of the nodes",
         "R14: a high-contrast mode holds every ink to 7 to 1, every fill to 4.5 to 1 and its divider to 3 to 1 on every surface",
         "R14: a relation weaker than correlated - candidate, unresolved or conflicting - is dotted and ringed, so none reads as asserted",
         "R14: adjacent families stay separable under every simulated vision model, and any two in normal vision",
+        "R14: an edge's mark is its rows' change where they agree, their direction where each went one way, and none where one cannot be compared",
         "R14: every fill clears 3 to 1 against the ground it is drawn on",
         "R14: every ink token clears 4.5 to 1 against every surface it can land on",
         "R14: the palette is held to the targets ADR-050 records, so a lower one is a decision, not a regenerated report",
@@ -1511,6 +1515,7 @@
         "R15: Page Down and Page Up move the keyboard a page through the ranked table, choosing the row they come to, and stay at its ends",
         "R15: Reveal, which waits disabled while it reads, gives the record's text the keyboard back with the bytes in it",
         "R15: Shift and a drag across the timeline brushes a range and the ranking counts only that range",
+        "R15: Show on the graph marks each edge by how it changed, says so beneath the header, on its card and in the table, and Clear takes it away",
         "R15: Update to newest gives the ranked table the keyboard as the banner it sits in goes",
         "R15: a button that disables itself by what it did gives the keyboard to its page; Remove and Find keep it while they can",
         "R15: a capture gives Stop the keyboard once it records, and the ranked table once Stop is pressed and the session saved",
@@ -1564,6 +1569,7 @@
         "R15: below the machine rung the relationship table lists what the rung's graph draws and counts the rest",
         "R15: candidate joins found again keep the keyboard on the button for the chosen one, and a decision gives it to the candidate's row",
         "R15: down an aggregate's list past the inspector's foot, the inspector scrolls one row at a time",
+        "R15: each drawn edge is marked by the rows it draws, the table's rows by theirs, and every other row counted",
         "R15: each investigation dialog opened from its button records what it is for, says so, and gives the keyboard back to that button",
         "R15: every dialog and prompt opens with the keyboard on one of its own controls, and Esc closes it",
         "R15: every focusable element and list item is named for the ear at every rung, never by a record's fields",
@@ -2120,6 +2126,7 @@
       ],
       "R7": [
         "R7: F5 applies the held generation and keeps the evidence rung and its scope",
+        "R7: a comparison shown on the graph stays through a newer generation, which it says it has not read, and goes with its session",
         "R7: a disposed scheduler cannot publish its in-flight layout",
         "R7: a late obsolete layout cannot replace a newer graph even if its worker ignores cancellation",
         "R7: a later publication shows the selection's highlight until its own count replaces it",
@@ -2138,7 +2145,8 @@
         "R7: one leased generation yields a stable graph and exact graph-eligible counts",
         "R7: pausing the live view holds its generation while recording continues, and F resumes it",
         "R7: records hold the view still; a newer generation is offered, and applied on leaving",
-        "R7: records read as the capture ends keep their view, which says the session as saved waits for them, and shows it once they are left"
+        "R7: records read as the capture ends keep their view, which says the session as saved waits for them, and shows it once they are left",
+        "R7: the graph takes a comparison of the session it shows and of no other, and marks each drawing of it afresh"
       ],
       "R8": [
         "R8: ETL replay sink records its own bounded-budget drops",

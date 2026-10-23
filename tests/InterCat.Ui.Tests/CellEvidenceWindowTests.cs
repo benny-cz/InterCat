@@ -202,6 +202,17 @@ public sealed class CellEvidenceWindowTests
         Color barred = At(Settle(window), bar);
         Assert.Contains("highlighted", container.Classes);
         Assert.Equal("highlighted for the chosen cell", AutomationProperties.GetItemStatus(container));
+
+        // While the graph shows a comparison too, the row says both: that it is highlighted, and how it changed (§8e).
+        TimeRange whole = workspace.WholeSnapshot.Extent;
+        long middle = whole.StartTicks + (whole.SpanTicks / 2);
+        Assert.True(workspace.ShowComparison(SessionComparison.Compare(session.Store, new TimeRange(whole.StartTicks, middle),
+            new TimeRange(middle, whole.EndTicks))));
+        Dispatch();
+        Assert.StartsWith("highlighted for the chosen cell; compared: ", AutomationProperties.GetItemStatus(container), StringComparison.Ordinal);
+        workspace.ClearComparison();
+        Dispatch();
+        Assert.Equal("highlighted for the chosen cell", AutomationProperties.GetItemStatus(container));
         workspace.ShowTables = false;
 
         // A process selected is what E would list, so over the same interval the highlight goes, and the row's mark with

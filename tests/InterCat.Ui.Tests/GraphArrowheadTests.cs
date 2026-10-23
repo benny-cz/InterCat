@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
+using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.CaptureBroker;
@@ -25,6 +26,8 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public sealed class GraphArrowheadTests
 {
+    private static readonly MechanismCoverage Covered = new(Mechanism.Tcp, CoverageState.Covered, "covered");
+
     [AvaloniaFact(DisplayName = "§6.3: an edge draws an arrowhead at each end its connections ran to, wider than its stroke, and its stroke stops under the head")]
     public void AnEdgeDrawsAnArrowheadWhereItsConnectionsRan()
     {
@@ -385,6 +388,65 @@ public sealed class GraphArrowheadTests
         rows.Add(Transfer(tick++, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 300, ordinal++)
             .Between("127.0.0.1:135", "127.0.0.1:50010"));
         return [.. rows];
+    }
+
+    [Fact(DisplayName = "R14: a comparison's mark sits on its edge's stroke, off a middle ring, staggered by its lane, and clear of the nodes")]
+    public void AComparisonsMarkSitsOnItsEdge()
+    {
+        // A level edge 200 px long between discs reaching 20 px along it: the mark at its middle, off the middle ring of a
+        // weak relation toward its target, and edges beside one another staggered along their strokes by their lanes.
+        Point from = new(0, 0), to = new(200, 0);
+        Assert.Equal(new Point(100, 0), GraphView.ComparisonMarkAt(from, to, 20, 20, 0, ringed: false));
+        Assert.Equal(new Point(113.5, 0), GraphView.ComparisonMarkAt(from, to, 20, 20, 0, ringed: true));
+        Assert.Equal(new Point(91, 0), GraphView.ComparisonMarkAt(from, to, 20, 20, -0.5, ringed: false));
+        Assert.Equal(new Point(109, 0), GraphView.ComparisonMarkAt(from, to, 20, 20, 0.5, ringed: false));
+        Assert.Equal(new Point(77.5, 0), GraphView.ComparisonMarkAt(from, to, 20, 20, -0.5, ringed: true));
+        Assert.Equal(new Point(122.5, 0), GraphView.ComparisonMarkAt(from, to, 20, 20, 0.5, ringed: true));
+        Assert.Equal(new Point(82, 0), GraphView.ComparisonMarkAt(from, to, 20, 20, -1, ringed: false));
+        Assert.Equal(new Point(0, 50), GraphView.ComparisonMarkAt(from, new Point(0, 100), 10, 10, 0, ringed: false));
+
+        // Kept off the nodes where the stroke shows enough of itself; at its middle where it does not, and at a point's own
+        // place for an edge of no length.
+        Assert.Equal(new Point(101.5, 0), GraphView.ComparisonMarkAt(from, to, 90, 90, 0, ringed: true));
+        Assert.Equal(new Point(98.5, 0), GraphView.ComparisonMarkAt(from, to, 90, 90, -1, ringed: false));
+        Assert.Equal(new Point(15, 0), GraphView.ComparisonMarkAt(from, new Point(30, 0), 20, 20, 1, ringed: true));
+        Assert.Equal(new Point(5, 5), GraphView.ComparisonMarkAt(new Point(5, 5), new Point(5.5, 5), 0, 0, 0, ringed: false));
+    }
+
+    [AvaloniaFact(DisplayName = "R14: a comparison's mark is its glyph in a ringed disc, the ring broken where the mark is of more than its edge")]
+    public void AComparisonsMarkIsItsGlyphInARingedDisc()
+    {
+        // The ring's band is inked all the way round where the mark is the edge's own, and only in dashes, the pane showing
+        // between them, where it is of more than the edge. The glyph is inked at the disc's middle, over its fill.
+        Color ink = ThemeResources.ToColor(ThemePalette.Surfaces(ThemeResources.CurrentMode).Ink);
+        Color plot = ThemeResources.ToColor(ThemePalette.Surfaces(ThemeResources.CurrentMode).Plot);
+        ComparedRelationship row = new(new(1, 1, 1, 0, Covered), new(2, 2, 2, 0, Covered), ComparisonChange.Increased, null);
+        bool Inked(Color color) => color.A >= 128 && Distance(color, ink) < Distance(color, plot);
+        int[] ringed = new int[2];
+        var graph = new GraphView();
+        foreach (bool shared in new[] { false, true })
+        {
+            var target = new RenderTargetBitmap(new PixelSize(40, 40));
+            using (DrawingContext context = target.CreateDrawingContext())
+            {
+                graph.DrawComparisonMark(context, new Point(20, 20),
+                    new GraphComparisonMarked(GraphComparisonMark.Increased, [row], shared));
+            }
+
+            using var stream = new MemoryStream();
+            target.Save(stream);
+            stream.Position = 0;
+            WriteableBitmap drawn = WriteableBitmap.Decode(stream);
+            Point[] pixels = [.. Enumerable.Range(0, 40).SelectMany(x => Enumerable.Range(0, 40).Select(y => new Point(x + 0.5, y + 0.5)))];
+            double Off(Point pixel) => Math.Sqrt(Math.Pow(pixel.X - 20, 2) + Math.Pow(pixel.Y - 20, 2));
+            ringed[shared ? 1 : 0] = pixels.Count(pixel => Off(pixel) is >= 6.9 and <= 8.1 && Inked(At(drawn, pixel)));
+            Assert.Equal(plot, Opaque(At(drawn, new Point(14.5, 20.5))));
+            Assert.Contains(pixels.Where(pixel => Off(pixel) <= 3), pixel => Inked(At(drawn, pixel)));
+            Assert.Equal(0, At(drawn, new Point(20.5, 10.5)).A);
+        }
+
+        Assert.True(ringed[0] >= 30, $"{ringed[0]} pixels inked round an unbroken ring");
+        Assert.True(ringed[1] < ringed[0] * 0.8, $"{ringed[1]} pixels inked round a broken ring, {ringed[0]} round an unbroken one");
     }
 
     /// <summary>client.exe connects to server.exe's 8080 over loopback, the connect seen at its end, and sends once.</summary>

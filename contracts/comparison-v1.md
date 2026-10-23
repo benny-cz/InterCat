@@ -6,15 +6,17 @@ Status: **implemented** for two intervals of one session's generation, on the co
 compare, by executable (§2b) - on the command line, and since revision 757 in the window too. Since revision 758 an
 investigation saves a comparison under a name and the command line runs it, and since revision 759 the window saves
 and reopens one (§8c). Since revision 760 the command line states a row's difference timeline, and since revision 761
-the window draws the chosen row's (§8d). Graph overlays are not defined at this version (§9).
+the window draws the chosen row's (§8d). Since revision 762 the window shows a comparison on its graph, each edge
+marked by how the rows it draws changed (§8e).
 
 This contract fixes what plan §15's M12 asks of a comparison - normalized rates beside absolute counts, ranked changed
-relations, unavailable measurement told apart from disappeared activity, and side-by-side values with an explicit reason
-wherever no change can be stated - for two intervals of one generation, compared row by row, and two captures. It owns
-no bytes: every value is read from the generation's published segments and indexes through the queries the window and
-the command line already answer (`metrics-v1`, `relations-v1`, `coverage-v2`), and a comparison changes none of them.
-ADR-058 records the decisions, ADR-059 how rows are grouped by executable, ADR-060 how two captures compare, ADR-061
-how a comparison is saved and ADR-062 how a difference timeline is cut.
+relations, unavailable measurement told apart from disappeared activity, and side-by-side values with an explicit
+reason wherever no change can be stated - for two intervals of one generation, compared row by row, and two captures.
+It owns no bytes: every value is read from the generation's published segments and indexes through the queries the
+window and the command line already answer (`metrics-v1`, `relations-v1`, `coverage-v2`), and a comparison changes
+none of them. ADR-058 records the decisions, ADR-059 how rows are grouped by executable, ADR-060 how two captures
+compare, ADR-061 how a comparison is saved, ADR-062 how a difference timeline is cut and ADR-063 how a comparison
+marks the graph.
 
 ## 1. A request
 
@@ -241,6 +243,8 @@ what the capture did not cover, so a quiet bar there never reads as nothing happ
 click, choose a column, which the line beneath states in §8's words with its reason; choosing another row draws its
 columns, the cursor where it was. Unchecked, the chart goes and the comparison shown stays.
 
+Show on the graph closes the window and marks the main window's graph by the comparison shown (§8e).
+
 Save in the investigation… keeps the comparison shown, by name, in the investigation the session shown was opened
 from, and a comparison saved there opens in this window as saved (§8c).
 
@@ -320,6 +324,35 @@ least a tick long - and a line per column with its two intervals, values and cha
 `--columns` without `--timeline`, a timeline with `--limit`, and one in a redacted report, which holds rows over the
 whole intervals only. The window draws the chosen row's (§8a).
 
+## 8e. On the graph
+
+Show on the graph, in the Compare window, closes it and marks each edge the main window's graph draws by how the rows
+it draws changed (plan M12's graph overlays, ADR-063): ▲ up, ▼ down, + appeared, − disappeared, = unchanged, ? not
+comparable and ± up and down, each a glyph in a ringed disc on the edge's stroke, clear of the nodes it joins, so no
+change is read from colour alone (R14). It is offered once a comparison holding a row is shown, and waits while one is
+read, shared or saved.
+
+- **What an edge draws.** The rows of the relationships it draws, and, to a host or to Other hosts, of its processes'
+  connections to that host's address or to every address not drawn on its own. Of a comparison by executable, a row is
+  drawn on every edge of its processes' relationships or connections - a grouping, never an identity (P6, ADR-059) -
+  so a mark of more than its edge has a broken ring, and its words say it is of the executables' processes together. A
+  comparison of another capture marks the graph shown, its compared capture's.
+- **One mark an edge.** One row's change is the edge's; rows that agree, their change; rows that each rose, appeared
+  or stayed, up, or appeared where none held anything in the baseline, and likewise down or disappeared; one row that
+  cannot be compared makes the edge not comparable, no change being stated of what it holds; and rows that went both
+  ways, up and down. Nothing is summed or judged again: a mark presents the rows `icat compare` states (§8), which its
+  card names.
+- **What is not marked.** An edge that draws no row had no record in either interval as far as the comparison read,
+  carries no mark, and its card says so (R21). A row no edge draws - between processes drawn together in one node, or
+  of a process or host the graph does not show - is counted, never lost.
+- **Words beside the marks.** A line beneath the graph's header states both intervals in the window's time base, what
+  the rows are, how many edges went each way with their glyphs, the edges unmarked and the rows no edge draws; an
+  edge's card states its change in §8's words; and the relationship table, the graph's table equivalent, carries each
+  row's glyph and says its change to a screen reader (R15). Clear, beside the line, takes the marks away.
+- **How long.** The marks follow every drawing of the session, each marked again as a group is opened, hosts are drawn
+  on their own or a time scope is set, and newer generations, the line then saying that what the session holds since
+  has no mark until Compare with… reads it again. Showing another session takes them away.
+
 ## 9. Not defined at this version
 
 - **Another capture's interval in the window** other than its whole recording: the command line's `--baseline` takes
@@ -328,5 +361,6 @@ whole intervals only. The window draws the chosen row's (§8a).
   bound per row would need what a lost record could have moved.
 - **A difference timeline in a redacted report.** The command line and the window state one (§8d); a report holds rows
   over the whole intervals only.
-- Graph overlays, recurring patterns, outliers and causal navigation (plan M12).
+- **A comparison's marks on the timeline**, or on nodes; the graph marks edges (§8e).
+- Recurring patterns, outliers and causal navigation (plan M12).
 - Wall-clock bounds, which `icat timeline --wall-clock` states; a comparison takes session ticks.

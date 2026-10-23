@@ -218,6 +218,10 @@ public sealed partial class WorkspaceViewModel
                 : "each process's rung lists its own connections"),
             "Thickness: the same for every connection to other hosts, which carries no traffic value in the graph",
         ]);
+        if (ComparedLine(edge) is { } compared)
+        {
+            lines.Add(compared);
+        }
 
         // What OpenGraphEdge will do, so the gesture is discoverable where the edge is read.
         if (source is { Kind: GraphNodeKind.Group } && ladder.Current.Level == DetailLevel.Machine)

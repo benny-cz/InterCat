@@ -891,6 +891,26 @@ public static class SessionComparison
     }
 
     /// <summary>
+    /// The key of the row by executable a relationship over <paramref name="mechanism"/> between a process of
+    /// <paramref name="one"/> and a process of <paramref name="other"/> is in (`comparison-v1` §2a): the two executables' group
+    /// keys in ordinal order, whichever process the overview drew first.
+    /// </summary>
+    internal static string ExecutablesKey(Mechanism mechanism, string one, string other)
+    {
+        (string source, string target) = string.CompareOrdinal(one, other) <= 0 ? (one, other) : (other, one);
+        return string.Create(CultureInfo.InvariantCulture,
+            $"executables:{MechanismText.Name(mechanism).ToLowerInvariant()}:{source}|{target}");
+    }
+
+    /// <summary>
+    /// The key of the row by executable a process of <paramref name="executable"/>'s connections over
+    /// <paramref name="mechanism"/> to <paramref name="address"/> are in (`comparison-v1` §2a).
+    /// </summary>
+    internal static string ExecutableHostsKey(Mechanism mechanism, string executable, string address) =>
+        string.Create(CultureInfo.InvariantCulture,
+            $"executable-hosts:{MechanismText.Name(mechanism).ToLowerInvariant()}:{executable}@{address}");
+
+    /// <summary>
     /// The relationships and connections to other hosts of a session's processes summed by executable (`comparison-v1`
     /// §2a): each pair of executables' relationships over one mechanism, each executable's connections over one transport to
     /// one address, by key, and what a process of no witnessed executable is at an end of, counted apart.
@@ -930,8 +950,7 @@ public static class SessionComparison
                 // whom follows the processes into it.
                 bool ordered = string.CompareOrdinal(from, to) <= 0;
                 (string source, string target) = ordered ? (from, to) : (to, from);
-                string key = string.Create(CultureInfo.InvariantCulture,
-                    $"executables:{MechanismText.Name(edge.Mechanism).ToLowerInvariant()}:{source}|{target}");
+                string key = ExecutablesKey(edge.Mechanism, from, to);
                 if (!tallies.TryGetValue(key, out ExecutableTally? tally))
                 {
                     tally = new(edge.Mechanism) { Relationship = new(key, source, target, edge.Mechanism) };
@@ -957,8 +976,7 @@ public static class SessionComparison
                 }
 
                 Mechanism mechanism = reach.Link.Mechanism;
-                string key = string.Create(CultureInfo.InvariantCulture,
-                    $"executable-hosts:{MechanismText.Name(mechanism).ToLowerInvariant()}:{executable}@{reach.Address.Address}");
+                string key = ExecutableHostsKey(mechanism, executable, reach.Address.Address);
                 if (!tallies.TryGetValue(key, out ExecutableTally? tally))
                 {
                     tally = new(mechanism) { Reach = new(key, executable, mechanism, reach.Address.Address) };

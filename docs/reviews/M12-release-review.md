@@ -145,3 +145,12 @@ columns and draws the chosen row's, the baseline's bar beside the compared inter
 that cannot be compared hatched, and a column cursor whose column is said in the command line's words. Baseline and
 difference timelines are now in the window as on the command line; graph overlays come next among what is not built,
 and nothing else above changes.
+
+## Addendum, revision 762
+
+The window shows a comparison on its graph (`comparison-v1` §8e, ADR-063): Show on the graph marks each drawn edge by
+how the rows it draws changed, a glyph in a ringed disc on its stroke, not comparable wherever one of its rows is, and
+a comparison by executable on every edge of its processes with a broken ring. The line beneath the graph's header,
+each edge's card and the relationship table say the same in words, an unmarked edge is said to hold no record in
+either interval, and rows no edge draws are counted. Graph overlays are now built; recurring patterns, outliers and
+causal navigation remain, and nothing else above changes.

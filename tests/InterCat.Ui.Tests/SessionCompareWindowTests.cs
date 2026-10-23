@@ -199,6 +199,216 @@ public sealed class SessionCompareWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R15: Show on the graph marks each edge by how it changed, says so beneath the header, on its card and in the table, and Clear takes it away")]
+    public async Task ShowOnTheGraphMarksEachEdgeByHowItChanged()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(), coverage: Ledger());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            Assert.True(await window.OpenSessionAsync(session.Path));
+            Dispatch();
+            var workspace = (WorkspaceViewModel)window.DataContext!;
+            await workspace.LayoutReady;
+            CultureInfo culture = CultureInfo.CurrentCulture;
+            Border bar = window.GetControl<Border>("ComparisonShownBar");
+            GraphView graph = window.GetControl<GraphView>("GraphSurface");
+            Assert.False(bar.IsVisible);
+
+            // Two intervals with no record in either compare no row, so the graph has nothing to mark.
+            workspace.SelectInterval(new TimeRange(3 * Second / 10, 9 * Second / 10));
+            Dispatch();
+            Task comparing = window.CompareIntervalsAsync();
+            SessionCompareWindow dialog = await Opened(window);
+            await dialog.Compared;
+            dialog.ChooseBaseline(dialog.Offered.ToList().IndexOf("Another interval, typed in seconds…"));
+            await dialog.Compared;
+            dialog.Enter(0.3.ToString(culture), 0.9.ToString(culture));
+            await dialog.CompareAsync();
+            Dispatch();
+            Assert.NotNull(dialog.Shown);
+            Assert.Empty(dialog.Rows);
+            Assert.Equal(SessionCompareWindow.NothingOnGraph, Offers.WhyNot(Labelled(dialog, "Show on the graph")));
+            dialog.Close();
+            await comparing;
+            Dispatch();
+            Assert.False(workspace.ShowsComparison);
+
+            // Over the scope and the same length before it, the client's exchanges held steady and the worker's rose; with
+            // the timeline filling the column, showing them on the graph gives the graph its place back and the keyboard.
+            window.ExpandPane(MainPane.Timeline);
+            workspace.SelectInterval(new TimeRange(12 * Second, 16 * Second));
+            Dispatch();
+            comparing = window.CompareIntervalsAsync();
+            dialog = await Opened(window);
+            await dialog.Compared;
+            Dispatch();
+
+            // While the intervals are read again there is nothing yet to show on the graph.
+            Task reading = dialog.CompareAsync();
+            Assert.Equal("The two intervals are being compared.", Offers.WhyNot(Labelled(dialog, "Show on the graph")));
+            await reading;
+            Dispatch();
+            Button onGraph = Labelled(dialog, "Show on the graph");
+            Assert.True(onGraph.IsEnabled);
+            Assert.Equal(SessionCompareWindow.OnGraphDoes, AutomationProperties.GetHelpText(onGraph));
+            Click(onGraph);
+            await comparing;
+            Dispatch();
+            Assert.Same(dialog.Shown, dialog.ShownOnGraph);
+            Assert.Null(window.ExpandedPane);
+            Assert.True(graph.IsFocused);
+            Assert.True(workspace.ShowsComparison);
+            GraphComparisonOverlay overlay = workspace.ComparisonOverlay!;
+            Assert.Same(dialog.Shown, overlay.Comparison);
+            string steady = overlay.Edges.Single(pair => pair.Value.Mark == GraphComparisonMark.Unchanged).Key;
+            string rose = overlay.Edges.Single(pair => pair.Value.Mark == GraphComparisonMark.Increased).Key;
+            Assert.Equal(2, overlay.Edges.Count);
+
+            // The line beneath the header says what the marks are, each with its glyph, so no mark is the only place a
+            // change is stated.
+            Assert.True(bar.IsVisible);
+            string said = window.GetControl<TextBlock>("ComparisonShownText").Text!;
+            Assert.Equal(workspace.ComparisonShownSaid, said);
+            Assert.Equal("The graph marks each edge by how it changed from " + workspace.TimeBase.HalfOpenRange(new TimeRange(8 * Second,
+                12 * Second), culture) + " to " + workspace.TimeBase.HalfOpenRange(new TimeRange(12 * Second, 16 * Second), culture)
+                + ", by records, a row per process. 2 edges are marked: 1 unchanged =, 1 up ▲.", said);
+            Assert.Equal(said, AutomationProperties.GetName(window.GetControl<TextBlock>("ComparisonShownText")));
+
+            // Each mark is drawn on its edge, between the two nodes it joins and clear of both.
+            Save(window, "compare-on-graph.png");
+            Assert.Equal(new[] { rose, steady }.Order(StringComparer.Ordinal), graph.DrawnComparisonMarks.Keys.Order(StringComparer.Ordinal));
+            foreach ((string key, (Point at, GraphComparisonMarked marked)) in graph.DrawnComparisonMarks)
+            {
+                GraphDisplayEdge edge = workspace.GraphDisplay.Edges.Single(drawn => drawn.Key == key);
+                Point from = graph.PointOf(edge.SourceKey)!.Value, to = graph.PointOf(edge.TargetKey)!.Value;
+                double length = Distance(from, to);
+                Assert.Equal(length, Distance(from, at) + Distance(at, to), 3);
+                Assert.True(Distance(from, at) >= graph.RadiusOf(edge.SourceKey)!.Value + GraphView.ComparisonMarkRadius);
+                Assert.True(Distance(at, to) >= graph.RadiusOf(edge.TargetKey)!.Value + GraphView.ComparisonMarkRadius);
+                Assert.Same(overlay.Edges[key], marked);
+            }
+
+            // An edge's card says how it changed in icat compare's words: hovered, the card says it, and says another
+            // comparison's once that is shown, the edge still hovered.
+            Assert.Contains("Compared: = unchanged", workspace.DescribeGraphHover(steady)!.Lines);
+            Assert.Contains("Compared: ▲ up 2.50/s (+500%)", workspace.DescribeGraphHover(rose)!.Lines);
+            GraphDisplayEdge rising = workspace.GraphDisplay.Edges.Single(edge => edge.Key == rose);
+            Point riseFrom = graph.PointOf(rising.SourceKey)!.Value, riseTo = graph.PointOf(rising.TargetKey)!.Value;
+            window.MouseMove(graph.TranslatePoint(riseFrom + ((riseTo - riseFrom) * 0.35), window)!.Value);
+            Dispatch();
+            Assert.Equal(rose, graph.HoveredKey);
+            Assert.Contains("Compared: ▲ up 2.50/s (+500%)", graph.HoverCard!.Lines);
+            IntervalComparison shown = dialog.ShownOnGraph!;
+            Assert.True(workspace.ShowComparison(shown with
+            {
+                Relationships = [.. shown.Relationships.Select(row => row.Change == ComparisonChange.Increased
+                    ? row with { Change = ComparisonChange.Decreased } : row)],
+            }));
+            Dispatch();
+            Assert.Equal(rose, graph.HoveredKey);
+            Assert.Contains(graph.HoverCard!.Lines, line => line.StartsWith("Compared: ▼ down", StringComparison.Ordinal));
+            Assert.True(workspace.ShowComparison(shown));
+            Dispatch();
+            Assert.Contains("Compared: ▲ up 2.50/s (+500%)", graph.HoverCard!.Lines);
+            window.MouseMove(new Point(2, 2));
+            Dispatch();
+
+            // The relationship table carries each edge's mark, and says how it changed to a screen reader.
+            workspace.ShowTables = true;
+            Dispatch();
+            ListBox table = window.GetControl<ListBox>("RelationshipList");
+            Control Row(string key) => table.GetRealizedContainers().Single(row => ((RelationshipRow)row.DataContext!).Key == key);
+            Assert.Equal(("=", "▲"), (Row(steady).Tag, Row(rose).Tag));
+            Assert.Equal("compared: ▲ up 2.50/s (+500%)", AutomationProperties.GetItemStatus(Row(rose)));
+            Assert.Equal("▲", Row(rose).GetVisualDescendants().OfType<TextBlock>().Single(text => text.Name == "RelationshipCompared").Text);
+
+            // Clear takes the marks away, from the graph, its header, its cards and the table, and gives the keyboard back to
+            // the graph, its own button going with the line.
+            Button clear = window.GetControl<Button>("ClearComparisonButton");
+            Assert.True(clear.Focus());
+            Click(clear);
+            Assert.False(workspace.ShowsComparison);
+            Assert.Null(workspace.ComparisonOverlay);
+            Assert.Equal(string.Empty, workspace.ComparisonShownSaid);
+            Assert.False(bar.IsVisible);
+            Assert.True(graph.IsFocused);
+            Assert.Equal((null, null), (Row(steady).Tag, Row(rose).Tag));
+            Assert.Null(AutomationProperties.GetItemStatus(Row(rose)));
+            Assert.DoesNotContain(workspace.DescribeGraphHover(rose)!.Lines, line => line.StartsWith("Compared", StringComparison.Ordinal));
+            workspace.ShowTables = false;
+            Save(window, "compare-on-graph-cleared.png");
+            Assert.Empty(graph.DrawnComparisonMarks);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R7: a comparison shown on the graph stays through a newer generation, which it says it has not read, and goes with its session")]
+    public async Task AComparisonOnTheGraphStaysThroughANewerGeneration()
+    {
+        using var session = new TemporarySession();
+        using var another = new TemporarySession(Guid.Parse("0c0c0c0c-0000-4000-8000-000000000762"));
+        Publish(session.Store, Rows(), coverage: Ledger());
+        Publish(another.Store, Rows(), coverage: Ledger());
+        IntervalComparison comparison = SessionComparison.Compare(session.Store, new TimeRange(8 * Second, 12 * Second),
+            new TimeRange(12 * Second, 16 * Second));
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            // The tour's graph reads no session, and a comparison of another session than the one shown is not its own.
+            Assert.False(((WorkspaceViewModel)window.DataContext!).ShowComparison(comparison));
+            window.ApplyCaptureUpdate(Recording(session));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+            Assert.False(workspace.ShowComparison(comparison with { SessionId = Guid.NewGuid() }));
+            Assert.False(workspace.ShowsComparison);
+            Assert.True(workspace.ShowComparison(comparison));
+            Assert.Same(comparison, workspace.CarryComparison());
+            GraphComparisonOverlay overlay = workspace.ComparisonOverlay!;
+            Assert.Same(overlay, workspace.ComparisonOverlay);
+            Assert.Equal(2, overlay.Edges.Count);
+
+            // The next generation holds a relationship the comparison never read: the marks stay where they were, the new
+            // edge carries none, and the line says what is new has no mark.
+            Publish(session.Store, Exchange(25 * Second, 300, 200, "127.0.0.1:50009", "127.0.0.1:8080"));
+            window.ApplyCaptureUpdate(Recording(session));
+            var next = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            Assert.NotSame(workspace, next);
+            await next.LayoutReady;
+            Dispatch();
+            Assert.True(next.ShowsComparison);
+            Assert.Same(comparison, next.ComparisonOverlay!.Comparison);
+            Assert.Equal(overlay.Edges.Keys.Order(StringComparer.Ordinal), next.ComparisonOverlay.Edges.Keys.Order(StringComparer.Ordinal));
+            Assert.Equal(1, next.ComparisonOverlay.Unmarked);
+            string unread = next.GraphDisplay.Edges.Single(edge => !next.ComparisonOverlay.Edges.ContainsKey(edge.Key)).Key;
+            Assert.Contains("Compared: no row, no record in either interval, so no mark", next.DescribeGraphHover(unread)!.Lines);
+            Assert.True(window.GetControl<Border>("ComparisonShownBar").IsVisible);
+            Assert.EndsWith("1 drawn edge holds no row of it, no record in either interval, and carries no mark. It was read at an "
+                + "earlier generation of the session than the window shows, so what the session holds since has no mark; Compare "
+                + "with… reads it again.", next.ComparisonShownSaid, StringComparison.Ordinal);
+
+            // Another session shown leaves the comparison behind.
+            Assert.True(await window.OpenSessionAsync(another.Path));
+            Dispatch();
+            var elsewhere = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await elsewhere.LayoutReady;
+            Assert.False(elsewhere.ShowsComparison);
+            Assert.Null(elsewhere.CarryComparison());
+            Assert.False(window.GetControl<Border>("ComparisonShownBar").IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R21: the window's comparison says why a row cannot be compared, each reason once beneath the rows")]
     public async Task TheComparisonSaysWhyARowCannotBeCompared()
     {
@@ -322,11 +532,15 @@ public sealed class SessionCompareWindowTests
             Assert.Equal(SessionCompareWindow.ShareDoes, Offers.Offered(share));
             string found = comparing.Said;
 
-            // Declined, no file is asked for, and nothing is said.
+            // Declined, no file is asked for, and nothing is said. While it is asked, the comparison waits to be shown on the
+            // graph, which would close the window under the report.
             Click(share);
-            Press(await Prompt(comparing), "Cancel");
+            Window sharing = await Prompt(comparing);
+            Assert.Equal("A redacted report is being saved.", Offers.WhyNot(Labelled(comparing, "Show on the graph")));
+            Press(sharing, "Cancel");
             await comparing.Shared;
             Assert.Equal((0, string.Empty), (choices.Asked, comparing.Done));
+            Assert.Equal(SessionCompareWindow.OnGraphDoes, Offers.Offered(Labelled(comparing, "Show on the graph")));
 
             // Asked for, every row compared is saved where chosen, and where is said beside the buttons, the comparison's
             // own status still saying what it found.
@@ -589,6 +803,7 @@ public sealed class SessionCompareWindowTests
             Window prompt = await Asked();
             TextBox name = prompt.GetLogicalDescendants().OfType<TextBox>().Single();
             Assert.Equal("Name the comparison first.", Offers.WhyNot(Labelled(prompt, "Save")));
+            Assert.Equal("The comparison is being saved in the investigation.", Offers.WhyNot(Labelled(comparing, "Show on the graph")));
             SavedComparison asked = new()
             {
                 Revision = 0,
@@ -611,6 +826,7 @@ public sealed class SessionCompareWindowTests
             Dispatch();
             Assert.Equal("Saved in case.icat-workspace as 'before the burst'; the investigation's Comparisons… opens it again.",
                 comparing.Done);
+            Assert.Equal(SessionCompareWindow.OnGraphDoes, Offers.Offered(Labelled(comparing, "Show on the graph")));
             SavedComparison saved = Assert.Single(InvestigationWorkspace.ComparisonsInForce(InvestigationWorkspace.Read(workspace)));
             Assert.Equal((new TimeRange(8 * Second, 12 * Second), scope, ComparisonMetric.Records, ComparisonGrouping.Process),
                 (saved.Baseline!.Interval!.Value, saved.Compared!.Interval!.Value, saved.Metric!.Value, saved.GroupedBy!.Value));
@@ -1109,6 +1325,12 @@ public sealed class SessionCompareWindowTests
         Directory.CreateDirectory(directory);
         window.CaptureRenderedFrame()!.Save(Path.Combine(directory, name));
     }
+
+    /// <summary>A recording's publication of the session's newest generation.</summary>
+    private static CaptureUiUpdate Recording(TemporarySession session) => new(CaptureUiPhase.Recording, "Recording",
+        "A published generation.", SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store));
+
+    private static double Distance(Point from, Point to) => Math.Sqrt(Math.Pow(to.X - from.X, 2) + Math.Pow(to.Y - from.Y, 2));
 
     private static void Dispatch() => Dispatcher.UIThread.RunJobs();
 }

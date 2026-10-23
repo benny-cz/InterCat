@@ -1224,12 +1224,36 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         {
             WhyNotShown = viewModel.WhyNotShown,
         };
-        if (await comparing.ShowDialog<ComparedRelationship?>(this) is not { } chosen || closed)
+        ComparedRelationship? chosen = await comparing.ShowDialog<ComparedRelationship?>(this);
+        if (closed)
         {
             return;
         }
 
-        if (workspace.OpenCompared(chosen)) FocusRail();
+        if (comparing.ShownOnGraph is { } shown)
+        {
+            ShowComparisonOnGraph(shown);
+            return;
+        }
+
+        if (chosen is not null && workspace.OpenCompared(chosen)) FocusRail();
+    }
+
+    /// <summary>
+    /// Marks the graph's edges by a comparison (§8e): the graph given its place back where the timeline filled the column,
+    /// and the keyboard, so its marks are explored from it; the line beneath its header says what they are.
+    /// </summary>
+    private void ShowComparisonOnGraph(IntervalComparison comparison)
+    {
+        if (!workspace.ShowComparison(comparison)) return;
+        if (expandedPane == MainPane.Timeline) ExpandPane(null);
+        GraphSurface.Focus(NavigationMethod.Tab);
+    }
+
+    private void ClearComparison(object? sender, RoutedEventArgs eventArgs)
+    {
+        workspace.ClearComparison();
+        GraphSurface.Focus(NavigationMethod.Tab);
     }
 
     private void ToggleTables(object? sender, RoutedEventArgs eventArgs)
@@ -5029,6 +5053,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             replacement.AdoptTimeline(workspace.CarryTimeline());
             replacement.AdoptScope(workspace.CarryScope());
 
+            // A comparison shown on the graph stays, its marks found again in this generation's drawing (§8e).
+            replacement.AdoptComparison(workspace.CarryComparison());
+
             // So does the read of the candidate other ends its investigation proposes for its hosts, done or still running.
             if (workspace.CarryCandidateHosts() is { } candidates)
             {
@@ -5262,18 +5289,32 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
     }
 
-    /// <summary>Marks a relationship's row whose edge the graph highlights for a chosen cell, as the edge's table equivalent.</summary>
-    private void MarkCellRelationship(Control container) => MarkCellHighlight(container,
-        container.DataContext is RelationshipRow row && workspace.HighlightsForCell(row), status: null);
+    /// <summary>
+    /// Marks a relationship's row as the table equivalent of its edge (R15): the bar where the graph highlights the edge for a
+    /// chosen cell, and, while the graph shows a comparison, the glyph its edge's mark carries, with how it changed in words
+    /// for a screen reader (§8e).
+    /// </summary>
+    private void MarkCellRelationship(Control container)
+    {
+        var row = container.DataContext as RelationshipRow;
+        GraphComparisonMarked? compared = row is null ? null : workspace.ComparedOf(row);
+        container.Tag = compared is null ? null : GraphComparisonOverlay.Glyph(compared.Mark);
+        MarkCellHighlight(container, row is not null && workspace.HighlightsForCell(row),
+            compared is not null && workspace.ComparisonOverlay is { } overlay
+                ? "compared: " + overlay.Describe(compared, CultureInfo.CurrentCulture)
+                : null,
+            alongside: true);
+    }
 
     /// <summary>
     /// Gives a row the bar a chosen cell's highlight is drawn with and the item status a screen reader announces with it,
-    /// or else <paramref name="status"/>, or none.
+    /// or else <paramref name="status"/> - or, <paramref name="alongside"/>, both - or none.
     /// </summary>
-    private static void MarkCellHighlight(Control container, bool highlighted, string? status)
+    private static void MarkCellHighlight(Control container, bool highlighted, string? status, bool alongside = false)
     {
         container.Classes.Set("highlighted", highlighted);
-        if ((highlighted ? "highlighted for the chosen cell" : status) is { } said)
+        if ((highlighted && alongside && status is not null ? "highlighted for the chosen cell; " + status
+                : highlighted ? "highlighted for the chosen cell" : status) is { } said)
         {
             AutomationProperties.SetItemStatus(container, said);
         }
@@ -5313,7 +5354,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             MarkSelectionShares();
         }
 
-        if (eventArgs.PropertyName == nameof(WorkspaceViewModel.CellGraphEdges))
+        if (eventArgs.PropertyName is nameof(WorkspaceViewModel.CellGraphEdges) or nameof(WorkspaceViewModel.ComparisonOverlay))
         {
             MarkCellRelationships();
         }

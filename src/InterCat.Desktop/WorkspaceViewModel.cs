@@ -4542,6 +4542,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : magnitude == "records"
             ? string.Create(CultureInfo.CurrentCulture, $"Thickness: log scale against the busiest drawn edge, {edgeScale:N0}")
             : $"Thickness: bytes sent across, log scale against the busiest drawn edge, {WorkspaceRowBuilder.DescribeSize(edgeScale)}");
+        if (ComparedLine(drawn) is { } compared)
+        {
+            lines.Add(compared);
+        }
+
         if (drawn.Relationships.Count == 1 && made is [{ } only])
         {
             // What OpenGraphEdge will do, so the gesture is discoverable where the edge is read; the relationship's row in
@@ -7438,6 +7443,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             // The legend keys the unmeasured value only while a pane draws one (§6.6).
             PropertyChanged?.Invoke(this, new(nameof(GraphDrawsUnmeasured)));
             PropertyChanged?.Invoke(this, new(nameof(DrawsUnmeasured)));
+
+            // A comparison shown marks each drawing's edges, and says how many.
+            if (comparisonShown is not null)
+            {
+                PropertyChanged?.Invoke(this, new(nameof(ComparisonOverlay)));
+                PropertyChanged?.Invoke(this, new(nameof(ComparisonShownSaid)));
+            }
 
             // The table lists the drawing's edges to other hosts.
             RestateTableRows();

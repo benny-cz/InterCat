@@ -84,6 +84,9 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(SelectedEvidenceFields));
         OnPropertyChanged(nameof(EvidenceSummary));
         OnPropertyChanged(nameof(CellExplanation));
+
+        // So does the line saying what the graph's comparison marks.
+        if (comparisonShown is not null) OnPropertyChanged(nameof(ComparisonShownSaid));
         RaiseSettingsChanged();
     }
 }

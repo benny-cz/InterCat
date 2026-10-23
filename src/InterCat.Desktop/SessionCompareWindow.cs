@@ -78,6 +78,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     private readonly TextBlock notes = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
     private readonly Button compare = new() { Content = "Compare" };
     private readonly Button show = new() { Content = "Show in the window", Classes = { "primary" } };
+    private readonly Button onGraph = new() { Content = "Show on the graph" };
     private readonly Button share = new() { Content = "Share redacted…" };
     private readonly Button save = new() { Content = "Save in the investigation…" };
     private readonly Button close = new() { Content = "Close" };
@@ -185,6 +186,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         AutomationProperties.SetName(notes, "How the comparison reads");
         AutomationProperties.SetName(compare, "Compare again");
         AutomationProperties.SetName(show, "Show the chosen row in the window");
+        AutomationProperties.SetName(onGraph, "Show the comparison on the graph");
         AutomationProperties.SetName(share, "Share the comparison as a redacted report");
         AutomationProperties.SetName(save, "Save the comparison in the investigation");
         AutomationProperties.SetName(close, "Close the comparison");
@@ -231,6 +233,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         chart.CursorMoved += (_, _) => chartSaid.Text = ChartSaid();
         compare.Click += (_, _) => _ = CompareAsync();
         show.Click += (_, _) => ChooseSelected();
+        onGraph.Click += (_, _) => ShowOnGraph();
         share.Click += (_, _) => _ = ShareAsync();
         save.Click += (_, _) => _ = SaveInInvestigationAsync();
         close.Click += (_, _) => Close();
@@ -300,7 +303,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         {
             Orientation = Orientation.Horizontal,
             Spacing = 8,
-            Children = { show, save, share, compare, close },
+            Children = { show, onGraph, save, share, compare, close },
         };
         var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 12 };
         Grid.SetColumn(buttons, 1);
@@ -333,7 +336,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         OfferRows();
         Offering.Offer(compare, null, CompareDoes);
         OfferShow();
-        OfferShare();
+        OfferShown();
         OfferSave();
         Opened += (_, _) =>
         {
@@ -345,6 +348,12 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
 
     /// <summary>The comparison shown, the latest one read; null before one is.</summary>
     public IntervalComparison? Shown { get; private set; }
+
+    /// <summary>
+    /// The comparison Show on the graph closed the window with, which the window that opened it marks its graph's edges by
+    /// (`contracts/comparison-v1.md` §8e); null where the window closed otherwise.
+    /// </summary>
+    public IntervalComparison? ShownOnGraph { get; private set; }
 
     /// <summary>Where the window asks for a redacted report's file or another capture's folder; a test answers in a person's place.</summary>
     internal PathChoices Choices { get; set; }
@@ -488,6 +497,14 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     /// <summary>What the Rows choice does, offered.</summary>
     internal const string RowsDoes = "Compare each process, or each executable's processes together - grouped by the path their "
         + "image was witnessed at, so a process that restarted stays one row.";
+
+    /// <summary>What Show on the graph does, offered.</summary>
+    internal const string OnGraphDoes = "Close the comparison and mark the graph's edges by how each changed: ▲ up, ▼ down, "
+        + "+ appeared, − disappeared, = unchanged, ? not comparable, ± up and down. The line beneath the graph's header says "
+        + "what the marks are, and its Clear takes them away.";
+
+    /// <summary>Why a comparison with no row is not shown on the graph.</summary>
+    internal const string NothingOnGraph = "No relationship had a record in either interval, so the graph has nothing to mark.";
 
     /// <summary>What Show in the window does, offered.</summary>
     internal const string ShowDoes = "Close the comparison and open what the chosen row compares: a relationship's process "
@@ -638,7 +655,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
             comparing = false;
             Offering.Offer(compare, null, CompareDoes);
             OfferShow();
-            OfferShare();
+            OfferShown();
             OfferSave();
             status.Text = WriteBaseline;
             return;
@@ -651,7 +668,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         comparing = true;
         Offering.Offer(compare, Comparing, CompareDoes);
         OfferShow();
-        OfferShare();
+        OfferShown();
         OfferSave();
         try
         {
@@ -682,7 +699,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
                 comparing = false;
                 Offering.Offer(compare, null, CompareDoes);
                 OfferShow();
-                OfferShare();
+                OfferShown();
                 OfferSave();
             }
         }
@@ -747,7 +764,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     private async Task SaveReportAsync(IntervalComparison comparison)
     {
         sharing = true;
-        OfferShare();
+        OfferShown();
         try
         {
             if (!await MainWindow.RedactedSharePrompt().ShowDialog<bool>(this) || closed) return;
@@ -783,7 +800,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         finally
         {
             sharing = false;
-            if (!closed) OfferShare();
+            if (!closed) OfferShown();
         }
     }
 
@@ -803,6 +820,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     {
         saving = true;
         OfferSave();
+        OfferShown();
         string named = Path.GetFileName(file);
         var before = new SavedComparisonInterval
         {
@@ -863,7 +881,11 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         finally
         {
             saving = false;
-            if (!closed) OfferSave();
+            if (!closed)
+            {
+                OfferSave();
+                OfferShown();
+            }
         }
     }
 
@@ -1059,12 +1081,35 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         : Shown is null ? NothingToShare
         : null, SaveDoes);
 
-    /// <summary>Offers sharing the comparison shown, or says why not: while one is read or saved, or with none shown.</summary>
-    private void OfferShare() => Offering.Offer(share,
+    /// <summary>
+    /// Offers sharing the comparison shown and showing it on the graph, or says why not: while one is read, shared or saved,
+    /// with none shown, and on the graph with no row to mark.
+    /// </summary>
+    private void OfferShown()
+    {
+        Offering.Offer(share,
+            comparing ? Comparing
+            : sharing ? Sharing
+            : Shown is null ? NothingToShare
+            : null, ShareDoes);
+        Offering.Offer(onGraph, WhyNotOnGraph(), OnGraphDoes);
+    }
+
+    private string? WhyNotOnGraph() =>
         comparing ? Comparing
         : sharing ? Sharing
+        : saving ? Saving
         : Shown is null ? NothingToShare
-        : null, ShareDoes);
+        : Shown.Relationships.Count == 0 ? NothingOnGraph
+        : null;
+
+    /// <summary>Closes the window with the comparison shown, which the window that opened it marks its graph by.</summary>
+    private void ShowOnGraph()
+    {
+        if (WhyNotOnGraph() is not null) return;
+        ShownOnGraph = Shown;
+        Close(null);
+    }
 
     /// <summary>
     /// Offers showing the chosen row, or says why not: while a comparison is read, with no row chosen, or where the window
