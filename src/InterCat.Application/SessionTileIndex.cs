@@ -82,18 +82,20 @@ internal static class SessionTileIndex
     private const ushort Major = 1;
 
     /// <summary>
-    /// Minor 8, revision 744's, ends the directory with what a chunk's tiles bound each owner's records to, so a later
-    /// derivation that binds them alike counts their owners from them; minor 7, revision 708's, keeps each byte tally's
+    /// Minor 9, revision 745's, ends the directory with the spans of the ends a chunk's records were made at, which their
+    /// channel keys name, so a later derivation finds each one's channel among its own; minor 8, revision 744's, ends the
+    /// directory with what a chunk's tiles bound each owner's records to, so a later derivation that binds them alike
+    /// counts their owners from them; minor 7, revision 708's, keeps each byte tally's
     /// source direction; minor 6 keeps each tile's transport-observed bytes tallied by owner, channel and accounting side;
     /// minor 5, revision 704's, keeps each tile's transport-observed bytes by mechanism and accounting side, and each
     /// record's measure; minor 4, revision 701's, keeps a level spanning the generation's segments after their sections;
     /// minor 3, revision 460's, keeps each record's end of its channel beside its direction, and each tile's owner and
     /// channel tallies apart, its channels by mechanism, direction and end; minor 2, revision 459's, kept each record's
     /// direction and tallied owners by it; minor 1, revision 457's, kept each tile's tallies and each record's owner and
-    /// channel; minor 0, revision 456's, kept none of these. Minors 3 to 7 are still read, what they keep counted and
+    /// channel; minor 0, revision 456's, kept none of these. Minors 3 to 8 are still read, what they keep counted and
     /// summed from them and the rest read from the segments, and are published again.
     /// </summary>
-    internal const ushort Minor = 8;
+    internal const ushort Minor = 9;
 
     /// <summary>
     /// The first minor whose directory ends with the owners a chunk's tiles certify (`tile-index-v1` §6): none for an index
@@ -102,8 +104,18 @@ internal static class SessionTileIndex
     internal const ushort CertifiedMinor = 8;
 
     /// <summary>
-    /// What a chunk's tiles state they bind owners under (§6): the binding rule, the derivation's instances and no channel,
-    /// under no relation rule, so no derivation of a session's relations matches it.
+    /// The first minor whose directory ends, after the owners a chunk's tiles certify, with the end spans their records'
+    /// channel keys name (`tile-index-v1` §6): none for an index bound under its own generation's derivation.
+    /// </summary>
+    internal const ushort SpannedMinor = 9;
+
+    /// <summary>The bytes one end span takes in a directory: its end's 38, and its first and last record's places, 40 each.</summary>
+    internal const int EndSpanBytes = 1 + 1 + 16 + 2 + 16 + 2 + (2 * (8 + 4 + 4 + 8 + 8 + 8));
+
+    /// <summary>
+    /// What a chunk's tiles state they bind under (§6): the binding rule and the derivation's instances, and as their
+    /// channels the end spans their records' channel keys name, under no relation rule, so no derivation of a session's
+    /// relations matches it.
     /// </summary>
     internal const string ChunkRelationRule = "";
 
@@ -301,7 +313,7 @@ internal static class SessionTileIndex
         ArgumentNullException.ThrowIfNull(processes);
         ArgumentNullException.ThrowIfNull(relations);
         return WriteCore(destination, sessionId, derivedGeneration, segments, processes, relations,
-            stated ?? Derivation(processes, relations), spanningEntries, certify: false, cancellationToken);
+            stated ?? Derivation(processes, relations), spanningEntries, certify: false, endSpans: null, cancellationToken);
     }
 
     /// <summary>
@@ -319,14 +331,16 @@ internal static class SessionTileIndex
         IReadOnlyList<(StoreDependency Dependency, SegmentReaderV1 Reader)> segments,
         CancellationToken cancellationToken) =>
         WriteCore(destination, sessionId, derivedGeneration, segments, null, null, TileDerivation.Unbound,
-            MaximumSpanningEntries, certify: false, cancellationToken);
+            MaximumSpanningEntries, certify: false, endSpans: null, cancellationToken);
 
     /// <summary>
     /// Writes the tiles of <paramref name="segments"/> as a chunk's tiles (§6) whose records' owners bind under
-    /// <paramref name="processes"/>, the derivation of the generation that tiles them, and whose channels bind to none: as
-    /// <see cref="Write"/> writes them, its directory ending with what it bound each owner's records to, over which readings.
-    /// A later derivation of the session binds them alike or not; where it does, an owner focus counts them from these tiles
-    /// (<see cref="Rebind"/>).
+    /// <paramref name="processes"/>, the derivation of the generation that tiles them, and whose channel keys name the spans
+    /// of the ends their records were made at under <paramref name="relations"/>, that derivation's: as <see cref="Write"/>
+    /// writes them, its directory ending with what it bound each owner's records to, over which readings, and the spans. A
+    /// later derivation of the session binds them alike or not; where it does, an owner focus counts them from these tiles
+    /// (<see cref="Rebind"/>), and a brush, which counts channels too, where it also finds each span's channel among its
+    /// own (<see cref="RebindChannels"/>).
     /// </summary>
     /// <returns>How many bytes were written.</returns>
     public static long WriteChunk(
@@ -335,20 +349,24 @@ internal static class SessionTileIndex
         long derivedGeneration,
         IReadOnlyList<(StoreDependency Dependency, SegmentReaderV1 Reader)> segments,
         ProcessInstanceIndex processes,
+        TransportRelationIndex relations,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(processes);
-        return WriteCore(destination, sessionId, derivedGeneration, segments, processes, null, ChunkDerivation(processes),
-            MaximumSpanningEntries, certify: true, cancellationToken);
+        ArgumentNullException.ThrowIfNull(relations);
+        return WriteCore(destination, sessionId, derivedGeneration, segments, processes, null, null, MaximumSpanningEntries,
+            certify: true, relations.GatherEndSpans(), cancellationToken);
     }
 
     /// <summary>
-    /// What a chunk's tiles bound under <paramref name="processes"/> state they bind: its instances, in their order, and no
-    /// channel, under no relation rule, so no derivation of a session's relations matches it.
+    /// What a chunk's tiles bound under <paramref name="processes"/> state they bind: its instances, in their order, and as
+    /// channels <paramref name="spans"/>, the spans of the ends their records were made at, in theirs, under no relation
+    /// rule, so no derivation of a session's relations matches it.
     /// </summary>
-    internal static TileDerivation ChunkDerivation(ProcessInstanceIndex processes)
+    internal static TileDerivation ChunkDerivation(ProcessInstanceIndex processes, IReadOnlyList<TransportEndSpan> spans)
     {
         ArgumentNullException.ThrowIfNull(processes);
+        ArgumentNullException.ThrowIfNull(spans);
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         Text(hash, ProcessInstanceIndex.BindingRule);
         Text(hash, ChunkRelationRule);
@@ -360,8 +378,71 @@ internal static class SessionTileIndex
             hash.AppendData(identity);
         }
 
-        Number(hash, 0);
-        return new(ProcessInstanceIndex.BindingRule, ChunkRelationRule, processes.Instances.Count, 0, hash.GetHashAndReset());
+        Number(hash, spans.Count);
+        hash.AppendData(SpanBytes(spans));
+        return new(ProcessInstanceIndex.BindingRule, ChunkRelationRule, processes.Instances.Count, spans.Count,
+            hash.GetHashAndReset());
+    }
+
+    /// <summary>
+    /// <paramref name="spans"/> as a directory lists them (§6): for each, its end's protocol, family, own address and port
+    /// and remote address and port, then its first and last record's place - native reading, stream, epoch, ordinal and
+    /// fact key.
+    /// </summary>
+    private static byte[] SpanBytes(IReadOnlyList<TransportEndSpan> spans)
+    {
+        var bytes = new MemoryStream(spans.Count * EndSpanBytes);
+        var writer = new IndexFileWriter(bytes, long.MaxValue, What);
+        foreach (TransportEndSpan span in spans)
+        {
+            writer.U8((byte)span.Protocol);
+            writer.U8(span.Family);
+            writer.Address128(span.LocalAddress);
+            writer.U16(span.LocalPort);
+            writer.Address128(span.RemoteAddress);
+            writer.U16(span.RemotePort);
+            foreach (TransportPosition at in (ReadOnlySpan<TransportPosition>)[span.First, span.Last])
+            {
+                writer.I64(at.Ticks);
+                writer.U32(at.Stream);
+                writer.U32(at.Epoch);
+                writer.U64(at.Ordinal);
+                writer.U64(at.FactHigh);
+                writer.U64(at.FactLow);
+            }
+        }
+
+        writer.Flush();
+        return bytes.ToArray();
+    }
+
+    /// <summary>
+    /// The channel each end span a chunk's tiles name binds to under <paramref name="relations"/>, plus one, or 0 for none,
+    /// by the span's place (§6); null unless they are a chunk's tiles that name their records' ends, since minor 9, and
+    /// <paramref name="relations"/> holds each span within one incarnation of its end. Where a lifecycle record read later
+    /// divides a span, the records on either side of it belong to two incarnations, which the tiles do not tell apart.
+    /// </summary>
+    internal static int[]? RebindChannels(TileIndexFile file, TransportRelationIndex relations)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(relations);
+        if (file.Minor < SpannedMinor || !string.Equals(file.Derivation.RelationRule, ChunkRelationRule, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        int[] channels = new int[file.Ends.Count];
+        for (int span = 0; span < channels.Length; span++)
+        {
+            if (!relations.TryChannelOf(file.Ends[span], out int channel))
+            {
+                return null;
+            }
+
+            channels[span] = channel + 1;
+        }
+
+        return channels;
     }
 
     /// <summary>
@@ -377,8 +458,7 @@ internal static class SessionTileIndex
         ArgumentNullException.ThrowIfNull(file);
         ArgumentNullException.ThrowIfNull(processes);
         // A chunk's tiles bound under a live derivation state no relation rule; those of an index or of no instance do.
-        if (file.Derivation.Channels != 0
-            || !string.Equals(file.Derivation.RelationRule, ChunkRelationRule, StringComparison.Ordinal)
+        if (!string.Equals(file.Derivation.RelationRule, ChunkRelationRule, StringComparison.Ordinal)
             || !string.Equals(file.Derivation.BindingRule, ProcessInstanceIndex.BindingRule, StringComparison.Ordinal))
         {
             return null;
@@ -420,6 +500,24 @@ internal static class SessionTileIndex
         }
 
         return instances;
+    }
+
+    /// <summary>
+    /// Each row's span among <paramref name="ends"/> as its channel key, which a chunk's tiles keep (§6): the span of the end
+    /// each of the timed records they hold was made at, numbered as the rows first meet them, and 0 for the rest.
+    /// </summary>
+    private static PackedChannels SpansOf(SegmentReaderV1 segment, TransportRelationIndex.EndSpans ends)
+    {
+        uint[] keys = new uint[segment.RowCount];
+        using RentedRows<bool> held = RentedRows<bool>.For(segment);
+        SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+        for (int row = 0; row < segment.RowCount; row++)
+        {
+            held.Span[row] = times.SignedAt(row) is not null;
+        }
+
+        ends.Add(segment, held.Span, keys);
+        return new(keys);
     }
 
     /// <summary>
@@ -478,9 +576,10 @@ internal static class SessionTileIndex
         IReadOnlyList<(StoreDependency Dependency, SegmentReaderV1 Reader)> segments,
         ProcessInstanceIndex? processes,
         TransportRelationIndex? relations,
-        TileDerivation derivation,
+        TileDerivation? derivation,
         long spanningEntries,
         bool certify,
+        TransportRelationIndex.EndSpans? endSpans,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(destination);
@@ -501,13 +600,10 @@ internal static class SessionTileIndex
         Crc32C.Write(header.AsSpan(HeaderLength - 4), Crc32C.Compute(header.AsSpan(0, HeaderLength - 4)));
         writer.Raw(header);
 
-        var directory = new MemoryStream();
-        var entries = new IndexFileWriter(directory, MaximumDirectoryBytes, What);
-        entries.Str8(derivation.BindingRule);
-        entries.Str8(derivation.RelationRule);
-        entries.I32(derivation.Instances);
-        entries.I32(derivation.Channels);
-        entries.Raw(derivation.Fingerprint);
+        // The derivation heads the directory, and a chunk's end spans complete it: what follows it is listed as the sections
+        // are written, and put after it once they all are.
+        var listing = new MemoryStream();
+        var entries = new IndexFileWriter(listing, MaximumDirectoryBytes, What);
         (StoreDependency Dependency, SegmentReaderV1 Reader)[] ordered =
             [.. segments.OrderBy(segment => segment.Dependency.Name, StringComparer.Ordinal)];
         SpanningLevel? spanning = SpanningLevel.Plan([.. ordered.Select(segment => segment.Reader)], spanningEntries,
@@ -517,7 +613,7 @@ internal static class SessionTileIndex
         {
             cancellationToken.ThrowIfCancellationRequested();
             long offset = writer.Written;
-            WriteSection(writer, reader, processes, relations, spanning, certified, cancellationToken);
+            WriteSection(writer, reader, processes, relations, spanning, certified, endSpans, cancellationToken);
             entries.Str8(dependency.Name);
             entries.I64(dependency.LengthBytes);
             entries.Str8(dependency.Digest);
@@ -536,7 +632,7 @@ internal static class SessionTileIndex
         entries.I64(spans ? spanningOffset : 0);
         entries.I64(writer.Written - spanningOffset);
 
-        // Since minor 8 the directory ends with what a chunk's tiles bound each owner's records to: none for an index
+        // Since minor 8 the directory goes on with what a chunk's tiles bound each owner's records to: none for an index
         // bound under its own generation's derivation.
         OwnerCertificate[] owners = certified is null ? [] : Certificates(certified, processes!);
         entries.I32(owners.Length);
@@ -550,7 +646,23 @@ internal static class SessionTileIndex
             entries.I64(owner.Last);
         }
 
+        // Since minor 9 it ends with the spans of the ends a chunk's records were made at, which their channel keys name:
+        // none for an index bound under its own generation's derivation.
+        TransportEndSpan[] gathered = endSpans?.Spans() ?? [];
+        entries.I32(gathered.Length);
+        entries.Raw(SpanBytes(gathered));
         entries.Flush();
+
+        TileDerivation stated = derivation ?? ChunkDerivation(processes!, gathered);
+        var directory = new MemoryStream();
+        var head = new IndexFileWriter(directory, MaximumDirectoryBytes, What);
+        head.Str8(stated.BindingRule);
+        head.Str8(stated.RelationRule);
+        head.I32(stated.Instances);
+        head.I32(stated.Channels);
+        head.Raw(stated.Fingerprint);
+        head.Raw(listing.ToArray());
+        head.Flush();
         long directoryOffset = writer.Written;
         byte[] listed = directory.ToArray();
         writer.Raw(listed);
@@ -580,6 +692,7 @@ internal static class SessionTileIndex
         TransportRelationIndex? relations,
         SpanningLevel? spanning,
         Dictionary<(uint Key, int ProcessId, bool Lifecycle), (long First, long Last)>? certified,
+        TransportRelationIndex.EndSpans? endSpans,
         CancellationToken cancellationToken)
     {
         SegmentTimeTiles tiles = SegmentTimeTiles.Of(segment, cancellationToken);
@@ -594,9 +707,11 @@ internal static class SessionTileIndex
         byte[] byteTallies = [];
         if (usable)
         {
-            // A chunk's tiles bind no channel, and their owners under the derivation that tiles them, or none (§6).
+            // A chunk's tiles key each record's channel by the span of the end it was made at, and bind their owners under
+            // the derivation that tiles them, or none (§6).
             PackedOwners owners = processes is null ? new(new uint[segment.RowCount]) : SegmentBindings.OwnersOf(segment, processes);
-            PackedChannels channels = relations is null ? new(new uint[segment.RowCount]) : SegmentBindings.ChannelsOf(segment, relations);
+            PackedChannels channels = endSpans is not null ? SpansOf(segment, endSpans)
+                : relations is null ? new(new uint[segment.RowCount]) : SegmentBindings.ChannelsOf(segment, relations);
             if (certified is not null)
             {
                 Certify(segment, owners, certified, cancellationToken);
@@ -1380,7 +1495,7 @@ internal static class SessionTileIndex
             }
         }
 
-        // Since minor 8 it ends with what a chunk's tiles bound each owner's records to (§6), once each, in order.
+        // Since minor 8 it goes on with what a chunk's tiles bound each owner's records to (§6), once each, in order.
         OwnerCertificate[] certified = [];
         if (minor >= CertifiedMinor)
         {
@@ -1404,6 +1519,34 @@ internal static class SessionTileIndex
             }
         }
 
+        // Since minor 9 it ends with the end spans a chunk's records' channel keys name (§6): as many as the channels its
+        // derivation states, where it lists any.
+        TransportEndSpan[] spanned = [];
+        if (minor >= SpannedMinor)
+        {
+            int count = reader.I32();
+            if (count < 0 || count > reader.Remaining / EndSpanBytes)
+            {
+                throw Invalid("its directory states more end spans than it holds.");
+            }
+
+            spanned = new TransportEndSpan[count];
+            for (int index = 0; index < count; index++)
+            {
+                spanned[index] = new((Mechanism)reader.U8(), reader.U8(), reader.Address128(), reader.U16(), reader.Address128(),
+                    reader.U16(), Place(reader), Place(reader));
+                if (!Holds(spanned[index]))
+                {
+                    throw Invalid("its directory lists an end span no derivation gathers.");
+                }
+            }
+
+            if (count > 0 && count != channels)
+            {
+                throw Invalid("its directory lists another number of end spans than the channels its derivation states.");
+            }
+        }
+
         reader.RequireEnd();
         if (end != directoryOffset)
         {
@@ -1414,8 +1557,23 @@ internal static class SessionTileIndex
             new TileDerivation(bindingRule, relationRule, instances, channels, fingerprint), entries, spanning, cachedBlocks)
         {
             Certified = certified,
+            Ends = spanned,
         };
     }
+
+    /// <summary>A record's place, as a directory lists an end span's first or last (§6).</summary>
+    private static TransportPosition Place(IndexFileReader reader) =>
+        new(reader.I64(), reader.U32(), reader.U32(), reader.U64(), reader.U64(), reader.U64());
+
+    /// <summary>
+    /// Whether a derivation could have gathered <paramref name="span"/>: an end of a related protocol, of IPv4 or IPv6, with
+    /// a non-zero address and port at each end - an IPv4 one within 32 bits - and a first record no later than its last.
+    /// </summary>
+    internal static bool Holds(TransportEndSpan span) =>
+        TransportRelationIndex.Relates(span.Protocol) && span.Family is 4 or 6
+        && span.LocalPort != 0 && span.RemotePort != 0 && span.LocalAddress != UInt128.Zero && span.RemoteAddress != UInt128.Zero
+        && (span.Family == 6 || (span.LocalAddress <= uint.MaxValue && span.RemoteAddress <= uint.MaxValue))
+        && span.First <= span.Last;
 
     internal static byte[] Read(FileStream stream, long offset, int length)
     {
@@ -3020,6 +3178,13 @@ internal sealed class TileIndexFile
     /// </summary>
     public IReadOnlyList<OwnerCertificate> Certified { get; init; } = [];
 
+    /// <summary>
+    /// The spans of the ends a chunk's records were made at, which their channel keys name by place (§6), and in which a
+    /// later derivation finds each one's channel before a brush counts channels from these tiles; none for an index bound
+    /// under its own generation's derivation, whose channel keys are that derivation's channels.
+    /// </summary>
+    public IReadOnlyList<TransportEndSpan> Ends { get; init; } = [];
+
     /// <summary>The segments it holds a section of, by name.</summary>
     public IReadOnlyCollection<string> Segments => entries.Keys;
 
@@ -3288,6 +3453,18 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         return place >= 0 ? (((uint)place + 1) << 3) | (key & 7)
             : throw SessionTileIndex.Invalid("it keeps an owner its directory does not certify.");
     }
+
+    /// <summary>
+    /// Where a chunk's tiles name each record's channel by the span of its end (§6, <see cref="SessionTileIndex.RebindChannels"/>):
+    /// for each span, by its place, the channel it binds to under the derivation counting, plus one, or 0 for none. Null
+    /// where they are read for no channel, and each channel key they keep reads as none, as a chunk's tiles bound before
+    /// minor 9 keep none; a generation's own tiles keep its derivation's channels, read as they are.
+    /// </summary>
+    internal int[]? ChannelsRebound { get; set; }
+
+    /// <summary>A channel key the file keeps, as the derivation counting holds it (<see cref="ChannelsRebound"/>): 0 for none.</summary>
+    internal uint ChannelOf(uint key) =>
+        key == 0 || file.Ends.Count == 0 ? key : ChannelsRebound is { } channels ? (uint)channels[(int)key - 1] : 0;
 
     // For each level, the last block of owner tallies and of channel tallies read and checked, kept while a query descends
     // below it and comes back.
@@ -4777,7 +4954,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             }
 
             (byteOwners[byteEntries], byteChannels[byteEntries], byteDirections[byteEntries], byteSides[byteEntries]) =
-                (OwnerOf((uint)owner), (uint)channel, (byte)direction, (byte)side);
+                (OwnerOf((uint)owner), ChannelOf((uint)channel), (byte)direction, (byte)side);
             (byteMeasured[byteEntries], byteUnmeasured[byteEntries], byteTotals[byteEntries]) =
                 ((long)measured, (long)unmeasured, (long)total);
             byteEntries++;
@@ -4899,6 +5076,15 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
             bound += (long)count;
             previous = kind;
+
+            // A chunk's tiles number their ends' spans, read as the channels the counting derivation binds them to; one
+            // bound to none is no channel's.
+            uint channel = ChannelOf((uint)number + 1);
+            if (channel == 0)
+            {
+                continue;
+            }
+
             if (channelEntries == channelNumbers.Length)
             {
                 Array.Resize(ref channelNumbers, channelEntries * 2);
@@ -4908,7 +5094,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             }
 
             (channelNumbers[channelEntries], channelSlots[channelEntries], channelKinds[channelEntries], channelCounts[channelEntries]) =
-                ((int)number, (byte)(kind >> 5), (byte)(kind & 31), (long)count);
+                ((int)channel - 1, (byte)(kind >> 5), (byte)(kind & 31), (long)count);
             channelEntries++;
         }
 
@@ -5212,7 +5398,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
             counted++;
             (next, slot, direction, end, owner, channel) =
-                (reading, (int)(kind >> 5), (int)kind & 7, (((int)kind >> 3) & 3) - 1, source.OwnerOf((uint)ownerKey), (uint)channelKey);
+                (reading, (int)(kind >> 5), (int)kind & 7, (((int)kind >> 3) & 3) - 1, source.OwnerOf((uint)ownerKey), source.ChannelOf((uint)channelKey));
             return true;
         }
 

@@ -88,13 +88,16 @@ public static class SessionIntervalQuery
             }
         }
 
-        // A finished session's brush counts from the tile index its checkpoint published, opening no segment (S3).
-        // Otherwise it counts only the segments its interval meets, each by one worker into tallies of its own, and the
-        // workers' tallies are summed: the same counts a serial pass makes, side by side (SegmentPasses).
+        // A finished session's brush counts from the tile index its checkpoint published, opening no segment (S3), and a
+        // live one's from its chunks' tiles where they bind as this derivation does. Otherwise it counts only the segments
+        // its interval meets, each by one worker into tallies of its own, and the workers' tallies are summed: the same
+        // counts a serial pass makes, side by side (SegmentPasses).
         int instances = processes.Instances.Count;
         int slots = TimelineColumns.SlotCount;
         IntervalTally? total = PersistedTally(store, manifest, interval, policy, processes, relations, slotOfChannel, drawn.Count,
-            cancellationToken);
+                cancellationToken)
+            ?? ChunkTally(store, manifest, interval, policy, processes, relations, slotOfChannel, drawn.Count, clock,
+                cancellationToken);
         if (total is null)
         {
             total = new IntervalTally(instances * slots, drawn.Count);
@@ -230,6 +233,86 @@ public static class SessionIntervalQuery
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {
             derivation.RefuseTiles(exception.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A live generation's brush, which persists no tiles of its own, from the tiles of its chunks
+    /// (`contracts/tile-index-v1.md` §6): each segment the interval meets counted from the section its chunk's tiles keep,
+    /// where this derivation binds that chunk's owners as the derivation that tiled it did and finds each span of its
+    /// ends' records within one incarnation of its own, its owners and channels read as this derivation's; and from its
+    /// rows otherwise - the newest chunk's, a chunk whose tiles are gone, and one a record read later binds otherwise. Null
+    /// where no chunk's tiles count, or one could not be read, and every segment's rows are read instead, as without them.
+    /// </summary>
+    private static IntervalTally? ChunkTally(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        TimeRange interval,
+        EvidencePolicy policy,
+        ProcessInstanceIndex processes,
+        TransportRelationIndex relations,
+        int[] slotOfChannel,
+        int drawn,
+        SourceClockDescriptor clock,
+        CancellationToken cancellationToken)
+    {
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        IReadOnlyList<TileIndexFile> chunks = derivation.TiledChunks(store.Root);
+        if (chunks.Count == 0)
+        {
+            return null;
+        }
+
+        (long First, long End) readings = SessionNativeInterval.Readings(interval, clock);
+        var met = new List<(StoreDependency Segment, TileIndexFile? Tiles, int[]? Owners, int[]? Channels)>();
+        foreach (StoreDependency segment in SessionOverviewIndex.ObservationSegments(manifest))
+        {
+            if (SessionNativeInterval.Meets(SessionSegments.NativeRange(store, manifest, segment.Name), readings))
+            {
+                TileIndexFile? tiles = chunks.FirstOrDefault(chunk => chunk.Describes(segment));
+                int[]? owners = tiles is null ? null : derivation.ChunkOwners(tiles, processes);
+                int[]? channels = owners is null ? null : derivation.ChunkChannels(tiles!, relations);
+                met.Add((segment, channels is null ? null : tiles, owners, channels));
+            }
+        }
+
+        if (met.All(segment => segment.Tiles is null))
+        {
+            return null;
+        }
+
+        int slots = TimelineColumns.SlotCount;
+        var total = new IntervalTally(processes.Instances.Count * slots, drawn);
+        try
+        {
+            SegmentPasses.Run(
+                met,
+                () => new IntervalTally(processes.Instances.Count * slots, drawn),
+                (segment, tally) =>
+                {
+                    bool counted = false;
+                    if (segment.Tiles is { } tiles)
+                    {
+                        using TileReading reading = tiles.Read(store.Root);
+                        reading.Rebound = segment.Owners;
+                        reading.ChannelsRebound = segment.Channels;
+                        counted = reading.CountInterval(reading.Section(segment.Segment.Name), interval, policy, slotOfChannel, tally,
+                            cancellationToken);
+                    }
+
+                    if (!counted)
+                    {
+                        CountSegment(SessionSegments.Open(store, manifest, segment.Segment.Name), interval, policy, processes,
+                            relations, slotOfChannel, slots, tally, cancellationToken);
+                    }
+                },
+                total.Add,
+                cancellationToken);
+            return total;
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
             return null;
         }
     }

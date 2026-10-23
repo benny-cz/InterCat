@@ -1,13 +1,14 @@
 # InterCat tile index v1
 
 Status: **implemented** in plan revision 456, minor 1 in revision 457, minor 2 in revision 459, minor 3 in revision 460,
-minor 4 in revision 701, minor 5 in revision 704, minor 6 in revision 706, minor 7 in revision 708 and minor 8 in
-revision 744; a group's lanes count from it since revision 458, a process's direction rows since revision 459, a
-channel's ends since revision 460, every query from a level spanning the segments since revision 701, a zoom's byte
-lanes and an interval's bytes from its byte sums since revision 704, a brush's bytes by process and channel end from its
-byte tallies since revision 706, a group's byte lanes from them since revision 707, and a process's byte direction rows
-since revision 708; since revision 739 a live follow keeps each chunk's tiles (§6), and since revision 744 binds their
-owners, so a live generation's owner focuses and byte lanes count from them. It holds §12.1 S4's deeper levels, beneath
+minor 4 in revision 701, minor 5 in revision 704, minor 6 in revision 706, minor 7 in revision 708, minor 8 in revision
+744 and minor 9 in revision 745; a group's lanes count from it since revision 458, a process's direction rows since
+revision 459, a channel's ends since revision 460, every query from a level spanning the segments since revision 701, a
+zoom's byte lanes and an interval's bytes from its byte sums since revision 704, a brush's bytes by process and channel
+end from its byte tallies since revision 706, a group's byte lanes from them since revision 707, and a process's byte
+direction rows since revision 708; since revision 739 a live follow keeps each chunk's tiles (§6), since revision 744
+binds their owners, so a live generation's owner focuses and byte lanes count from them, and since revision 745 names
+the ends their records were made at, so its brushes count from them too. It holds §12.1 S4's deeper levels, beneath
 the persisted overview (`contracts/overview-index-v1.md`), which is the top level. For
 each observation segment of a generation, it keeps:
 
@@ -248,7 +249,7 @@ footer        the last 32 bytes
 |---|---|---|
 | 0 | 8 | magic `ICATTILE` |
 | 8 | 2 | major, 1 |
-| 10 | 2 | minor, 8 |
+| 10 | 2 | minor, 9 |
 | 12 | 4 | reserved, zero |
 | 16 | 16 | session (`guid`) |
 | 32 | 8 | the generation whose segments it describes |
@@ -269,7 +270,8 @@ footer        the last 32 bytes
 ### Directory
 
 The derivation the bindings were made under, then one entry per segment's section, in ordinal order of segment name,
-then where the spanning section lies, then the owners a chunk's tiles certify (§6):
+then where the spanning section lies, then the owners a chunk's tiles certify and the spans of the ends their records
+were made at (§6):
 
 ```text
 str8 binding rule    str8 relation rule    i32 instances    i32 channels    32 bytes fingerprint
@@ -277,13 +279,26 @@ str8 segment name    i64 segment length    str8 segment digest    i64 section of
 i64 spanning section offset    i64 spanning section length    (both 0 where there is none)
 i32 certified owners
 u32 owner key    i32 PID    guid instance    u8 lifecycle    i64 first reading    i64 last reading    (per certified owner)
+i32 end spans
+u8 protocol    u8 family    16 bytes own address    u16 own port    16 bytes remote address    u16 remote port
+  place first    place last    (per end span)
+place = i64 native reading    u32 stream    u32 epoch    u64 ordinal    u64 fact key high    u64 fact key low
 ```
 
-A segment's name is never empty. Minor 3's directory ends after its sections' entries, and minors 4 to 7's after where
-the spanning section lies. Since minor 8 it ends with the owners a chunk's tiles certify: none for an index bound under
-its own generation's derivation. They are in order of owner key, then PID, then lifecycle flag, 0 before 1, each once.
-An owner key is 0, with an all-zero instance and a lifecycle flag of 0, or names one of the directory's instances, with
-its identity; a lifecycle owner's binds directly. The readings are native, the first no later than the last.
+A segment's name is never empty. Minor 3's directory ends after its sections' entries, minors 4 to 7's after where the
+spanning section lies, and minor 8's after the owners a chunk's tiles certify. Since minor 8 it lists those owners, and
+since minor 9 it ends with the end spans their records' channel keys name: neither for an index bound under its own
+generation's derivation. The owners are in order of owner key, then PID, then lifecycle flag, 0 before 1, each once. An
+owner key is 0, with an all-zero instance and a lifecycle flag of 0, or names one of the directory's instances, with its
+identity; a lifecycle owner's binds directly. The readings are native, the first no later than the last.
+
+The end spans are as many as the channels the derivation states, where there are any, listed in the order their keys
+number them from 1 (§6). Each names an end as a relation index keys one (`relations-v1` §3): its protocol, TCP or UDP,
+as its mechanism's code, 3 or 4; its address family, 4 or 6; its own address and port - the end's, whichever its
+records name first, as a datagram's receipt names its origin - then the remote ones, each address as 16 big-endian
+bytes, an IPv4 one within the low 4, and no address or port 0. Then the place in the canonical order (`entities-v1` §3)
+of the first and of the last of its records the tiles hold - native reading, raw locator and fact key - the first no
+later than the last.
 
 The rules are `ProcessInstanceIndex.BindingRule` and `TransportRelationIndex.RelationRule` of the build that wrote
 the index. The fingerprint is SHA-256 over:
@@ -299,9 +314,10 @@ Two derivations with the same rules, instances and channels in the same order bi
 alike, so one's bindings count for the other.
 
 A chunk's tiles bound under a live derivation (§6) state the binding rule, an empty relation rule, their instances and
-no channel. Their fingerprint is SHA-256 over the binding rule's UTF-8 bytes followed by a zero byte, a zero byte for
-the empty relation rule, the number of instances as an `i32` and each instance's identity as a `guid`, in the
-derivation's order, and the number of channels, 0, as an `i32`. No derivation of a session's relations matches it.
+as their channels the end spans their directory lists, none before minor 9. Their fingerprint is SHA-256 over the
+binding rule's UTF-8 bytes followed by a zero byte, a zero byte for the empty relation rule, the number of instances as
+an `i32` and each instance's identity as a `guid`, in the derivation's order, the number of end spans as an `i32`, and
+since minor 9 the end spans as the directory lists them. No derivation of a session's relations matches it.
 
 ### Sections
 
@@ -535,7 +551,11 @@ A reader refuses an index, or a part of it, that:
   order or twice, or an owner no derivation of its instances binds: a PID below 0, a first reading after the last, a
   key of 0 with an instance or a lifecycle flag, a key beyond its instances or of a strength §23 does not define, or a
   lifecycle owner not bound directly; and, read for a later derivation, keeps an owner key its directory does not
-  certify.
+  certify;
+- since minor 9, states more end spans than its directory holds, or fewer than none; lists an end span no derivation
+  gathers: of another protocol than TCP or UDP or another family than 4 or 6, with an address or port 0 at either end
+  or an IPv4 address beyond 32 bits, or whose first record comes after its last; or lists end spans, but not as many as
+  the channels its derivation states.
 
 A zoom or a brush that meets any of these stops reading the index for the generation, says why, and counts from the
 segments. The window opens a session without hashing a file that checks itself. The command line opens a session
@@ -808,15 +828,19 @@ chunk-tiles-<the segments' generation:D10>-<publishing generation:D10>.bin
 
 They differ from a generation's tile index in three ways.
 
-- **They bind their owners, certified, and no channel.** Since minor 8 a live follow binds the owners of the records of
-  each chunk it tiles under the derivation of the generation that tiles it, and their channels to none: every record's
-  channel key is 0, and no tile tallies a channel. Their directory states that derivation's binding rule and instances
-  under an empty relation rule and no channel (§3), which no derivation of a session's relations matches, so no brush
-  counts from them. It certifies each owner that the records its tiles hold bind to, none of a section that keeps no
+- **They bind their owners, certified, and name their records' ends.** Since minor 8 a live follow binds the owners of
+  the records of each chunk it tiles under the derivation of the generation that tiles it, and since minor 9 keys each
+  record's channel by the end it was made at: by the span of the records of that end, within one of its incarnations
+  under that derivation (`relations-v1` §3), that the chunk's tiles hold, numbered from 1 in the order the sections'
+  records first meet them, and 0 for a record of no end. Their directory states that derivation's binding rule and
+  instances under an empty relation rule, and as their channels the end spans (§3), which no derivation of a session's
+  relations matches. It certifies each owner that the records its tiles hold bind to, none of a section that keeps no
   tiles: for each owner key, PID and kind - lifecycle records apart - the instance's identity and the first and last
-  native reading of those records. A record naming no PID binds to none under every derivation, and needs none. Tiles
-  staged where the generation's instances could not be derived bind no record, under the derivation of no instance and
-  no channel, as every chunk's did before minor 8; they serve only what no binding changes.
+  native reading of those records. A record naming no PID binds to none under every derivation, and needs none. And it
+  lists each span's end and the place of its first and last record. Tiles staged where the generation's instances or
+  relations could not be derived bind no record, under the derivation of no instance and no channel, as every chunk's
+  did before minor 8; they serve only what no binding changes. Before minor 9 every record's channel key was 0, and no
+  tile tallied a channel.
 - **A later derivation counts their owners where it binds them alike.** Each owner they certify must bind under it as it
   bound: a key of 0 to no instance at every reading from its first to its last, and any other key to the instance of the
   same identity and PID at every such reading, as strongly, a lifecycle record directly. A record binds to the instance
@@ -828,6 +852,15 @@ They differ from a generation's tile index in three ways.
   tally's, a byte tally's or a record's, read as the instance of its identity in the counting derivation. Where one does
   not - a lifecycle record read late that splits an instance, or gives a PID first seen by its records an instance of
   its own - the chunk's segments are read from their rows.
+- **A brush counts them where a later derivation also finds each span's channel.** A brush counts channels as well as
+  owners. Under a later derivation a span's records belong to one incarnation of its end, and so to its channel, or to
+  none while its other end is undecided, wherever the incarnation that holds the span's first record holds its last: an
+  end's lifecycle records - a connect, an accept, a disconnect - divide it into incarnations, and one read later than
+  the records it falls among divides a span it falls within. Where every span holds and every owner binds alike, a
+  brush - its counts and its bytes by process and channel end - counts the chunk's segments from these tiles, each
+  channel key, whether a tally's, a byte tally's or a record's, read as the channel its span binds to in the counting
+  derivation, and one whose span binds to none counted for none. Where a span does not hold, the chunk's segments are
+  read from their rows; so are those of tiles before minor 9.
 - **They are carried.** store-v1 §5 names any other index only in the generation that published it. Each live
   publication stages, beside the checkpoint of the generation it extends (`contracts/derivation-checkpoint-v1.md` §2),
   the tiles of the chunk that generation added, and those of older chunks no tiles describe, newest first: chunks
@@ -860,3 +893,11 @@ each record is another process's than the one before, which no narrow tile talli
 and the same group took 88 to 100 ms warm at 1,000,000 records where the rows took 51 to 59, as a finished session's own
 tile index takes 75 to 80. Binding the owners made tiling a chunk of 100,000 records take 133 to 154 ms, from 34 to 94,
 and the chunks' tiles 8.0% of the segments' bytes, from 7.4%.
+
+Since minor 9 a live generation's brushes count so too, their counts and their bytes by process and channel end. At
+1,000,000 records in ten chunks a brush over the whole extent took 6 to 9 ms warm and 27 to 33 cold, opening the newest
+chunk's one segment, where every segment's rows took 8 to 10 and 43 to 52 and opened all ten; its bytes took 17 to 18 ms
+warm and 45 cold, where the rows took 37 to 56 and 54 to 91. Over half the extent its counts took 4 to 7 ms warm either
+way. Naming the ends made staging the tiles of a chunk of 100,000 records take 200 to 248 ms where each record is
+another process's than the one before, from 133 to 154, and the chunks' tiles 9.0% of the segments' bytes, from 8.0%; on
+traffic in bursts, 141 to 165 ms and 12.3%.

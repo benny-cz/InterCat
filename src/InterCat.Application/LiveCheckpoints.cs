@@ -55,6 +55,7 @@ public sealed class LiveCheckpoints : ILiveIndexer
         var staged = new List<StoreStagingFile>();
         StoreStagingFile? checkpoint = null;
         ProcessInstanceIndex? bound = null;
+        TransportRelationIndex? related = null;
         try
         {
             // Opened only as the derivation reads them: one already made, as a live follow's is, opens none.
@@ -64,6 +65,7 @@ public sealed class LiveCheckpoints : ILiveIndexer
             ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
             bound = processes;
             TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
+            related = relations;
             ProcessActivityIndex activity = derivation.Activity(store.Root, segments, clock, fields, cancellationToken);
             checkpoint = store.Stage(DerivationCheckpoint.FileNameFor(generation), StoreDependencyKind.Index);
             _ = DerivationCheckpoint.Write(checkpoint.Content, manifest.SessionId, manifest.Generation, processes, relations, activity);
@@ -84,9 +86,10 @@ public sealed class LiveCheckpoints : ILiveIndexer
 
         try
         {
-            // The chunks' tiles bind their owners as this generation's instances do, which a later one checks before
-            // counting an owner from them.
-            staged.AddRange(ChunkTiles.Stage(store, manifest, generation, bound, cancellationToken));
+            // The chunks' tiles bind their owners as this generation's instances do, and key their channels by the spans
+            // of the ends its relations hold, which a later generation checks before counting an owner or a channel from
+            // them.
+            staged.AddRange(ChunkTiles.Stage(store, manifest, generation, bound, related, cancellationToken));
         }
         catch
         {

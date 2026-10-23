@@ -227,11 +227,13 @@ public static class SessionByteRanking
         // One slot per instance, then one for every row no instance takes under the policy; one per channel end, then
         // one for every row at no drawn end. An interval no reading can fall in holds nothing, and no segment is read. A
         // finished session's interval is measured from its tile index's byte tallies, opening no segment (tile-index-v1
-        // minor 6).
+        // minor 6), and a live one's from its chunks' tiles where they bind as this derivation does (§6).
         var total = new Tallies(instances + 1, (drawn.Count * 2) + 1);
         if (interval is { } brush && native is { } within
-            && PersistedMeasures(store, manifest, clock, brush, within, policy, processes, relations, slotOfChannel, drawn,
-                cancellationToken)
+            && (PersistedMeasures(store, manifest, clock, brush, within, policy, processes, relations, slotOfChannel, drawn,
+                    cancellationToken)
+                ?? ChunkMeasures(store, manifest, clock, brush, within, policy, processes, relations, slotOfChannel, drawn,
+                    cancellationToken))
                 is { } tiled)
         {
             total = tiled;
@@ -839,6 +841,87 @@ public static class SessionByteRanking
             || exception is IOException or UnauthorizedAccessException)
         {
             derivation.RefuseTiles(exception.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A live generation's brush measures, for which it persists no tiles of its own, from the tiles of its chunks
+    /// (`contracts/tile-index-v1.md` §6): each segment the brush meets measured from the section its chunk's tiles keep,
+    /// where this derivation binds that chunk's owners as the derivation that tiled it did and finds each span of its ends'
+    /// records within one incarnation of its own, its owners and channels read as this derivation's; and from its rows
+    /// otherwise, and wherever a tile could place a record otherwise than its row (<see cref="MeasuredByRows"/>). Null
+    /// where no chunk's tiles measure, or one could not be read, and every segment's rows are measured instead, as
+    /// without them.
+    /// </summary>
+    private static Tallies? ChunkMeasures(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        SourceClockDescriptor clock,
+        TimeRange interval,
+        TimeRange native,
+        EvidencePolicy policy,
+        ProcessInstanceIndex processes,
+        TransportRelationIndex relations,
+        int[] slotOfChannel,
+        List<(string Key, int First, int Second)> drawn,
+        CancellationToken cancellationToken)
+    {
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        IReadOnlyList<TileIndexFile> chunks = derivation.TiledChunks(store.Root);
+        if (chunks.Count == 0)
+        {
+            return null;
+        }
+
+        var met = new List<(StoreDependency Segment, TileIndexFile? Tiles, int[]? Owners, int[]? Channels)>();
+        foreach (StoreDependency segment in SessionOverviewIndex.ObservationSegments(manifest))
+        {
+            if (SessionNativeInterval.Meets(SessionSegments.NativeRange(store, manifest, segment.Name), (native.StartTicks, native.EndTicks)))
+            {
+                TileIndexFile? tiles = chunks.FirstOrDefault(chunk => chunk.Describes(segment));
+                int[]? owners = tiles is null ? null : derivation.ChunkOwners(tiles, processes);
+                int[]? channels = owners is null ? null : derivation.ChunkChannels(tiles!, relations);
+                met.Add((segment, channels is null ? null : tiles, owners, channels));
+            }
+        }
+
+        if (met.All(segment => segment.Tiles is null))
+        {
+            return null;
+        }
+
+        var total = new Tallies(processes.Instances.Count + 1, (drawn.Count * 2) + 1);
+        var measuring = new ByteMeasuring(SessionTileIndex.AdmittedStrengths(policy), slotOfChannel,
+            [.. drawn.Select(channel => channel.First)], [.. drawn.Select(channel => channel.Second)], total.Processes, total.Ends);
+        try
+        {
+            foreach ((StoreDependency segment, TileIndexFile? tiles, int[]? owners, int[]? channels) in met)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                bool measured = false;
+                if (tiles is not null)
+                {
+                    using TileReading reading = tiles.Read(store.Root);
+                    reading.Rebound = owners;
+                    reading.ChannelsRebound = channels;
+                    TileSection section = reading.Section(segment.Name);
+                    measured = !MeasuredByRows(store, manifest, clock, section, interval)
+                        && reading.MeasureInterval(section, interval, measuring, cancellationToken);
+                }
+
+                if (!measured)
+                {
+                    MeasureSegment(SessionSegments.Open(store, manifest, segment.Name), native, policy, processes, relations,
+                        slotOfChannel, drawn, total);
+                }
+            }
+
+            return total;
+        }
+        catch (Exception exception) when ((exception is InvalidDataException && !SegmentMeasurement.IsUnsummable(exception))
+            || exception is IOException or UnauthorizedAccessException)
+        {
             return null;
         }
     }

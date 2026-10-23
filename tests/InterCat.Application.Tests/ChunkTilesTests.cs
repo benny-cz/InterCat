@@ -148,7 +148,7 @@ public sealed class ChunkTilesTests
 
         // A bound of no row tiles the newest chunk alone: the bound counts only past the first.
         SessionManifestV1 seventh = session.Store.Current!;
-        List<StoreStagingFile> bounded = ChunkTiles.Stage(session.Store, seventh, 8, null, default, maximumRows: 0);
+        List<StoreStagingFile> bounded = ChunkTiles.Stage(session.Store, seventh, 8, null, null, default, maximumRows: 0);
         Assert.Equal([ChunkTileFiles.FileNameFor(7, 8)], bounded.Select(file => file.PublishedName));
         foreach (StoreStagingFile file in bounded)
         {
@@ -156,7 +156,7 @@ public sealed class ChunkTilesTests
         }
 
         // A bound of one row too: the newest chunk holds more.
-        bounded = ChunkTiles.Stage(session.Store, seventh, 8, null, default, maximumRows: 1);
+        bounded = ChunkTiles.Stage(session.Store, seventh, 8, null, null, default, maximumRows: 1);
         Assert.Equal([ChunkTileFiles.FileNameFor(7, 8)], bounded.Select(file => file.PublishedName));
         foreach (StoreStagingFile file in bounded)
         {
@@ -199,8 +199,8 @@ public sealed class ChunkTilesTests
         Assert.Same(later, SessionDerivationCache.For(session.Store.Current!).TiledChunks(session.Store.Root));
     }
 
-    [Fact(DisplayName = "S4: a chunk's tiles bind no channel and state a derivation no derivation of the session's records and relations matches, and a live generation names no tile index a brush could count bindings from")]
-    public void AChunksTilesBindNoChannel()
+    [Fact(DisplayName = "S4: a chunk's tiles key each record's channel by the span of its end, as many channels as its derivation states, under a derivation no derivation of the session's records and relations matches, and a live generation names no tile index a brush could count bindings from")]
+    public void AChunksTilesKeyChannelsBySpans()
     {
         SessionDerivationCache.Clear();
         using var session = new TemporarySession();
@@ -224,8 +224,9 @@ public sealed class ChunkTilesTests
         {
             TileIndexFile file = SessionTileIndex.Open(session.Store.Root, tiles, manifest.SessionId);
             Assert.Equal(
-                (ProcessInstanceIndex.BindingRule, SessionTileIndex.ChunkRelationRule, 0),
+                (ProcessInstanceIndex.BindingRule, SessionTileIndex.ChunkRelationRule, file.Ends.Count),
                 (file.Derivation.BindingRule, file.Derivation.RelationRule, file.Derivation.Channels));
+            Assert.NotEmpty(file.Ends);
             Assert.False(file.Derivation.Matches(processes, relations));
             long chunk = ChunkTileFiles.SegmentsGenerationOf(tiles.Name)!.Value;
             Assert.Equal(

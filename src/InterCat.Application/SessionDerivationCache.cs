@@ -118,6 +118,7 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     private OperationIndex? operationIndex;
     private TileIndexFile[]? chunkTiles;
     private (ProcessInstanceIndex Processes, Dictionary<TileIndexFile, int[]?> Places)? chunkOwners;
+    private (TransportRelationIndex Relations, Dictionary<TileIndexFile, int[]?> Channels)? chunkChannels;
     private bool operationIndexRead;
     private SessionContentIndex? content;
 
@@ -579,6 +580,34 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             }
 
             return places;
+        }
+    }
+
+    /// <summary>
+    /// The channel each end span <paramref name="file"/>, a chunk's tiles, names binds to under <paramref name="relations"/>,
+    /// this generation's relations, plus one, or 0 for none, by the span's place; null where the tiles name no ends, or
+    /// <paramref name="relations"/> divides one of their spans (`contracts/tile-index-v1.md` §6). Decided once for each file
+    /// a generation's queries read.
+    /// </summary>
+    internal int[]? ChunkChannels(TileIndexFile file, TransportRelationIndex relations)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(relations);
+        lock (gate)
+        {
+            if (chunkChannels is not { } known || !ReferenceEquals(known.Relations, relations))
+            {
+                known = (relations, []);
+                chunkChannels = known;
+            }
+
+            if (!known.Channels.TryGetValue(file, out int[]? channels))
+            {
+                channels = SessionTileIndex.RebindChannels(file, relations);
+                known.Channels[file] = channels;
+            }
+
+            return channels;
         }
     }
 

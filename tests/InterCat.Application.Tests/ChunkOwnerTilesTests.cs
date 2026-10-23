@@ -169,9 +169,9 @@ public sealed class ChunkOwnerTilesTests
             SegmentReaderV1[] observations = [.. names.Select(name => SessionSegments.Open(session.Store, manifest, name))];
             ProcessInstanceIndex tiling = ProcessInstanceIndex.Derive(observations, TestClock, []);
             Assert.Equal(
-                (ProcessInstanceIndex.BindingRule, SessionTileIndex.ChunkRelationRule, tiling.Instances.Count, 0),
+                (ProcessInstanceIndex.BindingRule, SessionTileIndex.ChunkRelationRule, tiling.Instances.Count, file.Ends.Count),
                 (file.Derivation.BindingRule, file.Derivation.RelationRule, file.Derivation.Instances, file.Derivation.Channels));
-            Assert.Equal(SessionTileIndex.ChunkDerivation(tiling).Fingerprint, file.Derivation.Fingerprint);
+            Assert.Equal(SessionTileIndex.ChunkDerivation(tiling, file.Ends).Fingerprint, file.Derivation.Fingerprint);
             Assert.NotEmpty(file.Certified);
             Assert.Equal(file.Certified.Order(), file.Certified);
             Assert.Equal(file.Certified.Count, file.Certified.Select(owner => (owner.Key, owner.ProcessId, owner.Lifecycle)).Distinct().Count());
@@ -272,9 +272,8 @@ public sealed class ChunkOwnerTilesTests
             Assert.Null(SessionTileIndex.Rebind(With(file, original, changed), processes));
         }
 
-        // A file of another rule, or binding channels, counts no owner for a derivation it does not state.
+        // A file of another rule counts no owner for a derivation it does not state.
         Assert.Null(SessionTileIndex.Rebind(With(file, derivation: file.Derivation with { RelationRule = TransportRelationIndex.RelationRule }), processes));
-        Assert.Null(SessionTileIndex.Rebind(With(file, derivation: file.Derivation with { Channels = 1 }), processes));
         Assert.Null(SessionTileIndex.Rebind(With(file, derivation: file.Derivation with { BindingRule = "process-binding-v3" }), processes));
 
         // An owner key its directory does not certify is refused as it is read, whether a tally's or a record's.
@@ -320,9 +319,10 @@ public sealed class ChunkOwnerTilesTests
         int directory = (int)BinaryPrimitives.ReadInt64LittleEndian(footer);
         int listed = BinaryPrimitives.ReadInt32LittleEndian(footer[8..]);
 
-        // The certificates end the directory, after their count: the first bound to none, the last an instance's records.
+        // The certificates follow their count, and the ends' spans follow them: the first bound to none, the last an
+        // instance's records.
         int count = file.Certified.Count;
-        int at = directory + listed - (count * OwnerCertificate.Bytes);
+        int at = directory + listed - 4 - (file.Ends.Count * SessionTileIndex.EndSpanBytes) - (count * OwnerCertificate.Bytes);
         int last = count - 1;
         Assert.Equal(count, BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(at - 4)));
         Assert.Equal(0u, file.Certified[0].Key);
@@ -369,8 +369,8 @@ public sealed class ChunkOwnerTilesTests
                 Entry(last)[24] = 1;
                 break;
             case 9:
-                // One more than it holds.
-                BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(at - 4), count + 1);
+                // More than it holds, the ends' spans after them too.
+                BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(at - 4), count + 100);
                 break;
             default:
                 // Fewer than none.

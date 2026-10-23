@@ -611,7 +611,8 @@ public sealed partial class SessionTileIndexTests
 
     /// <summary>
     /// Where the current generation's tile index says its spanning section lies, from the end of its directory: before the
-    /// count of the owners it certifies, none for an index bound under its own generation's derivation.
+    /// counts of the owners it certifies and of the end spans it lists, none of either for an index bound under its own
+    /// generation's derivation.
     /// </summary>
     private static (long Offset, long Length) SpanningOf(TemporarySession session)
     {
@@ -619,8 +620,9 @@ public sealed partial class SessionTileIndexTests
         ReadOnlySpan<byte> footer = bytes.AsSpan(bytes.Length - SessionTileIndex.FooterLength);
         long directory = BinaryPrimitives.ReadInt64LittleEndian(footer);
         int length = BinaryPrimitives.ReadInt32LittleEndian(footer[8..]);
+        Assert.Equal(0, BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan((int)(directory + length - 8), 4)));
         Assert.Equal(0, BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan((int)(directory + length - 4), 4)));
-        ReadOnlySpan<byte> trailer = bytes.AsSpan((int)(directory + length - 20), 16);
+        ReadOnlySpan<byte> trailer = bytes.AsSpan((int)(directory + length - 24), 16);
         return (BinaryPrimitives.ReadInt64LittleEndian(trailer), BinaryPrimitives.ReadInt64LittleEndian(trailer[8..]));
     }
 
@@ -684,11 +686,16 @@ public sealed partial class SessionTileIndexTests
             output.Write(made ?? []);
         }
 
-        // Since minor 8 the directory ends with the owners a chunk's tiles certify, as the source's does.
+        // Since minor 8 the directory goes on with the owners a chunk's tiles certify, and since minor 9 ends with the end
+        // spans they list: none of either for the generation's own index, the source.
         if (minor >= SessionTileIndex.CertifiedMinor)
         {
-            int listedLength = BinaryPrimitives.ReadInt32LittleEndian(footer[8..]);
-            listed.Write(bytes.AsSpan(at + 16, directory + listedLength - (at + 16)));
+            WriteI32(listed, 0);
+        }
+
+        if (minor >= SessionTileIndex.SpannedMinor)
+        {
+            WriteI32(listed, 0);
         }
 
         byte[] list = listed.ToArray();
@@ -967,6 +974,13 @@ public sealed partial class SessionTileIndexTests
     {
         byte[] bytes = new byte[8];
         BinaryPrimitives.WriteInt64LittleEndian(bytes, value);
+        into.Write(bytes);
+    }
+
+    private static void WriteI32(Stream into, int value)
+    {
+        byte[] bytes = new byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(bytes, value);
         into.Write(bytes);
     }
 
