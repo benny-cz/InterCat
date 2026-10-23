@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-23 · Plan revision: 746 · Branch: `main`
+Updated: 2026-10-23 · Plan revision: 747 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 747 — S4, P25: a live session's chunk-tile queries measured at steady state:**
+  - The warm figures revisions 744 to 746 gave were a query's second and third run, before the runtime had compiled
+    it. Measured as the sixth to tenth of ten runs over 4,000,000 records in forty chunks, a live generation's channel
+    focus took 30 to 43 ms on traffic in bursts where every segment's rows took 95 to 105, a group's lanes 23 to 30
+    where they took 39 to 65, and a brush's bytes 38 to 58 where they took 285 to 319.
+  - Where each record is another pair's than the one before, a live focus took up to twice what the rows did while all
+    forty segments stayed held, and a brush and its bytes less. A level spanning a chunk's one section was tried and
+    set aside: its tiles keep tallies within the same third of their records' bytes, so it reads as many records.
+  - Documentation only: the architecture tests pass and the fixture index is unchanged. The figures come from a
+    probe run in Release over live sessions of 1,000,000 and 4,000,000 records, removed once it ran; the spanning
+    level tried for a chunk's one section was reverted.
 
 - **Revision 746 — S4, P25: a live session's channel focus counts its chunks from their tiles; incremental updates at commit are done:**
   - A channel's focus - at both ends or at one, of one mechanism or source direction - counts each chunk from its
@@ -1083,8 +1095,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      were bound when it was tiled, and since revision 745 its brushes and since revision 746 its channel focuses,
      where its relations also hold each end's records the chunk's tiles name in one incarnation; a chunk a record
      read later binds otherwise still builds a segment's tiles from its rows when first drawn, and where each record
-     is another pair's than the one before a chunk's tiles, which then keep no narrow tallies and, for a chunk of one
-     segment, no level spanning it, are read record by record, slower warm than the rows; since revision 456 a finished generation's are persisted
+     is another pair's than the one before, which no narrow tile tallies, a chunk's tiles are read record by record
+     and a live focus takes up to twice what the rows take while every segment stays held; since revision 456 a
+     finished generation's are persisted
      (`tile-index-v1`), with the records a column boundary can fall among, so its
      zooms open no segment, and since revision 457 neither do its brushes, which count from the tiles' tallies. Since revision 400 a zoom opens and tiles only the segments its interval meets, by the readings their headers
      declare: a hundredth of a reopened 1M-row session in twenty segments drew in 3-17 ms, from 86-237 ms. Since

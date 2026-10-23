@@ -888,26 +888,23 @@ ms, opening the newest chunk's one segment, where every segment's rows took 42 m
 the whole extent at 256 columns took 17 ms and opened no other.
 
 Since minor 8 a live generation's owner focuses and byte lanes count so too, and its zooms' byte lanes and an interval's
-bytes add up the byte sums of any chunk's tiles, which bind nothing. At 1,000,000 records in ten chunks, of four hundred
-processes whose records come in bursts of a pair's fifty, a group's lanes over the whole extent took 28 to 33 ms warm
-and 88 ms cold, where every segment's rows took 38 to 49 and 195, opening the newest chunk's one segment where the rows
-opened all ten; at 4,000,000 records in forty chunks, 28 to 40 ms warm and 104 cold where the rows took 43 to 62. Where
-each record is another process's than the one before, which no narrow tile tallies, the tiles' records are read instead,
-and the same group took 88 to 100 ms warm at 1,000,000 records where the rows took 51 to 59, as a finished session's own
-tile index takes 75 to 80. Binding the owners made tiling a chunk of 100,000 records take 133 to 154 ms, from 34 to 94,
-and the chunks' tiles 8.0% of the segments' bytes, from 7.4%.
+bytes add up the byte sums of any chunk's tiles, which bind nothing; since minor 9 its brushes, their counts and their
+bytes by process and channel end; and since revision 746 its channel focuses. Binding the owners made staging the tiles
+of a chunk of 100,000 records take 133 to 154 ms, from 34 to 94, and the chunks' tiles 8.0% of the segments' bytes, from
+7.4%; naming the ends, 200 to 248 ms and 9.0% where each record is another process's than the one before, and on traffic
+in bursts 141 to 165 ms and 12.3%.
 
-Since minor 9 a live generation's brushes count so too, their counts and their bytes by process and channel end. At
-1,000,000 records in ten chunks a brush over the whole extent took 6 to 9 ms warm and 27 to 33 cold, opening the newest
-chunk's one segment, where every segment's rows took 8 to 10 and 43 to 52 and opened all ten; its bytes took 17 to 18 ms
-warm and 45 cold, where the rows took 37 to 56 and 54 to 91. Over half the extent its counts took 4 to 7 ms warm either
-way. Naming the ends made staging the tiles of a chunk of 100,000 records take 200 to 248 ms where each record is
-another process's than the one before, from 133 to 154, and the chunks' tiles 9.0% of the segments' bytes, from 8.0%; on
-traffic in bursts, 141 to 165 ms and 12.3%.
-
-Since revision 746 a live generation's channel focuses count so too. At 1,000,000 records in ten chunks, on traffic in
-bursts, a channel's focus over the whole extent at 256 columns took 27 to 30 ms warm and 97 cold, opening the newest
-chunk's one segment, where every segment's rows took 49 to 58 and 208 and opened all ten. Where each record is another
-pair's than the one before, no narrow tile keeps channel tallies, and a chunk of one segment keeps no level spanning it,
-so its tiles' records are read: 135 to 146 ms warm and 207 cold, where the rows took 74 to 85 and 157, and a finished
-session's own tile index, counting its spanning level's tallies, 11 to 16.
+Measured at steady state - the sixth to tenth of ten runs of each query, once the runtime has compiled what it runs -
+over 4,000,000 records in forty chunks, of four hundred processes, at 256 columns on four cores: where records come in
+bursts of a pair's fifty, a channel's focus over the whole extent took 30 to 43 ms, a group's lanes 23 to 30, one
+process's 21 to 25, a brush 12 to 36 and its bytes 38 to 58, opening the newest chunk's one segment, where every
+segment's rows took 95 to 105, 39 to 65, 32 to 56, 30 to 67 and 285 to 319 and opened all forty, and the first channel
+focus after opening took 120 ms where the rows took 1.2 s. Where each record is another pair's than the one before,
+which no narrow tile tallies, the tiles' records are read: a channel's focus took 92 to 112 ms, a group's lanes 64 to 82
+and one process's 77 to 107, where the rows, every segment held in memory, took 70 to 143, 36 to 40 and 39 to 51, and a
+finished session's own tile index 40 to 58; a brush took 10 to 23 ms and its bytes 23 to 49, where the rows took 24 to
+36 and 253 to 343. At 1,000,000 records in ten chunks, whose segments all stay held, a live focus took up to two and a
+half times what the rows did, and a brush and its bytes no more than they did. A level spanning a chunk's one section
+would not help: its tiles keep tallies within the same third of their records' bytes. The warm figures revisions 744 to
+746 gave here were a query's second and third run, before the runtime had compiled it, and overstated what reading the
+tiles' records costs.
