@@ -2156,7 +2156,8 @@ public sealed class CommandLineTests : IDisposable
                 + "when it is opened from this investigation.", text, StringComparison.Ordinal);
             string json = (await Run("workspace", "show", workspace, "--json")).Output;
             Assert.Contains($"\"contract\": \"{WorkspaceCommand.ResolutionContract}\"", json, StringComparison.Ordinal);
-            Assert.Equal("workspace-resolution-v24", WorkspaceCommand.ResolutionContract);
+            Assert.Equal("workspace-resolution-v25", WorkspaceCommand.ResolutionContract);
+            Assert.Contains("\"comparisons\": []", json, StringComparison.Ordinal);
             Assert.Contains("\"collectorsAside\": false", json, StringComparison.Ordinal);
             Assert.Contains("\"wallClock\": false", json, StringComparison.Ordinal);
             Assert.Contains("\"hostsOpened\": false", json, StringComparison.Ordinal);

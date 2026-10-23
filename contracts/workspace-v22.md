@@ -1,10 +1,11 @@
-# Workspace contract, version 21
+# Workspace contract, version 22
 
-Status: M4, revision 557 (ADR-038 to ADR-042); versions 1 to 20 were revisions 253, 254, 256, 260, 264, 265, 266, 269,
-270, 271, 280, 301, 339, 343, 360, 388, 406, 419, 422 and 470's, and packages revision 263's
+Status: M4 and M12, revision 758 (ADR-038 to ADR-042, ADR-061); versions 1 to 21 were revisions 253, 254, 256, 260,
+264, 265, 266, 269, 270, 271, 280, 301, 339, 343, 360, 388, 406, 419, 422, 470 and 557's, and packages revision 263's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
-Produced by: `icat workspace new | add | relink | alias | align | join | same-host | translate | note | view | package`
-Read by: `icat workspace show | compare | correlate`
+Produced by: `icat workspace new | add | relink | alias | align | join | same-host | translate | note | view | comparison |
+package`
+Read by: `icat workspace show | compare | correlate`, `icat compare --workspace <workspace> --saved <name>`
 
 A workspace is an investigation over several separately valid sessions (§8.4). It is one JSON file, by convention named
 `*.icat-workspace`, that references its members by identity and never changes them. Version 2 added its time: one
@@ -20,11 +21,11 @@ left the window's two main panes (§7), version 16 which process lanes they pinn
 timeline (§7), version 17 whether they grouped each session's processes by terminal session (§7), version 18
 whether they set InterCat's own processes aside from each session's view (§7), version 19 whether they read each
 session's times on the wall clock its capture's machine read (§7), version 20 the widths they gave the ranked table
-and the inspector by their edges (§7), and version 21 whether they opened each session's Other hosts into its busiest
-hosts (§7). An earlier
+and the inspector by their edges (§7), version 21 whether they opened each session's Other hosts into its busiest
+hosts (§7), and version 22 their saved comparisons of two intervals of its sessions (§7). An earlier
 version's file is read as one without what later versions added - a `workspace-v1` file holds members and host names
 and no time, a `workspace-v2` file manual alignments only, and a `workspace-v5` file members each aligned to the
-reference itself - and each is written as version 21. A kind of fact is
+reference itself - and each is written as version 22. A kind of fact is
 refused only in a file of a version before the one that added it; until revision 279 each was refused in any version
 before the newest, so a file an earlier version wrote with what that version had added stopped reading once a later
 version appeared.
@@ -33,7 +34,7 @@ version appeared.
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v21"` (`"workspace-v1"` to `"workspace-v20"` are read) |
+| `contract` | `"workspace-v22"` (`"workspace-v1"` to `"workspace-v21"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -45,6 +46,7 @@ version appeared.
 | `addressTranslations` | Every revision of a person's statement of a known address translation, in the order recorded (§6) |
 | `notes` | Every revision of a person's notes, in the order written (§7) |
 | `views` | Every revision of a person's saved views of the investigation's time, in the order saved (§7) |
+| `comparisons` | Every revision of a person's saved comparisons of two intervals of its sessions, in the order saved (§7). Since version 22 |
 | `layouts` | How a person laid out each member's graph and timeline, ranked its rows, counted its records and opened its Other hosts: at most one per member, replaced as it changes (§7) |
 | `panes` | How a person left the window's panes while showing its sessions: the graph's share of the main panes' height, the pane filling the column, and the widths they gave the ranked table and the inspector; null when it keeps none (§7) |
 
@@ -94,12 +96,13 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v24`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v25`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given), `alignment` (the revision in force, or null), `through` (the members it is aligned through to the
 reference, nearest first) and, since revision 395, `demo` (whether the session found for it is InterCat's generated demo,
 `contracts/demo-investigation-v1.md`, which the text then says), the hosts with their members and the identities confirmed one host with each, the
-`timeReference`, every alignment, join decision, host confirmation, address translation, note and view revision, the
+`timeReference`, every alignment, join decision, host confirmation, address translation, note and view revision and,
+since revision 758, every saved comparison revision (`comparisons`), the
 overlaps of captures of one host (§5) with, since revision 278, the snapshot vector they answer (I16) - each capture
 read to place them, with its session, the one generation read and its manifest's digest - the layouts, each with its
 `grouping` since revision 406, its `collectorsAside` since revision 419, its `wallClock` since revision 422 and its
@@ -300,7 +303,7 @@ person's statement; it is never evidence of its own. A file whose translations n
 relate a loopback address, an endpoint to itself or an endpoint to an address alone, or appear in a file before version
 8, is refused.
 
-## 7. Notes, saved views, layouts and panes
+## 7. Notes, saved views, saved comparisons, layouts and panes
 
 A note is a person's words on the investigation (§8.4), about all of it or pinned at an instant of a member's session,
 which the investigation's time places as it places any other instant - the merged timeline marks it on that session's
@@ -335,6 +338,33 @@ A view needs the investigation to have a time; one saved before the time referen
 the time now, and never shown on another clock. `icat workspace view <name> <from> <to>` saves one, in seconds of the
 investigation's time, and `<name> --remove` removes it; `show` lists those in force. A file whose views are unnamed,
 show no interval, are in the clock of no member, or appear in a file before version 10, is refused.
+
+A saved comparison is a named comparison of two intervals of the investigation's sessions (plan M12's saved comparison
+specifications, ADR-061): one session's two, or two captures', as `icat compare` compares them (`comparison-v1`). It
+keeps what to compare and never an answer: each time it runs it reads its sessions as they are then, at the generation
+each holds then.
+
+| Comparison field | Meaning |
+|---|---|
+| `revision` | A positive number, unique among comparisons and increasing in the order saved |
+| `name` | The comparison's name, at most 100 characters, trimmed; one name, in any case, is one comparison |
+| `baseline` | The interval compared against: `{ sessionId, startTicks, endTicks }`, a member's session and an interval of it, half-open in that session's own 100 ns presentation ticks, its end after its start; null when the revision removes the comparison |
+| `compared` | The interval compared, the same way, of the baseline's session or of another member; null when the revision removes the comparison |
+| `metric` | What each row is compared by: `Records` or `BytesSent` (`comparison-v1` §3); null when the revision removes the comparison |
+| `groupedBy` | What each row is of: `Process` or `Executable` (`comparison-v1` §2a); two sessions' intervals are compared by `Executable` alone (§2b). Null when the revision removes the comparison |
+| `recordedUtc` | When it was saved |
+
+Each interval is in its own session's time, never the investigation's: a comparison of two captures pairs their rows by
+executable and needs no alignment, and an alignment changed later changes no saved comparison. A name's latest revision
+is in force unless it removes the comparison, so saving under a name replaces the comparison of that name, and every
+revision is kept. `icat workspace comparison <name> --session <session> --interval <start:end> --baseline <start:end>
+[--baseline-session <session>] [--rank-by records|bytes-sent] [--group-by process|executable]` saves one - each
+session named as a member is, each interval as `icat compare` takes it, by records and of processes by default, or of
+executables when the baseline is another session's - and `<name> --remove` removes it; `show` lists those in force.
+`icat compare --workspace <workspace> --saved <name>` runs one, each session read where the investigation finds it now,
+which must hold its capture (§3): its document names the comparison and its revision (`comparison-v1` §8). A file whose
+comparisons are unnamed, compare an interval that ends before it starts or is of no member, compare by no metric or
+grouping, compare two sessions by process, or appear in a file before version 22, is refused.
 
 A layout is how a person laid out a member session's view (§26.3's workspace scope): the nodes they pinned on its
 graph, where, the process lanes they pinned on its timeline, how its processes are grouped, what its rows are ranked by,
@@ -420,8 +450,8 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   the whole path it was last found at. On the computer that made the package it resolves as it did; elsewhere it is
   `Missing`, to relink.
 - Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments`,
-  `joins`, `hostEquivalences`, `addressTranslations`, `notes`, `views`, `layouts` and `panes`. The file is written as
-  the current version, `workspace-v21`.
+  `joins`, `hostEquivalences`, `addressTranslations`, `notes`, `views`, `comparisons`, `layouts` and `panes`. The file
+  is written as the current version, `workspace-v22`.
 - The folder must not exist and must lie inside no session. It is built in a private folder beside it,
   `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or

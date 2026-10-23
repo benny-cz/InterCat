@@ -277,6 +277,28 @@ public static class ComparisonText
         return notes;
     }
 
+    /// <summary>
+    /// A saved comparison as `icat workspace show` and the investigation's window state it: "[10.0, 20.0) s of session
+    /// 1a2b3c4d against [0.0, 10.0) s of it, by records, a row per process", the baseline's session named where it is
+    /// another capture.
+    /// </summary>
+    public static string Saved(SavedComparison comparison, IFormatProvider? culture = null)
+    {
+        ArgumentNullException.ThrowIfNull(comparison);
+        if (comparison is not { Baseline: { Interval: { } baseline } before, Compared: { Interval: { } compared } after,
+            Metric: { } metric, GroupedBy: { } grouping })
+        {
+            throw new ArgumentException("A removed comparison compares nothing.", nameof(comparison));
+        }
+
+        culture ??= CultureInfo.CurrentCulture;
+        return WorkspaceTime.FormatHalfOpenRange(compared, culture) + " of session " + InvestigationWorkspace.Short(after.SessionId)
+            + " against " + WorkspaceTime.FormatHalfOpenRange(baseline, culture)
+            + (comparison.AcrossCaptures ? " of session " + InvestigationWorkspace.Short(before.SessionId) : " of it")
+            + (metric == ComparisonMetric.BytesSent ? ", by bytes sent across" : ", by records")
+            + (grouping == ComparisonGrouping.Executable ? ", a row per executable" : ", a row per process");
+    }
+
     /// <summary>A rate of records, to two significant digits below one: "120", "12.5", "1.25", "0.25", "0.00028".</summary>
     public static string Rate(double perSecond, IFormatProvider? culture = null)
     {

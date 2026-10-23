@@ -3,15 +3,17 @@
 Status: **implemented** for two intervals of one session's generation, on the command line (`icat compare`, revision
 752), in the window (Compare with…, revision 753, §8a), and as a redacted report to share from either (revision 754,
 §8b); its rows are of processes or, since revision 755, of executables (§2a); and since revision 756 two captures
-compare, by executable (§2b) - on the command line, and since revision 757 in the window too. Difference timelines,
-graph overlays and saved comparison specifications are not defined at this version (§9).
+compare, by executable (§2b) - on the command line, and since revision 757 in the window too. Since revision 758 an
+investigation saves a comparison under a name and the command line runs it (§8c). Difference timelines and graph
+overlays are not defined at this version (§9).
 
 This contract fixes what plan §15's M12 asks of a comparison - normalized rates beside absolute counts, ranked changed
 relations, unavailable measurement told apart from disappeared activity, and side-by-side values with an explicit reason
 wherever no change can be stated - for two intervals of one generation, compared row by row, and two captures. It owns
 no bytes: every value is read from the generation's published segments and indexes through the queries the window and
 the command line already answer (`metrics-v1`, `relations-v1`, `coverage-v2`), and a comparison changes none of them.
-ADR-058 records the decisions, and ADR-059 how rows are grouped by executable.
+ADR-058 records the decisions, ADR-059 how rows are grouped by executable, ADR-060 how two captures compare and ADR-061
+how a comparison is saved.
 
 ## 1. A request
 
@@ -152,6 +154,8 @@ icat compare <session-directory> --baseline <start:end> --interval <start:end>
     [--rank-by records|bytes-sent] [--group-by process|executable] [--limit <n>] [--json]
     [--baseline-session <session-directory>]
     [--output <path> [--share-redacted] [--format json|csv] [--overwrite]]
+icat compare --workspace <workspace> --saved <name> [--limit <n>] [--json]
+    [--output <path> [--share-redacted] [--format json|csv] [--overwrite]]
 ```
 
 Each bound is a count of ticks or a time with its unit, as every `--interval` takes it. Its text states both intervals
@@ -166,6 +170,7 @@ its change, or `not comparable [n]` naming its reason once beneath the table.
 |---|---|
 | `contract`, `sessionPath` | `comparison-v1`, and the session's folder. |
 | `baselineSessionPath` | Of two captures, the baseline's session folder; null otherwise. |
+| `saved` | Of a saved comparison run (§8c), `{ workspace, name, revision }`: the investigation's file, the comparison's name and the revision run; null otherwise. Since revision 758. |
 | `comparison.sessionId`, `generation` | The generation every value was read from: of two captures, the compared interval's. |
 | `baselineSessionId`, `baselineGeneration`, `sameHost` | Of two captures, the baseline's session and generation, and whether the two name one host identity, null where either names none; all null of one session. |
 | `metric`, `policy` | §3, §1. |
@@ -191,6 +196,21 @@ file that is there unless `--overwrite` is given; a file holds every row unless 
 rather than scrolled. With `--share-redacted` it writes §8b's report instead, as JSON, or as CSV with `--format csv`
 or a path ending `.csv`; the comparison itself is written as JSON only, and `--json` and `--output` are not given
 together.
+
+## 8c. A saved comparison
+
+An investigation keeps a comparison under a name (`workspace-v22` §7, ADR-061): its two intervals, each of a member's
+session in that session's own ticks, what it compares by and what each row is of - a specification, never an answer.
+`icat workspace comparison` saves one, replacing one of that name, and removes one; `icat workspace show` lists those
+in force in `icat compare`'s words: "[10.0, 20.0) s of session 1a2b3c4d against [0.0, 10.0) s of it, by records, a
+row per process".
+
+`icat compare --workspace <workspace> --saved <name>` runs the one in force under that name, in any case, as the
+command line compares two intervals it is given: each session read where the investigation finds it now, which must
+hold its capture (`workspace-v22` §3), at the generation found there, so a comparison saved before a live capture
+grew reads it as it is. Only how it is shown is chosen: `--limit`, `--json` and `--output` with its options, never a
+session, an interval, `--rank-by` or `--group-by`. Its text and its file name the comparison and its revision, and a
+redacted report never does, a name being a person's own words (§8b).
 
 ## 8a. The window
 
@@ -265,6 +285,7 @@ still said.
   any.
 - **A bounded change under a gap.** The losses a ledger counts bound the records a mechanism lost, not a row's (§5); a
   bound per row would need what a lost record could have moved.
-- Difference timelines, graph overlays, saved comparison specifications, recurring patterns, outliers and causal
-  navigation (plan M12).
+- Difference timelines, graph overlays, recurring patterns, outliers and causal navigation (plan M12).
+- **A saved comparison in the window.** The command line saves and runs one (§8c); the window neither saves nor
+  reopens one yet.
 - Wall-clock bounds, which `icat timeline --wall-clock` states; a comparison takes session ticks.

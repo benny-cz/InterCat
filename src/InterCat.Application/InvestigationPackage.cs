@@ -91,7 +91,7 @@ public sealed record InvestigationPackageProgress(int Session, int Sessions, Ori
 /// copy by a path relative to itself, so the folder moves as one; the investigation's identity, time reference,
 /// alignments, host names and join decisions go with it unchanged, since every session keeps its identity. Any other
 /// member stays a reference to where it was last found, to relink wherever the package is opened
-/// (`contracts/workspace-v21.md` §8). The package is built in a private directory beside its destination, each copy
+/// (`contracts/workspace-v22.md` §8). The package is built in a private directory beside its destination, each copy
 /// verified as it is made, the investigation reopened and resolved as a recipient would, and only then moved into place.
 /// </summary>
 public static class InvestigationPackage
@@ -322,7 +322,7 @@ public static class InvestigationPackage
         paragraphs.Add((hosts.Count == 1 ? "Hosts: one, identified as " : string.Create(culture, $"Hosts: {hosts.Count:N0}, identified as "))
             + Listed(hosts) + ".");
 
-        // The file goes whole (contracts/workspace-v21.md §8), so everything in it is said: each kind a person writes, and
+        // The file goes whole (contracts/workspace-v22.md §8), so everything in it is said: each kind a person writes, and
         // what of it is in their own words - names, notes and the endpoints a translation states - which no copy
         // pseudonymizes, a redacted one's included. A note is counted once however often it was reworded.
         InvestigationWorkspaceFile workspace = preview.Workspace;
@@ -347,11 +347,16 @@ public static class InvestigationPackage
         if (workspace.Alignments.Count > 0) carried.Add(Counted(workspace.Alignments.Count, "alignment revision", "alignment revisions", culture));
         if (workspace.Joins.Count > 0) carried.Add(Counted(workspace.Joins.Count, "join decision revision", "join decision revisions", culture));
         if (workspace.Views.Count > 0) carried.Add(Counted(workspace.Views.Count, "saved view revision", "saved view revisions", culture));
+        if (workspace.Comparisons.Count > 0)
+        {
+            carried.Add(Counted(workspace.Comparisons.Count, "saved comparison revision", "saved comparison revisions", culture));
+        }
+
         if (workspace.Layouts.Count > 0) carried.Add(Counted(workspace.Layouts.Count, "session's layout", "sessions' layouts", culture));
         if (workspace.Panes is not null) carried.Add("the window's panes");
         if (notes > 0) carried.Add(Counted(notes, "note", "notes", culture));
         List<string> written = [];
-        if (workspace.HostAliases.Count + workspace.Views.Count > 0) written.Add("names");
+        if (workspace.HostAliases.Count + workspace.Views.Count + workspace.Comparisons.Count > 0) written.Add("names");
         if (notes > 0) written.Add("notes");
         if (workspace.AddressTranslations.Count > 0) written.Add("translated endpoints");
         paragraphs.Add("The investigation's file goes with them, holding " + Listed(carried) + "."

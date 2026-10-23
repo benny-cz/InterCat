@@ -6,7 +6,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v21.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v22.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -37,6 +37,9 @@ internal sealed record WorkspaceDocument
 
     /// <summary>Every revision of a person's saved views of the investigation's time, in the order saved.</summary>
     public required IReadOnlyList<WorkspaceView> Views { get; init; }
+
+    /// <summary>Every revision of a person's saved comparisons of its sessions' intervals, in the order saved.</summary>
+    public required IReadOnlyList<SavedComparison> Comparisons { get; init; }
 
     /// <summary>Two captures of one host that ran, or may have run, at once, or whose overlap is unknown (§8.4).</summary>
     public required IReadOnlyList<OverlapDocument> Overlaps { get; init; }
@@ -102,7 +105,7 @@ internal sealed record WorkspaceMemberDocument
     public required IReadOnlyList<Guid> Through { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v21.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v22.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -134,7 +137,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v21.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v22.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -294,7 +297,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v24";
+    public const string ResolutionContract = "workspace-resolution-v25";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -326,6 +329,12 @@ internal static partial class WorkspaceCommand
         string? replacement = command.TakeOption("--replace");
         string? columnsText = command.TakeOption("--columns");
         string? intervalText = command.TakeOption("--interval");
+        string? sessionText = command.TakeOption("--session");
+        string? baselineText = command.TakeOption("--baseline");
+        string? baselineSessionText = command.TakeOption("--baseline-session");
+        string? rankByText = command.TakeOption("--rank-by");
+        string? groupByText = command.TakeOption("--group-by");
+        string?[] comparisonOptions = [sessionText, baselineText, baselineSessionText, rankByText, groupByText];
         List<string> only = [];
         while (command.TakeOption("--only") is { } chosen)
         {
@@ -374,11 +383,14 @@ internal static partial class WorkspaceCommand
             "translate" => (2, 2, "icat workspace translate <workspace> <seen-endpoint> <endpoint> [--withdraw] [--note <text>]"),
             "note" => (1, 1, "icat workspace note <workspace> (<text> [--at <session>@<seconds>] | <note> --replace <text> | <note> --remove)"),
             "view" => (remove ? 1 : 3, remove ? 1 : 3, "icat workspace view <workspace> <name> (<from-seconds> <to-seconds> | --remove)"),
+            "comparison" => (1, 1, "icat workspace comparison <workspace> <name> (--session <session> --interval <start:end> "
+                + "--baseline <start:end> [--baseline-session <session>] [--rank-by records|bytes-sent] "
+                + "[--group-by process|executable] | --remove)"),
             "package" => (0, 0, "icat workspace package <workspace> --output <new-folder> [--only <session>]... [--check]"),
             _ => (-1, -1, string.Empty),
         };
         bool manual = verb == "align" && !withdraw && !sameBoot && !wallClock;
-        bool misplaced = (remove && verb is not ("alias" or "note" or "view"))
+        bool misplaced = (remove && verb is not ("alias" or "note" or "view" or "comparison"))
             || ((pinned is not null || replacement is not null) && verb != "note")
             || (verb == "note" && new[] { pinned is not null, replacement is not null, remove }.Count(flag => flag) > 1)
             || ((sameBoot || wallClock) && verb != "align")
@@ -391,13 +403,18 @@ internal static partial class WorkspaceCommand
             || (drift is not null && !manual && !wallClock) || (wallClock && drift is null)
             || (note is not null && !(verb is "align" or "same-host" or "translate" && !withdraw) && verb != "join")
             || ((output is not null || only.Count > 0 || check) && verb != "package")
-            || ((columnsText is not null || intervalText is not null) && verb != "timeline")
+            || (columnsText is not null && verb != "timeline")
+            || (intervalText is not null && verb is not ("timeline" or "comparison"))
+            || (comparisonOptions.Any(option => option is not null) && verb != "comparison")
+            || (verb == "comparison" && (remove
+                ? intervalText is not null || comparisonOptions.Any(option => option is not null)
+                : sessionText is null || intervalText is null || baselineText is null))
             || (verb == "package" && output is null && !check);
         if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || (manual && operands.Count == 3) || misplaced)
         {
             ConsoleUi.Failure(least < 0
-                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, timeline, join, same-host, translate, note, view "
-                    + "or package"
+                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, timeline, join, same-host, translate, note, view, "
+                    + "comparison or package"
                     + (verb is null ? "." : $"; '{verb}' is none of them.")
                 : $"Use {form}.");
             ConsoleUi.Explain(PrintHelp);
@@ -444,6 +461,8 @@ internal static partial class WorkspaceCommand
                 "translate" => Translate(path, operands[0], operands[1], withdraw, note),
                 "note" => Note(path, operands[0], pinned, replacement, remove),
                 "view" => View(path, operands, remove),
+                "comparison" => SaveComparison(path, operands[0], remove, sessionText, intervalText, baselineText, baselineSessionText,
+                    rankByText, groupByText),
                 "align" when withdraw => Withdraw(path, operands[0]),
                 "align" when sameBoot => AlignSameBoot(path, operands[0], operands[1], note),
                 "align" when wallClock => AlignByWallClock(path, operands[0], operands[1], sync!, drift!, note),
@@ -664,6 +683,53 @@ internal static partial class WorkspaceCommand
         WorkspaceView saved = InvestigationWorkspace.SaveView(path, operands[0], new TimeRange(from / 100, to / 100), DateTimeOffset.UtcNow);
         ConsoleUi.Success($"View '{saved.Name}' saved: {SessionTimeText.Range(from, to, CultureInfo.CurrentCulture)} of the investigation's time"
             + string.Create(CultureInfo.InvariantCulture, $" (view revision {saved.Revision})."));
+        return InterCatExitCode.Success;
+    }
+
+    /// <summary>
+    /// `icat workspace comparison`: saves a comparison of two intervals of the investigation's sessions - one session's
+    /// two, or two captures' - by records or bytes sent across, a row per process or executable, under a name, replacing one
+    /// of that name; or removes one. Every revision is kept, and `icat compare --workspace <workspace> --saved <name>` runs
+    /// it (plan M12's saved comparison specifications).
+    /// </summary>
+    private static InterCatExitCode SaveComparison(string path, string name, bool remove, string? sessionText, string? intervalText,
+        string? baselineText, string? baselineSessionText, string? rankByText, string? groupByText)
+    {
+        if (remove)
+        {
+            SavedComparison removed = InvestigationWorkspace.RemoveComparison(path, name, DateTimeOffset.UtcNow);
+            ConsoleUi.Success(string.Create(CultureInfo.InvariantCulture,
+                $"Comparison '{removed.Name}' removed (comparison revision {removed.Revision}); its revisions are kept."));
+            return InterCatExitCode.Success;
+        }
+
+        InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
+        WorkspaceMember compared = InvestigationWorkspace.MemberNamed(workspace, sessionText!);
+        WorkspaceMember baselineMember = baselineSessionText is null ? compared : InvestigationWorkspace.MemberNamed(workspace, baselineSessionText);
+        TimeRange interval = TickInterval.Read(intervalText, out string? tooWide)
+            ?? throw new InvalidOperationException(tooWide ?? "--interval is " + TickInterval.Takes + ".");
+        TimeRange baseline = TickInterval.Read(baselineText, out string? baselineTooWide)
+            ?? throw new InvalidOperationException(baselineTooWide?.Replace("--interval", "--baseline", StringComparison.Ordinal)
+                ?? "--baseline is " + TickInterval.Takes + ".");
+        ComparisonMetric metric = rankByText switch
+        {
+            null or "records" => ComparisonMetric.Records,
+            "bytes-sent" => ComparisonMetric.BytesSent,
+            _ => throw new InvalidOperationException($"--rank-by compares records or bytes-sent; '{rankByText}' is neither."),
+        };
+        ComparisonGrouping grouping = groupByText switch
+        {
+            null => baselineMember.SessionId == compared.SessionId ? ComparisonGrouping.Process : ComparisonGrouping.Executable,
+            "process" => ComparisonGrouping.Process,
+            "executable" => ComparisonGrouping.Executable,
+            _ => throw new InvalidOperationException($"--group-by compares process or executable rows; '{groupByText}' is neither."),
+        };
+        SavedComparison saved = InvestigationWorkspace.SaveComparison(path, name,
+            new SavedComparisonInterval { SessionId = baselineMember.SessionId, StartTicks = baseline.StartTicks, EndTicks = baseline.EndTicks },
+            new SavedComparisonInterval { SessionId = compared.SessionId, StartTicks = interval.StartTicks, EndTicks = interval.EndTicks },
+            metric, grouping, DateTimeOffset.UtcNow);
+        ConsoleUi.Success($"Comparison '{saved.Name}' saved: {ComparisonText.Saved(saved, CultureInfo.CurrentCulture)}"
+            + string.Create(CultureInfo.InvariantCulture, $" (comparison revision {saved.Revision})."));
         return InterCatExitCode.Success;
     }
 
@@ -1158,6 +1224,7 @@ internal static partial class WorkspaceCommand
             AddressTranslations = workspace.AddressTranslations,
             Notes = workspace.Notes,
             Views = workspace.Views,
+            Comparisons = workspace.Comparisons,
             Overlaps = [.. overlaps.Overlaps.Select(overlap => new OverlapDocument
             {
                 First = overlap.First,
@@ -1304,6 +1371,20 @@ internal static partial class WorkspaceCommand
             }
         }
 
+        IReadOnlyList<SavedComparison> comparisons = InvestigationWorkspace.ComparisonsInForce(current);
+        if (comparisons.Count > 0)
+        {
+            ConsoleUi.Line();
+            ConsoleUi.Heading("Saved comparisons");
+            foreach (SavedComparison comparison in comparisons)
+            {
+                ConsoleUi.Note($"{comparison.Name}: {ComparisonText.Saved(comparison, CultureInfo.CurrentCulture)}.");
+            }
+
+            ConsoleUi.Note("Each interval is in its own session's time, never the investigation's, and is read afresh each time the "
+                + "comparison runs: icat compare --workspace <workspace> --saved <name>.");
+        }
+
         if (document.Layouts.Count > 0 || document.Panes is not null)
         {
             // What the Desktop puts back when a member is opened from this investigation (§26.3): the window's panes for any
@@ -1434,6 +1515,9 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("icat workspace note <workspace> <note> (--replace <text> | --remove) [--json]");
         ConsoleUi.Line("  A note that starts with a dash follows --, as in: icat workspace note <workspace> -- \"-> retry storm\"");
         ConsoleUi.Line("icat workspace view <workspace> <name> (<from-seconds> <to-seconds> | --remove) [--json]");
+        ConsoleUi.Line("icat workspace comparison <workspace> <name> (--session <session> --interval <start:end>");
+        ConsoleUi.Line("    --baseline <start:end> [--baseline-session <session>] [--rank-by records|bytes-sent]");
+        ConsoleUi.Line("    [--group-by process|executable] | --remove) [--json]");
         ConsoleUi.Line("icat workspace package <workspace> --output <new-folder> [--only <session>]... [--check] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line($"An investigation over separately captured sessions ({InvestigationWorkspace.Contract}, ADR-038): one file that names each");
@@ -1487,6 +1571,10 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("  view     saves an interval of the investigation's time, in seconds of its reference's clock, as a");
         ConsoleUi.Line("           named view the Desktop's timeline can show again; --remove removes it. A view saved on");
         ConsoleUi.Line("           another time reference is kept, and said not to be of the time now.");
+        ConsoleUi.Line("  comparison saves, under a name, a comparison of two intervals as icat compare takes them: of one");
+        ConsoleUi.Line("           session, or with --baseline-session of two, which compare by executable. Each interval");
+        ConsoleUi.Line("           is in its own session's time; icat compare --workspace <workspace> --saved <name> runs");
+        ConsoleUi.Line("           it, reading the sessions as they are then. --remove removes it, each a kept revision.");
         ConsoleUi.Line("  package  copies the investigation with its sessions into a new folder, which opens anywhere as");
         ConsoleUi.Line("           the same investigation: each session that is where it was last found, or each named by");
         ConsoleUi.Line("           --only, as an exact original package, beside the investigation's file. Any other stays a");

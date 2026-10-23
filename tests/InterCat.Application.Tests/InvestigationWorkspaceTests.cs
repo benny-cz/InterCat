@@ -300,7 +300,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         // A version this one does not read is named, with the versions it does.
         File.WriteAllText(workspace, refused[0]);
-        Assert.Contains("it is 'workspace-v999', not one of workspace-v1 to workspace-v21, the versions this InterCat reads",
+        Assert.Contains("it is 'workspace-v999', not one of workspace-v1 to workspace-v22, the versions this InterCat reads",
             Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
 
         // Two members of one capture, however written, are refused whole.
@@ -631,6 +631,113 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             $"\"{InvestigationWorkspace.NinthContract}\"", StringComparison.Ordinal));
         Assert.Contains("holds no saved view", Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
             StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R22: a saved comparison names two intervals of its sessions, each in its own session's time, and keeps every revision")]
+    public void ASavedComparisonIsKeptByRevision()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace,
+            NewSession(Path.Combine(root, "beta"), "lab-2", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        static SavedComparisonInterval Of(Guid session, long start, long end) => new() { SessionId = session, StartTicks = start, EndTicks = end };
+        string Short(Guid session) => session.ToString("N")[..8];
+
+        // Saved by name, with no time to align: one of that name, in any case, replaces it, and every revision is kept.
+        SavedComparison first = InvestigationWorkspace.SaveComparison(workspace, " Before the update ",
+            Of(a, 0, 100_000_000), Of(a, 100_000_000, 300_000_000), ComparisonMetric.Records, ComparisonGrouping.Process, Now);
+        Assert.Equal(("Before the update", 1, false), (first.Name, first.Revision, first.AcrossCaptures));
+        InvestigationWorkspace.SaveComparison(workspace, "before the UPDATE",
+            Of(a, 0, 100_000_000), Of(a, 100_000_000, 200_000_000), ComparisonMetric.BytesSent, ComparisonGrouping.Executable, Now);
+        SavedComparison across = InvestigationWorkspace.SaveComparison(workspace, "Yesterday",
+            Of(b, 0, 50_000_000), Of(a, 0, 50_000_000), ComparisonMetric.Records, ComparisonGrouping.Executable, Now);
+        Assert.True(across.AcrossCaptures);
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal([("before the UPDATE", 2), ("Yesterday", 3)],
+            InvestigationWorkspace.ComparisonsInForce(read).Select(comparison => (comparison.Name, comparison.Revision)));
+        SavedComparison named = InvestigationWorkspace.ComparisonNamed(read, " BEFORE THE UPDATE ");
+        Assert.Equal((new TimeRange(0, 100_000_000), new TimeRange(100_000_000, 200_000_000)),
+            (named.Baseline!.Interval!.Value, named.Compared!.Interval!.Value));
+        Assert.Null(read.TimeReference);
+
+        // In words, as icat workspace show states it: each interval in its own session's time, the baseline's session named
+        // where it is another capture's.
+        Assert.Equal($"[10.0, 20.0) s of session {Short(a)} against [0.0, 10.0) s of it, by bytes sent across, a row per executable",
+            ComparisonText.Saved(named, CultureInfo.InvariantCulture));
+        Assert.Equal($"[0.000, 5.000) s of session {Short(a)} against [0.000, 5.000) s of session {Short(b)}, by records, a row per executable",
+            ComparisonText.Saved(across, CultureInfo.InvariantCulture));
+
+        // Removed, it is gone and its revisions are kept; none is removed or run that is not there.
+        SavedComparison removal = InvestigationWorkspace.RemoveComparison(workspace, "yesterday", Now);
+        Assert.Equal(("Yesterday", 4, (SavedComparisonInterval?)null), (removal.Name, removal.Revision, removal.Baseline));
+        read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal(4, read.Comparisons.Count);
+        Assert.Equal("before the UPDATE", Assert.Single(InvestigationWorkspace.ComparisonsInForce(read)).Name);
+        Assert.Equal("No comparison of this investigation is named 'Yesterday'.", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.RemoveComparison(workspace, "Yesterday", Now)).Message);
+        Assert.Throws<ArgumentException>(() => ComparisonText.Saved(removal, CultureInfo.InvariantCulture));
+
+        // Refused: no name or too long a name, a session of no member, an interval that ends where it starts, two captures
+        // by process, and a metric or grouping no comparison offers.
+        void Refused(string expected, string name, SavedComparisonInterval baseline, SavedComparisonInterval compared,
+            ComparisonGrouping grouping = ComparisonGrouping.Executable) =>
+            Assert.Contains(expected, Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.SaveComparison(workspace,
+                name, baseline, compared, ComparisonMetric.Records, grouping, Now)).Message, StringComparison.Ordinal);
+        Refused("A comparison is named, in at most 100 characters.", "  ", Of(a, 0, 10), Of(a, 10, 20));
+        Refused("A comparison is named, in at most 100 characters.", new string('x', 101), Of(a, 0, 10), Of(a, 10, 20));
+        Guid stranger = Guid.NewGuid();
+        Refused($"Session {Short(stranger)} is not a session of this investigation.", "Stranger", Of(stranger, 0, 10), Of(a, 10, 20));
+        Refused("A compared interval ends after it starts.", "Empty", Of(a, 10, 10), Of(a, 10, 20));
+        Refused(InvestigationWorkspace.CapturesByExecutable, "By process", Of(b, 0, 10), Of(a, 0, 10), ComparisonGrouping.Process);
+        Assert.Throws<ArgumentOutOfRangeException>(() => InvestigationWorkspace.SaveComparison(workspace, "Nothing",
+            Of(a, 0, 10), Of(a, 10, 20), (ComparisonMetric)99, ComparisonGrouping.Process, Now));
+        Assert.Throws<ArgumentOutOfRangeException>(() => InvestigationWorkspace.SaveComparison(workspace, "Nothing",
+            Of(a, 0, 10), Of(a, 10, 20), ComparisonMetric.Records, (ComparisonGrouping)99, Now));
+        Assert.Equal(4, InvestigationWorkspace.Read(workspace).Comparisons.Count);
+
+        // A file that says otherwise is refused whole: two captures by process, an interval that ends where it starts, a
+        // removal that keeps an interval, a revision twice, or comparisons in a file of the version before.
+        string valid = File.ReadAllText(workspace);
+        Assert.Contains("\"groupedBy\": \"Executable\"", valid, StringComparison.Ordinal);
+        int saved = valid.IndexOf("\"comparisons\": [", StringComparison.Ordinal);
+        string[] refused =
+        [
+            valid.Replace("\"groupedBy\": \"Executable\"", "\"groupedBy\": \"Process\"", StringComparison.Ordinal),
+            valid[..saved] + valid[saved..].Replace(b.ToString(), Guid.NewGuid().ToString(), StringComparison.Ordinal),
+            valid.Replace("\"compared\": null,\n      \"metric\": null", "\"compared\": null,\n      \"metric\": \"Records\"",
+                StringComparison.Ordinal),
+            valid.Replace("\"name\": \"Yesterday\"", "\"name\": \" Yesterday\"", StringComparison.Ordinal),
+            valid.Replace("\"metric\": \"BytesSent\"", "\"metric\": 99", StringComparison.Ordinal),
+            valid.Replace("\"endTicks\": 200000000", "\"endTicks\": 100000000", StringComparison.Ordinal),
+            valid.Replace("\"revision\": 4,\n      \"name\": \"Yesterday\",\n      \"baseline\": null",
+                "\"revision\": 4,\n      \"name\": \"Yesterday\",\n      \"baseline\": { \"sessionId\": \"" + a + "\", \"startTicks\": 0, \"endTicks\": 10 }",
+                StringComparison.Ordinal),
+            valid.Replace("\"revision\": 4,", "\"revision\": 3,", StringComparison.Ordinal),
+            valid.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.TwentyFirstContract}\"", StringComparison.Ordinal),
+        ];
+        string[] reasons = ["compares two captures by process", "comparison revision 3 is not named, compares no two intervals",
+            "comparison revision 4 is not named, compares no two intervals", "comparison revision 3 is not named",
+            "comparison revision 2 is not named, compares no two intervals of its sessions, compares by no metric",
+            "compares no two intervals", "compares no two intervals", "comparison revision 3 is not a unique positive number",
+            "file holds no saved comparison"];
+        for (int index = 0; index < refused.Length; index++)
+        {
+            Assert.NotEqual(valid, refused[index]);
+            File.WriteAllText(workspace, refused[index]);
+            Assert.Contains(reasons[index], Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+                StringComparison.Ordinal);
+        }
+
+        // A file of the version before, holding none, reads with none, and is written as the current one when one is saved.
+        File.WriteAllText(workspace, valid.Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.TwentyFirstContract}\"", StringComparison.Ordinal)
+            .Replace(valid[valid.IndexOf("\"comparisons\": [", StringComparison.Ordinal)..(valid.IndexOf("\"layouts\"", StringComparison.Ordinal))],
+                "\"comparisons\": [],\n  ", StringComparison.Ordinal));
+        Assert.Empty(InvestigationWorkspace.Read(workspace).Comparisons);
+        InvestigationWorkspace.SaveComparison(workspace, "Again", Of(a, 0, 10), Of(a, 10, 20), ComparisonMetric.Records,
+            ComparisonGrouping.Process, Now);
+        InvestigationWorkspaceFile rewritten = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((InvestigationWorkspace.Contract, 1), (rewritten.Contract, Assert.Single(rewritten.Comparisons).Revision));
     }
 
     [Fact(DisplayName = "R22: a file an earlier version wrote keeps reading, with everything that version could hold")]
@@ -1037,7 +1144,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"collectorsAside\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v21", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v22", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, collectorsAside: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
@@ -1073,7 +1180,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"wallClock\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v21", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v22", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, wallClock: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 

@@ -215,19 +215,28 @@ public sealed class InvestigationPackageTests : IDisposable
         // An investigation no person has written in carries its sessions' identities, and nothing in anyone's words.
         Assert.Equal("The investigation's file goes with them, holding each session's capture, host and clock identities.", File());
 
+        // A saved comparison's name is a person's words, said as such.
+        InvestigationWorkspace.SaveComparison(workspace, "before the burst",
+            new SavedComparisonInterval { SessionId = a, StartTicks = 0, EndTicks = 10_000 },
+            new SavedComparisonInterval { SessionId = b.SessionId, StartTicks = 0, EndTicks = 10_000 },
+            ComparisonMetric.Records, ComparisonGrouping.Executable, Now);
+        Assert.Equal("The investigation's file goes with them, holding each session's capture, host and clock identities and one "
+            + "saved comparison revision. Names are copied as they were written, never pseudonymized.", File());
+
         // Each kind a person writes is counted by its revisions; a note once, said with what a person wrote on it.
         InvestigationWorkspace.ConfirmOneHost(workspace, HostOf(alpha), b.HostId, "one lab box", Now);
         InvestigationWorkspace.WithdrawOneHost(workspace, HostOf(alpha), b.HostId, Now);
         InvestigationWorkspace.StateTranslation(workspace, "10.0.0.20:443", "192.168.1.20:443", "the office NAT", Now);
         InvestigationWorkspace.Align(workspace, b.SessionId, 0, a, 0, 1_000_000, null, null, Now);
         InvestigationWorkspace.SaveView(workspace, "the burst", new TimeRange(0, 10_000), Now);
+        InvestigationWorkspace.RemoveComparison(workspace, "Before the burst", Now);
         InvestigationWorkspace.SetLayout(workspace, a, [new WorkspacePin { Key = "group:a", X = 0.5, Y = 0.5 }], Now);
         InvestigationWorkspace.SetPanes(workspace, 0.7, null, Now);
         WorkspaceNote note = InvestigationWorkspace.AddNote(workspace, "the retry storm starts at the second login", null, Now);
         Assert.Equal("The investigation's file goes with them, holding each session's capture, host and clock identities, 2 host "
-            + "confirmation revisions, one address translation revision, one alignment revision, one saved view revision, one "
-            + "session's layout, the window's panes and 3 notes. Names, notes and translated endpoints are copied as they were "
-            + "written, never pseudonymized.", File());
+            + "confirmation revisions, one address translation revision, one alignment revision, one saved view revision, 2 "
+            + "saved comparison revisions, one session's layout, the window's panes and 3 notes. Names, notes and translated "
+            + "endpoints are copied as they were written, never pseudonymized.", File());
 
         // A note reworded goes with its earlier words, and one removed with all of them: the file keeps every revision.
         InvestigationWorkspace.EditNote(workspace, note.NoteId, "the retry storm", Now);
@@ -244,6 +253,8 @@ public sealed class InvestigationPackageTests : IDisposable
         Assert.Equal(source.HostEquivalences, packaged.HostEquivalences);
         Assert.Equal(source.AddressTranslations, packaged.AddressTranslations);
         Assert.Equal(source.Views, packaged.Views);
+        Assert.Equal(source.Comparisons, packaged.Comparisons);
+        Assert.Equal(2, packaged.Comparisons.Count);
         Assert.Equivalent(source.Layouts, packaged.Layouts, strict: true);
         Assert.Equal(source.Panes, packaged.Panes);
         Assert.Equal(["the retry storm starts at the second login", "the retry storm", null], packaged.Notes.Select(kept => kept.Text));

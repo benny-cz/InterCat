@@ -2,7 +2,7 @@
 
 - Status: accepted; revision 727. It records the model §7.4 set and the correlators' contracts share - process binding
   (`entities-v1`), transport relations (`relations-v1`), RPC calls and their other ends (`operations-v1`) and joins
-  across captures (`workspace-v21`) - and draws a conflicting relation as unasserted as a candidate
+  across captures (`workspace-v22`) - and draws a conflicting relation as unasserted as a candidate
 - Date: 2026-10-22
 - Relates to: §5, §6.3, §6.6, §7.4, §18.5, §23 `EN-RelationStrength`, `EN-EvidencePolicy`, I16, R7, R14, R22, P7, P8,
   ADR-013, ADR-014, ADR-016, ADR-020, ADR-030, ADR-031, ADR-034, ADR-041

@@ -169,7 +169,7 @@ public static partial class InvestigationWorkspace
                     $"{WorkspacePanes.InspectorWidest:N0}, the widths its edge sets")
         : null;
 
-    /// <summary>What makes a file's panes contradict themselves, or null (`contracts/workspace-v21.md` §7).</summary>
+    /// <summary>What makes a file's panes contradict themselves, or null (`contracts/workspace-v22.md` §7).</summary>
     private static string? PanesProblem(InvestigationWorkspaceFile workspace)
     {
         if (workspace.Panes is not { } panes)

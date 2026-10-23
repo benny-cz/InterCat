@@ -77,7 +77,9 @@ collected in one, records lost, sources changed - both values stand, with the re
 as a redacted report to share, its processes, executables and hosts random tokens. `--group-by executable` compares
 programs rather than processes, each one's processes together, so a process that restarted stays one row, and
 `--baseline-session` compares two captures that way, each on its own clock. In the window, Rows compares executables,
-and *Another saved capture…* sets a saved capture's whole recording as the baseline.
+and *Another saved capture…* sets a saved capture's whole recording as the baseline. An investigation keeps a
+comparison under a name (`icat workspace comparison`), and `icat compare --workspace <file> --saved <name>` runs it
+again on its sessions as they are then.
 
 F1 in the window lists every key it takes.
 

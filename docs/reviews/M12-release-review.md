@@ -112,3 +112,12 @@ The window compares by executable (Rows) and with another saved capture (Another
 the baseline), in the command line's words, opening an executable's rung where it groups processes by executable and
 saying why not where it cannot (`comparison-v1` §8a). Both forms of the comparison are now in the window; nothing else
 above changes.
+
+## Addendum, revision 758
+
+Saved comparison specifications ship on the command line (`icat workspace comparison`, `icat compare --saved`,
+`comparison-v1` §8c, `workspace-v22` §7, ADR-061): an investigation keeps a comparison under a name, by revision - its
+two intervals, each of a session of the investigation in that session's own time, what it compares by and what each
+row is of - and running it reads the sessions as they are then. It keeps no answer, so none goes stale, and a redacted
+report never carries its name. Of the parts not built, difference timelines and graph overlays remain, and the window
+neither saves nor reopens a comparison yet; nothing else above changes.

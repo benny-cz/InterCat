@@ -296,6 +296,168 @@ public sealed class CompareCommandTests
         Assert.StartsWith("x No session directory at ", said, Ordinal);
     }
 
+    [Fact(DisplayName = "R22: icat workspace comparison saves a comparison of an investigation's sessions, and icat compare --saved runs it as saved")]
+    public async Task IcatCompareRunsASavedComparison()
+    {
+        using var first = new TemporarySession();
+        using var second = new TemporarySession(Guid.Parse("0c0c0c0c-0000-4000-8000-000000000758"));
+        Publish(first.Store, Rows(), coverage: Ledger());
+        Publish(second.Store, Rows(), coverage: Ledger(), capture: CaptureId.New(), clock: ClockFor(Clock, "another-host"));
+        first.Store.ReleaseSegmentReaders();
+        second.Store.ReleaseSegmentReaders();
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-saved-comparison-");
+        string workspace = Path.Combine(folder.FullName, "update.icat-workspace");
+        string a = TestSessions.Session.ToString("N")[..8];
+        const string b = "0c0c0c0c";
+        static string Unsaved(string text) => Regex.Replace(text, @"(?m)^  Saved as .*\r?\n", string.Empty)
+            .Replace("icat compare --workspace <workspace> --saved <name> --json", "icat compare <directory> --json", Ordinal);
+        try
+        {
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "new", workspace)).Code);
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "add", workspace, first.Path, second.Path)).Code);
+
+            // Saved by name, its session named as a member is and each interval as icat compare takes it, by records and of
+            // processes unless said otherwise; the investigation then lists it in the same words.
+            (InterCatExitCode code, string text, string said) = await Run("workspace", "comparison", workspace, "Before the update",
+                "--session", a, "--baseline", "0:10s", "--interval", "10s:30s");
+            Assert.True(code == InterCatExitCode.Success, said);
+            string words = $"[10.0, 30.0) s of session {a} against [0.0, 10.0) s of it, by records, a row per process";
+            Assert.Contains($"Comparison 'Before the update' saved: {words} (comparison revision 1).", said, Ordinal);
+            Assert.Contains($"Before the update: {words}. Each interval is in its own session's time, never the investigation's, and "
+                + "is read afresh each time the comparison runs: icat compare --workspace <workspace> --saved <name>.",
+                Regex.Replace(text, @"\s+", " "), Ordinal);
+
+            // Run, it says what icat compare says given the same, and which comparison it ran; as JSON, the same comparison.
+            (code, text, said) = await Run("compare", "--workspace", workspace, "--saved", " before THE update ");
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches(@"(?m)^  Saved as +'Before the update', comparison revision 1 of " + Regex.Escape(workspace) + @"\r?$", text);
+            (_, string direct, _) = await Run("compare", first.Path, "--baseline", "0:10s", "--interval", "10s:30s");
+            Assert.Equal(direct, Unsaved(text));
+            Assert.Contains("icat compare --workspace <workspace> --saved <name> --json returns each row", text, Ordinal);
+            (_, text, _) = await Run("compare", "--workspace", workspace, "--saved", "Before the update", "--json");
+            JsonElement root = JsonDocument.Parse(text).RootElement;
+            JsonElement saved = root.GetProperty("saved");
+            Assert.Equal((workspace, "Before the update", 1, first.Path), (saved.GetProperty("workspace").GetString(),
+                saved.GetProperty("name").GetString(), saved.GetProperty("revision").GetInt32(), root.GetProperty("sessionPath").GetString()));
+            (_, direct, _) = await Run("compare", first.Path, "--baseline", "0:10s", "--interval", "10s:30s", "--json");
+            JsonElement unsaved = JsonDocument.Parse(direct).RootElement;
+            Assert.Equal(JsonValueKind.Null, unsaved.GetProperty("saved").ValueKind);
+            Assert.Equal(unsaved.GetProperty("comparison").GetRawText(), root.GetProperty("comparison").GetRawText());
+
+            // One session's intervals by executable are saved and run so.
+            (code, _, said) = await Run("workspace", "comparison", workspace, "By executable", "--session", a, "--baseline", "0:10s",
+                "--interval", "10s:30s", "--group-by", "executable");
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Contains("[10.0, 30.0) s of session " + a + " against [0.0, 10.0) s of it, by records, a row per executable "
+                + "(comparison revision 2).", said, Ordinal);
+            (code, text, said) = await Run("compare", "--workspace", workspace, "--saved", "By executable");
+            Assert.True(code == InterCatExitCode.Success, said);
+            (_, direct, _) = await Run("compare", first.Path, "--baseline", "0:10s", "--interval", "10s:30s", "--group-by", "executable");
+            Assert.Equal(direct, Unsaved(text));
+            Assert.Contains("Grouped by            executable", text, Ordinal);
+
+            // Two captures' intervals are saved by executable, which they compare by alone, and run as such.
+            (code, _, said) = await Run("workspace", "comparison", workspace, "Yesterday", "--session", b, "--baseline-session", a,
+                "--baseline", "0:10s", "--interval", "0:10s", "--rank-by", "bytes-sent");
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Contains($"Comparison 'Yesterday' saved: [0.0, 10.0) s of session {b} against [0.0, 10.0) s of session {a}, by bytes "
+                + "sent across, a row per executable (comparison revision 3).", said, Ordinal);
+            (code, text, said) = await Run("compare", "--workspace", workspace, "--saved", "Yesterday");
+            Assert.True(code == InterCatExitCode.Success, said);
+            (_, direct, _) = await Run("compare", second.Path, "--baseline", "0:10s", "--interval", "0:10s", "--baseline-session",
+                first.Path, "--rank-by", "bytes-sent");
+            Assert.Equal(direct, Unsaved(text));
+            JsonElement comparisons = JsonDocument.Parse((await Run("workspace", "show", workspace, "--json")).Output).RootElement
+                .GetProperty("comparisons");
+            Assert.Equal((3, "BytesSent", "Executable"), (comparisons.GetArrayLength(), comparisons[2].GetProperty("metric").GetString(),
+                comparisons[2].GetProperty("groupedBy").GetString()));
+
+            // A redacted report of it never names it, a name being a person's own words.
+            string report = Path.Combine(folder.FullName, "share.json");
+            (code, text, said) = await Run("compare", "--workspace", workspace, "--saved", "Yesterday", "--output", report, "--share-redacted");
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches(@"(?m)^  Saved as +'Yesterday', comparison revision 3 of ", text);
+            Assert.DoesNotContain("Yesterday", File.ReadAllText(report), OrdinalIgnoreCase);
+
+            // A session not where the investigation recorded it is named, with why; removed, a comparison is not run.
+            string recorded = File.ReadAllText(workspace);
+            File.WriteAllText(workspace, recorded.Replace(Path.GetFileName(first.Path), "moved-away", Ordinal));
+            (code, text, said) = await Run("compare", "--workspace", workspace, "--saved", "Before the update");
+            Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, text));
+            Assert.StartsWith($"x The comparison's compared session {a} is not where the investigation recorded it: Nothing is at this path",
+                said, Ordinal);
+            (code, text, said) = await Run("compare", "--workspace", workspace, "--saved", "Yesterday");
+            Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, text));
+            Assert.StartsWith($"x The comparison's baseline session {a} is not where", said, Ordinal);
+            File.WriteAllText(workspace, recorded);
+            (code, _, said) = await Run("workspace", "comparison", workspace, "yesterday", "--remove");
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Contains("Comparison 'Yesterday' removed (comparison revision 4); its revisions are kept.", said, Ordinal);
+            (code, text, said) = await Run("compare", "--workspace", workspace, "--saved", "Yesterday");
+            Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, text));
+            Assert.StartsWith("x No comparison of this investigation is named 'Yesterday'.", said, Ordinal);
+
+            // Refused: a saved comparison with what it was saved with, either option alone, a workspace that is not there, and
+            // a comparison saved wrongly.
+            string never = Path.Combine(folder.FullName, "never.icat-workspace");
+            (string[] Args, string Said)[] refused =
+            [
+                (["compare", "--saved", "Before the update"],
+                    "x --saved names a comparison saved in an investigation; pass --workspace <workspace> with it."),
+                (["compare", "--workspace", workspace],
+                    "x --workspace names the investigation a comparison was saved in; pass --saved <name> with it."),
+                (["compare", first.Path, "--workspace", workspace, "--saved", "Before the update"],
+                    "x --saved runs the comparison as it was saved, its sessions and intervals with it; pass no session directory with it."),
+                (["compare", "--workspace", workspace, "--saved", "Before the update", "--interval", "0:1"],
+                    "x --saved runs the comparison as it was saved, its sessions and intervals with it; pass no --interval with it."),
+                (["compare", "--workspace", workspace, "--saved", "Before the update", "--group-by", "executable"],
+                    "x --saved runs the comparison as it was saved, its sessions and intervals with it; pass no --group-by with it."),
+                (["compare", "--workspace", workspace, "--saved", "Before the update", "--limit", "0"],
+                    "x --limit expects a number of relationships of 1 or more; '0' is not one."),
+                (["compare", "--workspace", never, "--saved", "Before the update"], "x No investigation is at "),
+                (["workspace", "comparison", workspace, "Again", "--session", a, "--interval", "0:1"],
+                    "x Use icat workspace comparison <workspace> <name> (--session <session> --interval <start:end> "),
+                (["workspace", "comparison", workspace, "Again", "--remove", "--session", a],
+                    "x Use icat workspace comparison <workspace> <name> "),
+                (["workspace", "view", workspace, "Again", "0", "1", "--session", a], "x Use icat workspace view <workspace> <name> "),
+                (["workspace", "view", workspace, "Again", "0", "1", "--interval", "0:1"], "x Use icat workspace view <workspace> <name> "),
+                (["workspace", "comparison", workspace, "Again", "--session", a, "--interval", "0:1", "--baseline", "0:1", "--columns", "9"],
+                    "x Use icat workspace comparison <workspace> <name> "),
+                (["workspace", "comparison", workspace, "Again", "--session", "ffffffff", "--interval", "0:1", "--baseline", "0:1"],
+                    "x No session of this investigation"),
+                (["workspace", "comparison", workspace, "Again", "--session", b, "--baseline-session", a, "--interval", "0:1",
+                    "--baseline", "0:1", "--group-by", "process"], "x " + InvestigationWorkspace.CapturesByExecutable),
+                (["workspace", "comparison", workspace, "Again", "--session", a, "--interval", "0:1", "--baseline", "0:1",
+                    "--rank-by", "calls"], "x --rank-by compares records or bytes-sent; 'calls' is neither."),
+                (["workspace", "comparison", workspace, "Again", "--session", a, "--interval", "2:1", "--baseline", "0:1"],
+                    "x --interval is start:end, "),
+                (["workspace", "comparison", workspace, "Again", "--session", a, "--interval", "0:1", "--baseline", "2:1"],
+                    "x --baseline is start:end, "),
+            ];
+            foreach ((string[] args, string expected) in refused)
+            {
+                (code, string output, string error) = await Run(args);
+                string invocation = "icat " + string.Join(' ', args);
+                Assert.True(code == InterCatExitCode.InvalidInvocation, $"{invocation} exited {code}.");
+                Assert.True(output.Length == 0, $"{invocation} wrote to stdout:\n{output}");
+                Assert.StartsWith(expected, error, Ordinal);
+            }
+
+            Assert.Equal(4, InvestigationWorkspace.Read(workspace).Comparisons.Count);
+
+            // An investigation's file that cannot be read is refused as corrupted input, as icat workspace refuses it.
+            string broken = Path.Combine(folder.FullName, "broken.icat-workspace");
+            File.WriteAllText(broken, "not an investigation");
+            (code, text, said) = await Run("compare", "--workspace", broken, "--saved", "Before the update");
+            Assert.Equal((InterCatExitCode.CorruptedInput, string.Empty), (code, text));
+            Assert.StartsWith($"x {broken} is not a readable investigation: ", said, Ordinal);
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
     [Fact(DisplayName = "R3: icat compare marks a lower bound, stating a change from it only where the bound decides it")]
     public async Task IcatCompareMarksALowerBound()
     {
