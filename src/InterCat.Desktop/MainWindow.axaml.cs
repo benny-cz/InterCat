@@ -1203,19 +1203,24 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// <summary>
     /// Compares the time scope with another interval (`comparison-v1`), and opens what the row chosen there compares: a
     /// relationship as a double click on its edge opens it, or the process whose connections to another host it compares,
-    /// whose inspector lists the hosts it reached; the rail then has the keyboard, and Esc climbs back.
+    /// whose inspector lists the hosts it reached; the rail then has the keyboard, and Esc climbs back. Opening a saved
+    /// comparison, it compares its own interval, as saved. A session opened from an investigation can save the comparison
+    /// there.
     /// </summary>
-    internal async Task CompareIntervalsAsync()
+    internal async Task CompareIntervalsAsync(SavedComparisonOpening? opening = null)
     {
         WorkspaceViewModel viewModel = workspace;
-        if (!viewModel.CanCompareIntervals || viewModel.ScopeInterval is not { } compared || currentSessionPath is null
-            || displayedSessionId is not { } sessionId)
+        TimeRange? scope = opening is null ? viewModel.ScopeInterval : opening.Comparison.Compared?.Interval;
+        if (!(opening is null ? viewModel.CanCompareIntervals : viewModel.CanOpenSavedComparison) || scope is not { } compared
+            || currentSessionPath is null || displayedSessionId is not { } sessionId
+            || (opening is not null && opening.Comparison.Compared?.SessionId != sessionId))
         {
             return;
         }
 
+        string? investigation = opening?.Investigation ?? (layoutHome is { } home && home.Session == sessionId ? home.Workspace : null);
         using var comparing = new SessionCompareWindow(currentSessionPath, sessionId, compared, viewModel.ComparableTime,
-            viewModel.ComparesWithinRecording, viewModel.TimeBase, viewModel.EvidencePolicy)
+            viewModel.ComparesWithinRecording, viewModel.TimeBase, viewModel.EvidencePolicy, investigation, opening)
         {
             WhyNotShown = viewModel.WhyNotShown,
         };
@@ -1952,7 +1957,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         var window = new InvestigationWindow(full,
             (session, member) => FromInvestigationAsync(full, () => OpenSessionOrSayWhyNotAsync(session, null, member)), opening,
             (session, member, interval) => FromInvestigationAsync(full, () => OpenSessionAtAsync(session, interval, member)),
-            other => ShowInvestigation(other));
+            other => ShowInvestigation(other),
+            (saved, session, baseline) => FromInvestigationAsync(full, () => OpenSavedComparisonAsync(full, saved, session, baseline)));
         investigations.Add(window);
         window.Closed += (_, _) => investigations.Remove(window);
 
@@ -1977,6 +1983,26 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
 
         window.Activate();
+    }
+
+    /// <summary>
+    /// Opens a comparison saved in an investigation (`comparison-v1` §8c): its compared session here at its compared
+    /// interval, then the Compare window on that interval, its baseline, metric and rows as saved; null once the session is
+    /// shown, else why not.
+    /// </summary>
+    private async Task<string?> OpenSavedComparisonAsync(string investigation, SavedComparison saved, string session, string? baseline)
+    {
+        if (saved.Compared is not { Interval: { } interval } compared) return "That comparison is removed.";
+        string? refused = await OpenSessionAtAsync(session, interval, compared.SessionId);
+
+        // The Compare window is a dialog of this window's, shown once the session it compares is.
+        if (refused is null && !closed)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(
+                () => _ = CompareIntervalsAsync(new SavedComparisonOpening(saved, baseline, investigation)));
+        }
+
+        return refused;
     }
 
     /// <summary>Opens a member from its investigation, which then keeps its pins and view settings (§26.3).</summary>

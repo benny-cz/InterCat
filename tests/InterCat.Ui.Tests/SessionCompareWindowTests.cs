@@ -414,6 +414,9 @@ public sealed class SessionCompareWindowTests
             await comparing.Compared;
             Dispatch();
 
+            // A session opened on its own has no investigation to save the comparison in, which Save says.
+            Assert.Equal(SessionCompareWindow.SaveNeedsInvestigation, Offers.WhyNot(Labelled(comparing, "Save in the investigation…")));
+
             // By process, the restart is a relationship that disappeared and another that appeared.
             Assert.Equal(["appeared", "disappeared"], comparing.Rows.Select(row => row.ChangeCell).Order());
             Assert.Equal(SessionCompareWindow.RowsDoes, Offers.Offered(RowsChoice(comparing)));
@@ -472,6 +475,7 @@ public sealed class SessionCompareWindowTests
             Dispatch();
             string found = comparing.Said;
             Assert.Equal(SessionCompareWindow.ShowDoes, Offers.Offered(Labelled(comparing, "Show in the window")));
+            Assert.Equal(SessionCompareWindow.SaveNeedsInvestigation, Offers.WhyNot(Labelled(comparing, "Save in the investigation…")));
             int choose = comparing.Offered.ToList().IndexOf(SessionCompareWindow.ChooseCapture);
             Assert.True(choose > 0);
 
@@ -528,6 +532,338 @@ public sealed class SessionCompareWindowTests
             comparing.Close();
             owner.Close();
             empty.Delete(recursive: true);
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R22: the Compare window saves the comparison shown in its investigation by name, and a saved one opens as saved")]
+    public async Task TheWindowSavesAComparisonInItsInvestigation()
+    {
+        // This session, a member of the investigation, and another capture of the same exchanges, which is not one yet.
+        using var other = new TemporarySession();
+        using var session = new TemporarySession(Guid.Parse("0c0c0c0c-0000-4000-8000-000000000759"));
+        Publish(other.Store, Rows(), coverage: Ledger(), capture: CaptureId.New(), clock: ClockFor(Clock, "another-host"));
+        Publish(session.Store, Rows(), coverage: Ledger());
+        other.Store.ReleaseSegmentReaders();
+        session.Store.ReleaseSegmentReaders();
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-saved-");
+        string workspace = Path.Combine(folder.FullName, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, DateTimeOffset.UtcNow);
+        InvestigationWorkspace.Add(workspace, session.Path, DateTimeOffset.UtcNow);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        SessionClock clock = SessionClock.Session(TimeZoneInfo.Utc);
+        var scope = new TimeRange(12 * Second, 16 * Second);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        var comparing = new SessionCompareWindow(session.Path, overview.SessionId, scope, overview.Extent!.Value, recorded: false,
+            clock, EvidencePolicy.IncludeCorrelated, workspace);
+        var choices = new AnsweredChoices(comparing);
+        comparing.Choices = choices;
+        bool closedFirst = false;
+        Window? reopened = null;
+        try
+        {
+            _ = comparing.ShowDialog<ComparedRelationship?>(owner);
+            await Until(() => comparing.Shown is not null);
+            await comparing.Compared;
+            Dispatch();
+            Button save = Labelled(comparing, "Save in the investigation…");
+            Assert.Equal(SessionCompareWindow.SaveDoes, Offers.Offered(save));
+
+            // Saved under a name asked for: offered once one is typed, and said before it is saved.
+            async Task<Window> Asked()
+            {
+                Click(save);
+                return await Prompt(comparing);
+            }
+
+            static TextBlock Said(Window prompt) => prompt.GetLogicalDescendants().OfType<TextBlock>()
+                .Single(block => AutomationProperties.GetName(block) == "What saving under this name does");
+            Window prompt = await Asked();
+            TextBox name = prompt.GetLogicalDescendants().OfType<TextBox>().Single();
+            Assert.Equal("Name the comparison first.", Offers.WhyNot(Labelled(prompt, "Save")));
+            SavedComparison asked = new()
+            {
+                Revision = 0,
+                Name = string.Empty,
+                Baseline = new SavedComparisonInterval { SessionId = overview.SessionId, StartTicks = 8 * Second, EndTicks = 12 * Second },
+                Compared = new SavedComparisonInterval { SessionId = overview.SessionId, StartTicks = scope.StartTicks, EndTicks = scope.EndTicks },
+                Metric = ComparisonMetric.Records,
+                GroupedBy = ComparisonGrouping.Process,
+                RecordedUtc = DateTimeOffset.UtcNow,
+            };
+            Assert.Equal($"case.icat-workspace keeps this comparison under a name: {ComparisonText.Saved(asked, CultureInfo.CurrentCulture)}. "
+                + "It keeps what to compare and never the answer, which is read afresh each time it is opened.",
+                prompt.GetLogicalDescendants().OfType<TextBlock>().First().Text);
+            name.Text = " before the burst ";
+            Dispatch();
+            Assert.Equal("Saves it as 'before the burst'.", Said(prompt).Text);
+            Save(prompt, "compare-save-prompt.png");
+            Press(prompt, "Save");
+            await comparing.SavedIn;
+            Dispatch();
+            Assert.Equal("Saved in case.icat-workspace as 'before the burst'; the investigation's Comparisons… opens it again.",
+                comparing.Done);
+            SavedComparison saved = Assert.Single(InvestigationWorkspace.ComparisonsInForce(InvestigationWorkspace.Read(workspace)));
+            Assert.Equal((new TimeRange(8 * Second, 12 * Second), scope, ComparisonMetric.Records, ComparisonGrouping.Process),
+                (saved.Baseline!.Interval!.Value, saved.Compared!.Interval!.Value, saved.Metric!.Value, saved.GroupedBy!.Value));
+            Assert.Equal((overview.SessionId, overview.SessionId), (saved.Baseline.SessionId, saved.Compared.SessionId));
+
+            // Under a name kept, in any case, the prompt says saving replaces it; declined, nothing is saved, and saved, it is
+            // replaced, by bytes.
+            comparing.CompareByBytes(true);
+            await comparing.Compared;
+            prompt = await Asked();
+            prompt.GetLogicalDescendants().OfType<TextBox>().Single().Text = "BEFORE the burst";
+            Dispatch();
+            Assert.Equal("Replaces the comparison saved as 'before the burst'; its earlier revisions stay in the file.", Said(prompt).Text);
+            Press(prompt, "Cancel");
+            await comparing.SavedIn;
+            Assert.Single(InvestigationWorkspace.Read(workspace).Comparisons);
+            prompt = await Asked();
+            prompt.GetLogicalDescendants().OfType<TextBox>().Single().Text = "BEFORE the burst";
+            Dispatch();
+            Press(prompt, "Save");
+            await comparing.SavedIn;
+            saved = Assert.Single(InvestigationWorkspace.ComparisonsInForce(InvestigationWorkspace.Read(workspace)));
+            Assert.Equal(("BEFORE the burst", 2, ComparisonMetric.BytesSent), (saved.Name, saved.Revision, saved.Metric!.Value));
+
+            // Another capture the investigation does not hold is not saved there, and the window says to add it first; added,
+            // it is saved, by executable.
+            choices.AnswerFolders(other.Path);
+            comparing.ChooseBaseline(comparing.Offered.ToList().IndexOf(SessionCompareWindow.ChooseCapture));
+            await comparing.CaptureChosen;
+            await comparing.Compared;
+            Dispatch();
+            Click(save);
+            await Until(() => comparing.SavedIn.IsCompleted || comparing.OwnedWindows.Count > 0);
+            Assert.Empty(comparing.OwnedWindows);
+            await comparing.SavedIn;
+            Dispatch();
+            Assert.Equal($"The comparison was not saved: the baseline capture, session {TestSessions.Session.ToString("N")[..8]}, is "
+                + "not a session of case.icat-workspace. Add it to the investigation, then save.", comparing.Done);
+            InvestigationWorkspace.Add(workspace, other.Path, DateTimeOffset.UtcNow);
+            prompt = await Asked();
+            prompt.GetLogicalDescendants().OfType<TextBox>().Single().Text = "yesterday";
+            Dispatch();
+            Press(prompt, "Save");
+            await comparing.SavedIn;
+            SavedComparison across = InvestigationWorkspace.ComparisonNamed(InvestigationWorkspace.Read(workspace), "yesterday");
+            Assert.Equal((true, ComparisonGrouping.Executable, TestSessions.Session), (across.AcrossCaptures, across.GroupedBy!.Value,
+                across.Baseline!.SessionId));
+            comparing.Close();
+            closedFirst = true;
+
+            // Opened as saved, the window offers its baseline first, chosen, of the other capture's folder, and compares it as
+            // saved: by bytes, of executables, which two captures compare by alone.
+            var opened = new SessionCompareWindow(session.Path, overview.SessionId, across.Compared!.Interval!.Value,
+                overview.Extent.Value, recorded: false, clock, EvidencePolicy.IncludeCorrelated, workspace,
+                new SavedComparisonOpening(across, other.Path, workspace));
+            reopened = opened;
+            _ = opened.ShowDialog<ComparedRelationship?>(owner);
+            await Until(() => opened.Shown is not null);
+            await opened.Compared;
+            Dispatch();
+            Assert.Equal($"As saved in 'yesterday', {WorkspaceTime.FormatHalfOpenRange(across.Baseline.Interval!.Value, CultureInfo.CurrentCulture)} "
+                + $"of {Path.GetFileName(other.Path)}", opened.Offered[0]);
+            Assert.Equal(opened.Offered[0], SelectedBaseline(opened));
+            Assert.Contains(opened.GetLogicalDescendants().OfType<TextBlock>(), block => block.Text?.EndsWith(", as saved in 'yesterday'",
+                StringComparison.Ordinal) == true);
+            Assert.Equal((TestSessions.Session, across.Baseline.Interval!.Value, ComparisonMetric.BytesSent, ComparisonGrouping.Executable),
+                (opened.Shown!.BaselineSessionId!.Value, opened.Shown.Baseline, opened.Shown.Metric, opened.Shown.Grouping));
+            Assert.True(opened.ComparesExecutables);
+            Assert.Equal(SessionCompareWindow.SaveDoes, Offers.Offered(Labelled(opened, "Save in the investigation…")));
+            Save(opened, "compare-opened-as-saved.png");
+
+            // Without the other capture's folder, its baseline is not offered: it would be read from this session instead.
+            using var unfound = new SessionCompareWindow(session.Path, overview.SessionId, across.Compared.Interval!.Value,
+                overview.Extent.Value, recorded: false, clock, EvidencePolicy.IncludeCorrelated, workspace,
+                new SavedComparisonOpening(across, null, workspace));
+            Assert.DoesNotContain(unfound.Offered, label => label.StartsWith("As saved in", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (!closedFirst) comparing.Close();
+            reopened?.Close();
+            owner.Close();
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R22: the investigation's Comparisons… opens a saved comparison in InterCat's window as saved, and removes one")]
+    public async Task TheInvestigationOpensASavedComparison()
+    {
+        // This session and another capture of the same exchanges, both of the investigation, and four comparisons saved in
+        // it: of this session's two intervals by bytes, of the other capture's first ten seconds, of its executables, and of
+        // ten seconds after its records end.
+        using var other = new TemporarySession();
+        using var session = new TemporarySession(Guid.Parse("0c0c0c0c-0000-4000-8000-000000000760"));
+        Publish(other.Store, Rows(), coverage: Ledger(), capture: CaptureId.New(), clock: ClockFor(Clock, "another-host"));
+        Publish(session.Store, Rows(), coverage: Ledger());
+        other.Store.ReleaseSegmentReaders();
+        session.Store.ReleaseSegmentReaders();
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-opened-");
+        string workspace = Path.Combine(folder.FullName, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, DateTimeOffset.UtcNow);
+        Guid id = InvestigationWorkspace.Add(workspace, session.Path, DateTimeOffset.UtcNow).SessionId;
+        Guid otherId = InvestigationWorkspace.Add(workspace, other.Path, DateTimeOffset.UtcNow).SessionId;
+        SavedComparison Saved(string name, Guid baselineSession, long from, long to, long start, long end, ComparisonMetric by,
+            ComparisonGrouping rows) => InvestigationWorkspace.SaveComparison(workspace, name,
+            new SavedComparisonInterval { SessionId = baselineSession, StartTicks = from, EndTicks = to },
+            new SavedComparisonInterval { SessionId = id, StartTicks = start, EndTicks = end }, by, rows, DateTimeOffset.UtcNow);
+        SavedComparison saved = Saved("before the update", id, 0, 10 * Second, 10 * Second, 30 * Second, ComparisonMetric.BytesSent,
+            ComparisonGrouping.Process);
+        SavedComparison across = Saved("yesterday", otherId, 0, 10 * Second, 0, 10 * Second, ComparisonMetric.Records,
+            ComparisonGrouping.Executable);
+        SavedComparison programs = Saved("programs", id, 0, 10 * Second, 10 * Second, 20 * Second, ComparisonMetric.Records,
+            ComparisonGrouping.Executable);
+        SavedComparison after = Saved("after it ended", id, 0, 10 * Second, 100 * Second, 110 * Second, ComparisonMetric.Records,
+            ComparisonGrouping.Process);
+        var main = new MainWindow { Width = 1456, Height = 939 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            await Until(() => window.View is not null);
+
+            // The window's pages are in tabs, which its logical tree lists twice; what is drawn is listed once.
+            Button button = window.GetVisualDescendants().OfType<Button>().Single(drawn => Equals(drawn.Content, "Comparisons…"));
+            Assert.Equal("Open or remove a comparison saved in this investigation", AutomationProperties.GetHelpText(button));
+            TextBlock status = window.GetVisualDescendants().OfType<TextBlock>()
+                .Single(block => AutomationProperties.GetName(block) == "Investigation status");
+            async Task<InvestigationComparisonsWindow> Listing()
+            {
+                Assert.True(button.Focus());
+                Click(button);
+                await Until(() => window.OwnedWindows.OfType<InvestigationComparisonsWindow>().Any());
+                return window.OwnedWindows.OfType<InvestigationComparisonsWindow>().Single();
+            }
+
+            async Task<SessionCompareWindow> Comparing(SavedComparison opened)
+            {
+                Assert.True(await window.OpenComparisonAsync(opened));
+                SessionCompareWindow shown = await Opened(main);
+                await Until(() => shown.Shown is not null);
+                await shown.Compared;
+                Dispatch();
+                return shown;
+            }
+
+            async Task Done(SessionCompareWindow shown)
+            {
+                shown.Close();
+                await Until(() => main.OwnedWindows.Count == 0);
+            }
+
+            SessionCompareWindow comparing;
+
+            // Opened first, a comparison of ten seconds past the session's records opens the session whole, with no time
+            // scope, and the comparison all the same: its rows not comparable there, never disappeared, since what the
+            // capture covered there is unknown.
+            comparing = await Comparing(after);
+            Assert.Null(((WorkspaceViewModel)main.DataContext!).ScopeInterval);
+            Assert.Equal(new TimeRange(100 * Second, 110 * Second), comparing.Shown!.Compared);
+            Assert.NotEmpty(comparing.Shown.Relationships);
+            Assert.All(comparing.Shown.Relationships, row => Assert.Equal(ComparisonChange.NotComparable, row.Change));
+            await Done(comparing);
+
+            // Listed in icat compare's words, the first chosen, Enter on it opens its session at its compared interval in
+            // InterCat's window, and the Compare window on it as saved: that interval, though the session's records end
+            // before it does, and its baseline, chosen first.
+            InvestigationComparisonsWindow choosing = await Listing();
+            await Until(() => choosing.Listed.Count == 4 && choosing.FocusManager?.GetFocusedElement() is ListBoxItem);
+            Assert.Equal($"before the update · {ComparisonText.Saved(saved, CultureInfo.CurrentCulture)}", choosing.Listed[0].ToString());
+            Save(choosing, "investigation-comparisons.png");
+            choosing.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            comparing = await Opened(main);
+            await Until(() => comparing.Shown is not null);
+            await comparing.Compared;
+            Dispatch();
+            Assert.StartsWith("As saved in 'before the update', ", comparing.Offered[0], StringComparison.Ordinal);
+            Assert.Equal(comparing.Offered[0], SelectedBaseline(comparing));
+            Assert.Equal((new TimeRange(0, 10 * Second), new TimeRange(10 * Second, 30 * Second), ComparisonMetric.BytesSent),
+                (comparing.Shown!.Baseline, comparing.Shown.Compared, comparing.Shown.Metric));
+            Assert.Equal(session.Path, main.GetControl<TextBlock>("CaptureSessionPath").Text);
+            await Until(() => status.Text == "Opened 'before the update' in the InterCat window: Session 0c0c0c0c at its compared "
+                + "interval, compared as saved.");
+
+            // Opened from the investigation, it can be saved there again, as can any comparison of the session it opened.
+            Assert.Equal(SessionCompareWindow.SaveDoes, Offers.Offered(Labelled(comparing, "Save in the investigation…")));
+            await Done(comparing);
+            Task again = main.CompareIntervalsAsync();
+            comparing = await Opened(main);
+            await Until(() => comparing.Shown is not null);
+            Assert.DoesNotContain(comparing.Offered, label => label.StartsWith("As saved in", StringComparison.Ordinal));
+            Assert.Equal(SessionCompareWindow.SaveDoes, Offers.Offered(Labelled(comparing, "Save in the investigation…")));
+            await Done(comparing);
+            await again;
+
+            // Another capture's interval is read from its folder, where the investigation finds it, by executable, and one
+            // session's by executable stays so.
+            comparing = await Comparing(across);
+            Assert.Equal($"As saved in 'yesterday', {WorkspaceTime.FormatHalfOpenRange(new TimeRange(0, 10 * Second), CultureInfo.CurrentCulture)} "
+                + $"of {Path.GetFileName(other.Path)}", comparing.Offered[0]);
+            Assert.Equal((otherId, true), (comparing.Shown!.BaselineSessionId!.Value, comparing.ComparesExecutables));
+            await Done(comparing);
+            comparing = await Comparing(programs);
+            Assert.Equal((ComparisonGrouping.Executable, true, (Guid?)null),
+                (comparing.Shown!.Grouping, comparing.ComparesExecutables, comparing.Shown.BaselineSessionId));
+            await Done(comparing);
+
+            // The session opened on its own, a saved comparison opened on it can still be saved in its investigation, though
+            // a comparison of the session's own is not offered it.
+            Assert.True(await main.OpenSessionAsync(session.Path));
+            Dispatch();
+            comparing = await Comparing(saved);
+            Assert.Equal(SessionCompareWindow.SaveDoes, Offers.Offered(Labelled(comparing, "Save in the investigation…")));
+            await Done(comparing);
+            again = main.CompareIntervalsAsync();
+            comparing = await Opened(main);
+            Assert.Equal(SessionCompareWindow.SaveNeedsInvestigation, Offers.WhyNot(Labelled(comparing, "Save in the investigation…")));
+            await Done(comparing);
+            await again;
+
+            // Removed, its revisions are kept; with none left, the list says how one is saved, and offers nothing to open.
+            choosing = await Listing();
+            await Until(() => choosing.Listed.Count == 4);
+            choosing.Select(0);
+            Click(Labelled(choosing, "Remove"));
+            await Until(() => choosing.Listed.Count == 3);
+            Assert.Equal("'before the update' is removed; its revisions are kept in the file.", choosing.Status);
+            choosing.Close();
+            foreach (string name in new[] { "yesterday", "programs", "after it ended" })
+            {
+                InvestigationWorkspace.RemoveComparison(workspace, name, DateTimeOffset.UtcNow);
+            }
+
+            choosing = await Listing();
+            await Until(() => choosing.IsActive);
+            Assert.Empty(choosing.Listed);
+            Assert.True(choosing.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Text?.StartsWith(
+                "No comparison is saved yet.", StringComparison.Ordinal) == true).IsVisible);
+            Assert.Equal("No comparison is saved yet.", Offers.WhyNot(Labelled(choosing, "Open")));
+            Assert.Equal(8, InvestigationWorkspace.Read(workspace).Comparisons.Count);
+            choosing.Close();
+
+            // A comparison whose session, or whose other capture, is not where it was last found is not opened, and says
+            // which to relink.
+            string recorded = File.ReadAllText(workspace);
+            File.WriteAllText(workspace, recorded.Replace(Path.GetFileName(other.Path), "moved-away", StringComparison.Ordinal));
+            await window.RefreshAsync();
+            Assert.False(await window.OpenComparisonAsync(across));
+            Assert.Equal($"'yesterday' compares Session {otherId.ToString("N")[..8]}, which is not where it was last found: relink it "
+                + "to open the comparison.", status.Text);
+            File.WriteAllText(workspace, recorded.Replace(Path.GetFileName(session.Path), "moved-away", StringComparison.Ordinal));
+            await window.RefreshAsync();
+            Assert.False(await window.OpenComparisonAsync(saved));
+            Assert.Equal("'before the update' compares Session 0c0c0c0c, which is not where it was last found: relink it to open the "
+                + "comparison.", status.Text);
+            Assert.Empty(main.OwnedWindows);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+            folder.Delete(recursive: true);
         }
     }
 

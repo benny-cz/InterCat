@@ -42,7 +42,9 @@ joins, notes and saved views - by revision, and names its sessions by identity r
 - `icat workspace comparison` saves and removes one, `icat workspace show` lists those in force, and `icat compare
   --workspace <workspace> --saved <name>` runs one with every output `icat compare` writes.
 - A package of the investigation keeps them, so a recipient runs the same comparisons on the copied sessions.
-- The window saves and reopens them next; difference timelines and graph overlays will read the same specification.
+- Since revision 759 the Compare window saves the comparison shown in the investigation its session was opened from,
+  and the investigation's window lists, opens and removes them; difference timelines and graph overlays will read the
+  same specification.
 
 ## Alternatives considered
 

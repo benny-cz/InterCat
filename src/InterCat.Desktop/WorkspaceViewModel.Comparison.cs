@@ -16,6 +16,12 @@ public sealed partial class WorkspaceViewModel
     public bool CanCompareIntervals => evidenceSource is not null && ScopeInterval is not null;
 
     /// <summary>
+    /// Whether a saved comparison can open on what the window shows: a session, never the tour, whatever its time scope,
+    /// since the comparison names its own interval (`contracts/comparison-v1.md` §8c).
+    /// </summary>
+    public bool CanOpenSavedComparison => evidenceSource is not null;
+
+    /// <summary>
     /// The time a comparison's baseline is chosen within: the session's recording where its capture recorded a stop, which
     /// its whole-session rates divide by (metrics-v1 §7), or else the span of its records.
     /// </summary>

@@ -32,6 +32,10 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     // Each opens a member in InterCat's window: null once it is shown there, else why it is not.
     private readonly Func<string, Guid, Task<string?>>? openSession;
     private readonly Func<string, Guid, TimeRange, Task<string?>>? openSessionAt;
+
+    // Opens a saved comparison in InterCat's window: its compared session's folder, and its baseline capture's where that is
+    // another capture; null once shown there, else why not.
+    private readonly Func<SavedComparison, string, string?, Task<string?>>? openComparison;
     private readonly Action<string>? showInvestigation;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TextBlock heading = new() { FontWeight = FontWeight.SemiBold, FontSize = 15, TextTrimming = TextTrimming.PathSegmentEllipsis };
@@ -60,6 +64,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     private readonly Button alignButton = new() { Content = "Align…", IsEnabled = false };
     private readonly Button withdraw = new() { Content = "Withdraw alignment", IsEnabled = false };
     private readonly Button oneHost = new() { Content = "One host…", IsEnabled = false };
+    private readonly Button savedComparisons = new() { Content = "Comparisons…" };
     private readonly Button add = new() { Content = "Add sessions…" };
     private readonly Button refresh = new() { Content = "Refresh" };
     private readonly ListBox candidates = new() { SelectionMode = SelectionMode.Single };
@@ -183,12 +188,14 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         Func<string, Guid, Task<string?>>? openSession,
         string? opening = null,
         Func<string, Guid, TimeRange, Task<string?>>? openSessionAt = null,
-        Action<string>? showInvestigation = null)
+        Action<string>? showInvestigation = null,
+        Func<SavedComparison, string, string?, Task<string?>>? openComparison = null)
     {
         this.path = Path.GetFullPath(path);
         Choices = new PathChoices(this);
         this.openSession = openSession;
         this.openSessionAt = openSessionAt;
+        this.openComparison = openComparison;
         this.showInvestigation = showInvestigation;
         Title = $"InterCat · Investigation · {Path.GetFileName(this.path)}";
         Width = 940;
@@ -209,6 +216,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         AutomationProperties.SetName(alignButton, "Align the selected session to the investigation's time");
         AutomationProperties.SetHelpText(withdraw, "Withdraw the selected session's alignment");
         AutomationProperties.SetHelpText(oneHost, "Say whether the selected session's host is one host with another");
+        AutomationProperties.SetHelpText(savedComparisons, "Open or remove a comparison saved in this investigation");
         AutomationProperties.SetName(notesList, "Notes on this investigation; press Enter to show a pinned one on the timeline");
         AutomationProperties.SetName(notesAbsent, "Why the notes list holds none");
         AutomationProperties.SetName(candidatesAbsent, "What the candidate joins list will hold");
@@ -332,6 +340,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         zoomOut.Click += (_, _) => ZoomBy(2m);
         zoomWhole.Click += (_, _) => _ = ZoomToAsync(null);
         savedViews.Click += (_, _) => _ = SavedViewsAsync();
+        savedComparisons.Click += (_, _) => _ = SavedComparisonsAsync();
         openColumn.Click += (_, _) =>
         {
             if (timelineChart.ChosenColumn is { } chosen) _ = OpenColumnAsync(chosen);
@@ -392,7 +401,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         AddHandler(DragDrop.DropEvent, AddDropped);
 
         var sessionActions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
-        foreach (Button button in new[] { open, relink, alignButton, withdraw, oneHost, add, refresh })
+        foreach (Button button in new[] { open, relink, alignButton, withdraw, oneHost, savedComparisons, add, refresh })
         {
             button.Margin = new Thickness(8, 4, 0, 0);
             sessionActions.Children.Add(button);
@@ -728,6 +737,62 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         {
             await ZoomToAsync(chosen);
         }
+    }
+
+    internal InvestigationComparisonsWindow ComparisonsDialog() => new(path);
+
+    private async Task SavedComparisonsAsync()
+    {
+        if (await ComparisonsDialog().ShowDialog<SavedComparison?>(this) is { } chosen && !closed)
+        {
+            await OpenComparisonAsync(chosen);
+        }
+    }
+
+    /// <summary>
+    /// Opens a saved comparison in InterCat's window (`contracts/comparison-v1.md` §8c): its compared session at its
+    /// compared interval, and the Compare window on it as saved, reading both sessions as they are now. A session it
+    /// compares that is not where it was last found is said, as is InterCat's window not being open to show it in.
+    /// </summary>
+    internal async Task<bool> OpenComparisonAsync(SavedComparison saved)
+    {
+        if (saved is not { Baseline: { } before, Compared: { } after }) return false;
+        if (NotRead is { } notRead)
+        {
+            status.Text = $"'{saved.Name}' was not opened: {notRead}";
+            return false;
+        }
+
+        if (openComparison is null)
+        {
+            status.Text = $"'{saved.Name}' was not opened: {NoInterCat}";
+            return false;
+        }
+
+        InvestigationMemberRow? Row(Guid session) => View?.Members.FirstOrDefault(row => row.SessionId == session);
+        InvestigationMemberRow? compared = Row(after.SessionId);
+        InvestigationMemberRow? baseline = saved.AcrossCaptures ? Row(before.SessionId) : compared;
+        if (compared is not { HoldsItsCapture: true } || baseline is not { HoldsItsCapture: true })
+        {
+            InvestigationMemberRow? away = compared is not { HoldsItsCapture: true } ? compared : baseline;
+            status.Text = away is null
+                ? $"'{saved.Name}' was not opened: a session it compares is not a session of this investigation."
+                : $"'{saved.Name}' compares {away.Title.Split(',')[0]}, which is not where it was last found: relink it to "
+                    + "open the comparison.";
+            return false;
+        }
+
+        status.Text = $"Opening '{saved.Name}'…";
+        string? refused = await openComparison(saved, compared.FullPath, saved.AcrossCaptures ? baseline.FullPath : null);
+        if (!closed)
+        {
+            status.Text = refused is null
+                ? $"Opened '{saved.Name}' in the InterCat window: {compared.Title.Split(',')[0]} at its compared interval, "
+                    + "compared as saved."
+                : await NotOpenedAsync(compared, refused);
+        }
+
+        return refused is null;
     }
 
     /// <summary>Chooses a lane's column on the timeline, as the arrow keys or a click do; a test uses it.</summary>

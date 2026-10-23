@@ -362,7 +362,9 @@ revision is kept. `icat workspace comparison <name> --session <session> --interv
 session named as a member is, each interval as `icat compare` takes it, by records and of processes by default, or of
 executables when the baseline is another session's - and `<name> --remove` removes it; `show` lists those in force.
 `icat compare --workspace <workspace> --saved <name>` runs one, each session read where the investigation finds it now,
-which must hold its capture (§3): its document names the comparison and its revision (`comparison-v1` §8). A file whose
+which must hold its capture (§3): its document names the comparison and its revision (`comparison-v1` §8). Since
+revision 759 the Desktop's Compare window saves the comparison shown in the investigation its session was opened from,
+and the investigation's window lists, opens and removes them (`comparison-v1` §8c). A file whose
 comparisons are unnamed, compare an interval that ends before it starts or is of no member, compare by no metric or
 grouping, compare two sessions by process, or appear in a file before version 22, is refused.
 

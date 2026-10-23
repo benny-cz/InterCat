@@ -4,8 +4,8 @@ Status: **implemented** for two intervals of one session's generation, on the co
 752), in the window (Compare with…, revision 753, §8a), and as a redacted report to share from either (revision 754,
 §8b); its rows are of processes or, since revision 755, of executables (§2a); and since revision 756 two captures
 compare, by executable (§2b) - on the command line, and since revision 757 in the window too. Since revision 758 an
-investigation saves a comparison under a name and the command line runs it (§8c). Difference timelines and graph
-overlays are not defined at this version (§9).
+investigation saves a comparison under a name and the command line runs it, and since revision 759 the window saves
+and reopens one (§8c). Difference timelines and graph overlays are not defined at this version (§9).
 
 This contract fixes what plan §15's M12 asks of a comparison - normalized rates beside absolute counts, ranked changed
 relations, unavailable measurement told apart from disappeared activity, and side-by-side values with an explicit reason
@@ -197,21 +197,6 @@ rather than scrolled. With `--share-redacted` it writes §8b's report instead, a
 or a path ending `.csv`; the comparison itself is written as JSON only, and `--json` and `--output` are not given
 together.
 
-## 8c. A saved comparison
-
-An investigation keeps a comparison under a name (`workspace-v22` §7, ADR-061): its two intervals, each of a member's
-session in that session's own ticks, what it compares by and what each row is of - a specification, never an answer.
-`icat workspace comparison` saves one, replacing one of that name, and removes one; `icat workspace show` lists those
-in force in `icat compare`'s words: "[10.0, 20.0) s of session 1a2b3c4d against [0.0, 10.0) s of it, by records, a
-row per process".
-
-`icat compare --workspace <workspace> --saved <name>` runs the one in force under that name, in any case, as the
-command line compares two intervals it is given: each session read where the investigation finds it now, which must
-hold its capture (`workspace-v22` §3), at the generation found there, so a comparison saved before a live capture
-grew reads it as it is. Only how it is shown is chosen: `--limit`, `--json` and `--output` with its options, never a
-session, an interval, `--rank-by` or `--group-by`. Its text and its file name the comparison and its revision, and a
-redacted report never does, a name being a person's own words (§8b).
-
 ## 8a. The window
 
 Compare with… (Ctrl+B), beside the time scope where it is an interval - a brush, or the visible range while the
@@ -244,6 +229,9 @@ For a row of executables, Show in the window opens an executable's rung, its pro
 the session shown ran - where the window groups processes by executable. Where it groups them by terminal session, or
 no process of the session shown ran the executable, as of another capture's, Show says why instead, and Enter and a
 double click open nothing.
+
+Save in the investigation… keeps the comparison shown, by name, in the investigation the session shown was opened
+from, and a comparison saved there opens in this window as saved (§8c).
 
 ## 8b. A redacted report
 
@@ -279,6 +267,30 @@ then the row, then each interval's missing sources (`Udp:NotCollected;Http:Unkno
 and what a rate is over; a comparison with no row writes one line without one (`row_present=false`), so all of that is
 still said.
 
+## 8c. A saved comparison
+
+An investigation keeps a comparison under a name (`workspace-v22` §7, ADR-061): its two intervals, each of a member's
+session in that session's own ticks, what it compares by and what each row is of - a specification, never an answer.
+`icat workspace comparison` saves one, replacing one of that name, and removes one; `icat workspace show` lists those
+in force in `icat compare`'s words: "[10.0, 20.0) s of session 1a2b3c4d against [0.0, 10.0) s of it, by records, a
+row per process".
+
+`icat compare --workspace <workspace> --saved <name>` runs the one in force under that name, in any case, as the
+command line compares two intervals it is given: each session read where the investigation finds it now, which must
+hold its capture (`workspace-v22` §3), at the generation found there, so a comparison saved before a live capture
+grew reads it as it is. Only how it is shown is chosen: `--limit`, `--json` and `--output` with its options, never a
+session, an interval, `--rank-by` or `--group-by`. Its text and its file name the comparison and its revision, and a
+redacted report never does, a name being a person's own words (§8b).
+
+In the window, Save in the investigation… keeps the comparison shown in the investigation the session shown was opened
+from, under a name it asks for, saying as one is typed whether it replaces a comparison of that name; its baseline
+capture, where it is another, must be a session of the investigation, or the window says to add it first. A session
+opened on its own has no investigation to keep one, which the action says. The investigation's window lists those in
+force under Comparisons…, in the words above, and opens one: its compared session at its compared interval in
+InterCat's window, and the Compare window on that interval, the saved baseline offered first and chosen, compared by
+what it was saved with - another capture's read from its folder where the investigation finds it, which must hold its
+capture - or says which session to relink. It removes one too, keeping its revisions.
+
 ## 9. Not defined at this version
 
 - **Another capture's interval in the window** other than its whole recording: the command line's `--baseline` takes
@@ -286,6 +298,4 @@ still said.
 - **A bounded change under a gap.** The losses a ledger counts bound the records a mechanism lost, not a row's (§5); a
   bound per row would need what a lost record could have moved.
 - Difference timelines, graph overlays, recurring patterns, outliers and causal navigation (plan M12).
-- **A saved comparison in the window.** The command line saves and runs one (§8c); the window neither saves nor
-  reopens one yet.
 - Wall-clock bounds, which `icat timeline --wall-clock` states; a comparison takes session ticks.

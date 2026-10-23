@@ -121,3 +121,11 @@ two intervals, each of a session of the investigation in that session's own time
 row is of - and running it reads the sessions as they are then. It keeps no answer, so none goes stale, and a redacted
 report never carries its name. Of the parts not built, difference timelines and graph overlays remain, and the window
 neither saves nor reopens a comparison yet; nothing else above changes.
+
+## Addendum, revision 759
+
+The window saves and reopens comparisons (`comparison-v1` §8c): Save in the investigation… keeps the comparison shown
+in the investigation its session was opened from, by a name it asks for, saying whether the name replaces one; the
+investigation's Comparisons… lists them in the command line's words and opens one in InterCat's window as saved, or
+removes one. Saved comparison specifications are now in the window as on the command line; of the parts not built,
+difference timelines and graph overlays remain first, and nothing else above changes.

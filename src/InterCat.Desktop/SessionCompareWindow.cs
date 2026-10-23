@@ -35,12 +35,20 @@ internal sealed record BaselineChoice(string Label, TimeRange? Interval)
 }
 
 /// <summary>
+/// A saved comparison the Compare window opens on (`contracts/comparison-v1.md` §8c): its baseline chosen first, compared
+/// by its metric and its rows of its grouping, with the folder its baseline capture is in where that is another capture,
+/// and the investigation it was saved in, which it can be saved in again.
+/// </summary>
+internal sealed record SavedComparisonOpening(SavedComparison Comparison, string? CapturePath, string Investigation);
+
+/// <summary>
 /// The window's comparison of the time scope with another interval (`contracts/comparison-v1.md`, plan M12): each
 /// relationship, and each process's connections to another host, that had a record in either, by records or by bytes sent
 /// across, as rates over each whole interval, the most changed first, in the words `icat compare` uses (R18). A change is
 /// stated only where both intervals measured alike; elsewhere both values stand, with the reason beneath the rows. Enter
-/// on a row closes the window with it, and the workspace opens what it compares. Nothing is written but a redacted report
-/// a person asks for and saves where they choose.
+/// on a row closes the window with it, and the workspace opens what it compares. Nothing is written but what a person asks
+/// for: a redacted report saved where they choose, or the comparison saved in the investigation the session was opened
+/// from (`contracts/workspace-v22.md` §7).
 /// </summary>
 internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindow
 {
@@ -49,6 +57,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     private readonly TimeRange compared;
     private readonly SessionClock clock;
     private readonly EvidencePolicy policy;
+    private readonly string? investigation;
     private readonly CancellationTokenSource lifetime = new();
     private readonly ComboBox baseline = new() { MinWidth = 360 };
     private readonly TextBox from = new() { Watermark = "from, s", Width = 110 };
@@ -65,6 +74,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     private readonly Button compare = new() { Content = "Compare" };
     private readonly Button show = new() { Content = "Show in the window", Classes = { "primary" } };
     private readonly Button share = new() { Content = "Share redacted…" };
+    private readonly Button save = new() { Content = "Save in the investigation…" };
     private readonly Button close = new() { Content = "Close" };
     private readonly TextBlock done = new()
     {
@@ -81,6 +91,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     private CancellationTokenSource? reading;
     private bool comparing;
     private bool sharing;
+    private bool saving;
     private int lastBaseline;
     private bool reverting;
     private bool shownOnce;
@@ -92,8 +103,13 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     /// <param name="recorded">Whether <paramref name="within"/> is the recording.</param>
     /// <param name="clock">The time base the window states its times in.</param>
     /// <param name="policy">The evidence policy the window counts by, which the comparison counts by too.</param>
+    /// <param name="investigation">
+    /// The investigation the session shown was opened from, which the comparison can be saved in; null for a session opened
+    /// on its own.
+    /// </param>
+    /// <param name="opening">A saved comparison to open on, its baseline chosen first; null to choose one.</param>
     public SessionCompareWindow(string path, Guid sessionId, TimeRange compared, TimeRange within, bool recorded,
-        SessionClock clock, EvidencePolicy policy)
+        SessionClock clock, EvidencePolicy policy, string? investigation = null, SavedComparisonOpening? opening = null)
     {
         ArgumentNullException.ThrowIfNull(clock);
         this.path = path;
@@ -101,6 +117,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         this.compared = compared;
         this.clock = clock;
         this.policy = policy;
+        this.investigation = investigation;
         Title = "InterCat · Compare two intervals";
         Width = 1000;
         Height = 680;
@@ -110,13 +127,31 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
 
         CultureInfo culture = CultureInfo.CurrentCulture;
         baselines = new(Baselines(compared, within, recorded, clock, culture));
+
+        // A saved comparison opens on its baseline, offered first and chosen, compared by what it was saved with: chosen
+        // before any choice is listened to, so the comparison is read once, as it was saved. Another capture's baseline is
+        // read from its folder, without which it is not offered.
+        ComparisonMetric openingMetric = ComparisonMetric.Records;
+        ComparisonGrouping openingRows = ComparisonGrouping.Process;
+        string? openedAs = null;
+        if (opening?.Comparison is { Baseline: { Interval: { } kept } before, Metric: { } savedMetric, GroupedBy: { } savedRows } saved
+            && (!saved.AcrossCaptures || opening.CapturePath is not null))
+        {
+            baselines.Insert(0, new BaselineChoice(SavedLabel(saved, kept, opening.CapturePath, clock, culture), kept)
+            {
+                CapturePath = saved.AcrossCaptures ? opening.CapturePath : null,
+                CaptureSession = saved.AcrossCaptures ? before.SessionId : null,
+            });
+            (openingMetric, openingRows, openedAs) = (savedMetric, savedRows, saved.Name);
+        }
+
         baseline.ItemsSource = baselines;
         baseline.SelectedIndex = 0;
         TrimmedChoices.Apply(baseline);
         metric.ItemsSource = new[] { "Records per second", "Bytes sent across per second" };
-        metric.SelectedIndex = 0;
+        metric.SelectedIndex = openingMetric == ComparisonMetric.BytesSent ? 1 : 0;
         rowsOf.ItemsSource = new[] { "Each process", "Each executable, its processes together" };
-        rowsOf.SelectedIndex = 0;
+        rowsOf.SelectedIndex = openingRows == ComparisonGrouping.Executable ? 1 : 0;
         typed = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -140,6 +175,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         AutomationProperties.SetName(compare, "Compare again");
         AutomationProperties.SetName(show, "Show the chosen row in the window");
         AutomationProperties.SetName(share, "Share the comparison as a redacted report");
+        AutomationProperties.SetName(save, "Save the comparison in the investigation");
         AutomationProperties.SetName(close, "Close the comparison");
         AutomationProperties.SetName(done, "What the window's last action did");
         AutomationProperties.SetLiveSetting(done, AutomationLiveSetting.Polite);
@@ -174,6 +210,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         compare.Click += (_, _) => _ = CompareAsync();
         show.Click += (_, _) => ChooseSelected();
         share.Click += (_, _) => _ = ShareAsync();
+        save.Click += (_, _) => _ = SaveInInvestigationAsync();
         close.Click += (_, _) => Close();
         rows.SelectionChanged += (_, _) => OfferShow();
         rows.DoubleTapped += (_, _) => ChooseSelected();
@@ -214,7 +251,8 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         };
         Place(fields, 0, "Compared", new TextBlock
         {
-            Text = ComparisonText.Interval(compared, clock, culture) + ", the window's time scope",
+            Text = ComparisonText.Interval(compared, clock, culture)
+                + (openedAs is null ? ", the window's time scope" : $", as saved in '{openedAs}'"),
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = VerticalAlignment.Center,
         });
@@ -235,7 +273,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         {
             Orientation = Orientation.Horizontal,
             Spacing = 8,
-            Children = { show, share, compare, close },
+            Children = { show, save, share, compare, close },
         };
         var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 12 };
         Grid.SetColumn(buttons, 1);
@@ -267,6 +305,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         Offering.Offer(compare, null, CompareDoes);
         OfferShow();
         OfferShare();
+        OfferSave();
         Opened += (_, _) =>
         {
             baseline.Focus();
@@ -286,6 +325,9 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
 
     /// <summary>Completes when the latest report asked for has been saved, declined or refused.</summary>
     public Task Shared { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Completes when the latest save in the investigation asked for has been made, declined or refused.</summary>
+    public Task SavedIn { get; private set; } = Task.CompletedTask;
 
     /// <summary>
     /// Why the window that opened the comparison cannot open what a row compares, which Show in the window then says; null
@@ -367,6 +409,18 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     /// <summary>Why sharing waits while a report is saved.</summary>
     private const string Sharing = "A redacted report is being saved.";
 
+    /// <summary>Why the comparison cannot be saved where the session shown was not opened from an investigation.</summary>
+    internal const string SaveNeedsInvestigation = "A comparison is kept in an investigation: open this session from one to "
+        + "save it there.";
+
+    /// <summary>Why saving waits while the comparison is saved.</summary>
+    private const string Saving = "The comparison is being saved in the investigation.";
+
+    /// <summary>What Save in the investigation… does, offered.</summary>
+    internal const string SaveDoes = "Keep this comparison in the investigation under a name, to open again from its "
+        + "Comparisons… or run with icat compare --saved: its two intervals, what it compares by and what its rows are of, "
+        + "never its answer, which is read afresh each time.";
+
     /// <summary>What Share redacted… does, offered.</summary>
     internal const string ShareDoes = "Save this comparison as a metadata-only, pseudonymized report to share, every row "
         + "compared in it: processes, executables and other hosts become random tokens, and no name, PID, address or port "
@@ -385,6 +439,16 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     /// <summary>What Show in the window does, offered.</summary>
     internal const string ShowDoes = "Close the comparison and open what the chosen row compares: a relationship's process "
         + "and channel, or the process whose connections to another host it compares, whose inspector lists the hosts it reached.";
+
+    /// <summary>
+    /// What a saved comparison's baseline is offered as: its name and interval, of another capture's folder where it is one,
+    /// such as "As saved in 'before the update', [0.0, 10.0) s".
+    /// </summary>
+    private static string SavedLabel(SavedComparison saved, TimeRange interval, string? capturePath, SessionClock clock,
+        CultureInfo culture) =>
+        $"As saved in '{saved.Name}', " + (saved.AcrossCaptures && capturePath is not null
+            ? WorkspaceTime.FormatHalfOpenRange(interval, culture) + " of " + Path.GetFileName(Path.TrimEndingDirectorySeparator(capturePath))
+            : clock.HalfOpenRange(interval, culture));
 
     /// <summary>
     /// The baselines a time scope is offered: the same length just before it and just after it, where that lies within
@@ -522,6 +586,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
             Offering.Offer(compare, null, CompareDoes);
             OfferShow();
             OfferShare();
+            OfferSave();
             status.Text = WriteBaseline;
             return;
         }
@@ -533,6 +598,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         Offering.Offer(compare, Comparing, CompareDoes);
         OfferShow();
         OfferShare();
+        OfferSave();
         try
         {
             CancellationToken token = request.Token;
@@ -565,6 +631,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
                 Offering.Offer(compare, null, CompareDoes);
                 OfferShow();
                 OfferShare();
+                OfferSave();
             }
         }
     }
@@ -622,6 +689,169 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
             sharing = false;
             if (!closed) OfferShare();
         }
+    }
+
+    /// <summary>
+    /// Saves the comparison shown in the investigation the session was opened from, under a name asked for
+    /// (`contracts/workspace-v22.md` §7): its two intervals, what it compares by and what its rows are of, never its answer,
+    /// replacing a comparison of that name; beside the buttons, the name it was saved under, or why it was not.
+    /// </summary>
+    public Task SaveInInvestigationAsync()
+    {
+        if (closed || saving || comparing || Shown is null || investigation is null) return Task.CompletedTask;
+        SavedIn = SaveComparisonAsync(Shown, investigation);
+        return SavedIn;
+    }
+
+    private async Task SaveComparisonAsync(IntervalComparison comparison, string file)
+    {
+        saving = true;
+        OfferSave();
+        string named = Path.GetFileName(file);
+        var before = new SavedComparisonInterval
+        {
+            SessionId = comparison.BaselineSessionId ?? comparison.SessionId,
+            StartTicks = comparison.Baseline.StartTicks,
+            EndTicks = comparison.Baseline.EndTicks,
+        };
+        var after = new SavedComparisonInterval
+        {
+            SessionId = comparison.SessionId,
+            StartTicks = comparison.Compared.StartTicks,
+            EndTicks = comparison.Compared.EndTicks,
+        };
+        try
+        {
+            // The investigation is read first: another capture it does not hold cannot be saved there, and the names it keeps
+            // comparisons under are the ones saving under replaces, which the prompt says as a name is typed.
+            (bool holds, IReadOnlyList<string> names) = await Task.Run(() =>
+            {
+                InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(file);
+                return (workspace.Members.Any(member => member.SessionId == before.SessionId),
+                    (IReadOnlyList<string>)[.. InvestigationWorkspace.ComparisonsInForce(workspace).Select(kept => kept.Name)]);
+            }, lifetime.Token);
+            if (closed) return;
+            if (!holds)
+            {
+                done.Text = $"The comparison was not saved: the baseline capture, session {before.SessionId.ToString("N")[..8]}, is not "
+                    + $"a session of {named}. Add it to the investigation, then save.";
+                return;
+            }
+
+            var unsaved = new SavedComparison
+            {
+                Revision = 0,
+                Name = string.Empty,
+                Baseline = before,
+                Compared = after,
+                Metric = comparison.Metric,
+                GroupedBy = comparison.Grouping,
+                RecordedUtc = DateTimeOffset.UtcNow,
+            };
+            string? name = await SavePrompt(named, ComparisonText.Saved(unsaved, CultureInfo.CurrentCulture), names)
+                .ShowDialog<string?>(this);
+            if (name is null || closed) return;
+            SavedComparison saved = await Task.Run(() => InvestigationWorkspace.SaveComparison(file, name, before, after,
+                comparison.Metric, comparison.Grouping, DateTimeOffset.UtcNow), lifetime.Token);
+            if (!closed) done.Text = $"Saved in {named} as '{saved.Name}'; the investigation's Comparisons… opens it again.";
+        }
+        catch (OperationCanceledException) when (closed)
+        {
+            // Closing the window let the save go; the investigation is as it was.
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
+            or UnauthorizedAccessException)
+        {
+            if (!closed) done.Text = "The comparison was not saved: " + InvestigationTrouble.Why(file, exception);
+        }
+        finally
+        {
+            saving = false;
+            if (!closed) OfferSave();
+        }
+    }
+
+    /// <summary>
+    /// Asks the name to save the comparison under in <paramref name="investigation"/>, saying what is saved and, as a name is
+    /// typed, whether saving under it replaces a comparison the investigation keeps; closes with the name, or with null
+    /// when declined.
+    /// </summary>
+    internal static Window SavePrompt(string investigation, string described, IReadOnlyList<string> names)
+    {
+        var prompt = new Window
+        {
+            Title = "Save the comparison in the investigation",
+            Width = 560,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+        };
+        var name = new TextBox { Watermark = "such as: before the update", MaxLength = InvestigationWorkspace.MostComparisonNameCharacters };
+        var said = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+        var cancel = new Button { Content = "Cancel" };
+        var keep = new Button { Content = "Save", Classes = { "primary" } };
+        AutomationProperties.SetName(name, "The name to save the comparison under");
+        AutomationProperties.SetName(said, "What saving under this name does");
+        AutomationProperties.SetLiveSetting(said, AutomationLiveSetting.Polite);
+
+        // Saving under a name the investigation keeps replaces that comparison, which is said before it is done.
+        void Say()
+        {
+            string typed = name.Text?.Trim() ?? string.Empty;
+            string? kept = names.FirstOrDefault(existing => string.Equals(existing, typed, StringComparison.OrdinalIgnoreCase));
+            said.Text = typed.Length == 0 ? "Name it to save it."
+                : kept is not null ? $"Replaces the comparison saved as '{kept}'; its earlier revisions stay in the file."
+                : $"Saves it as '{typed}'.";
+            Offering.Offer(keep, typed.Length == 0 ? "Name the comparison first." : null, "Save the comparison under this name");
+        }
+
+        void Keep()
+        {
+            if (keep.IsEnabled) prompt.Close(name.Text!.Trim());
+        }
+
+        name.TextChanged += (_, _) => Say();
+        cancel.Click += (_, _) => prompt.Close(null);
+        keep.Click += (_, _) => Keep();
+        prompt.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Escape)
+            {
+                prompt.Close(null);
+                key.Handled = true;
+            }
+            else if (key.Key == Key.Enter && name.IsKeyboardFocusWithin)
+            {
+                Keep();
+                key.Handled = true;
+            }
+        };
+        prompt.Opened += (_, _) => name.Focus();
+        Say();
+        prompt.Content = new StackPanel
+        {
+            Margin = new Thickness(20),
+            Spacing = 12,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = $"{investigation} keeps this comparison under a name: {described}. It keeps what to compare and "
+                        + "never the answer, which is read afresh each time it is opened.",
+                    TextWrapping = TextWrapping.Wrap,
+                },
+                name,
+                said,
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Children = { cancel, keep },
+                },
+            },
+        };
+        return prompt;
     }
 
     /// <summary>Says where the window says what sharing did why the system's dialog to choose the file did not open.</summary>
@@ -719,6 +949,17 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         if (closed || !firstShown && FocusManager?.GetFocusedElement() is Visual focused && this.IsVisualAncestorOf(focused)) return;
         (rows.ContainerFromIndex(rows.SelectedIndex) ?? (Control)close).Focus(NavigationMethod.Tab);
     }, Avalonia.Threading.DispatcherPriority.Loaded);
+
+    /// <summary>
+    /// Offers saving the comparison shown in the investigation, or says why not: the session shown was not opened from one,
+    /// a comparison is read or saved, or none is shown.
+    /// </summary>
+    private void OfferSave() => Offering.Offer(save,
+        investigation is null ? SaveNeedsInvestigation
+        : comparing ? Comparing
+        : saving ? Saving
+        : Shown is null ? NothingToShare
+        : null, SaveDoes);
 
     /// <summary>Offers sharing the comparison shown, or says why not: while one is read or saved, or with none shown.</summary>
     private void OfferShare() => Offering.Offer(share,
