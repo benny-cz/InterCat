@@ -263,8 +263,8 @@ public sealed partial class SessionTileIndexTests
         using (FileStream stream = File.OpenRead(path))
         {
             TileIndexFile file = FileOf(session);
-            block = file.Block(stream, section, top, 0);
-            finest = file.Block(stream, section, 0, 0);
+            block = file.Block(() => stream, section, top, 0);
+            finest = file.Block(() => stream, section, 0, 0);
         }
 
         string name = section.Entry.Name;

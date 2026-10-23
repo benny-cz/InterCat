@@ -244,7 +244,7 @@ public sealed partial class SessionTileIndexTests
         TileBlock block;
         using (FileStream stream = File.OpenRead(path))
         {
-            block = FileOf(session).Block(stream, section, top, 0);
+            block = FileOf(session).Block(() => stream, section, top, 0);
         }
 
         string name = section.Entry.Name;

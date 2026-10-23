@@ -842,8 +842,8 @@ public sealed partial class SessionTileIndexTests
         TileBlock highest;
         using (FileStream stream = File.OpenRead(path))
         {
-            finest = file.Block(stream, section, 0, 0);
-            highest = file.Block(stream, section, top, 0);
+            finest = file.Block(() => stream, section, 0, 0);
+            highest = file.Block(() => stream, section, top, 0);
         }
 
         // The finest tile 1 holds the first send alone: its kind, one byte, follows its increase, zero. The top level's first
@@ -1117,7 +1117,7 @@ public sealed partial class SessionTileIndexTests
         int link;
         using (FileStream stream = File.OpenRead(path))
         {
-            link = file.Block(stream, section, top, 0).OwnerLinks[1];
+            link = file.Block(() => stream, section, top, 0).OwnerLinks[1];
         }
 
         Flip(path, section.OwnerTalliesAt + link);

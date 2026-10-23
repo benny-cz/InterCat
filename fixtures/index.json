@@ -2295,8 +2295,12 @@
         "S3: the whole session's TCP records behind each process's connections are counted from its derivation's activity, exactly as binding every row does, under every policy"
       ],
       "S2": [
+        "S2: a query's reading of a tile index opens its file when a read first needs a part not kept, once whatever it reads, and a later query that finds every part it reads kept opens none",
+        "S2: a scan of more blocks than a tile block cache holds, repeated in the same order, finds many of them kept each time, where giving up every block once full or the least recently read would find none",
         "S2: a spanning level whose byte tally entries pass its bound keeps no byte tallies but its byte sums, and a brush measures its sections' instead",
-        "S2: past its bound, the spanning level's finest tiles are made ten times wider until their tally entries fit, and where none do it is given up; a zoom, a brush, a focus and a zoom's byte lanes count the same either way"
+        "S2: a tile block cache keeps a block's tiles and each of its parts apart and once, giving a query that read the same again the first kept, each charged its bytes",
+        "S2: past its bound, the spanning level's finest tiles are made ten times wider until their tally entries fit, and where none do it is given up; a zoom, a brush, a focus and a zoom's byte lanes count the same either way",
+        "S2: past its budget a tile block cache gives up parts chosen at random until what it keeps fits, never every part, and keeps none that could never fit"
       ],
       "S4": [
         "S4: a chunk's certified owners count only for instances that bind its records alike: a record bound to none bound to none still, and an instance found by identity, of the same PID, binding every reading of its records as strongly, a lifecycle record's directly",
@@ -2321,6 +2325,7 @@
         "S4: a live generation opened cold draws the overview and the zooms a session of the same chunks recorded without tiles draws, opening only its newest chunk's segments and one whose readings go backwards",
         "S4: a live generation's brush counts and measures a chunk from its tiles where its relations hold each span of the chunk's ends within one incarnation and its instances bind the chunk's owners alike, and from its rows where a disconnect read later divides a span or a creation read later splits an owner's records, as every segment's rows count and measure it",
         "S4: a live generation's channel focus counts a chunk from its tiles where its relations hold each span of the chunk's ends within one incarnation, whatever its owners bind to, and from its rows where a disconnect read later divides one, as every segment's rows count it: a paired channel's at both ends and at one, of its mechanism in one direction or of another, and a connection to another host's",
+        "S4: a live generation's focuses on traffic whose every record is another pair's than the one before read each block of its chunks' tiles, its tallies and its records from their files once, opening none again, more blocks a chunk than each chunk kept on its own, every chunk's kept in one budget a later generation shares, and count as the rows do",
         "S4: a live generation's overview counts every chunk but its newest from the tiles staged of it, opening only the newest chunk's segments, and counts as every segment's rows do",
         "S4: a live generation's owner focus and byte lanes count a chunk from its tiles where its instances bind the chunk's records as the derivation that tiled it did, and from its rows where a lifecycle record read later binds them otherwise, as every segment's rows count them",
         "S4: a publication tiles the chunks no tiles describe, newest first, at most four, and none more once those it tiled hold its bound of rows, until every chunk but the newest is tiled",

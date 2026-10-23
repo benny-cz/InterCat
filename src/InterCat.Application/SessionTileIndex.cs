@@ -1372,10 +1372,11 @@ internal static class SessionTileIndex
 
     /// <summary>
     /// Opens the tile index <paramref name="dependency"/> names: its header, footer and directory, each checked. A section
-    /// is read when a zoom or a brush first needs it, and a block when one reads it.
+    /// is read when a zoom or a brush first needs it, and a block when one reads it, kept in <paramref name="blocks"/>, or
+    /// in a cache of the file's own where none is given.
     /// </summary>
     public static TileIndexFile Open(
-        IOwnedDirectory directory, StoreDependency dependency, Guid sessionId, int cachedBlocks = TileIndexFile.DefaultCachedBlocks)
+        IOwnedDirectory directory, StoreDependency dependency, Guid sessionId, TileBlockCache? blocks = null)
     {
         ArgumentNullException.ThrowIfNull(directory);
         ArgumentNullException.ThrowIfNull(dependency);
@@ -1554,7 +1555,7 @@ internal static class SessionTileIndex
         }
 
         return new TileIndexFile(dependency, derivedGeneration, minor,
-            new TileDerivation(bindingRule, relationRule, instances, channels, fingerprint), entries, spanning, cachedBlocks)
+            new TileDerivation(bindingRule, relationRule, instances, channels, fingerprint), entries, spanning, blocks)
         {
             Certified = certified,
             Ends = spanned,
@@ -3116,6 +3117,16 @@ internal sealed class TileBlock
 
     /// <summary>Where its tiles' byte tallies end within the section's byte tallies, before their checksum; 0 where it keeps none.</summary>
     public required int ByteTalliesEnd { get; init; }
+
+    /// <summary>
+    /// The bytes it holds, as <see cref="TileBlockCache"/> charges it: its nine arrays' elements and headers, and its own
+    /// header, references and ends.
+    /// </summary>
+    public long Bytes =>
+        (8L * (Lows.Length + Highs.Length))
+        + (4L * (Links.Length + Children.Length + OwnerLinks.Length + ChannelLinks.Length + Counts.Length + SumLinks.Length
+            + ByteLinks.Length))
+        + (9 * 24) + 112;
 }
 
 /// <summary>
@@ -3125,22 +3136,21 @@ internal sealed class TileBlock
 internal sealed class TileIndexFile
 {
     /// <summary>
-    /// The most blocks a generation's tile index keeps decoded for later zooms, brushes and groups: about 25 MB, whatever
-    /// the session's size (S2), and every block of a 10M-record session's tiles, which a group's lanes at 2,000 columns
-    /// read most of.
+    /// The most bytes a generation's tile index keeps of what its queries read - its blocks decoded, and their tallies, byte
+    /// sums and records - for later zooms, brushes, groups and focuses, and the tiles of every chunk a live session's
+    /// generations name together (<see cref="ChunkTiles.CachedBytes"/>), whatever the session's size (S2).
     /// </summary>
-    internal const int DefaultCachedBlocks = 16_384;
-
-    private readonly int maximumCachedBlocks;
+    internal const long DefaultCachedBytes = 64L << 20;
 
     private readonly Dictionary<string, TileSectionEntry> entries;
     private readonly TileSectionEntry[] ordered;
     private readonly TileSectionEntry? spanningEntry;
     private readonly Dictionary<string, TileSection> sections = new(StringComparer.Ordinal);
-    private readonly Dictionary<(string Section, int Level, int Block), TileBlock> blocks = [];
     private readonly Lock gate = new();
     private TileSection? spanning;
     private int blocksDecoded;
+    private int partsRead;
+    private int timesOpened;
 
     internal TileIndexFile(
         StoreDependency dependency,
@@ -3149,7 +3159,7 @@ internal sealed class TileIndexFile
         TileDerivation derivation,
         IReadOnlyList<TileSectionEntry> entries,
         TileSectionEntry? spanning,
-        int maximumCachedBlocks = DefaultCachedBlocks)
+        TileBlockCache? blocks = null)
     {
         Dependency = dependency;
         DerivedGeneration = derivedGeneration;
@@ -3158,10 +3168,16 @@ internal sealed class TileIndexFile
         ordered = [.. entries];
         this.entries = entries.ToDictionary(entry => entry.Name, StringComparer.Ordinal);
         spanningEntry = spanning;
-        this.maximumCachedBlocks = maximumCachedBlocks;
+        Blocks = blocks ?? new TileBlockCache(DefaultCachedBytes);
     }
 
     public StoreDependency Dependency { get; }
+
+    /// <summary>
+    /// Where what its queries read is kept - its blocks decoded, and their tallies, byte sums and records: a cache of its own,
+    /// or the one the tiles of every chunk of a session share.
+    /// </summary>
+    internal TileBlockCache Blocks { get; }
 
     /// <summary>The generation whose segments it describes.</summary>
     public long DerivedGeneration { get; }
@@ -3194,6 +3210,18 @@ internal sealed class TileIndexFile
     /// <summary>How many blocks were read from the file and checked, rather than found already read: what a zoom costs.</summary>
     internal int BlocksDecoded => Volatile.Read(ref blocksDecoded);
 
+    /// <summary>
+    /// How many blocks' tallies, byte sums or records were read from the file rather than found already read: what a brush
+    /// or a focus costs beside its blocks.
+    /// </summary>
+    internal int PartsRead => Volatile.Read(ref partsRead);
+
+    /// <summary>Counts one block's tallies, byte sums or records read from the file (<see cref="PartsRead"/>).</summary>
+    internal void CountPartRead() => Interlocked.Increment(ref partsRead);
+
+    /// <summary>How many queries opened the file to read from it: none that found every part it read kept.</summary>
+    internal int TimesOpened => Volatile.Read(ref timesOpened);
+
     /// <summary>Whether it holds a section describing exactly <paramref name="segment"/>.</summary>
     public bool Describes(StoreDependency segment) =>
         entries.TryGetValue(segment.Name, out TileSectionEntry? entry) && entry.Describes(segment);
@@ -3208,15 +3236,22 @@ internal sealed class TileIndexFile
         return spanningEntry is not null && entries.Count == segments.Count && segments.All(Describes);
     }
 
-    /// <summary>Opens the file for one query's reads; every read it makes is checked.</summary>
+    /// <summary>
+    /// One query's reads of the file, which opens it when a read first needs what is not kept; every read it makes is
+    /// checked.
+    /// </summary>
     public TileReading Read(IOwnedDirectory directory)
     {
         ArgumentNullException.ThrowIfNull(directory);
-        return new(this, directory.OpenOwnedFile(
-            Dependency.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess));
+        return new(this, () =>
+        {
+            Interlocked.Increment(ref timesOpened);
+            return directory.OpenOwnedFile(
+                Dependency.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess);
+        });
     }
 
-    internal TileSection Section(FileStream stream, string name)
+    internal TileSection Section(Func<FileStream> stream, string name)
     {
         lock (gate)
         {
@@ -3226,7 +3261,7 @@ internal sealed class TileIndexFile
             }
         }
 
-        TileSection read = SessionTileIndex.ReadSection(stream, entries[name], Minor);
+        TileSection read = SessionTileIndex.ReadSection(stream(), entries[name], Minor);
         lock (gate)
         {
             return sections.TryAdd(name, read) ? read : sections[name];
@@ -3237,7 +3272,7 @@ internal sealed class TileIndexFile
     /// The section of the level spanning the segments, read and checked once: its header, its extents, and its top block,
     /// whose counts must add up to the records it spans.
     /// </summary>
-    internal TileSection Spanning(FileStream stream)
+    internal TileSection Spanning(Func<FileStream> stream)
     {
         lock (gate)
         {
@@ -3248,7 +3283,7 @@ internal sealed class TileIndexFile
         }
 
         TileSectionEntry entry = spanningEntry ?? throw new InvalidOperationException("The tile index keeps no level spanning its segments.");
-        TileSection read = SessionTileIndex.ReadSpanning(stream, entry, ordered.Length, Minor);
+        TileSection read = SessionTileIndex.ReadSpanning(stream(), entry, ordered.Length, Minor);
         int top = read.Levels - 1;
         TileBlock block = Block(stream, read, top, 0);
         if (block.Counts.Sum(count => (long)count) != read.Spanned)
@@ -3266,7 +3301,7 @@ internal sealed class TileIndexFile
     /// The section of the segment <paramref name="extent"/> names, which the spanning section spans: its timed readings,
     /// their extent and their count as the spanning section states them, and tiles it keeps.
     /// </summary>
-    internal TileSection Spanned(FileStream stream, TileExtent extent)
+    internal TileSection Spanned(Func<FileStream> stream, TileExtent extent)
     {
         TileSectionEntry entry = ordered[extent.Section];
         TileSection section = Section(stream, entry.Name);
@@ -3279,19 +3314,15 @@ internal sealed class TileIndexFile
         return section;
     }
 
-    internal TileBlock Block(FileStream stream, TileSection section, int level, int block)
+    internal TileBlock Block(Func<FileStream> stream, TileSection section, int level, int block)
     {
-        (string, int, int) key = (section.Entry.Name, level, block);
-        lock (gate)
+        if (Blocks.Find(section, level, block) is { } known)
         {
-            if (blocks.TryGetValue(key, out TileBlock? known))
-            {
-                return known;
-            }
+            return known;
         }
 
         (long offset, int length) = section.BlockAt(level, block);
-        byte[] bytes = SessionTileIndex.Read(stream, offset, length);
+        byte[] bytes = SessionTileIndex.Read(stream(), offset, length);
         Interlocked.Increment(ref blocksDecoded);
         if (!SessionTileIndex.Matches(bytes))
         {
@@ -3412,15 +3443,7 @@ internal sealed class TileIndexFile
             throw Bad("byte tallies it places outside the section");
         }
 
-        lock (gate)
-        {
-            if (blocks.Count >= maximumCachedBlocks)
-            {
-                blocks.Clear();
-            }
-
-            return blocks.TryAdd(key, decoded) ? decoded : blocks[key];
-        }
+        return Blocks.Keep(section, level, block, decoded);
 
         InvalidDataException Bad(string what) => SessionTileIndex.Invalid(string.Create(CultureInfo.InvariantCulture,
             $"block {block} of level {level} of {section.Entry.Describe} holds {what}."));
@@ -3431,8 +3454,12 @@ internal sealed class TileIndexFile
 /// One query's reads of a tile index: the file held open while it counts, each read checked. It counts a segment's timed
 /// records into columns, or a brush's records by process and channel, exactly as reading its rows would.
 /// </summary>
-internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisposable
+internal sealed class TileReading(TileIndexFile file, Func<FileStream> open) : IDisposable
 {
+    // The file, opened when a read first needs what is not kept, so a query that finds every part it reads kept opens none.
+    private FileStream? opened;
+    private Func<FileStream>? stream;
+
     /// <summary>
     /// Where a chunk's tiles count owners for a later derivation (§6, <see cref="SessionTileIndex.Rebind"/>): for each
     /// instance their keys name, by its place under the derivation that bound them, its place under the one counting; null
@@ -3468,17 +3495,17 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
     // For each level, the last block of owner tallies and of channel tallies read and checked, kept while a query descends
     // below it and comes back.
-    private readonly TallyBlocks ownerBlocks = new();
-    private readonly TallyBlocks channelBlocks = new();
+    private readonly TallyBlocks ownerBlocks = new(TilePart.OwnerTallies);
+    private readonly TallyBlocks channelBlocks = new(TilePart.ChannelTallies);
 
     // The column the last tile counted whole fell in, kept while tiles go on falling in it: tiles come in time order.
     private int lastColumn = -1;
     private long lastStart;
     private long lastEnd;
 
-    // The records of the last finest tile read, and of the tiles after it in its block, read at once in a buffer each read
-    // reuses: a dense count reads a block's records in one read, a boundary's barely more than its tile's.
-    private byte[] recordsBytes = new byte[4_096];
+    // The records of the block of the last finest tile read, each tile's followed by its checksum, read whole and kept in
+    // the file's cache: a dense count reads a block's records once for every query, a boundary's a block's at most.
+    private byte[] recordsBytes = [];
     private TileSection? recordsSection;
     private int recordsBlock = -1;
     private int recordsFrom;
@@ -3496,7 +3523,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     private int channelEntries;
 
     // The last tile's byte sums read and checked, in buffers each read reuses, and the last block of them, per level.
-    private readonly TallyBlocks sumBlocks = new();
+    private readonly TallyBlocks sumBlocks = new(TilePart.Sums);
     private byte[] sumSlots = new byte[16];
     private byte[] sumSides = new byte[16];
     private long[] sumTotals = new long[16];
@@ -3505,7 +3532,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     private int sumEntries;
 
     // The last tile's byte tallies read and checked, in buffers each read reuses, and the last block of them, per level.
-    private readonly TallyBlocks byteBlocks = new();
+    private readonly TallyBlocks byteBlocks = new(TilePart.ByteTallies);
     private uint[] byteOwners = new uint[64];
     private uint[] byteChannels = new uint[64];
     private byte[] byteSides = new byte[64];
@@ -3528,7 +3555,12 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     // counts a segment's section.
     private TileRemainders? remainders;
 
-    public void Dispose() => stream.Dispose();
+    public void Dispose() => opened?.Dispose();
+
+    /// <summary>The file, as a read that needs it gets it: opened the first time.</summary>
+    private Func<FileStream> Stream => stream ??= Opened;
+
+    private FileStream Opened() => opened ??= open();
 
     /// <summary>What the file says its records' owners and channels were bound under.</summary>
     internal TileDerivation Derivation => file.Derivation;
@@ -3546,10 +3578,10 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     internal int TilesUntallied { get; private set; }
 
     /// <summary>The section of the segment <paramref name="name"/>, which the file must hold.</summary>
-    public TileSection Section(string name) => file.Section(stream, name);
+    public TileSection Section(string name) => file.Section(Stream, name);
 
     /// <summary>The section of the level spanning the segments, which the file must keep (<see cref="TileIndexFile.Spans"/>).</summary>
-    public TileSection Spanning() => file.Spanning(stream);
+    public TileSection Spanning() => file.Spanning(Stream);
 
     /// <summary>
     /// The sections beneath the ranges <paramref name="left"/> holds, which the spanning section could not count whole: each
@@ -3574,7 +3606,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             }
         }
 
-        return [.. meeting.Values.Select(met => (file.Spanned(stream, met.Extent), met.Ranges))];
+        return [.. meeting.Values.Select(met => (file.Spanned(Stream, met.Extent), met.Ranges))];
     }
 
     /// <summary>
@@ -4089,7 +4121,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 blockIndex = position / SessionTileIndex.TilesPerBlock;
-                block = file.Block(stream, section, level, blockIndex);
+                block = file.Block(Stream, section, level, blockIndex);
             }
 
             int tile = position % SessionTileIndex.TilesPerBlock;
@@ -4205,7 +4237,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 blockIndex = position / SessionTileIndex.TilesPerBlock;
-                block = file.Block(stream, section, level, blockIndex);
+                block = file.Block(Stream, section, level, blockIndex);
             }
 
             int tile = position % SessionTileIndex.TilesPerBlock;
@@ -4313,7 +4345,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 blockIndex = position / SessionTileIndex.TilesPerBlock;
-                block = file.Block(stream, section, level, blockIndex);
+                block = file.Block(Stream, section, level, blockIndex);
             }
 
             int tile = position % SessionTileIndex.TilesPerBlock;
@@ -4397,7 +4429,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 blockIndex = position / SessionTileIndex.TilesPerBlock;
-                block = file.Block(stream, section, level, blockIndex);
+                block = file.Block(Stream, section, level, blockIndex);
             }
 
             int tile = position % SessionTileIndex.TilesPerBlock;
@@ -4482,7 +4514,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 blockIndex = position / SessionTileIndex.TilesPerBlock;
-                block = file.Block(stream, section, level, blockIndex);
+                block = file.Block(Stream, section, level, blockIndex);
             }
 
             int tile = position % SessionTileIndex.TilesPerBlock;
@@ -4560,7 +4592,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 blockIndex = position / SessionTileIndex.TilesPerBlock;
-                block = file.Block(stream, section, level, blockIndex);
+                block = file.Block(Stream, section, level, blockIndex);
             }
 
             int tile = position % SessionTileIndex.TilesPerBlock;
@@ -4652,7 +4684,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 blockIndex = position / SessionTileIndex.TilesPerBlock;
-                block = file.Block(stream, section, level, blockIndex);
+                block = file.Block(Stream, section, level, blockIndex);
             }
 
             int tile = position % SessionTileIndex.TilesPerBlock;
@@ -5197,11 +5229,18 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             return known;
         }
 
-        byte[] read = SessionTileIndex.Read(stream, at + start, end - start + 4);
-        if (!SessionTileIndex.Matches(read))
+        // Kept by an earlier query, checked when it read them; or read and checked here, and kept for later queries.
+        if (file.Blocks.Find(section, blocks.Part, level, index) is not { } read)
         {
-            throw SessionTileIndex.Mismatch(string.Create(CultureInfo.InvariantCulture,
-                $"the {what} of block {index} of level {level} of {section.Entry.Describe}"));
+            file.CountPartRead();
+            read = SessionTileIndex.Read(Stream(), at + start, end - start + 4);
+            if (!SessionTileIndex.Matches(read))
+            {
+                throw SessionTileIndex.Mismatch(string.Create(CultureInfo.InvariantCulture,
+                    $"the {what} of block {index} of level {level} of {section.Entry.Describe}"));
+            }
+
+            read = file.Blocks.Keep(section, blocks.Part, level, index, read);
         }
 
         (blocks.Bytes[level], blocks.Indexes[level]) = (read, index);
@@ -5209,31 +5248,32 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     }
 
     /// <summary>
-    /// The records of the finest tile at <paramref name="position"/>, checked against their checksum: where they begin in
-    /// the buffer every such read reuses, and how many bytes they take. They are read with the records of the tiles after
-    /// them in their block, unless an earlier read of the block holds them already.
+    /// The records of the finest tile at <paramref name="position"/>, checked against their checksum at every read: the
+    /// records of its block, where its own begin among them, and how many bytes they take. A block's records are read
+    /// whole when one of its tiles' first is, and kept for later queries where the file's cache has room for them.
     /// </summary>
-    private int RecordsOf(TileSection section, TileBlock block, int position, out int offset)
+    private int RecordsOf(TileSection section, TileBlock block, int position, out byte[] bytes, out int offset)
     {
         TilesOfRecordsRead++;
         int tile = position % SessionTileIndex.TilesPerBlock;
         int start = block.Links[tile];
         int end = tile + 1 < block.Links.Length ? block.Links[tile + 1] - 4 : block.RecordsEnd;
         int index = position / SessionTileIndex.TilesPerBlock;
-        if (!ReferenceEquals(recordsSection, section) || recordsBlock != index || start < recordsFrom)
+        if (!ReferenceEquals(recordsSection, section) || recordsBlock != index)
         {
-            int rest = block.RecordsEnd + 4 - start;
-            if (rest > recordsBytes.Length)
+            int first = block.Links[0];
+            if (file.Blocks.Find(section, TilePart.Records, 0, index) is not { } read)
             {
-                recordsBytes = new byte[Math.Max(rest, recordsBytes.Length * 2)];
+                file.CountPartRead();
+                read = file.Blocks.Keep(section, TilePart.Records, 0, index,
+                    SessionTileIndex.Read(Stream(), section.RecordsAt + first, block.RecordsEnd + 4 - first));
             }
 
-            SessionTileIndex.ReadInto(stream, section.RecordsAt + start, recordsBytes.AsSpan(0, rest));
-            (recordsSection, recordsBlock, recordsFrom) = (section, index, start);
+            (recordsBytes, recordsSection, recordsBlock, recordsFrom) = (read, section, index, first);
         }
 
-        offset = start - recordsFrom;
-        if (!SessionTileIndex.Matches(recordsBytes.AsSpan(offset, end - start + 4)))
+        (bytes, offset) = (recordsBytes, start - recordsFrom);
+        if (!SessionTileIndex.Matches(bytes.AsSpan(offset, end - start + 4)))
         {
             throw SessionTileIndex.Mismatch(string.Create(CultureInfo.InvariantCulture,
                 $"the records of tile {position} of {section.Entry.Describe}"));
@@ -5289,8 +5329,11 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         int? End);
 
     /// <summary>For each level, the last block of one kind of tallies read and checked, of the section they were read from.</summary>
-    private sealed class TallyBlocks
+    private sealed class TallyBlocks(TilePart part)
     {
+        /// <summary>The kind of tallies: what the file's cache keeps them as.</summary>
+        public TilePart Part { get; } = part;
+
         public int[] Indexes { get; } = new int[SessionTileIndex.MaximumLevels];
 
         public byte[]?[] Bytes { get; } = new byte[]?[SessionTileIndex.MaximumLevels];
@@ -5327,9 +5370,8 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             this.position = position;
             tile = position % SessionTileIndex.TilesPerBlock;
 
-            // Read first: the read can give the buffer a larger array.
-            int length = source.RecordsOf(section, block, position, out int offset);
-            at = new VarintReader(source.recordsBytes, offset, offset + length);
+            int length = source.RecordsOf(section, block, position, out byte[] bytes, out int offset);
+            at = new VarintReader(bytes, offset, offset + length);
             int mechanisms = section.Mechanisms.Length;
             for (int slot = 0; slot < mechanisms; slot++)
             {

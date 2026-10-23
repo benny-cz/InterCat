@@ -28,10 +28,12 @@ internal static class ChunkTiles
     internal const long MaximumRowsPerPublication = 1_000_000;
 
     /// <summary>
-    /// The blocks a chunk's tiles keep decoded: a timeline reads a few of a chunk's, and a long recording names hundreds of
-    /// chunks, so each keeps few rather than a generation's tile index's budget.
+    /// The bytes the tiles of every chunk a session's live generations name keep of what their queries read, together: a
+    /// generation's tile index's bound, shared by its chunks rather than given to each, since a long recording names
+    /// hundreds of chunks, and a focus on traffic whose every record is another pair's than the one before reads every
+    /// block of each, its tallies and its records, which a few blocks kept per chunk read again from its file at every view.
     /// </summary>
-    internal const int CachedBlocks = 64;
+    internal const long CachedBytes = TileIndexFile.DefaultCachedBytes;
 
     /// <summary>The chunk tiles <paramref name="manifest"/> names, in its order.</summary>
     public static StoreDependency[] NamedBy(SessionManifestV1 manifest)

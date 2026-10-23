@@ -152,7 +152,7 @@ public sealed partial class SessionTileIndexTests
         TileBlock block;
         using (FileStream stream = File.OpenRead(path))
         {
-            block = FileOf(session).Block(stream, section, top, 0);
+            block = FileOf(session).Block(() => stream, section, top, 0);
         }
 
         kept[(int)section.ByteTalliesAt + block.ByteLinks[0] + 1] ^= 0x40;

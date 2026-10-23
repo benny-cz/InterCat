@@ -48,7 +48,11 @@ approximate.
    default, charged with what each reader holds - the columns and chunks it read, the dictionaries it decoded and the
    bindings derived from its rows - trimmed back to the few columns every projection reads, and bypassed once full; a
    reader a query holds is never taken from it. The derivations of the four most recently used generations are kept
-   process-wide, by count: a derivation holds no file, so keeping it never delays a release.
+   process-wide, by count: a derivation holds no file, so keeping it never delays a release. Since revision 751 a tile
+   index keeps what its queries read of it - blocks decoded, and their tallies, byte sums and records - against a
+   byte budget, 64 MiB by default, which the tiles of every chunk a live session's generations name share, giving up
+   a part chosen at random once full; before, each chunk's tiles kept 64 blocks, fewer than a chunk of a busy
+   machine's traffic holds, and every focus read them all again.
 
 ## Why
 

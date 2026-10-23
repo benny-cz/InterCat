@@ -476,11 +476,13 @@ A tile index carries its own checksums, so it is read by the block and never has
 - a block when a zoom or a brush reads it, and a block's owner or channel tallies, its byte sums or its byte tallies,
   when a query counts one of its tiles from them;
 - a finest tile's records when a column boundary or a brush's end falls among them. They are read with the records of
-  the tiles after them in their block, so a count that reads a block's every tile reads its records once, and each
-  tile's are checked as they are counted.
+  every tile of their block, so a count that reads a block's every tile reads its records once, and each tile's are
+  checked as they are counted, at every read.
 
-A reader keeps up to 16,384 blocks decoded for the queries after it, about 25 MB: every block of a 10M-record session's
-tiles, which a group's lanes at 2,000 columns read most of.
+A reader keeps what its queries read - blocks decoded, and their tallies, byte sums and records as read - for the
+queries after it, within 64 MiB charged in bytes; past it what a query reads takes the place of a part kept at random,
+so a query that reads more than fits still finds much of it. The tiles of every chunk a live session's generations
+name (§6) share one budget, and a query opens a file only to read a part it does not find kept.
 
 ### What is refused
 
@@ -900,11 +902,15 @@ bursts of a pair's fifty, a channel's focus over the whole extent took 30 to 43 
 process's 21 to 25, a brush 12 to 36 and its bytes 38 to 58, opening the newest chunk's one segment, where every
 segment's rows took 95 to 105, 39 to 65, 32 to 56, 30 to 67 and 285 to 319 and opened all forty, and the first channel
 focus after opening took 120 ms where the rows took 1.2 s. Where each record is another pair's than the one before,
-which no narrow tile tallies, the tiles' records are read: a channel's focus took 92 to 112 ms, a group's lanes 64 to 82
-and one process's 77 to 107, where the rows, every segment held in memory, took 70 to 143, 36 to 40 and 39 to 51, and a
-finished session's own tile index 40 to 58; a brush took 10 to 23 ms and its bytes 23 to 49, where the rows took 24 to
-36 and 253 to 343. At 1,000,000 records in ten chunks, whose segments all stay held, a live focus took up to two and a
-half times what the rows did, and a brush and its bytes no more than they did. A level spanning a chunk's one section
+which no narrow tile tallies, the tiles' records are read, and since revision 751 kept, with the blocks and tallies,
+in one budget for every chunk (§4): a channel's focus took 61 to 87 ms, one process's 52 to 73 and a group's lanes 52
+to 90, where the rows, every segment held in memory, took 122 to 214, 30 to 77 and 48 to 84, and a finished session's
+own tile index 43 to 56, 35 to 47 and 33 to 44; a brush took 9 to 11 ms and its bytes 25 to 53, where the rows took
+23 to 30 and 104 to 333; the chunks' tiles kept 60 MiB. Before, each chunk kept 64 blocks, fewer than a chunk of
+100,000 such records holds, and every focus read its blocks, tallies and records from the file again: a channel's
+focus took 92 to 112 ms, a group's lanes 64 to 82 and one process's 77 to 107. At 1,000,000 records in ten chunks, whose
+segments all stay held, an owner focus takes up to twice what the rows do, 17 to 21 ms where they take 10 to 18, from
+up to two and a half times: what remains is decoding each packed record. A level spanning a chunk's one section
 would not help: its tiles keep tallies within the same third of their records' bytes. The warm figures revisions 744 to
 746 gave here were a query's second and third run, before the runtime had compiled it, and overstated what reading the
 tiles' records costs.

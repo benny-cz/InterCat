@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-23 · Plan revision: 750 · Branch: `main`
+Updated: 2026-10-23 · Plan revision: 751 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,33 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 751 — S4, S2: what queries read of every chunk's tiles is kept in one budget, so a live focus on a busy machine's traffic reads each part once:**
+  - Where each record is another pair's than the one before, as on a busy machine, no tile keeps narrow tallies, so a
+    live focus reads every block of each chunk's tiles, its tallies and its records. Each chunk kept 64 blocks
+    decoded, fewer than a chunk of 100,000 such records holds, and every query read the tallies and records again, a
+    read a block, so a focus read them all from the files at every view and took up to twice what every segment's rows
+    took.
+  - What queries read of a tile index, its blocks decoded and their tallies, byte sums and records, is kept within 64
+    MiB charged in bytes; the tiles of every chunk a session's live generations name share one budget, and a
+    generation's own tile index has its own. Past it, what a query reads takes the place of a part chosen at random,
+    so a query reading more than fits still finds much of it. A query opens a tile file only to read a part it does
+    not find kept.
+  - Measured at steady state over 4,000,000 such records in forty chunks, the tiles keeping 60 MiB: a channel's focus
+    took 61 to 87 ms where every segment's rows took 122 to 214 and the tiles had taken 92 to 112; one process's 52 to
+    73 and a group's lanes 52 to 90, where the rows took 30 to 77 and 48 to 84 and the tiles had taken 77 to 107 and
+    64 to 82; a brush's bytes 25 to 53 where the rows took 104 to 333. At 1,000,000 records in ten chunks, whose ten
+    segments the rows hold in memory, an owner focus still takes up to twice the rows, 17 to 21 ms where they take 10
+    to 18: what remains is decoding each packed record.
+  - Debug and Release each ran 3,060 tests with revision 473's 93 failures and 4 skips, and failed nothing else; the
+    fixture index names the five new S2 and S4 tests. All twenty-two mutations were caught: a part larger than the
+    budget kept, or the budget passed; a part kept twice returning the second; a part charged without its entry, or
+    never given back its charge; the last part kept not moved into the place given up; a block's tiles found as
+    bytes; a block never found or never kept; tallies kept as records, or sought as another kind's; records sought
+    as byte sums, read from the tile asked for rather than the block's first, or a block's taken for the next
+    block's; the chunks' cache not handed to a later generation or not given to a chunk's file, or each file keeping
+    its own; a budget of a kilobyte; a block's longs charged as ints; and a reading opening its file at every read
+    or at its creation, or not counting what it opened.
 
 - **Revision 750 — R11, §20.1: a compaction copies each segment's columns as they are, rather than reading its rows back whole:**
   - A live compaction step rewrites up to 250,000 rows. It read each row back whole, an object of some 380 bytes, and
@@ -1145,8 +1172,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      were bound when it was tiled, and since revision 745 its brushes and since revision 746 its channel focuses,
      where its relations also hold each end's records the chunk's tiles name in one incarnation; a chunk a record
      read later binds otherwise still builds a segment's tiles from its rows when first drawn, and where each record
-     is another pair's than the one before, which no narrow tile tallies, a chunk's tiles are read record by record
-     and a live focus takes up to twice what the rows take while every segment stays held; since revision 456 a
+     is another pair's than the one before, which no narrow tile tallies, a chunk's tiles are read record by record,
+     since revision 751 from what every chunk's tiles keep in one budget, so a live focus takes about what the rows
+     take at 4,000,000 records and up to twice at 1,000,000, where every segment stays held; since revision 456 a
      finished generation's are persisted
      (`tile-index-v1`), with the records a column boundary can fall among, so its
      zooms open no segment, and since revision 457 neither do its brushes, which count from the tiles' tallies. Since revision 400 a zoom opens and tiles only the segments its interval meets, by the readings their headers

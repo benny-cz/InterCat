@@ -613,8 +613,10 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
 
     /// <summary>
     /// The tiles of the chunks this generation names (`contracts/tile-index-v1.md` §6), each opened and checked once: taken
-    /// from the latest earlier generation's where it names the same file, so a live view opens only a new chunk's. One
-    /// that cannot be opened is passed over, and its chunk's rows are read instead, as without it.
+    /// from the latest earlier generation's where it names the same file, so a live view opens only a new chunk's, and
+    /// keeping what its queries read where theirs is kept, so every chunk's together keep no more than
+    /// <see cref="ChunkTiles.CachedBytes"/>. One that cannot be opened is passed over, and its chunk's rows are read
+    /// instead, as without it.
     /// </summary>
     public IReadOnlyList<TileIndexFile> TiledChunks(IOwnedDirectory directory)
     {
@@ -627,6 +629,7 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             }
 
             TileIndexFile[] earlier = SessionDerivationCache.Earlier(this, entry => entry.OpenedChunkTiles) ?? [];
+            TileBlockCache blocks = earlier.Length > 0 ? earlier[0].Blocks : new TileBlockCache(ChunkTiles.CachedBytes);
             var opened = new List<TileIndexFile>();
             foreach (StoreDependency dependency in ChunkTiles.NamedBy(Manifest))
             {
@@ -638,7 +641,7 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
 
                 try
                 {
-                    opened.Add(SessionTileIndex.Open(directory, dependency, Manifest.SessionId, ChunkTiles.CachedBlocks));
+                    opened.Add(SessionTileIndex.Open(directory, dependency, Manifest.SessionId, blocks));
                 }
                 catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
                 {
