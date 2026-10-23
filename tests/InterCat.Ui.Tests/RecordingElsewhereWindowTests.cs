@@ -4,6 +4,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using InterCat.Analysis.Tests;
+using InterCat.Application;
 using InterCat.Capture.Journal;
 using InterCat.Desktop;
 using InterCat.Domain;
@@ -227,6 +228,74 @@ public sealed class RecordingElsewhereWindowTests
         Assert.Contains("generation 1", Title(window), StringComparison.Ordinal);
         Assert.False(window.GetControl<Button>("FollowButton").IsVisible);
         window.Close();
+    }
+
+    [AvaloniaTheory(DisplayName = "§19.3: a look at a recording elsewhere still under way when another session is opened is let go, whether it found nothing new, a newer generation or the recording ended, and the other session's view and card stay as they are")]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ALookUnderWayWhenAnotherIsOpenedIsLetGo(bool published, bool ended)
+    {
+        using var session = new TemporarySession();
+        using var other = new TemporarySession();
+        Publish(session.Store, Exchange(0, 10));
+        Publish(other.Store, Exchange(0, 4));
+        using var gate = new ManualResetEventSlim();
+        bool hold = false;
+        bool looking = false;
+        var window = new MainWindow
+        {
+            RecordingProbe = path =>
+            {
+                if (path != session.Path)
+                {
+                    return LiveFollowState.None;
+                }
+
+                // Once the session is open, a look reading the ticket waits until another session has been opened, and
+                // finds the recording running still or ended.
+                if (!Volatile.Read(ref hold))
+                {
+                    return LiveFollowState.Running;
+                }
+
+                Volatile.Write(ref looking, true);
+                gate.Wait(TimeSpan.FromMinutes(1));
+                return ended ? LiveFollowState.None : LiveFollowState.Running;
+            },
+            RecordingWatchInterval = TimeSpan.FromMilliseconds(20),
+        };
+        window.Show();
+        Assert.True(await window.OpenSessionAsync(session.Path));
+        Task following = window.RecordingWatched;
+        Volatile.Write(ref hold, true);
+        await Until(() => Volatile.Read(ref looking));
+
+        // A newer generation published meanwhile is projected for a view that no longer shows its session, and let go.
+        if (published)
+        {
+            Publish(session.Store, Exchange(10, 5));
+        }
+
+        Assert.True(await window.OpenSessionAsync(other.Path));
+        Dispatch();
+        string[] card = Card(window);
+        Assert.Equal("Saved session open", card[0]);
+        gate.Set();
+        await following.WaitAsync(TimeSpan.FromMinutes(1));
+        Dispatch();
+        Assert.Equal(SessionOverviewProjector.Project(other.Store).Extent, Assert.IsType<WorkspaceViewModel>(window.DataContext).Snapshot.Extent);
+        Assert.Contains("generation 1", Title(window), StringComparison.Ordinal);
+        Assert.Equal(card, Card(window));
+        Assert.False(window.GetControl<Button>("FollowButton").IsVisible);
+        window.Close();
+
+        static string[] Card(MainWindow window) =>
+        [
+            window.GetControl<TextBlock>("CaptureStatus").Text!,
+            window.GetControl<TextBlock>("CaptureDetail").Text!,
+            window.GetControl<TextBlock>("HealthStateText").Text!,
+        ];
     }
 
     private static string Title(MainWindow window) => Assert.IsType<WorkspaceViewModel>(window.DataContext).Snapshot.Title;

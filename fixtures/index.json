@@ -2307,6 +2307,8 @@
         "S4: a chunk's tiles that cannot be read are read around, so the overview and the zooms count as the chunk's rows do",
         "S4: a chunk's tiles whose directory certifies its owners out of order, twice, more or fewer than it holds, or as no derivation of its instances binds them are refused as data",
         "S4: a chunk's tiles whose directory lists an end span no derivation gathers, more or fewer than it holds, or another number than the channels its derivation states, are refused as data",
+        "S4: a chunk's tiles whose section cannot be read are read around, so a live brush and its bytes, an owner's and a channel's focus, a group's byte lanes and every mechanism's bytes count and measure as the chunks' rows do",
+        "S4: a derivation gathering a chunk's end spans refuses a row naming an end it does not hold, since the rows it gathers them of are its own",
         "S4: a later generation's derivation takes the chunks' tiles an earlier one opened, and opens only those of the chunk it adds",
         "S4: a level spans the segments only where two or more hold a timed record and none's readings go backwards",
         "S4: a lifecycle record read late that ends an instance among a chunk's records refuses the chunk's tiles, to the reading: one ending it before the chunk's last record of it does, as does one whose PID's next instance begins there, and one ending it at that record does not",
@@ -2319,6 +2321,7 @@
         "S4: a live generation's overview counts every chunk but its newest from the tiles staged of it, opening only the newest chunk's segments, and counts as every segment's rows do",
         "S4: a live generation's owner focus and byte lanes count a chunk from its tiles where its instances bind the chunk's records as the derivation that tiled it did, and from its rows where a lifecycle record read later binds them otherwise, as every segment's rows count them",
         "S4: a publication tiles the chunks no tiles describe, newest first, at most four, and none more once those it tiled hold its bound of rows, until every chunk but the newest is tiled",
+        "S4: a record's place in the canonical order compares by its native reading, then its stream, epoch, ordinal and fact key, and each of its operators says what comparing says",
         "S4: a release that gives up a chunk's segment gives up that chunk's tiles and every other index, and keeps the tiles of the chunks it keeps"
       ],
       "S1": [

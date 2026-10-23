@@ -93,9 +93,6 @@ public sealed partial class TransportRelationIndex
 
         internal EndSpans(TransportRelationIndex relations) => this.relations = relations;
 
-        /// <summary>How many spans the rows given so far meet.</summary>
-        public int Count => spans.Count;
-
         /// <summary>The spans, in the order the rows given so far first met them.</summary>
         public TransportEndSpan[] Spans() =>
         [

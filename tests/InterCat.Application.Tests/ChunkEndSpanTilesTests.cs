@@ -237,6 +237,59 @@ public sealed class ChunkEndSpanTilesTests
         viewer.ReleaseSegmentReaders();
     }
 
+    [Fact(DisplayName = "S4: a chunk's tiles whose section cannot be read are read around, so a live brush and its bytes, an owner's and a channel's focus, a group's byte lanes and every mechanism's bytes count and measure as the chunks' rows do")]
+    public void ADamagedSectionIsReadAround()
+    {
+        using var session = new TemporarySession();
+        using var twin = new TemporarySession();
+        foreach (ObservationRowV1[] chunk in Steady(4))
+        {
+            _ = Publish(session.Store, chunk, rowsPerSegment: 100, indexer: LiveCheckpoints.Instance);
+            _ = Publish(twin.Store, chunk, rowsPerSegment: 100);
+        }
+
+        // The header of each chunk's first section rewritten: its tiles open, and the section is refused when a query reads it.
+        StoreDependency[] tiled = ChunkTiles.NamedBy(session.Store.Current!);
+        foreach (StoreDependency tiles in tiled)
+        {
+            string path = Path.Combine(session.Path, tiles.Name);
+            byte[] bytes = File.ReadAllBytes(path);
+            bytes[SessionTileIndex.HeaderLength] ^= 0x5A;
+            File.WriteAllBytes(path, bytes);
+        }
+
+        (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(twin.Store);
+        TransportRelationIndex relations = TransportRelationIndex.Derive(observations, ProcessInstanceIndex.Derive(observations, TestClock, fields));
+        const string near = "10.0.0.1:40000";
+        TransportRelation first = Assert.Single(relations.Relations, relation => relation.FirstEndpoint == near || relation.SecondEndpoint == near);
+
+        SessionDerivationCache.Clear();
+        SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        Assert.Equal(tiled.Length, SessionDerivationCache.For(viewer.Current!).TiledChunks(viewer.Root).Count);
+        SessionOverviewBundle drawn = SessionOverviewProjector.Project(viewer);
+        TimeRange extent = drawn.Extent!.Value;
+        ProcessInstanceId[] group = [.. drawn.Nodes.Select(node => node.Id)];
+        int newest = ChunkTilesTests.Met(viewer, extent, viewer.Current!.Generation);
+        foreach (Func<SessionStore, string> query in new Func<SessionStore, string>[]
+        {
+            store => Text(SessionIntervalQuery.Count(store, extent, EvidencePolicy.IncludeCandidates)),
+            store => Text(SessionByteRanking.Measure(store, extent, EvidencePolicy.IncludeCandidates)),
+            store => Text(SessionTimelineQuery.Focused(store, extent, 64, new TimelineFocus(null, group), lanes: group)),
+            store => Text(SessionTimelineQuery.Focused(store, extent, 64, new TimelineFocus(first.StableKey, []))),
+            store => JsonSerializer.Serialize(SessionIntervalByteQuery.MeasureByOwner(store, extent, 64, 16, group)),
+            store => JsonSerializer.Serialize(SessionIntervalByteQuery.MeasureByMechanism(store, extent, 64, [Mechanism.Tcp, Mechanism.Udp])),
+        })
+        {
+            // Every chunk's rows are read, where only the newest chunk's are while its tiles can be.
+            viewer.ReleaseSegmentReaders();
+            string counted = query(viewer);
+            Assert.True(viewer.SegmentReaderCache.Entries > newest, "The chunks' tiles were read.");
+            Assert.Equal(query(twin.Store), counted);
+        }
+
+        viewer.ReleaseSegmentReaders();
+    }
+
     [Theory(DisplayName = "S4: a chunk's tiles span each end's records within one incarnation, which a later derivation holds unless a disconnect read later falls among them, to the record: one before the last record of the end does, and one after it in the canonical order does not")]
     [InlineData(399, false)]
     [InlineData(400, true)]
@@ -465,6 +518,42 @@ public sealed class ChunkEndSpanTilesTests
         File.WriteAllBytes(path, bytes);
         Assert.EndsWith(why, Assert.Throws<InvalidDataException>(() => SessionTileIndex.Open(session.Store.Root, named, manifest.SessionId)).Message,
             StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "S4: a derivation gathering a chunk's end spans refuses a row naming an end it does not hold, since the rows it gathers them of are its own")]
+    public void ASpanIsGatheredOnlyOfTheDerivationsOwnEnds()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[][] chunks = Steady(2);
+        _ = Publish(session.Store, chunks[0], rowsPerSegment: 1_000);
+        (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(session.Store);
+        TransportRelationIndex earlier = TransportRelationIndex.Derive(observations, ProcessInstanceIndex.Derive(observations, TestClock, fields));
+
+        // The second chunk's segment opens a connection the first chunk's derivation never read.
+        _ = Publish(session.Store, chunks[1], rowsPerSegment: 1_000);
+        SegmentReaderV1 later = SegmentsOf(session.Store).Observations[^1];
+        bool[] held = [.. Enumerable.Repeat(true, later.RowCount)];
+        uint[] keys = new uint[later.RowCount];
+        TransportRelationIndex.EndSpans spans = earlier.GatherEndSpans();
+        Assert.Equal("A row names an end the derivation gathering its span does not hold.",
+            Assert.Throws<InvalidOperationException>(() => spans.Add(later, held, keys)).Message);
+    }
+
+    [Fact(DisplayName = "S4: a record's place in the canonical order compares by its native reading, then its stream, epoch, ordinal and fact key, and each of its operators says what comparing says")]
+    public void APlaceComparesInTheCanonicalOrder()
+    {
+        var random = new Random(23);
+        TransportPosition Any() => new(random.Next(3), (uint)random.Next(3), (uint)random.Next(3), (ulong)random.Next(3),
+            (ulong)random.Next(3), (ulong)random.Next(3));
+        for (int index = 0; index < 4_000; index++)
+        {
+            TransportPosition left = Any();
+            TransportPosition right = index % 9 == 0 ? left : Any();
+            int expected = Math.Sign((left.Ticks, left.Stream, left.Epoch, left.Ordinal, left.FactHigh, left.FactLow)
+                .CompareTo((right.Ticks, right.Stream, right.Epoch, right.Ordinal, right.FactHigh, right.FactLow)));
+            Assert.Equal(expected, Math.Sign(left.CompareTo(right)));
+            Assert.Equal((expected < 0, expected <= 0, expected > 0, expected >= 0), (left < right, left <= right, left > right, left >= right));
+        }
     }
 
     /// <summary>

@@ -1110,21 +1110,14 @@ public sealed partial class RpcCallIndex
             : throw new InvalidOperationException("A withdrawn call's duration is not among its group's.");
     }
 
-    /// <summary>The first place in sorted <paramref name="values"/> holding <paramref name="value"/> or more.</summary>
+    /// <summary>
+    /// The first place in sorted <paramref name="values"/> holding <paramref name="value"/> or more. The places of withdrawn
+    /// calls are distinct, each call having a place of its own, so a place holding the value is the only one.
+    /// </summary>
     private static int LowerBound(int[] values, int value)
     {
         int found = Array.BinarySearch(values, value);
-        if (found < 0)
-        {
-            return ~found;
-        }
-
-        while (found > 0 && values[found - 1] == value)
-        {
-            found--;
-        }
-
-        return found;
+        return found < 0 ? ~found : found;
     }
 
     /// <summary>Which ranks of a walk the kept keys hold: the records a later generation pairs again.</summary>

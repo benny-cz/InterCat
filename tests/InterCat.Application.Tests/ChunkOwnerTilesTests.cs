@@ -185,6 +185,10 @@ public sealed class ChunkOwnerTilesTests
                 int[] processIds = new int[segment.RowCount];
                 bool[] lifecycle = new bool[segment.RowCount];
                 ProcessInstanceIndex.OwnerProcessesOf(segment, processIds, lifecycle);
+
+                // Buffers a row short of the segment's are refused.
+                Assert.Throws<ArgumentException>(() => ProcessInstanceIndex.OwnerProcessesOf(segment, processIds.AsSpan(1), lifecycle));
+                Assert.Throws<ArgumentException>(() => ProcessInstanceIndex.OwnerProcessesOf(segment, processIds, lifecycle.AsSpan(1)));
                 SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
                 SegmentColumnSlice readings = segment.Slice(SegmentColumnId.NativeTicks);
                 for (int row = 0; row < segment.RowCount; row++)

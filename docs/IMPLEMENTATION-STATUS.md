@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-23 · Plan revision: 748 · Branch: `main`
+Updated: 2026-10-23 · Plan revision: 749 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -107,6 +107,29 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 749 — coverage pass over revisions 741–748 (R10):**
+  - Of 1,430 reachable lines those revisions added, 49 ran in no test; of 1,422 now, 14. They are a ticket held by a
+    running follow, which only Windows detects, and four guards in the RPC extension against what its construction
+    never makes: a standing call's instance a later derivation leaves unmapped, two groups coming to one, a withdrawn
+    server call paired again unlike itself, and server starts trading places. Each would answer rightly if reached, by
+    binding again, by linking again from the call's start, or by sorting again.
+  - Now run: a chunk's tiles whose section cannot be read, which a live brush and its bytes, an owner's and a
+    channel's focus, a group's byte lanes and every mechanism's bytes read around, from the chunk's rows; a derivation
+    refusing to gather the end spans of rows it never read; each comparison of a record's place in the canonical
+    order; a segment's owners asked into buffers a row short; and the window letting go of a look at a recording
+    elsewhere still under way when another session is opened, whether it found nothing new, a newer generation or the
+    recording ended. Had it been kept, a look finding the recording ended would have said so on the other session's
+    card.
+  - Removed: a count of end spans nothing read, and a search's handling of equal places among a generation's withdrawn
+    calls, whose places are distinct.
+  - Debug and Release each ran 3,049 tests with revision 473's 93 failures and 4 skips, and failed nothing else once
+    the fixture index named the three new S4 tests, as the architecture tests then confirmed in both. All fourteen
+    mutations were caught: a damaged section's refusal thrown on, rather than read around, by a live brush, its
+    bytes, a focus, a group's byte lanes or every mechanism's bytes; either buffer of a segment's owners left
+    unchecked; a row naming an end the gathering derivation does not hold passed over; each comparison of a record's
+    place made inclusive or exclusive; the first withdrawn place taken one past the one found; and a look under way
+    kept after another session was opened.
 
 - **Revision 748 — S4: what the plan and the status said a live generation still reads, restated:**
   - The plan said the minimap level was recomputed rather than persisted, which a finished generation's overview index
