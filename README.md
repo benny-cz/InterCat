@@ -69,6 +69,12 @@ machine's ranked rows, the `icat metric` command whose answer they are. A sessio
 that reopens with pseudonymous names, addresses and ports, or byte for byte as the original evidence; a support bundle
 holds no content, name or path.
 
+**Comparing.** `icat compare` sets two intervals of a session side by side: how each relationship, and each process's
+connections to another host, changed from the first to the second, by its records or the bytes sent across, as rates
+over each whole interval, the most changed first. A change is stated only where the capture measured both intervals
+alike; where it did not - a mechanism not collected in one, records lost, sources changed - both values stand, with
+the reason.
+
 F1 in the window lists every key it takes.
 
 ## Build and run
@@ -95,6 +101,7 @@ icat overview <new-folder>/demo-server
 icat hosts <new-folder>/demo-client --investigation <new-folder>/demo.icat-workspace
 icat ports <new-folder>/demo-server --investigation <new-folder>/demo.icat-workspace
 icat channels <new-folder>/demo-server
+icat compare <new-folder>/demo-client --baseline 0:20s --interval 20s:60s
 icat workspace show <new-folder>/demo.icat-workspace
 
 # Capture through the broker (Windows asks for approval), for a minute, or with RPC peers.
@@ -122,6 +129,10 @@ icat processes <session> --pid <pid>
 icat processes <session> --program svchost.exe
 icat processes <session> --port 135
 icat operations <session>
+
+# How each relationship, and each process's connections to another host, changed from one interval to another.
+icat compare <session> --baseline 0:30s --interval 30s:60s
+icat compare <session> --baseline 0:30s --interval 30s:60s --rank-by bytes-sent
 
 # Share it.
 icat export <session> --output view.json

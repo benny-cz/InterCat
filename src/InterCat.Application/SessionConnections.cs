@@ -236,6 +236,23 @@ public static class SessionConnections
         Read(store, selected, interval, policy, ledger: false, cancellationToken).Held;
 
     /// <summary>
+    /// <see cref="Held"/>, with the session and generation the connections were read from, for an answer every part of
+    /// which must be of one generation (I16).
+    /// </summary>
+    internal static (Guid Session, long Generation, IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> Held)
+        HeldIn(
+        SessionStore store,
+        Func<TransportConnection, bool> selected,
+        TimeRange? interval,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken)
+    {
+        (Guid session, long generation, _, _, _, IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> held) =
+            Read(store, selected, interval, policy, ledger: false, cancellationToken);
+        return (session, generation, held);
+    }
+
+    /// <summary>
     /// Every one-sided connection of the session, whoever held it, with its holder and its lifetime in session time - what
     /// an investigation compares with another capture's connections (`contracts/workspace-v21.md` §6).
     /// </summary>

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-23 · Plan revision: 751 · Branch: `main`
+Updated: 2026-10-23 · Plan revision: 752 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -58,7 +58,7 @@ operations.
 M3's exit gate is met for its measured scope ([the M3 exit review](reviews/M3-exit-review.md), revision 252): RPC over
 ALPC without duplicate volume, content truncation and encryption states, and per-build coverage published; pipe and
 shared-section topology remain explicitly unavailable and move to M7 and M9. M4 began with its workspace (revision
-253); M4 and M5 are not complete. All three of
+253), and M12 with `icat compare` (revision 752); M4, M5 and M12 are not complete. All three of
 §11.3's sharing
 presets exist: a metadata-only **report**, a reopenable redacted **session package**, and an exact, unredacted
 **original evidence package**. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
@@ -105,8 +105,44 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M3 IPC breadth and content | Exit gate met for its measured scope ([review](reviews/M3-exit-review.md), revision 252) | Pipe and shared-section topology unavailable (to M7/M9); RPC over TCP, HTTP/2, compressed responses and asynchronous WinINet unmeasured; timing profile unavailable. |
 | M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions; since revision 258 (ADR-041) `icat workspace correlate` proposes candidate joins between captures, since revision 259 the investigation window aligns sessions and lists candidates, since revision 260 (`workspace-v4`) a person's decisions about candidates are kept revisions, flagged when the alignments change, since revision 261 the window draws the merged time, a lane per session, since revision 262 two captures of one host that ran at once are flagged, since revision 263 (ADR-042) an investigation is packaged with its sessions, since revision 264 (`workspace-v5`) two instants a person reads in both measure the clocks' rate, since revision 265 (`workspace-v6`) a session is aligned through another, since revision 266 (`workspace-v7`) a person confirms two host identities are one host, since revision 267 the window compares two instants, since revision 268 it zooms the merged time and opens a column's records, since revision 269 (`workspace-v8`) candidates mirror through known address translations, since revision 270 (`workspace-v9`) a person keeps notes, pinned on the merged time, since revision 271 (`workspace-v10`) saved views of it, since revision 276 a capture that ends before its last publication, as a killed broker's does, still names its boot and start's wall clock to align by, since revision 277 candidate joins and the merged time name the generation of each capture they read (I16), since revision 347 its window lists what it keeps of each session's view, as `icat workspace show` does, since revision 381 its merged time hatches, and says, where a session's capture saw nothing (R21), since revision 383 its candidate joins say what each compared capture covered of TCP and UDP, and since revision 384 `icat workspace timeline` draws its merged time as the window does (R18), and since revision 428 its axis ticks round instants of the 1–2–5 ladder, each named where it is drawn, and its words say times in the digits their span needs; since revision 430 its Align dialog opens on the alignment in force; since revision 496 a session it opens is shown in front of it, its window InterCat's peer | A known two-host exchange (needs a second host); alignment from shared markers, which waits on a marker both captures record (M7, M11). |
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
+| M12 comparative | In progress: since revision 752 `icat compare` compares two intervals of a session row by row - each relationship between two processes and each process's connections to another host's address - by records or by bytes sent across, as counts and as rates over each whole interval compared exactly, the most changed first, stating a change only where both intervals covered the row's mechanism through the same descriptors and both values with the reason elsewhere (`comparison-v1`, ADR-058, [the release review](reviews/M12-release-review.md)) | Two captures through a qualified entity mapping; the window's comparison view, difference timelines, graph overlays and saved specifications; patterns, outliers and causal navigation; redacted comparison reports. |
 
 ## Recent slices
+
+- **Revision 752 — M12: two intervals of a session compared row by row (`icat compare`, `comparison-v1`, ADR-058):**
+  - What changed between two moments of a capture was read by setting two tables side by side and dividing by hand,
+    with nothing saying whether the capture measured both alike. `icat compare <session> --baseline <start:end>
+    --interval <start:end>` compares each relationship between two processes, and each process's connections over one
+    transport to one other host's address, that had a record in either interval: by records, or with `--rank-by
+    bytes-sent` by what was sent across, as counts and as rates over each whole interval, compared exactly in
+    integers, the most changed first.
+  - A change - up, down, appeared, disappeared or unchanged - is stated only where both intervals covered the row's
+    mechanism, and for RPC calls ALPC too, through the same descriptors. Elsewhere both values stand with the first
+    reason that applies, said once beneath the table: a mechanism not collected, a partial gap, unknown coverage,
+    sources that changed between the capture's epochs, or sends that recorded no size whose bound cannot decide. A
+    lower bound states a change only where it alone decides it, as up or down at least. A partial gap is not bounded,
+    since a lost record can move the attribution or pairing of others.
+  - Every read is of one generation, and a live session that publishes between reads is read again. The demo's client,
+    whose every connection runs to another host, shows how each host's traffic changed; its server, whose capture lost
+    two events, shows every row side by side with the gap's reason. `--json` answers `comparison-v1`. The release
+    review §15.2 asks for records what ships and what of M12 is not built.
+  - Debug and Release each ran 3,075 tests with revision 473's 93 failures and 4 skips, and failed nothing else; the
+    fixture index names the eight new R3, R18, R21 and I16 tests. Of fifty-four mutations, fifty-three were caught:
+    a session read once though it published between reads, or its generations left unmatched; an interval of no
+    length, or a metric not defined, let through; a quiet relationship or host not counted; RPC calls judged by
+    RPC's coverage alone, or by the first of RPC's and ALPC's; bytes asked of RPC calls; either interval's coverage
+    left unread; the capture's sources, or the intervals they are read over, left out; a lower bound stating a
+    change it does not exceed, or one against another bound; every change said to rest on a bound; a value with
+    sends of no size taken as exact, or one with none measured taken as nothing; the difference reversed; rows
+    ranked by the smaller rate, an unscaled one or a signed difference, or with those that cannot be compared first;
+    a rate in the wrong unit; a host's records counted from one connection, its sends of no size counted as
+    measured, or its bytes not read, nor a relationship's; one end's sends alone, or the last end's; every epoch, a
+    count of descriptors or every mechanism's taken for the sources; an undefined mechanism let through; connections
+    read under no generation; and on the command line, bytes read as records, the limit not applied to the table or
+    the JSON, a change without its sign, a reason repeated, a host's arrow or its JSON ends reversed, an accepted
+    connection's port dropped, a rate unrounded, a baseline's refusal naming --interval, a note said where no row
+    needs it, coverage unsaid, and a limit of zero let through. The one missed lets an undefined evidence policy
+    through, which the overview's own read refuses alike.
 
 - **Revision 751 — S4, S2: what queries read of every chunk's tiles is kept in one budget, so a live focus on a busy machine's traffic reads each part once:**
   - Where each record is another pair's than the one before, as on a busy machine, no tile keeps narrow tallies, so a
@@ -1580,4 +1616,4 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 ## Key reference contracts
 
 `contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `operations-v1.md`, `derivation-checkpoint-v1.md`, `overview-index-v1.md`, `operation-index-v1.md`, `tile-index-v1.md`,
-`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v21.md`, `support-bundle-v1.md`, `demo-investigation-v1.md`, `clock-calibration-v1.md`, `coverage-v2.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–041; the complete historical ledger linked above.
+`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v21.md`, `support-bundle-v1.md`, `demo-investigation-v1.md`, `clock-calibration-v1.md`, `coverage-v2.md`, `comparison-v1.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–041, ADR-058; the complete historical ledger linked above.

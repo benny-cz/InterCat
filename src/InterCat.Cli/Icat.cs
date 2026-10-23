@@ -52,6 +52,7 @@ internal static class Icat
                 "ports" => await PortsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "evidence" => await EvidenceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "timeline" => await TimelineCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "compare" => await CompareCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "export" => await ExportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "package" => await PackageCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "raw" => await RawCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -238,6 +239,12 @@ internal static class Icat
         ConsoleUi.Line("      The timeline over any interval, its columns cut as the overview's are, as the Desktop draws a");
         ConsoleUi.Line("      zoomed viewport; a scope lists what one lane of its interval table lists, and --bytes adds");
         ConsoleUi.Line("      what each interval's records sent and received. An empty interval's coverage is the capture's.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat compare <directory> --baseline <start:end> --interval <start:end>");
+        ConsoleUi.Line("               [--rank-by records|bytes-sent] [--limit <n>] [--json]");
+        ConsoleUi.Line("      How each relationship changed from one interval of a session to another, as rates over each");
+        ConsoleUi.Line("      whole interval, the most changed first; where the capture did not measure both alike, both");
+        ConsoleUi.Line("      values with why they cannot be compared, never a change.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat export <directory> --output <path> [--at <row-key>]... [--interval <start:end>]");
         ConsoleUi.Line("              [--rank-by <ranking>] [--evidence [--limit <n>]] [--format json|csv]");

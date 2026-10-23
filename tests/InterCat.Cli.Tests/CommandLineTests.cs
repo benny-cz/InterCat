@@ -26,8 +26,8 @@ public sealed class CommandLineTests : IDisposable
     private static readonly string[] Commands =
     [
         "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
-        "hosts", "programs", "ports", "evidence", "timeline", "export", "package", "raw", "content", "recover", "staging", "retain",
-        "compact", "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench",
+        "hosts", "programs", "ports", "evidence", "timeline", "compare", "export", "package", "raw", "content", "recover", "staging",
+        "retain", "compact", "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench",
         "support", "demo",
     ];
 
@@ -135,6 +135,7 @@ public sealed class CommandLineTests : IDisposable
                 ["overview", folder], ["channels", folder], ["channels", folder, "--process", record[1], "--one-sided"],
                 ["hosts", folder], ["programs", folder], ["programs", folder, "--program", "svchost.exe"], ["ports", folder],
                 ["evidence", folder], ["timeline", folder, "--interval", "0:10"],
+                ["compare", folder, "--baseline", "0:10", "--interval", "10:20"],
                 ["export", folder, "--output", Path.Combine(package, "rows.csv")], ["processes", folder], ["operations", folder],
                 ["exchanges", folder], ["metric", folder, "--metric", "observations"], ["raw", folder, .. record],
                 ["content", folder, .. record], ["package", folder, "--redacted", "--output", package],

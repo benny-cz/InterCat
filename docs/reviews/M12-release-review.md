@@ -1,0 +1,75 @@
+# M12 release review — comparative and causal exploration
+
+Date: 2026-10-23, at plan revision 752
+Scope reviewed: M12's first shippable part, two intervals of one session compared row by row (`icat compare`,
+`contracts/comparison-v1.md`, ADR-058)
+Method: §15.2 asks, before a post-v1 milestone is committed for shipment, for the user problem, the exact new evidence
+obtainable, the supported environments, the expected overhead, the deployment burden and the exit fixtures. Each is
+answered below for what revision 752 ships, and M12's exit tests are checked against named tests; what is not built is
+listed as not built.
+
+## The user problem
+
+On a heavily used Windows machine a person wants to see which processes communicate and who connected to whom; the
+overview, the graph and the ranked table answer that for a capture or an interval of it. The question that follows is
+what changed - after an update, when an application started failing, while a service was restarted - and it was
+answered only by reading two intervals' tables side by side and dividing by their lengths by hand, with no word on
+whether the capture measured both alike. A difference read that way can be the capture's: a provider that stopped
+delivering, a release of the oldest records, records lost under load.
+
+## The new evidence obtainable
+
+None is collected: a comparison reads what a session already holds. What is new is a statement the evidence supports
+and nothing more:
+
+- each relationship's, and each process's connections to another host's, records or bytes sent across in two intervals,
+  as counts and as rates over each whole interval, compared exactly;
+- a change only where both intervals covered the mechanism through the same sources, `Appeared` and `Disappeared` only
+  where the interval with nothing covered it;
+- elsewhere both values, with the reason in the words the capture's coverage is stated in everywhere else.
+
+## Supported environments
+
+Every environment that opens a session: the command line wherever .NET 10 runs, on any session with a coverage ledger.
+A session without one - an import from before coverage was recorded, or a legacy generation - compares nothing, saying
+its coverage is unknown, and shows both values. The window has no comparison view yet.
+
+## Expected overhead
+
+None on a capture. A comparison reads the overview once and each interval's counts, byte measures and connections to
+other hosts once, each through the queries the window's brushes and lists already use: a finished session's from its
+indexes, a live session's from its chunk tiles where they bind, opening no segment the interval does not meet (§12.1,
+P25). Its memory is the rows it lists. A live session that publishes between reads is read again, three times at most.
+
+## Deployment burden
+
+None beyond the command line already shipped: no service, provider, driver, privilege or setting. `icat compare` is a
+read-only command over a session folder.
+
+## M12's exit tests
+
+| Exit test | Verdict | Evidence |
+|---|---|---|
+| Identical captures compare as equal | Met for intervals: an interval compared with itself is unchanged everywhere, by records and by bytes | `SessionComparisonTests.AnIntervalComparedWithItselfIsUnchangedEverywhere` |
+| Changed capture profiles cannot masquerade as workload changes | Met within a session | "R21: a mechanism the capture stopped collecting makes a relationship not comparable, never disappeared"; "R21: a capture whose sources collected a mechanism otherwise in one interval states no change of it"; RPC calls judged by ALPC's coverage too (`RpcCallsAreComparedByTheirRecordsAloneJudgedByRpcAndAlpc`) |
+| Differing durations normalize correctly | Met | `RatesAreOverEachWholeIntervalAndTheMostChangedRankFirst`: twice the records in twice the time is unchanged, compared in integers |
+| Uncertainty propagates | Met for coverage and unmeasured sizes | A partial gap or unknown coverage states both values and its reason (`CoverageShortOfCoveredStatesBothValuesAndNoChange`); "R3: a byte comparison's lower bound decides a change only where the bound alone exceeds the other rate"; "R21: icat compare says why it states no change, each reason once beneath the table, never a zero" |
+| A synthetic known dependency is traversable, and unrelated simultaneous events are not labeled causal | Not built | Causal navigation is not built. Nothing a comparison states is causal: it states rates and their reasons only. |
+| Outlier labels describe observations, not malware or root cause | Not built | No outlier detection exists. |
+
+## Not built, in M12's order
+
+- Comparing two captures: a qualified entity mapping between sessions, with each capture's ledger compared as two
+  intervals' epochs are (`comparison-v1` §9).
+- The window's comparison view, a baseline and difference timeline, graph overlays and saved comparison specifications.
+- Recurring communication patterns, outlier detection with its baseline, sample size and uncertainty, causal navigation
+  over evidence-backed links, and bottleneck views.
+- Annotations and bookmarks across a comparison, and shareable redacted comparison reports recording scope, byte domain,
+  accounting, missing sources and alignment revision.
+
+## Verdict
+
+The interval comparison is ready to ship on the command line: it states only what both intervals measured alike, and
+shows everything else side by side with its reason, which is M12's fallback where captures are not comparable. M12 is
+not complete; the parts listed above follow, the window's view of this comparison first, since the person this product
+serves works in the window.

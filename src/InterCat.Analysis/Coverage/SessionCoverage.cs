@@ -192,6 +192,57 @@ public static class SessionCoverage
         return string.Concat(char.ToUpperInvariant(said[0]).ToString(), said[1..], ": ", coverage.Reason, ".");
     }
 
+    /// <summary>
+    /// Why counts of <paramref name="mechanism"/> over several native intervals were not made alike: the epochs they span
+    /// did not all collect it through the same descriptors, so a difference between the counts could be the capture's
+    /// rather than the workload's (plan M12). Null when every epoch any of them spans collected the same descriptors of
+    /// it, which may be none - their coverage then says it was not collected - and when the generation publishes no ledger,
+    /// whose coverage is unknown.
+    /// </summary>
+    public static string? CollectedOtherwise(CoverageLedgerV1? ledger, Mechanism mechanism, IReadOnlyList<TimeRange> nativeIntervals)
+    {
+        ArgumentNullException.ThrowIfNull(nativeIntervals);
+        if (!Enum.IsDefined(mechanism))
+        {
+            throw new ArgumentOutOfRangeException(nameof(mechanism));
+        }
+
+        if (ledger is null)
+        {
+            return null;
+        }
+
+        ledger.Validate();
+        (int Epoch, HashSet<(Guid, int, int, int?)> Descriptors)? first = null;
+        foreach (CoverageEpochV1 epoch in ledger.Epochs)
+        {
+            if (Bounds(epoch) is not { } bounds
+                || !nativeIntervals.Any(range => range.StartTicks <= bounds.Last && range.EndTicks > bounds.First))
+            {
+                continue;
+            }
+
+            HashSet<(Guid, int, int, int?)> descriptors =
+            [
+                .. epoch.Collected
+                    .Where(descriptor => descriptor.Mechanism == mechanism)
+                    .Select(descriptor => (descriptor.ProviderId, descriptor.EventId, descriptor.Version, descriptor.Opcode)),
+            ];
+            if (first is not { } earlier)
+            {
+                first = (epoch.Epoch, descriptors);
+            }
+            else if (!descriptors.SetEquals(earlier.Descriptors))
+            {
+                return string.Create(CultureInfo.InvariantCulture,
+                    $"the capture collected {MechanismText.InSentence(mechanism)} through other descriptors in its epoch "
+                    + $"{epoch.Epoch} than in its epoch {earlier.Epoch}, so its counts there were not made alike");
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>The worst of several states on the ordered lattice; nothing to span is unknown.</summary>
     public static CoverageState Worst(IEnumerable<CoverageState> states)
     {
