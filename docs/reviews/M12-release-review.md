@@ -137,3 +137,11 @@ ADR-062): each interval cut into as many equal columns, the k-th of one compared
 intervals are, each column judged by its own coverage and collection, read with the comparison so the columns add up
 to it. M12's baseline and difference timelines are met there; the window draws none yet, and graph overlays come next
 among what is not built. Nothing else above changes.
+
+## Addendum, revision 761
+
+The window draws a row's difference timeline (`comparison-v1` §8a, §8d): Timeline reads the comparison with its
+columns and draws the chosen row's, the baseline's bar beside the compared interval's on one rate scale, a column pair
+that cannot be compared hatched, and a column cursor whose column is said in the command line's words. Baseline and
+difference timelines are now in the window as on the command line; graph overlays come next among what is not built,
+and nothing else above changes.

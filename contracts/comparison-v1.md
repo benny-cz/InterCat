@@ -5,8 +5,8 @@ Status: **implemented** for two intervals of one session's generation, on the co
 §8b); its rows are of processes or, since revision 755, of executables (§2a); and since revision 756 two captures
 compare, by executable (§2b) - on the command line, and since revision 757 in the window too. Since revision 758 an
 investigation saves a comparison under a name and the command line runs it, and since revision 759 the window saves
-and reopens one (§8c). Since revision 760 the command line states a row's difference timeline (§8d). Graph overlays
-are not defined at this version (§9).
+and reopens one (§8c). Since revision 760 the command line states a row's difference timeline, and since revision 761
+the window draws the chosen row's (§8d). Graph overlays are not defined at this version (§9).
 
 This contract fixes what plan §15's M12 asks of a comparison - normalized rates beside absolute counts, ranked changed
 relations, unavailable measurement told apart from disappeared activity, and side-by-side values with an explicit reason
@@ -234,6 +234,13 @@ the session shown ran - where the window groups processes by executable. Where i
 no process of the session shown ran the executable, as of another capture's, Show says why instead, and Enter and a
 double click open nothing.
 
+Timeline, checked, reads the comparison again with its difference timeline (§8d) - 20 columns of each interval, or as
+many as a tick allows - and draws the chosen row's beneath the rows: a slot per column pair, the baseline's bar beside
+the compared interval's on one rate scale, and a column pair that cannot be compared hatched, as the timeline hatches
+what the capture did not cover, so a quiet bar there never reads as nothing happening. Left, Right, Home and End, or a
+click, choose a column, which the line beneath states in §8's words with its reason; choosing another row draws its
+columns, the cursor where it was. Unchecked, the chart goes and the comparison shown stays.
+
 Save in the investigation… keeps the comparison shown, by name, in the investigation the session shown was opened
 from, and a comparison saved there opens in this window as saved (§8c).
 
@@ -311,7 +318,7 @@ its values over the whole intervals, how the intervals are cut - 10 columns unle
 least a tick long - and a line per column with its two intervals, values and change, each reason once beneath them;
 `--json` and `--output` write the comparison with it (§8). A rank past the rows compared is refused, as are
 `--columns` without `--timeline`, a timeline with `--limit`, and one in a redacted report, which holds rows over the
-whole intervals only.
+whole intervals only. The window draws the chosen row's (§8a).
 
 ## 9. Not defined at this version
 
@@ -319,6 +326,7 @@ whole intervals only.
   any.
 - **A bounded change under a gap.** The losses a ledger counts bound the records a mechanism lost, not a row's (§5); a
   bound per row would need what a lost record could have moved.
-- **A difference timeline in the window, or in a redacted report.** The command line states one (§8d).
+- **A difference timeline in a redacted report.** The command line and the window state one (§8d); a report holds rows
+  over the whole intervals only.
 - Graph overlays, recurring patterns, outliers and causal navigation (plan M12).
 - Wall-clock bounds, which `icat timeline --wall-clock` states; a comparison takes session ticks.

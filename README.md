@@ -81,7 +81,7 @@ and *Another saved capture…* sets a saved capture's whole recording as the bas
 comparison under a name (`icat workspace comparison`), and `icat compare --workspace <file> --saved <name>` runs it
 again on its sessions as they are then. In the window, *Save in the investigation…* keeps the comparison shown, and
 the investigation's *Comparisons…* opens it again. `--timeline <rank>` shows when a row changed: each interval cut
-into as many equal columns, compared column by column.
+into as many equal columns, compared column by column, and the window's *Timeline* draws the chosen row's.
 
 F1 in the window lists every key it takes.
 

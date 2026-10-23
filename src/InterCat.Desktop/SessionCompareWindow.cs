@@ -13,6 +13,7 @@ using Avalonia.VisualTree;
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
 using InterCat.Domain;
+using InterCat.Storage;
 
 namespace InterCat.Desktop;
 
@@ -65,6 +66,10 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     private readonly StackPanel typed;
     private readonly ComboBox metric = new() { MinWidth = 260 };
     private readonly ComboBox rowsOf = new() { MinWidth = 260 };
+    private readonly CheckBox timelineDrawn = new() { Content = "Draw the chosen row column by column" };
+    private readonly DifferenceTimelineControl chart = new();
+    private readonly TextBlock chartSaid = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
+    private readonly StackPanel charted;
     private readonly ObservableCollection<BaselineChoice> baselines;
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontWeight = FontWeight.SemiBold };
     private readonly TextBlock coverage = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
@@ -84,6 +89,9 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     };
     private IReadOnlyList<ComparisonRow> listed = [];
     private readonly Grid heading;
+
+    // The difference timeline read with the comparison shown, while the chosen row is drawn column by column; null otherwise.
+    private ComparisonTimeline? timeline;
 
     // Each value column's width, the widest of its heading and its cells: every line of the table, its heading's included,
     // is laid out at these, so the columns line up.
@@ -166,6 +174,9 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         AutomationProperties.SetName(to, "The baseline's end, in seconds of session time");
         AutomationProperties.SetName(metric, "What each row is compared by");
         AutomationProperties.SetName(rowsOf, "What each row compares: one process, or one executable's processes together");
+        AutomationProperties.SetName(timelineDrawn, "Draw the chosen row's difference timeline");
+        AutomationProperties.SetName(chartSaid, "The difference timeline's chosen column");
+        AutomationProperties.SetLiveSetting(chartSaid, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(status, "What the comparison found");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(coverage, "What the capture covered over each interval");
@@ -207,12 +218,27 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         };
         metric.SelectionChanged += (_, _) => _ = CompareAsync();
         rowsOf.SelectionChanged += (_, _) => _ = CompareAsync();
+
+        // Drawn, the comparison is read again with its columns, which the chart draws for the chosen row; no longer drawn,
+        // the chart goes and the comparison shown stays.
+        charted = new StackPanel { Spacing = 4, IsVisible = false, Children = { chart, chartSaid } };
+        timelineDrawn.IsCheckedChanged += (_, _) =>
+        {
+            charted.IsVisible = timelineDrawn.IsChecked == true;
+            if (charted.IsVisible && timeline is null) _ = CompareAsync();
+            else ShowChart();
+        };
+        chart.CursorMoved += (_, _) => chartSaid.Text = ChartSaid();
         compare.Click += (_, _) => _ = CompareAsync();
         show.Click += (_, _) => ChooseSelected();
         share.Click += (_, _) => _ = ShareAsync();
         save.Click += (_, _) => _ = SaveInInvestigationAsync();
         close.Click += (_, _) => Close();
-        rows.SelectionChanged += (_, _) => OfferShow();
+        rows.SelectionChanged += (_, _) =>
+        {
+            OfferShow();
+            ShowChart();
+        };
         rows.DoubleTapped += (_, _) => ChooseSelected();
         rows.KeyDown += (_, key) =>
         {
@@ -245,7 +271,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         var fields = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("Auto,*"),
-            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto"),
             ColumnSpacing = 12,
             RowSpacing = 6,
         };
@@ -259,6 +285,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         Place(fields, 1, "Baseline", new StackPanel { Spacing = 6, Children = { baseline, typed } });
         Place(fields, 2, "Compared by", metric);
         Place(fields, 3, "Rows", rowsOf);
+        Place(fields, 4, "Timeline", timelineDrawn);
 
         var table = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 4 };
         heading = Line(Headings, FontWeight.SemiBold, widths);
@@ -283,19 +310,21 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         var grid = new Grid
         {
             Margin = new Thickness(16),
-            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*,Auto,Auto"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*,Auto,Auto,Auto"),
             RowSpacing = 10,
         };
         Grid.SetRow(fields, 0);
         Grid.SetRow(status, 1);
         Grid.SetRow(coverage, 2);
         Grid.SetRow(table, 3);
-        Grid.SetRow(said, 4);
-        Grid.SetRow(footer, 5);
+        Grid.SetRow(charted, 4);
+        Grid.SetRow(said, 5);
+        Grid.SetRow(footer, 6);
         grid.Children.Add(fields);
         grid.Children.Add(status);
         grid.Children.Add(coverage);
         grid.Children.Add(table);
+        grid.Children.Add(charted);
         grid.Children.Add(said);
         grid.Children.Add(footer);
         Content = grid;
@@ -353,6 +382,21 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     /// <summary>Completes when the latest comparison asked for has been shown, refused or superseded.</summary>
     public Task Compared { get; private set; } = Task.CompletedTask;
 
+    /// <summary>Draws the chosen row's difference timeline, or stops drawing it, as its check box does.</summary>
+    public void DrawTimeline(bool drawn) => timelineDrawn.IsChecked = drawn;
+
+    /// <summary>The difference timeline read with the comparison shown; null while the chosen row is not drawn.</summary>
+    public ComparisonTimeline? Timeline => timeline;
+
+    /// <summary>What the line beneath the chart says of its chosen column, or why it draws none.</summary>
+    public string TimelineSaid => chartSaid.Text ?? string.Empty;
+
+    /// <summary>Chooses a column of the chart, as the arrow keys or a click do.</summary>
+    public void ChooseColumn(int column) => chart.MoveTo(column);
+
+    /// <summary>Chooses a listed row, as a click does.</summary>
+    public void ChooseRow(int index) => rows.SelectedIndex = index;
+
     /// <summary>Chooses the baseline offered at <paramref name="index"/>, as the list chooses one.</summary>
     public void ChooseBaseline(int index) => baseline.SelectedIndex = index;
 
@@ -389,6 +433,15 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
 
     /// <summary>The most rows the list shows, the most changed; those past it are counted beneath them.</summary>
     internal const int Listed = 200;
+
+    /// <summary>How many columns the chosen row's difference timeline cuts each interval into, where each is a tick long.</summary>
+    internal const int TimelineColumns = 20;
+
+    /// <summary>What the line beneath the chart says while the comparison and its columns are read.</summary>
+    internal const string ReadingColumns = "The two intervals are being compared column by column.";
+
+    /// <summary>What the line beneath the chart says with no row chosen.</summary>
+    internal const string ChooseRowToDraw = "Choose a row to draw its columns.";
 
     /// <summary>Why the chosen row cannot be shown with none chosen.</summary>
     private const string NoRowChosen = "Choose a row first.";
@@ -593,6 +646,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
 
         ComparisonMetric by = metric.SelectedIndex == 1 ? ComparisonMetric.BytesSent : ComparisonMetric.Records;
         ComparisonGrouping grouping = rowsOf.SelectedIndex == 1 ? ComparisonGrouping.Executable : ComparisonGrouping.Process;
+        bool drawn = timelineDrawn.IsChecked == true;
         status.Text = "Comparing the two intervals…";
         comparing = true;
         Offering.Offer(compare, Comparing, CompareDoes);
@@ -602,12 +656,10 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         try
         {
             CancellationToken token = request.Token;
-            IntervalComparison comparison = await Task.Run(() => choice is { CapturePath: { } other, CaptureSession: { } otherSession }
-                ? SessionComparison.CompareCaptures(SharedSessionStores.Open(other, otherSession), chosenBaseline,
-                    SharedSessionStores.Open(path, sessionId), compared, by, policy, token)
-                : SessionComparison.Compare(SharedSessionStores.Open(path, sessionId), chosenBaseline, compared, by, policy,
-                    grouping, token), token);
+            (IntervalComparison comparison, ComparisonTimeline? columns) =
+                await Task.Run(() => Read(choice, chosenBaseline, by, grouping, drawn, token), token);
             if (closed || !ReferenceEquals(reading, request)) return;
+            timeline = columns;
             Show(comparison);
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
@@ -635,6 +687,50 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
             }
         }
     }
+
+    /// <summary>
+    /// The comparison of the time scope with <paramref name="against"/>, of this session or of another capture's chosen,
+    /// and while the chosen row is drawn its difference timeline too, read with it at one generation (`comparison-v1`
+    /// §8d): each interval cut into as many columns as a tick allows, up to <see cref="TimelineColumns"/>, the listed rows'
+    /// columns kept.
+    /// </summary>
+    private (IntervalComparison Comparison, ComparisonTimeline? Timeline) Read(BaselineChoice? choice, TimeRange against,
+        ComparisonMetric by, ComparisonGrouping grouping, bool drawn, CancellationToken token)
+    {
+        SessionStore store = SharedSessionStores.Open(path, sessionId);
+        int columns = (int)Math.Min(TimelineColumns, Math.Min(against.SpanTicks, compared.SpanTicks));
+        if (choice is { CapturePath: { } other, CaptureSession: { } otherSession })
+        {
+            SessionStore baselineStore = SharedSessionStores.Open(other, otherSession);
+            if (!drawn) return (SessionComparison.CompareCaptures(baselineStore, against, store, compared, by, policy, token), null);
+            ComparisonTimeline across = SessionComparison.CaptureTimeline(baselineStore, against, store, compared, columns, by, policy,
+                Listed, token);
+            return (across.Whole, across);
+        }
+
+        if (!drawn) return (SessionComparison.Compare(store, against, compared, by, policy, grouping, token), null);
+        ComparisonTimeline within = SessionComparison.Timeline(store, against, compared, columns, by, policy, grouping, Listed, token);
+        return (within.Whole, within);
+    }
+
+    /// <summary>
+    /// Draws the chosen row's columns, while it is drawn: each baseline column stated in this session's time base or, of
+    /// another capture, in that capture's own session time, as the baselines offered state them.
+    /// </summary>
+    private void ShowChart()
+    {
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        bool across = Shown?.BaselineSessionId is not null;
+        ComparedRelationship? chosen = rows.SelectedIndex >= 0 && rows.SelectedIndex < listed.Count ? listed[rows.SelectedIndex].Compared : null;
+        chart.Show(timelineDrawn.IsChecked == true ? timeline : null, chosen,
+            range => across ? WorkspaceTime.FormatHalfOpenRange(range, culture) : clock.HalfOpenRange(range, culture),
+            range => clock.HalfOpenRange(range, culture));
+        chartSaid.Text = ChartSaid();
+    }
+
+    /// <summary>What the line beneath the chart says: its chosen column in words, or why it draws none.</summary>
+    private string ChartSaid() => chart.Describe()
+        ?? (timeline is null ? ReadingColumns : ChooseRowToDraw);
 
     /// <summary>
     /// Saves the comparison shown as a redacted report to share (`comparison-v1` §8b): what such a report keeps and leaves
@@ -861,9 +957,11 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     private void Clear()
     {
         Shown = null;
+        timeline = null;
         listed = [];
         rows.ItemsSource = listed;
         coverage.Text = reasons.Text = notes.Text = string.Empty;
+        ShowChart();
     }
 
     /// <summary>The interval typed in seconds, each bound taken outward to whole ticks; null when the two name none.</summary>

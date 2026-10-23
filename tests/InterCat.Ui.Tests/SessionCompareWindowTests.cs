@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -515,6 +516,13 @@ public sealed class SessionCompareWindowTests
             Assert.All(comparing.Rows, row => Assert.Equal("unchanged", row.ChangeCell));
             Assert.Equal("Not in this window.", Offers.WhyNot(Labelled(comparing, "Show in the window")));
 
+            // Drawn column by column, the two captures' rows are cut each on its own clock.
+            comparing.DrawTimeline(true);
+            await Until(() => comparing.Timeline is not null);
+            await comparing.Compared;
+            Assert.Equal((TestSessions.Session, 20), (comparing.Timeline!.Whole.BaselineSessionId!.Value, comparing.Timeline.Columns.Count));
+            comparing.DrawTimeline(false);
+
             // Choosing another capture again keeps one offered, the latest; an interval of this session lets the rows be
             // chosen again.
             choices.AnswerFolders(other.Path);
@@ -864,6 +872,118 @@ public sealed class SessionCompareWindowTests
         {
             main.Close();
             folder.Delete(recursive: true);
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R21: the Compare window draws the chosen row's columns, a column the capture did not collect hatched and said why")]
+    public async Task TheWindowDrawsTheChosenRowsColumns()
+    {
+        // client.exe exchanged with server.exe each second, worker.exe with queue.exe each half second from the thirteenth;
+        // the capture collected TCP for its first fifteen seconds only, and UDP alone after them.
+        using var session = new TemporarySession();
+        CoverageLedgerV1 collected = Ledger();
+        Publish(session.Store, Rows(), coverage: collected with
+        {
+            Epochs =
+            [
+                collected.Epochs[0] with { LastDeliveredNativeTicks = (15 * Second) - 1 },
+                TransportLedger(tcp: false, udp: true).Epochs[0] with
+                {
+                    Epoch = 2, FirstDeliveredNativeTicks = 15 * Second, LastDeliveredNativeTicks = 40 * Second,
+                },
+            ],
+        });
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        using var comparing = new SessionCompareWindow(session.Path, overview.SessionId, new TimeRange(10 * Second, 20 * Second),
+            overview.Extent!.Value, recorded: false, SessionClock.Session(TimeZoneInfo.Utc), EvidencePolicy.IncludeCorrelated);
+        try
+        {
+            _ = comparing.ShowDialog<ComparedRelationship?>(owner);
+            await Until(() => comparing.Shown is not null);
+            await comparing.Compared;
+            Dispatch();
+
+            // Not drawn until asked, no column is read.
+            Assert.Null(comparing.Timeline);
+            IntervalComparison alone = comparing.Shown!;
+            comparing.DrawTimeline(true);
+            await Until(() => comparing.Timeline is not null);
+            await comparing.Compared;
+            Dispatch();
+
+            // Drawn, the comparison is read again with its columns, twenty of each interval, and the chosen row's first
+            // column is said in icat compare's words.
+            ComparisonTimeline timeline = comparing.Timeline!;
+            Assert.Same(timeline.Whole, comparing.Shown);
+            Assert.NotSame(alone, comparing.Shown);
+            Assert.Equal(20, timeline.Columns.Count);
+            Assert.All(comparing.Rows, row => Assert.Equal(20, timeline.Of(row.Compared).Count));
+            ComparedRelationship first = comparing.Rows[0].Compared;
+            ComparedRelationship cell = timeline.Of(first)[0];
+            SessionClock clock = SessionClock.Session(TimeZoneInfo.Utc);
+            CultureInfo culture = CultureInfo.CurrentCulture;
+            Assert.Equal("Column 1 of 20: " + clock.HalfOpenRange(timeline.Columns[0].Baseline, culture) + " "
+                + ComparisonText.Value(cell.Baseline, timeline.Columns[0].Baseline, ComparisonMetric.Records, culture) + " against "
+                + clock.HalfOpenRange(timeline.Columns[0].Compared, culture) + " "
+                + ComparisonText.Value(cell.Compared, timeline.Columns[0].Compared, ComparisonMetric.Records, culture) + ", "
+                + ComparisonText.Change(cell, timeline.Columns[0].Baseline, timeline.Columns[0].Compared, ComparisonMetric.Records, culture)
+                + ".", comparing.TimelineSaid);
+            Save(comparing, "compare-difference-timeline.png");
+
+            // A column past what the capture collected is drawn hatched, and its words say why it compares nothing.
+            int stopped = timeline.Of(first).ToList().FindIndex(each => each.Change == ComparisonChange.NotComparable);
+            Assert.Equal(10, stopped);
+            comparing.ChooseColumn(stopped);
+            Assert.StartsWith("Column 11 of 20: ", comparing.TimelineSaid, StringComparison.Ordinal);
+            Assert.EndsWith(", not comparable: TCP was not collected over the compared interval: no admitted descriptor records it.",
+                comparing.TimelineSaid, StringComparison.Ordinal);
+
+            // From the keyboard: Right, Home and End move the cursor, and Left stops at the first column.
+            DifferenceTimelineControl chart = comparing.GetLogicalDescendants().OfType<DifferenceTimelineControl>().Single();
+            Assert.True(chart.Focus());
+            foreach ((PhysicalKey Key, int Column) press in new[]
+            {
+                (PhysicalKey.ArrowRight, 12), (PhysicalKey.End, 20), (PhysicalKey.Home, 1), (PhysicalKey.ArrowLeft, 1), (PhysicalKey.ArrowRight, 2),
+            })
+            {
+                comparing.KeyPressQwerty(press.Key, RawInputModifiers.None);
+                Dispatch();
+                Assert.StartsWith($"Column {press.Column} of 20: ", comparing.TimelineSaid, StringComparison.Ordinal);
+            }
+
+            // A click chooses the column under it.
+            Point eleventh = chart.TranslatePoint(new Point(6 + ((chart.Bounds.Width - 12) * 10.5 / 20), 60), comparing)!.Value;
+            comparing.MouseDown(eleventh, MouseButton.Left);
+            comparing.MouseUp(eleventh, MouseButton.Left);
+            Dispatch();
+            Assert.StartsWith("Column 11 of 20: ", comparing.TimelineSaid, StringComparison.Ordinal);
+
+            // Another row chosen, the chart draws its columns, its cursor where it was: at the second column, where client.exe
+            // exchanged and worker.exe had not yet.
+            comparing.ChooseColumn(1);
+            string ofFirst = comparing.TimelineSaid;
+            comparing.ChooseRow(1);
+            Dispatch();
+            Assert.StartsWith("Column 2 of 20: ", comparing.TimelineSaid, StringComparison.Ordinal);
+            Assert.NotEqual(ofFirst, comparing.TimelineSaid);
+            Assert.NotEqual(first.Key, comparing.Rows[1].Compared.Key);
+
+            // No row chosen, the line says to choose one; undrawn, the chart goes, and the comparison shown stays.
+            comparing.ChooseRow(-1);
+            Dispatch();
+            Assert.Equal(SessionCompareWindow.ChooseRowToDraw, comparing.TimelineSaid);
+            IntervalComparison drawn = comparing.Shown!;
+            comparing.DrawTimeline(false);
+            Dispatch();
+            Assert.Same(drawn, comparing.Shown);
+            Assert.False(comparing.GetLogicalDescendants().OfType<DifferenceTimelineControl>().Single().IsEffectivelyVisible);
+        }
+        finally
+        {
+            comparing.Close();
+            owner.Close();
         }
     }
 

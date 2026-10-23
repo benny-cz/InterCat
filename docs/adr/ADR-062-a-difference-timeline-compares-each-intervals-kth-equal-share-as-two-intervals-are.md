@@ -34,7 +34,8 @@ difference is the workload's or the capture's.
 ## Consequences
 
 - `icat compare --timeline <rank> [--columns <n>]` states a row's timeline, in text and JSON.
-- The window can draw a row's timeline from the same read; a redacted report holds none yet.
+- Since revision 761 the Compare window draws the chosen row's timeline from the same read; a redacted report holds none
+  yet.
 
 ## Alternatives considered
 

@@ -1873,6 +1873,7 @@
         "R21: overhead stays unmeasured until something measures it",
         "R21: per-peer channel ranking keeps unresolved peers and channels visible beside its lower bound",
         "R21: source loss and undecodable records make coverage partial; policy omissions do not",
+        "R21: the Compare window draws the chosen row's columns, a column the capture did not collect hatched and said why",
         "R21: the channel browser says what the capture covered of TCP and of UDP, as the reason an empty list holds none",
         "R21: the inspector states its time scope's coverage beneath the range, in the caution ink where the capture saw nothing",
         "R21: the inspector states the capture's coverage over its time scope, so a count of none where the capture saw nothing is not read as no activity",
