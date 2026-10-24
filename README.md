@@ -94,7 +94,8 @@ lists the same, and Select its processes makes a pattern's processes the selecti
 **Links.** `icat links <directory> --process <pid>` lists what led to a process - the process that started it, those
 whose calls it served, what connected to it - and what it led to, each with the record that shows it; `--to <pid>`
 finds the chain of such links between two processes. Processes created at about the same moment are listed apart:
-being near in time is never a link.
+being near in time is never a link. In the window, Follow its links… lists the same for the selected process; Enter
+follows a link to its process and Alt+Left goes back.
 
 F1 in the window lists every key it takes.
 

@@ -1187,6 +1187,10 @@
               <!-- What recurs in the session's communication (patterns-v1 §7), each pattern's processes one choice away. -->
               <Button x:Name="PatternsButton" Content="Recurring patterns…" IsEnabled="False"
                       Click="ShowPatterns" ToolTip.ShowOnDisabled="True" />
+              <!-- What led to the selected process and what it led to, each a recorded fact, followed from process to process
+                   (links-v1 §8). -->
+              <Button x:Name="LinksButton" Content="Follow its links…" IsEnabled="False"
+                      Click="ShowLinks" ToolTip.ShowOnDisabled="True" />
               <!-- Offered while the rung lists something to export, and saying why not while it lists nothing. -->
               <Button x:Name="ExportButton" Content="Export this view (Ctrl+E)" Click="ExportView"
                       IsEnabled="{Binding CanExport}" ToolTip.Tip="{Binding ExportTip}" ToolTip.ShowOnDisabled="True"

@@ -1,7 +1,7 @@
 # InterCat links v1
 
-Status: **implemented** on the command line (`icat links`, revision 765). The window does not show links at this
-version (§8).
+Status: **implemented** on the command line (`icat links`, revision 765) and in the window (Follow its links…,
+revision 766, §8).
 
 This contract fixes plan M12's causal navigation for one session's current generation: the links its evidence records
 between processes, other hosts and ends no record holds, each by one documented rule and at one strength; the links a
@@ -98,9 +98,28 @@ and its links.
 A reading's overview, processes, relations and calls are of one generation: where a newer one was published between
 them, they are read again, up to three times, and then refused with a reason rather than mixed (R7).
 
-## 8. Not defined at this version
+## 8. The window
 
-- **Links in the window.** The command line lists them (§6).
+Follow its links…, among the actions beside the graph, is offered for the selected process at any rung but its source
+records. It reads the session's current generation under the window's evidence policy and lists, in the command line's
+words (R18):
+
+- **Led to it** and **It led to**, side by side: each link by what its other end is to the process and that end, then
+  its evidence and strength; where one holds none, it says so in its place.
+- **Not followed**, where links touching the process are at a strength the policy does not admit, saying so.
+- **Near in time**, as text and never as a link anything follows, and **Not linked** where something of it is.
+- **About it**: the generation read and, where it is newer than the window shows, which generation the window shows;
+  the strengths the policy follows; how many links led to it and it led to; and each mechanism's coverage.
+
+Enter, a double click or Follow follows the chosen link to the process at its other end, either way along it, and
+centres the list on that process, the path walked said above it; Back or Alt+Left returns a link at a time. A link to
+an address, another host or an end no record holds, and a link the policy does not follow are never followed, each
+saying why. Select this process closes the list and makes the process it is centred on the selection, as a click on
+its node does, and the graph then has the keyboard; a process the window does not hold is not selected, and the window
+says so. Escape and Close choose nothing.
+
+## 9. Not defined at this version
+
 - **Links between operations**: a call to the records it caused, or a record to a record; a link here joins processes
   and ends, its evidence counted.
 - **Other links**: named pipes, ALPC ports beside RPC, HTTP exchanges to the connections that carried them, an ETW

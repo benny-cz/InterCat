@@ -1790,6 +1790,34 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
     }
 
+    /// <summary>
+    /// Lists the selected process's links (`contracts/links-v1.md` §8) under the window's evidence policy, followed from
+    /// process to process there; the process the list is centred on when Select this process closes it becomes the
+    /// selection, and the graph has the keyboard.
+    /// </summary>
+    private async void ShowLinks(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (currentSessionPath is null || displayedSessionId is not { } sessionId || displayedGeneration < 1
+            || workspace.IsEvidenceRung || workspace.SelectedProcess is not { } process) return;
+        using var links = new LinksWindow(currentSessionPath, sessionId, displayedGeneration, workspace.EvidencePolicy, process.Id);
+        try
+        {
+            if (await links.ShowDialog<ProcessInstanceId?>(this) is not { } chosen || closed) return;
+            if (workspace.ChooseProcesses([chosen]))
+            {
+                GraphSurface.Focus(NavigationMethod.Tab);
+                return;
+            }
+
+            Say(CaptureDetail, "The process the links reached is not in the generation this window shows; open its links again "
+                + "once it shows the newer one.", aloud: true);
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (!closed) CaptureDetail.Text = "Could not open the links: " + exception.Message;
+        }
+    }
+
     private void StopCapture(object? sender, RoutedEventArgs eventArgs)
     {
         Offering.Offer(StopCaptureButton, Stopping, StopDoes);
@@ -5498,6 +5526,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         ShowRecordsButton.IsEnabled = session && !workspace.IsEvidenceRung;
         BrowseChannelsButton.IsEnabled = session && !workspace.IsEvidenceRung;
         PatternsButton.IsEnabled = session && !workspace.IsEvidenceRung;
+        ProcessNode? linked = workspace.SelectedProcess;
+        LinksButton.IsEnabled = session && !workspace.IsEvidenceRung && linked is not null;
         Explain(ShowRecordsButton, ShowRecordsButton.IsEnabled
             ? "Open this rung's admitted source records in the ladder. Esc comes back here."
             : workspace.IsEvidenceRung ? "You are at the source records. Esc returns to where you were."
@@ -5513,6 +5543,12 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 + "with who took part - and select a pattern's processes."
             : workspace.IsEvidenceRung ? "Esc leaves the source records; recurring patterns can be listed from any other level."
             : "Open or record a session first.", "List the session's recurring communication patterns");
+        Explain(LinksButton, LinksButton.IsEnabled
+            ? $"List what led to {linked!.NameWithPid} and what it led to - its parent and children, the calls it made or served, "
+                + "its connections - each a recorded fact, and follow them from process to process."
+            : workspace.IsEvidenceRung ? "Esc leaves the source records; a process's links can be listed from any other level."
+            : !session ? "Open or record a session first."
+            : "Select a process first: its links are listed from it.", "List the selected process's links");
 
         // Packaging reads a whole published generation, so it waits until a live capture has stopped. One package is made
         // at a time: its own button cancels it, and the other waits.

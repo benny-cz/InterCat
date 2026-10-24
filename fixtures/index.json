@@ -1427,7 +1427,9 @@
         "P8: icat links lists what led to a process and what it led to, and says what is only near it in time",
         "P8: over random calls, each count equals the calls whose counted record is in scope, derived independently",
         "P8: the calls a timeline draws are those running in its interval, and a denser one says how many it left out",
-        "P8: the evidence of an RPC channel is its calls' records, and of one call its start and stop"
+        "P8: the evidence of an RPC channel is its calls' records, and of one call its start and stop",
+        "P8: the links window lists a link the evidence policy does not admit apart, and never follows it",
+        "P8: the links window lists what led to a process and what it led to, follows a link to its process on Enter and returns with Back"
       ],
       "P9": [
         "P9: no order across hosts is stated that their combined uncertainty does not support, not even at its edge"
@@ -1600,6 +1602,7 @@
         "R15: the investigation window's pages and its dialogs name every element a screen reader lands on",
         "R15: the investigation's timeline says the column its keys move to, and only its own name once the keyboard leaves",
         "R15: the investigation's timeline with no session placed says so, with the keyboard or without",
+        "R15: the links window cuts off no text at its smallest and names every element a screen reader lands on",
         "R15: the main window is named by the session it shows, and by the capture's state while one runs",
         "R15: the patterns window cuts off no text at its smallest and names every element a screen reader lands on",
         "R15: the relationship table lists the graph's edges to other hosts after its relationships, each saying where it ran, who opened it and what Enter opens",
@@ -1899,6 +1902,7 @@
         "R21: the investigation window zooms its merged time, and opens a column's records in InterCat",
         "R21: the investigation window's timeline places each session on the investigation's time, and says it in words",
         "R21: the investigation's timeline hatches where a session's capture saw nothing, and says so of a column and a lane",
+        "R21: the links window says why it lists none - an older generation, a process no longer held, or another session",
         "R21: the minimap counts every timed record and shows a capture gap even where nothing was observed",
         "R21: the patterns window says why it lists none - a session with no pattern, none that recurs, or none its evidence policy admits",
         "R21: the record accessor either reaches the callback record or states why it cannot",

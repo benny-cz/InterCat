@@ -182,3 +182,11 @@ on the command line: in "P8: a known dependency is traversable link by link, and
 same moment are never linked", a shell's child's calls lead to the service that served them, while a process created
 and calling in the same instant is listed only as near in time, and no chain reaches or leaves it. Outliers,
 bottleneck views and the window's links remain, and nothing else above changes.
+
+## Addendum, revision 766
+
+The window follows the same links (Follow its links…, `contracts/links-v1.md` §8): what led to the selected process
+and what it led to side by side, a link followed to its process with Enter and back with Alt+Left, links not followed
+and nearness in time listed apart and never followed, and Select this process making the process reached the
+selection. Causal navigation is delivered on both surfaces; outliers and bottleneck views remain, and nothing else
+above changes.

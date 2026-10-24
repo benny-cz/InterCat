@@ -160,7 +160,7 @@ public sealed class MainWindowPathTests
 
         // Before any session, none of its actions is offered, and each says why on itself from the first frame - before the
         // window has shown or read anything.
-        foreach (string name in new[] { "ShowRecordsButton", "BrowseChannelsButton", "PatternsButton", "SharePackageButton", "ShareOriginalButton", "KeepRecordsButton" })
+        foreach (string name in new[] { "ShowRecordsButton", "BrowseChannelsButton", "PatternsButton", "LinksButton", "SharePackageButton", "ShareOriginalButton", "KeepRecordsButton" })
         {
             Assert.Equal("Open or record a session first.", WhyNot(window.GetControl<Button>(name)));
         }
