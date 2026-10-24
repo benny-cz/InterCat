@@ -58,3 +58,10 @@ None beyond the command line already shipped.
 HTTP/1.1 head decoding is ready to ship on the command line: it decodes only a whole head kept with consent, only when
 asked, stops where the bytes stop being HTTP/1.1, and keeps nothing. M8 is not complete; the parts listed above
 follow, the window's decoding of a part first, since the person this product serves works in the window.
+
+## Addendum, revision 775
+
+The window decodes a part (`contracts/decoders-v1.md` §5a): a buffer of a whole HTTP head offers Decode its part,
+which reads the head whole, lists its fields with their bytes in the part, and shows a field's bytes in the part's hex
+view; a head that is not whole offers it disabled, saying why. The window is now among the supported environments for
+heads; of the parts not built, the conversation inspector comes next, and nothing else above changes.

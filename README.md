@@ -62,7 +62,8 @@ and a chosen record opens its original journal entry.
 only when you ask; `icat content` shows the same from an evidence row, and `--part` the whole HTTP head or body its
 buffers make, with each gap in place where one was not kept. `icat content --part --decode` reads a whole head into
 its request or status line and its fields, each with the bytes it came from, and stops where the bytes stop being
-HTTP/1.1; `icat content --decoders` lists what can be decoded.
+HTTP/1.1, as the viewer's *Decode its part* does for a buffer of a head; `icat content --decoders` lists what can be
+decoded.
 
 **Investigations** hold sessions captured on several machines, aligned by their wall clocks, with the connections one
 machine's capture can join to another's; a session opened from its investigation names, beside each other host it

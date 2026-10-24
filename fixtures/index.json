@@ -1342,7 +1342,8 @@
         "P2: icat content --decode lists a fixture message's fields with the bytes each came from and what it did not decode, only when asked and never into JSON",
         "P2: icat content --part --decode decodes a whole HTTP head, says a buffer alone and a body are read by none, and --decoders lists every decoder",
         "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one",
-        "P2: icat content shows and saves a whole HTTP part as one, and refuses --part of a record that belongs to none"
+        "P2: icat content shows and saves a whole HTTP part as one, and refuses --part of a record that belongs to none",
+        "P2: the content viewer decodes a buffer's whole HTTP head only when asked, shows a field's bytes in the part, and never decodes a head that is not whole"
       ],
       "P20": [
         "P20: no product code reads another process's memory, duplicates its handles, or opens a pipe but the broker's"

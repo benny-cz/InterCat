@@ -161,7 +161,8 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   evidence. Its fields are inert text that nothing renders, runs or fetches. Since revision 774 a decoder may read a
   whole part instead - InterCat's HTTP/1.1 head decoder (`http1-head`, version 1) reads a request or response head -
   which `icat content --part --decode` asks for; a part that is not whole is never decoded
-  (`contracts/decoders-v1.md`).
+  (`contracts/decoders-v1.md`). Since revision 775 the viewer's Decode its part does the same for a buffer of a head,
+  offered only where the part is whole.
 - **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
   kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
 - **Nothing else.** Search, rankings, metrics, the share report (`intercat-share-report-v1`), the detailed export,

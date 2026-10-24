@@ -1,7 +1,7 @@
 # InterCat decoders v1
 
 Status: **implemented** on the command line (`icat content --decode`, `--part --decode` and `--decoders`, revision
-774); the window decodes one record's fragment (`content-v1` §4).
+774) and in the window (the content viewer's Decode and Decode its part, revision 775, §5a).
 
 This contract fixes plan M8's decoder contract at its first version: what a decoder is, what it reads, when it reads
 it, and what it says of what it read, for every decoder InterCat has. A decoder owns no bytes: it reads content the
@@ -79,6 +79,15 @@ body's part is said to be read by none. `icat content --decoders` lists §3's de
 decoding that read nothing - a part not whole, kept without consent, or holding no bytes - answers partially, as
 `--reveal` does for bytes it cannot show.
 
+## 5a. The window
+
+The content viewer offers a decoding once a record's bytes are shown: Decode, where a decoder reads the record; Decode
+its part, where one reads the part its buffer belongs to. Decode its part reads the whole part, and is offered
+disabled, saying why, for a part that is not whole, which is never decoded. The Decoded tab names the decoder and its
+version and the bytes it read - of the record's message, or of the part - and lists each field with its bytes and what
+was not decoded; a field's Show its bytes shows them in the hex view, of the whole part where the decoder read one.
+Nothing is decoded until asked.
+
 ## 6. Not defined at this version
 
 - **Bodies**, of any content type, and with them chunked transfer coding and compressed content; HTTP/2 and HTTP/3,
@@ -90,4 +99,3 @@ decoding that read nothing - a part not whole, kept without consent, or holding 
 - **A decoding kept, exported or searched**: JSON or columnar metadata, and content search.
 - **Isolation**: a decoder runs in the process that asked, bounded by the bytes and the time above, and never in the
   capture; one whose parsing is larger than these is isolated in an unprivileged worker first (plan M8).
-- **The window's decoding of a part**: the viewer's Decode reads one record's fragment.

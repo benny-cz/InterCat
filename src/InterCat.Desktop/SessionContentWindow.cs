@@ -23,7 +23,9 @@ namespace InterCat.Desktop;
 /// copied or saved; at most a bounded window is shown at once, and nothing is searched or sent anywhere. A buffer of a
 /// part shows its part instead when asked: whole, as one run of bytes, or, when it is not whole, buffer by buffer with
 /// each gap a line of its own, chosen by buffer and never saved as one (M8). Where a decoder reads the record, Decode
-/// lists the fields it reads, each with the bytes it came from, and what it did not decode - only when asked (§11.2).
+/// lists the fields it reads, each with the bytes it came from, and what it did not decode - only when asked (§11.2); where
+/// one reads the part a buffer belongs to - a whole HTTP head - Decode its part reads that part whole, and never one that
+/// is not (`contracts/decoders-v1.md`).
 /// </summary>
 internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindow
 {
@@ -84,8 +86,14 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
     private bool closed;
     private bool disposed;
 
-    /// <summary>What Decode does, in words, once a decoder reads the record; null until then.</summary>
+    /// <summary>What Decode does, in words, once a decoder reads the record or its part; null until then.</summary>
     private string? decodes;
+
+    /// <summary>Whether Decode reads the part the record's buffer belongs to, rather than the record's own bytes.</summary>
+    private bool decodesPart;
+
+    /// <summary>The decoding the Decoded tab shows; null before one is.</summary>
+    private DecodedContent? decodedShown;
 
     /// <summary>Why the content's actions wait while the record's content is read.</summary>
     private const string ReadingContent = "The record's kept content is being read.";
@@ -133,7 +141,6 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
         AutomationProperties.SetName(hex, "Hex view of the chosen bytes");
         AutomationProperties.SetName(text, "The chosen bytes as the text their source declares");
         AutomationProperties.SetName(rangeSummary, "Which bytes are shown");
-        AutomationProperties.SetName(partToggle, "Switch between this buffer and its part");
         AutomationProperties.SetName(decode, "Decode the kept bytes");
         rangeProblem.Classes.Add("caution");
 
@@ -402,18 +409,30 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
                 // A whole part is shown as one run of its bytes; one that is not whole, with its gaps in place.
                 partToggle.IsVisible = true;
                 Offering.Offer(partToggle, (found.Complete ? found.Bytes is { Length: > 0 } : found.BytesRead) ? null
-                    : PartNotRead(found));
+                    : PartNotRead(found), PartToggleDoes);
                 partToggle.Content = PartToggleText(found);
             }
             textTab.IsVisible = ContentBytesView.DeclaresText(entry.Fragment.Encoding);
             textTab.Header = entry.Fragment.Encoding == ContentEncodingV1.Utf8 ? "Text (UTF-8)" : "Text (UTF-16)";
 
-            // A decoding is offered where a decoder reads the record, and made only when asked (§11.2).
+            // A decoding is offered where a decoder reads the record, or the whole part its buffer belongs to, and made only
+            // when asked (§11.2, `contracts/decoders-v1.md`); a part that is not whole is never decoded, which Decode its
+            // part says.
             if (ContentDecoders.For(result.Observation) is { } decoder)
             {
                 decodes = $"Reads the kept bytes with {decoder}: each field it reads, with the bytes it came from, and "
                     + "what it did not decode. The decoding is made each time you ask, and never kept.";
                 Offering.Offer(decode, null, decodes);
+                decode.IsVisible = true;
+            }
+            else if (part is { IsPart: true } decodable && ContentDecoders.ForPart(result.Observation) is { } partDecoder)
+            {
+                decodesPart = true;
+                decode.Content = "Decode its part";
+                AutomationProperties.SetName(decode, "Decode its part, read whole");
+                decodes = $"Reads {decodable.Name} whole with {partDecoder}: its first line and each field, with the bytes "
+                    + "each came from, and what it did not decode. The decoding is made each time you ask, and never kept.";
+                Offering.Offer(decode, WhyNotDecodePart(decodable), decodes);
                 decode.IsVisible = true;
             }
 
@@ -607,8 +626,21 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
             : string.Create(CultureInfo.CurrentCulture,
                 $"Its part keeps more than the {SessionContentPartQuery.MaximumPartBytes:N0} bytes a part is read up to, so each buffer is shown from its own record.");
 
+    /// <summary>
+    /// Why the part a buffer belongs to is not decoded, or null when it is offered: a part that is not whole is never
+    /// decoded. A whole one whose bytes could not be read - kept without consent, or too long - is offered, and its
+    /// decoding says so.
+    /// </summary>
+    private static string? WhyNotDecodePart(SessionContentPartDetail found) => found.Complete ? null
+        : $"{Capital(found.Name!)} is not whole, so it is never decoded: what it lacks could hold any of its lines.";
+
+    private static string Capital(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
+
     /// <summary>The part shown with its gaps in place, when that is what the view shows.</summary>
     private SessionContentPartDetail? GappedPart() => showingPart && part is { Complete: false } gapped ? gapped : null;
+
+    /// <summary>What the part's toggle does, which a screen reader says beside the label it shows.</summary>
+    internal const string PartToggleDoes = "Switch the view between this buffer and the part it belongs to.";
 
     private static string PartToggleText(SessionContentPartDetail found) =>
         found.Complete ? "Show its whole part" : "Show its part, with its gaps";
@@ -657,13 +689,17 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
     /// </summary>
     private async Task DecodeAsync()
     {
-        if (decoding || closed || detail is not { Bytes: not null } read) return;
+        if (decoding || closed || detail is not { Bytes: not null, Entry: { } entry } read
+            || (decodesPart && (part is not { } whole || WhyNotDecodePart(whole) is not null))) return;
         decoding = true;
         Offering.Offer(decode, "The kept bytes are being decoded.", decodes);
         status.Text = "Decoding the kept bytes…";
         try
         {
-            DecodedContent? decoded = await Task.Run(() => ContentDecoders.Decode(read), lifetime.Token);
+            SessionContentPartDetail? partRead = decodesPart ? part : null;
+            DecodedContent? decoded = await Task.Run(() => partRead is not null
+                ? ContentDecoders.DecodePart(partRead, read.Observation, entry.Fragment.RecordIn(entry.Header.CaptureId))
+                : ContentDecoders.Decode(read), lifetime.Token);
             if (closed) return;
             if (decoded is null)
             {
@@ -702,10 +738,12 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
     private void ShowDecoded(DecodedContent decoded)
     {
         CultureInfo culture = CultureInfo.CurrentCulture;
+        decodedShown = decoded;
+        string of = decoded.Part ?? "the record's message";
         decodedHeading.Text = decoded.Heading;
         decodedRead.Text = decoded.Read is { } read
-            ? "It read " + read.Describe(culture) + " of the record's message."
-            : "It read no byte of the record's message.";
+            ? "It read " + read.Describe(culture) + " of " + of + "."
+            : "It read no byte of " + of + ".";
         decodedFields.Children.Clear();
         decodedFields.RowDefinitions.Clear();
         decodedFields.IsVisible = decoded.Fields.Count > 0;
@@ -758,14 +796,16 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
 
     /// <summary>
     /// Shows the bytes a decoded field came from in the hex view, where a person checks a field against its evidence (P2):
-    /// the record's own bytes, which the decoder read, whatever part the view showed.
+    /// the bytes the decoder read - the record's own, or its whole part's - whichever the view showed.
     /// </summary>
     private void ShowField(DecodedField field)
     {
         if (closed) return;
-        if (showingPart) TogglePart();
+        string? ofPart = decodedShown?.Part;
+        if (showingPart != ofPart is not null) TogglePart();
         Show(field.Bytes);
-        status.Text = $"Showing the bytes of the {field.Name} field, {field.Bytes.Describe(CultureInfo.CurrentCulture)}.";
+        status.Text = $"Showing the bytes of the {field.Name} field, {field.Bytes.Describe(CultureInfo.CurrentCulture)}"
+            + (ofPart is null ? "." : $" of {ofPart}.");
         FocusFirstLine();
     }
 

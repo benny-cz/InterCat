@@ -279,9 +279,8 @@ public sealed class ContentWindowTests
         Assert.Contains("The response body of exchange 7: 3 buffers, from its first to its last, all kept whole - 6 bytes.", Texts(window));
 
         // The whole part replaces the buffer in the view, and back.
-        Button toggle = Named<Button>(window, "Switch between this buffer and its part");
-        Assert.Null(Offers.Offered(toggle));
-        Assert.Equal("Show its whole part", toggle.Content);
+        Button toggle = Labelled(window, "Show its whole part");
+        Assert.Equal(SessionContentWindow.PartToggleDoes, Offers.Offered(toggle));
         toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         ListBox hex = Named<ListBox>(window, "Hex view of the chosen bytes");
@@ -299,9 +298,8 @@ public sealed class ContentWindowTests
         WaitFor(() => Texts(gapped).Any(text => text.StartsWith("Checked content-", StringComparison.Ordinal)));
         Named<Button>(gapped, "Show the kept bytes").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         WaitFor(() => Texts(gapped).Any(text => text.Contains("buffer 1 was not recorded", StringComparison.Ordinal)));
-        Button part = Named<Button>(gapped, "Switch between this buffer and its part");
+        Button part = Labelled(gapped, "Show its part, with its gaps");
         Assert.True(part.IsEnabled);
-        Assert.Equal("Show its part, with its gaps", part.Content);
         part.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
@@ -537,6 +535,107 @@ public sealed class ContentWindowTests
     /// Why the viewer of <paramref name="record"/>, once its status begins <paramref name="status"/>, offers neither Copy nor
     /// Save, which say the same.
     /// </summary>
+    [AvaloniaFact(DisplayName = "P2: the content viewer decodes a buffer's whole HTTP head only when asked, shows a field's bytes in the part, and never decodes a head that is not whole")]
+    public void AWholeHttpHeadIsDecodedAsItsPart()
+    {
+        // Exchange 7's request head in two buffers and its response body; exchange 8's request head, a buffer never recorded.
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = [Head(10, 1), Head(11, 2), Head(20, 3), Head(21, 4), Http(30, 5)];
+        (int Row, long Exchange, long Sequence, long Flags)[] parts = [(0, 7, 0, 1), (1, 7, 1, 2), (2, 8, 0, 1), (3, 8, 2, 2), (4, 7, 0, 3)];
+        string[] messages = ["GET /index.html HTTP/1.1\r\nHo", "st: example\r\n\r\n", "GET /a HTTP/1.1\r\n", "\r\n", "hello"];
+        Publish(session.Store, rows,
+            fields: [.. parts.SelectMany(part => new[]
+            {
+                Field(rows[part.Row], SourceField.HttpExchangeId, part.Exchange),
+                Field(rows[part.Row], SourceField.ContentBufferSequence, part.Sequence),
+                Field(rows[part.Row], SourceField.ContentBufferFlags, part.Flags),
+            })],
+            content: (ContentHeader(recordLimit: 64),
+                [.. messages.Select((message, index) => Content(rows[index], Encoding.ASCII.GetBytes(message), 64, ContentEncodingV1.Binary))]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+        SessionEvidenceRecord Record(ulong ordinal) => page.Records.Single(record => record.Observation.RawRecordOrdinal == ordinal);
+        SessionContentWindow Shown(ulong ordinal)
+        {
+            var opened = new SessionContentWindow(session.Path, page.SessionId, Record(ordinal));
+            opened.Show();
+            WaitFor(() => Texts(opened).Any(text => text.StartsWith("Checked content-0000000001.icatc", StringComparison.Ordinal)));
+            Named<Button>(opened, "Show the kept bytes").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => opened.GetVisualDescendants().OfType<ListBox>().Any(list =>
+                AutomationProperties.GetName(list) == "Hex view of the chosen bytes" && list.ItemsSource is IEnumerable<ContentLine>));
+            return opened;
+        }
+
+        // Shown, a head's buffer offers its part's decoding, not its own: the decoder reads the head whole.
+        using SessionContentWindow window = Shown(2);
+        Button decode = Labelled(window, "Decode its part");
+        Assert.True(decode.IsEffectivelyVisible && decode.IsEnabled);
+        Assert.Equal("Decode its part, read whole", AutomationProperties.GetName(decode));
+        Assert.StartsWith("Reads the request head of exchange 7 whole with InterCat's HTTP/1.1 head decoder", Offers.Offered(decode),
+            StringComparison.Ordinal);
+        TabItem decoded = window.GetVisualDescendants().OfType<TabItem>().Single(tab => Equals(tab.Header, "Decoded"));
+        Assert.False(decoded.IsVisible);
+
+        // Asked, it lists the head's fields with their bytes in the part, a field across the two buffers whole.
+        decode.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WaitFor(() => decoded.IsVisible && decoded.IsSelected);
+        Settle(window);
+        Assert.Equal("Decoded 4 fields; the Decoded tab lists them.", Named<TextBlock>(window, "Content status").Text);
+        ScrollViewer view = Named<ScrollViewer>(window, "What the decoder made of the kept bytes");
+        Assert.Contains("It read bytes 0 to 42 (43 bytes) of the request head of exchange 7.", Texts(window));
+        Assert.Equal(
+        [
+            "method, bytes 0 to 2 (3 bytes): GET",
+            "target, bytes 4 to 14 (11 bytes): /index.html",
+            "version, bytes 16 to 23 (8 bytes): HTTP/1.1",
+            "Host, bytes 26 to 38 (13 bytes): example",
+        ], view.GetVisualDescendants().OfType<SelectableTextBlock>().Select(AutomationProperties.GetName));
+        Assert.Empty(AccessibilityAuditTests.Unheard(window, out _));
+
+        // A field's bytes are in the part, which the view then shows, and keeps showing for the next field.
+        Named<Button>(window, "Show its bytes: the Host field").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(window);
+        ListBox hex = Named<ListBox>(window, "Hex view of the chosen bytes");
+        Assert.Equal("Show this buffer only", Labelled(window, "Show this buffer only").Content);
+        Assert.Equal(ContentBytesView.Rows("Host: example"u8, 26).Select(row => row.Line), Lines(hex));
+        Assert.Equal("Showing the bytes of the Host field, bytes 26 to 38 (13 bytes) of the request head of exchange 7.",
+            Named<TextBlock>(window, "Content status").Text);
+        window.GetVisualDescendants().OfType<TabControl>().Single().SelectedItem = decoded;
+        Settle(window);
+        Named<Button>(window, "Show its bytes: the target field").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(window);
+        Assert.Equal(("4", "14"), (Named<TextBox>(window, "First byte of the range").Text, Named<TextBox>(window, "Last byte of the range").Text));
+        Assert.Equal(ContentBytesView.Rows("/index.html"u8, 4).Select(row => row.Line), Lines(hex));
+        window.Close();
+
+        // A head that is not whole is never decoded, which Decode its part says; asked even so, nothing is decoded.
+        using SessionContentWindow gapped = Shown(3);
+        Button refused = Labelled(gapped, "Decode its part");
+        Assert.True(refused.IsEffectivelyVisible);
+        Assert.False(refused.IsEnabled);
+        Assert.Equal("The request head of exchange 8 is not whole, so it is never decoded: what it lacks could hold any of its lines.",
+            Offers.WhyNot(refused));
+        refused.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(gapped);
+        Assert.False(gapped.GetVisualDescendants().OfType<TabItem>().Single(tab => Equals(tab.Header, "Decoded")).IsVisible);
+        gapped.Close();
+
+        // A body's buffer offers no decoding.
+        using SessionContentWindow body = Shown(5);
+        Assert.False(Labelled(body, "Decode").IsEffectivelyVisible);
+        body.Close();
+
+        static ObservationRowV1 Head(long ticks, ulong ordinal) =>
+            Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 1, null, ordinal) with
+            {
+                Mechanism = Mechanism.Http,
+                Layer = ObservationLayer.Application,
+                EventId = 2001,
+                HeaderProcessId = 4_242,
+                Direction = Direction.Outbound,
+                ByteDomain = ByteDomain.ApplicationPayload,
+            };
+    }
+
     private static string? WhyNeitherIsOffered(string path, Guid sessionId, SessionEvidenceRecord record, string status)
     {
         using var window = new SessionContentWindow(path, sessionId, record);
