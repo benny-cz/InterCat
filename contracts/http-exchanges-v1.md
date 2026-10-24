@@ -8,7 +8,8 @@ Produced by: the Desktop's process and channel rungs, and
 An HTTP exchange is a request and its response as one client process made them through WinINet, derived from WinINet's
 capture records (`contracts/content-v1.md` §5.1). It is read from the records' metadata and source fields alone: which
 buffers were recorded, the bytes each record measured, their places and ends. It never reads content, so it says how
-large each part was and whether it was recorded whole, and never what it said.
+large each part was and whether it was recorded whole, and never what it said; only `icat exchanges --decode`, when
+asked, reads the listed exchanges' heads (§5c).
 
 ## 1. Records
 
@@ -116,8 +117,21 @@ this grouping does. A reopen's first HTTP listing therefore groups no buffer, an
 A live generation keeps none: since revision 733 it extends the exchanges of the generation before it (§2a), and groups
 them from every record only when nothing earlier was grouped in the same process, or an extension declines.
 
+## 5c. What the listed heads say (revision 776)
+
+`icat exchanges <session> --pid <id> --decode`, or `--exchanges <n> --decode`, reads each listed exchange's request
+and response heads, each the whole part its buffers make (`contracts/content-v1.md` §5.1), and decodes them with the
+HTTP/1.1 head decoder (`contracts/decoders-v1.md` §4). Each exchange is listed with what its request asked for - its
+method and target - of which host, by its first Host field in any case, and what its response answered - its status,
+and the reason its status line gave - beside whether the exchange was recorded whole. A head not whole, or kept
+without consent to inspect it, is not decoded, and leaves the answer partial as `icat content --decode` does; one
+whose start line is not HTTP/1.1's says nothing in its cells. Why is said beneath its process's exchanges, as is where
+a head stops being HTTP/1.1. Every listed head is read under one lease in one pass over the session's segments, and
+only the exchanges listed are read. Decoded heads are for a person: `--decode` refuses `--json` and `--output`
+(`decoders-v1` §2), and a listing of no exchanges. The figures above the exchanges are read as without `--decode`.
+
 ## 6. Not defined at this version
 
-- An exchange's method, target, status or headers: they are content, and reading them is a decoder's work (§11.2's
-  `DecodedFields`), which is not defined.
+- An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
+  asked for reads, for a person and never into a document (§5c, `contracts/decoders-v1.md` §2).
 - HTTP/2, compressed responses and asynchronous WinINet (ADR-037).

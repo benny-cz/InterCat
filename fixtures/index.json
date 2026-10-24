@@ -1149,7 +1149,8 @@
         "I21: an exchange's evidence is its own buffers, and a process's exchanges are all of theirs",
         "I21: an over-long extended item keeps its original length and a truncation flag",
         "I21: icat record takes a content profile with --evidence-only, since a follow mirrors the content it keeps",
-        "I21: mirrored content is staged once, beside a mirrored chunk, and only of that chunk's capture"
+        "I21: mirrored content is staged once, beside a mirrored chunk, and only of that chunk's capture",
+        "I21: parts read together are each the part their buffer belongs to, exactly as one read alone is"
       ],
       "I22": [
         "I22: Share redacted… asks first, then saves every row compared where chosen, naming no process",
@@ -1339,10 +1340,12 @@
         "P2: a view of a part with gaps stops at the bytes it shows at once, at a buffer's start, and says so",
         "P2: a whole HTTP request or response head decodes into its start line and its field lines, each with its bytes, linked to its part and the decoder's version",
         "P2: an RPC call never reports a byte value, and the byte criterion stays not measured",
+        "P2: an exchange's heads say what its request asked for, of which host, and what its response answered, from their start lines alone",
         "P2: icat content --decode lists a fixture message's fields with the bytes each came from and what it did not decode, only when asked and never into JSON",
         "P2: icat content --part --decode decodes a whole HTTP head, says a buffer alone and a body are read by none, and --decoders lists every decoder",
         "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one",
         "P2: icat content shows and saves a whole HTTP part as one, and refuses --part of a record that belongs to none",
+        "P2: icat exchanges --decode says what each listed request asked for, of which host, and what its response answered, each head read whole",
         "P2: the content viewer decodes a buffer's whole HTTP head only when asked, shows a field's bytes in the part, and never decodes a head that is not whole"
       ],
       "P20": [

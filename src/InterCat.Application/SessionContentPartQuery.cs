@@ -106,10 +106,23 @@ public static class SessionContentPartQuery
         Guid expectedSessionId,
         ObservationRowV1 row,
         bool revealBytes,
+        CancellationToken cancellationToken = default) =>
+        ReadMany(store, expectedSessionId, [row], revealBytes, cancellationToken)[0];
+
+    /// <summary>
+    /// The part each of <paramref name="rows"/>' buffers belongs to, in their order, read under one lease with one pass over
+    /// the generation's segments, as <see cref="Read"/> reads one: a listing that decodes many exchanges' heads reads the
+    /// session once, not once a part.
+    /// </summary>
+    public static IReadOnlyList<SessionContentPartDetail> ReadMany(
+        SessionStore store,
+        Guid expectedSessionId,
+        IReadOnlyList<ObservationRowV1> rows,
+        bool revealBytes,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
-        ArgumentNullException.ThrowIfNull(row);
+        ArgumentNullException.ThrowIfNull(rows);
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
         if (manifest.SessionId != expectedSessionId)
@@ -117,17 +130,13 @@ public static class SessionContentPartQuery
             throw new InvalidOperationException(SessionStore.AnotherSession);
         }
 
-        var key = (row.RawStreamId, row.RawSourceEpoch, row.RawRecordOrdinal);
         Dictionary<(uint, uint, ulong), PartFields> fields = ReadPartFields(store, manifest, cancellationToken);
-        if (!fields.TryGetValue(key, out PartFields own) || own.Exchange is not { } exchange)
-        {
-            return new() { IsPart = false, Statement = "This record's buffer belongs to no part its source numbers." };
-        }
 
-        // The part's other buffers: the same exchange, and - read from their rows - the same event and raising process.
-        var sameExchange = fields.Where(pair => pair.Value.Exchange == exchange).Select(pair => pair.Key).ToHashSet();
-        var members = new List<(ObservationRowV1 Row, CaptureId Capture)>();
-        foreach (string segmentName in SessionSegments.Names(manifest))
+        // Every record of the exchanges the rows' buffers name, read in one pass; each part takes its own from them.
+        HashSet<long> exchanges = [.. rows.Select(row => fields.TryGetValue(Key(row), out PartFields own) ? own.Exchange : null).OfType<long>()];
+        var named = fields.Where(pair => pair.Value.Exchange is { } exchange && exchanges.Contains(exchange)).Select(pair => pair.Key).ToHashSet();
+        var candidates = new List<(ObservationRowV1 Row, CaptureId Capture)>();
+        foreach (string segmentName in exchanges.Count == 0 ? [] : SessionSegments.Names(manifest))
         {
             cancellationToken.ThrowIfCancellationRequested();
             SegmentReaderV1 segment = SessionSegments.Open(store, manifest, segmentName);
@@ -136,17 +145,10 @@ public static class SessionContentPartQuery
             SegmentColumnSlice ordinals = segment.Slice(SegmentColumnId.RawRecordOrdinal);
             for (int index = 0; index < segment.RowCount; index++)
             {
-                if (!sameExchange.Contains(((uint)streams.UnsignedAt(index)!.Value, (uint)epochs.UnsignedAt(index)!.Value,
+                if (named.Contains(((uint)streams.UnsignedAt(index)!.Value, (uint)epochs.UnsignedAt(index)!.Value,
                     ordinals.UnsignedAt(index)!.Value)))
                 {
-                    continue;
-                }
-
-                ObservationRowV1 candidate = segment.Row(index);
-                if (candidate.EventId == row.EventId && candidate.HeaderProcessId == row.HeaderProcessId
-                    && candidate.Mechanism == row.Mechanism)
-                {
-                    members.Add((candidate, segment.CaptureId));
+                    candidates.Add((segment.Row(index), segment.CaptureId));
                 }
             }
         }
@@ -154,6 +156,33 @@ public static class SessionContentPartQuery
         SessionContentIndex content = manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content)
             ? SessionDerivationCache.For(manifest).Content(store.Root, cancellationToken)
             : SessionContentIndex.Empty;
+        return [.. rows.Select(row => Part(store, row, fields, candidates, content, revealBytes))];
+    }
+
+    private static (uint, uint, ulong) Key(ObservationRowV1 row) => (row.RawStreamId, row.RawSourceEpoch, row.RawRecordOrdinal);
+
+    /// <summary>The part <paramref name="row"/>'s buffer belongs to, from the records of its exchange among <paramref name="candidates"/>.</summary>
+    private static SessionContentPartDetail Part(
+        SessionStore store,
+        ObservationRowV1 row,
+        Dictionary<(uint, uint, ulong), PartFields> fields,
+        List<(ObservationRowV1 Row, CaptureId Capture)> candidates,
+        SessionContentIndex content,
+        bool revealBytes)
+    {
+        var key = Key(row);
+        if (!fields.TryGetValue(key, out PartFields own) || own.Exchange is not { } exchange)
+        {
+            return new() { IsPart = false, Statement = "This record's buffer belongs to no part its source numbers." };
+        }
+
+        // The part's other buffers: the same exchange, and - read from their rows - the same event and raising process.
+        List<(ObservationRowV1 Row, CaptureId Capture)> members =
+        [
+            .. candidates.Where(candidate => fields[Key(candidate.Row)].Exchange == exchange
+                && candidate.Row.EventId == row.EventId && candidate.Row.HeaderProcessId == row.HeaderProcessId
+                && candidate.Row.Mechanism == row.Mechanism),
+        ];
         (List<(ObservationRowV1 Row, CaptureId Capture, PartFields Part)> use, int uses) = UseOf(members, fields, key);
         ContentPartBuffer[] buffers =
         [

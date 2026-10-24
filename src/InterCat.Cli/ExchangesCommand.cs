@@ -89,6 +89,7 @@ internal static class ExchangesCommand
         string? sessionPath = command.TakePositional();
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
+        bool decode = command.TryTakeFlag("--decode");
         if (command.TryReportUnknown(out string? unknown))
         {
             ConsoleUi.Failure(command.Refusal(unknown!));
@@ -129,6 +130,19 @@ internal static class ExchangesCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        // Decoded heads are read for a person, never into a document a program reads (`contracts/decoders-v1.md` §2), and
+        // only of the exchanges listed.
+        string? decodeProblem = !decode ? null
+            : json || outputOption is not null ? "--decode reads the listed exchanges' heads for a person, never into JSON or a "
+                + "file: leave out --json and --output."
+            : list == 0 ? "--decode reads the heads of the exchanges listed: give --pid, or --exchanges with a number."
+            : null;
+        if (decodeProblem is not null)
+        {
+            ConsoleUi.Failure(decodeProblem);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated;
         if (policyOption is not null
             && (!Enum.TryParse(policyOption.Replace("-", string.Empty, StringComparison.Ordinal), ignoreCase: true, out policy)
@@ -154,6 +168,7 @@ internal static class ExchangesCommand
         }
 
         ExchangesDocument document;
+        IReadOnlyList<IReadOnlyList<HttpExchangeHeads>>? heads = null;
         using (EvidenceLease lease = store.AcquireLease())
         {
             SessionManifestV1 manifest = lease.Manifest;
@@ -171,6 +186,13 @@ internal static class ExchangesCommand
             IReadOnlyList<MechanismCoverage> coverage =
                 SessionCoverage.ForMechanisms(SessionSegments.CoverageLedger(store.Root, manifest), [Mechanism.Http]);
             document = Describe(full, manifest.Generation, index, coverage, clock, policy, pid, list);
+            if (decode)
+            {
+                // Each listed exchange's heads, read whole from the kept content, every group's in the document's order.
+                ConsoleUi.Progress("Reading the listed exchanges' heads, each whole, from the content kept with consent to inspect it.");
+                heads = [.. index.Groups.Where(group => pid is not { } only || group.ProcessId == only).Select(group =>
+                    HttpExchangeHeadsQuery.Read(store, manifest.SessionId, segments, index, group, list, cancellationToken))];
+            }
         }
 
         string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
@@ -180,7 +202,7 @@ internal static class ExchangesCommand
         }
         else
         {
-            Render(document);
+            Render(document, heads);
         }
 
         if (outputPath is not null)
@@ -190,7 +212,10 @@ internal static class ExchangesCommand
             ConsoleUi.Success($"HTTP exchanges written to {outputPath}.");
         }
 
-        return store.Recovery.RolledBackToLastKnownGood ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
+        // A head recorded and not decoded leaves the answer partial, as icat content --decode's is.
+        bool undecoded = heads?.Any(group => group.Any(exchange => exchange.Request is { Read: null } || exchange.Response is { Read: null }))
+            == true;
+        return store.Recovery.RolledBackToLastKnownGood || undecoded ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
     }
 
     private static ExchangesDocument Describe(
@@ -274,7 +299,7 @@ internal static class ExchangesCommand
         };
     }
 
-    private static void Render(ExchangesDocument document)
+    private static void Render(ExchangesDocument document, IReadOnlyList<IReadOnlyList<HttpExchangeHeads>>? heads)
     {
         ConsoleUi.Heading("HTTP exchanges");
         ConsoleUi.Field("Session", document.Path);
@@ -315,10 +340,31 @@ internal static class ExchangesCommand
                 group.MedianDurationNanoseconds is { } median ? OperationText.Duration(median, CultureInfo.CurrentCulture) : "untimed",
             ])]);
 
-        foreach (ExchangesGroupDocument group in document.Groups.Where(group => group.List is { Count: > 0 }))
+        if (heads is not null)
         {
             ConsoleUi.Line();
+            ContentDecoderInfo decoder = ContentDecoders.Known.Single(known => known.Id == "http1-head");
+            ConsoleUi.Note($"Heads decoded by {decoder.Name}, version {decoder.Version}: each read "
+                + "whole, from bytes kept with consent to inspect them, and nothing decoded is kept. A head not whole, or kept "
+                + "without consent, is not decoded, and why is said beneath its exchanges.");
+        }
+
+        for (int index = 0; index < document.Groups.Count; index++)
+        {
+            ExchangesGroupDocument group = document.Groups[index];
+            if (group.List is not { Count: > 0 })
+            {
+                continue;
+            }
+
+            ConsoleUi.Line();
             ConsoleUi.Heading(string.Create(CultureInfo.CurrentCulture, $"Exchanges of PID {group.ProcessId}, the first {group.List!.Count:N0}"));
+            if (heads?[index] is { } decoded)
+            {
+                Decoded(group.List, decoded);
+                continue;
+            }
+
             ConsoleUi.Table(
                 ["At", "Exchange", "Took", "Request head", "Request body", "Response head", "Response body"],
                 [.. group.List.Select(exchange => (IReadOnlyList<string>)
@@ -340,6 +386,36 @@ internal static class ExchangesCommand
         }
     }
 
+    /// <summary>
+    /// The listed exchanges with what their heads say (`http-exchanges-v1` §5b): what each request asked for, of which host,
+    /// and what its response answered; then, for each head not decoded, or decoded only in part, why.
+    /// </summary>
+    private static void Decoded(IReadOnlyList<ExchangeDocument> exchanges, IReadOnlyList<HttpExchangeHeads> heads)
+    {
+        ConsoleUi.Table(
+            ["At", "Exchange", "Took", "Request", "Host", "Response", "Recorded"],
+            [.. exchanges.Select((exchange, at) => (IReadOnlyList<string>)
+            [
+                exchange.FirstSeconds ?? "-",
+                ConsoleUi.Count(exchange.Number),
+                exchange.DurationNanoseconds is { } duration ? OperationText.Duration(duration, CultureInfo.CurrentCulture) : "no end",
+                heads[at].Asked ?? (heads[at].Request is null ? "no head recorded" : "not decoded"),
+                heads[at].Host ?? "-",
+                heads[at].Answered ?? (heads[at].Response is null ? "no head recorded" : "not decoded"),
+                exchange.RecordedWhole ? "whole" : "not whole",
+            ])]);
+        for (int at = 0; at < exchanges.Count; at++)
+        {
+            foreach ((string head, DecodedContent? decoding) in new[] { ("request", heads[at].Request), ("response", heads[at].Response) })
+            {
+                if (decoding?.NotDecoded is { } why)
+                {
+                    ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture, $"Exchange {exchanges[at].Number:N0}, its {head} head: {why}"));
+                }
+            }
+        }
+    }
+
     /// <summary>A part in a cell: its bytes and buffers, and whether it was recorded whole.</summary>
     private static string Part(HttpPartRecord part) => !part.Recorded
         ? "none recorded"
@@ -349,11 +425,14 @@ internal static class ExchangesCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat exchanges <session-directory> [--pid <id>] [--exchanges <n>] [--evidence-policy <name>]");
-        ConsoleUi.Line("               [--output <path> [--overwrite]] [--json]");
+        ConsoleUi.Line("               [--decode | [--output <path> [--overwrite]] [--json]]");
         ConsoleUi.Line("  A session's HTTP exchanges through WinINet (ADR-037): its buffer records grouped by exchange number and");
         ConsoleUi.Line("  client process, each exchange with what was recorded of its request and response heads and bodies,");
         ConsoleUi.Line("  and how long it took. --pid narrows to one process and lists its first 20 exchanges; --exchanges");
-        ConsoleUi.Line("  sets how many are listed per process. Nothing here reads content: icat content reads a buffer's.");
+        ConsoleUi.Line("  sets how many are listed per process. Its figures read no content; icat content reads a buffer's.");
+        ConsoleUi.Line("  --decode reads the listed exchanges' heads, each whole, from content kept with consent to inspect it,");
+        ConsoleUi.Line("  and says what each request asked for, of which host, and what its response answered; a head not");
+        ConsoleUi.Line("  whole, or kept without consent, is not decoded, and why is said. It writes no JSON and no file.");
         ConsoleUi.Line("  What the capture covered of HTTP is said from its coverage ledger, never from a count of none.");
     }
 }

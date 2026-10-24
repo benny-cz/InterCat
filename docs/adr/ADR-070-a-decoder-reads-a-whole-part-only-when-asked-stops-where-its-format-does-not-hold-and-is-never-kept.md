@@ -46,7 +46,8 @@ so a head part is exactly what the process sent or read.
 
 - `icat content --part --decode`, a buffer's word on which part to decode, and `icat content --decoders`.
 - Bodies, other mechanisms, conversations, exports, search and isolation are not defined at this version
-  (`decoders-v1` §6); revision 775 builds the window's decoding of a part (`decoders-v1` §5a).
+  (`decoders-v1` §6); revision 775 builds the window's decoding of a part (`decoders-v1` §5a). Revision 776 sets each
+  listed exchange's two decoded heads side by side (`icat exchanges --decode`), each still decoded alone.
 
 ## Alternatives considered
 

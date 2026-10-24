@@ -248,6 +248,77 @@ public sealed class HttpHeadDecodingTests
         Assert.Equal([("intercat-content-fixture", 1), ("http1-head", 1)], ContentDecoders.Known.Select(decoder => (decoder.Id, decoder.Version)));
     }
 
+    [Fact(DisplayName = "P2: an exchange's heads say what its request asked for, of which host, and what its response answered, from their start lines alone")]
+    public void AnExchangesHeadsSayWhatTheyHold()
+    {
+        // The request line's method and target, the first Host field in any case, and the status line's status and reason:
+        // a field line named as a start line's field never stands for it.
+        var heads = new HttpExchangeHeads(
+            Head("GET /x HTTP/1.1\r\nmethod: POST\r\nhost: Example\r\nHost: second\r\n\r\n", request: true),
+            Head("HTTP/1.1 204\r\nreason: not the reason\r\n\r\n", request: false));
+        Assert.Equal(("GET /x", "Example", "204"), (heads.Asked, heads.Host, heads.Answered));
+        Assert.Equal("200 OK", new HttpExchangeHeads(null, Head("HTTP/1.1 200 OK\r\n\r\n", request: false)).Answered);
+        Assert.Equal("200", new HttpExchangeHeads(null, Head("HTTP/1.1 200 \r\n\r\n", request: false)).Answered);
+
+        // A head not recorded, a start line not decoded, and a request that names no host say nothing.
+        var none = new HttpExchangeHeads(null, null);
+        Assert.Equal((null, null, null), (none.Asked, none.Host, none.Answered));
+        var undecoded = new HttpExchangeHeads(Head("GET  /x HTTP/1.1\r\nHost: a\r\n\r\n", request: true),
+            Head("HTTP/1.1 20 OK\r\n\r\n", request: false));
+        Assert.Equal((null, null, null), (undecoded.Asked, undecoded.Host, undecoded.Answered));
+        Assert.Null(new HttpExchangeHeads(Head("GET /x HTTP/1.1\r\nAccept: */*\r\n\r\n", request: true), null).Host);
+    }
+
+    [Fact(DisplayName = "I21: parts read together are each the part their buffer belongs to, exactly as one read alone is")]
+    public void PartsReadTogetherAreEachAsReadAlone()
+    {
+        // Exchange 7's request head in two buffers and its response head; exchange 8's request head with a buffer never
+        // recorded; a TCP record, of no part; another process's exchange 7, its request head's two buffers raised at the
+        // same moments as the first's; and exchange 9's request head without its last buffer, then its response head
+        // without its first, whose two buffers would make one whole head.
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows =
+        [
+            Http(10, 2001, 1), Http(11, 2001, 2), Http(12, 2003, 3), Http(20, 2001, 4), Http(21, 2001, 5),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 6, 100, 6),
+            Http(10, 2001, 7) with { HeaderProcessId = 4_141 }, Http(11, 2001, 8) with { HeaderProcessId = 4_141 },
+            Http(40, 2001, 9), Http(41, 2003, 10),
+        ];
+        (int Row, long Exchange, long Sequence, long Flags)[] parts =
+        [
+            (0, 7, 0, 1), (1, 7, 1, 2), (2, 7, 0, 3), (3, 8, 0, 1), (4, 8, 2, 2), (6, 7, 0, 1), (7, 7, 1, 2), (8, 9, 0, 1),
+            (9, 9, 1, 2),
+        ];
+        string[] messages =
+        [
+            "GET /x HTTP/1.1\r\nHo", "st: a\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n", "GET /a HTTP/1.1\r\n", "\r\n", "other",
+            "GET /b HTTP/1.1\r\n", "\r\n", "GET /c HTTP/1.1\r\n", "Server: x\r\n\r\n",
+        ];
+        Publish(session.Store, rows, fields: Fields(rows, parts), content: (ContentHeader(recordLimit: 64),
+            [.. messages.Select((message, index) => Content(rows[index], Encoding.ASCII.GetBytes(message), 64, ContentEncodingV1.Binary))]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+        ObservationRowV1[] asked = [.. page.Records.Select(record => record.Observation)];
+        IReadOnlyList<SessionContentPartDetail> together = SessionContentPartQuery.ReadMany(session.Store, page.SessionId, asked, true);
+        Assert.Equal(asked.Length, together.Count);
+        for (int index = 0; index < asked.Length; index++)
+        {
+            SessionContentPartDetail alone = SessionContentPartQuery.Read(session.Store, page.SessionId, asked[index], true);
+            Assert.Equal((alone.IsPart, alone.Name, alone.Complete, alone.Statement, alone.Length),
+                (together[index].IsPart, together[index].Name, together[index].Complete, together[index].Statement, together[index].Length));
+            Assert.Equal(alone.Bytes, together[index].Bytes);
+            Assert.Equal(alone.Buffers.Select(buffer => buffer.Record), together[index].Buffers.Select(buffer => buffer.Record));
+        }
+
+        Assert.Equal((true, true, false, false, true), (Of(1).Complete, Of(3).Complete, Of(4).Complete, Of(6).IsPart, Of(7).Complete));
+        Assert.Equal("GET /x HTTP/1.1\r\nHost: a\r\n\r\n"u8.ToArray(), Of(2).Bytes);
+        Assert.Equal("GET /b HTTP/1.1\r\n\r\n"u8.ToArray(), Of(8).Bytes);
+        Assert.Equal((false, 1, false, 1), (Of(9).Complete, Of(9).Buffers.Count, Of(10).Complete, Of(10).Buffers.Count));
+        Assert.Empty(SessionContentPartQuery.ReadMany(session.Store, page.SessionId, [], true));
+        Assert.Throws<ArgumentNullException>(() => SessionContentPartQuery.ReadMany(session.Store, page.SessionId, null!, true));
+
+        SessionContentPartDetail Of(ulong ordinal) => together[Array.FindIndex(asked, row => row.RawRecordOrdinal == ordinal)];
+    }
+
     /// <summary>A whole head of exchange 7, decoded from its bytes.</summary>
     private static DecodedContent Head(string head, bool request, TimeSpan? budget = null) =>
         Head(Encoding.ASCII.GetBytes(head), request, budget);

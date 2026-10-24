@@ -2785,6 +2785,95 @@ public sealed class CommandLineTests : IDisposable
             };
     }
 
+    [Fact(DisplayName = "P2: icat exchanges --decode says what each listed request asked for, of which host, and what its response answered, each head read whole")]
+    public async Task ExchangesAreListedWithWhatTheirHeadsSay()
+    {
+        // PID 4242: exchange 7 whole, its request head in two buffers; exchange 8's request head with a buffer never recorded
+        // and no response; exchange 9's response head giving no reason. Before them PID 4141's own exchange 7, whose response
+        // head lacks its last buffer.
+        using var kept = new TemporarySession();
+        ObservationRowV1[] rows =
+        [
+            Wininet(10, 2001, 1), Wininet(11, 2001, 2), Wininet(12, 2003, 3), Wininet(13, 2004, 4),
+            Wininet(20, 2001, 5), Wininet(21, 2001, 6),
+            Wininet(30, 2001, 7), Wininet(31, 2003, 8),
+            Wininet(5, 2001, 9) with { HeaderProcessId = 4_141 }, Wininet(6, 2003, 10) with { HeaderProcessId = 4_141 },
+        ];
+        (int Row, long Exchange, long Sequence, long Flags)[] parts =
+        [
+            (0, 7, 0, 1), (1, 7, 1, 2), (2, 7, 0, 3), (3, 7, 0, 3),
+            (4, 8, 0, 1), (5, 8, 2, 2),
+            (6, 9, 0, 3), (7, 9, 0, 3),
+            (8, 7, 0, 3), (9, 7, 0, 1),
+        ];
+        string[] messages =
+        [
+            "GET /index.html HTTP/1.1\r\nHo", "st: example\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", "hello",
+            "GET /a HTTP/1.1\r\n", "\r\n",
+            "POST /upload HTTP/1.1\r\nHost: files\r\n\r\n", "HTTP/1.1 404 \r\n\r\n",
+            "GET /other HTTP/1.1\r\nHost: elsewhere\r\n\r\n", "HTTP/1.1 200 OK\r\n",
+        ];
+        Publish(kept.Store, rows,
+            fields: [.. parts.SelectMany(part => new[]
+            {
+                Field(rows[part.Row], SourceField.HttpExchangeId, part.Exchange),
+                Field(rows[part.Row], SourceField.ContentBufferSequence, part.Sequence),
+                Field(rows[part.Row], SourceField.ContentBufferFlags, part.Flags),
+            })],
+            content: (ContentHeader(recordLimit: 64),
+                [.. messages.Select((message, index) => Content(rows[index], System.Text.Encoding.ASCII.GetBytes(message), 64,
+                    ContentEncodingV1.Binary))]));
+        kept.Store.ReleaseSegmentReaders();
+
+        // Each listed exchange says what its request asked for, of which host, and what its response answered; a head not
+        // whole is not decoded, said beneath, and leaves the answer partial.
+        (InterCatExitCode code, string output, string said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode");
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+        Assert.Contains("Heads decoded by InterCat's HTTP/1.1 head decoder, version 1: each read whole", output, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^  \S+ +7 +no end +GET /index.html +example +200 OK +whole\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +8 +no end +not decoded +- +no head recorded +not whole\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +9 +no end +POST /upload +files +404 +not whole\r?$", output);
+        Assert.Contains("Exchange 8, its request head: The part is not whole, so it is not decoded: what it lacks could hold any "
+            + "of its lines, and a decoding never stands in for missing bytes.", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Exchange 7, its", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Request head", output, StringComparison.Ordinal);
+
+        // Another process's exchange of the same number is its own, its response head not whole and not decoded.
+        (code, output, said) = await Run("exchanges", kept.Path, "--pid", "4141", "--decode");
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+        Assert.Matches(@"(?m)^  \S+ +7 +no end +GET /other +elsewhere +not decoded +not whole\r?$", output);
+        Assert.Contains("Exchange 7, its response head: The part is not whole", output, StringComparison.Ordinal);
+
+        // Each process's first exchange, every one listed beside its own process; and only the exchanges listed are read, so
+        // where every head listed decoded whole the answer is whole.
+        (code, output, said) = await Run("exchanges", kept.Path, "--exchanges", "1", "--decode");
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+        Assert.Matches(@"(?m)^  \S+ +7 +no end +GET /other +elsewhere +not decoded +not whole\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +7 +no end +GET /index.html +example +200 OK +whole\r?$", output);
+        (code, output, said) = await Run("exchanges", kept.Path, "--pid", "4242", "--exchanges", "1", "--decode");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  \S+ +7 +no end +GET /index.html +example +200 OK +whole\r?$", output);
+
+        // Without --decode, the listing reads no content.
+        (code, output, _) = await Run("exchanges", kept.Path, "--pid", "4242");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Contains("Request head", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("GET", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Heads decoded by", output, StringComparison.Ordinal);
+
+        static ObservationRowV1 Wininet(long ticks, ushort eventId, ulong ordinal) =>
+            Transfer(ticks, eventId <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
+                eventId <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, 1, null, ordinal) with
+            {
+                Mechanism = Mechanism.Http,
+                Layer = ObservationLayer.Application,
+                EventId = eventId,
+                HeaderProcessId = 4_242,
+                Direction = eventId <= 2002 ? Direction.Outbound : Direction.Inbound,
+                ByteDomain = ByteDomain.ApplicationPayload,
+            };
+    }
+
     [Fact(DisplayName = "S5: icat retain --release-before discloses what an interval release gives up and keeps, and performs it only when told why, once the capture has finished")]
     public async Task AnIntervalIsReleasedOnlyWhenToldWhy()
     {

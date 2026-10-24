@@ -65,3 +65,12 @@ The window decodes a part (`contracts/decoders-v1.md` §5a): a buffer of a whole
 which reads the head whole, lists its fields with their bytes in the part, and shows a field's bytes in the part's hex
 view; a head that is not whole offers it disabled, saying why. The window is now among the supported environments for
 heads; of the parts not built, the conversation inspector comes next, and nothing else above changes.
+
+## Addendum, revision 776
+
+`icat exchanges --decode` lists what each listed exchange's heads say (`contracts/http-exchanges-v1.md` §5c): what its
+request asked for, of which host, and what its response answered, each head read whole with the HTTP/1.1 head decoder,
+every listed head in one pass over the session. A head not whole, or kept without consent, is not decoded, the listing
+says why beneath, and the answer is partial; the listing writes no JSON and no file. This is the command line's view
+of a conversation, an exchange's two heads side by side, each decoded alone; the window's conversation inspector comes
+next, and nothing else above changes.
