@@ -2885,6 +2885,59 @@ public sealed class CommandLineTests : IDisposable
             };
     }
 
+    [Fact(DisplayName = "P2: icat content --find lists the records whose kept bytes hold a text, each with its locator, and shows their bytes only with --previews")]
+    public async Task KeptContentIsSearchedWhenAsked()
+    {
+        // Process 4242's head naming the host and its record naming it twice; process 5151's record naming nothing.
+        ObservationRowV1[] rows =
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 10, 4_242, 1),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 10, 4_242, 2),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 10, 5_151, 3),
+        ];
+        string[] messages = ["GET / HTTP/1.1\r\nHost: example.com\r\n\r\n", "example.com, example.com", "nothing here"];
+        (ContentFragmentV1, ReadOnlyMemory<byte>)[] fragments =
+            [.. messages.Select((message, index) => Content(rows[index], System.Text.Encoding.ASCII.GetBytes(message), 64, ContentEncodingV1.Binary))];
+        using var kept = new TemporarySession();
+        Publish(kept.Store, rows, content: (ContentHeader(64), fragments));
+        kept.Store.ReleaseSegmentReaders();
+
+        // Every record is searched, and those holding the text are listed with the locator that shows their bytes, and none
+        // of the bytes themselves.
+        (InterCatExitCode code, string output, string said) = await Run("content", kept.Path, "--find", "example.com");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Text +""example.com""\r?$", output);
+        Assert.Matches(@"(?m)^  Searched +the kept bytes of 3 records, 73 B\r?$", output);
+        Assert.Matches(@"(?m)^  Found +2 records\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +4242 +TCP +10 +1 +byte 22 +\S+ +0\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +4242 +TCP +10 +2 +byte 0 +\S+ +1\r?$", output);
+        Assert.DoesNotContain("⟦", output, StringComparison.Ordinal);
+        Assert.Contains(ContentSearch.Exactness, output, StringComparison.Ordinal);
+        Assert.Contains("--segment <segment> --row <row> --reveal shows a record's kept bytes.", output, StringComparison.Ordinal);
+
+        // Asked for, previews show the bytes around each first match, inert; a process's records keep to it, a letter
+        // matches in either case, and a limit lists that many and says there are more.
+        (code, output, said) = await Run("content", kept.Path, "--find", "EXAMPLE.COM", "--ignore-case", "--pid", "4242",
+            "--limit", "1", "--previews");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Text +""EXAMPLE.COM""\r?$", output);
+        Assert.Matches(@"(?m)^  Letters +A to Z matched in either case\r?$", output);
+        Assert.Matches(@"(?m)^  Records of +PID 4242\r?$", output);
+        Assert.Matches(@"(?m)^  Found +more than 1 record; the first 1 listed\r?$", output);
+        Assert.Contains(" row 0: HTTP/1.1\\x0D\\x0AHost: ⟦example.com⟧\\x0D\\x0A\\x0D\\x0A", output, StringComparison.Ordinal);
+        (_, output, _) = await Run("content", kept.Path, "--find", "nothing", "--pid", "4242");
+        Assert.Matches(@"(?m)^  Found +no record holding it\r?$", output);
+
+        // Content kept without consent to inspect it is never searched: counted, and the answer partial.
+        using var withheld = new TemporarySession();
+        Publish(withheld.Store, rows, content: (ContentHeader(64, ContentInspectionV1.Disabled), fragments));
+        withheld.Store.ReleaseSegmentReaders();
+        (code, output, _) = await Run("content", withheld.Path, "--find", "example.com");
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Matches(@"(?m)^  Not searched +3 records kept without consent to inspect their bytes\r?$", output);
+        Assert.Matches(@"(?m)^  Searched +the kept bytes of 0 records, 0 B\r?$", output);
+    }
+
     [Fact(DisplayName = "S5: icat retain --release-before discloses what an interval release gives up and keeps, and performs it only when told why, once the capture has finished")]
     public async Task AnIntervalIsReleasedOnlyWhenToldWhy()
     {

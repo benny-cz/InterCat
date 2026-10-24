@@ -65,7 +65,8 @@ its request or status line and its fields, each with the bytes it came from, and
 HTTP/1.1, as the viewer's *Decode its part* does for a buffer of a head; `icat exchanges --pid <id> --decode` lists
 what each of a process's requests asked for, of which host, and what its response answered, and where a body does not
 hold the length its head declared, as C on an exchange in the window does in its conversation, the request and
-response side by side; `icat content --decoders` lists what can be decoded.
+response side by side; `icat content --find <text>` lists the records whose kept bytes hold a text, showing none of
+them unless `--previews` asks, and `icat content --decoders` lists what can be decoded.
 
 **Investigations** hold sessions captured on several machines, aligned by their wall clocks, with the connections one
 machine's capture can join to another's; a session opened from its investigation names, beside each other host it

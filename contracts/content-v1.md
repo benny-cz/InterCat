@@ -1,9 +1,10 @@
 # InterCat content v1
 
-Status: **implemented** in plan revisions 234 to 239 (ADR-036, ADR-037): the chunk format, its publication and lifetime
-in the store, its readers and viewer (§4), and the capture paths that write one (§5): InterCat's own content fixture,
-and WinINet's HTTP exchanges for the processes a request names. Since revision 444 an evidence follow mirrors it with
-its journal chunk (§2, ADR-047).
+Status: **implemented** in plan revisions 234 to 239 (ADR-036, ADR-037): the chunk format, its publication and
+lifetime in the store, its readers and viewer (§4), and the capture paths that write one (§5): InterCat's own content
+fixture, and WinINet's HTTP exchanges for the processes a request names. Since revision 444 an evidence follow mirrors
+it with its journal chunk (§2, ADR-047), and since revision 779 `icat content --find` searches it when a person asks
+(§4).
 
 A content chunk holds the content a capture kept of the records of one journal chunk: the bytes a validated source
 recorded as a message's content, each with what a person needs to read it honestly (§11.2, I21). It is restricted
@@ -163,10 +164,24 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   which `icat content --part --decode` asks for; a part that is not whole is never decoded
   (`contracts/decoders-v1.md`). Since revision 775 the viewer's Decode its part does the same for a buffer of a head,
   offered only where the part is whole.
+- **A search** (revision 779). `icat content <session> --find <text>` searches the kept content for a text, only when
+  a person asks: its UTF-8 bytes, or its UTF-16 bytes in a record whose bytes declare UTF-16; with `--ignore-case` a
+  letter A to Z in either case; and with `--pid` only a process's records - the one a record names as its owner, else
+  the one that raised it. It reads only bytes kept under `hex-text` inspection: a record kept without that consent is
+  never searched, and is counted as not searched. Each record's kept bytes are searched on their own, so a match split
+  across two records - two buffers of one HTTP part - is not found, and a cut record is searched in the bytes kept. It
+  reads at most 256 MiB and for at most 10 seconds, checked before each record is read, and lists at most `--limit`
+  records, 50 unless asked, in reading order: each with its time, process, mechanism and event, how many times its
+  bytes hold the text, none overlapping, and where first, and the exact locator `icat content` shows its bytes from;
+  finding one more says there are more. It shows no byte unless `--previews` asks for the bytes around each record's
+  first match, at most 16 either side, as inert text in which a byte outside visible ASCII, and a backslash, is
+  written `\xHH` (a UTF-16 code unit `\uHHHH`), so the marks around the match are never the content's own. A record
+  not searched - kept without consent, past a budget, or in a chunk that could not be read - leaves the answer
+  partial, since it may hold the text. A search refuses `--json` and a record's locator, and nothing it finds is kept.
 - **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
   kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
-- **Nothing else.** Search, rankings, metrics, the share report (`intercat-share-report-v1`), the detailed export,
-  logs, telemetry and crash diagnostics never read one.
+- **Nothing else.** The window's search, rankings, metrics, the share report (`intercat-share-report-v1`), the
+  detailed export, logs, telemetry and crash diagnostics never read one.
 - **Sharing.** A redacted package (`redacted-session-v1`) keeps no chunk and no reference to one, and says so (I22).
   Since revision 250 it keeps an HTTP exchange's shape - its buffers' places and ends, and its number as a pseudonym -
   so its exchanges group as the source's do, with their sizes and timing, and none of their bytes.
@@ -246,3 +261,5 @@ their requests by path, all 1,024 parts matched the server's bodies and none the
   content only from its client's own processes (`contracts/broker-v1.md` §2.1, ADR-049).
 - Content an imported file already holds (§11.1).
 - A decoder of a format `decoders-v1` §3 does not list, and a decoding kept or shared (`decoders-v1` §6).
+- A search of a part's buffers as one, a search in the window, and a search's records kept, exported or read by a
+  program.

@@ -105,6 +105,7 @@ heads the same way, side by side, when its Decode its heads is pressed.
 - **A conversation decoded as one**: a part decoded in the light of another, as a response's body framed by its
   request's method. Each part is decoded alone; `icat exchanges --decode` and an exchange's conversation in the window
   (§5, §5a) set an exchange's two decoded heads side by side.
-- **A decoding kept, exported or searched**: JSON or columnar metadata, and content search.
+- **A decoding kept, exported or searched**: JSON or columnar metadata; `icat content --find` searches kept bytes,
+  never a decoding (`content-v1` §4).
 - **Isolation**: a decoder runs in the process that asked, bounded by the bytes and the time above, and never in the
   capture; one whose parsing is larger than these is isolated in an unprivileged worker first (plan M8).

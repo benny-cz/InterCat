@@ -45,13 +45,63 @@ internal static class ContentCommand
         string? fromText = command.TakeOption("--from");
         string? toText = command.TakeOption("--to");
         string? saveOption = command.TakeOption("--save");
+        string? find = command.TakeOption("--find");
+        string? pidText = command.TakeOption("--pid");
+        string? limitText = command.TakeOption("--limit");
         string? directory = command.TakePositional();
         bool reveal = command.TryTakeFlag("--reveal");
         bool wholePart = command.TryTakeFlag("--part");
         bool decode = command.TryTakeFlag("--decode");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
+        bool ignoreCase = command.TryTakeFlag("--ignore-case");
+        bool previews = command.TryTakeFlag("--previews");
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
+
+        // A search reads every record's kept content, not one record's; it is its own deliberate command (§11).
+        if (find is not null)
+        {
+            bool names = sessionText is not null || generationText is not null || segment is not null || rowText is not null;
+            int pid = 0;
+            int limit = 50;
+            string? refused = directory is null ? "A session directory is required: icat content <directory> --find <text>."
+                : hasUnknown ? command.Refusal(unknown!)
+                : find.Length == 0 ? "--find needs the text to look for."
+                : json ? "--find lists the records holding the text for a person, never into JSON: leave out --json."
+                : names || reveal || wholePart || decode || saveOption is not null || fromText is not null || toText is not null
+                    || overwrite
+                    ? "--find searches the session's kept content, not one record: leave out the record's locator and "
+                        + "--reveal, --save, --decode, --part, --from and --to."
+                : pidText is not null && !int.TryParse(pidText, NumberStyles.None, CultureInfo.InvariantCulture, out pid)
+                    ? $"--pid expects a process id; '{pidText}' is not one."
+                : limitText is not null && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit)
+                    || limit is < 1 or > 10_000)
+                    ? $"--limit expects a number of records from 1 to 10,000; '{limitText}' is not one."
+                : null;
+            if (refused is not null)
+            {
+                ConsoleUi.Failure(refused);
+                ConsoleUi.Explain(PrintHelp);
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            return Find(directory!, new ContentSearchRequest
+            {
+                Text = find,
+                IgnoreCase = ignoreCase,
+                ProcessId = pidText is null ? null : pid,
+                Limit = limit,
+                Previews = previews,
+            }, cancellationToken);
+        }
+
+        if (pidText is not null || limitText is not null || ignoreCase || previews)
+        {
+            ConsoleUi.Failure("--pid, --limit, --ignore-case and --previews apply only to --find.");
+            ConsoleUi.Explain(PrintHelp);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         bool validSession = Guid.TryParse(sessionText, out Guid sessionId) && sessionId != Guid.Empty;
         bool validGeneration = long.TryParse(generationText, NumberStyles.None, CultureInfo.InvariantCulture,
             out long generation) && generation > 0;
@@ -475,10 +525,97 @@ internal static class ContentCommand
         return InterCatExitCode.PartialResultSuccess;
     }
 
+    /// <summary>
+    /// Searches the session's kept content for a text (`contracts/content-v1.md` §4): the records holding it, each with the
+    /// locator that shows its bytes, what was searched and what was not, and - only with --previews - the bytes around each
+    /// record's first match, inert.
+    /// </summary>
+    private static InterCatExitCode Find(string directory, ContentSearchRequest request, CancellationToken cancellationToken)
+    {
+        string path = Path.GetFullPath(directory);
+        if (!Directory.Exists(path))
+        {
+            ConsoleUi.Failure($"No session directory at {path}.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
+        if (store.Current is null)
+        {
+            return Icat.NoSession();
+        }
+
+        ConsoleUi.Progress("Searching the content kept with consent to inspect it, each record's bytes on their own.");
+        ContentSearchResult result = ContentSearch.Find(store, store.SessionId, request, cancellationToken);
+        SourceClockDescriptor? clock;
+        using (EvidenceLease lease = store.AcquireLease())
+        {
+            clock = SessionSegments.SourceClock(store.Root, lease.Manifest);
+        }
+
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        // The heading is set in capitals, so the text searched for - whose case may matter - is a field of its own.
+        ConsoleUi.Heading("Kept content search");
+        ConsoleUi.Field("Text", $"\"{request.Text}\"");
+        ConsoleUi.Field("Session", path);
+        ConsoleUi.Field("Generation", ConsoleUi.Count(result.Generation));
+        if (request.ProcessId is { } pid) ConsoleUi.Field("Records of", string.Create(culture, $"PID {pid}"));
+        if (request.IgnoreCase) ConsoleUi.Field("Letters", "A to Z matched in either case");
+        ConsoleUi.Field("Searched", "the kept bytes of " + CountText.Of(result.RecordsRead, "record")
+            + string.Create(culture, $", {result.BytesRead:N0} B"));
+        if (result.WithoutConsent > 0)
+        {
+            ConsoleUi.Field("Not searched", CountText.Of(result.WithoutConsent, "record") + " kept without consent to inspect "
+                + CountText.Agree(result.WithoutConsent, "its bytes", "their bytes"));
+        }
+
+        ConsoleUi.Field("Found", result.Hits.Count == 0 ? "no record holding it"
+            : result.More ? "more than " + CountText.Of(result.Hits.Count, "record") + string.Create(culture, $"; the first {result.Hits.Count:N0} listed")
+            : CountText.Of(result.Hits.Count, "record"));
+        if (result.NoneKept is { } none) ConsoleUi.Note(none);
+        if (result.Unreadable is { } unreadable) ConsoleUi.Warn(unreadable);
+        if (result.Stopped is { } stopped) ConsoleUi.Warn(stopped);
+        if (result.Hits.Count > 0)
+        {
+            ConsoleUi.Line();
+            ConsoleUi.Table(
+                ["At", "PID", "Mechanism", "Event", "Matches", "First at", "Segment", "Row"],
+                [.. result.Hits.Select(hit => (IReadOnlyList<string>)
+                [
+                    SessionText.Seconds(clock, hit.Observation.NativeTicks) ?? "-",
+                    (hit.Observation.OwnerProcessId ?? hit.Observation.HeaderProcessId).ToString(CultureInfo.InvariantCulture),
+                    MechanismText.Name(hit.Observation.Mechanism),
+                    hit.Observation.EventId.ToString(CultureInfo.InvariantCulture),
+                    ConsoleUi.Count(hit.Matches),
+                    string.Create(culture, $"byte {hit.FirstAt:N0}"),
+                    hit.Segment,
+                    hit.Row.ToString(CultureInfo.InvariantCulture),
+                ])]);
+            foreach (ContentSearchHit hit in result.Hits.Where(hit => hit.Preview is not null))
+            {
+                // The bytes around the first match, inert: what is not visible ASCII is written as \xHH, so the marks
+                // around the match are never the content's own.
+                ConsoleUi.Line(string.Create(culture, $"  {hit.Segment} row {hit.Row}: ")
+                    + hit.Preview!.Before + "⟦" + hit.Preview.Match + "⟧" + hit.Preview.After);
+            }
+        }
+
+        ConsoleUi.Line();
+        ConsoleUi.Note(ContentSearch.Exactness);
+        if (result.Hits.Count > 0)
+        {
+            ConsoleUi.Note(string.Create(culture, $"icat content {path} --session-id {result.SessionId} --generation {result.Generation} ")
+                + "--segment <segment> --row <row> --reveal shows a record's kept bytes.");
+        }
+
+        return result.Partial ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
+    }
+
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat content <session-directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
         ConsoleUi.Line("             [--part] [--reveal] [--decode] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
+        ConsoleUi.Line("icat content <session-directory> --find <text> [--ignore-case] [--pid <id>] [--limit <n>] [--previews]");
         ConsoleUi.Line("icat content --decoders");
         ConsoleUi.Line("  One record's kept content, from an icat evidence page's exact row locator (ADR-036): what the");
         ConsoleUi.Line("  bytes are, how many of the message were kept and which are missing, and what they were kept");
@@ -494,5 +631,10 @@ internal static class ContentCommand
         ConsoleUi.Line("  decoded only whole - and lists each field with the bytes it came from, and what it did not decode");
         ConsoleUi.Line("  and why; content kept without consent to inspect it is never decoded. --decoders lists the");
         ConsoleUi.Line("  decoders, each at its version, with what it reads.");
+        ConsoleUi.Line("  --find searches every record's kept content for the text - its UTF-8 bytes, or its UTF-16 bytes where");
+        ConsoleUi.Line("  a record's bytes declare UTF-16 - and lists the records holding it, each with its locator, showing");
+        ConsoleUi.Line("  none of their bytes unless --previews shows those around each one's first match. Content kept");
+        ConsoleUi.Line("  without consent to inspect it is never searched. Each record is searched on its own, within 256 MiB");
+        ConsoleUi.Line("  and 10 seconds, and what was not searched is said; --limit sets how many records are listed (50).");
     }
 }

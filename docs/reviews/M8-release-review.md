@@ -95,3 +95,12 @@ that a chunk-framing decoder, the plan's natural next step, would have been wron
 measured that WinINet keeps a chunked body without its framing, so no chunk reaches a decoder and a chunked body's end
 is its last buffer's. Compressed bodies stay unmeasured and uncompared. Bounded content search comes next; nothing
 else above changes.
+
+## Addendum, revision 779
+
+Bounded content search (`contracts/content-v1.md` §4): `icat content --find` searches the bytes kept with consent to
+inspect them, each record's on its own, within 256 MiB, 10 seconds and a number of records listed, saying what it did
+not search and leaving the answer partial where it skipped any; it shows no byte unless `--previews` asks, and then as
+inert text. The exit test's search that respects scope and redaction holds for it: consent bounds what it reads,
+`--pid` what it lists, and a redacted package keeps no chunk to search. It says plainly what it cannot find: a match
+split across two buffers. The window's search of kept content comes next; nothing else above changes.
