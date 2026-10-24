@@ -445,6 +445,81 @@ internal static class TestSessions
 
     private static Guid RpcActivity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
 
+    /// <summary>The PIDs of <see cref="WaitRows"/>'s reused process, its second server and its process of two short calls.</summary>
+    public const int WaitReused = 500, WaitOtherServer = 1_970, WaitBrief = 600;
+
+    /// <summary>A second interface PID 400 calls PID 1960 at, and a third it calls PID 1970 at.</summary>
+    public static readonly Guid WaitInterface = Guid.Parse("4b324fc8-1670-01d3-1278-5a47bf6ee188"),
+        WaitOtherInterface = Guid.Parse("9b3195fe-d603-43d1-a0d5-9072d7cde122");
+
+    /// <summary>
+    /// The calls of <see cref="LinkedRpcCalls"/> and, beside them: a call PID 1960 serves at another interface and one PID
+    /// 1970 serves, each linked through ALPC; client calls of PID 400 whose spans are not validated - one still open when the
+    /// capture ended, one whose start was not recorded and one with no activity id; a completed call by a reused PID's
+    /// later holder, which binds to it as a candidate; and two short calls of PID 600, together as long as PID 400's call no
+    /// ALPC send carried.
+    /// </summary>
+    public static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) WaitRows()
+    {
+        (ObservationRowV1[] calls, SourceFieldRowV1[] fields) = LinkedRpcCalls();
+        ObservationRowV1 open = RpcCall(400, ObservationKind.RequestStart, Direction.Outbound, 400, 80, RpcActivity(31), ServiceControlInterface);
+        ObservationRowV1 anonymous = RpcCall(420, ObservationKind.RequestStart, Direction.Outbound, 400, 82, null, ServiceControlInterface);
+        ObservationRowV1 reused = RpcCall(430, ObservationKind.RequestStart, Direction.Outbound, WaitReused, 86, RpcActivity(33),
+            ServiceControlInterface);
+        ObservationRowV1 firstBrief = RpcCall(450, ObservationKind.RequestStart, Direction.Outbound, WaitBrief, 89, RpcActivity(34),
+            ServiceControlInterface);
+        ObservationRowV1 secondBrief = RpcCall(460, ObservationKind.RequestStart, Direction.Outbound, WaitBrief, 91, RpcActivity(35),
+            ServiceControlInterface);
+        ObservationRowV1[] linked =
+        [
+            RpcCall(600, ObservationKind.RequestStart, Direction.Outbound, 400, 100, RpcActivity(41), WaitInterface),
+            Alpc(602, ObservationKind.Send, 400, 401, 101),
+            Alpc(603, ObservationKind.Receive, 1_960, 1_961, 102),
+            RpcCall(605, ObservationKind.RequestStart, Direction.Inbound, 1_960, 103, RpcActivity(51), WaitInterface),
+            RpcCall(608, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 104, RpcActivity(51), status: 0),
+            RpcCall(615, ObservationKind.RequestEnd, Direction.Outbound, 400, 105, RpcActivity(41), status: 0),
+            RpcCall(700, ObservationKind.RequestStart, Direction.Outbound, 400, 110, RpcActivity(42), WaitOtherInterface),
+            Alpc(702, ObservationKind.Send, 400, 401, 111),
+            Alpc(703, ObservationKind.Receive, WaitOtherServer, WaitOtherServer + 1, 112),
+            RpcCall(704, ObservationKind.RequestStart, Direction.Inbound, WaitOtherServer, 113, RpcActivity(52), WaitOtherInterface),
+            RpcCall(706, ObservationKind.RequestEnd, Direction.Inbound, WaitOtherServer, 114, RpcActivity(52), status: 0),
+            RpcCall(710, ObservationKind.RequestEnd, Direction.Outbound, 400, 115, RpcActivity(42), status: 0),
+        ];
+        ObservationRowV1[] rows =
+        [
+            .. calls,
+            open,
+            RpcCall(410, ObservationKind.RequestEnd, Direction.Outbound, 400, 81, RpcActivity(32), status: 0),
+            anonymous,
+            Lifecycle(3, ObservationKind.Create, WaitReused, 83),
+            Lifecycle(4, ObservationKind.Exit, WaitReused, 84),
+            Lifecycle(5, ObservationKind.Create, WaitReused, 85),
+            reused,
+            RpcCall(440, ObservationKind.RequestEnd, Direction.Outbound, WaitReused, 87, RpcActivity(33), status: 0),
+            Lifecycle(6, ObservationKind.Inventory, WaitBrief, 88),
+            firstBrief,
+            RpcCall(455, ObservationKind.RequestEnd, Direction.Outbound, WaitBrief, 90, RpcActivity(34), status: 0),
+            secondBrief,
+            RpcCall(465, ObservationKind.RequestEnd, Direction.Outbound, WaitBrief, 92, RpcActivity(35), status: 0),
+            Lifecycle(7, ObservationKind.Inventory, WaitOtherServer, 93),
+            .. linked,
+        ];
+        return (
+            [.. rows.OrderBy(row => row.NativeTicks).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })],
+            [
+                .. fields,
+                Field(open, SourceField.RpcProcedureNumber, 7),
+                Field(anonymous, SourceField.RpcProcedureNumber, 7),
+                Field(reused, SourceField.RpcProcedureNumber, 7),
+                Field(firstBrief, SourceField.RpcProcedureNumber, 7),
+                Field(secondBrief, SourceField.RpcProcedureNumber, 7),
+                .. linked.Where(row => row is { Mechanism: Mechanism.Rpc, Kind: ObservationKind.RequestStart })
+                    .Select(start => Field(start, SourceField.RpcProcedureNumber, 2)),
+                .. linked.Where(row => row.Mechanism == Mechanism.Alpc)
+                    .Select((message, index) => Field(message, SourceField.AlpcMessageId, 23 + (index / 2))),
+            ]);
+    }
+
     /// <summary>The processes of <see cref="LinkRows"/>, by PID.</summary>
     public const int LinkShell = 300, LinkApp = 400, LinkServices = 1_960, LinkServer = 4_000, LinkOther = 410, LinkSibling = 430,
         LinkReused = 77, LinkReusedChild = 420, LinkLate = 450;

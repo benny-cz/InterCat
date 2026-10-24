@@ -97,6 +97,10 @@ finds the chain of such links between two processes. Processes created at about 
 being near in time is never a link. In the window, Follow its links… lists the same for the selected process; Enter
 follows a link to its process and Alt+Left goes back.
 
+**Waits.** `icat waits <directory>` lists how long each process spent inside the RPC calls it made, by interface and
+by the process that served them, with that server's own share where the two calls are linked; `--process <pid>` lists
+one process's calls and the calls it served. A wait is never said to have blocked or delayed anything.
+
 F1 in the window lists every key it takes.
 
 ## Build and run

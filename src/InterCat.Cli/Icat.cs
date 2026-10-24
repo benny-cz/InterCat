@@ -52,6 +52,7 @@ internal static class Icat
                 "ports" => await PortsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "patterns" => await PatternsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "links" => await LinksCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "waits" => await WaitsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "evidence" => await EvidenceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "timeline" => await TimelineCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "compare" => await CompareCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -223,6 +224,11 @@ internal static class Icat
         ConsoleUi.Line("      A process's recorded links - its parent and children, whose calls it served or who served");
         ConsoleUi.Line("      its calls, and what it connected to or what connected to it - and, with --to, the shortest");
         ConsoleUi.Line("      chain of them to another process; processes created near it in time are never a link.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat waits <directory> [--process <pid | instance>] [--limit <n>] [--evidence-policy <policy>]");
+        ConsoleUi.Line("             [--json]");
+        ConsoleUi.Line("      The time processes spent inside the RPC calls they made, by interface and by the process");
+        ConsoleUi.Line("      that served them, with that server's own time; no wait is said to have delayed anything.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat channels <directory> [--process <instance-guid> [--one-sided]] [--page-size <1-200>]");
         ConsoleUi.Line("                [--cursor <token>] [--json]");

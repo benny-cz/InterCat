@@ -190,3 +190,11 @@ and what it led to side by side, a link followed to its process with Enter and b
 and nearness in time listed apart and never followed, and Select this process making the process reached the
 selection. Causal navigation is delivered on both surfaces; outliers and bottleneck views remain, and nothing else
 above changes.
+
+## Addendum, revision 767
+
+`icat waits` gives M12's bottleneck views on the command line (`contracts/waits-v1.md`, ADR-067): the time each
+process spent inside the RPC calls it made, from each call's validated start to its stop, by interface and by the
+process that served them through ALPC, with that server's own time measured over the linked calls alone. A call
+without a validated span is counted by why, never timed, and no wait is said to have blocked or delayed anything, so
+no critical-path or deadlock claim is made. Outliers and the window's waits remain, and nothing else above changes.

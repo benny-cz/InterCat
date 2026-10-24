@@ -68,7 +68,7 @@ internal static class LinksCommand
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
-        if (Resolve(reading, "--process", processText, out string? unresolved) is not { } step)
+        if (ProcessOption.Resolve(reading.Processes, "--process", processText, out string? unresolved) is not { } step)
         {
             ConsoleUi.Failure(unresolved!);
             return InterCatExitCode.InvalidInvocation;
@@ -77,7 +77,7 @@ internal static class LinksCommand
         ProcessInstanceId? to = null;
         if (toText is not null)
         {
-            if (Resolve(reading, "--to", toText, out unresolved) is not { } target)
+            if (ProcessOption.Resolve(reading.Processes, "--to", toText, out unresolved) is not { } target)
             {
                 ConsoleUi.Failure(unresolved!);
                 return InterCatExitCode.InvalidInvocation;
@@ -110,36 +110,6 @@ internal static class LinksCommand
         }
 
         return InterCatExitCode.Success;
-    }
-
-    /// <summary>
-    /// The process <paramref name="text"/> names: an instance id as `icat processes` prints it, or a PID one process alone
-    /// held in the session. Null, with why, for anything else.
-    /// </summary>
-    private static ProcessInstanceId? Resolve(LinkReading reading, string option, string text, out string? refusal)
-    {
-        refusal = null;
-        if (int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int pid))
-        {
-            ProcessNode[] held = [.. reading.Processes.Values.Where(node => node.ProcessId == pid).OrderBy(node => node.PidHolder)];
-            if (held.Length == 1) return held[0].Id;
-            refusal = held.Length == 0
-                ? string.Create(CultureInfo.InvariantCulture, $"{option} {pid} names no process: no process of the session held PID {pid}.")
-                : string.Create(CultureInfo.InvariantCulture, $"{option} {pid} names {held.Length} processes, since the PID was reused: ")
-                    + string.Join(", ", held.Select(node => $"{node.Id} ({node.NameWithPid})"))
-                    + $". Name one by its instance id: {option} <instance>.";
-            return null;
-        }
-
-        if (Guid.TryParse(text, out Guid instance) && reading.Processes.ContainsKey(new ProcessInstanceId(instance)))
-        {
-            return new ProcessInstanceId(instance);
-        }
-
-        refusal = Guid.TryParse(text, out _)
-            ? $"{option} {text} names no process instance of the session's current generation."
-            : $"{option} names a process by its PID or its instance id, as icat processes prints them; '{text}' is neither.";
-        return null;
     }
 
     private static object Document(LinkReading reading, string path, StepLinks links, ProcessInstanceId? to,
