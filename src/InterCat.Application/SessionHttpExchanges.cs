@@ -151,6 +151,9 @@ public sealed record HttpExchangePage(
     bool More,
     string? Problem);
 
+/// <summary>The exchange a buffer belongs to, as its conversation is opened from it: its key, or why it has none.</summary>
+public sealed record HttpExchangeFound(string? Key, string? Problem);
+
 /// <summary>
 /// One exchange as its conversation shows it (`contracts/http-exchanges-v1.md` §5d): the exchange as the generation read
 /// holds it, and its two heads decoded whole where they were asked for, else null. A generation that no longer holds the
@@ -434,6 +437,82 @@ public static class SessionHttpExchanges
             ? HttpExchangeHeadsQuery.Read(store, manifest, index, group, position, 1, cancellationToken)[0]
             : null;
         return new(manifest.SessionId, manifest.Generation, new(exchangeKey, exchange), heads, null);
+    }
+
+    /// <summary>
+    /// The exchange whose buffer <paramref name="record"/> is, in the current generation under <paramref name="policy"/>
+    /// (§5d): found among its process's exchanges by its raw identity, which every generation keeps, so a buffer leads to
+    /// its message's exchange as an exchange leads to its buffers. A record of no exchange, or of a process the policy does
+    /// not admit or no instance binds, has none, and says why.
+    /// </summary>
+    public static HttpExchangeFound ExchangeOf(
+        SessionStore store,
+        Guid expectedSessionId,
+        SessionEvidenceRecord record,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(record);
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        using EvidenceLease lease = store.AcquireLease();
+        (SessionManifestV1 manifest, HttpExchangeIndex? index) = Derive(store, lease, cancellationToken);
+        if (manifest.SessionId != expectedSessionId)
+        {
+            throw new InvalidOperationException(SessionStore.AnotherSession);
+        }
+
+        if (record.Observation.Mechanism != Mechanism.Http || index is null)
+        {
+            return new(null, "This record is no HTTP buffer, so it belongs to no exchange.");
+        }
+
+        RawRecordId wanted = record.ObservationId.RawRecordId;
+        var segments = new Dictionary<int, SegmentReaderV1>();
+        foreach (HttpExchangeGroup group in index.Groups.Where(group => group.ProcessId == record.Observation.HeaderProcessId))
+        {
+            for (int position = 0; position < group.Exchanges; position++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!index.RecordsOf(group, position).Any(buffer => Holds(buffer.Segment, buffer.Row)))
+                {
+                    continue;
+                }
+
+                if (!group.Process.IsBound)
+                {
+                    return new(null, "Its exchange's process is bound to no process instance, so its conversation cannot be read.");
+                }
+
+                if (!group.Process.IsAdmittedUnder(policy))
+                {
+                    return new(null, $"Its exchange's process is not admitted under the {CommandArgument.Typed(policy)} evidence "
+                        + "policy InterCat's window counts under, so its conversation is not read.");
+                }
+
+                HttpExchange exchange = index.ExchangesOf(group, position, 1)[0];
+                string channel = HttpExchangeKeys.Channel(index.Processes.Instances[group.Process.Instance].Id);
+                return new(HttpExchangeKeys.Exchange(channel, exchange.First.Stream, exchange.First.Epoch, exchange.First.Ordinal), null);
+            }
+        }
+
+        return new(null, "This buffer belongs to no exchange this generation groups: its source named none for it.");
+
+        bool Holds(int at, int row)
+        {
+            if (!segments.TryGetValue(at, out SegmentReaderV1? segment))
+            {
+                string name = index.SegmentNames[at]
+                    ?? throw new InvalidDataException("The exchanges were read from a segment no generation names.");
+                segment = SessionSegments.Open(store, manifest, name);
+                segments[at] = segment;
+            }
+
+            return segment.CaptureId == wanted.CaptureId
+                && segment.Slice(SegmentColumnId.RawStreamId).UnsignedAt(row) == wanted.StreamId
+                && segment.Slice(SegmentColumnId.RawSourceEpoch).UnsignedAt(row) == wanted.SourceEpoch
+                && segment.Slice(SegmentColumnId.RawRecordOrdinal).UnsignedAt(row) == wanted.RecordOrdinal;
+        }
     }
 
     private static HttpExchangePage Page(

@@ -114,3 +114,10 @@ built, the step from a buffer's part to its exchange's conversation, which close
 its message to its operation, comes next, then the decoder fixture corpus; export of decoded metadata needs a
 consented export contract first, and other mechanisms' reconstruction and the isolation of decoders need Windows
 sources or a parser larger than the bounded ones here. Nothing else above changes.
+
+## Addendum, revision 781
+
+A buffer's content viewer opens its exchange's conversation (`contracts/http-exchanges-v1.md` §5d), which closes the
+deliverable's navigation both ways: an exchange leads to its buffers and to what its heads say, and a buffer to its
+part and to its exchange, each found by raw identity and under the window's evidence policy. The decoder fixture
+corpus comes next, then M8's exit review; nothing else above changes.

@@ -424,6 +424,52 @@ public sealed class HttpHeadDecodingTests
         Assert.Throws<ArgumentException>(() => SessionHttpExchanges.Conversation(session.Store, page.SessionId, channel, decodeHeads: false));
     }
 
+    [Fact(DisplayName = "I21: a buffer leads to the exchange it belongs to, by its raw identity under the evidence policy, and a record of none says why")]
+    public void ABufferLeadsToItsExchange()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Conversations(out SourceFieldRowV1[] fields, out var content), fields: fields, content: content);
+        HttpExchangePage page = SessionHttpExchanges.Exchanges(session.Store, HttpExchangeKeys.Channel(SessionHttpExchangesTests.Client(session.Store)));
+        SessionEvidenceRecord[] records = [.. SessionEvidenceQuery.Read(session.Store).Records.OrderBy(record => record.Observation.RawRecordOrdinal)];
+
+        // Each buffer of exchange 7 - its request head's two, its response head and its body - leads to it, and each of 8's to 8.
+        (string seven, string eight) = (page.Exchanges[0].Key, page.Exchanges[1].Key);
+        Assert.Equal([seven, seven, seven, seven, eight, eight], records.Where(record => record.Observation.Mechanism == Mechanism.Http)
+            .Select(record => SessionHttpExchanges.ExchangeOf(session.Store, page.SessionId, record).Key));
+
+        // A record of no buffer, or of a process the policy does not admit, leads to none and says why.
+        SessionEvidenceRecord lifecycle = records.Single(record => record.Observation.Mechanism != Mechanism.Http);
+        Assert.Equal(new HttpExchangeFound(null, "This record is no HTTP buffer, so it belongs to no exchange."),
+            SessionHttpExchanges.ExchangeOf(session.Store, page.SessionId, lifecycle));
+        HttpExchangeFound direct = SessionHttpExchanges.ExchangeOf(session.Store, page.SessionId, records[1], EvidencePolicy.DirectOnly);
+        Assert.Null(direct.Key);
+        Assert.StartsWith("Its exchange's process is not admitted under the direct-only evidence policy", direct.Problem, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() => SessionHttpExchanges.ExchangeOf(session.Store, Guid.NewGuid(), records[1]));
+
+        // A buffer raised before its process was created binds to no instance, and one whose source named no exchange
+        // belongs to none.
+        using var early = new TemporarySession();
+        ObservationRowV1[] before = [Http(10, 2001, 1)];
+        Publish(early.Store, [Lifecycle(100, ObservationKind.Create, 4_242, 1_000_000), .. before], fields: Fields(before, [(0, 7, 0, 3)]));
+        SessionEvidenceRecord unbound = SessionEvidenceQuery.Read(early.Store).Records.Single(record => record.Observation.Mechanism == Mechanism.Http);
+        Assert.Equal(new HttpExchangeFound(null, "Its exchange's process is bound to no process instance, so its conversation cannot be read."),
+            SessionHttpExchanges.ExchangeOf(early.Store, early.Store.SessionId, unbound));
+        using var unnamed = new TemporarySession();
+        Publish(unnamed.Store, [Lifecycle(1, ObservationKind.Create, 4_242, 1_000_000), Http(10, 2001, 1)]);
+        SessionEvidenceRecord lone = SessionEvidenceQuery.Read(unnamed.Store).Records.Single(record => record.Observation.Mechanism == Mechanism.Http);
+        Assert.Equal(new HttpExchangeFound(null, "This buffer belongs to no exchange this generation groups: its source named none for it."),
+            SessionHttpExchanges.ExchangeOf(unnamed.Store, unnamed.Store.SessionId, lone));
+
+        // Two exchanges' buffers sharing an ordinal in two epochs of their source are each their own exchange's.
+        using var epochs = new TemporarySession();
+        ObservationRowV1[] reused = [Http(10, 2001, 1), Http(20, 2001, 1) with { RawSourceEpoch = 2 }];
+        Publish(epochs.Store, [Lifecycle(1, ObservationKind.Create, 4_242, 1_000_000), .. reused], fields: Fields(reused, [(0, 7, 0, 3), (1, 8, 0, 3)]));
+        HttpExchangePage both = SessionHttpExchanges.Exchanges(epochs.Store, HttpExchangeKeys.Channel(SessionHttpExchangesTests.Client(epochs.Store)));
+        Assert.Equal(both.Exchanges.Select(exchange => exchange.Key), SessionEvidenceQuery.Read(epochs.Store).Records
+            .Where(record => record.Observation.Mechanism == Mechanism.Http).OrderBy(record => record.Observation.NativeTicks)
+            .Select(record => SessionHttpExchanges.ExchangeOf(epochs.Store, epochs.Store.SessionId, record).Key));
+    }
+
     /// <summary>
     /// Process 4242's exchange 7, its request head in two buffers, its response head and body each in one; and its exchange 8,
     /// whose request head lacks a buffer and which has no response; each buffer's bytes kept with consent to inspect them.

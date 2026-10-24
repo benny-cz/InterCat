@@ -1138,6 +1138,7 @@
         "I2: two rows with one observation identity are refused rather than counted twice"
       ],
       "I21": [
+        "I21: a buffer leads to the exchange it belongs to, by its raw identity under the evidence policy, and a record of none says why",
         "I21: a chunk keeps each record's content with its classification, direction, lengths and how it was cut",
         "I21: a chunk whose bytes changed, or that belongs to another capture, is refused whole",
         "I21: a follow mirrors the content kept beside each evidence chunk, byte for byte, beside the chunk it mirrors",
@@ -1335,6 +1336,7 @@
         "P2: Find in kept content never searches bytes kept without consent and says how many it left, says when more hold it than it lists and when none is kept, and with no process selected offers no narrowing",
         "P2: a body is set beside the length its head declares, and said to disagree with it only where its recorded bytes do",
         "P2: a buffer longer than a view shows at once is shown from its first byte, and the view says where it stopped",
+        "P2: a buffer's content viewer opens its exchange's conversation, which offers no buffers from there, and a record of no exchange offers none",
         "P2: a content search lists the records whose kept bytes hold a text, how often and where first, and shows no byte unless previews are asked for",
         "P2: a decoding reads at most what a view shows at once, within its time budget, and says where it stopped",
         "P2: a fixture message decodes into the fields its bytes hold, each with its bytes, linked to the record and the decoder's version",

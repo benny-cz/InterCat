@@ -190,6 +190,57 @@ public sealed class ConversationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "P2: a buffer's content viewer opens its exchange's conversation, which offers no buffers from there, and a record of no exchange offers none")]
+    public async Task ABufferOpensItsExchangesConversation()
+    {
+        using var session = Session(ContentInspectionV1.HexAndText);
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+        SessionEvidenceRecord buffer = page.Records.Single(record => record.Observation.RawRecordOrdinal == 2);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            // At its smallest, with its bytes shown, the viewer of a head's buffer offers every action without cutting one off.
+            using var content = new SessionContentWindow(session.Path, page.SessionId, buffer, EvidencePolicy.IncludeCorrelated,
+                SessionClock.Session(TimeZoneInfo.Utc));
+            content.Width = content.MinWidth;
+            content.Height = content.MinHeight;
+            _ = content.ShowDialog(owner);
+            Button open = Labelled(content, "Its exchange's conversation…");
+            await Until(() => open.IsEffectivelyVisible && open.IsEffectivelyEnabled);
+            Assert.Equal(SessionContentWindow.ConversationDoes, Offers.Offered(open));
+            await Until(() => Labelled(content, "Show the kept bytes") is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true });
+            Labelled(content, "Show the kept bytes").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => content.GetLogicalDescendants().OfType<Button>()
+                .Any(button => Equals(button.Content, "Decode its part") && button.IsEffectivelyVisible));
+            Assert.Empty(LegibleTextTests.CutOff(content, "the content of an HTTP head's buffer"));
+
+            // It opens the exchange the buffer belongs to, whose buffers are not offered from a dialog of its own.
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => content.OwnedWindows.OfType<SessionConversationWindow>().Any());
+            SessionConversationWindow conversation = content.OwnedWindows.OfType<SessionConversationWindow>().Single();
+            await Until(() => Status(conversation).StartsWith("Read from generation", StringComparison.Ordinal));
+            Assert.Contains("HTTP exchange 7 of PID 4242", Texts(conversation));
+            Assert.False(Labelled(conversation, "Show its buffers").IsVisible);
+            await Until(() => conversation.FocusManager?.GetFocusedElement() == Labelled(conversation, "Decode its heads"));
+            conversation.Close();
+            await Until(() => content.OwnedWindows.Count == 0);
+            content.Close();
+
+            // The lifecycle record is no buffer, so its viewer offers no conversation.
+            using var other = new SessionContentWindow(session.Path, page.SessionId,
+                page.Records.Single(record => record.Observation.Mechanism != Mechanism.Http));
+            _ = other.ShowDialog(owner);
+            Dispatch();
+            Assert.False(Labelled(other, "Its exchange's conversation…").IsVisible);
+            other.Close();
+        }
+        finally
+        {
+            owner.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R15: the conversation window cuts off no text at its smallest and names every element a screen reader lands on")]
     public async Task TheWindowIsLegibleAndHeard()
     {

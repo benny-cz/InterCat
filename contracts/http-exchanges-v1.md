@@ -145,7 +145,11 @@ what was not decoded and why; and beneath each body, what its head declared of i
 disabled, saying why, where neither head was recorded whole; a whole head kept without consent is decoded to say it
 read none. Nothing decoded is kept, and no body is read. Show its buffers closes the conversation and opens the
 exchange's buffers, as Enter on its row does, where C shows a buffer's content and its whole part: from the exchange
-to its messages, and on to the fragments they were recorded in.
+to its messages, and on to the fragments they were recorded in. Since revision 781 the way runs back as well: a
+buffer's content viewer opens the conversation of the exchange it belongs to (Its exchange's conversation…), found
+among its process's exchanges by its raw identity under the window's evidence policy, and from there Show its buffers
+is not offered, the viewer being a dialog of InterCat's window. A record of no exchange, or of a process the policy
+does not admit or no instance binds, says why it has none.
 
 ## 5e. A body's length as its head declares it (revision 778)
 

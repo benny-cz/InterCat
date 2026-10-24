@@ -145,7 +145,8 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
 - **An exchange** (revision 247, `contracts/http-exchanges-v1.md`). A process's HTTP exchanges are a row of its rung;
   Enter lists them, each with what was recorded of its four parts and how long it took, and Enter on one opens its
   buffers, where the viewer reads a buffer and its part. Listing exchanges reads metadata and source fields, never
-  content.
+  content. Since revision 781 the viewer of a buffer opens its exchange's conversation in turn
+  (`contracts/http-exchanges-v1.md` §5d), so a fragment leads to its message and the message to its exchange.
 - **A decoding** (revision 455, §11.2's `DecodedFields`). Where a decoder reads a record - at this version only
   InterCat's content fixture decoder (`intercat-content-fixture`, version 1), which reads the records
   `InterCat-Fixture-Content` raises as events 1 and 2 - a person may ask the viewer (Decode) or

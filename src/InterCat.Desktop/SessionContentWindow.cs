@@ -25,7 +25,8 @@ namespace InterCat.Desktop;
 /// each gap a line of its own, chosen by buffer and never saved as one (M8). Where a decoder reads the record, Decode
 /// lists the fields it reads, each with the bytes it came from, and what it did not decode - only when asked (§11.2); where
 /// one reads the part a buffer belongs to - a whole HTTP head - Decode its part reads that part whole, and never one that
-/// is not (`contracts/decoders-v1.md`).
+/// is not (`contracts/decoders-v1.md`). A buffer of an HTTP exchange opens its exchange's conversation, so a fragment leads
+/// to its message and on to the exchange it was part of (`contracts/http-exchanges-v1.md` §5d).
 /// </summary>
 internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindow
 {
@@ -55,6 +56,10 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
     private readonly Button copy = new() { Content = "Copy as hex", IsEnabled = false };
     private readonly Button save = new() { Content = "Save bytes…", IsEnabled = false };
     private readonly Button close = new() { Content = "Close" };
+    private readonly Button conversation = new() { Content = "Its exchange's conversation…", IsVisible = false };
+    private readonly EvidencePolicy policy;
+    private readonly SessionClock clock;
+    private bool opening;
     private readonly TextBlock partStatement = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, IsVisible = false };
     private readonly Button partToggle = new() { Content = "Show its whole part", IsVisible = false };
     private readonly TextBlock rangeFrom = new() { Text = "Bytes from", VerticalAlignment = VerticalAlignment.Center };
@@ -104,11 +109,20 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
     /// <summary>Why they are not offered once the content could not be read.</summary>
     private const string Unread = "The record's kept content could not be read; the status line says why.";
 
-    public SessionContentWindow(string path, Guid expectedSessionId, SessionEvidenceRecord selected)
+    /// <param name="policy">The evidence policy InterCat's window counts under, under which a buffer's exchange is found.</param>
+    /// <param name="clock">InterCat's window's clock, which a buffer's exchange's conversation says its time in.</param>
+    public SessionContentWindow(
+        string path,
+        Guid expectedSessionId,
+        SessionEvidenceRecord selected,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        SessionClock? clock = null)
     {
         this.path = path;
         this.expectedSessionId = expectedSessionId;
         this.selected = selected;
+        this.policy = policy;
+        this.clock = clock ?? SessionClock.Session(TimeZoneInfo.Local);
         Choices = new PathChoices(this);
         Title = "InterCat · Content of one record";
         Width = 900;
@@ -229,7 +243,13 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
         copy.Click += (_, _) => _ = CopyAsync();
         save.Click += (_, _) => _ = SaveAsync();
         decode.Click += (_, _) => _ = DecodeAsync();
+        conversation.Click += (_, _) => _ = OpenConversationAsync();
         close.Click += (_, _) => Close();
+
+        // A buffer of an HTTP exchange - WinINet's events 2001 to 2004 - leads to its exchange's conversation, read from the
+        // records alone until its heads are asked for there; it is offered whether or not this record's bytes were kept.
+        conversation.IsVisible = selected.Observation is { Mechanism: Mechanism.Http, EventId: >= 2001 and <= 2004 };
+        Offering.Offer(conversation, null, ConversationDoes);
 
         // Escape closes the window, as it cancels InterCat's prompts and every Windows dialog.
         KeyDown += (_, key) =>
@@ -267,7 +287,7 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
             Spacing = 8,
-            Children = { decode, copy, save, close },
+            Children = { conversation, decode, copy, save, close },
         };
         var grid = new Grid
         {
@@ -287,6 +307,52 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
         Opened += (_, _) => _ = LoadAsync(revealBytes: false);
         Closed += (_, _) => Dispose();
         views.SizeChanged += (_, _) => FitFacts();
+    }
+
+    /// <summary>What Its exchange's conversation… does, which a screen reader says beside its label.</summary>
+    internal const string ConversationDoes = "Open the HTTP exchange this buffer belongs to: its request and response side by "
+        + "side, and what their heads say when you ask there.";
+
+    /// <summary>
+    /// Opens the conversation of the exchange this buffer belongs to (`contracts/http-exchanges-v1.md` §5d), found under the
+    /// window's evidence policy; or says why it has none. From here its buffers are not offered: they are this record's
+    /// own exchange's, whose rows InterCat's window lists.
+    /// </summary>
+    private async Task OpenConversationAsync()
+    {
+        if (opening || closed) return;
+        opening = true;
+        Offering.Offer(conversation, "The exchange this buffer belongs to is being found.", ConversationDoes);
+        try
+        {
+            CancellationToken token = lifetime.Token;
+            HttpExchangeFound found = await Task.Run(() => SessionHttpExchanges.ExchangeOf(
+                SharedSessionStores.Open(path, expectedSessionId), expectedSessionId, selected, policy, token), token);
+            if (closed) return;
+            if (found.Key is not { } key)
+            {
+                status.Text = found.Problem ?? "This buffer belongs to no exchange.";
+                return;
+            }
+
+            using var exchange = new SessionConversationWindow(path, expectedSessionId, key, policy,
+                string.Create(CultureInfo.InvariantCulture, $"PID {selected.Observation.HeaderProcessId}"), clock, offersBuffers: false);
+            await exchange.ShowDialog(this);
+        }
+        catch (OperationCanceledException) when (closed)
+        {
+            // Closing cancels the search for its exchange; nothing was changed.
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException
+            or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
+        {
+            if (!closed) status.Text = "Could not find this buffer's exchange: " + exception.Message;
+        }
+        finally
+        {
+            opening = false;
+            if (!closed) Offering.Offer(conversation, null, ConversationDoes);
+        }
     }
 
     /// <summary>The least room the facts keep beside shown bytes: about three of their rows.</summary>

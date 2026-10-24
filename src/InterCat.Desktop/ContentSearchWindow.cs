@@ -43,6 +43,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
     private readonly Guid expectedSessionId;
     private readonly int? process;
     private readonly SessionClock clock;
+    private readonly EvidencePolicy policy;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TextBox text = new() { Watermark = "Text to find" };
     private readonly Button find = new() { Content = "Find" };
@@ -61,8 +62,11 @@ internal sealed class ContentSearchWindow : Window, IDisposable
 
     /// <param name="process">The PID of the process selected in InterCat's window, whose records alone may be searched; none for every one's.</param>
     /// <param name="clock">InterCat's window's clock, which says when each record found was raised, as its rows do.</param>
-    public ContentSearchWindow(string path, Guid expectedSessionId, int? process, SessionClock clock)
+    /// <param name="policy">The evidence policy InterCat's window counts under, which a record found opens its content under.</param>
+    public ContentSearchWindow(
+        string path, Guid expectedSessionId, int? process, SessionClock clock, EvidencePolicy policy = EvidencePolicy.IncludeCorrelated)
     {
+        this.policy = policy;
         this.path = path;
         this.expectedSessionId = expectedSessionId;
         this.process = process;
@@ -314,7 +318,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         if (closed || !inspect.IsEnabled || results.SelectedItem is not ContentSearchRow row) return;
         ContentSearchHit hit = row.Hit;
         using var viewer = new SessionContentWindow(path, expectedSessionId,
-            new SessionEvidenceRecord(hit.ObservationId, hit.Segment, hit.Row, hit.Observation));
+            new SessionEvidenceRecord(hit.ObservationId, hit.Segment, hit.Row, hit.Observation), policy, clock);
         await viewer.ShowDialog(this);
     }
 }

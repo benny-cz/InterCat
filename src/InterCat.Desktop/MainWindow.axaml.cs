@@ -1766,7 +1766,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         openingRecord = true;
         try
         {
-            using var window = new SessionContentWindow(currentSessionPath, sessionId, record);
+            using var window = new SessionContentWindow(currentSessionPath, sessionId, record, workspace.EvidencePolicy, workspace.TimeBase);
             await window.ShowDialog(this);
         }
         catch (InvalidOperationException exception)
@@ -1937,7 +1937,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         try
         {
             using var finder = new ContentSearchWindow(currentSessionPath, sessionId, workspace.SelectedProcess?.ProcessId,
-                workspace.TimeBase);
+                workspace.TimeBase, workspace.EvidencePolicy);
             await finder.ShowDialog(this);
         }
         catch (InvalidOperationException exception)

@@ -68,8 +68,12 @@ internal sealed class SessionConversationWindow : Window, IDisposable
     /// <param name="policy">The evidence policy InterCat's window lists exchanges under, so the two hold the same ones.</param>
     /// <param name="process">The process whose exchange it is, by its name and PID, as InterCat's window names it.</param>
     /// <param name="clock">InterCat's window's clock, which says when the exchange began as its row does.</param>
+    /// <param name="offersBuffers">
+    /// Whether Show its buffers is offered: only where InterCat's window can then open them, not from a dialog of its own.
+    /// </param>
     public SessionConversationWindow(
-        string path, Guid expectedSessionId, string exchangeKey, EvidencePolicy policy, string? process, SessionClock clock)
+        string path, Guid expectedSessionId, string exchangeKey, EvidencePolicy policy, string? process, SessionClock clock,
+        bool offersBuffers = true)
     {
         this.path = path;
         this.expectedSessionId = expectedSessionId;
@@ -93,6 +97,7 @@ internal sealed class SessionConversationWindow : Window, IDisposable
             + "head decoder. Nothing decoded is kept, and no body is read here.";
         AutomationProperties.SetName(decode, "Decode its heads");
         AutomationProperties.SetName(buffers, "Show its buffers");
+        buffers.IsVisible = offersBuffers;
         decode.Click += (_, _) => _ = DecodeAsync();
         buffers.Click += (_, _) => ShowBuffers();
         close.Click += (_, _) => Close();
@@ -298,13 +303,13 @@ internal sealed class SessionConversationWindow : Window, IDisposable
     private void KeepKeyboard() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
     {
         if (closed || FocusManager?.GetFocusedElement() is Visual focused && this.IsVisualAncestorOf(focused)) return;
-        (decode.IsEnabled ? decode : buffers.IsEnabled ? buffers : close).Focus(NavigationMethod.Tab);
+        (decode.IsEnabled ? decode : buffers.IsEffectivelyEnabled && buffers.IsVisible ? buffers : close).Focus(NavigationMethod.Tab);
     }, Avalonia.Threading.DispatcherPriority.Loaded);
 
     /// <summary>Closes the window, asking InterCat's window to open the exchange's buffers.</summary>
     private void ShowBuffers()
     {
-        if (!buffers.IsEnabled) return;
+        if (!buffers.IsEnabled || !buffers.IsVisible) return;
         Close(true);
     }
 
