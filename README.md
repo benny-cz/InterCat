@@ -81,7 +81,8 @@ and *Another saved capture…* sets a saved capture's whole recording as the bas
 comparison under a name (`icat workspace comparison`), and `icat compare --workspace <file> --saved <name>` runs it
 again on its sessions as they are then; `icat workspace note <file> <text> --about <name> [--row <key>]` keeps a note
 about it or one of its rows, which the run says beneath them. In the window, *Save in the investigation…* keeps the
-comparison shown, and the investigation's *Comparisons…* opens it again. `--timeline <rank>` shows when a row changed: each interval cut
+comparison shown, the investigation's *Comparisons…* opens it again, and *Add a note…* keeps a note about it or its
+chosen row, which the window says beneath the rows. `--timeline <rank>` shows when a row changed: each interval cut
 into as many equal columns, compared column by column, and the window's *Timeline* draws the chosen row's. *Show on
 the graph* marks each edge of the graph by how it changed - ▲ up, ▼ down, + appeared, − disappeared, = unchanged, ?
 not comparable, ± both ways - and says the same beneath the graph's header and in the relationship table.

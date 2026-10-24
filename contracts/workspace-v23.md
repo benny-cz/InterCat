@@ -331,9 +331,11 @@ key, never by its rank, which a comparison run again may change: `icat workspace
 about one no longer saved. `icat compare --workspace <workspace> --saved <name>` says the notes about it beneath its
 rows, a row's by its rank and ends in that run or as one the run does not compare, and its document carries them
 (`comparison-v1` §8c); a redacted report carries none. The Desktop's investigation window lists them with what they
-are about. A file whose note is about a comparison it never saved, names a row by no key or by one over 512
-characters, is both pinned at an instant and about a comparison, or is about a comparison in a file before version 23,
-is refused.
+are about, and its Compare window, showing a comparison the investigation saved alike - the same two intervals of the
+same sessions, by the same metric and rows - says them beneath its rows, marks each row a note is about, and adds one
+about the comparison or its chosen row (`comparison-v1` §8c). A file whose note is about a comparison it never saved,
+names a row by no key or by one over 512 characters, is both pinned at an instant and about a comparison, or is about
+a comparison in a file before version 23, is refused.
 
 A saved view is a named interval of the investigation's time, to show on the merged timeline again:
 

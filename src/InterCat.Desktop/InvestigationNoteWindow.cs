@@ -11,14 +11,25 @@ using InterCat.Desktop.Presentation;
 namespace InterCat.Desktop;
 
 /// <summary>
+/// The saved comparison a new note is about (`contracts/workspace-v23.md` §7): its name, and the row chosen in it where one
+/// is - by the key it is noted by, and in the words the comparison states it in, such as "row 2: browser.exe · PID 100 →
+/// 10.0.0.20".
+/// </summary>
+internal sealed record ComparisonNoteSubject(string Comparison, string? RowKey = null, string? Row = null);
+
+/// <summary>
 /// Writes a note on an investigation (§8.4): its words, and - for a new note - an instant of a session it is pinned at,
-/// which the investigation's time places as it places any other. Rewording a note keeps where it is pinned. Every revision
-/// is kept, and none changes a session.
+/// which the investigation's time places as it places any other, or the saved comparison it is about, as a whole or by its
+/// chosen row. Rewording a note keeps where it is pinned and what it is about. Every revision is kept, and none changes a
+/// session.
 /// </summary>
 internal sealed class InvestigationNoteWindow : Window
 {
     private readonly string path;
     private readonly Guid? editing;
+    private readonly ComparisonNoteSubject? about;
+    private readonly RadioButton aboutWhole = new() { GroupName = "about" };
+    private readonly RadioButton aboutRow = new() { GroupName = "about" };
     private readonly TextBox words = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, Height = 110 };
     private readonly CheckBox pin = new() { Content = "Pin it at an instant of a session" };
     private readonly ComboBox session = new() { MinWidth = 300 };
@@ -34,12 +45,14 @@ internal sealed class InvestigationNoteWindow : Window
         string path,
         IReadOnlyList<CompareSession> sessions,
         InvestigationNoteRow? existing = null,
-        (Guid SessionId, long Nanoseconds)? suggested = null)
+        (Guid SessionId, long Nanoseconds)? suggested = null,
+        ComparisonNoteSubject? about = null)
     {
         ArgumentNullException.ThrowIfNull(sessions);
         this.path = path;
         editing = existing?.NoteId;
-        Title = existing is null ? "Add a note" : "Reword a note";
+        this.about = about;
+        Title = existing is not null ? "Reword a note" : about is not null ? "Add a note about a comparison" : "Add a note";
         Width = 600;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
@@ -78,6 +91,18 @@ internal sealed class InvestigationNoteWindow : Window
 
         pin.IsCheckedChanged += (_, _) => ShowPlace();
         ShowPlace();
+
+        // A note about a comparison is about it as a whole until its chosen row is chosen instead: a row is noted by what it
+        // compares, and only once a person chose it in the comparison's list.
+        if (about is { } subject)
+        {
+            Choice(aboutWhole, $"About the comparison '{subject.Comparison}' as a whole");
+            Choice(aboutRow, subject.Row is { } row ? "About its " + row : "About its chosen row");
+            aboutWhole.IsChecked = true;
+            Offering.Offer(aboutRow, subject.RowKey is null ? "Choose a row in the comparison's list first." : null,
+                "Note the row chosen in the comparison, by what it compares");
+        }
+
         save.Click += (_, _) => _ = SaveAsync();
         var cancel = new Button { Content = "Cancel" };
         AutomationProperties.SetName(cancel, "Cancel: nothing is written");
@@ -101,14 +126,28 @@ internal sealed class InvestigationNoteWindow : Window
         var body = new StackPanel { Margin = new Thickness(18), Spacing = 10 };
         body.Children.Add(new TextBlock { Text = "Words", FontWeight = FontWeight.SemiBold });
         body.Children.Add(words);
-        if (existing is null)
+        if (existing is not null)
         {
-            body.Children.Add(pin);
-            body.Children.Add(place);
+            body.Children.Add(new TextBlock { Text = existing.Where + "; rewording it keeps that.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
+        }
+        else if (about is not null)
+        {
+            body.Children.Add(new TextBlock { Text = "About", FontWeight = FontWeight.SemiBold });
+            body.Children.Add(aboutWhole);
+            body.Children.Add(aboutRow);
+            body.Children.Add(new TextBlock
+            {
+                Text = "A row is noted by what it compares, never by its place in the list, which comparing again may change; "
+                    + "the comparison says the note each time it is opened.",
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 11,
+                Classes = { "muted" },
+            });
         }
         else
         {
-            body.Children.Add(new TextBlock { Text = existing.Where + "; rewording it keeps that.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
+            body.Children.Add(pin);
+            body.Children.Add(place);
         }
 
         body.Children.Add(new TextBlock
@@ -128,6 +167,12 @@ internal sealed class InvestigationNoteWindow : Window
         });
         Content = body;
     }
+
+    /// <summary>The note the window wrote; null until it has.</summary>
+    public WorkspaceNote? Written { get; private set; }
+
+    /// <summary>Chooses what a note about a comparison is about, as a person would: its chosen row, or the whole of it.</summary>
+    internal void AboutTheRow(bool row) => (row ? aboutRow : aboutWhole).IsChecked = true;
 
     /// <summary>Fills in the note, as a person would; a test uses it.</summary>
     internal void Enter(string text, Guid? pinnedIn = null, string? seconds = null)
@@ -158,13 +203,19 @@ internal sealed class InvestigationNoteWindow : Window
             anchor = new WorkspaceNoteAnchor(chosen.SessionId, nanoseconds);
         }
 
+        // What a note about a comparison is about is read here, where its choice is, before the note is written elsewhere.
+        WorkspaceNoteSubject? subject = about is { } comparison
+            ? new WorkspaceNoteSubject(comparison.Comparison, aboutRow.IsChecked == true ? comparison.RowKey : null)
+            : null;
         saving = true;
         Offering.Offer(save, "The note is being written to the investigation.", saves);
         try
         {
-            _ = await Task.Run(() => editing is { } noteId
+            Written = await Task.Run(() => editing is { } noteId
                 ? InvestigationWorkspace.EditNote(path, noteId, text, DateTimeOffset.UtcNow)
-                : InvestigationWorkspace.AddNote(path, text, anchor, DateTimeOffset.UtcNow));
+                : subject is not null
+                    ? InvestigationWorkspace.AddNoteAbout(path, text, subject, DateTimeOffset.UtcNow)
+                    : InvestigationWorkspace.AddNote(path, text, anchor, DateTimeOffset.UtcNow));
             Close(true);
             return true;
         }
@@ -180,5 +231,12 @@ internal sealed class InvestigationNoteWindow : Window
             saving = false;
             Offering.Offer(save, null, saves);
         }
+    }
+
+    /// <summary>Words a choice of what the note is about, wrapping rather than running past the window's edge.</summary>
+    private static void Choice(RadioButton choice, string words)
+    {
+        choice.Content = new TextBlock { Text = words, TextWrapping = TextWrapping.Wrap };
+        AutomationProperties.SetName(choice, words);
     }
 }

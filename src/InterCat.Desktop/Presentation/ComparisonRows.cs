@@ -1,5 +1,6 @@
 using System.Globalization;
 using InterCat.Application;
+using InterCat.Domain;
 
 namespace InterCat.Desktop.Presentation;
 
@@ -22,18 +23,29 @@ public sealed record ComparisonRow(
     /// <summary>The number of its reason beneath the rows, from 1; null where a change is stated.</summary>
     public int? ReasonNumber { get; init; }
 
+    /// <summary>
+    /// How many notes in force are about the row, where the comparison is one its investigation saved
+    /// (`contracts/workspace-v23.md` §7); none otherwise.
+    /// </summary>
+    public int Noted { get; init; }
+
+    /// <summary>What the relationship column shows: its two ends, and how many notes are about it where any is.</summary>
+    public string EndsCell => Noted == 0 ? Ends : Ends + " · " + CountText.Of(Noted, "note");
+
     /// <summary>What the change column shows: the change, and the number of the reason where none is stated.</summary>
     public string ChangeCell => ReasonNumber is { } number
         ? string.Create(CultureInfo.CurrentCulture, $"{Change} [{number}]")
         : Change;
 
     /// <summary>
-    /// The row as a screen reader says it, a lower bound said in words and the reason in full: "browser.exe · PID 100 →
-    /// 10.0.0.20 over TCP at 443: 21 · 1.05/s in the baseline, 40 · 1.00/s in the compared interval; down 0.050/s (-4.8%)".
+    /// The row as a screen reader says it, a lower bound said in words, the reason in full and the notes about it counted:
+    /// "browser.exe · PID 100 → 10.0.0.20 over TCP at 443: 21 · 1.05/s in the baseline, 40 · 1.00/s in the compared
+    /// interval; down 0.050/s (-4.8%)".
     /// </summary>
     public string AccessibleName =>
         $"{Ends} over {Over}: {Spoken(BaselineValue)} in the baseline, {Spoken(ComparedValue)} in the compared interval; {Change}"
-        + (Reason is null ? string.Empty : ": " + Reason);
+        + (Reason is null ? string.Empty : ": " + Reason)
+        + (Noted == 0 ? string.Empty : "; " + CountText.Of(Noted, "note") + " about it, beneath the rows");
 
     private static string Spoken(string value) => value.Replace("≥", "at least ", StringComparison.Ordinal);
 }

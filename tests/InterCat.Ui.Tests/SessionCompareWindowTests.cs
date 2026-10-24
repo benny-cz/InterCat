@@ -913,6 +913,290 @@ public sealed class SessionCompareWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R22: the Compare window says the notes about the saved comparison it shows, marks each noted row, and adds one about it or its chosen row")]
+    public async Task TheWindowSaysAndAddsNotesAboutASavedComparison()
+    {
+        using var session = new TemporarySession(Guid.Parse("0c0c0c0c-0000-4000-8000-000000000772"));
+        Publish(session.Store, Rows(), coverage: Ledger());
+        session.Store.ReleaseSegmentReaders();
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-notes-");
+        (string workspace, SessionOverviewBundle overview, SavedComparison saved) = Noted(session, folder);
+        IntervalComparison read = SessionComparison.Compare(session.Store, saved.Baseline!.Interval!.Value, saved.Compared!.Interval!.Value,
+            ComparisonMetric.Records, EvidencePolicy.IncludeCorrelated, ComparisonGrouping.Process);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        var comparing = new SessionCompareWindow(session.Path, overview.SessionId, saved.Compared.Interval!.Value, overview.Extent!.Value,
+            recorded: false, SessionClock.Session(TimeZoneInfo.Utc), EvidencePolicy.IncludeCorrelated, workspace,
+            new SavedComparisonOpening(saved, null, workspace));
+        try
+        {
+            _ = comparing.ShowDialog<ComparedRelationship?>(owner);
+            await Until(() => comparing.Shown is not null);
+            await comparing.Compared;
+            Dispatch();
+
+            // Opened as saved, it says the notes about it in the order written - a row's by its rank and ends, one about a
+            // row it does not compare as such - and marks the row a note is about, in the list and as a screen reader says it.
+            Assert.Equal(2, comparing.Rows.Count);
+            Assert.Equal("3 notes about 'before the burst', the first written first:", comparing.NotesSaid);
+            Assert.Equal(["About the comparison: The burst is the nightly backup's.", $"About row 2, {comparing.Rows[1].Ends}: Steady, as expected.",
+                "About a row the comparison shown does not compare: Gone since the update."], comparing.NotesListed);
+            Assert.Equal((0, 1), (comparing.Rows[0].Noted, comparing.Rows[1].Noted));
+            Assert.Equal(comparing.Rows[1].Ends + " · 1 note", comparing.Rows[1].EndsCell);
+            Assert.Contains(RowsList(comparing).GetVisualDescendants().OfType<TextBlock>(), text => text.Text == comparing.Rows[1].EndsCell);
+            Assert.EndsWith("; 1 note about it, beneath the rows", comparing.Rows[1].AccessibleName, StringComparison.Ordinal);
+            Assert.DoesNotContain("note", comparing.Rows[0].AccessibleName, StringComparison.Ordinal);
+            Button write = Labelled(comparing, "Add a note…");
+            Assert.Equal(SessionCompareWindow.NoteDoes, Offers.Offered(write));
+            Save(comparing, "compare-notes.png");
+
+            // A note about the chosen row is about the whole comparison until the row is chosen instead; written, it is said
+            // with the others, the row marked again, and the row stays chosen.
+            comparing.ChooseRow(1);
+            Click(write);
+            var writing = Assert.IsType<InvestigationNoteWindow>(await Prompt(comparing));
+            Assert.Equal("Add a note about a comparison", writing.Title);
+            RadioButton whole = Choice(writing, "About the comparison 'before the burst' as a whole");
+            RadioButton row = Choice(writing, $"About its row 2: {comparing.Rows[1].Ends}");
+            Assert.Equal((true, true), (whole.IsChecked == true, row.IsEnabled));
+            Assert.Equal("A note is being written to the investigation.", Offers.WhyNot(write));
+            Save(writing, "compare-note-prompt.png");
+            writing.AboutTheRow(true);
+            writing.Enter("Steadier than the day before.");
+            Press(writing, "Add note");
+            await comparing.Noted;
+            Dispatch();
+            Assert.Equal("Added a note about row 2 of 'before the burst' to case.icat-workspace.", comparing.Done);
+            Assert.Equal("4 notes about 'before the burst', the first written first:", comparing.NotesSaid);
+            Assert.Equal($"About row 2, {comparing.Rows[1].Ends}: Steadier than the day before.", comparing.NotesListed[3]);
+            Assert.Equal((comparing.Rows[1].Ends + " · 2 notes", 1), (comparing.Rows[1].EndsCell, RowsList(comparing).SelectedIndex));
+            Assert.Equal(new WorkspaceNoteSubject("before the burst", read.Relationships[1].Key),
+                InvestigationWorkspace.NotesAbout(InvestigationWorkspace.Read(workspace), "before the burst")[3].About);
+            Assert.Equal(SessionCompareWindow.NoteDoes, Offers.Offered(write));
+
+            // About the first row; then, its row still chosen, about the whole comparison, as the prompt has it first.
+            comparing.ChooseRow(0);
+            Click(write);
+            writing = Assert.IsType<InvestigationNoteWindow>(await Prompt(comparing));
+            writing.AboutTheRow(true);
+            writing.Enter("The worker drains its queue here.");
+            Press(writing, "Add note");
+            await comparing.Noted;
+            Dispatch();
+            Assert.Equal("Added a note about row 1 of 'before the burst' to case.icat-workspace.", comparing.Done);
+            Assert.Equal((comparing.Rows[0].Ends + " · 1 note", $"About row 1, {comparing.Rows[0].Ends}: The worker drains its queue here."),
+                (comparing.Rows[0].EndsCell, comparing.NotesListed[4]));
+            Click(write);
+            writing = Assert.IsType<InvestigationNoteWindow>(await Prompt(comparing));
+            writing.Enter("Compare again after the patch.");
+            Press(writing, "Add note");
+            await comparing.Noted;
+            Dispatch();
+            Assert.Equal("Added a note about 'before the burst' to case.icat-workspace.", comparing.Done);
+            Assert.Equal("About the comparison: Compare again after the patch.", comparing.NotesListed[5]);
+
+            // With no row chosen, only the whole comparison can be noted; declined, nothing is written.
+            comparing.ChooseRow(-1);
+            Click(write);
+            writing = Assert.IsType<InvestigationNoteWindow>(await Prompt(comparing));
+            Assert.Equal("Choose a row in the comparison's list first.", Offers.WhyNot(Choice(writing, "About its chosen row")));
+            Press(writing, "Cancel");
+            await comparing.Noted;
+            Assert.Equal(6, InvestigationWorkspace.NotesAbout(InvestigationWorkspace.Read(workspace), "before the burst").Count);
+            Assert.Equal(6, comparing.NotesListed.Count);
+
+            // A baseline still to type compares nothing, so nothing is said of notes.
+            comparing.ChooseBaseline(comparing.Offered.ToList().IndexOf("Another interval, typed in seconds…"));
+            await comparing.Compared;
+            Dispatch();
+            Assert.Equal((string.Empty, 0), (comparing.NotesSaid, comparing.NotesListed.Count));
+            Assert.Equal(SessionCompareWindow.NothingToShare, Offers.WhyNot(write));
+            comparing.ChooseBaseline(0);
+            await comparing.Compared;
+
+            // Compared by bytes, it is no comparison the investigation saved: it says so and marks no row; saved, it says the
+            // notes about it - none yet - and can be noted.
+            comparing.CompareByBytes(true);
+            await comparing.Compared;
+            Dispatch();
+            Assert.Equal("Save the comparison in the investigation to write notes about it and its rows.", comparing.NotesSaid);
+            Assert.Empty(comparing.NotesListed);
+            Assert.All(comparing.Rows, shown => Assert.Equal(0, shown.Noted));
+            Assert.Equal(SessionCompareWindow.NoteNeedsSaving, Offers.WhyNot(write));
+            Click(Labelled(comparing, "Save in the investigation…"));
+            Window prompt = await Prompt(comparing);
+            prompt.GetLogicalDescendants().OfType<TextBox>().Single().Text = "by bytes";
+            Dispatch();
+            Press(prompt, "Save");
+            await comparing.SavedIn;
+            Dispatch();
+            Assert.Equal("No note about 'by bytes' yet: Add a note… writes one about it, or about its chosen row.", comparing.NotesSaid);
+            Assert.Equal(SessionCompareWindow.NoteDoes, Offers.Offered(write));
+
+            // By records again, it is the comparison saved as 'before the burst' again - until it is saved alike under
+            // another name, the name it is then known by.
+            comparing.CompareByBytes(false);
+            await comparing.Compared;
+            Dispatch();
+            Assert.Equal("6 notes about 'before the burst', the first written first:", comparing.NotesSaid);
+            Click(Labelled(comparing, "Save in the investigation…"));
+            prompt = await Prompt(comparing);
+            prompt.GetLogicalDescendants().OfType<TextBox>().Single().Text = "again";
+            Dispatch();
+            Press(prompt, "Save");
+            await comparing.SavedIn;
+            Dispatch();
+            Assert.Equal("No note about 'again' yet: Add a note… writes one about it, or about its chosen row.", comparing.NotesSaid);
+        }
+        finally
+        {
+            comparing.Close();
+            owner.Close();
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R22: the Compare window knows a comparison its investigation saved alike, the one it opened as first, and says why it can keep no note")]
+    public async Task TheWindowKnowsAComparisonSavedAlike()
+    {
+        using var session = new TemporarySession(Guid.Parse("0c0c0c0c-0000-4000-8000-000000000773"));
+        Publish(session.Store, Rows(), coverage: Ledger());
+        session.Store.ReleaseSegmentReaders();
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-alike-");
+        (string workspace, SessionOverviewBundle overview, SavedComparison saved) = Noted(session, folder);
+        SavedComparison alike = InvestigationWorkspace.SaveComparison(workspace, "alike", saved.Baseline!, saved.Compared!,
+            ComparisonMetric.Records, ComparisonGrouping.Process, DateTimeOffset.UtcNow);
+        SessionClock clock = SessionClock.Session(TimeZoneInfo.Utc);
+        TimeRange scope = saved.Compared!.Interval!.Value;
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        var windows = new List<SessionCompareWindow>();
+        async Task<SessionCompareWindow> Shown(string? investigation, SavedComparisonOpening? opening = null)
+        {
+            var window = new SessionCompareWindow(session.Path, overview.SessionId, scope, overview.Extent!.Value, recorded: false, clock,
+                EvidencePolicy.IncludeCorrelated, investigation, opening);
+            windows.Add(window);
+            _ = window.ShowDialog<ComparedRelationship?>(owner);
+            await Until(() => window.Shown is not null);
+            await window.Compared;
+            Dispatch();
+            return window;
+        }
+
+        try
+        {
+            // Opened on the scope, not as saved, its first baseline - the same length before it - is the comparison saved
+            // first alike; opened as the one saved alike after it, it is that one.
+            SessionCompareWindow comparing = await Shown(workspace);
+            Assert.Equal("3 notes about 'before the burst', the first written first:", comparing.NotesSaid);
+            SessionCompareWindow asAlike = await Shown(workspace, new SavedComparisonOpening(alike, null, workspace));
+            Assert.Equal("No note about 'alike' yet: Add a note… writes one about it, or about its chosen row.", asAlike.NotesSaid);
+            Assert.Equal(SessionCompareWindow.NoteDoes, Offers.Offered(Labelled(asAlike, "Add a note…")));
+
+            // The investigation moved away, its notes cannot be read, which the window says, and why it writes none.
+            File.Move(workspace, workspace + ".moved");
+            await comparing.CompareAsync();
+            Dispatch();
+            string gone = $"No file is at {workspace} any more; it was moved, renamed or deleted.";
+            Assert.Equal("The notes about it could not be read: " + gone, comparing.NotesSaid);
+            Assert.Equal("The investigation could not be read: " + gone, Offers.WhyNot(Labelled(comparing, "Add a note…")));
+            Assert.Empty(comparing.NotesListed);
+
+            // A session opened on its own keeps no note, and says why.
+            SessionCompareWindow alone = await Shown(null);
+            Assert.Equal(string.Empty, alone.NotesSaid);
+            Assert.Equal(SessionCompareWindow.NoteNeedsInvestigation, Offers.WhyNot(Labelled(alone, "Add a note…")));
+        }
+        finally
+        {
+            foreach (SessionCompareWindow window in windows)
+            {
+                window.Close();
+            }
+
+            owner.Close();
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R15: the Compare window with notes beneath its rows cuts off no text at its smallest, keeps its rows in view, and names every element")]
+    public async Task TheWindowWithNotesIsLegibleAndHeard()
+    {
+        using var session = new TemporarySession(Guid.Parse("0c0c0c0c-0000-4000-8000-000000000774"));
+        Publish(session.Store, Rows(), coverage: Ledger());
+        session.Store.ReleaseSegmentReaders();
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-legible-");
+        (string workspace, SessionOverviewBundle overview, SavedComparison saved) = Noted(session, folder);
+        InvestigationWorkspace.AddNoteAbout(workspace, string.Join(" ", Enumerable.Repeat("A longer note that wraps across the list's width.", 6)),
+            new("before the burst", null), DateTimeOffset.UtcNow);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        var comparing = new SessionCompareWindow(session.Path, overview.SessionId, saved.Compared!.Interval!.Value, overview.Extent!.Value,
+            recorded: false, SessionClock.Session(TimeZoneInfo.Utc), EvidencePolicy.IncludeCorrelated, workspace,
+            new SavedComparisonOpening(saved, null, workspace));
+        comparing.Width = comparing.MinWidth;
+        comparing.Height = comparing.MinHeight;
+        try
+        {
+            _ = comparing.ShowDialog<ComparedRelationship?>(owner);
+            await Until(() => comparing.Shown is not null);
+            await comparing.Compared;
+            Dispatch();
+            var problems = new List<string>();
+            void Legible(string where)
+            {
+                problems.AddRange(LegibleTextTests.CutOff(comparing, where));
+                problems.AddRange(AccessibilityAuditTests.Unheard(comparing, out _).Select(problem => $"{where}: {problem}"));
+                ListBox rows = RowsList(comparing);
+                if (rows.Bounds.Height < 2 * rows.ContainerFromIndex(0)!.Bounds.Height)
+                {
+                    problems.Add($"{where}: {rows.Bounds.Height:0} px of rows keeps fewer than two in view.");
+                }
+            }
+
+            Legible("compare with notes");
+            Save(comparing, "compare-notes-smallest.png");
+            TextBlock didLine = comparing.GetLogicalDescendants().OfType<TextBlock>()
+                .Single(text => AutomationProperties.GetName(text) == "What the window's last action did");
+            Assert.False(didLine.IsVisible);
+
+            // The prompt that adds a note, and the window once it says what adding one did.
+            Click(Labelled(comparing, "Add a note…"));
+            var writing = Assert.IsType<InvestigationNoteWindow>(await Prompt(comparing));
+            problems.AddRange(LegibleTextTests.CutOff(writing, "the note prompt"));
+            problems.AddRange(AccessibilityAuditTests.Unheard(writing, out _).Select(problem => "the note prompt: " + problem));
+            writing.Enter("Seen at the window's smallest.");
+            Press(writing, "Add note");
+            await comparing.Noted;
+            Dispatch();
+            Assert.StartsWith("Added a note about", comparing.Done, StringComparison.Ordinal);
+            Assert.True(didLine.IsVisible);
+            Legible("compare with a note added");
+            Save(comparing, "compare-notes-smallest-noted.png");
+
+            // Taller, what is said beneath the rows shows whole, the notes with it, without scrolling.
+            comparing.Height = 1000;
+            Dispatch();
+            ScrollViewer said = comparing.GetVisualDescendants().OfType<ScrollViewer>().Single(scroll => scroll.Content is StackPanel panel
+                && panel.Children.OfType<TextBlock>().Any(text => AutomationProperties.GetName(text) == "The notes written about the comparison"));
+            _ = comparing.CaptureRenderedFrame();
+            Dispatch();
+            if (said.Extent.Height > said.Viewport.Height + 1)
+            {
+                problems.Add($"a taller window: {said.Viewport.Height:0} px shows {said.Extent.Height:0} px of what is said beneath the rows.");
+            }
+
+            Save(comparing, "compare-notes-taller.png");
+            Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+        }
+        finally
+        {
+            comparing.Close();
+            owner.Close();
+            folder.Delete(recursive: true);
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R22: the investigation's Comparisons… opens a saved comparison in InterCat's window as saved, and removes one")]
     public async Task TheInvestigationOpensASavedComparison()
     {
@@ -1275,6 +1559,39 @@ public sealed class SessionCompareWindowTests
         await Until(() => window.OwnedWindows.OfType<SessionCompareWindow>().Any());
         return window.OwnedWindows.OfType<SessionCompareWindow>().Single();
     }
+
+    /// <summary>
+    /// An investigation of <paramref name="session"/> in <paramref name="folder"/> that saved a comparison of its 4 s from 12 s
+    /// with the 4 s before, as 'before the burst', and three notes about it: one about it, one about its second row, and one
+    /// about a row it does not compare.
+    /// </summary>
+    private static (string Workspace, SessionOverviewBundle Overview, SavedComparison Saved) Noted(TemporarySession session, DirectoryInfo folder)
+    {
+        string workspace = Path.Combine(folder.FullName, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, DateTimeOffset.UtcNow);
+        InvestigationWorkspace.Add(workspace, session.Path, DateTimeOffset.UtcNow);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        SavedComparison saved = InvestigationWorkspace.SaveComparison(workspace, "before the burst",
+            new SavedComparisonInterval { SessionId = overview.SessionId, StartTicks = 8 * Second, EndTicks = 12 * Second },
+            new SavedComparisonInterval { SessionId = overview.SessionId, StartTicks = 12 * Second, EndTicks = 16 * Second },
+            ComparisonMetric.Records, ComparisonGrouping.Process, DateTimeOffset.UtcNow);
+        IntervalComparison read = SessionComparison.Compare(session.Store, saved.Baseline!.Interval!.Value, saved.Compared!.Interval!.Value,
+            ComparisonMetric.Records, EvidencePolicy.IncludeCorrelated, ComparisonGrouping.Process);
+        InvestigationWorkspace.AddNoteAbout(workspace, "The burst is the nightly backup's.", new("before the burst", null), DateTimeOffset.UtcNow);
+        InvestigationWorkspace.AddNoteAbout(workspace, "Steady, as expected.", new("before the burst", read.Relationships[1].Key),
+            DateTimeOffset.UtcNow);
+        InvestigationWorkspace.AddNoteAbout(workspace, "Gone since the update.", new("before the burst", "tcp:nowhere"), DateTimeOffset.UtcNow);
+        session.Store.ReleaseSegmentReaders();
+        return (workspace, overview, saved);
+    }
+
+    /// <summary>The window's list of the rows compared.</summary>
+    private static ListBox RowsList(Window window) => window.GetLogicalDescendants().OfType<ListBox>()
+        .Single(list => AutomationProperties.GetName(list)?.StartsWith("The rows compared", StringComparison.Ordinal) == true);
+
+    /// <summary>A prompt's choice, by what it says.</summary>
+    private static RadioButton Choice(Window window, string name) => window.GetLogicalDescendants().OfType<RadioButton>()
+        .Single(choice => AutomationProperties.GetName(choice) == name);
 
     private static Button Labelled(Window window, string label) =>
         window.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, label));

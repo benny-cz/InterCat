@@ -235,3 +235,12 @@ rank (`contracts/workspace-v23.md` §7, ADR-069): `icat workspace note --about` 
 says them beneath its rows, a row's by its rank and ends in that run, and the investigation window lists them with
 what they are about. With the investigation's notes and saved views, and the saved comparisons themselves, they are
 M12's annotations and bookmarks. Writing such a note in the Compare window remains, and nothing else above changes.
+
+## Addendum, revision 772
+
+The Compare window now says the notes about a comparison its investigation saved alike - the same two intervals of the
+same sessions, by the same metric and rows - beneath its rows, marks each row a note is about, and with Add a note…
+adds one about the comparison or its chosen row (`contracts/comparison-v1.md` §8c), so M12's annotations are on both
+surfaces. The window's buttons now wrap where it is narrow, and what is said beneath its rows scrolls within its
+share, so two rows stay in view at its smallest; a test checks that, with the names a screen reader hears. M12's exit
+review remains, and nothing else above changes.

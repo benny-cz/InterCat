@@ -1518,6 +1518,63 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             InvestigationWorkspace.NotesInForce(InvestigationWorkspace.Read(earlier)).Count));
     }
 
+    [Fact(DisplayName = "R22: a comparison is a saved one only where both compare the same two intervals of the same sessions, by the same metric and rows")]
+    public void AComparisonIsASavedOneOnlyWhereBothCompareAlike()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "beta"), "lab-2", Guid.NewGuid(), CaptureId.New()).Root.Path,
+            Now).SessionId;
+        static SavedComparisonInterval Of(Guid session, long start, long end) => new() { SessionId = session, StartTicks = start, EndTicks = end };
+        static IntervalComparison Compared(Guid session, Guid? baselineSession, ComparisonGrouping grouping) =>
+            new(session, 1, ComparisonMetric.Records, EvidencePolicy.IncludeCorrelated, new TimeRange(0, 100), new TimeRange(100, 300), [], [], [])
+            {
+                Processes = new Dictionary<ProcessInstanceId, ProcessNode>(),
+                BaselineSessionId = baselineSession,
+                Grouping = grouping,
+            };
+        IntervalComparison within = Compared(a, null, ComparisonGrouping.Process);
+        IntervalComparison byExecutable = Compared(a, null, ComparisonGrouping.Executable);
+        IntervalComparison across = Compared(a, b, ComparisonGrouping.Executable);
+
+        // Saved first, each differs in one thing alone from the comparison it would otherwise be, so is not it.
+        foreach ((string name, SavedComparisonInterval before, SavedComparisonInterval after, ComparisonMetric metric, ComparisonGrouping grouping) in new[]
+        {
+            ("Its baseline another capture's", Of(b, 0, 100), Of(a, 100, 300), ComparisonMetric.Records, ComparisonGrouping.Executable),
+            ("Its compared interval another capture's", Of(a, 0, 100), Of(b, 100, 300), ComparisonMetric.Records, ComparisonGrouping.Executable),
+            ("A later baseline", Of(a, 10, 100), Of(a, 100, 300), ComparisonMetric.Records, ComparisonGrouping.Process),
+            ("A shorter interval", Of(a, 0, 100), Of(a, 100, 200), ComparisonMetric.Records, ComparisonGrouping.Process),
+            ("By bytes", Of(a, 0, 100), Of(a, 100, 300), ComparisonMetric.BytesSent, ComparisonGrouping.Process),
+            ("By executable", Of(a, 0, 100), Of(a, 100, 300), ComparisonMetric.Records, ComparisonGrouping.Executable),
+        })
+        {
+            InvestigationWorkspace.SaveComparison(workspace, name, before, after, metric, grouping, Now);
+        }
+
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+        Assert.Null(InvestigationWorkspace.SavedAs(read, within));
+        Assert.Equal("By executable", InvestigationWorkspace.SavedAs(read, byExecutable)?.Name);
+        Assert.Equal("Its baseline another capture's", InvestigationWorkspace.SavedAs(read, across)?.Name);
+
+        // Of two saved alike, the first saved, unless the one a window knows the comparison by is named, in any case; a
+        // comparison removed is none, and a removal describes nothing.
+        InvestigationWorkspace.SaveComparison(workspace, "Before the update", Of(a, 0, 100), Of(a, 100, 300), ComparisonMetric.Records,
+            ComparisonGrouping.Process, Now);
+        InvestigationWorkspace.SaveComparison(workspace, "Again", Of(a, 0, 100), Of(a, 100, 300), ComparisonMetric.Records,
+            ComparisonGrouping.Process, Now);
+        read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal("Before the update", InvestigationWorkspace.SavedAs(read, within)?.Name);
+        Assert.Equal("Again", InvestigationWorkspace.SavedAs(read, within, "AGAIN")?.Name);
+        Assert.Equal("Before the update", InvestigationWorkspace.SavedAs(read, within, "By executable")?.Name);
+        InvestigationWorkspace.RemoveComparison(workspace, "Before the update", Now);
+        Assert.Equal("Again", InvestigationWorkspace.SavedAs(InvestigationWorkspace.Read(workspace), within, "Before the update")?.Name);
+        Assert.False(new SavedComparison { Revision = 1, Name = "Removed", RecordedUtc = Now }.Describes(within));
+        string empty = Path.Combine(root, "empty" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(empty, Now);
+        Assert.Throws<ArgumentNullException>(() => InvestigationWorkspace.SavedAs(InvestigationWorkspace.Read(empty), null!));
+        Assert.Throws<ArgumentNullException>(() => read.Comparisons[0].Describes(null!));
+    }
+
     [Fact(DisplayName = "R22: two host identities are one host only by a person's confirmation, kept as revisions and withdrawn as one")]
     public void TwoHostIdentitiesAreOneOnlyByAPersonsWord()
     {

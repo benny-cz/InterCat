@@ -246,7 +246,8 @@ columns, the cursor where it was. Unchecked, the chart goes and the comparison s
 Show on the graph closes the window and marks the main window's graph by the comparison shown (§8e).
 
 Save in the investigation… keeps the comparison shown, by name, in the investigation the session shown was opened
-from, and a comparison saved there opens in this window as saved (§8c).
+from, and a comparison saved there opens in this window as saved, saying the notes about it; Add a note… adds one
+(§8c).
 
 ## 8b. A redacted report
 
@@ -307,7 +308,13 @@ opened on its own has no investigation to keep one, which the action says. The i
 force under Comparisons…, in the words above, and opens one: its compared session at its compared interval in
 InterCat's window, and the Compare window on that interval, the saved baseline offered first and chosen, compared by
 what it was saved with - another capture's read from its folder where the investigation finds it, which must hold its
-capture - or says which session to relink. It removes one too, keeping its revisions.
+capture - or says which session to relink. It removes one too, keeping its revisions. Showing a comparison the
+investigation saved alike - the same two intervals of the same sessions, by the same metric and rows; of several, the
+one the window opened as or last saved under, else the first saved - the Compare window says the notes about it
+beneath its rows in the order written, a row's by its rank and ends or as one it does not compare, and marks each row
+a note is about, beside its ends and in what a screen reader says of it. Add a note… writes one, about the whole
+comparison or, chosen instead, about the row chosen in the list, by its key; it says why not where the session was
+opened on its own, where the comparison shown is not one saved, and where the investigation cannot be read.
 
 ## 8d. A difference timeline
 

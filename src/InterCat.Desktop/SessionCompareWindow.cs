@@ -47,9 +47,10 @@ internal sealed record SavedComparisonOpening(SavedComparison Comparison, string
 /// relationship, and each process's connections to another host, that had a record in either, by records or by bytes sent
 /// across, as rates over each whole interval, the most changed first, in the words `icat compare` uses (R18). A change is
 /// stated only where both intervals measured alike; elsewhere both values stand, with the reason beneath the rows. Enter
-/// on a row closes the window with it, and the workspace opens what it compares. Nothing is written but what a person asks
-/// for: a redacted report saved where they choose, or the comparison saved in the investigation the session was opened
-/// from (`contracts/workspace-v23.md` §7).
+/// on a row closes the window with it, and the workspace opens what it compares. A comparison its investigation saved says
+/// the notes about it and its rows. Nothing is written but what a person asks for: a redacted report saved where they
+/// choose, or, in the investigation the session was opened from, the comparison saved or a note about it
+/// (`contracts/workspace-v23.md` §7).
 /// </summary>
 internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindow
 {
@@ -81,18 +82,26 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     private readonly Button onGraph = new() { Content = "Show on the graph" };
     private readonly Button share = new() { Content = "Share redacted…" };
     private readonly Button save = new() { Content = "Save in the investigation…" };
+    private readonly Button write = new() { Content = "Add a note…" };
+    private readonly TextBlock written = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, FontWeight = FontWeight.SemiBold };
+    private readonly TextBlock writtenNotes = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, IsVisible = false };
     private readonly Button close = new() { Content = "Close" };
-    private readonly TextBlock done = new()
-    {
-        TextWrapping = TextWrapping.Wrap,
-        FontSize = 11,
-        VerticalAlignment = VerticalAlignment.Center,
-    };
+    private readonly TextBlock done = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, IsVisible = false };
     private IReadOnlyList<ComparisonRow> listed = [];
     private readonly Grid heading;
 
     // The difference timeline read with the comparison shown, while the chosen row is drawn column by column; null otherwise.
     private ComparisonTimeline? timeline;
+
+    // The name the window knows the comparison shown by - the one it opened as, or the one it last saved under - which a
+    // comparison saved alike under another name gives way to; null for neither.
+    private string? savedAs;
+
+    // The saved comparison the one shown is, with the notes about it, as read with it; null where it is none or was not
+    // read, which the notes then say why.
+    private Kept? kept;
+    private string? notesUnread;
+    private IReadOnlyList<string> noteLines = [];
 
     // Each value column's width, the widest of its heading and its cells: every line of the table, its heading's included,
     // is laid out at these, so the columns line up.
@@ -101,6 +110,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     private bool comparing;
     private bool sharing;
     private bool saving;
+    private bool noting;
     private int lastBaseline;
     private bool reverting;
     private bool shownOnce;
@@ -128,10 +138,10 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         this.policy = policy;
         this.investigation = investigation;
         Title = "InterCat · Compare two intervals";
-        Width = 1000;
-        Height = 680;
+        Width = 1060;
+        Height = 720;
         MinWidth = 720;
-        MinHeight = 500;
+        MinHeight = 660;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
         CultureInfo culture = CultureInfo.CurrentCulture;
@@ -154,6 +164,8 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
             (openingMetric, openingRows, openedAs) = (savedMetric, savedRows, saved.Name);
         }
 
+        savedAs = openedAs;
+
         baseline.ItemsSource = baselines;
         baseline.SelectedIndex = 0;
         TrimmedChoices.Apply(baseline);
@@ -175,7 +187,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         AutomationProperties.SetName(to, "The baseline's end, in seconds of session time");
         AutomationProperties.SetName(metric, "What each row is compared by");
         AutomationProperties.SetName(rowsOf, "What each row compares: one process, or one executable's processes together");
-        AutomationProperties.SetName(timelineDrawn, "Draw the chosen row's difference timeline");
+        AutomationProperties.SetName(timelineDrawn, "Draw the chosen row column by column, its difference timeline");
         AutomationProperties.SetName(chartSaid, "The difference timeline's chosen column");
         AutomationProperties.SetLiveSetting(chartSaid, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(status, "What the comparison found");
@@ -185,20 +197,29 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         AutomationProperties.SetName(reasons, "Why some rows cannot be compared");
         AutomationProperties.SetName(notes, "How the comparison reads");
         AutomationProperties.SetName(compare, "Compare again");
-        AutomationProperties.SetName(show, "Show the chosen row in the window");
-        AutomationProperties.SetName(onGraph, "Show the comparison on the graph");
-        AutomationProperties.SetName(share, "Share the comparison as a redacted report");
-        AutomationProperties.SetName(save, "Save the comparison in the investigation");
+        AutomationProperties.SetName(show, "Show in the window what the chosen row compares");
+        AutomationProperties.SetName(onGraph, "Show on the graph how each relationship changed");
+        AutomationProperties.SetName(share, "Share redacted, as a pseudonymized report");
+        AutomationProperties.SetName(save, "Save in the investigation, under a name");
+        AutomationProperties.SetName(write, "Add a note about the comparison or its chosen row");
+        AutomationProperties.SetName(written, "The notes written about the comparison");
+        AutomationProperties.SetName(writtenNotes, "The notes about the comparison and its rows, the first written first");
         AutomationProperties.SetName(close, "Close the comparison");
         AutomationProperties.SetName(done, "What the window's last action did");
         AutomationProperties.SetLiveSetting(done, AutomationLiveSetting.Polite);
         AccessibleItems.Name(rows);
 
+        // What the window's last action did takes its line only once it says something.
+        done.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == TextBlock.TextProperty) done.IsVisible = !string.IsNullOrEmpty(done.Text);
+        };
+
         // A row reads by its two ends, whose names can be long: it wraps within the list rather than running past its edge,
         // and its value columns are as wide as the heading's, measured from what they hold.
         ScrollViewer.SetHorizontalScrollBarVisibility(rows, ScrollBarVisibility.Disabled);
         rows.ItemTemplate = new FuncDataTemplate<ComparisonRow>((row, _) => row is null ? new TextBlock() : Line(
-            [row.Ends, row.Over, row.BaselineValue, row.ComparedValue, row.ChangeCell], FontWeight.Normal, widths));
+            [row.EndsCell, row.Over, row.BaselineValue, row.ComparedValue, row.ChangeCell], FontWeight.Normal, widths));
 
         // Choosing an interval to type shows its two boxes, and the rows another baseline's comparison held go, the status
         // saying what to write.
@@ -236,6 +257,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         onGraph.Click += (_, _) => ShowOnGraph();
         share.Click += (_, _) => _ = ShareAsync();
         save.Click += (_, _) => _ = SaveInInvestigationAsync();
+        write.Click += (_, _) => _ = NoteAsync();
         close.Click += (_, _) => Close();
         rows.SelectionChanged += (_, _) =>
         {
@@ -297,19 +319,27 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         table.Children.Add(heading);
         table.Children.Add(rows);
 
-        // What sharing, or choosing another capture, did is said beside the buttons, so the comparison's own status keeps
-        // saying what it found.
-        var buttons = new StackPanel
+        // What sharing, saving, noting or choosing another capture did is said above the buttons, so the comparison's own
+        // status keeps saying what it found; the buttons take a second line where the window is narrow.
+        var buttons = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
+        foreach (Button button in new[] { show, onGraph, save, write, share, compare, close })
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            Children = { show, onGraph, save, share, compare, close },
+            button.Margin = new Thickness(8, 4, 0, 0);
+            buttons.Children.Add(button);
+        }
+
+        var footer = new StackPanel { Spacing = 2, Children = { done, buttons } };
+
+        // What is said beneath the rows - why some cannot be compared, how the comparison reads, and the notes a person wrote
+        // about it - scrolls within its share of the window, so the rows always keep theirs: at the window's smallest, what
+        // two rows leave, and a third of whatever a taller window has beyond that.
+        var said = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            MaxHeight = SaidHeight,
+            Content = new StackPanel { Spacing = 6, Children = { reasons, notes, written, writtenNotes } },
         };
-        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 12 };
-        Grid.SetColumn(buttons, 1);
-        footer.Children.Add(done);
-        footer.Children.Add(buttons);
-        var said = new StackPanel { Spacing = 6, Children = { reasons, notes } };
+        SizeChanged += (_, change) => said.MaxHeight = SaidHeight + (Math.Max(0, change.NewSize.Height - MinHeight) / 3);
         var grid = new Grid
         {
             Margin = new Thickness(16),
@@ -366,6 +396,15 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
 
     /// <summary>Completes when the latest save in the investigation asked for has been made, declined or refused.</summary>
     public Task SavedIn { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Completes when the latest note asked for has been written and said, or declined.</summary>
+    public Task Noted { get; private set; } = Task.CompletedTask;
+
+    /// <summary>What the window says above the notes about the comparison shown: how many there are, or why none can be written.</summary>
+    public string NotesSaid => written.Text ?? string.Empty;
+
+    /// <summary>The notes about the comparison shown, each as the window says it, the first written first.</summary>
+    public IReadOnlyList<string> NotesListed => noteLines;
 
     /// <summary>
     /// Why the window that opened the comparison cannot open what a row compares, which Show in the window then says; null
@@ -440,6 +479,9 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     /// <summary>The space between two columns.</summary>
     private const double Gap = 14;
 
+    /// <summary>How tall what is said beneath the rows may be at the window's smallest, before it scrolls.</summary>
+    private const double SaidHeight = 120;
+
     /// <summary>The most rows the list shows, the most changed; those past it are counted beneath them.</summary>
     internal const int Listed = 200;
 
@@ -482,6 +524,20 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     internal const string SaveDoes = "Keep this comparison in the investigation under a name, to open again from its "
         + "Comparisons… or run with icat compare --saved: its two intervals, what it compares by and what its rows are of, "
         + "never its answer, which is read afresh each time.";
+
+    /// <summary>Why a note cannot be written where the session shown was not opened from an investigation.</summary>
+    internal const string NoteNeedsInvestigation = "A note is kept in an investigation: open this session from one, and save the "
+        + "comparison there, to write one about it.";
+
+    /// <summary>Why a note cannot be written about a comparison its investigation did not save.</summary>
+    internal const string NoteNeedsSaving = "A note is about a saved comparison: save this one in the investigation first.";
+
+    /// <summary>Why noting waits while a note is written.</summary>
+    private const string Noting = "A note is being written to the investigation.";
+
+    /// <summary>What Add a note… does, offered.</summary>
+    internal const string NoteDoes = "Write a note about this comparison, or about its chosen row by what it compares, kept in the "
+        + "investigation: the comparison says it each time it is opened, and icat compare --saved prints it.";
 
     /// <summary>What Share redacted… does, offered.</summary>
     internal const string ShareDoes = "Save this comparison as a metadata-only, pseudonymized report to share, every row "
@@ -673,10 +729,16 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         try
         {
             CancellationToken token = request.Token;
-            (IntervalComparison comparison, ComparisonTimeline? columns) =
-                await Task.Run(() => Read(choice, chosenBaseline, by, grouping, drawn, token), token);
+            string? name = savedAs;
+            (IntervalComparison comparison, ComparisonTimeline? columns, Kept? found, string? unread) = await Task.Run(() =>
+            {
+                (IntervalComparison read, ComparisonTimeline? cut) = Read(choice, chosenBaseline, by, grouping, drawn, token);
+                (Kept? saved, string? why) = KeptAs(read, name);
+                return (read, cut, saved, why);
+            }, token);
             if (closed || !ReferenceEquals(reading, request)) return;
             timeline = columns;
+            (kept, notesUnread) = (found, unread);
             Show(comparison);
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
@@ -728,6 +790,84 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         if (!drawn) return (SessionComparison.Compare(store, against, compared, by, policy, grouping, token), null);
         ComparisonTimeline within = SessionComparison.Timeline(store, against, compared, columns, by, policy, grouping, Listed, token);
         return (within.Whole, within);
+    }
+
+    /// <summary>
+    /// The saved comparison <paramref name="comparison"/> is in the investigation the session was opened from, with the notes
+    /// in force about it and its rows (`contracts/workspace-v23.md` §7): one saved there that compares just what it does - the
+    /// one saved as <paramref name="name"/> where that one does, else the first saved - or none; or why the investigation
+    /// could not be read.
+    /// </summary>
+    private (Kept? Kept, string? Unread) KeptAs(IntervalComparison comparison, string? name)
+    {
+        if (investigation is null) return (null, null);
+        try
+        {
+            InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(investigation);
+            return (InvestigationWorkspace.SavedAs(workspace, comparison, name) is { } saved
+                ? new Kept(saved.Name, InvestigationWorkspace.NotesAbout(workspace, saved.Name))
+                : null, null);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
+            or UnauthorizedAccessException)
+        {
+            return (null, InvestigationTrouble.Why(investigation, exception));
+        }
+    }
+
+    /// <summary>
+    /// Reads again which saved comparison the one shown is, and the notes about it, and shows them, its chosen row kept;
+    /// nothing where another comparison is shown by then.
+    /// </summary>
+    private async Task ReadNotesAsync()
+    {
+        if (Shown is not { } comparison) return;
+        string? name = savedAs;
+        (Kept? found, string? unread) = await Task.Run(() => KeptAs(comparison, name), lifetime.Token);
+        if (closed || !ReferenceEquals(Shown, comparison)) return;
+        (kept, notesUnread) = (found, unread);
+        Show(comparison, rows.SelectedIndex);
+    }
+
+    /// <summary>
+    /// Writes a note about the saved comparison shown, or about its chosen row, in the investigation the session was opened
+    /// from (`contracts/workspace-v23.md` §7), then says the notes about it again; beside the buttons, what was written.
+    /// </summary>
+    public Task NoteAsync()
+    {
+        if (closed || WhyNotNote() is not null) return Task.CompletedTask;
+        Noted = WriteNoteAsync(kept!, investigation!);
+        return Noted;
+    }
+
+    private async Task WriteNoteAsync(Kept known, string file)
+    {
+        noting = true;
+        OfferNote();
+        try
+        {
+            CultureInfo culture = CultureInfo.CurrentCulture;
+            int index = rows.SelectedIndex;
+            ComparisonRow? chosen = index >= 0 && index < listed.Count ? listed[index] : null;
+            var writing = new InvestigationNoteWindow(file, [], about: new ComparisonNoteSubject(known.Name, chosen?.Compared.Key,
+                chosen is null ? null : string.Create(culture, $"row {index + 1:N0}: {chosen.Ends}")));
+            if (!await writing.ShowDialog<bool>(this) || closed || writing.Written is not { } added) return;
+            await ReadNotesAsync();
+            if (closed) return;
+            string named = Path.GetFileName(file);
+            done.Text = added.About?.Row is null
+                ? $"Added a note about '{known.Name}' to {named}."
+                : string.Create(culture, $"Added a note about row {index + 1:N0} of '{known.Name}' to {named}.");
+        }
+        catch (OperationCanceledException) when (closed)
+        {
+            // Closing the window let the notes go; the note written is kept.
+        }
+        finally
+        {
+            noting = false;
+            if (!closed) OfferNote();
+        }
     }
 
     /// <summary>
@@ -867,6 +1007,10 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
             if (name is null || closed) return;
             SavedComparison saved = await Task.Run(() => InvestigationWorkspace.SaveComparison(file, name, before, after,
                 comparison.Metric, comparison.Grouping, DateTimeOffset.UtcNow), lifetime.Token);
+
+            // Saved, the comparison is known by its name, and the notes about it - kept under a name it replaced - are said.
+            savedAs = saved.Name;
+            await ReadNotesAsync();
             if (!closed) done.Text = $"Saved in {named} as '{saved.Name}'; the investigation's Comparisons… opens it again.";
         }
         catch (OperationCanceledException) when (closed)
@@ -975,14 +1119,16 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     /// <summary>Says where the window says what sharing did why the system's dialog to choose the file did not open.</summary>
     void IChoosingWindow.PickerFailed(string why) => done.Text = why;
 
-    /// <summary>Lets go of the comparison shown, its rows, coverage, reasons and notes.</summary>
+    /// <summary>Lets go of the comparison shown, its rows, coverage, reasons and notes, and the notes written about it.</summary>
     private void Clear()
     {
         Shown = null;
         timeline = null;
         listed = [];
         rows.ItemsSource = listed;
-        coverage.Text = reasons.Text = notes.Text = string.Empty;
+        coverage.Text = reasons.Text = notes.Text = written.Text = writtenNotes.Text = string.Empty;
+        noteLines = [];
+        writtenNotes.IsVisible = false;
         ShowChart();
     }
 
@@ -1002,12 +1148,22 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         return TimeRange.TryCreate(first, last, out TimeRange interval) ? interval : null;
     }
 
-    /// <summary>Shows a comparison read: what it compared, each interval's coverage, its rows, their reasons and the notes.</summary>
-    private void Show(IntervalComparison comparison)
+    /// <summary>
+    /// Shows a comparison read: what it compared, each interval's coverage, its rows, their reasons and the notes, and the
+    /// notes a person wrote about it where its investigation saved it; <paramref name="chosen"/> is the row chosen, the first
+    /// unless another is kept.
+    /// </summary>
+    private void Show(IntervalComparison comparison, int chosen = 0)
     {
         CultureInfo culture = CultureInfo.CurrentCulture;
         Shown = comparison;
         (IReadOnlyList<ComparisonRow> shownRows, IReadOnlyList<string> shownReasons) = ComparisonRows.Of(comparison, culture);
+
+        // A row a note is about says how many are, beside its ends.
+        Dictionary<string, int> noted = (kept?.Notes ?? []).Where(note => note.About?.Row is not null)
+            .GroupBy(note => note.About!.Row!, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+        shownRows = [.. shownRows.Select(row => noted.TryGetValue(row.Compared.Key, out int count) ? row with { Noted = count } : row)];
         listed = [.. shownRows.Take(Listed)];
         widths = Widths(listed);
         for (int column = 1; column < widths.Length; column++)
@@ -1016,7 +1172,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         }
 
         rows.ItemsSource = listed;
-        rows.SelectedIndex = listed.Count > 0 ? 0 : -1;
+        rows.SelectedIndex = chosen < listed.Count ? chosen : -1;
         int hosts = comparison.Relationships.Count(row => row.Host is not null || row.ExecutableHost is not null);
         int between = comparison.Relationships.Count - hosts;
         bool executables = comparison.Grouping == ComparisonGrouping.Executable;
@@ -1054,8 +1210,34 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
                 .. ComparisonText.Notes([.. listed.Select(row => row.Compared)], comparison.Metric),
                 .. ComparisonText.Grouping(comparison, culture),
             ]);
+        ShowNotes(shownRows, culture);
         KeepKeyboard(firstShown: !shownOnce);
         shownOnce = true;
+    }
+
+    /// <summary>
+    /// Says the notes about the comparison shown, where its investigation saved it: each in the order first written, a row's
+    /// by its rank and ends in this comparison, or as one it does not compare; or that there is none yet, or why none is said.
+    /// </summary>
+    private void ShowNotes(IReadOnlyList<ComparisonRow> shownRows, CultureInfo culture)
+    {
+        IReadOnlyList<WorkspaceNote> about = kept?.Notes ?? [];
+        written.Text = notesUnread is { } why ? "The notes about it could not be read: " + why
+            : investigation is null ? string.Empty
+            : kept is not { } known ? "Save the comparison in the investigation to write notes about it and its rows."
+            : about.Count == 0 ? $"No note about '{known.Name}' yet: Add a note… writes one about it, or about its chosen row."
+            : $"{CountText.Of(about.Count, "note")} about '{known.Name}', the first written first:";
+        noteLines = [.. about.Select(Said)];
+        writtenNotes.Text = string.Join("\n", noteLines);
+        writtenNotes.IsVisible = about.Count > 0;
+
+        string Said(WorkspaceNote note)
+        {
+            if (note.About?.Row is not { } key) return "About the comparison: " + note.Text;
+            int rank = shownRows.ToList().FindIndex(row => string.Equals(row.Compared.Key, key, StringComparison.Ordinal));
+            return rank < 0 ? "About a row the comparison shown does not compare: " + note.Text
+                : string.Create(culture, $"About row {rank + 1:N0}, {shownRows[rank].Ends}: {note.Text}");
+        }
     }
 
     /// <summary>
@@ -1071,15 +1253,36 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
     }, Avalonia.Threading.DispatcherPriority.Loaded);
 
     /// <summary>
-    /// Offers saving the comparison shown in the investigation, or says why not: the session shown was not opened from one,
-    /// a comparison is read or saved, or none is shown.
+    /// Offers saving the comparison shown in the investigation, and writing a note about it there, or says why not: the
+    /// session shown was not opened from one, a comparison is read or saved, or none is shown.
     /// </summary>
-    private void OfferSave() => Offering.Offer(save,
-        investigation is null ? SaveNeedsInvestigation
+    private void OfferSave()
+    {
+        Offering.Offer(save,
+            investigation is null ? SaveNeedsInvestigation
+            : comparing ? Comparing
+            : saving ? Saving
+            : Shown is null ? NothingToShare
+            : null, SaveDoes);
+        OfferNote();
+    }
+
+    /// <summary>
+    /// Offers writing a note about the comparison shown, or says why not: the session shown was not opened from an
+    /// investigation, a comparison is read, saved or noted, none is shown, the investigation could not be read, or it saved
+    /// no comparison of just what this one compares.
+    /// </summary>
+    private void OfferNote() => Offering.Offer(write, WhyNotNote(), NoteDoes);
+
+    private string? WhyNotNote() =>
+        investigation is null ? NoteNeedsInvestigation
         : comparing ? Comparing
         : saving ? Saving
+        : noting ? Noting
         : Shown is null ? NothingToShare
-        : null, SaveDoes);
+        : notesUnread is { } why ? "The investigation could not be read: " + why
+        : kept is null ? NoteNeedsSaving
+        : null;
 
     /// <summary>
     /// Offers sharing the comparison shown and showing it on the graph, or says why not: while one is read, shared or saved,
@@ -1200,4 +1403,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
 
         return line;
     }
+
+    /// <summary>The saved comparison a comparison shown is, by the name it is saved under, and the notes in force about it.</summary>
+    private sealed record Kept(string Name, IReadOnlyList<WorkspaceNote> Notes);
 }

@@ -50,6 +50,20 @@ public sealed record SavedComparison
     /// <summary>Whether its two intervals are of two captures rather than one session's.</summary>
     [JsonIgnore]
     public bool AcrossCaptures => Baseline is { } baseline && Compared is { } compared && baseline.SessionId != compared.SessionId;
+
+    /// <summary>
+    /// Whether it compares just what <paramref name="comparison"/> did (`contracts/workspace-v23.md` §7): the same two
+    /// intervals of the same sessions, by the same metric, its rows of the same grouping - so a note about it, or about one of
+    /// its rows by key, is about that comparison's.
+    /// </summary>
+    public bool Describes(IntervalComparison comparison)
+    {
+        ArgumentNullException.ThrowIfNull(comparison);
+        return Baseline is { } before && Compared is { } after
+            && before.SessionId == (comparison.BaselineSessionId ?? comparison.SessionId) && before.Interval == comparison.Baseline
+            && after.SessionId == comparison.SessionId && after.Interval == comparison.Compared
+            && Metric == comparison.Metric && GroupedBy == comparison.Grouping;
+    }
 }
 
 public static partial class InvestigationWorkspace
@@ -136,6 +150,19 @@ public static partial class InvestigationWorkspace
             .OrderBy(group => group.Min(comparison => comparison.Revision))
             .Select(group => group.MaxBy(comparison => comparison.Revision)!)
             .Where(comparison => comparison.Baseline is not null)];
+    }
+
+    /// <summary>
+    /// The comparison in force that compares just what <paramref name="comparison"/> did (<see cref="SavedComparison.Describes"/>):
+    /// the one named <paramref name="preferred"/>, in any case, where it does, else the first saved; null where none does.
+    /// </summary>
+    public static SavedComparison? SavedAs(InvestigationWorkspaceFile workspace, IntervalComparison comparison, string? preferred = null)
+    {
+        ArgumentNullException.ThrowIfNull(comparison);
+        return ComparisonsInForce(workspace)
+            .Where(saved => saved.Describes(comparison))
+            .OrderByDescending(saved => string.Equals(saved.Name, preferred, StringComparison.OrdinalIgnoreCase))
+            .FirstOrDefault();
     }
 
     /// <summary>The saved comparison in force named <paramref name="name"/>, in any case; refused in words when there is none.</summary>

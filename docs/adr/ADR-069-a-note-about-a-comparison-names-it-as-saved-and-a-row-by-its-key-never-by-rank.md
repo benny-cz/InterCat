@@ -39,7 +39,8 @@ names the same row while the sessions hold it, a process's identity being a stab
 - `workspace-v23`: a note's `about`, `{ comparison, row }`; a file before version 23 holds none.
 - `icat workspace note <text> --about <comparison> [--row <key>]`; `icat workspace show` and the investigation window
   say what each is about; `icat compare --saved` says them, and its JSON carries them.
-- Not built here: writing such a note in the Compare window, which says them once it shows a saved comparison.
+- Revision 772 builds the Compare window's: showing a comparison its investigation saved alike, it says the notes
+  about it beneath its rows, marks each row a note is about, and adds one about the comparison or its chosen row.
 
 ## Alternatives considered
 
