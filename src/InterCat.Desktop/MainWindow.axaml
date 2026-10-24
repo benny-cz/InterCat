@@ -1184,6 +1184,9 @@
               </WrapPanel>
               <Button x:Name="BrowseChannelsButton" Content="Browse paired channels" IsEnabled="False"
                       Click="BrowseChannels" ToolTip.ShowOnDisabled="True" />
+              <!-- What recurs in the session's communication (patterns-v1 §7), each pattern's processes one choice away. -->
+              <Button x:Name="PatternsButton" Content="Recurring patterns…" IsEnabled="False"
+                      Click="ShowPatterns" ToolTip.ShowOnDisabled="True" />
               <!-- Offered while the rung lists something to export, and saying why not while it lists nothing. -->
               <Button x:Name="ExportButton" Content="Export this view (Ctrl+E)" Click="ExportView"
                       IsEnabled="{Binding CanExport}" ToolTip.Tip="{Binding ExportTip}" ToolTip.ShowOnDisabled="True"

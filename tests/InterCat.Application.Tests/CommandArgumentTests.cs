@@ -1,4 +1,5 @@
 using InterCat.Application;
+using InterCat.Domain;
 using Xunit;
 
 namespace InterCat.Application.Tests;
@@ -23,4 +24,13 @@ public sealed class CommandArgumentTests
     [InlineData("a;b.exe", "\"a;b.exe\"")]
     [InlineData("", "\"\"")]
     public void ACitedValueIsTakenWhole(string value, string argument) => Assert.Equal(argument, CommandArgument.Of(value));
+
+    [Fact(DisplayName = "R18: an enumeration's value is cited as a person types it, each word after the first behind a hyphen")]
+    public void AnEnumerationIsCitedAsTyped()
+    {
+        Assert.Equal("direct-only", CommandArgument.Typed(EvidencePolicy.DirectOnly));
+        Assert.Equal("all-including-conflicting", CommandArgument.Typed(EvidencePolicy.AllIncludingConflicting));
+        Assert.Equal("bytes-sent", CommandArgument.Typed(Metric.BytesSent));
+        Assert.Equal("tcp", CommandArgument.Typed(Mechanism.Tcp));
+    }
 }

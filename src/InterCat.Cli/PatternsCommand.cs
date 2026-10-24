@@ -181,8 +181,7 @@ internal static class PatternsCommand
         InstanceId = participant.Process?.ToString(),
         ProcessId = participant.Process is { } id && reading.Processes.TryGetValue(id, out ProcessNode? node) ? node.ProcessId : (int?)null,
         Name = participant.Process is { } named && reading.Processes.TryGetValue(named, out ProcessNode? process) ? process.Name : null,
-        Program = participant.Process is { } grouped && reading.Processes.TryGetValue(grouped, out ProcessNode? member)
-            && reading.Groups.TryGetValue(member.GroupKey, out ProcessGroup? group) ? group.Name : null,
+        Program = PatternText.Program(reading, participant),
         participant.Address,
         participant.Occurrences,
     };
@@ -210,19 +209,13 @@ internal static class PatternsCommand
             ConsoleUi.Field("Spread over", ComparisonText.Interval(span, null, culture) + ", in tenths");
         }
 
-        string covered = CoverageText.Describe(reading.Coverage);
-        ConsoleUi.Field("Coverage", covered.StartsWith("Coverage: ", StringComparison.Ordinal) ? covered["Coverage: ".Length..] : covered);
-        int recurring = reading.Patterns.Count(pattern => pattern.Recurring);
-        int once = reading.Patterns.Count - recurring;
-        ConsoleUi.Field("Patterns", CountText.Of(recurring, "recurring pattern", "recurring patterns")
-            + (once == 0 ? string.Empty
-                : ", and " + CountText.Of(once, "that occurred once", "that each occurred once")
-                    + (all ? ", listed too" : ", which --all lists")));
+        ConsoleUi.Field("Coverage", PatternText.Coverage(reading));
+        bool once = reading.Patterns.Any(pattern => !pattern.Recurring);
+        ConsoleUi.Field("Patterns", PatternText.Counted(reading) + (!once ? string.Empty : all ? ", listed too" : ", which --all lists"));
         if (listed.Length == 0)
         {
             ConsoleUi.Note(reading.Patterns.Count == 0
-                ? "No TCP connection the capture saw open, UDP flow or named RPC call is in this session, so it holds no "
-                    + "pattern; the coverage above says whether one could have been seen."
+                ? PatternText.None(reading)
                 : "No pattern occurred more than once; --all lists those that occurred once.");
             Apart(reading);
             return;
@@ -234,9 +227,9 @@ internal static class PatternsCommand
             [
                 Rank(shown, pattern).ToString(culture),
                 CommunicationPatterns.Describe(pattern),
-                Occurred(pattern, culture),
-                Ends(reading, pattern.Clients, culture),
-                Ends(reading, pattern.Servers, culture),
+                PatternText.Occurred(pattern, culture),
+                PatternText.Ends(reading, pattern.Clients),
+                PatternText.Ends(reading, pattern.Servers),
                 string.Create(culture, $"{pattern.Tenths:N0} of {CommunicationPatterns.Parts:N0}"),
             ])]);
         if (shown.Length > listed.Length)
@@ -245,44 +238,16 @@ internal static class PatternsCommand
                 $"{shown.Length - listed.Length:N0} more, lighter; --limit {shown.Length:N0} lists every one."));
         }
 
-        ConsoleUi.Note("A pattern groups what recurs by its mechanism, its service port or RPC interface and procedure, and "
-            + "where its server end is, never by a process, address or time; its clients and servers say who took part, a "
-            + "process by its executable's processes counted as programs. Tenths says in how many tenths of the session an "
-            + "occurrence began. --pattern <rank> says what a pattern's signature is made of and lists every participant.");
+        ConsoleUi.Note(PatternText.Note + " --pattern <rank> says what a pattern's signature is made of and lists every participant.");
         Apart(reading);
     }
 
-    /// <summary>What no pattern holds, each said where there is some, so a missing occurrence is never read as none.</summary>
+    /// <summary>What no pattern holds, said where there is some, so a missing occurrence is never read as none.</summary>
     private static void Apart(PatternReading reading)
     {
-        CultureInfo culture = CultureInfo.CurrentCulture;
-        var apart = new List<string>();
-        if (reading.UnopenedConnections > 0)
+        if (PatternText.Apart(reading, CultureInfo.CurrentCulture) is { } apart)
         {
-            apart.Add(CountText.Of(reading.UnopenedConnections, "TCP connection", "TCP connections")
-                + " the capture saw open at neither end, so no end of them has a role");
-        }
-
-        if (reading.DynamicFlows > 0)
-        {
-            apart.Add(CountText.Of(reading.DynamicFlows, "UDP flow", "UDP flows")
-                + " between two dynamic ports, which have no service port");
-        }
-
-        if (reading.CallsWithoutInterface > 0)
-        {
-            apart.Add(CountText.Of(reading.CallsWithoutInterface, "RPC call", "RPC calls")
-                + " no recorded start named an interface for");
-        }
-
-        if (reading.NotAdmitted > 0)
-        {
-            apart.Add(string.Create(culture, $"{reading.NotAdmitted:N0} the {reading.Policy} evidence policy did not admit"));
-        }
-
-        if (apart.Count > 0)
-        {
-            ConsoleUi.Note("In no pattern: " + WorkspaceLayout.Series(apart) + ".");
+            ConsoleUi.Note(apart);
         }
     }
 
@@ -292,87 +257,31 @@ internal static class PatternsCommand
         ConsoleUi.Heading(string.Create(culture, $"Pattern {rank:N0}: ") + CommunicationPatterns.Describe(pattern));
         ConsoleUi.Field("Signature", pattern.Key);
         ConsoleUi.Field("Made of", CommunicationPatterns.Explain(pattern));
-        string when = pattern.FirstTicks is { } first && pattern.LastTicks is { } last && reading.Span is { } span
-            ? ", the first beginning at " + WorkspaceTime.FormatInstant(first, span.SpanTicks, culture) + " and the last at "
-                + WorkspaceTime.FormatInstant(last, span.SpanTicks, culture)
-                + string.Create(culture, $", in {pattern.Tenths:N0} of the session's {CommunicationPatterns.Parts:N0} tenths")
-            : string.Empty;
-        ConsoleUi.Field("Occurred", Occurred(pattern, culture) + when);
-        foreach ((string label, IReadOnlyList<PatternParticipant> participants, string unit) in new[]
+        ConsoleUi.Field("Occurred", PatternText.When(reading, pattern, culture));
+        foreach ((string label, PatternRole role, IReadOnlyList<PatternParticipant> participants) in new[]
         {
-            ("Clients", pattern.Clients, pattern.Mechanism == Mechanism.Rpc ? "made" : Unit(pattern)),
-            ("Servers", pattern.Servers, pattern.Mechanism == Mechanism.Rpc ? "served" : Unit(pattern)),
+            ("Clients", PatternRole.Client, pattern.Clients),
+            ("Servers", PatternRole.Server, pattern.Servers),
         })
         {
-            ConsoleUi.Field(label, participants.Count == 0
-                ? (label == "Servers" && pattern.Mechanism == Mechanism.Rpc
-                    ? "none recorded: no call of it was recorded served on this machine"
-                    : "none")
-                : Ends(reading, participants, culture));
+            ConsoleUi.Field(label, PatternText.Took(reading, pattern, role));
             if (participants.Count == 0) continue;
+            string unit = PatternText.Unit(pattern, role);
             ConsoleUi.Table(
-                ["End", "Program", pattern.Mechanism == Mechanism.Rpc ? "Calls " + unit : Capitalized(unit)],
+                ["End", "Program", char.ToUpperInvariant(unit[0]) + unit[1..]],
                 [.. participants.Select(participant => (IReadOnlyList<string>)
                 [
-                    Named(reading, participant),
-                    participant.Process is { } id && reading.Processes.TryGetValue(id, out ProcessNode? node)
-                        && reading.Groups.TryGetValue(node.GroupKey, out ProcessGroup? group) ? group.Name : "-",
+                    PatternText.Named(reading, participant),
+                    PatternText.Program(reading, participant) ?? "-",
                     ConsoleUi.Count(participant.Occurrences),
                 ])]);
         }
 
         if (pattern.Clients.Concat(pattern.Servers).Any(participant => participant.Address is not null))
         {
-            ConsoleUi.Note("Another host is named by its address: who is at it is not observed.");
+            ConsoleUi.Note(PatternText.HostNote);
         }
     }
-
-    /// <summary>How many times a pattern occurred, in its unit: "20 connections", "6 flows", "46 calls made · 46 served".</summary>
-    private static string Occurred(CommunicationPattern pattern, IFormatProvider culture) => pattern.Mechanism == Mechanism.Rpc
-        ? CountText.Of(pattern.Occurrences, "call made", "calls made") + string.Create(culture, $" · {pattern.Served:N0} served")
-        : CountText.Of(pattern.Occurrences, pattern.Mechanism == Mechanism.Tcp ? "connection" : "flow",
-            pattern.Mechanism == Mechanism.Tcp ? "connections" : "flows");
-
-    private static string Unit(CommunicationPattern pattern) => pattern.Mechanism == Mechanism.Tcp ? "connections" : "flows";
-
-    private static string Capitalized(string text) => char.ToUpperInvariant(text[0]) + text[1..];
-
-    /// <summary>
-    /// One role's ends in one cell: "3 processes of 2 programs", "61 hosts", "ends no record holds", joined - each kind
-    /// said only where there is one.
-    /// </summary>
-    private static string Ends(PatternReading reading, IReadOnlyList<PatternParticipant> participants, IFormatProvider culture)
-    {
-        if (participants.Count == 0) return "none";
-        ProcessInstanceId[] processes = [.. participants.Select(participant => participant.Process).OfType<ProcessInstanceId>()];
-        int programs = processes
-            .Select(id => reading.Processes.TryGetValue(id, out ProcessNode? node) ? node.GroupKey : null)
-            .OfType<string>()
-            .Where(key => key != ProcessGroup.UnwitnessedExecutableKey)
-            .Distinct(StringComparer.Ordinal)
-            .Count();
-        int hosts = participants.Count(participant => participant.Address is not null);
-        var parts = new List<string>();
-        if (processes.Length > 0)
-        {
-            parts.Add(CountText.Of(processes.Length, "process", "processes")
-                + (programs > 0 ? " of " + CountText.Of(programs, "program", "programs") : string.Empty));
-        }
-
-        if (hosts > 0) parts.Add(CountText.Of(hosts, "host", "hosts"));
-        if (participants.Any(participant => participant.Unseen)) parts.Add("ends no record holds");
-        return string.Join(", ", parts);
-    }
-
-    /// <summary>One end as a table names it: a process as the overview does, a host by its address.</summary>
-    private static string Named(PatternReading reading, PatternParticipant participant) => participant switch
-    {
-        { Process: { } id } => reading.Processes.TryGetValue(id, out ProcessNode? node)
-            ? CollectorText.Named(node)
-            : "a process the overview did not name",
-        { Address: { } address } => address,
-        _ => "ends on this machine no record holds",
-    };
 
     private static void PrintHelp()
     {

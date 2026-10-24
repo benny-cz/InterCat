@@ -88,7 +88,8 @@ not comparable, ± both ways - and says the same beneath the graph's header and 
 **Patterns.** `icat patterns` groups every connection, UDP flow and RPC call by its kind - its mechanism, the port it
 served or the RPC interface and procedure it called, and whether its server is here or at another host - and lists the
 kinds that recur, the busiest first, with who took part as client and as server and how far through the session each
-recurred. `--pattern <rank>` says how one was grouped and lists everyone in it.
+recurred. `--pattern <rank>` says how one was grouped and lists everyone in it. In the window, Recurring patterns…
+lists the same, and Select its processes makes a pattern's processes the selection, so Enter lists their records.
 
 F1 in the window lists every key it takes.
 

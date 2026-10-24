@@ -143,4 +143,42 @@ public sealed class CommunicationPatternsTests
         Assert.True((Pattern(Mechanism.Rpc, PatternPlace.Here, null, ServiceControlInterface, 7) with { Occurrences = 0, Served = 2 }).Recurring);
         Assert.Equal(5, (Pattern(Mechanism.Rpc, PatternPlace.Here, null) with { Occurrences = 3, Served = 5 }).Weight);
     }
+
+    [Fact(DisplayName = "R18: a pattern's occurrences, who took each role and why a session holds none are said in one set of words, the command line's and the window's")]
+    public void APatternIsSaidInOneSetOfWords()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = PatternRows();
+        Publish(session.Store, rows, fields: fields, coverage: TransportLedger(tcp: true, udp: true));
+        PatternReading reading = CommunicationPatterns.Read(session.Store);
+        CommunicationPattern called = reading.Patterns[0], local = reading.Patterns[1], resolved = reading.Patterns[3];
+
+        // Each end's occurrences in its role's unit.
+        Assert.Equal(["1 call made", "3 calls made", "1 call served", "3 calls served"],
+            new[] { (PatternRole.Client, 1L), (PatternRole.Client, 3L), (PatternRole.Server, 1L), (PatternRole.Server, 3L) }
+                .Select(each => PatternText.Count(called, each.Item1, each.Item2)));
+        Assert.Equal(["1 connection", "2 connections", "1 flow", "2 flows"],
+        [
+            PatternText.Count(local, PatternRole.Server, 1), PatternText.Count(local, PatternRole.Client, 2),
+            PatternText.Count(resolved, PatternRole.Client, 1), PatternText.Count(resolved, PatternRole.Server, 2),
+        ]);
+
+        // Who took a role: its ends; none; or, for an RPC pattern's servers, that no call of it was recorded served here.
+        Assert.Equal(("2 processes of 1 program", "1 process of 1 program", "1 host"), (PatternText.Took(reading, local, PatternRole.Client),
+            PatternText.Took(reading, local, PatternRole.Server), PatternText.Took(reading, resolved, PatternRole.Server)));
+        Assert.Equal("none recorded: no call of it was recorded served on this machine",
+            PatternText.Took(reading, called with { Servers = [] }, PatternRole.Server));
+        Assert.Equal(("none", "none"), (PatternText.Took(reading, called with { Clients = [] }, PatternRole.Client),
+            PatternText.Took(reading, local with { Servers = [] }, PatternRole.Server)));
+
+        // A session with none says so, and where the evidence policy left some out, which policy and where they are counted.
+        Assert.Equal("This session holds no pattern: no TCP connection the capture saw open, UDP flow with a service port or RPC "
+            + "call naming its interface is in it; the coverage above says whether one could have been seen.",
+            PatternText.None(reading with { Patterns = [] }));
+        PatternReading direct = CommunicationPatterns.Read(session.Store, EvidencePolicy.DirectOnly);
+        Assert.Equal("This session holds no pattern the direct-only evidence policy admits; what it did not admit is counted "
+            + "beneath, and the coverage above says whether any could have been seen.", PatternText.None(direct));
+        Assert.Equal("In no pattern: 22 the direct-only evidence policy did not admit.",
+            PatternText.Apart(direct, System.Globalization.CultureInfo.InvariantCulture));
+    }
 }

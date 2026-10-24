@@ -1,7 +1,7 @@
 # InterCat communication patterns v1
 
-Status: **implemented** on the command line (`icat patterns`, revision 763). The window does not show patterns at this
-version (§7).
+Status: **implemented** on the command line (`icat patterns`, revision 763) and in the window (Recurring patterns…,
+revision 764, §7).
 
 This contract fixes plan M12's recurring communication patterns - its explainable pattern groups - for one session's
 current generation: every TCP connection the capture saw open, every UDP flow and every RPC call, each grouped by a
@@ -73,7 +73,8 @@ rank, its signature in words - "TCP at port 8080 here", "TCP to port 443 at othe
 hosts", "RPC calls to svcctl (Service Control Manager), procedure 7" - how many times it occurred, its clients and
 servers counted - processes and the programs they ran, as the overview groups them by executable, hosts, and ends no
 record holds - and its tenths. It states the session's span, each mechanism's coverage, how many patterns recur and
-how many occurred once, and what no pattern holds. `--all` lists those that occurred once too.
+how many occurred once, and what no pattern holds. `--all` lists those that occurred once too. A session holding no
+pattern says so: none at all, or none the evidence policy admits, the policy named as `--evidence-policy` takes it.
 
 `--pattern <rank>` shows one: its signature as a key, what it is made of, when it occurred, and every participant in
 each role with its occurrences, a process named as the overview names it and with the program it ran. A rank past
@@ -91,10 +92,35 @@ address, and its occurrences.
 A reading's overview, connections, flows and calls are of one generation: where a newer one was published between
 them, they are read again, up to three times, and then refused with a reason rather than mixed (R7).
 
-## 7. Not defined at this version
+## 7. The window
 
-- **Patterns in the window.** The command line lists them (§5). - **Other mechanisms' patterns**: HTTP exchanges,
-named pipes and ALPC ports, whose structural signatures need their own normalization (plan M12's source-specific
-normalization). - **Patterns over an interval**, or across captures; a reading is of a whole generation. -
-**Periodicity.** Tenths say how far through the session a pattern recurred, never at what interval: no period is
-inferred from the times its occurrences began.
+Recurring patterns…, among the actions beside the graph, is offered for a session at any rung but its source records.
+It reads the session's current generation under the window's evidence policy and says it in the command line's words
+(R18):
+
+- **The list.** The recurring patterns, the heaviest first, each by its rank and its signature in words, then how many
+  times it occurred, its clients and servers counted and its tenths. *Include those that occurred once* lists those
+  after them, the chosen pattern staying chosen.
+- **The chosen pattern.** What its signature is made of, when it occurred, its signature as a key, and every end in
+  its role, its clients first, each with its occurrences in its role's unit: a process named as the overview names it,
+  with the program it ran where its own name does not say it, or that no record witnessed its executable; another host
+  by its address, with who is at it said to be unobserved.
+- **About the list.** The generation read and, where it is newer than the window shows, that a process only it holds
+  is not selected there; how many patterns recur and occurred once; the evidence policy, where it is not the default;
+  each mechanism's coverage; what no pattern holds (§4); and, where the list holds none, why.
+- **Select its processes**, or Enter or a double click on a pattern, closes the list and makes the pattern's
+  processes, of either role and each once, the selection together, as Ctrl+click makes one (plan §6.7); a pattern of
+  one process goes to it, as a click does. The graph then has the keyboard, and Enter lists their records. A process
+  the window does not hold is left out; where it holds none of them, the window says so and the selection stays as it
+  was. Escape and Close choose nothing.
+
+The window selects a pattern's processes rather than marking edges: an edge the graph draws stands for every port and
+interface between its two ends, so marking it would claim more than the pattern holds (ADR-065).
+
+## 8. Not defined at this version
+
+- **Other mechanisms' patterns**: HTTP exchanges, named pipes and ALPC ports, whose structural signatures need their
+  own normalization (plan M12's source-specific normalization).
+- **Patterns over an interval**, or across captures; a reading is of a whole generation.
+- **Periodicity.** Tenths say how far through the session a pattern recurred, never at what interval: no period is
+  inferred from the times its occurrences began.

@@ -169,7 +169,38 @@ public sealed class PatternsCommandTests
         Assert.Contains("A session directory is required: icat patterns <directory>.", why, Ordinal);
         (InterCatExitCode direct, string text, string said2) = await Run("patterns", session.Path, "--evidence-policy", "directonly");
         Assert.True(direct == InterCatExitCode.Success, said2);
-        Assert.Contains("the DirectOnly evidence policy did not admit", Regex.Replace(text, @"\s+", " "), Ordinal);
+        Assert.Contains("This session holds no pattern the direct-only evidence policy admits; what it did not admit is counted "
+            + "beneath, and the coverage above says whether any could have been seen.", Regex.Replace(text, @"\s+", " "), Ordinal);
+        Assert.Contains("the direct-only evidence policy did not admit", Regex.Replace(text, @"\s+", " "), Ordinal);
+    }
+
+    [Fact(DisplayName = "R21: icat patterns says why it lists none - a session with no pattern, or none that occurred more than once")]
+    public async Task IcatPatternsSaysWhyItListsNone()
+    {
+        using var empty = new TemporarySession();
+        Publish(empty.Store, [Lifecycle(1, ObservationKind.Inventory, 100, 1) with { ResourceName = @"C:\Apps\client.exe", SessionRelativeTicks = 100 }]);
+        empty.Store.ReleaseSegmentReaders();
+        (InterCatExitCode code, string text, string said) = await Run("patterns", empty.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("This session holds no pattern: no TCP connection the capture saw open, UDP flow with a service port or RPC "
+            + "call naming its interface is in it; the coverage above says whether one could have been seen.",
+            Regex.Replace(text, @"\s+", " "), Ordinal);
+        Assert.DoesNotContain("In no pattern", text, Ordinal);
+
+        using var once = new TemporarySession();
+        Publish(once.Store,
+        [
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 10)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 1_000 },
+            Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 11)
+                .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 1_100 },
+        ]);
+        once.Store.ReleaseSegmentReaders();
+        (code, text, said) = await Run("patterns", once.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Patterns +0 recurring patterns, and 1 that occurred once, which --all lists\r?$", text);
+        Assert.Contains("No pattern occurred more than once; --all lists those that occurred once.", text, Ordinal);
+        Assert.Empty(Listed(text));
     }
 
     /// <summary>One participant's kind, from the JSON, and its address where it has one.</summary>

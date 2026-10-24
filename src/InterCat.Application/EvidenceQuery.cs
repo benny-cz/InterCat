@@ -48,14 +48,10 @@ public static class EvidenceQuery
             words.Add(string.Create(CultureInfo.InvariantCulture, $"--interval {interval.StartTicks}:{interval.EndTicks}"));
         }
 
-        if (page.Mechanism is { } mechanism) words.Add("--mechanism " + Kebab(mechanism.ToString()));
-        if (page.Direction is { } direction) words.Add("--direction " + Kebab(direction.ToString()));
+        if (page.Mechanism is { } mechanism) words.Add("--mechanism " + CommandArgument.Typed(mechanism));
+        if (page.Direction is { } direction) words.Add("--direction " + CommandArgument.Typed(direction));
         if (page.End is { } end) words.Add(string.Create(CultureInfo.InvariantCulture, $"--end {end}"));
-        if (policy != EvidencePolicy.IncludeCorrelated) words.Add("--evidence-policy " + Kebab(policy.ToString()));
+        if (policy != EvidencePolicy.IncludeCorrelated) words.Add("--evidence-policy " + CommandArgument.Typed(policy));
         return string.Join(' ', words);
     }
-
-    /// <summary>An enumeration's name as a person types it: "DirectOnly" as "direct-only".</summary>
-    private static string Kebab(string name) => string.Concat(name.Select((character, index) =>
-        char.IsUpper(character) && index > 0 ? "-" + char.ToLowerInvariant(character) : char.ToLowerInvariant(character).ToString()));
 }

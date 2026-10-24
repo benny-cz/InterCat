@@ -85,13 +85,13 @@ public static class RankingQuery
     {
         ArgumentNullException.ThrowIfNull(request);
         var words = new List<string> { "icat metric <directory>" };
-        if (request.Basis != AnalysisBasis.SourceObservations) words.Add("--basis " + Kebab(request.Basis.ToString()));
-        words.Add("--metric " + Kebab(request.Metric.ToString()));
-        if (request.ByteDomain is { } domain) words.Add("--byte-domain " + Kebab(domain.ToString()));
-        if (request.AccountingSide is { } side) words.Add("--side " + Kebab(side.ToString()));
-        if (request.DurationInterval is { } duration) words.Add("--duration " + Kebab(duration.ToString()));
-        if (request.Cohort is { } cohort) words.Add("--cohort " + Kebab(cohort.ToString()));
-        if (request.Statistic is { } statistic) words.Add("--statistic " + Kebab(statistic.ToString()));
+        if (request.Basis != AnalysisBasis.SourceObservations) words.Add("--basis " + CommandArgument.Typed(request.Basis));
+        words.Add("--metric " + CommandArgument.Typed(request.Metric));
+        if (request.ByteDomain is { } domain) words.Add("--byte-domain " + CommandArgument.Typed(domain));
+        if (request.AccountingSide is { } side) words.Add("--side " + CommandArgument.Typed(side));
+        if (request.DurationInterval is { } duration) words.Add("--duration " + CommandArgument.Typed(duration));
+        if (request.Cohort is { } cohort) words.Add("--cohort " + CommandArgument.Typed(cohort));
+        if (request.Statistic is { } statistic) words.Add("--statistic " + CommandArgument.Typed(statistic));
         if (request.Grouping is { } grouping)
         {
             words.Add("--group-by " + grouping switch
@@ -110,7 +110,7 @@ public static class RankingQuery
 
         if (request.EvidencePolicy != EvidencePolicy.IncludeCorrelated)
         {
-            words.Add("--evidence-policy " + Kebab(request.EvidencePolicy.ToString()));
+            words.Add("--evidence-policy " + CommandArgument.Typed(request.EvidencePolicy));
         }
 
         return string.Join(' ', words);
@@ -210,8 +210,4 @@ public static class RankingQuery
         Cohort = OperationCohort.CompletedInRange,
         Statistic = DurationStatistic.Median,
     };
-
-    /// <summary>An enumeration's name as a person types it: "BytesSent" as "bytes-sent".</summary>
-    private static string Kebab(string name) => string.Concat(name.Select((character, index) =>
-        char.IsUpper(character) && index > 0 ? "-" + char.ToLowerInvariant(character) : char.ToLowerInvariant(character).ToString()));
 }

@@ -163,3 +163,11 @@ and where its server end is, with who took part in each role and how far through
 seen open at neither end, a flow between dynamic ports and a call no start named are counted apart. The explainable
 pattern groups M12 delivers are now on the command line; the window's patterns, outliers and causal navigation remain,
 and nothing else above changes.
+
+## Addendum, revision 764
+
+The window lists the recurring communication patterns in the command line's words (Recurring patterns…,
+`contracts/patterns-v1.md` §7, ADR-065): the list, the chosen pattern's every end, what no pattern holds and the
+coverage, and Select its processes, which makes a pattern's processes the selection Enter turns into their records.
+M12's explainable pattern groups are delivered on both surfaces; outliers and causal navigation remain, and nothing
+else above changes.

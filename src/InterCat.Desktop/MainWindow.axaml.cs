@@ -1762,6 +1762,34 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
     }
 
+    /// <summary>
+    /// Lists the session's recurring communication patterns (`contracts/patterns-v1.md` §7), counted under the window's
+    /// evidence policy; the processes of the pattern chosen there become the selection, and the graph has the keyboard, so
+    /// Enter lists their records.
+    /// </summary>
+    private async void ShowPatterns(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (currentSessionPath is null || displayedSessionId is not { } sessionId || displayedGeneration < 1
+            || workspace.IsEvidenceRung) return;
+        using var patterns = new PatternsWindow(currentSessionPath, sessionId, displayedGeneration, workspace.EvidencePolicy);
+        try
+        {
+            if (await patterns.ShowDialog<PatternChoice?>(this) is not { } chosen || closed) return;
+            if (workspace.ChooseProcesses(chosen.Processes))
+            {
+                GraphSurface.Focus(NavigationMethod.Tab);
+                return;
+            }
+
+            Say(CaptureDetail, "None of the pattern's processes is in the generation this window shows; open the recurring "
+                + "patterns again once it shows the newer one.", aloud: true);
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (!closed) CaptureDetail.Text = "Could not open the recurring patterns: " + exception.Message;
+        }
+    }
+
     private void StopCapture(object? sender, RoutedEventArgs eventArgs)
     {
         Offering.Offer(StopCaptureButton, Stopping, StopDoes);
@@ -5469,6 +5497,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         bool session = currentSessionPath is not null && displayedGeneration > 0;
         ShowRecordsButton.IsEnabled = session && !workspace.IsEvidenceRung;
         BrowseChannelsButton.IsEnabled = session && !workspace.IsEvidenceRung;
+        PatternsButton.IsEnabled = session && !workspace.IsEvidenceRung;
         Explain(ShowRecordsButton, ShowRecordsButton.IsEnabled
             ? "Open this rung's admitted source records in the ladder. Esc comes back here."
             : workspace.IsEvidenceRung ? "You are at the source records. Esc returns to where you were."
@@ -5479,6 +5508,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 + " Choosing one opens its source records within the ranking's time scope: a brush, or else the zoomed range."
             : workspace.IsEvidenceRung ? "Esc leaves the source records; paired channels can be browsed from any other level."
             : "Open or record a session first.", "Browse all admitted paired TCP and UDP channels");
+        Explain(PatternsButton, PatternsButton.IsEnabled
+            ? "List what recurs in this session's communication - each service, port and RPC procedure, the heaviest first, "
+                + "with who took part - and select a pattern's processes."
+            : workspace.IsEvidenceRung ? "Esc leaves the source records; recurring patterns can be listed from any other level."
+            : "Open or record a session first.", "List the session's recurring communication patterns");
 
         // Packaging reads a whole published generation, so it waits until a live capture has stopped. One package is made
         // at a time: its own button cancels it, and the other waits.

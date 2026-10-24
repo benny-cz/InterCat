@@ -17,4 +17,12 @@ public static class CommandArgument
             ? value
             : $"\"{value}\"";
     }
+
+    /// <summary>An enumeration's value as a person types it: DirectOnly as direct-only, BytesSent as bytes-sent.</summary>
+    public static string Typed(Enum value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        return string.Concat(value.ToString().Select((character, index) =>
+            char.IsUpper(character) && index > 0 ? "-" + char.ToLowerInvariant(character) : char.ToLowerInvariant(character).ToString()));
+    }
 }
