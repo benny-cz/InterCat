@@ -97,6 +97,13 @@ internal static class RpcPeerEdges
     }
 
     /// <summary>
+    /// How strong a link between a client call and the server call that served it is: correlated evidence at best, and as
+    /// weak as the weaker of the two calls' bindings (`contracts/operations-v1.md` §5c, ADR-055).
+    /// </summary>
+    public static RelationStrength StrengthOf(ProcessBinding client, ProcessBinding server) =>
+        (RelationStrength)Math.Max((int)RelationStrength.Correlated, Math.Max((int)client.Strength, (int)server.Strength));
+
+    /// <summary>
     /// Every link's records by instance pair and strength, before any evidence policy, and how many of its calls each end
     /// of the pair made: a link is correlated evidence at best, and as weak as the weaker binding of its two calls; a link
     /// one of whose calls binds to no instance joins no pair. Only links holding a record <paramref name="native"/> holds
@@ -121,9 +128,7 @@ internal static class RpcPeerEdges
                 continue;
             }
 
-            var strength = (RelationStrength)Math.Max(
-                (int)RelationStrength.Correlated,
-                Math.Max((int)link.Client.Strength, (int)link.Server.Strength));
+            RelationStrength strength = StrengthOf(link.Client, link.Server);
             ProcessInstanceId client = instances[link.Client.Instance].Id;
             ProcessInstanceId server = instances[link.Server.Instance].Id;
 

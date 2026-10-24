@@ -415,7 +415,7 @@ public static class CommunicationPatterns
     }
 
     /// <summary>Whether the other end of a one-sided connection is on this machine: at its own address, or at loopback's.</summary>
-    private static bool OnThisMachine(string localAddress, string remoteAddress) =>
+    internal static bool OnThisMachine(string localAddress, string remoteAddress) =>
         string.Equals(localAddress, remoteAddress, StringComparison.Ordinal)
         || (IPAddress.TryParse(remoteAddress, out IPAddress? remote)
             && IPAddress.IsLoopback(remote.IsIPv4MappedToIPv6 ? remote.MapToIPv4() : remote));

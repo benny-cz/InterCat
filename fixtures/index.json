@@ -1417,10 +1417,14 @@
         "P8: a channel's calls page in reading order, and each call's key finds it again",
         "P8: a completion is paired by I/O request identity, not by time proximity",
         "P8: a completion is paired by activity id, and an unpaired call keeps its status unknown",
+        "P8: a known dependency is traversable link by link, and processes created and calling at the same moment are never linked",
+        "P8: a process created within a second of another and linked to it by nothing is near it, the nearest first, and none a second and a tick away",
         "P8: a process's RPC calls are channels by interface, listed a page at a time, each call's records one step away",
         "P8: a start still open at capture end is censored, and a stop without its start is given none",
         "P8: an RPC call is its start and the stop of the same activity, never the nearest stop in time",
         "P8: an activity id reused before its stop leaves those calls ambiguous, and the key pairs again after",
+        "P8: icat links --to follows a known dependency link by link, and finds none from an unrelated process at the same moment",
+        "P8: icat links lists what led to a process and what it led to, and says what is only near it in time",
         "P8: over random calls, each count equals the calls whose counted record is in scope, derived independently",
         "P8: the calls a timeline draws are those running in its interval, and a denser one says how many it left out",
         "P8: the evidence of an RPC channel is its calls' records, and of one call its start and stop"
@@ -1907,6 +1911,7 @@
         "R21: two clocks aligned through one compare as that alignment allows: its drift between them, and their roundings",
         "R21: two clocks' instants are ordered only beyond their combined uncertainty, and never when it is unknown",
         "R21: two instants read in both measure the clocks' rate, and its wander bounds the time between and beyond them",
+        "R21: what of a process links it to nothing is counted by why, never read as none",
         "R21: when the capture did not collect RPC, no call ranks the rows, and the export says why"
       ],
       "R22": [
@@ -2201,6 +2206,7 @@
         "R18: a group's RPC call time is its members' calls together, as the duration metric grouped by executable or by session answers",
         "R18: a group's lanes measured together hold what the byte measure answers for each process and every record",
         "R18: a headless export descends by row key and names its rung, interval and scope",
+        "R18: a link, its evidence, what is near and what links to nothing are said in one set of words, the command line's and the window's",
         "R18: a pattern's occurrences, who took each role and why a session holds none are said in one set of words, the command line's and the window's",
         "R18: a person's export states the coverage the inspector states for its scope, and icat export writes the same file",
         "R18: a process's direction rows measured together hold what the byte measure answers for each direction and every record",
@@ -2255,6 +2261,7 @@
         "R18: icat hosts lists the other hosts the session's processes reached, the busiest first, and as many as asked",
         "R18: icat hosts says how many of a host's connections a process accepted from it, at its own ports, apart from the ports it ran to",
         "R18: icat hosts says what it takes, refuses what names no session, and lists as many processes reaching an address as asked",
+        "R18: icat links refuses a process it cannot name, a PID the session reused, a chain to itself, and a policy it does not know",
         "R18: icat metric names a process focus by its role, and refuses an other end with no focus to be relative to",
         "R18: icat metric prints its matrix and a request's canonical form as a person reads them",
         "R18: icat operations lists a process's calls, each with its other end named as its group's is",

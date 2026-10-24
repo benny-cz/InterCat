@@ -91,6 +91,11 @@ kinds that recur, the busiest first, with who took part as client and as server 
 recurred. `--pattern <rank>` says how one was grouped and lists everyone in it. In the window, Recurring patterns…
 lists the same, and Select its processes makes a pattern's processes the selection, so Enter lists their records.
 
+**Links.** `icat links <directory> --process <pid>` lists what led to a process - the process that started it, those
+whose calls it served, what connected to it - and what it led to, each with the record that shows it; `--to <pid>`
+finds the chain of such links between two processes. Processes created at about the same moment are listed apart:
+being near in time is never a link.
+
 F1 in the window lists every key it takes.
 
 ## Build and run

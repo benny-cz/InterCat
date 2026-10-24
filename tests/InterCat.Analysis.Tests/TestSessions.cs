@@ -445,6 +445,85 @@ internal static class TestSessions
 
     private static Guid RpcActivity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
 
+    /// <summary>The processes of <see cref="LinkRows"/>, by PID.</summary>
+    public const int LinkShell = 300, LinkApp = 400, LinkServices = 1_960, LinkServer = 4_000, LinkOther = 410, LinkSibling = 430,
+        LinkReused = 77, LinkReusedChild = 420, LinkLate = 450;
+
+    /// <summary>
+    /// A known dependency and unrelated activity beside it (`contracts/links-v1.md`): shell.exe starts app.exe, which names it
+    /// by its start key; two of app.exe's three calls to svcctl are served by services.exe through ALPC, the third carried by
+    /// no ALPC send, as <see cref="LinkedRpcCalls"/> holds them; app.exe connects to
+    /// server.exe at 8080, the capture seeing both ends open, to another host at 443 and to an end on this machine no record
+    /// holds at 9100, and another host connects to server.exe at 3389. Beside them, other.exe is created two readings after
+    /// app.exe by a parent the capture does not hold, and makes a call at the same moment as app.exe's first, which no ALPC
+    /// send carries; shell.exe starts sibling.exe, which names it by its PID alone; PID 77 is held twice, and child.exe names
+    /// it by PID while its second holder runs; late.exe is created two seconds after the rest. app.exe also sends a UDP
+    /// datagram to 8.8.8.8:53 and a flow of them to server.exe at 5353, exchanges data with server.exe at 9000 and with
+    /// another host at 80 with no open seen; server.exe connects to itself at 7000; and services.exe serves one more call
+    /// than its linked ones, which no client call reached.
+    /// </summary>
+    public static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) LinkRows()
+    {
+        (ObservationRowV1[] calls, SourceFieldRowV1[] callFields) = LinkedRpcCalls();
+        ObservationRowV1 app = calls[0] with { ResourceName = @"C:\Apps\app.exe" };
+        ObservationRowV1 services = calls[1] with { ResourceName = @"C:\Windows\System32\services.exe" };
+        ObservationRowV1 shell = Lifecycle(0, ObservationKind.Inventory, LinkShell, 5_000) with { ResourceName = @"C:\Windows\shell.exe" };
+        ObservationRowV1 other = Lifecycle(3, ObservationKind.Create, LinkOther, 5_001) with { ResourceName = @"C:\Apps\other.exe" };
+        ObservationRowV1 sibling = Lifecycle(4, ObservationKind.Create, LinkSibling, 5_002) with { ResourceName = @"C:\Apps\sibling.exe" };
+        ObservationRowV1 reused = Lifecycle(5, ObservationKind.Create, LinkReused, 5_003) with { ResourceName = @"C:\Apps\old.exe" };
+        ObservationRowV1 exited = Lifecycle(6, ObservationKind.Exit, LinkReused, 5_004);
+        ObservationRowV1 reusing = Lifecycle(7, ObservationKind.Create, LinkReused, 5_005) with { ResourceName = @"C:\Apps\new.exe" };
+        ObservationRowV1 child = Lifecycle(8, ObservationKind.Create, LinkReusedChild, 5_006) with { ResourceName = @"C:\Apps\child.exe" };
+        ObservationRowV1 server = Lifecycle(9, ObservationKind.Inventory, LinkServer, 5_007) with { ResourceName = @"C:\Apps\server.exe" };
+        ObservationRowV1 late = Lifecycle(20_000_000, ObservationKind.Create, LinkLate, 5_008) with { ResourceName = @"C:\Apps\late.exe" };
+        ObservationRowV1 unlinkedStart = RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, LinkOther, 70, RpcActivity(21),
+            ServiceControlInterface);
+        ObservationRowV1 unreachedStart = RpcCall(500, ObservationKind.RequestStart, Direction.Inbound, LinkServices, 72, RpcActivity(14),
+            ServiceControlInterface);
+        ObservationRowV1[] rows =
+        [
+            shell, app, services, other, sibling, reused, exited, reusing, child, server, late,
+            .. calls[2..],
+            unlinkedStart,
+            RpcCall(118, ObservationKind.RequestEnd, Direction.Outbound, LinkOther, 71, RpcActivity(21), status: 0),
+            unreachedStart,
+            RpcCall(510, ObservationKind.RequestEnd, Direction.Inbound, LinkServices, 73, RpcActivity(14), status: 0),
+            .. OpenedConnection(1_000, LinkApp, LinkServer, "127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(1_100, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, LinkApp)
+                .Between("192.168.1.10:52000", "93.184.216.34:443"),
+            Transfer(1_101, ObservationKind.Send, AccountingSide.SendSide, 100, LinkApp).Between("192.168.1.10:52000", "93.184.216.34:443"),
+            Transfer(1_200, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, LinkServer)
+                .Between("192.168.1.10:3389", "10.0.0.5:51000"),
+            Transfer(1_201, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, LinkServer).Between("192.168.1.10:3389", "10.0.0.5:51000"),
+            Transfer(1_300, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, LinkApp).Between("127.0.0.1:52010", "127.0.0.1:9100"),
+            Transfer(1_301, ObservationKind.Send, AccountingSide.SendSide, 10, LinkApp).Between("127.0.0.1:52010", "127.0.0.1:9100"),
+            Transfer(1_400, ObservationKind.Send, AccountingSide.SendSide, 20, LinkApp).Between("127.0.0.1:50400", "127.0.0.1:9000"),
+            Transfer(1_401, ObservationKind.Receive, AccountingSide.ReceiveSide, 20, LinkServer).Between("127.0.0.1:9000", "127.0.0.1:50400"),
+            Transfer(1_500, ObservationKind.Send, AccountingSide.SendSide, 40, LinkApp)
+                .Between("192.168.1.10:53000", "8.8.8.8:53") with { Mechanism = Mechanism.Udp },
+            Transfer(1_600, ObservationKind.Send, AccountingSide.SendSide, 30, LinkApp)
+                .Between("127.0.0.1:50500", "127.0.0.1:5353") with { Mechanism = Mechanism.Udp },
+            Transfer(1_601, ObservationKind.Receive, AccountingSide.ReceiveSide, 30, LinkServer)
+                .Between("127.0.0.1:50500", "127.0.0.1:5353") with { Mechanism = Mechanism.Udp },
+            Transfer(1_700, ObservationKind.Send, AccountingSide.SendSide, 10, LinkApp).Between("192.168.1.10:52100", "151.101.1.1:80"),
+            .. OpenedConnection(1_800, LinkServer, LinkServer, "127.0.0.1:50600", "127.0.0.1:7000"),
+        ];
+        return (
+            [.. rows.OrderBy(row => row.NativeTicks).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })],
+            [
+                .. callFields,
+                Field(shell, SourceField.ProcessStartSequence, 900),
+                Field(app, SourceField.ProcessStartSequence, 901),
+                Field(app, SourceField.ParentProcessId, LinkShell),
+                Field(app, SourceField.ParentStartSequence, 900),
+                Field(other, SourceField.ParentProcessId, 12),
+                Field(sibling, SourceField.ParentProcessId, LinkShell),
+                Field(child, SourceField.ParentProcessId, LinkReused),
+                Field(unlinkedStart, SourceField.RpcProcedureNumber, 7),
+                Field(unreachedStart, SourceField.RpcProcedureNumber, 7),
+            ]);
+    }
+
     /// <summary>
     /// Five exchanges of process 4242: exchange 1 in six buffers, its request and response bodies in two each, the request
     /// body's last raised after the response ended, interleaved with exchange 2's three, whose request had no body; exchange

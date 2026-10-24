@@ -82,6 +82,18 @@ public static class CoverageText
     }
 
     /// <summary>
+    /// <see cref="Describe"/>'s words without their leading "Coverage", for a field already labelled so: "covered for TCP
+    /// and UDP", "unknown: …".
+    /// </summary>
+    public static string Unlabelled(IReadOnlyList<MechanismCoverage> mechanisms)
+    {
+        string described = Describe(mechanisms);
+        return described.StartsWith("Coverage: ", StringComparison.Ordinal) ? described["Coverage: ".Length..]
+            : described.StartsWith("Coverage ", StringComparison.Ordinal) ? described["Coverage ".Length..]
+            : described;
+    }
+
+    /// <summary>
     /// Whether a scope's coverage falls short of covered: a collected mechanism was judged anything less, or nothing was
     /// collected. A scope that did not collect some mechanism is not short for it: its counts are as complete as the
     /// capture's sources allowed, and its words say what it did not collect.

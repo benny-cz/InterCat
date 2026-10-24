@@ -171,8 +171,7 @@ public static class PatternText
     public static string Coverage(PatternReading reading)
     {
         ArgumentNullException.ThrowIfNull(reading);
-        string covered = CoverageText.Describe(reading.Coverage);
-        return covered.StartsWith("Coverage: ", StringComparison.Ordinal) ? covered["Coverage: ".Length..] : covered;
+        return CoverageText.Unlabelled(reading.Coverage);
     }
 
     /// <summary>

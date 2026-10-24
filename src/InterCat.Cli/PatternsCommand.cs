@@ -72,12 +72,9 @@ internal static class PatternsCommand
             rank = asked;
         }
 
-        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated;
-        if (policyText is not null && (!Enum.TryParse(policyText, ignoreCase: true, out policy) || !Enum.IsDefined(policy)
-            || int.TryParse(policyText, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)))
+        if (!EvidencePolicyOption.TryParse(policyText, out EvidencePolicy policy, out string? refusal))
         {
-            ConsoleUi.Failure(
-                $"--evidence-policy expects one of: {string.Join(", ", Enum.GetNames<EvidencePolicy>())}. '{policyText}' is not one.");
+            ConsoleUi.Failure(refusal!);
             return InterCatExitCode.InvalidInvocation;
         }
 

@@ -171,3 +171,14 @@ The window lists the recurring communication patterns in the command line's word
 coverage, and Select its processes, which makes a pattern's processes the selection Enter turns into their records.
 M12's explainable pattern groups are delivered on both surfaces; outliers and causal navigation remain, and nothing
 else above changes.
+
+## Addendum, revision 765
+
+`icat links` navigates the links a session's evidence records (`contracts/links-v1.md`, ADR-066): a child's creation
+record naming its parent, a call reaching the call that served it through its one ALPC message, and a TCP connection
+the capture saw one end make, each at its strength, followed only where the evidence policy admits it. The exit test
+that a synthetic known dependency is traversable and unrelated simultaneous events are not labeled causal is now met
+on the command line: in "P8: a known dependency is traversable link by link, and processes created and calling at the
+same moment are never linked", a shell's child's calls lead to the service that served them, while a process created
+and calling in the same instant is listed only as near in time, and no chain reaches or leaves it. Outliers,
+bottleneck views and the window's links remain, and nothing else above changes.
