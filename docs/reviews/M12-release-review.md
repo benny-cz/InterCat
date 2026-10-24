@@ -244,3 +244,82 @@ adds one about the comparison or its chosen row (`contracts/comparison-v1.md` §
 surfaces. The window's buttons now wrap where it is narrow, and what is said beneath its rows scrolls within its
 share, so two rows stay in view at its smallest; a test checks that, with the names a screen reader hears. M12's exit
 review remains, and nothing else above changes.
+
+## Exit review, revision 773
+
+Date: 2026-10-24, at plan revision 773
+Method: §15.2's questions are answered again for M12 as built; each implementation item and deliverable of plan M12 is
+checked against what ships and the tests that hold it, and each exit test against named tests, all of which passed in
+revision 772's suites; what M12 does not do is listed as its limits.
+
+### The user problem, answered
+
+A person who has seen which processes on a heavily used Windows machine communicate, and who connected to whom, asks
+next what changed, what recurs, what led to what, where time went inside calls, and what is unusual for this machine.
+M12 answers each from what a session already holds, on the command line and in the window, stating a difference only
+where both sides measured alike and every label as an observation: nothing it says is a cause, a diagnosis or a
+verdict on a process.
+
+### Implementation and deliverables
+
+| Item | Built | Where, and the tests that hold it |
+| --- | --- | --- |
+| Two captures, or two intervals of one, compared by compatible mechanism, metric, entity grouping and capture profile | Revisions 752 to 757 | `icat compare` and Compare with… (`comparison-v1` §2 to §8a, ADR-058 to ADR-060); "R18: icat compare states each row's values, rates and change, the most changed first, its JSON the same"; "I12: icat compare --baseline-session compares two captures by executable, paired by path" |
+| Normalized rates and absolute counts; ranked changed relations | Revision 752 | `RatesAreOverEachWholeIntervalAndTheMostChangedRankFirst`; "R18: Compare with… states each row as icat compare does, the most changed first, and Enter opens the row's relationship" |
+| Baseline and difference timelines | Revisions 760 and 761 | `icat compare --timeline`, the window's Timeline (`comparison-v1` §8d, ADR-062); "R18: icat compare --timeline states a row's difference timeline column by column, adding up to the row"; "R21: the Compare window draws the chosen row's columns, a column the capture did not collect hatched and said why" |
+| Graph overlays | Revision 762 | Show on the graph (`comparison-v1` §8e, ADR-063); "R15: Show on the graph marks each edge by how it changed, says so beneath the header, on its card and in the table, and Clear takes it away" |
+| Entity matching across sessions as a separate mapping, never an identity by executable name | Revisions 755 and 756 | Rows grouped by the path an image was witnessed at, a grouping and never an identity (ADR-059, ADR-060); "I12: two captures pair their rows by path alone, never by PID, and keep each capture's processes apart" |
+| Unavailable measurement told apart from disappeared activity | Revision 752 | "R21: a mechanism the capture stopped collecting makes a relationship not comparable, never disappeared" |
+| Recurring communication patterns by structural signature | Revisions 763 and 764 | `icat patterns`, Recurring patterns… (`patterns-v1`, ADR-064, ADR-065); "R18: icat patterns lists the recurring patterns, the heaviest first, each end in its role, and counts what no pattern holds"; "R18: the patterns window lists what recurs in icat patterns's words, says every end of the chosen pattern, and returns its processes on Enter" |
+| Optional outlier detection that states its baseline window, minimum sample size and uncertainty | Revisions 768 and 770 | `icat outliers`, Outliers… (`outliers-v1`, ADR-068); "R18: icat outliers lists the rows above or below every window of their baseline, with the baseline, its windows and how often chance alone would"; "R18: the outliers window judges the time scope against its baseline's windows in icat outliers's words, draws the chosen row's windows, and returns the row on Enter" |
+| Causal navigation over evidence-backed links, proximity kept apart | Revisions 765 and 766 | `icat links`, Follow its links… (`links-v1`, ADR-066); "P8: icat links lists what led to a process and what it led to, and says what is only near it in time"; "P8: the links window lists what led to a process and what it led to, follows a link to its process on Enter and returns with Back" |
+| Bottleneck views over validated call spans, with no critical-path or deadlock claim | Revisions 767 and 769 | `icat waits`, Time inside calls… (`waits-v1`, ADR-067); "R18: a wait's server, its share and what no time is said for are said in one set of words, the command line's and the window's"; "R18: the waits window lists the time inside calls in icat waits's words, says who served the chosen wait and how long, and returns its caller and server on Enter" |
+| Saved comparison specifications | Revisions 758 and 759 | `icat workspace comparison`, `icat compare --saved`, Save in the investigation… and Comparisons… (`comparison-v1` §8c, `workspace-v23` §7, ADR-061); "R22: the Compare window saves the comparison shown in its investigation by name, and a saved one opens as saved" |
+| Relation-difference explorer | Revisions 752 and 753 | `icat compare` and the Compare window, as the first rows above |
+| Explainable pattern groups | Revisions 763 and 764 | As above; "R21: a pattern's signature and what it leaves out are said in words, and a UDP flow's service port is the one outside the dynamic range" |
+| Annotations and bookmarks | Revisions 771 and 772 | Notes about a saved comparison and its rows (`workspace-v23` §7, ADR-069), beside the investigation's notes and saved views; "R22: the Compare window says the notes about the saved comparison it shows, marks each noted row, and adds one about it or its chosen row" |
+| Shareable redacted reports recording scope, byte domain, accounting policy, missing sources and alignment revision | Revision 754, for comparisons | `icat compare --share-redacted`, Share redacted… (`comparison-v1` §8b); "R21: a shared comparison records each interval's coverage and missing sources, its byte domain, accounting and alignment"; "I22: a shared comparison's rows name their ends by tokens, and no process, PID, address, port or key" |
+| An accessible tabular equivalent | Every view | Each view is a list or table on the command line and in the window, each chart said in words column by column or bar by bar; "R15: the outliers window cuts off no text at its smallest and names every element a screen reader lands on", and the same of the links, patterns and waits windows; "R15: the Compare window with notes beneath its rows cuts off no text at its smallest, keeps its rows in view, and names every element" |
+
+### M12's exit tests
+
+| Exit test | Verdict | Evidence |
+| --- | --- | --- |
+| Identical captures compare as equal | Met | `SessionComparisonTests.AnIntervalComparedWithItselfIsUnchangedEverywhere`; "I14: two captures of the same records compare as equal, row by row" |
+| Changed capture profiles cannot masquerade as workload changes | Met, in every view that compares | "R21: a capture that collected a mechanism otherwise than the other states no change of it"; "R21: a mechanism the capture stopped collecting makes a relationship not comparable, never disappeared"; "R21: a difference timeline judges each column by its own coverage, comparing nothing where a column was not collected"; "R21: an interval's rows are judged against its baseline's windows, and a row its two intervals did not collect alike is not judged" |
+| Differing durations normalize correctly | Met | `RatesAreOverEachWholeIntervalAndTheMostChangedRankFirst` |
+| Uncertainty propagates | Met for coverage, unmeasured sizes and chance | `CoverageShortOfCoveredStatesBothValuesAndNoChange`; "R3: a byte comparison's lower bound decides a change only where the bound alone exceeds the other rate"; "R21: icat compare says why it states no change, each reason once beneath the table, never a zero"; "R18: icat outliers lists the rows above or below every window of their baseline, with the baseline, its windows and how often chance alone would" |
+| A synthetic known dependency is traversable, and unrelated simultaneous events are not labeled causal | Met | "P8: a known dependency is traversable link by link, and processes created and calling at the same moment are never linked"; "P8: icat links --to follows a known dependency link by link, and finds none from an unrelated process at the same moment"; "P8: the links window lists a link the evidence policy does not admit apart, and never follows it" |
+| Outlier labels describe observations, not malware or root cause | Met | "R18: an outlier is said in one set of words, the command line's and the window's, each describing what was counted and never why" |
+
+### Supported environments, overhead and deployment
+
+Every view runs wherever a session opens: the command line wherever .NET 10 runs, and the window. A session without a
+coverage ledger compares and judges nothing, saying its coverage is unknown, and shows what it holds. No view adds
+overhead to a capture: each reads a session already recorded or recording, at one generation, through the derivations
+and queries the window's other views use, and writes nothing to it; an investigation's file is written only when a
+person saves a comparison or a note. Nothing is deployed beyond the command line and the window: no service, provider,
+driver, privilege or setting.
+
+### Limits
+
+- Outliers judge records alone, against the windows before or after an interval of one session: bytes, a baseline of
+  another capture and a seasonal baseline are not judged (`outliers-v1` §8).
+- Patterns, links and waits read a whole generation, never an interval of it or two captures. Patterns group TCP
+  connections, UDP flows and RPC calls, and infer no period; links follow a child's creation, a call through its one
+  ALPC message and a TCP connection one end made; waits time RPC calls with validated spans, and nest none. HTTP
+  exchanges, named pipes, ALPC ports and a thread's waits form no pattern, link or wait (`patterns-v1` §8, `links-v1`
+  §9, `waits-v1` §8).
+- Comparisons alone share as a redacted report of their own, and a difference timeline is never in one. The other
+  views reach another person through the session's redacted package, which reopens with pseudonymous names, so each
+  reads the same there.
+- A note can be about a saved comparison or one of its rows, beside the investigation's notes, pinned or not, and its
+  saved views; a pattern, link, wait or outlier has no note of its own.
+- A comparison marks the graph's edges, never the timeline or a node (`comparison-v1` §9).
+
+### Verdict
+
+M12's exit gate is met. Every implementation item and deliverable of plan M12 is built on the command line and in the
+window, and every exit test holds by the tests named above. The limits listed are limits of what M12 claims, each said
+where it applies, not unfinished parts; M12 is complete. Richer sources from M6 to M10, where they come, are optional
+inputs to the same views.

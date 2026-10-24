@@ -372,5 +372,6 @@ read, shared or saved.
 - **A difference timeline in a redacted report.** The command line and the window state one (§8d); a report holds rows
   over the whole intervals only.
 - **A comparison's marks on the timeline**, or on nodes; the graph marks edges (§8e).
-- Recurring patterns, outliers and causal navigation (plan M12).
+- Recurring patterns, outliers, causal navigation and bottleneck views, which `patterns-v1`, `outliers-v1`, `links-v1`
+  and `waits-v1` define.
 - Wall-clock bounds, which `icat timeline --wall-clock` states; a comparison takes session ticks.
