@@ -69,7 +69,9 @@ cannot hold (whitespace before the colon is one), begins with whitespace to cont
 folding), or holds a control character but the tab in its value; and any line holding a carriage return that ends no
 line. A head that ends before its empty line is decoded as far as its whole lines go, a line no line end follows is
 not decoded, and the decoding says the head may have held more. A value's byte outside visible ASCII and the space is
-written `\xHH`: a field is never read as text in an encoding its bytes do not declare.
+written `\xHH`: a field is never read as text in an encoding its bytes do not declare. A decoding that reached the
+empty line says so, and only such a decoding speaks for what its head declares of its body
+(`contracts/http-exchanges-v1.md` §5e).
 
 ## 5. The command line
 
@@ -94,8 +96,10 @@ heads the same way, side by side, when its Decode its heads is pressed.
 
 ## 6. Not defined at this version
 
-- **Bodies**, of any content type, and with them chunked transfer coding and compressed content; HTTP/2 and HTTP/3,
-  which the WinINet capture measured here does not carry (`content-v1` §6).
+- **Bodies' content**, of any content type, and compressed content: a body's length is set beside its head's
+  declaration without reading it (`http-exchanges-v1` §5e), and no chunk framing reaches a decoder of WinINet's parts,
+  which keeps a chunked body without it (`content-v1` §5.1). HTTP/2 and HTTP/3, which the WinINet capture measured
+  here does not carry (`content-v1` §6).
 - **Other mechanisms' decoders**: RPC fragments, named pipe messages and packet streams, which no source here keeps
   with the order a reconstruction needs (plan M8).
 - **A conversation decoded as one**: a part decoded in the light of another, as a response's body framed by its

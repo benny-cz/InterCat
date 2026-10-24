@@ -48,7 +48,8 @@ so a head part is exactly what the process sent or read.
 - Bodies, other mechanisms, conversations, exports, search and isolation are not defined at this version
   (`decoders-v1` §6); revision 775 builds the window's decoding of a part (`decoders-v1` §5a). Revision 776 sets each
   listed exchange's two decoded heads side by side (`icat exchanges --decode`), each still decoded alone. Revision 777
-  does the same in the window, in an exchange's conversation.
+  does the same in the window, in an exchange's conversation. Revision 778 sets each body beside the length its head
+  declares (`http-exchanges-v1` §5e), reading none of it.
 
 ## Alternatives considered
 

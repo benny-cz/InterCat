@@ -126,9 +126,10 @@ method and target - of which host, by its first Host field in any case, and what
 and the reason its status line gave - beside whether the exchange was recorded whole. A head not whole, or kept
 without consent to inspect it, is not decoded, and leaves the answer partial as `icat content --decode` does; one
 whose start line is not HTTP/1.1's says nothing in its cells. Why is said beneath its process's exchanges, as is where
-a head stops being HTTP/1.1. Every listed head is read under one lease in one pass over the session's segments, and
-only the exchanges listed are read. Decoded heads are for a person: `--decode` refuses `--json` and `--output`
-(`decoders-v1` §2), and a listing of no exchanges. The figures above the exchanges are read as without `--decode`.
+a head stops being HTTP/1.1, and where a body does not hold what its head declared (§5e). Every listed head is read
+under one lease in one pass over the session's segments, and only the exchanges listed are read. Decoded heads are for
+a person: `--decode` refuses `--json` and `--output` (`decoders-v1` §2), and a listing of no exchanges. The figures
+above the exchanges are read as without `--decode`.
 
 ## 5d. An exchange's conversation (revision 777)
 
@@ -140,10 +141,28 @@ generation by the exchange's key, under the window's evidence policy; a generati
 says so. Decode its heads reads its two heads, each the whole part its buffers make, from the content kept with
 consent to inspect it, and decodes them as §5c does: each side then says what it said - the request's method and
 target, of which host; the response's status and reason - above each field and the bytes of its head it came from, and
-what was not decoded and why. Decode its heads is offered disabled, saying why, where neither head was recorded whole;
-a whole head kept without consent is decoded to say it read none. Nothing decoded is kept, and no body is read. Show
-its buffers closes the conversation and opens the exchange's buffers, as Enter on its row does, where C shows a
-buffer's content and its whole part: from the exchange to its messages, and on to the fragments they were recorded in.
+what was not decoded and why; and beneath each body, what its head declared of it (§5e). Decode its heads is offered
+disabled, saying why, where neither head was recorded whole; a whole head kept without consent is decoded to say it
+read none. Nothing decoded is kept, and no body is read. Show its buffers closes the conversation and opens the
+exchange's buffers, as Enter on its row does, where C shows a buffer's content and its whole part: from the exchange
+to its messages, and on to the fragments they were recorded in.
+
+## 5e. A body's length as its head declares it (revision 778)
+
+Where an exchange's heads are decoded (§5c, §5d), each body is set beside what its head declares of it, as RFC 9112
+§6.3 has a recipient read a body's length, and compared with the bytes its buffers measured; nothing of the body's
+content is read. A response to HEAD, or of status 1xx, 204 or 304, holds no body. A head declaring a transfer coding
+is not compared: WinINet keeps a chunked response's body without its chunk framing (`contracts/content-v1.md` §5.1,
+FX-HTTP-003), so that body's end is its last buffer's, and no other transfer coding, nor a request's, was measured.
+Nor is a head declaring a content coding other than identity, since whether the capture keeps a coded body coded was
+not measured. Otherwise its Content-Length - one length, or a list of the same one (RFC 9110 §8.6) - is compared: a
+body holding all of it agrees; one holding fewer bytes, more, or none disagrees, and so does a body where its head
+declares none; a response's whose request's method was not decoded, holding none, could be a response to HEAD, and is
+not said to disagree. A response declaring no length ran until its connection closed. A head not decoded to the empty
+line that ends it declares nothing known of its body. A disagreement is what a body's buffers cannot show: buffers
+whose places and ends make a body whole can hold fewer bytes than its head declared. The window says each body's
+declaration beneath it, a disagreement in the caution colour; `icat exchanges --decode` says each disagreement beneath
+its process's exchanges, and nothing of a body that agrees.
 
 ## 6. Not defined at this version
 

@@ -72,6 +72,12 @@ public sealed class ConversationWindowTests
             Assert.Equal("Host, bytes 17 to 23 (7 bytes): a", AutomationProperties.GetName(host));
             Assert.DoesNotContain(shown, text => text.StartsWith("Not decoded", StringComparison.Ordinal));
 
+            // Beneath each body, what its head declared of it, beside what was recorded.
+            Assert.Contains("Its head declares no body, and none was recorded.", shown);
+            TextBlock held = Named<TextBlock>(conversation, name => name.StartsWith("Its response body, as its head declares it", StringComparison.Ordinal));
+            Assert.Equal("Its head declares 5 bytes, and its recorded buffers hold them all.", held.Text);
+            Assert.DoesNotContain("caution", held.Classes);
+
             // Show its buffers closes it and lists the exchange's buffers in InterCat's window.
             Button buffers = Labelled(conversation, "Show its buffers");
             Assert.Equal(SessionConversationWindow.BuffersDo, Offers.Offered(buffers));
@@ -112,6 +118,23 @@ public sealed class ConversationWindowTests
             Assert.Equal("Neither of its heads was recorded, so there is nothing to decode.",
                 Offers.WhyNot(Labelled(bodyOnly, "Decode its heads")));
             bodyOnly.Close();
+            await Until(() => window.OwnedWindows.Count == 0);
+
+            // The fourth's body is whole by its buffers and holds fewer bytes than its head declared, which is said in the
+            // caution colour.
+            workspace.SelectedRung = workspace.RungRows[3];
+            Dispatch();
+            window.KeyPressQwerty(PhysicalKey.C, RawInputModifiers.None);
+            SessionConversationWindow shortBody = await Owned(window);
+            await Until(() => Status(shortBody).StartsWith("Read from generation", StringComparison.Ordinal));
+            Labelled(shortBody, "Decode its heads").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(shortBody).Contains("decoded", StringComparison.Ordinal));
+            TextBlock fewer = Named<TextBlock>(shortBody, name => name.StartsWith("Its response body, as its head declares it", StringComparison.Ordinal));
+            Assert.Equal("Its head declares 10 bytes, and its recorded buffers hold 4 of them, though their places and ends make the "
+                + "body whole.", fewer.Text);
+            Assert.Contains("caution", fewer.Classes);
+            Assert.True(fewer.IsEffectivelyVisible);
+            shortBody.Close();
             await Until(() => window.OwnedWindows.Count == 0);
 
             // F1's sheet lists the key among the ranked table's.
@@ -177,7 +200,7 @@ public sealed class ConversationWindowTests
         var problems = new List<string>();
         try
         {
-            foreach (int index in new[] { 0, 1, 2 })
+            foreach (int index in new[] { 0, 1, 2, 3 })
             {
                 using var conversation = new SessionConversationWindow(session.Path, session.Store.SessionId,
                     workspace.RungRows[index].Key, EvidencePolicy.IncludeCorrelated, "client.exe · PID 4242", workspace.TimeBase);
@@ -215,8 +238,9 @@ public sealed class ConversationWindowTests
 
     /// <summary>
     /// Process 4242's exchange 7 - its request head in two buffers, its response head and body each in one - its exchange 8,
-    /// whose request head lacks a buffer and which has no response, and its exchange 9, of which only its response's body
-    /// was recorded; each buffer's bytes kept under <paramref name="inspection"/>.
+    /// whose request head lacks a buffer and which has no response, its exchange 9, of which only its response's body was
+    /// recorded, and its exchange 10, whose body holds fewer bytes than its head declared; each buffer's bytes kept under
+    /// <paramref name="inspection"/>.
     /// </summary>
     private static TemporarySession Session(ContentInspectionV1 inspection)
     {
@@ -224,11 +248,13 @@ public sealed class ConversationWindowTests
         [
             "GET /x HTTP/1.1\r\nHo", "st: a\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", "hello",
             "GET /a HTTP/1.1\r\n", "\r\n", "tail",
+            "GET /short HTTP/1.1\r\nHost: b\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n", "four",
         ];
         (long Ticks, ushort Event, long Number, long Sequence, long Flags)[] buffers =
         [
             (10, 2001, 7, 0, 1), (11, 2001, 7, 1, 2), (12, 2003, 7, 0, 3), (13, 2004, 7, 0, 3), (20, 2001, 8, 0, 1), (21, 2001, 8, 2, 2),
             (30, 2004, 9, 0, 3),
+            (40, 2001, 10, 0, 3), (41, 2003, 10, 0, 3), (42, 2004, 10, 0, 3),
         ];
         ObservationRowV1[] rows = [.. buffers.Select((buffer, index) => Http(buffer.Ticks, buffer.Event, (ulong)(index + 1), messages[index].Length))];
         SourceFieldRowV1[] fields =

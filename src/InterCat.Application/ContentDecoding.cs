@@ -42,6 +42,13 @@ public sealed record DecodedContent
     /// <summary>What of the message was not decoded, and why, as a sentence; null when every kept byte was.</summary>
     public string? NotDecoded { get; init; }
 
+    /// <summary>
+    /// Whether the decoder read the message or part to the end its format defines - an HTTP head to the empty line that
+    /// ends it - so a field it did not decode is one the bytes do not hold, rather than one past where it stopped. False
+    /// where it stopped first, and for a decoder whose format names no end.
+    /// </summary>
+    public bool ReachedEnd { get; init; }
+
     /// <summary>Which decoder read it, at which version, as a heading says it.</summary>
     public string Heading => string.Create(CultureInfo.InvariantCulture, $"Decoded by {Decoder}, version {DecoderVersion}");
 }

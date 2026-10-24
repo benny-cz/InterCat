@@ -1331,11 +1331,13 @@
       ],
       "P2": [
         "P2: C on an HTTP exchange opens its conversation, which says what each head said only once asked, and Show its buffers opens them",
+        "P2: a body is set beside the length its head declares, and said to disagree with it only where its recorded bytes do",
         "P2: a buffer longer than a view shows at once is shown from its first byte, and the view says where it stopped",
         "P2: a decoding reads at most what a view shows at once, within its time budget, and says where it stopped",
         "P2: a fixture message decodes into the fields its bytes hold, each with its bytes, linked to the record and the decoder's version",
         "P2: a fixture message the capture cut, or that ends or leaves its header, decodes only what its bytes show and says why the rest does not",
         "P2: a head HTTP/1.1 does not allow, or one that ends early, decodes only as far as its bytes show, and says why the rest does not",
+        "P2: a head decoded to the empty line that ends it says so, and a head not decoded declares nothing of its body",
         "P2: a head decoding reads at most what a view shows at once, within its time budget, and says where it stopped",
         "P2: a head is decoded only as its whole part, from bytes kept with consent to inspect them, and a body by no decoder",
         "P2: a part that is not whole is shown with each gap in place, and no byte stands in for what is missing",

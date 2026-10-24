@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -267,6 +268,62 @@ public sealed class HttpHeadDecodingTests
             Head("HTTP/1.1 20 OK\r\n\r\n", request: false));
         Assert.Equal((null, null, null), (undecoded.Asked, undecoded.Host, undecoded.Answered));
         Assert.Null(new HttpExchangeHeads(Head("GET /x HTTP/1.1\r\nAccept: */*\r\n\r\n", request: true), null).Host);
+    }
+
+    [Theory(DisplayName = "P2: a body is set beside the length its head declares, and said to disagree with it only where its recorded bytes do")]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", "GET", 1, 5, true, "Its head declares 5 bytes, and its recorded buffers hold them all.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", "GET", 1, 3, true, "Its head declares 5 bytes, and its recorded buffers hold 3 of them, though their places and ends make the body whole.", true)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", "GET", 2, 3, false, "Its head declares 5 bytes, and its recorded buffers hold 3 of them.", true)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", "GET", 2, 7, true, "Its head declares 5 bytes, and its recorded buffers hold 7 bytes, more than it declared.", true)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", "GET", 0, 0, false, "Its head declares 5 bytes, and no buffer of its body was recorded.", true)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", null, 0, 0, false, "Its head declares 5 bytes, and no buffer of its body was recorded; its request's method was not decoded, and a response to HEAD holds none.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", "HEAD", 0, 0, false, "As a response to HEAD, it holds no body, and none was recorded.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", "HEAD", 1, 5, true, "As a response to HEAD, it holds no body, yet its recorded buffers hold 5 bytes.", true)]
+    [InlineData("HTTP/1.1 204 No Content\r\n\r\n", "GET", 1, 0, true, "As a 204 response, it holds no body, and its recorded buffers hold none.", false)]
+    [InlineData("HTTP/1.1 304 Not Modified\r\nContent-Length: 20\r\n\r\n", "GET", 0, 0, false, "As a 304 response, it holds no body, and none was recorded.", false)]
+    [InlineData("HTTP/1.1 101 Switching Protocols\r\n\r\n", "GET", 1, 4, true, "As a 101 response, it holds no body, yet its recorded buffers hold 4 bytes.", true)]
+    [InlineData("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n", "GET", 3, 900, true, "Its head declares the chunked transfer coding, which WinINet removes before it keeps a body (FX-HTTP-003), so the body's end is its last buffer's, not a length its head declared.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip, chunked\r\n\r\n", "GET", 1, 9, true, "Its head declares the gzip, chunked transfer coding, which WinINet's capture was not measured to keep framed or unframed, so its body's length is not compared.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: 30\r\n\r\n", "GET", 1, 120, true, "Its head declares 30 bytes in the gzip content coding, and whether WinINet's capture keeps such a body coded was not measured, so its length is not compared.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: identity\r\ncontent-length: 5, 5\r\n\r\n", "GET", 1, 5, true, "Its head declares 5 bytes, and its recorded buffers hold them all.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\n", "GET", 1, 5, true, "Its Content-Length, 5, 6, is not one length, so its body is not compared.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 99999999999999999999\r\n\r\n", "GET", 1, 5, true, "Its Content-Length, 99999999999999999999, is not one length, so its body is not compared.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n", "GET", 0, 0, false, "Its head declares an empty body, and none was recorded.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n", "GET", 1, 0, true, "Its head declares an empty body, and its recorded buffers hold no byte.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nServer: x\r\n\r\n", "GET", 2, 50, true, "Its head declares no length, so its body ran until its connection closed; its end is its last buffer's.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nBad Field: x\r\nContent-Length: 5\r\n\r\n", "GET", 1, 5, true, "Its head was not decoded to its end, so what it declares of its body is not known.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n", "GET", 1, 5, true, "Its head was not decoded to its end, so what it declares of its body is not known.", false)]
+    [InlineData("POST /u HTTP/1.1\r\nContent-Length: 4\r\n\r\n", null, 1, 4, true, "Its head declares 4 bytes, and its recorded buffers hold them all.", false)]
+    [InlineData("POST /u HTTP/1.1\r\nContent-Length: 4\r\n\r\n", null, 0, 0, false, "Its head declares 4 bytes, and no buffer of its body was recorded.", true)]
+    [InlineData("GET / HTTP/1.1\r\nHost: a\r\n\r\n", null, 0, 0, false, "Its head declares no body, and none was recorded.", false)]
+    [InlineData("GET / HTTP/1.1\r\n\r\n", null, 1, 3, true, "Its head declares no body, yet its recorded buffers hold 3 bytes.", true)]
+    [InlineData("POST /u HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n", null, 2, 40, true, "Its head declares the chunked transfer coding, which WinINet's capture was not measured to keep framed or unframed, so its body's length is not compared.", false)]
+    public void ABodyIsSetBesideItsDeclaredLength(string head, string? method, int buffers, long bytes, bool whole, string statement, bool contradicts)
+    {
+        // A head starting with its version is a response's, beside the request line of <paramref name="method"/> where
+        // its request head was decoded; any other is a request's.
+        var body = new HttpPartRecord(buffers, bytes, whole);
+        bool request = !head.StartsWith("HTTP/", StringComparison.Ordinal);
+        HttpExchangeHeads heads = request
+            ? new(Head(head, request: true), null)
+            : new(method is null ? null : Head($"{method} /x HTTP/1.1\r\n\r\n", request: true), Head(head, request: false));
+        Assert.Equal(new HttpBodyDeclaration(statement, contradicts), request ? heads.RequestBody(body) : heads.ResponseBody(body));
+    }
+
+    [Fact(DisplayName = "P2: a head decoded to the empty line that ends it says so, and a head not decoded declares nothing of its body")]
+    public void AHeadDecodedToItsEndSaysSo()
+    {
+        Assert.True(Head("GET / HTTP/1.1\r\nHost: a\r\n\r\n", request: true).ReachedEnd);
+        Assert.True(Head("GET / HTTP/1.1\r\n\r\nmore", request: true).ReachedEnd);
+        Assert.False(Head("GET / HTTP/1.1\r\nHost: a\r\n", request: true).ReachedEnd);
+        Assert.False(Head("GET / HTTP/1.1\r\nNo colon\r\n\r\n", request: true).ReachedEnd);
+        var body = new HttpPartRecord(1, 5, true);
+        Assert.Equal((null, null), (new HttpExchangeHeads(null, null).RequestBody(body), new HttpExchangeHeads(null, null).ResponseBody(body)));
+        DecodedContent unread = ContentDecoders.DecodePart(
+            new SessionContentPartDetail { IsPart = true, Name = "the response head of exchange 7", Complete = false, Statement = "Not whole." },
+            Http(1, 2003, 9), Asked)!;
+        Assert.Null(unread.Read);
+        Assert.Null(new HttpExchangeHeads(null, unread).ResponseBody(body));
     }
 
     [Fact(DisplayName = "I21: parts read together are each the part their buffer belongs to, exactly as one read alone is")]

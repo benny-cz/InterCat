@@ -346,7 +346,8 @@ internal static class ExchangesCommand
             ContentDecoderInfo decoder = ContentDecoders.Known.Single(known => known.Id == "http1-head");
             ConsoleUi.Note($"Heads decoded by {decoder.Name}, version {decoder.Version}: each read "
                 + "whole, from bytes kept with consent to inspect them, and nothing decoded is kept. A head not whole, or kept "
-                + "without consent, is not decoded, and why is said beneath its exchanges.");
+                + "without consent, is not decoded, and why is said beneath its exchanges, as is a body that does not hold the "
+                + "length its head declared.");
         }
 
         for (int index = 0; index < document.Groups.Count; index++)
@@ -413,6 +414,19 @@ internal static class ExchangesCommand
                     ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture, $"Exchange {exchanges[at].Number:N0}, its {head} head: {why}"));
                 }
             }
+
+            // A body that holds what its head declared goes unsaid; one that does not is said, which its buffers cannot show.
+            foreach ((string body, HttpBodyDeclaration? declared) in new[]
+            {
+                ("request", heads[at].RequestBody(exchanges[at].RequestBody)),
+                ("response", heads[at].ResponseBody(exchanges[at].ResponseBody)),
+            })
+            {
+                if (declared is { Contradicts: true, Statement: { } statement })
+                {
+                    ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture, $"Exchange {exchanges[at].Number:N0}, its {body} body: {statement}"));
+                }
+            }
         }
     }
 
@@ -432,7 +446,8 @@ internal static class ExchangesCommand
         ConsoleUi.Line("  sets how many are listed per process. Its figures read no content; icat content reads a buffer's.");
         ConsoleUi.Line("  --decode reads the listed exchanges' heads, each whole, from content kept with consent to inspect it,");
         ConsoleUi.Line("  and says what each request asked for, of which host, and what its response answered; a head not");
-        ConsoleUi.Line("  whole, or kept without consent, is not decoded, and why is said. It writes no JSON and no file.");
+        ConsoleUi.Line("  whole, or kept without consent, is not decoded, and why is said, as is a body that does not hold");
+        ConsoleUi.Line("  the length its head declared. It writes no JSON and no file.");
         ConsoleUi.Line("  What the capture covered of HTTP is said from its coverage ledger, never from a count of none.");
     }
 }

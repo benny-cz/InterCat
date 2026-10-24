@@ -91,7 +91,7 @@ public static partial class ContentDecoders
                         ? CountText.Of(after, "byte") + " " + CountText.Agree(after, "follows", "follow")
                             + " the empty line that ends the head; a head holds none, so " + CountText.Agree(after, "it is", "they are")
                             + " not decoded."
-                        : null);
+                        : null, reachedEnd: true);
                 }
                 else
                 {
@@ -104,7 +104,8 @@ public static partial class ContentDecoders
             return Decoded(record, part, length, fields, stopped);
         }
 
-        private static DecodedContent Decoded(RawRecordId record, string part, int length, List<DecodedField> fields, string? stopped) => new()
+        private static DecodedContent Decoded(
+            RawRecordId record, string part, int length, List<DecodedField> fields, string? stopped, bool reachedEnd = false) => new()
         {
             DecoderId = Id,
             Decoder = Name,
@@ -114,6 +115,7 @@ public static partial class ContentDecoders
             Read = new ContentRange(0, length - 1),
             Fields = fields,
             NotDecoded = stopped,
+            ReachedEnd = reachedEnd,
         };
 
         /// <summary>

@@ -85,3 +85,13 @@ fragments. Of the deliverables not built, the framing of bodies - by Content-Len
 conversation says whether a response held all its framing declared, never whole by its buffers' flags alone - comes
 next; then bounded content search, export of decoded metadata, the decoder fixture corpus and isolation. Nothing else
 above changes.
+
+## Addendum, revision 778
+
+Bodies are set beside the length their heads declare (`contracts/http-exchanges-v1.md` §5e), reading none of their
+content: a body holding fewer bytes than its Content-Length, though its buffers make it whole, is said to disagree, so
+a truncated conversation - the exit test's - is never shown complete on its buffers' word alone. Planning it found
+that a chunk-framing decoder, the plan's natural next step, would have been wrong for this source: FX-HTTP-003
+measured that WinINet keeps a chunked body without its framing, so no chunk reaches a decoder and a chunked body's end
+is its last buffer's. Compressed bodies stay unmeasured and uncompared. Bounded content search comes next; nothing
+else above changes.

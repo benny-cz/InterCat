@@ -2789,8 +2789,9 @@ public sealed class CommandLineTests : IDisposable
     public async Task ExchangesAreListedWithWhatTheirHeadsSay()
     {
         // PID 4242: exchange 7 whole, its request head in two buffers; exchange 8's request head with a buffer never recorded
-        // and no response; exchange 9's response head giving no reason. Before them PID 4141's own exchange 7, whose response
-        // head lacks its last buffer.
+        // and no response; exchange 9's response head giving no reason; exchange 10's response body, whole by its buffers,
+        // holding fewer bytes than its head declared. Before them PID 4141's own exchange 7, whose response head lacks its
+        // last buffer.
         using var kept = new TemporarySession();
         ObservationRowV1[] rows =
         [
@@ -2798,6 +2799,7 @@ public sealed class CommandLineTests : IDisposable
             Wininet(20, 2001, 5), Wininet(21, 2001, 6),
             Wininet(30, 2001, 7), Wininet(31, 2003, 8),
             Wininet(5, 2001, 9) with { HeaderProcessId = 4_141 }, Wininet(6, 2003, 10) with { HeaderProcessId = 4_141 },
+            Wininet(40, 2001, 11), Wininet(41, 2003, 12), Wininet(42, 2004, 13),
         ];
         (int Row, long Exchange, long Sequence, long Flags)[] parts =
         [
@@ -2805,6 +2807,7 @@ public sealed class CommandLineTests : IDisposable
             (4, 8, 0, 1), (5, 8, 2, 2),
             (6, 9, 0, 3), (7, 9, 0, 3),
             (8, 7, 0, 3), (9, 7, 0, 1),
+            (10, 10, 0, 3), (11, 10, 0, 3), (12, 10, 0, 3),
         ];
         string[] messages =
         [
@@ -2812,7 +2815,11 @@ public sealed class CommandLineTests : IDisposable
             "GET /a HTTP/1.1\r\n", "\r\n",
             "POST /upload HTTP/1.1\r\nHost: files\r\n\r\n", "HTTP/1.1 404 \r\n\r\n",
             "GET /other HTTP/1.1\r\nHost: elsewhere\r\n\r\n", "HTTP/1.1 200 OK\r\n",
+            "GET /short HTTP/1.1\r\nHost: example\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n", "four",
         ];
+
+        // Each buffer measured as long as the bytes it kept, as WinINet's records measure them.
+        rows = [.. rows.Select((row, index) => row with { ByteValue = messages[index].Length })];
         Publish(kept.Store, rows,
             fields: [.. parts.SelectMany(part => new[]
             {
@@ -2833,9 +2840,13 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"(?m)^  \S+ +7 +no end +GET /index.html +example +200 OK +whole\r?$", output);
         Assert.Matches(@"(?m)^  \S+ +8 +no end +not decoded +- +no head recorded +not whole\r?$", output);
         Assert.Matches(@"(?m)^  \S+ +9 +no end +POST /upload +files +404 +not whole\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +10 +no end +GET /short +example +200 OK +whole\r?$", output);
         Assert.Contains("Exchange 8, its request head: The part is not whole, so it is not decoded: what it lacks could hold any "
             + "of its lines, and a decoding never stands in for missing bytes.", output, StringComparison.Ordinal);
+        Assert.Contains("Exchange 10, its response body: Its head declares 10 bytes, and its recorded buffers hold 4 of them, "
+            + "though their places and ends make the body whole.", output, StringComparison.Ordinal);
         Assert.DoesNotContain("Exchange 7, its", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Exchange 9, its", output, StringComparison.Ordinal);
         Assert.DoesNotContain("Request head", output, StringComparison.Ordinal);
 
         // Another process's exchange of the same number is its own, its response head not whole and not decoded.
