@@ -600,10 +600,10 @@ public static class WorkspaceExport
     /// A text cell a spreadsheet will not evaluate: a leading <c>=</c>, <c>+</c>, <c>-</c>, <c>@</c>, tab or carriage
     /// return is prefixed with an apostrophe, the documented neutralization for formula injection.
     /// </summary>
-    private static string Text(string value) =>
+    internal static string Text(string value) =>
         value.Length > 0 && value[0] is '=' or '+' or '-' or '@' or '\t' or '\r' ? "'" + value : value;
 
-    private static void Line(StringBuilder csv, IReadOnlyList<string> cells)
+    internal static void Line(StringBuilder csv, IReadOnlyList<string> cells)
     {
         for (int index = 0; index < cells.Count; index++)
         {

@@ -1360,6 +1360,7 @@
         "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one",
         "P2: icat content shows and saves a whole HTTP part as one, and refuses --part of a record that belongs to none",
         "P2: icat exchanges --decode says what each listed request asked for, of which host, and what its response answered, each head read whole",
+        "P2: icat exchanges writes the listed exchanges' heads only when asked, as content, in JSON or as a table whose cells a spreadsheet will not evaluate",
         "P2: the content viewer decodes a buffer's whole HTTP head only when asked, shows a field's bytes in the part, and never decodes a head that is not whole"
       ],
       "P20": [

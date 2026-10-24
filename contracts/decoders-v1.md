@@ -3,7 +3,8 @@
 Status: **implemented** on the command line (`icat content --decode`, `--part --decode` and `--decoders`, revision
 774; `icat exchanges --decode`, revision 776) and in the window (the content viewer's Decode and Decode its part,
 revision 775, §5a; an exchange's conversation, revision 777); each decoder's corpus pins what its version decodes
-(revision 782, §3a).
+(revision 782, §3a); the listed exchanges' heads are written when asked (revision 783,
+`contracts/http-exchanges-v1.md` §5f).
 
 This contract fixes plan M8's decoder contract at its first version: what a decoder is, what it reads, when it reads
 it, and what it says of what it read, for every decoder InterCat has. A decoder owns no bytes: it reads content the
@@ -27,8 +28,9 @@ head of exchange 7" (`content-v1` §4); the kept bytes it read, by offset in the
 decoded, with its name, its value and the bytes it came from; and what it did not decode and why, as a sentence. It is
 made:
 
-- **Only when asked**: `icat content --decode`, or the viewer's Decode. Nothing decodes on its own, and search,
-  rankings, metrics, exports and reports never read a decoding.
+- - **Only when asked**: `icat content --decode`, or the viewer's Decode. Nothing decodes on its own, and search,
+  rankings, metrics, reports and every export but the one asked for with it (`contracts/http-exchanges-v1.md` §5f)
+  never read a decoding.
 - **Only from bytes kept with consent to inspect them** (`hex-text`): bytes kept without it are never decoded, and the
   decoding says so.
 - **A part only whole**: every buffer from the one flagged first to the one flagged last, kept whole. A part that is
@@ -38,8 +40,10 @@ made:
   stopped it.
 - **Inert**: its fields are text that nothing renders, runs or fetches.
 
-A decoding is never kept: no file, JSON (`icat content --json` refuses `--decode`) or package holds one, so opening a
-session with a newer decoder changes nothing stored.
+A decoding is never kept: no store, package or report holds one, and `icat content --json` refuses `--decode`, so
+opening a session with a newer decoder changes nothing stored. Since revision 783 a person may write the listed
+exchanges' heads to a document asked for with them, which says it holds content and is never read back
+(`contracts/http-exchanges-v1.md` §5f, ADR-071).
 
 ## 3. The decoders at this version
 
@@ -107,7 +111,8 @@ body's part is said to be read by none. `icat content --decoders` lists §3's de
 decoding that read nothing - a part not whole, kept without consent, or holding no bytes - answers partially, as
 `--reveal` does for bytes it cannot show. `icat exchanges --decode` decodes each listed exchange's request and
 response heads the same way, and lists what each request asked for and what its response answered beside the exchange
-(`contracts/http-exchanges-v1.md` §5c).
+(`contracts/http-exchanges-v1.md` §5c), and with `--json` or `--output` writes them, as `http-exchange-heads-v1` or a
+table (§5f there).
 
 ## 5a. The window
 
@@ -130,7 +135,8 @@ heads the same way, side by side, when its Decode its heads is pressed.
 - **A conversation decoded as one**: a part decoded in the light of another, as a response's body framed by its
   request's method. Each part is decoded alone; `icat exchanges --decode` and an exchange's conversation in the window
   (§5, §5a) set an exchange's two decoded heads side by side.
-- **A decoding kept, exported or searched**: JSON or columnar metadata; `icat content --find` searches kept bytes,
-  never a decoding (`content-v1` §4).
+- - **A decoding kept or searched**, or exported but as `icat exchanges --decode` writes the listed exchanges' heads
+  when asked (`http-exchanges-v1` §5f): `icat content --json` refuses `--decode`, and the window exports none; `icat
+  content --find` searches kept bytes, never a decoding (`content-v1` §4).
 - **Isolation**: a decoder runs in the process that asked, bounded by the bytes and the time above, and never in the
   capture; one whose parsing is larger than these is isolated in an unprivileged worker first (plan M8).

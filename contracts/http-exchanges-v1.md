@@ -3,13 +3,15 @@
 Status: M3/M8 additive contract, revision 247 (ADR-037)
 Owner: `InterCat.Analysis` (`HttpExchangeIndex`), `InterCat.Application` (`SessionHttpExchanges`)
 Produced by: the Desktop's process and channel rungs, and
-`icat exchanges <session> [--pid <id>] [--exchanges <n>] --json`
+`icat exchanges <session> [--pid <id>] [--exchanges <n>] --json`; its table and `http-exchange-heads-v1`
+by `--output` and `--decode` (§5f)
 
 An HTTP exchange is a request and its response as one client process made them through WinINet, derived from WinINet's
 capture records (`contracts/content-v1.md` §5.1). It is read from the records' metadata and source fields alone: which
 buffers were recorded, the bytes each record measured, their places and ends. It never reads content, so it says how
 large each part was and whether it was recorded whole, and never what it said; only `icat exchanges --decode` and an
-exchange's conversation in the window, when asked, read heads (§5c, §5d).
+exchange's conversation in the window, when asked, read heads (§5c, §5d), and only `http-exchange-heads-v1` writes
+what they say (§5f).
 
 ## 1. Records
 
@@ -127,9 +129,9 @@ and the reason its status line gave - beside whether the exchange was recorded w
 without consent to inspect it, is not decoded, and leaves the answer partial as `icat content --decode` does; one
 whose start line is not HTTP/1.1's says nothing in its cells. Why is said beneath its process's exchanges, as is where
 a head stops being HTTP/1.1, and where a body does not hold what its head declared (§5e). Every listed head is read
-under one lease in one pass over the session's segments, and only the exchanges listed are read. Decoded heads are for
-a person: `--decode` refuses `--json` and `--output` (`decoders-v1` §2), and a listing of no exchanges. The figures
-above the exchanges are read as without `--decode`.
+under one lease in one pass over the session's segments, and only the exchanges listed are read. Asked for with
+`--json` or `--output`, the listed exchanges and their heads are written (§5f); `--decode` refuses a listing of no
+exchanges. The figures above the exchanges are read as without `--decode`.
 
 ## 5d. An exchange's conversation (revision 777)
 
@@ -168,8 +170,35 @@ whose places and ends make a body whole can hold fewer bytes than its head decla
 declaration beneath it, a disagreement in the caution colour; `icat exchanges --decode` says each disagreement beneath
 its process's exchanges, and nothing of a body that agrees.
 
+## 5f. The listed exchanges as a table, and their heads written when asked (revision 783)
+
+`icat exchanges --decode`, asked with `--json` or `--output`, writes `http-exchange-heads-v1` (ADR-071): the
+`http-exchanges-v1` document of §5 under that name, with `content`, saying it holds what heads say, decoded from
+content kept with consent to inspect it, to be shared only as that content would be; `decoder`, the decoder that read
+them - its `id`, `name`, `version` and what it `reads`; and on each listed exchange `heads`: `asked`, `host` and
+`answered` as §5c lists them; its `request` and `response` decodings, each null where no buffer of that head was
+recorded, else its `part`, the bytes it `read` (`first` and `last`, null where it read none), its `fields` (each
+`name`, `value`, and `first` and `last` byte in the head), `notDecoded` and `reachedEnd` (`contracts/decoders-v1.md`
+§2); and `requestBody` and `responseBody`, what each head declares of its body (§5e: `statement` and `contradicts`),
+null where the head was not decoded. A file written says beside it that it holds content. Without `--decode` none of
+these is written, not even as null: `http-exchanges-v1` never holds a head's value.
+
+`--output` writes JSON; `--format csv`, or a path ending `.csv`, writes the listed exchanges as a table instead, one
+line per exchange in the order listed after a header naming its columns: `session_id`, `generation`, `pid`, `process`,
+`process_key`, `unattributed`, `exchange_key`, `exchange`, `first_seconds`, `duration_ns`, `recorded_whole`, and for
+each part - `request_head`, `request_body`, `response_head`, `response_body` - its `_buffers`, `_bytes` and `_whole`.
+With `--decode` it adds `decoder`, `decoder_version`, `method`, `target`, `request_version`, `host`, `status`,
+`reason`, `response_version`, `request_head_decoded_to_end` and `response_head_decoded_to_end`,
+`request_head_not_decoded` and `response_head_not_decoded`, where a head no buffer of which was recorded says so, and
+each body's `_declared` statement and `_contradicts`. Numbers are invariant, flags `true` or `false`, and what is not
+known is empty. A cell holding a comma, a quote or a line end is quoted, its quotes doubled; a text cell beginning
+with `=`, `+`, `-`, `@`, a tab or a carriage return begins with an apostrophe, so a spreadsheet shows it rather than
+evaluates it. `--format` needs `--output`, and a table needs listed exchanges: `--pid`, or `--exchanges` with a
+number. The figures are read as without `--decode`, and nothing written is read back.
+
 ## 6. Not defined at this version
 
-- An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
-  asked for reads, for a person and never into a document (§5c, §5d, `contracts/decoders-v1.md` §2).
+- - An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
+  asked for reads, and only `http-exchange-heads-v1` writes, asked for with them (§5c, §5d, §5f,
+  `contracts/decoders-v1.md` §2).
 - HTTP/2, compressed responses and asynchronous WinINet (ADR-037).

@@ -363,9 +363,12 @@ internal static class Icat
         ConsoleUi.Line("      Lists the RPC calls: each start paired with its stop by activity id, grouped by process,");
         ConsoleUi.Line("      side and interface, with durations and every unpaired call's reason.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat exchanges <directory> [--pid <id>] [--exchanges <n>] [--json]");
+        ConsoleUi.Line("  icat exchanges <directory> [--pid <id>] [--exchanges <n>] [--decode]");
+        ConsoleUi.Line("                 [--output <file> [--format json|csv] [--overwrite]] [--json]");
         ConsoleUi.Line("      Lists the HTTP exchanges a content capture recorded through WinINet: each client process's");
-        ConsoleUi.Line("      exchanges, what was recorded of each part, and how long each took, never their content.");
+        ConsoleUi.Line("      exchanges, what was recorded of each part, and how long each took, never their content unless");
+        ConsoleUi.Line("      --decode reads what the listed exchanges' heads say from content kept with consent to inspect");
+        ConsoleUi.Line("      it. --output writes the listing as JSON or, with --format csv or a .csv path, as a table.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat workspace <new|add|show|relink|alias|align|compare|correlate|timeline|join|same-host");
         ConsoleUi.Line("                 |translate|note|view|comparison|package> <workspace> ... [--json]");

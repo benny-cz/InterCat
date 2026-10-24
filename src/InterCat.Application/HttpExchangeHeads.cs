@@ -13,10 +13,26 @@ namespace InterCat.Application;
 /// </summary>
 public sealed record HttpExchangeHeads(DecodedContent? Request, DecodedContent? Response)
 {
+    /// <summary>The request line's method, target and HTTP version; null where it was not decoded.</summary>
+    public (string Method, string Target, string Version)? RequestLine =>
+        Request?.Fields is [{ Name: "method" } method, { Name: "target" } target, { Name: "version" } version, ..]
+            ? (method.Value, target.Value, version.Value)
+            : null;
+
+    /// <summary>
+    /// The status line's HTTP version, status and reason, the reason null where the line gave none; null where it was not
+    /// decoded. A reason is the field that follows the status on its line, never a field line's.
+    /// </summary>
+    public (string Version, string Status, string? Reason)? StatusLine =>
+        Response?.Fields is [{ Name: "version" } version, { Name: "status" } status, ..] fields
+            ? (version.Value, status.Value,
+                fields.Count > 2 && fields[2] is { Name: "reason" } reason && reason.Bytes.First == status.Bytes.Last + 2
+                    ? reason.Value
+                    : null)
+            : null;
+
     /// <summary>What the request asked for: its method and target, "GET /index.html"; null where its request line was not decoded.</summary>
-    public string? Asked => Request?.Fields is [{ Name: "method" } method, { Name: "target" } target, ..]
-        ? method.Value + " " + target.Value
-        : null;
+    public string? Asked => RequestLine is { } line ? line.Method + " " + line.Target : null;
 
     /// <summary>The host its first Host field named, in any case; null where it named none, or was not decoded.</summary>
     public string? Host => Request?.Fields.FirstOrDefault(line =>
@@ -24,13 +40,9 @@ public sealed record HttpExchangeHeads(DecodedContent? Request, DecodedContent? 
 
     /// <summary>
     /// What the response answered: its status and, where its status line gave one, its reason, "200 OK"; null where its
-    /// status line was not decoded. A reason is the field that follows the status on its line, never a field line's.
+    /// status line was not decoded.
     /// </summary>
-    public string? Answered => Response?.Fields is [{ Name: "version" }, { Name: "status" } status, ..] fields
-        ? fields.Count > 2 && fields[2] is { Name: "reason" } reason && reason.Bytes.First == status.Bytes.Last + 2
-            ? status.Value + " " + reason.Value
-            : status.Value
-        : null;
+    public string? Answered => StatusLine is { } line ? line.Reason is { } reason ? line.Status + " " + reason : line.Status : null;
 
     /// <summary>
     /// What the request head declares of the request's body, beside what was recorded of it (§5e); null where the head
@@ -43,8 +55,7 @@ public sealed record HttpExchangeHeads(DecodedContent? Request, DecodedContent? 
     /// or of status 1xx, 204 or 304, holds none. Null where the head was not decoded.
     /// </summary>
     public HttpBodyDeclaration? ResponseBody(HttpPartRecord body) => HttpBodies.Declared(Response, body, response: true,
-        Request?.Fields is [{ Name: "method" } method, ..] ? method.Value : null,
-        Response?.Fields is [{ Name: "version" }, { Name: "status" } status, ..] ? status.Value : null);
+        RequestLine?.Method, StatusLine?.Status);
 }
 
 /// <summary>

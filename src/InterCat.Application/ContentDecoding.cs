@@ -80,6 +80,9 @@ public static partial class ContentDecoders
             "a whole HTTP/1.1 request or response head WinINet's capture kept, events 2001 and 2003, read as its part"),
     ];
 
+    /// <summary>The HTTP/1.1 head decoder, which reads an exchange's request and response heads.</summary>
+    public static ContentDecoderInfo HttpHeadDecoder => Known.Single(decoder => decoder.Id == HttpHeads.Id);
+
     /// <summary>The name of the decoder that reads <paramref name="row"/>'s content, or null when none does.</summary>
     public static string? For(ObservationRowV1 row)
     {

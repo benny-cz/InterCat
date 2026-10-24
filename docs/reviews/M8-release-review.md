@@ -130,3 +130,13 @@ makes of it, and a test decodes every case and requires one corpus for each list
 other, so a decoder whose decoding of a case changes cannot keep its version. The deliverables' decoder fixture corpus
 is built, and with it version pinning: a decoding names its version, and the version names the corpus that says what
 it decodes. M8's exit review comes next; nothing else above changes.
+
+## Addendum, revision 783
+
+Decoded metadata is exported when asked (`contracts/http-exchanges-v1.md` §5f, ADR-071): `icat exchanges --decode`,
+with `--json` or `--output`, writes the listed exchanges and what their heads say as `http-exchange-heads-v1`, a
+document that says it holds content and names the decoder version that made each decoding, or with `--format csv` as a
+table whose cells a spreadsheet will not evaluate. The exit test's export that respects scope and redaction holds for
+it: it reads only the exchanges listed, of the process asked for, from content kept with consent; `http-exchanges-v1`,
+the share report and every package still hold no decoding. The window's export of a process's exchanges with their
+heads comes next, then M8's exit review; nothing else above changes.

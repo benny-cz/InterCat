@@ -1,6 +1,7 @@
 # ADR-070: A decoder reads a whole part only when asked, stops where its format does not hold, and is never kept
 
-- Status: accepted; revision 774. It starts plan M8 with the HTTP/1.1 head decoder
+- Status: accepted; revision 774. It starts plan M8 with the HTTP/1.1 head decoder; decision 2 amended by ADR-071
+  (revision 783)
 - Date: 2026-10-24
 - Relates to: plan M8, §11.2, I21, P2, ADR-036, ADR-037; `contracts/decoders-v1.md`, `contracts/content-v1.md`
 
@@ -49,7 +50,8 @@ so a head part is exactly what the process sent or read.
   (`decoders-v1` §6); revision 775 builds the window's decoding of a part (`decoders-v1` §5a). Revision 776 sets each
   listed exchange's two decoded heads side by side (`icat exchanges --decode`), each still decoded alone. Revision 777
   does the same in the window, in an exchange's conversation. Revision 778 sets each body beside the length its head
-  declares (`http-exchanges-v1` §5e), reading none of it.
+  declares (`http-exchanges-v1` §5e), reading none of it. Revision 783 writes the listed exchanges' heads to a
+  document asked for with them, which says it holds content (ADR-071, `http-exchanges-v1` §5f).
 
 ## Alternatives considered
 

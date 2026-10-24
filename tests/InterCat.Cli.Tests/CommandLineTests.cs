@@ -2885,6 +2885,231 @@ public sealed class CommandLineTests : IDisposable
             };
     }
 
+    [Fact(DisplayName = "P2: icat exchanges writes the listed exchanges' heads only when asked, as content, in JSON or as a table whose cells a spreadsheet will not evaluate")]
+    public async Task ExchangesHeadsAreWrittenOnlyWhenAsked()
+    {
+        // PID 4242, client.exe seen starting: exchange 7 whole, taking 2 µs; exchange 8 whole, its target holding a comma
+        // and quotes, its Host and reason what a spreadsheet would evaluate; exchange 9's request head with a buffer never
+        // recorded, and no response. PID 4141's exchange 7, a 204 with no body.
+        using var kept = new TemporarySession();
+        using var files = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        ObservationRowV1[] rows =
+        [
+            Wininet(10, 2001, 1), Wininet(11, 2003, 2), Wininet(12, 2004, 3),
+            Wininet(20, 2001, 4), Wininet(21, 2003, 5), Wininet(22, 2004, 6),
+            Wininet(30, 2001, 7), Wininet(31, 2001, 8),
+            Wininet(5, 2001, 9) with { HeaderProcessId = 4_141 }, Wininet(6, 2003, 10) with { HeaderProcessId = 4_141 },
+        ];
+        (int Row, long Exchange, long Sequence, long Flags)[] parts =
+        [
+            (0, 7, 0, 3), (1, 7, 0, 3), (2, 7, 0, 3),
+            (3, 8, 0, 3), (4, 8, 0, 3), (5, 8, 0, 3),
+            (6, 9, 0, 1), (7, 9, 2, 2),
+            (8, 7, 0, 3), (9, 7, 0, 3),
+        ];
+        string[] messages =
+        [
+            "GET /index.html HTTP/1.1\r\nHost: example\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", "hello",
+            "GET /a,\"b\" HTTP/1.1\r\nHost: =cmd|' /C calc'!A0\r\n\r\n", "HTTP/1.1 500 -oops\r\n\r\n", "x",
+            "GET /x HTTP/1.1\r\n", "\r\n",
+            "GET /other HTTP/1.1\r\nHost: elsewhere\r\n\r\n", "HTTP/1.1 204 No Content\r\n\r\n",
+        ];
+        rows = [.. rows.Select((row, index) => row with { ByteValue = messages[index].Length })];
+        Publish(kept.Store, [.. rows, Lifecycle(1, ObservationKind.Create, 4_242, 100) with { ResourceName = @"C:\Tools\client.exe" }],
+            fields: [.. parts.SelectMany(part => new[]
+            {
+                Field(rows[part.Row], SourceField.HttpExchangeId, part.Exchange),
+                Field(rows[part.Row], SourceField.ContentBufferSequence, part.Sequence),
+                Field(rows[part.Row], SourceField.ContentBufferFlags, part.Flags),
+            })],
+            content: (ContentHeader(recordLimit: 64),
+                [.. messages.Select((message, index) => Content(rows[index], System.Text.Encoding.ASCII.GetBytes(message), 64,
+                    ContentEncodingV1.Binary))]));
+        kept.Store.ReleaseSegmentReaders();
+        (string? Key, string? FirstSeconds, long Duration, long Generation) documented;
+
+        // Asked for with --json, the listing is http-exchange-heads-v1: it says it holds content, names its decoder, and
+        // gives each listed exchange's decodings, each field with its bytes, and its bodies beside what their heads declare.
+        (InterCatExitCode code, string output, string said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode", "--json");
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+        using (JsonDocument heads = JsonDocument.Parse(output))
+        {
+            JsonElement root = heads.RootElement;
+            Assert.Equal("http-exchange-heads-v1", root.GetProperty("contract").GetString());
+            Assert.StartsWith("It holds what the listed exchanges' heads say, decoded from content the session kept with consent "
+                + "to inspect it: it is content", root.GetProperty("content").GetString(), StringComparison.Ordinal);
+            Assert.Equal(("http1-head", 1), (root.GetProperty("decoder").GetProperty("id").GetString(),
+                root.GetProperty("decoder").GetProperty("version").GetInt32()));
+            JsonElement[] listed = [.. root.GetProperty("groups").EnumerateArray().Single().GetProperty("list").EnumerateArray()];
+            Assert.Equal([7L, 8L, 9L], listed.Select(exchange => exchange.GetProperty("number").GetInt64()));
+            JsonElement first = listed[0].GetProperty("heads");
+            Assert.Equal(("GET /index.html", "example", "200 OK"), (first.GetProperty("asked").GetString(),
+                first.GetProperty("host").GetString(), first.GetProperty("answered").GetString()));
+            JsonElement request = first.GetProperty("request");
+            Assert.Equal("the request head of exchange 7", request.GetProperty("part").GetString());
+            Assert.Equal((0, 42), (request.GetProperty("read").GetProperty("first").GetInt64(), request.GetProperty("read").GetProperty("last").GetInt64()));
+            Assert.Equal(["method 0-2 GET", "target 4-14 /index.html", "version 16-23 HTTP/1.1", "Host 26-38 example"],
+                request.GetProperty("fields").EnumerateArray().Select(field => string.Create(CultureInfo.InvariantCulture,
+                    $"{field.GetProperty("name").GetString()} {field.GetProperty("first").GetInt64()}-{field.GetProperty("last").GetInt64()} {field.GetProperty("value").GetString()}")));
+            Assert.True(request.GetProperty("reachedEnd").GetBoolean());
+            Assert.Equal(JsonValueKind.Null, request.GetProperty("notDecoded").ValueKind);
+            Assert.Equal(("Its head declares 5 bytes, and its recorded buffers hold them all.", false),
+                (first.GetProperty("responseBody").GetProperty("statement").GetString(),
+                    first.GetProperty("responseBody").GetProperty("contradicts").GetBoolean()));
+            Assert.Equal("Its head declares no body, and none was recorded.",
+                first.GetProperty("requestBody").GetProperty("statement").GetString());
+            documented = (listed[0].GetProperty("key").GetString(), listed[0].GetProperty("firstSeconds").GetString(),
+                listed[0].GetProperty("durationNanoseconds").GetInt64(), root.GetProperty("generation").GetInt64());
+            Assert.Equal(2_000, documented.Duration);
+            JsonElement partial = listed[2].GetProperty("heads");
+            Assert.StartsWith("The part is not whole, so it is not decoded", partial.GetProperty("request").GetProperty("notDecoded").GetString(),
+                StringComparison.Ordinal);
+            Assert.Equal(JsonValueKind.Null, partial.GetProperty("request").GetProperty("read").ValueKind);
+            Assert.Equal(JsonValueKind.Null, partial.GetProperty("response").ValueKind);
+            Assert.Equal(JsonValueKind.Null, partial.GetProperty("responseBody").ValueKind);
+            Assert.Equal("=cmd|' /C calc'!A0", listed[1].GetProperty("heads").GetProperty("host").GetString());
+
+            // The same document, written to a file, says beside it that it holds content.
+            string json = Path.Combine(files.Path, "heads.json");
+            (code, string listing, said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode", "--output", json);
+            Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+            Assert.Equal(output.TrimEnd(), File.ReadAllText(json));
+            Assert.Contains("GET /index.html", listing, StringComparison.Ordinal);
+            Assert.Contains($"HTTP exchanges and what their heads say written to {json}.", said, StringComparison.Ordinal);
+            Assert.Contains("! It holds what the listed exchanges' heads say", said, StringComparison.Ordinal);
+        }
+
+        // Without --decode, http-exchanges-v1 holds no head's value and says nothing of content or a decoder.
+        (code, output, said) = await Run("exchanges", kept.Path, "--pid", "4242", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using (JsonDocument plain = JsonDocument.Parse(output))
+        {
+            JsonElement root = plain.RootElement;
+            Assert.Equal("http-exchanges-v1", root.GetProperty("contract").GetString());
+            Assert.False(root.TryGetProperty("content", out _));
+            Assert.False(root.TryGetProperty("decoder", out _));
+            Assert.All(root.GetProperty("groups")[0].GetProperty("list").EnumerateArray(),
+                exchange => Assert.False(exchange.TryGetProperty("heads", out _)));
+            Assert.DoesNotContain("GET", output, StringComparison.Ordinal);
+        }
+
+        // A .csv path writes a table, one line per listed exchange, what its heads say in columns of their own: a value a
+        // spreadsheet would evaluate begins with an apostrophe, a cell holding a comma or a quote is quoted, and a head
+        // not decoded says why in its own cell.
+        string table = Path.Combine(files.Path, "heads.csv");
+        (code, _, said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode", "--output", table);
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+        string csv = File.ReadAllText(table);
+        List<IReadOnlyDictionary<string, string>> lines = Csv(csv);
+        Assert.Equal([.. HttpExchangeTable.Columns, .. HttpExchangeTable.HeadColumns], csv[..csv.IndexOf("\r\n", StringComparison.Ordinal)].Split(','));
+        Assert.Equal(["7", "8", "9"], lines.Select(line => line["exchange"]));
+        Assert.All(lines, line => Assert.Equal(("4242", "client.exe", "", "http1-head", "1"),
+            (line["pid"], line["process"], line["unattributed"], line["decoder"], line["decoder_version"])));
+        Assert.All(lines, line => Assert.Equal((kept.Store.SessionId.ToString("N"), documented.Generation.ToString(CultureInfo.InvariantCulture)),
+            (line["session_id"], line["generation"])));
+        Assert.NotEmpty(lines[0]["process_key"]);
+        Assert.Equal((documented.Key, documented.FirstSeconds, documented.Duration.ToString(CultureInfo.InvariantCulture), "true"),
+            (lines[0]["exchange_key"], lines[0]["first_seconds"], lines[0]["duration_ns"], lines[0]["recorded_whole"]));
+        Assert.Equal(("1", "43", "true", "0", "0", "false"), (lines[0]["request_head_buffers"], lines[0]["request_head_bytes"],
+            lines[0]["request_head_whole"], lines[0]["request_body_buffers"], lines[0]["request_body_bytes"], lines[0]["request_body_whole"]));
+        Assert.Equal(("Its head declares no body, and none was recorded.", "false"),
+            (lines[0]["request_body_declared"], lines[0]["request_body_contradicts"]));
+        Assert.Equal(("GET", "/index.html", "HTTP/1.1", "example", "200", "OK", "HTTP/1.1", "true", "true"),
+            (lines[0]["method"], lines[0]["target"], lines[0]["request_version"], lines[0]["host"], lines[0]["status"], lines[0]["reason"],
+                lines[0]["response_version"], lines[0]["request_head_decoded_to_end"], lines[0]["response_head_decoded_to_end"]));
+        Assert.Equal(("Its head declares 5 bytes, and its recorded buffers hold them all.", "false", "1", "5", "true"),
+            (lines[0]["response_body_declared"], lines[0]["response_body_contradicts"], lines[0]["response_body_buffers"],
+                lines[0]["response_body_bytes"], lines[0]["response_body_whole"]));
+        Assert.Equal(("/a,\"b\"", "'=cmd|' /C calc'!A0", "'-oops"), (lines[1]["target"], lines[1]["host"], lines[1]["reason"]));
+        Assert.Contains(",\"/a,\"\"b\"\"\",", csv, StringComparison.Ordinal);
+        Assert.Equal(("", "false", "", HttpExchangeTable.NoHead), (lines[2]["method"], lines[2]["request_head_decoded_to_end"],
+            lines[2]["response_head_decoded_to_end"], lines[2]["response_head_not_decoded"]));
+        Assert.StartsWith("The part is not whole, so it is not decoded", lines[2]["request_head_not_decoded"], StringComparison.Ordinal);
+        Assert.Equal(("2", "19", "false", "false"), (lines[2]["request_head_buffers"], lines[2]["request_head_bytes"],
+            lines[2]["request_head_whole"], lines[2]["recorded_whole"]));
+        Assert.Equal(("", ""), (lines[2]["request_body_declared"], lines[2]["response_body_contradicts"]));
+
+        // Without --decode, the table holds the exchanges' figures alone; --format csv writes one to any path, and both
+        // processes' exchanges are listed with --exchanges.
+        string figures = Path.Combine(files.Path, "exchanges.txt");
+        (code, _, said) = await Run("exchanges", kept.Path, "--exchanges", "5", "--output", figures, "--format", "csv");
+        Assert.True(code == InterCatExitCode.Success, said);
+        string plainCsv = File.ReadAllText(figures);
+        Assert.Equal(string.Join(",", HttpExchangeTable.Columns), plainCsv[..plainCsv.IndexOf("\r\n", StringComparison.Ordinal)]);
+        Assert.Equal([("4141", "7"), ("4242", "7"), ("4242", "8"), ("4242", "9")],
+            Csv(plainCsv).Select(line => (line["pid"], line["exchange"])).Order());
+        Assert.DoesNotContain("GET", plainCsv, StringComparison.Ordinal);
+        Assert.Contains($"HTTP exchanges written to {figures}.", said, StringComparison.Ordinal);
+        Assert.DoesNotContain("It holds what", said, StringComparison.Ordinal);
+
+        static ObservationRowV1 Wininet(long ticks, ushort eventId, ulong ordinal) =>
+            Transfer(ticks, eventId <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
+                eventId <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, 1, null, ordinal) with
+            {
+                Mechanism = Mechanism.Http,
+                Layer = ObservationLayer.Application,
+                EventId = eventId,
+                HeaderProcessId = 4_242,
+                Direction = eventId <= 2002 ? Direction.Outbound : Direction.Inbound,
+                ByteDomain = ByteDomain.ApplicationPayload,
+                SessionRelativeTicks = ticks * 1_000,
+            };
+    }
+
+    /// <summary>A CSV file's lines after its header, each cell by its column's name, quoted cells read as RFC 4180 writes them.</summary>
+    private static List<IReadOnlyDictionary<string, string>> Csv(string csv)
+    {
+        var lines = new List<List<string>>();
+        var line = new List<string>();
+        var cell = new System.Text.StringBuilder();
+        bool quoted = false;
+        for (int at = 0; at < csv.Length; at++)
+        {
+            char next = csv[at];
+            if (quoted)
+            {
+                if (next == '"' && at + 1 < csv.Length && csv[at + 1] == '"')
+                {
+                    cell.Append('"');
+                    at++;
+                }
+                else if (next == '"')
+                {
+                    quoted = false;
+                }
+                else
+                {
+                    cell.Append(next);
+                }
+            }
+            else if (next == '"')
+            {
+                quoted = true;
+            }
+            else if (next == ',')
+            {
+                line.Add(cell.ToString());
+                cell.Clear();
+            }
+            else if (next == '\r' && at + 1 < csv.Length && csv[at + 1] == '\n')
+            {
+                line.Add(cell.ToString());
+                cell.Clear();
+                lines.Add(line);
+                line = [];
+                at++;
+            }
+            else
+            {
+                cell.Append(next);
+            }
+        }
+
+        List<string> header = lines[0];
+        Assert.All(lines, read => Assert.Equal(header.Count, read.Count));
+        return [.. lines.Skip(1).Select(read => (IReadOnlyDictionary<string, string>)header.Zip(read).ToDictionary(pair => pair.First, pair => pair.Second))];
+    }
+
     [Fact(DisplayName = "P2: icat content --find lists the records whose kept bytes hold a text, each with its locator, and shows their bytes only with --previews")]
     public async Task KeptContentIsSearchedWhenAsked()
     {

@@ -147,22 +147,23 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   buffers, where the viewer reads a buffer and its part. Listing exchanges reads metadata and source fields, never
   content. Since revision 781 the viewer of a buffer opens its exchange's conversation in turn
   (`contracts/http-exchanges-v1.md` §5d), so a fragment leads to its message and the message to its exchange.
-- **A decoding** (revision 455, §11.2's `DecodedFields`). Where a decoder reads a record - at this version only
+- - **A decoding** (revision 455, §11.2's `DecodedFields`). Where a decoder reads a record - at this version only
   InterCat's content fixture decoder (`intercat-content-fixture`, version 1), which reads the records
-  `InterCat-Fixture-Content` raises as events 1 and 2 - a person may ask the viewer (Decode) or
-  `icat content --decode` to decode its fragment, and nothing decodes one unasked. A decoding reads only bytes kept
-  under `hex-text` inspection: bytes kept without that consent are never decoded, and it says so. It reads at most the
-  first 64 KiB of the kept bytes, as a view shows, within 250 ms, and says where it stopped when either bound stops it.
-  It names its decoder and that decoder's version, the record whose fragment it read and the kept bytes it read; each
-  field it decoded with the bytes it came from, by offset in the message, which the viewer shows in its hex view on
-  request; and what it did not decode and why: bytes past those it read, bytes the capture never kept, a header the
-  bytes end inside or leave. A fixture text message is `InterCat content fixture message <n> on conversation <c>. `
-  followed by its filler sentence, repeated; a number is decoded only once a byte past its digits shows it whole, and
-  the fixture's byte messages carry no fields. A decoding is made again each time it is asked for and never kept: no
-  file, JSON (`icat content --json` refuses `--decode`) or package holds one, and the fragment's bytes stay the
-  evidence. Its fields are inert text that nothing renders, runs or fetches. Since revision 774 a decoder may read a
-  whole part instead - InterCat's HTTP/1.1 head decoder (`http1-head`, version 1) reads a request or response head -
-  which `icat content --part --decode` asks for; a part that is not whole is never decoded
+  `InterCat-Fixture-Content` raises as events 1 and 2 - a person may ask the viewer (Decode) or `icat content
+  --decode` to decode its fragment, and nothing decodes one unasked. A decoding reads only bytes kept under `hex-text`
+  inspection: bytes kept without that consent are never decoded, and it says so. It reads at most the first 64 KiB of
+  the kept bytes, as a view shows, within 250 ms, and says where it stopped when either bound stops it. It names its
+  decoder and that decoder's version, the record whose fragment it read and the kept bytes it read; each field it
+  decoded with the bytes it came from, by offset in the message, which the viewer shows in its hex view on request;
+  and what it did not decode and why: bytes past those it read, bytes the capture never kept, a header the bytes end
+  inside or leave. A fixture text message is `InterCat content fixture message <n> on conversation <c>. ` followed by
+  its filler sentence, repeated; a number is decoded only once a byte past its digits shows it whole, and the
+  fixture's byte messages carry no fields. A decoding is made again each time it is asked for and never kept: no store
+  or package holds one, `icat content --json` refuses `--decode`, and only the listed exchanges' heads are ever
+  written, to a document asked for with them that says it holds content (`contracts/http-exchanges-v1.md` §5f); the
+  fragment's bytes stay the evidence. Its fields are inert text that nothing renders, runs or fetches. Since revision
+  774 a decoder may read a whole part instead - InterCat's HTTP/1.1 head decoder (`http1-head`, version 1) reads a
+  request or response head - which `icat content --part --decode` asks for; a part that is not whole is never decoded
   (`contracts/decoders-v1.md`). Since revision 775 the viewer's Decode its part does the same for a buffer of a head,
   offered only where the part is whole.
 - **A search** (revision 779). `icat content <session> --find <text>` searches the kept content for a text, only when
