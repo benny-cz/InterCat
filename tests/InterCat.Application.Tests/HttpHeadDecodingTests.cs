@@ -424,6 +424,46 @@ public sealed class HttpHeadDecodingTests
         Assert.Throws<ArgumentException>(() => SessionHttpExchanges.Conversation(session.Store, page.SessionId, channel, decodeHeads: false));
     }
 
+    [Fact(DisplayName = "P2: a process's exchanges read as a table are the ones its rung lists, each with what its heads say, within a scope and a limit, and refused for another session")]
+    public void AProcesssExchangesReadAsATable()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Conversations(out SourceFieldRowV1[] fields, out var content), fields: fields, content: content);
+        string channel = HttpExchangeKeys.Channel(SessionHttpExchangesTests.Client(session.Store));
+        HttpExchangePage page = SessionHttpExchanges.Exchanges(session.Store, channel);
+
+        // Every exchange the rung lists, a line each in its order, with the figures its row shows and what its heads say;
+        // a head not whole is not decoded.
+        HttpExchangeTableRead table = SessionHttpExchanges.Table(session.Store, page.SessionId, channel, 10);
+        Assert.Equal((page.SessionId, page.Generation, false, (string?)null), (table.SessionId, table.Generation, table.More, table.Problem));
+        Assert.Equal(page.Exchanges.Select(row => row.Key), table.Lines.Select(line => line.Key));
+        Assert.Equal(page.Exchanges.Select(row => (row.Exchange.Number, row.Exchange.DurationNanoseconds, row.Exchange.Complete,
+                row.Exchange.RequestHead, row.Exchange.ResponseBody)),
+            table.Lines.Select(line => (line.Number, line.DurationNanoseconds, line.RecordedWhole, line.RequestHead, line.ResponseBody)));
+        Assert.All(table.Lines, line => Assert.Equal((page.SessionId, page.Generation, 4_242, channel, (string?)null),
+            (line.SessionId, line.Generation, line.ProcessId, line.ProcessKey, line.Unattributed)));
+        Assert.Equal(["0.000001", "0.000002"], table.Lines.Select(line => line.FirstSeconds));
+        Assert.Equal(("GET /x", "a", "200 OK"), (table.Lines[0].Heads!.Asked, table.Lines[0].Heads!.Host, table.Lines[0].Heads!.Answered));
+        Assert.StartsWith("The part is not whole", table.Lines[1].Heads!.Request!.NotDecoded, StringComparison.Ordinal);
+        Assert.Null(table.Lines[1].Heads!.Response);
+
+        // A limit lists that many and says it left the rest out; an interval keeps to the exchanges the rung lists there.
+        HttpExchangeTableRead first = SessionHttpExchanges.Table(session.Store, page.SessionId, channel, 1);
+        Assert.Equal([page.Exchanges[0].Key], first.Lines.Select(line => line.Key));
+        Assert.True(first.More);
+        var later = new TimeRange(15, 25);
+        Assert.Equal([page.Exchanges[1].Key], SessionHttpExchanges.Exchanges(session.Store, channel, interval: later).Exchanges.Select(row => row.Key));
+        Assert.Equal([page.Exchanges[1].Key], SessionHttpExchanges.Table(session.Store, page.SessionId, channel, 10, later).Lines.Select(line => line.Key));
+
+        // A process the policy does not admit holds none, which is said; another session's folder, a key naming one exchange
+        // rather than a process's, or no room for a line, is refused.
+        HttpExchangeTableRead direct = SessionHttpExchanges.Table(session.Store, page.SessionId, channel, 10, policy: EvidencePolicy.DirectOnly);
+        Assert.Equal((0, "This generation holds no HTTP exchanges of that process."), (direct.Lines.Count, direct.Problem));
+        Assert.Throws<InvalidOperationException>(() => SessionHttpExchanges.Table(session.Store, Guid.NewGuid(), channel, 10));
+        Assert.Throws<ArgumentException>(() => SessionHttpExchanges.Table(session.Store, page.SessionId, page.Exchanges[0].Key, 10));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SessionHttpExchanges.Table(session.Store, page.SessionId, channel, 0));
+    }
+
     [Fact(DisplayName = "I21: a buffer leads to the exchange it belongs to, by its raw identity under the evidence policy, and a record of none says why")]
     public void ABufferLeadsToItsExchange()
     {

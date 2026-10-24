@@ -1215,6 +1215,12 @@
               <Button x:Name="ShareRedactedButton" Content="Share redacted report" Click="ShareRedactedView"
                       IsEnabled="{Binding CanExport}" ToolTip.Tip="{Binding ShareReportTip}" ToolTip.ShowOnDisabled="True"
                       AutomationProperties.HelpText="{Binding ShareReportTip}" />
+              <!-- M8: a process's exchanges with what their heads say, written to a table once it has said the table is
+                   content (http-exchanges-v1 §5f). -->
+              <Button x:Name="ExportHeadsButton" Content="Export with their heads…" Click="ExportHttpHeads"
+                      IsVisible="{Binding OffersHttpHeadsExport}" IsEnabled="{Binding CanExportHttpHeads}"
+                      ToolTip.Tip="{Binding ExportHttpHeadsTip}" ToolTip.ShowOnDisabled="True"
+                      AutomationProperties.HelpText="{Binding ExportHttpHeadsTip}" />
               <!-- A reopenable package of the whole session: pseudonymized, synthetic records, no original journal (§11.3). -->
               <Button x:Name="SharePackageButton" Content="Share redacted session…" Click="SharePackage" IsEnabled="False"
                       ToolTip.ShowOnDisabled="True" />

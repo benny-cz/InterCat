@@ -183,17 +183,35 @@ public static class HttpExchangeHeadsQuery
         int count,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(group);
+        ArgumentOutOfRangeException.ThrowIfNegative(first);
+        return ReadAt(store, manifest, index, group,
+            [.. Enumerable.Range(first, (int)Math.Max(0, Math.Min((long)first + count, group.Exchanges) - first))], cancellationToken);
+    }
+
+    /// <summary>
+    /// The heads of <paramref name="group"/>'s exchanges at <paramref name="positions"/>, in their order, read as
+    /// <see cref="Read"/> reads them: every part in one pass over the session.
+    /// </summary>
+    public static IReadOnlyList<HttpExchangeHeads> ReadAt(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        HttpExchangeIndex index,
+        HttpExchangeGroup group,
+        IReadOnlyList<int> positions,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(manifest);
         ArgumentNullException.ThrowIfNull(index);
         ArgumentNullException.ThrowIfNull(group);
-        ArgumentOutOfRangeException.ThrowIfNegative(first);
+        ArgumentNullException.ThrowIfNull(positions);
 
         // A buffer of each head of each exchange: its part, every buffer of the head, is found from it.
         var segments = new Dictionary<int, SegmentReaderV1>();
         var rows = new List<ObservationRowV1>();
         var records = new List<RawRecordId>();
         var asked = new List<(int Request, int Response)>();
-        for (int position = first; position < Math.Min((long)first + count, group.Exchanges); position++)
+        foreach (int position in positions)
         {
             (int Segment, int Row)[] buffers = [.. index.RecordsOf(group, position)];
             asked.Add((Ask(buffers, HttpPart.RequestHead), Ask(buffers, HttpPart.ResponseHead)));

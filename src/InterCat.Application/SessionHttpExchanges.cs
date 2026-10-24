@@ -155,6 +155,14 @@ public sealed record HttpExchangePage(
 public sealed record HttpExchangeFound(string? Key, string? Problem);
 
 /// <summary>
+/// A process's exchanges as lines of the table `icat exchanges --format csv` writes (`contracts/http-exchanges-v1.md`
+/// §5f), read from one generation: <paramref name="More"/> where a limit left exchanges out, and
+/// <paramref name="Problem"/>, with no line, where the generation holds no exchanges of the process.
+/// </summary>
+public sealed record HttpExchangeTableRead(
+    Guid SessionId, long Generation, IReadOnlyList<HttpExchangeLine> Lines, bool More, string? Problem);
+
+/// <summary>
 /// One exchange as its conversation shows it (`contracts/http-exchanges-v1.md` §5d): the exchange as the generation read
 /// holds it, and its two heads decoded whole where they were asked for, else null. A generation that no longer holds the
 /// exchange under the evidence policy is a problem stated, with no exchange.
@@ -394,6 +402,79 @@ public static class SessionHttpExchanges
         ArgumentNullException.ThrowIfNull(store);
         ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
         return Page(store, channelKey, 0, limit, interval, policy, cancellationToken);
+    }
+
+    /// <summary>
+    /// The first <paramref name="limit"/> exchanges <paramref name="channelKey"/> names in reading order - within
+    /// <paramref name="interval"/>, those <see cref="Exchanges"/> lists there - as lines of the table §5f defines, each
+    /// with its heads read whole from the content kept with consent to inspect it and decoded by the HTTP/1.1 head
+    /// decoder, every head in one pass of one generation: what a person exports from a process's exchanges in the window.
+    /// </summary>
+    public static HttpExchangeTableRead Table(
+        SessionStore store,
+        Guid expectedSessionId,
+        string channelKey,
+        int limit,
+        TimeRange? interval = null,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (!HttpExchangeKeys.TryParseChannel(channelKey, out ProcessInstanceId instance))
+        {
+            throw new ArgumentException("This key names no process's HTTP exchanges.", nameof(channelKey));
+        }
+
+        using EvidenceLease lease = store.AcquireLease();
+        (SessionManifestV1 manifest, HttpExchangeIndex? index) = Derive(store, lease, cancellationToken);
+        if (manifest.SessionId != expectedSessionId)
+        {
+            throw new InvalidOperationException(SessionStore.AnotherSession);
+        }
+
+        if (index?.GroupOf(instance) is not { } group || !group.Process.IsAdmittedUnder(policy)
+            || SessionSegments.SourceClock(store.Root, manifest) is not { } clock)
+        {
+            return new(manifest.SessionId, manifest.Generation, [], false, "This generation holds no HTTP exchanges of that process.");
+        }
+
+        // The exchanges the rung lists in its scope, in reading order, as Page counts them.
+        TimeRange? native = Native(store, manifest, interval);
+        IReadOnlyList<HttpExchange> all = index.ExchangesOf(group);
+        int[] scoped = [.. Enumerable.Range(0, all.Count)
+            .Where(position => interval is null || native is { } range && range.Contains(all[position].LastTicks))
+            .Take(limit + 1)];
+        int[] positions = scoped.Length > limit ? scoped[..limit] : scoped;
+        IReadOnlyList<HttpExchangeHeads> heads = HttpExchangeHeadsQuery.ReadAt(store, manifest, index, group, positions, cancellationToken);
+        string? image = index.Processes.Instances[group.Process.Instance].ImageName;
+        return new(manifest.SessionId, manifest.Generation,
+        [
+            .. positions.Select((position, at) =>
+            {
+                HttpExchange exchange = all[position];
+                return new HttpExchangeLine
+                {
+                    SessionId = manifest.SessionId,
+                    Generation = manifest.Generation,
+                    ProcessId = group.ProcessId,
+                    Process = image,
+                    ProcessKey = channelKey,
+                    Unattributed = null,
+                    Key = HttpExchangeKeys.Exchange(channelKey, exchange.First.Stream, exchange.First.Epoch, exchange.First.Ordinal),
+                    Number = exchange.Number,
+                    FirstSeconds = SessionTimeText.EpochSeconds(clock, exchange.FirstTicks),
+                    DurationNanoseconds = exchange.DurationNanoseconds,
+                    RecordedWhole = exchange.Complete,
+                    RequestHead = exchange.RequestHead,
+                    RequestBody = exchange.RequestBody,
+                    ResponseHead = exchange.ResponseHead,
+                    ResponseBody = exchange.ResponseBody,
+                    Heads = heads[at],
+                };
+            }),
+        ], scoped.Length > limit, null);
     }
 
     /// <summary>

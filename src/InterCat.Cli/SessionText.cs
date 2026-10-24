@@ -11,17 +11,8 @@ namespace InterCat.Cli;
 internal static class SessionText
 {
     /// <summary>A native reading as seconds after the capture epoch, invariant, or null when the clock is not described.</summary>
-    public static string? Seconds(SourceClockDescriptor? clock, long nativeTicks)
-    {
-        if (clock is not { } described)
-        {
-            return null;
-        }
-
-        Int128 nanoseconds = SourceClockMath.SessionNanoseconds(described, nativeTicks);
-        decimal seconds = (decimal)nanoseconds / SourceClockMath.SessionTicksPerSecond;
-        return seconds.ToString("0.000000", CultureInfo.InvariantCulture);
-    }
+    public static string? Seconds(SourceClockDescriptor? clock, long nativeTicks) =>
+        clock is { } described ? SessionTimeText.EpochSeconds(described, nativeTicks) : null;
 
     /// <summary>A reading for a reader: seconds after capture start when the clock is known, ticks otherwise.</summary>
     public static string Instant(SourceClockDescriptor? clock, long nativeTicks) =>

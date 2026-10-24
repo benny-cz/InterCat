@@ -228,6 +228,16 @@ public sealed class SessionEvidenceSource(
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
+    /// A process's HTTP exchanges in the current generation and the whole session or <paramref name="interval"/>, up to
+    /// <paramref name="limit"/>, each with what its heads say, as lines of the table `icat exchanges --format csv` writes
+    /// (`contracts/http-exchanges-v1.md` §5f).
+    /// </summary>
+    public Task<HttpExchangeTableRead> HttpHeadsTableAsync(string channelKey, TimeRange? interval, int limit,
+        CancellationToken cancellationToken) =>
+        Task.Run(() => SessionHttpExchanges.Table(Store(), SessionId, channelKey, limit, interval, Policy, cancellationToken),
+            cancellationToken);
+
+    /// <summary>
     /// Every call of an RPC channel, or every exchange of a process's HTTP exchanges, in the current generation and the
     /// whole session or <paramref name="interval"/>, up to <paramref name="limit"/>, as rows an export writes (§6.4).
     /// </summary>

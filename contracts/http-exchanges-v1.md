@@ -196,9 +196,15 @@ with `=`, `+`, `-`, `@`, a tab or a carriage return begins with an apostrophe, s
 evaluates it. `--format` needs `--output`, and a table needs listed exchanges: `--pid`, or `--exchanges` with a
 number. The figures are read as without `--decode`, and nothing written is read back.
 
+Since revision 784 the window writes the same table, with the heads, from a process's HTTP exchanges: Export with
+their heads… says first what the table holds and that it is content, read from content kept with consent to inspect
+it, and only then asks for its file. It holds every exchange the rung lists in its scope, in the order listed, as an
+export of the rung does, up to the records an evidence export holds, and says when that limit left exchanges out and
+how many heads were not decoded. It writes no JSON: the command line's document is the one a program reads.
+
 ## 6. Not defined at this version
 
-- - An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
+- An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
   asked for reads, and only `http-exchange-heads-v1` writes, asked for with them (§5c, §5d, §5f,
   `contracts/decoders-v1.md` §2).
 - HTTP/2, compressed responses and asynchronous WinINet (ADR-037).

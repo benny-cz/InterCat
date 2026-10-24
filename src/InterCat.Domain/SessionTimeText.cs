@@ -10,6 +10,17 @@ public static class SessionTimeText
         (nanoseconds / 1_000_000_000m).ToString("0.000######", culture ?? CultureInfo.CurrentCulture) + " s";
 
     /// <summary>
+    /// A native reading as seconds after the capture epoch through <paramref name="clock"/>, to the microsecond and
+    /// invariant - "12.345678" - as InterCat's documents and tables write a time: only through the clock the session
+    /// describes (I8).
+    /// </summary>
+    public static string EpochSeconds(SourceClockDescriptor clock, long nativeTicks)
+    {
+        decimal seconds = (decimal)SourceClockMath.SessionNanoseconds(clock, nativeTicks) / SourceClockMath.SessionTicksPerSecond;
+        return seconds.ToString("0.000000", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
     /// "0.000100 s to 0.000103 s": a range's two ends to one precision, the finer end's - at least milliseconds, and every
     /// nanosecond either has - so neither reads coarser than the other, as "0.0001 s to 0.000103 s" did.
     /// </summary>

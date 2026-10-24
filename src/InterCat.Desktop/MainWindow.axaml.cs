@@ -1533,6 +1533,115 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
     private async Task<bool> ConfirmRedactedShareAsync() => await RedactedSharePrompt().ShowDialog<bool>(this);
 
+    /// <summary>
+    /// Writes a process's exchanges in the scope with what their heads say to a table (`http-exchanges-v1` §5f): what it
+    /// holds is said first, since it is content, and then its file is chosen.
+    /// </summary>
+    private async void ExportHttpHeads(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (exporting || !workspace.CanExportHttpHeads)
+        {
+            if (!closed && !workspace.CanExportHttpHeads) CaptureDetail.Text = workspace.ExportHttpHeadsTip;
+            return;
+        }
+
+        exporting = true;
+        try
+        {
+            if (!await HttpHeadsPrompt().ShowDialog<bool>(this) || closed) return;
+            string? path = await Choices.SaveFileAsync(new()
+            {
+                Title = "Export the exchanges with what their heads say",
+                SuggestedFileName = WorkspaceExport.SuggestedName(workspace.DescribeExport(DateTimeOffset.UtcNow), "heads.csv"),
+                DefaultExtension = "csv",
+                FileTypeChoices = [new("CSV, one line per exchange") { Patterns = ["*.csv"] }],
+            });
+            if (path is null || closed) return;
+            HttpHeadsExport written = await WriteHttpHeadsAsync(path);
+            if (!closed) CaptureDetail.Text = HttpHeadsWritten(written, path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+            or InvalidDataException or InvalidOperationException)
+        {
+            if (!closed) CaptureDetail.Text = "Could not export the exchanges' heads: " + exception.Message;
+        }
+        finally
+        {
+            exporting = false;
+        }
+    }
+
+    /// <summary>Writes the rung's exchanges in its scope, with what their heads say, to a chosen path.</summary>
+    internal async Task<HttpHeadsExport> WriteHttpHeadsAsync(string path)
+    {
+        HttpHeadsExport result = await workspace.ExportHttpHeadsAsync();
+        await ExportFileWriter.WriteAsync(path, result.Content, overwrite: true);
+        return result;
+    }
+
+    /// <summary>What a table of exchanges and their heads holds, said once it is written.</summary>
+    internal static string HttpHeadsWritten(HttpHeadsExport written, string path)
+    {
+        ArgumentNullException.ThrowIfNull(written);
+        string undecoded = written.Undecoded switch
+        {
+            0 => string.Empty,
+            1 => "; 1 head was not decoded, its cell saying why",
+            _ => $"; {Spoken.Count(written.Undecoded, "head")} were not decoded, their cells saying why",
+        };
+        return (written.More ? $"Exported the first {Spoken.Count(written.Exchanges, "exchange")} of the scope"
+                : $"Exported {Spoken.Count(written.Exchanges, "exchange")}")
+            + $" and what their heads say to {path}" + undecoded
+            + ". It holds content: share it only as you would that content.";
+    }
+
+    /// <summary>What a table of exchanges and their heads holds, asked before its file is chosen; true to choose it.</summary>
+    internal static Window HttpHeadsPrompt()
+    {
+        var prompt = new Window
+        {
+            Title = "Export the exchanges with their heads?", Width = 540,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+        };
+        var cancel = new Button { Content = "Cancel" };
+        var proceed = new Button { Content = "Choose table file" };
+        cancel.Click += (_, _) => prompt.Close(false);
+        proceed.Click += (_, _) => prompt.Close(true);
+        prompt.Opened += (_, _) => cancel.Focus();
+        prompt.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Escape)
+            {
+                prompt.Close(false);
+                key.Handled = true;
+            }
+        };
+        prompt.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(20), Spacing = 12,
+            Children =
+            {
+                new TextBlock { Text = HttpHeadsHolds, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new TextBlock { Text = HttpHeadsAreContent, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new TextBlock { Text = "A head not whole, or kept without consent, is not decoded, and its cell says why. A value a "
+                    + "spreadsheet would evaluate begins with an apostrophe.", TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
+                    HorizontalAlignment = HorizontalAlignment.Right, Children = { cancel, proceed } },
+            },
+        };
+        return prompt;
+    }
+
+    /// <summary>What a table of exchanges and their heads holds, as its prompt says it first.</summary>
+    internal const string HttpHeadsHolds = "This writes a table of this process's HTTP exchanges in the scope, one line each, "
+        + "with what each request asked for, of which host, and what its response answered.";
+
+    /// <summary>Why the table is content, as its prompt says it.</summary>
+    internal const string HttpHeadsAreContent = "Those are read from the content this session kept with consent to inspect "
+        + "it, so the table is content: share it only as you would that content.";
+
     /// <summary>What a redacted report keeps and leaves out, asked before its file is chosen; true to choose it.</summary>
     internal static Window RedactedSharePrompt()
     {

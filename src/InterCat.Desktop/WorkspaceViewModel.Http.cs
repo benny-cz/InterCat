@@ -8,6 +8,13 @@ using InterCat.Domain;
 namespace InterCat.Desktop;
 
 /// <summary>
+/// A table of a process's exchanges with what their heads say (`contracts/http-exchanges-v1.md` §5f): its CSV, how many
+/// exchanges it holds, how many of their heads were recorded and not decoded, and whether an export's limit left
+/// exchanges of the scope out.
+/// </summary>
+public sealed record HttpHeadsExport(string Content, int Exchanges, int Undecoded, bool More);
+
+/// <summary>
 /// A process's HTTP exchanges on the ladder (ADR-037, M8): the process rung lists them as one channel, the channel rung
 /// lists the exchanges a page at a time, each with what was recorded of its four parts, and an exchange descends to its own
 /// buffers, where C opens a buffer's content and its whole part. Everything a row says comes from the records' metadata and
@@ -47,6 +54,50 @@ public sealed partial class WorkspaceViewModel
         IsHttpChannelRung && HttpExchangeKeys.TryParseChannel(ladder.Current.Focus?.Key, out ProcessInstanceId instance)
             ? wholeSnapshot.Processes.FirstOrDefault(process => process.Id == instance)?.NameWithPid
             : null;
+
+    /// <summary>Whether the rung lists a process's HTTP exchanges, whose heads Export with their heads… writes.</summary>
+    public bool OffersHttpHeadsExport => IsHttpChannelRung;
+
+    /// <summary>Whether the HTTP channel rung lists exchanges whose heads an export can write.</summary>
+    public bool CanExportHttpHeads => IsHttpChannelRung && evidenceSource is not null
+        && httpExchanges is { Problem: null, Exchanges.Count: > 0 };
+
+    /// <summary>What exporting the exchanges with their heads does, or why there is nothing to export yet.</summary>
+    public string ExportHttpHeadsTip => CanExportHttpHeads
+        ? "Write this process's exchanges in the scope to a table with what their heads say - what each request asked for, "
+            + "of which host, and what was answered - read from content kept with consent to inspect it; the table is content."
+        : NothingToExport;
+
+    /// <summary>
+    /// This process's exchanges in the rung's scope, every one up to an export's limit, each with what its heads say, as the
+    /// table `icat exchanges --decode --format csv` writes (`contracts/http-exchanges-v1.md` §5f), read off the UI thread
+    /// in one pass of one generation. A head not whole, or kept without consent, is not decoded, and its cell says why.
+    /// </summary>
+    public async Task<HttpHeadsExport> ExportHttpHeadsAsync(CancellationToken cancellationToken = default)
+    {
+        if (!CanExportHttpHeads || evidenceSource is not { } source || ladder.Current.Focus is not { } channel)
+        {
+            throw new InvalidOperationException(ExportHttpHeadsTip);
+        }
+
+        HttpExchangeTableRead read = await source.HttpHeadsTableAsync(channel.Key, CountedScope, ListedExportLimit, cancellationToken)
+            .AnsweredLater();
+        if (read.Problem is { } problem)
+        {
+            throw new InvalidOperationException(problem);
+        }
+
+        int undecoded = read.Lines.Sum(line =>
+            (line.Heads?.Request is { Read: null } ? 1 : 0) + (line.Heads?.Response is { Read: null } ? 1 : 0));
+        return new(HttpExchangeTable.Csv(read.Lines, decoded: true), read.Lines.Count, undecoded, read.More);
+    }
+
+    private void RaiseHttpHeadsExport()
+    {
+        OnPropertyChanged(nameof(OffersHttpHeadsExport));
+        OnPropertyChanged(nameof(CanExportHttpHeads));
+        OnPropertyChanged(nameof(ExportHttpHeadsTip));
+    }
 
     /// <summary>Reads the HTTP channel rung's next page of exchanges, after the last one shown.</summary>
     public Task LoadMoreExchangesAsync()

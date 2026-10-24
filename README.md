@@ -69,7 +69,7 @@ response side by side, which the content viewer opens from any of its buffers; `
 records whose kept bytes hold a text, showing none of them unless `--previews` asks, as the window's *Find in kept
 content…* (Ctrl+Shift+F) does, and `icat content --decoders` lists what can be decoded. `icat exchanges --pid <id>
 --decode --output heads.csv` writes what the listed exchanges' heads say as a table, or as JSON, to be shared only as
-the content it was read from would be.
+the content it was read from would be, as *Export with their heads…* does at a process's exchanges in the window.
 
 **Investigations** hold sessions captured on several machines, aligned by their wall clocks, with the connections one
 machine's capture can join to another's; a session opened from its investigation names, beside each other host it

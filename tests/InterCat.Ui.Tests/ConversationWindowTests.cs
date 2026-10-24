@@ -287,6 +287,127 @@ public sealed class ConversationWindowTests
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
     }
 
+    [AvaloniaFact(DisplayName = "P2: a process's exchanges export with what their heads say only once the window has said the table is content, each exchange of the scope a line")]
+    public async Task ExchangesExportWithTheirHeadsOnceTheTableIsSaidToBeContent()
+    {
+        using var session = Session(ContentInspectionV1.HexAndText);
+        using var files = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        (MainWindow window, WorkspaceViewModel workspace, _) = await HttpExchangeLaneTests.OpenExchanges(session);
+        try
+        {
+            // At a process's HTTP exchanges the export is offered, saying beforehand that the table is content.
+            Button export = window.GetLogicalDescendants().OfType<Button>().Single(button => button.Name == "ExportHeadsButton");
+            Assert.True(export.IsEffectivelyVisible);
+            Assert.True(export.IsEffectivelyEnabled);
+            Assert.Equal("Export with their heads…", export.Content);
+            Assert.Equal(workspace.ExportHttpHeadsTip, ToolTip.GetTip(export));
+            Assert.Equal(workspace.ExportHttpHeadsTip, AutomationProperties.GetHelpText(export));
+            Assert.EndsWith("read from content kept with consent to inspect it; the table is content.", workspace.ExportHttpHeadsTip,
+                StringComparison.Ordinal);
+
+            // Its prompt says what the table holds and that it is content before a file is chosen, legibly and heard, and
+            // Escape declines.
+            Window prompt = MainWindow.HttpHeadsPrompt();
+            Task<bool> asked = prompt.ShowDialog<bool>(window);
+            await Until(() => prompt.FocusManager?.GetFocusedElement() == Labelled(prompt, "Cancel"));
+            Assert.Contains(MainWindow.HttpHeadsHolds, Texts(prompt));
+            Assert.Contains(MainWindow.HttpHeadsAreContent, Texts(prompt));
+            Assert.Empty(LegibleTextTests.CutOff(prompt, "the prompt before exporting heads"));
+            Assert.Empty(AccessibilityAuditTests.Unheard(prompt, out _));
+            prompt.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Assert.False(await asked);
+
+            // Pressed, the button asks first, and declined it asks for no file; accepted, it writes the file chosen, offered
+            // under a name saying what it holds, and the window says what was written where.
+            var choices = new AnsweredChoices(window);
+            window.Choices = choices;
+            TextBlock detail = window.GetControl<TextBlock>("CaptureDetail");
+            export.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => window.OwnedWindows.Count == 1);
+            Labelled(window.OwnedWindows[0], "Cancel").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => window.OwnedWindows.Count == 0);
+            Assert.Equal(0, choices.Asked);
+            string chosen = Path.Combine(files.Path, "chosen.csv");
+            choices.Answer(chosen);
+            export.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => window.OwnedWindows.Count == 1);
+            Labelled(window.OwnedWindows[0], "Choose table file").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => detail.Text?.EndsWith("share it only as you would that content.", StringComparison.Ordinal) == true);
+            Assert.Equal("Export the exchanges with what their heads say", choices.Saves[0].Title);
+            Assert.EndsWith(".heads.csv", choices.Saves[0].SuggestedFileName, StringComparison.Ordinal);
+            Assert.StartsWith($"Exported 4 exchanges and what their heads say to {chosen};", detail.Text, StringComparison.Ordinal);
+            Assert.True(File.Exists(chosen));
+
+            // Written, the table holds every exchange the rung lists, a line each, with what its heads say; a head not
+            // whole is not decoded, and its cell says why.
+            string path = Path.Combine(files.Path, "heads.csv");
+            HttpHeadsExport written = await window.WriteHttpHeadsAsync(path);
+            Assert.Equal((4, 1, false), (written.Exchanges, written.Undecoded, written.More));
+            string[] lines = File.ReadAllText(path).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+            Assert.Equal(string.Join(",", [.. HttpExchangeTable.Columns, .. HttpExchangeTable.HeadColumns]), lines[0]);
+            Assert.Equal(5, lines.Length);
+            Assert.Equal(workspace.RungRows.Select(row => row.Key), lines.Skip(1).Select(line => line.Split(',')[6]));
+            Assert.Contains(",4242,,http:", lines[1], StringComparison.Ordinal);
+            Assert.Contains(",http1-head,1,GET,/x,HTTP/1.1,a,200,OK,HTTP/1.1,true,true,,,", lines[1], StringComparison.Ordinal);
+            Assert.Contains(",\"The part is not whole, so it is not decoded:", lines[2], StringComparison.Ordinal);
+            Assert.Contains(",GET,/short,HTTP/1.1,b,200,OK,HTTP/1.1,", lines[4], StringComparison.Ordinal);
+            Assert.Equal($"Exported 4 exchanges and what their heads say to {path}; 1 head was not decoded, its cell saying why. "
+                + "It holds content: share it only as you would that content.", MainWindow.HttpHeadsWritten(written, path));
+
+            // A brushed interval exports the exchanges listed in it alone, and a limit says it left the rest out.
+            workspace.SelectInterval(new TimeRange(15, 35));
+            await workspace.HttpReady;
+            Dispatch();
+            Assert.Equal(2, workspace.RungRows.Count);
+            written = await window.WriteHttpHeadsAsync(path);
+            lines = File.ReadAllText(path).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+            Assert.Equal(workspace.RungRows.Select(row => row.Key), lines.Skip(1).Select(line => line.Split(',')[6]));
+            Assert.Equal((2, 1, false), (written.Exchanges, written.Undecoded, written.More));
+            workspace.ListedExportLimit = 1;
+            written = await window.WriteHttpHeadsAsync(path);
+            Assert.Equal((1, true), (written.Exchanges, written.More));
+            Assert.StartsWith("Exported the first 1 exchange of the scope and what their heads say to ", MainWindow.HttpHeadsWritten(written, path),
+                StringComparison.Ordinal);
+            Assert.Equal(2, File.ReadAllText(path).Split("\r\n", StringSplitOptions.RemoveEmptyEntries).Length);
+
+            // Off a process's HTTP exchanges it is not offered, and an export says there is nothing to write.
+            Assert.True(workspace.Ascend());
+            await workspace.HttpReady;
+            Dispatch();
+            Assert.False(workspace.OffersHttpHeadsExport);
+            Assert.False(export.IsVisible);
+            Assert.False(workspace.CanExportHttpHeads);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => workspace.ExportHttpHeadsAsync());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "P2: heads kept without consent to inspect them are exported undecoded, each cell saying why, and never as what they said")]
+    public async Task HeadsKeptWithoutConsentExportUndecoded()
+    {
+        using var session = Session(ContentInspectionV1.Disabled);
+        using var files = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        (MainWindow window, WorkspaceViewModel workspace, _) = await HttpExchangeLaneTests.OpenExchanges(session);
+        try
+        {
+            string path = Path.Combine(files.Path, "withheld.csv");
+            HttpHeadsExport written = await window.WriteHttpHeadsAsync(path);
+            Assert.Equal((4, 5), (written.Exchanges, written.Undecoded));
+            string table = File.ReadAllText(path);
+            Assert.DoesNotContain("GET", table, StringComparison.Ordinal);
+            Assert.Equal(4, table.Split("without consent to inspect", StringSplitOptions.None).Length - 1);
+            Assert.EndsWith("; 5 heads were not decoded, their cells saying why. It holds content: share it only as you would "
+                + "that content.", MainWindow.HttpHeadsWritten(written, path), StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>
     /// Process 4242's exchange 7 - its request head in two buffers, its response head and body each in one - its exchange 8,
     /// whose request head lacks a buffer and which has no response, its exchange 9, of which only its response's body was

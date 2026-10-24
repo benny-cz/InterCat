@@ -5842,6 +5842,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(ExportTip));
         OnPropertyChanged(nameof(ShareReportTip));
+        RaiseHttpHeadsExport();
         OnPropertyChanged(nameof(Crumbs));
         OnPropertyChanged(nameof(SelectedCrumb));
         OnPropertyChanged(nameof(Filters));
@@ -6289,6 +6290,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(ExportTip));
         OnPropertyChanged(nameof(ShareReportTip));
+        RaiseHttpHeadsExport();
         OnPropertyChanged(nameof(IsEmptyRung));
         OnPropertyChanged(nameof(ShowsRankedTable));
         OnPropertyChanged(nameof(ShowsEmptyReason));
@@ -6878,6 +6880,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(ExportTip));
         OnPropertyChanged(nameof(ShareReportTip));
+        RaiseHttpHeadsExport();
         OnPropertyChanged(nameof(IsEmptyRung));
         OnPropertyChanged(nameof(ShowsRankedTable));
         OnPropertyChanged(nameof(ShowsEmptyReason));
@@ -7109,6 +7112,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(ExportTip));
         OnPropertyChanged(nameof(ShareReportTip));
+        RaiseHttpHeadsExport();
         OnPropertyChanged(nameof(LevelSummary));
         OnPropertyChanged(nameof(LevelSummaryShort));
         OnPropertyChanged(nameof(EmptyReason));

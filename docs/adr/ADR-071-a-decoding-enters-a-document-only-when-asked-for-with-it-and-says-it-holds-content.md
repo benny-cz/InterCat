@@ -56,7 +56,8 @@ version names, through its corpus, what it decodes.
 - `icat exchanges --decode --json`, `--decode --output <file>`, `--format json|csv`, and a table of the listed
   exchanges with or without their heads, which `contracts/http-exchanges-v1.md` §5f defines.
 - `decoders-v1` §2 and §6, `content-v1` §4 and ADR-070's second decision name this export as the one place a decoding
-  is written; `icat content --json` still refuses `--decode`, and the window exports none.
+  is written; `icat content --json` still refuses `--decode`, and since revision 784 the window's Export with their
+  heads… writes the table alone, of a process's exchanges in its scope, once it has said the table is content.
 
 ## Alternatives considered
 

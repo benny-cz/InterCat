@@ -4,7 +4,7 @@ Status: **implemented** on the command line (`icat content --decode`, `--part --
 774; `icat exchanges --decode`, revision 776) and in the window (the content viewer's Decode and Decode its part,
 revision 775, §5a; an exchange's conversation, revision 777); each decoder's corpus pins what its version decodes
 (revision 782, §3a); the listed exchanges' heads are written when asked (revision 783,
-`contracts/http-exchanges-v1.md` §5f).
+`contracts/http-exchanges-v1.md` §5f), and from the window as a table (revision 784).
 
 This contract fixes plan M8's decoder contract at its first version: what a decoder is, what it reads, when it reads
 it, and what it says of what it read, for every decoder InterCat has. A decoder owns no bytes: it reads content the
@@ -28,7 +28,7 @@ head of exchange 7" (`content-v1` §4); the kept bytes it read, by offset in the
 decoded, with its name, its value and the bytes it came from; and what it did not decode and why, as a sentence. It is
 made:
 
-- - **Only when asked**: `icat content --decode`, or the viewer's Decode. Nothing decodes on its own, and search,
+- **Only when asked**: `icat content --decode`, or the viewer's Decode. Nothing decodes on its own, and search,
   rankings, metrics, reports and every export but the one asked for with it (`contracts/http-exchanges-v1.md` §5f)
   never read a decoding.
 - **Only from bytes kept with consent to inspect them** (`hex-text`): bytes kept without it are never decoded, and the
@@ -122,7 +122,9 @@ disabled, saying why, for a part that is not whole, which is never decoded. The 
 version and the bytes it read - of the record's message, or of the part - and lists each field with its bytes and what
 was not decoded; a field's Show its bytes shows them in the hex view, of the whole part where the decoder read one.
 Nothing is decoded until asked. An exchange's conversation (`contracts/http-exchanges-v1.md` §5d) decodes its two
-heads the same way, side by side, when its Decode its heads is pressed.
+heads the same way, side by side, when its Decode its heads is pressed. Since revision 784 a process's HTTP exchanges
+export with what their heads say, as a table, once the window has said the table is content
+(`contracts/http-exchanges-v1.md` §5f).
 
 ## 6. Not defined at this version
 
@@ -135,8 +137,8 @@ heads the same way, side by side, when its Decode its heads is pressed.
 - **A conversation decoded as one**: a part decoded in the light of another, as a response's body framed by its
   request's method. Each part is decoded alone; `icat exchanges --decode` and an exchange's conversation in the window
   (§5, §5a) set an exchange's two decoded heads side by side.
-- - **A decoding kept or searched**, or exported but as `icat exchanges --decode` writes the listed exchanges' heads
-  when asked (`http-exchanges-v1` §5f): `icat content --json` refuses `--decode`, and the window exports none; `icat
-  content --find` searches kept bytes, never a decoding (`content-v1` §4).
+- **A decoding kept or searched**, or exported but as `icat exchanges --decode` writes the listed exchanges' heads
+  when asked (`http-exchanges-v1` §5f): `icat content --json` refuses `--decode`, and the window's Export with their
+  heads… writes that table alone; `icat content --find` searches kept bytes, never a decoding (`content-v1` §4).
 - **Isolation**: a decoder runs in the process that asked, bounded by the bytes and the time above, and never in the
   capture; one whose parsing is larger than these is isolated in an unprivileged worker first (plan M8).

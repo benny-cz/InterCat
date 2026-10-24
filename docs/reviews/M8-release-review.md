@@ -140,3 +140,11 @@ table whose cells a spreadsheet will not evaluate. The exit test's export that r
 it: it reads only the exchanges listed, of the process asked for, from content kept with consent; `http-exchanges-v1`,
 the share report and every package still hold no decoding. The window's export of a process's exchanges with their
 heads comes next, then M8's exit review; nothing else above changes.
+
+## Addendum, revision 784
+
+The window exports decoded metadata too (`contracts/http-exchanges-v1.md` §5f): at a process's HTTP exchanges, Export
+with their heads… says first what its table holds and that it is content, and only then asks for a file, which holds
+every exchange the rung lists in its scope with what its heads say, as `icat exchanges --decode --format csv` writes
+them. Every deliverable M8 can build on the sources here is built; its exit review comes next, and nothing else above
+changes.
