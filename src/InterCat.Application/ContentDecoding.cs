@@ -10,14 +10,15 @@ namespace InterCat.Application;
 public sealed record DecodedField(string Name, string Value, ContentRange Bytes);
 
 /// <summary>
-/// What a decoder made of one record's kept content (§11.2, content-v1 §4): the decoder that read it, at its version; the
-/// record whose fragment it read and the kept bytes it read; every field it decoded, with the bytes each came from; and
-/// what it did not decode, and why. It is derived from the fragment and never stands in for it: the fragment's bytes stay
-/// the evidence, and a decoding is made again whenever it is asked for, never kept.
+/// What a decoder made of kept content (§11.2, `contracts/decoders-v1.md`): the decoder that read it, at its version; the
+/// record asked about, and the part it read where it read a whole part rather than that record's fragment; the kept bytes
+/// it read; every field it decoded, with the bytes each came from; and what it did not decode, and why. It is derived from
+/// the bytes and never stands in for them: they stay the evidence, and a decoding is made again whenever it is asked for,
+/// never kept.
 /// </summary>
 public sealed record DecodedContent
 {
-    /// <summary>The decoder's stable identity, which names its format: "intercat-content-fixture".</summary>
+    /// <summary>The decoder's stable identity, which names its format: "intercat-content-fixture", "http1-head".</summary>
     public required string DecoderId { get; init; }
 
     /// <summary>The decoder as a person reads its name: "InterCat's content fixture decoder".</summary>
@@ -26,10 +27,13 @@ public sealed record DecodedContent
     /// <summary>The decoder's version: the same bytes decode to the same fields at one version, and may not at another.</summary>
     public required int DecoderVersion { get; init; }
 
-    /// <summary>The record whose fragment was read.</summary>
+    /// <summary>The record asked about: the one whose fragment was read, or a buffer of the part that was.</summary>
     public required RawRecordId Record { get; init; }
 
-    /// <summary>The kept bytes the decoder read, by their offsets in the message; null when it read none.</summary>
+    /// <summary>The part read, in words - "the request head of exchange 7" - where a whole part was; null for one fragment.</summary>
+    public string? Part { get; init; }
+
+    /// <summary>The kept bytes the decoder read, by their offsets in the message or the part; null when it read none.</summary>
     public required ContentRange? Read { get; init; }
 
     /// <summary>The fields decoded, in the order of their bytes.</summary>
@@ -42,14 +46,17 @@ public sealed record DecodedContent
     public string Heading => string.Create(CultureInfo.InvariantCulture, $"Decoded by {Decoder}, version {DecoderVersion}");
 }
 
+/// <summary>A decoder InterCat has, as `icat content --decoders` lists it: its identity, name and version, and what it reads.</summary>
+public sealed record ContentDecoderInfo(string Id, string Name, int Version, string Reads);
+
 /// <summary>
-/// The decoders a person may ask to read kept content with (§11.2): InterCat's own content fixture's alone, the small
-/// synthetic decoder that proves the model - a decoding linked to the fragment it read and to its decoder's version -
-/// before any real protocol's decoder exists. A decoding is asked for, never made on its own; it reads only bytes kept with
-/// consent to inspect them, at most what a view shows at once, within a time budget; and it renders, runs and fetches
-/// nothing it reads, so its fields are inert text.
+/// The decoders a person may ask to read kept content with (§11.2, `contracts/decoders-v1.md`): InterCat's own content
+/// fixture's, the small synthetic decoder that proved the model on one record's fragment, and the HTTP/1.1 head decoder,
+/// which reads a whole request or response head WinINet's capture kept as a part (M8). A decoding is asked for, never made
+/// on its own; it reads only bytes kept with consent to inspect them, at most what a view shows at once, within a time
+/// budget; a part is decoded only whole; and it renders, runs and fetches nothing it reads, so its fields are inert text.
 /// </summary>
-public static class ContentDecoders
+public static partial class ContentDecoders
 {
     /// <summary>The most bytes a decoding reads: what a view shows at once.</summary>
     public const int MaximumBytes = ContentBytesView.MaximumShownBytes;
@@ -57,11 +64,72 @@ public static class ContentDecoders
     /// <summary>How long a decoding may take before it stops and says so.</summary>
     public static readonly TimeSpan Budget = TimeSpan.FromMilliseconds(250);
 
+    /// <summary>Every decoder InterCat has, each at its version, in the order they arrived.</summary>
+    public static IReadOnlyList<ContentDecoderInfo> Known { get; } =
+    [
+        new(FixtureMessages.Id, FixtureMessages.Name, FixtureMessages.Version,
+            "one record's message from InterCat's own content fixture, events 1 and 2 of InterCat-Fixture-Content"),
+        new(HttpHeads.Id, HttpHeads.Name, HttpHeads.Version,
+            "a whole HTTP/1.1 request or response head WinINet's capture kept, events 2001 and 2003, read as its part"),
+    ];
+
     /// <summary>The name of the decoder that reads <paramref name="row"/>'s content, or null when none does.</summary>
     public static string? For(ObservationRowV1 row)
     {
         ArgumentNullException.ThrowIfNull(row);
         return FixtureMessages.Reads(row) ? FixtureMessages.Name : null;
+    }
+
+    /// <summary>The name of the decoder that reads the part <paramref name="row"/>'s buffer belongs to, or null when none does.</summary>
+    public static string? ForPart(ObservationRowV1 row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return HttpHeads.Reads(row) ? HttpHeads.Name : null;
+    }
+
+    /// <summary>
+    /// Decodes the part <paramref name="part"/> that <paramref name="row"/>'s buffer - <paramref name="record"/> - belongs
+    /// to, with the decoder that reads its part; null when none does. A part is decoded only whole, every buffer from its
+    /// first to its last kept whole, since a decoding never stands in for bytes a part lacks (I21, P2); and only from
+    /// bytes kept with consent to inspect them, which must have been read.
+    /// </summary>
+    public static DecodedContent? DecodePart(SessionContentPartDetail part, ObservationRowV1 row, RawRecordId record,
+        TimeSpan? budget = null)
+    {
+        ArgumentNullException.ThrowIfNull(part);
+        ArgumentNullException.ThrowIfNull(row);
+        if (!part.IsPart || !HttpHeads.Reads(row))
+        {
+            return null;
+        }
+
+        string name = part.Name!;
+        if (!part.Complete)
+        {
+            return HttpHeads.Nothing(record, name, "The part is not whole, so it is not decoded: what it lacks could hold any "
+                + "of its lines, and a decoding never stands in for missing bytes.");
+        }
+
+        if (part.Buffers.Any(buffer => buffer.Entry is { Inspectable: false }))
+        {
+            return HttpHeads.Nothing(record, name,
+                "The capture kept the part's bytes without consent to inspect them, so they are never decoded.");
+        }
+
+        if (part.Length == 0)
+        {
+            return HttpHeads.Nothing(record, name, "The part holds no bytes, so there is nothing to decode.");
+        }
+
+        if (part.Bytes is not { } bytes)
+        {
+            return part.Length > SessionContentPartQuery.MaximumPartBytes
+                ? HttpHeads.Nothing(record, name, string.Create(CultureInfo.CurrentCulture,
+                    $"The part is longer than the {SessionContentPartQuery.MaximumPartBytes:N0} bytes a part is assembled up to, so it is not decoded."))
+                : throw new InvalidOperationException("A decoding reads the part's bytes, which were not read.");
+        }
+
+        return HttpHeads.Decode(record, name, bytes, row.EventId == HttpHeads.RequestHead, budget ?? Budget);
     }
 
     /// <summary>

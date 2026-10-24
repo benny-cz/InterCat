@@ -10,7 +10,9 @@ namespace InterCat.Cli;
 /// One record's kept content, named by an evidence page's exact row locator (§3.7, ADR-036): its facts, and its bytes only
 /// when asked - shown bounded and inert, or saved as they are to a file the person names. A buffer of a part shows its
 /// part with --part: a whole one as one run of bytes, and one that is not whole buffer by buffer with each gap in place,
-/// never saved as one (M8). --decode reads its bytes with the decoder that reads its record, when one does (§11.2).
+/// never saved as one (M8). --decode reads its bytes with the decoder that reads its record, when one does (§11.2), and
+/// with --part the whole part with the decoder that reads its part: an HTTP request or response head (M8,
+/// `contracts/decoders-v1.md`). --decoders lists the decoders.
 /// </summary>
 internal static class ContentCommand
 {
@@ -19,6 +21,20 @@ internal static class ContentCommand
         if (command.TryTakeFlag("--help") || command.TryTakeFlag("-h"))
         {
             PrintHelp();
+            return InterCatExitCode.Success;
+        }
+
+        // The decoders' list takes nothing else; anything given beside it is said.
+        if (command.TryTakeFlag("--decoders"))
+        {
+            if (command.TryReportUnknown(out string? beside))
+            {
+                ConsoleUi.Failure($"--decoders lists InterCat's decoders and takes nothing else; {beside} was given beside it.");
+                ConsoleUi.Explain(PrintHelp);
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            PrintDecoders();
             return InterCatExitCode.Success;
         }
 
@@ -49,7 +65,6 @@ internal static class ContentCommand
             // Bytes go to a person or to a file they name, never into a document programs read (ADR-036).
             : json && (reveal || saveOption is not null || decode) ? "--json states a record's content facts only; its bytes "
                 + "are shown with --reveal, saved with --save or decoded with --decode, never written into JSON."
-            : decode && wholePart ? "--decode reads one record's kept bytes; a part is shown whole with --part, never decoded."
             : (fromText is not null || toText is not null) && !reveal && saveOption is null
                 ? "--from and --to choose the bytes --reveal shows or --save writes; add one of them."
             : overwrite && saveOption is null ? "--overwrite applies only to --save."
@@ -87,7 +102,7 @@ internal static class ContentCommand
             if (detail.Available && detail.Observation.Mechanism == Mechanism.Http)
             {
                 part = SessionContentPartQuery.Read(store, sessionId, detail.Observation,
-                    revealBytes: wholePart && (reveal || savePath is not null), cancellationToken);
+                    revealBytes: wholePart && (reveal || savePath is not null || decode), cancellationToken);
             }
         }
         catch (ArgumentException exception)
@@ -158,14 +173,25 @@ internal static class ContentCommand
             ConsoleUi.Field("Part", part.Statement);
         }
 
+        // A decoding is said first, and answers alone unless the bytes are asked for too; the worse answer stands.
         if (wholePart)
         {
-            return await WholePartAsync(part, reveal, savePath, fromText, toText, overwrite, cancellationToken)
+            InterCatExitCode decodedPart = InterCatExitCode.Success;
+            if (decode && part is { IsPart: true })
+            {
+                decodedPart = DecodedPart(part, detail.Observation, kept);
+                if (!reveal && savePath is null)
+                {
+                    return decodedPart;
+                }
+            }
+
+            InterCatExitCode shownPart = await WholePartAsync(part, reveal, savePath, fromText, toText, overwrite, cancellationToken)
                 .ConfigureAwait(false);
+            return (InterCatExitCode)Math.Max((int)decodedPart, (int)shownPart);
         }
 
-        // A decoding is said first, and answers alone unless the bytes are asked for too; the worse answer stands.
-        InterCatExitCode decoded = decode ? Decoded(detail, kept) : InterCatExitCode.Success;
+        InterCatExitCode decoded = decode ? Decoded(detail, kept, part) : InterCatExitCode.Success;
         if (decode && !reveal && savePath is null)
         {
             return decoded;
@@ -178,35 +204,21 @@ internal static class ContentCommand
 
     /// <summary>
     /// What the decoder that reads the record made of its kept bytes (§11.2): its name and version, each field with the
-    /// bytes it came from, and what it did not decode and why. A record no decoder reads is said to be read by none. As
-    /// --reveal answers, bytes kept without consent to inspect them, or never kept, leave the answer partial.
+    /// bytes it came from, and what it did not decode and why. A record no decoder reads is said to be read by none - a
+    /// buffer of a part a decoder reads whole saying so. As --reveal answers, bytes kept without consent to inspect them, or
+    /// never kept, leave the answer partial.
     /// </summary>
-    private static InterCatExitCode Decoded(SessionContentDetail detail, SessionContentEntry kept)
+    private static InterCatExitCode Decoded(SessionContentDetail detail, SessionContentEntry kept, SessionContentPartDetail? part)
     {
         if (ContentDecoders.Decode(detail) is not { } decoding)
         {
-            ConsoleUi.Warn("No decoder reads this record's content: InterCat's one decoder reads its own content fixture's "
-                + "messages alone.");
+            ConsoleUi.Warn(part is { IsPart: true } && ContentDecoders.ForPart(detail.Observation) is not null
+                ? $"No decoder reads this record alone: it is a buffer of {part.Name}, which --part --decode decodes whole."
+                : "No decoder reads this record's content; icat content --decoders lists InterCat's decoders and what each reads.");
             return InterCatExitCode.PartialResultSuccess;
         }
 
-        ConsoleUi.Heading(decoding.Heading);
-        if (decoding.Read is { } read)
-        {
-            ConsoleUi.Field("Read", read.Describe(CultureInfo.CurrentCulture));
-        }
-
-        if (decoding.Fields.Count > 0)
-        {
-            ConsoleUi.Table(["Field", "Bytes", "Value"],
-                [.. decoding.Fields.Select(field => new[] { field.Name, field.Bytes.Describe(CultureInfo.CurrentCulture), field.Value })]);
-        }
-
-        if (decoding.NotDecoded is { } rest)
-        {
-            ConsoleUi.Note("Not decoded: " + rest);
-        }
-
+        Print(decoding);
         bool withheld = decoding.Read is null && ContentBytesView.Kept(kept.Fragment) is not null;
         return withheld || kept.Fragment.Disposition == ContentDispositionV1.OmittedBySessionLimit
             ? InterCatExitCode.PartialResultSuccess
@@ -288,6 +300,59 @@ internal static class ContentCommand
         }
 
         return InterCatExitCode.Success;
+    }
+
+    /// <summary>
+    /// What the decoder that reads the part made of it, read whole (M8, `contracts/decoders-v1.md`): a part that is not whole,
+    /// or kept without consent to inspect it, is decoded not at all and says why; a part no decoder reads - a body - is said
+    /// to be read by none.
+    /// </summary>
+    private static InterCatExitCode DecodedPart(SessionContentPartDetail part, ObservationRowV1 observation, SessionContentEntry kept)
+    {
+        if (ContentDecoders.DecodePart(part, observation, kept.Fragment.RecordIn(kept.Header.CaptureId)) is not { } decoding)
+        {
+            ConsoleUi.Warn($"No decoder reads {part.Name}: InterCat decodes an HTTP request or response head, never a body; "
+                + "icat content --decoders lists its decoders.");
+            return InterCatExitCode.PartialResultSuccess;
+        }
+
+        Print(decoding);
+        return decoding.Read is null ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
+    }
+
+    /// <summary>A decoding as the command line says it: its decoder and version, what it read, each field, and what it did not decode.</summary>
+    private static void Print(DecodedContent decoding)
+    {
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        ConsoleUi.Heading(decoding.Heading);
+        if (decoding.Read is { } read)
+        {
+            ConsoleUi.Field("Read", read.Describe(culture) + (decoding.Part is { } part ? " of " + part : string.Empty));
+        }
+
+        if (decoding.Fields.Count > 0)
+        {
+            ConsoleUi.Table(["Field", "Bytes", "Value"],
+                [.. decoding.Fields.Select(field => new[] { field.Name, field.Bytes.Describe(culture), field.Value })]);
+        }
+
+        if (decoding.NotDecoded is { } rest)
+        {
+            ConsoleUi.Note("Not decoded: " + rest);
+        }
+    }
+
+    /// <summary>InterCat's decoders, each at its version with what it reads (`contracts/decoders-v1.md`).</summary>
+    private static void PrintDecoders()
+    {
+        ConsoleUi.Heading("InterCat's content decoders");
+        ConsoleUi.Table(["Decoder", "Version", "Reads"],
+            [.. ContentDecoders.Known.Select(decoder => new[]
+            {
+                decoder.Id + " · " + decoder.Name, decoder.Version.ToString(CultureInfo.CurrentCulture), decoder.Reads,
+            })]);
+        ConsoleUi.Note("A decoding is made only when a person asks for it, from bytes kept with consent to inspect them, and is "
+            + "never kept or written into a file.");
     }
 
     /// <summary>
@@ -414,6 +479,7 @@ internal static class ContentCommand
     {
         ConsoleUi.Line("icat content <session-directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
         ConsoleUi.Line("             [--part] [--reveal] [--decode] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
+        ConsoleUi.Line("icat content --decoders");
         ConsoleUi.Line("  One record's kept content, from an icat evidence page's exact row locator (ADR-036): what the");
         ConsoleUi.Line("  bytes are, how many of the message were kept and which are missing, and what they were kept");
         ConsoleUi.Line("  under. Its bytes are hidden unless --reveal shows them as inert hex (and, where the source");
@@ -423,8 +489,10 @@ internal static class ContentCommand
         ConsoleUi.Line("  shown or saved. --json states the facts only. For a buffer of an HTTP head or body it says whether");
         ConsoleUi.Line("  its part was kept whole, and --part shows or saves the whole part instead. A part that is not whole");
         ConsoleUi.Line("  is shown buffer by buffer with each gap in place - --from and --to then choose buffers by number -");
-        ConsoleUi.Line("  and is never saved as one. --decode reads the kept bytes with the decoder that reads the record -");
-        ConsoleUi.Line("  InterCat's own content fixture's alone - and lists each field with the bytes it came from, and");
-        ConsoleUi.Line("  what it did not decode and why; content kept without consent to inspect it is never decoded.");
+        ConsoleUi.Line("  and is never saved as one. --decode reads the kept bytes with the decoder that reads the record,");
+        ConsoleUi.Line("  and with --part the whole part with the decoder that reads it - an HTTP request or response head,");
+        ConsoleUi.Line("  decoded only whole - and lists each field with the bytes it came from, and what it did not decode");
+        ConsoleUi.Line("  and why; content kept without consent to inspect it is never decoded. --decoders lists the");
+        ConsoleUi.Line("  decoders, each at its version, with what it reads.");
     }
 }

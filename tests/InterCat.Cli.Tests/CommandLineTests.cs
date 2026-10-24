@@ -2665,13 +2665,14 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
         Assert.Contains(ContentBytesView.Rows("other"u8, 0)[0].Line, output, StringComparison.Ordinal);
 
-        // A decoding is never written into JSON, and reads one record's bytes, not a part's.
+        // A decoding is never written into JSON, and a fixture message is one record, of no part.
         (code, _, said) = await Run([.. Locator(1), "--decode", "--json"]);
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
         Assert.Contains("decoded with --decode, never written into JSON", said, StringComparison.Ordinal);
         (code, _, said) = await Run([.. Locator(1), "--decode", "--part"]);
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
-        Assert.Contains("--decode reads one record's kept bytes", said, StringComparison.Ordinal);
+        Assert.Contains("--part applies to a buffer of an HTTP head or body; this record's belongs to no part.", said,
+            StringComparison.Ordinal);
 
         // Bytes kept without consent to inspect them are never decoded, and the answer is partial, as --reveal's is.
         using var withheld = new TemporarySession();
@@ -2687,6 +2688,101 @@ public sealed class CommandLineTests : IDisposable
             output, StringComparison.Ordinal);
         Assert.DoesNotContain("  Read ", output, StringComparison.Ordinal);
         Assert.DoesNotContain("17", output.Split("DECODED BY")[1], StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "P2: icat content --part --decode decodes a whole HTTP head, says a buffer alone and a body are read by none, and --decoders lists every decoder")]
+    public async Task AWholeHttpHeadIsDecodedAsItsPart()
+    {
+        // Exchange 7's request head in two buffers, its response body, and exchange 8's request head with a buffer never recorded.
+        using var kept = new TemporarySession();
+        ObservationRowV1[] rows = [Wininet(10, 2001, 1), Wininet(11, 2001, 2), Wininet(12, 2004, 3), Wininet(20, 2001, 4), Wininet(21, 2001, 5)];
+        (int Row, long Exchange, long Sequence, long Flags)[] parts = [(0, 7, 0, 1), (1, 7, 1, 2), (2, 7, 0, 3), (3, 8, 0, 1), (4, 8, 2, 2)];
+        string[] messages = ["GET /index.html HTTP/1.1\r\nHo", "st: example\r\n\r\n", "hello", "GET /a HTTP/1.1\r\n", "\r\n"];
+        Publish(kept.Store, rows,
+            fields: [.. parts.SelectMany(part => new[]
+            {
+                Field(rows[part.Row], SourceField.HttpExchangeId, part.Exchange),
+                Field(rows[part.Row], SourceField.ContentBufferSequence, part.Sequence),
+                Field(rows[part.Row], SourceField.ContentBufferFlags, part.Flags),
+            })],
+            content: (ContentHeader(recordLimit: 64),
+                [.. messages.Select((message, index) => Content(rows[index], System.Text.Encoding.ASCII.GetBytes(message), 64,
+                    ContentEncodingV1.Binary))]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(kept.Store);
+        kept.Store.ReleaseSegmentReaders();
+        string[] Locator(ulong ordinal)
+        {
+            SessionEvidenceRecord record = page.Records.Single(record => record.Observation.RawRecordOrdinal == ordinal);
+            return
+            [
+                "content", kept.Path, "--session-id", page.SessionId.ToString(), "--generation",
+                page.Generation.ToString(CultureInfo.InvariantCulture), "--segment", record.SegmentName, "--row",
+                record.SegmentRow.ToString(CultureInfo.InvariantCulture),
+            ];
+        }
+
+        // From its second buffer, the whole head decodes as one, its bytes hidden unless --reveal shows them too.
+        (InterCatExitCode code, string output, string said) = await Run([.. Locator(2), "--part", "--decode"]);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("DECODED BY INTERCAT'S HTTP/1.1 HEAD DECODER, VERSION 1", output, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^  Read +bytes 0 to 42 \(43 bytes\) of the request head of exchange 7\r?$", output);
+        Assert.Matches(@"(?m)^  method +bytes 0 to 2 \(3 bytes\) +GET\r?$", output);
+        Assert.Matches(@"(?m)^  target +bytes 4 to 14 \(11 bytes\) +/index.html\r?$", output);
+        Assert.Matches(@"(?m)^  Host +bytes 26 to 38 \(13 bytes\) +example\r?$", output);
+        Assert.DoesNotContain("Not decoded", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("THE WHOLE PART", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Its bytes are hidden", output, StringComparison.Ordinal);
+        (code, output, said) = await Run([.. Locator(1), "--part", "--decode", "--reveal"]);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.True(output.IndexOf("DECODED BY", StringComparison.Ordinal) < output.IndexOf("THE WHOLE PART", StringComparison.Ordinal),
+            output);
+
+        // A buffer alone is decoded by none, and says which part is; a body, too, and a head not whole is never decoded.
+        (code, _, said) = await Run([.. Locator(1), "--decode"]);
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Contains("No decoder reads this record alone: it is a buffer of the request head of exchange 7, which --part "
+            + "--decode decodes whole.", said, StringComparison.Ordinal);
+        (code, _, said) = await Run([.. Locator(3), "--part", "--decode"]);
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Contains("No decoder reads the response body of exchange 7: InterCat decodes an HTTP request or response head, "
+            + "never a body; icat content --decoders lists its decoders.", said, StringComparison.Ordinal);
+        (code, _, said) = await Run([.. Locator(3), "--decode"]);
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Contains("No decoder reads this record's content; icat content --decoders lists", said, StringComparison.Ordinal);
+
+        // Shown too, a body's bytes are, and the answer stays as partial as its decoding.
+        (code, output, _) = await Run([.. Locator(3), "--part", "--decode", "--reveal"]);
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Contains(ContentBytesView.Rows("hello"u8, 0)[0].Line, output, StringComparison.Ordinal);
+        (code, output, said) = await Run([.. Locator(4), "--part", "--decode"]);
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Contains("Not decoded: The part is not whole, so it is not decoded", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("  Read ", output, StringComparison.Ordinal);
+
+        // InterCat's decoders, each at its version with what it reads; the list takes nothing else.
+        (code, output, said) = await Run("content", "--decoders");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  intercat-content-fixture · InterCat's content fixture decoder +1 +one record's message", output);
+        Assert.Matches(@"(?m)^  http1-head · InterCat's HTTP/1.1 head decoder +1 +a whole HTTP/1.1 request or response head", output);
+        (code, _, said) = await Run("content", kept.Path, "--decoders");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains($"--decoders lists InterCat's decoders and takes nothing else; {kept.Path} was given beside it.", said,
+            StringComparison.Ordinal);
+        (code, _, said) = await Run("content", "--decoders", "--json");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("takes nothing else; --json was given beside it.", said, StringComparison.Ordinal);
+
+        static ObservationRowV1 Wininet(long ticks, ushort eventId, ulong ordinal) =>
+            Transfer(ticks, eventId <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
+                eventId <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, 1, null, ordinal) with
+            {
+                Mechanism = Mechanism.Http,
+                Layer = ObservationLayer.Application,
+                EventId = eventId,
+                HeaderProcessId = 4_242,
+                Direction = eventId <= 2002 ? Direction.Outbound : Direction.Inbound,
+                ByteDomain = ByteDomain.ApplicationPayload,
+            };
     }
 
     [Fact(DisplayName = "S5: icat retain --release-before discloses what an interval release gives up and keeps, and performs it only when told why, once the capture has finished")]

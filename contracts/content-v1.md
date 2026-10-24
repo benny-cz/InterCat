@@ -158,7 +158,10 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   followed by its filler sentence, repeated; a number is decoded only once a byte past its digits shows it whole, and
   the fixture's byte messages carry no fields. A decoding is made again each time it is asked for and never kept: no
   file, JSON (`icat content --json` refuses `--decode`) or package holds one, and the fragment's bytes stay the
-  evidence. Its fields are inert text that nothing renders, runs or fetches.
+  evidence. Its fields are inert text that nothing renders, runs or fetches. Since revision 774 a decoder may read a
+  whole part instead - InterCat's HTTP/1.1 head decoder (`http1-head`, version 1) reads a request or response head -
+  which `icat content --part --decode` asks for; a part that is not whole is never decoded
+  (`contracts/decoders-v1.md`).
 - **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
   kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
 - **Nothing else.** Search, rankings, metrics, the share report (`intercat-share-report-v1`), the detailed export,
@@ -241,5 +244,4 @@ their requests by path, all 1,024 parts matched the server's bodies and none the
 - A broker content capture of another user's, another sign-in's or a higher integrity's process: the broker keeps
   content only from its client's own processes (`contracts/broker-v1.md` §2.1, ADR-049).
 - Content an imported file already holds (§11.1).
-- A decoder of any other format, and a decoding kept or shared: a decoding is made when a person asks for it, from the
-  fragment, and never stored.
+- A decoder of a format `decoders-v1` §3 does not list, and a decoding kept or shared (`decoders-v1` §6).
