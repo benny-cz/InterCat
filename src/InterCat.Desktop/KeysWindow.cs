@@ -72,6 +72,8 @@ internal static class WindowKeys
         new("Ranked table", "Ctrl+Up or Ctrl+Down", "move to the previous or next row without choosing it"),
         new("Ranked table", "Ctrl+Space", "add the row's processes to the multi-selection, or take them out"),
         new("Ranked table", "O", "on an RPC call linked to another, open the call at its other end"),
+        new("Ranked table", "C", "on an HTTP exchange, read its conversation: its request and response, and what their heads "
+            + "say when you ask"),
         new("Graph", "Arrow keys", "move to the next or previous node"),
         new("Graph", "Ctrl+arrow keys", "move to the next or previous node without choosing it"),
         new("Graph", "Enter", "open the node's group or process; on Other hosts or a host, draw its busiest hosts on their own or fold them back; "

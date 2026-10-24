@@ -110,17 +110,22 @@ public sealed record HttpExchangeRow(string Key, HttpExchange Exchange)
             ? string.Create(format, $"request {Exchange.RequestHead.Bytes:N0} B + {Exchange.RequestBody.Bytes:N0} B")
             : string.Create(format, $"request {Exchange.RequestHead.Bytes:N0} B");
         string response = string.Create(format, $"response {Exchange.ResponseHead.Bytes:N0} B + {Exchange.ResponseBody.Bytes:N0} B");
-        string[] missing =
-        [
-            .. Enum.GetValues<HttpPart>()
-                .Where(part => part != HttpPart.RequestBody || Exchange.RequestBody.Recorded)
-                .Where(part => !Exchange.Part(part).Whole)
-                .Select(PartName),
-        ];
+        string[] missing = [.. NotRecordedWhole().Select(PartName)];
         return missing.Length == 0
             ? $"{request} · {response}"
             : $"{request} · {response} · not recorded whole: {string.Join(", ", missing)}";
     }
+
+    /// <summary>
+    /// The parts not recorded whole, in order. WinINet raises no record for an empty request body (ADR-037), so a request
+    /// body none of which was recorded is not among them.
+    /// </summary>
+    public IReadOnlyList<HttpPart> NotRecordedWhole() =>
+    [
+        .. Enum.GetValues<HttpPart>()
+            .Where(part => part != HttpPart.RequestBody || Exchange.RequestBody.Recorded)
+            .Where(part => !Exchange.Part(part).Whole),
+    ];
 
     /// <summary>A part in words, as a part's statement names it.</summary>
     public static string PartName(HttpPart part) => part switch
@@ -144,6 +149,18 @@ public sealed record HttpExchangePage(
     int Offset,
     IReadOnlyList<HttpExchangeRow> Exchanges,
     bool More,
+    string? Problem);
+
+/// <summary>
+/// One exchange as its conversation shows it (`contracts/http-exchanges-v1.md` §5d): the exchange as the generation read
+/// holds it, and its two heads decoded whole where they were asked for, else null. A generation that no longer holds the
+/// exchange under the evidence policy is a problem stated, with no exchange.
+/// </summary>
+public sealed record HttpConversation(
+    Guid SessionId,
+    long Generation,
+    HttpExchangeRow? Exchange,
+    HttpExchangeHeads? Heads,
     string? Problem);
 
 /// <summary>
@@ -374,6 +391,49 @@ public static class SessionHttpExchanges
         ArgumentNullException.ThrowIfNull(store);
         ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
         return Page(store, channelKey, 0, limit, interval, policy, cancellationToken);
+    }
+
+    /// <summary>
+    /// The exchange <paramref name="exchangeKey"/> names, as the current generation holds it, and, when
+    /// <paramref name="decodeHeads"/>, its two heads read whole from the content kept with consent to inspect it and decoded
+    /// by the HTTP/1.1 head decoder (§5d). Its heads are read only when asked: a person reading the exchange reads its
+    /// metadata alone until then.
+    /// </summary>
+    public static HttpConversation Conversation(
+        SessionStore store,
+        Guid expectedSessionId,
+        string exchangeKey,
+        bool decodeHeads,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (!HttpExchangeKeys.TryParseExchange(exchangeKey, out string channelKey, out var first)
+            || !HttpExchangeKeys.TryParseChannel(channelKey, out ProcessInstanceId instance))
+        {
+            throw new ArgumentException("This key names no HTTP exchange.", nameof(exchangeKey));
+        }
+
+        using EvidenceLease lease = store.AcquireLease();
+        (SessionManifestV1 manifest, HttpExchangeIndex? index) = Derive(store, lease, cancellationToken);
+        if (manifest.SessionId != expectedSessionId)
+        {
+            throw new InvalidOperationException(SessionStore.AnotherSession);
+        }
+
+        if (index?.GroupOf(instance) is not { } group || !group.Process.IsAdmittedUnder(policy)
+            || index.PositionOf(group, first.Stream, first.Epoch, first.Ordinal) is not { } position)
+        {
+            return new(manifest.SessionId, manifest.Generation, null, null,
+                "This generation holds no such exchange of that process; it may have been released since it was listed.");
+        }
+
+        HttpExchange exchange = index.ExchangesOf(group, position, 1)[0];
+        HttpExchangeHeads? heads = decodeHeads
+            ? HttpExchangeHeadsQuery.Read(store, manifest, index, group, position, 1, cancellationToken)[0]
+            : null;
+        return new(manifest.SessionId, manifest.Generation, new(exchangeKey, exchange), heads, null);
     }
 
     private static HttpExchangePage Page(

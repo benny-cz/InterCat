@@ -319,6 +319,69 @@ public sealed class HttpHeadDecodingTests
         SessionContentPartDetail Of(ulong ordinal) => together[Array.FindIndex(asked, row => row.RawRecordOrdinal == ordinal)];
     }
 
+    [Fact(DisplayName = "P2: an exchange's conversation is read by its key, from its records alone until its heads are asked for, then each decoded whole")]
+    public void AConversationDecodesItsHeadsOnlyWhenAsked()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Conversations(out SourceFieldRowV1[] fields, out var content), fields: fields, content: content);
+        string channel = HttpExchangeKeys.Channel(SessionHttpExchangesTests.Client(session.Store));
+        HttpExchangePage page = SessionHttpExchanges.Exchanges(session.Store, channel);
+        (string seven, string eight) = (page.Exchanges[0].Key, page.Exchanges[1].Key);
+
+        // Read from its records alone, the exchange is the one its row lists, and nothing of its heads is read.
+        HttpConversation listed = SessionHttpExchanges.Conversation(session.Store, page.SessionId, seven, decodeHeads: false);
+        Assert.Equal((seven, page.Exchanges[0].Exchange, page.Generation, (HttpExchangeHeads?)null, (string?)null),
+            (listed.Exchange!.Key, listed.Exchange.Exchange, listed.Generation, listed.Heads, listed.Problem));
+
+        // Asked for, each head is read whole and decoded: what the request asked for, of which host, and what was answered.
+        HttpConversation asked = SessionHttpExchanges.Conversation(session.Store, page.SessionId, seven, decodeHeads: true);
+        HttpExchangeHeads heads = asked.Heads!;
+        Assert.Equal(("GET /x", "a", "200 OK"), (heads.Asked, heads.Host, heads.Answered));
+        Assert.Equal(["method", "target", "version", "Host"], heads.Request!.Fields.Select(field => field.Name));
+        Assert.Equal("the request head of exchange 7", heads.Request.Part);
+        Assert.Equal(page.Exchanges[0].Exchange, asked.Exchange!.Exchange);
+
+        // A head not whole is not decoded, and says why; a head never recorded has no decoding at all.
+        HttpConversation second = SessionHttpExchanges.Conversation(session.Store, page.SessionId, eight, decodeHeads: true);
+        Assert.Equal(page.Exchanges[1].Exchange, second.Exchange!.Exchange);
+        HttpExchangeHeads lacking = second.Heads!;
+        Assert.Null(lacking.Request!.Read);
+        Assert.StartsWith("The part is not whole", lacking.Request.NotDecoded, StringComparison.Ordinal);
+        Assert.Null(lacking.Response);
+
+        // An exchange its process's binding does not admit under the policy asked for is not read, as its listing does not
+        // hold it: its buffers are bound to their process by correlation, never directly.
+        HttpConversation direct = SessionHttpExchanges.Conversation(session.Store, page.SessionId, seven, decodeHeads: true,
+            EvidencePolicy.DirectOnly);
+        Assert.Equal((null, null), (direct.Exchange, direct.Heads));
+        Assert.StartsWith("This generation holds no such exchange of that process", direct.Problem, StringComparison.Ordinal);
+
+        // An exchange the generation does not hold is said to be so; another session's folder, or a key naming no
+        // exchange, is refused.
+        HttpConversation gone = SessionHttpExchanges.Conversation(session.Store, page.SessionId,
+            HttpExchangeKeys.Exchange(channel, 9, 9, 9), decodeHeads: true);
+        Assert.Equal((null, null), (gone.Exchange, gone.Heads));
+        Assert.StartsWith("This generation holds no such exchange of that process", gone.Problem, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(() =>
+            SessionHttpExchanges.Conversation(session.Store, Guid.NewGuid(), seven, decodeHeads: false));
+        Assert.Throws<ArgumentException>(() => SessionHttpExchanges.Conversation(session.Store, page.SessionId, channel, decodeHeads: false));
+    }
+
+    /// <summary>
+    /// Process 4242's exchange 7, its request head in two buffers, its response head and body each in one; and its exchange 8,
+    /// whose request head lacks a buffer and which has no response; each buffer's bytes kept with consent to inspect them.
+    /// </summary>
+    internal static ObservationRowV1[] Conversations(out SourceFieldRowV1[] fields,
+        out (ContentChunkHeaderV1 Header, IReadOnlyList<(ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes)> Fragments) content)
+    {
+        ObservationRowV1[] buffers = [Http(10, 2001, 1), Http(11, 2001, 2), Http(12, 2003, 3), Http(13, 2004, 4), Http(20, 2001, 5), Http(21, 2001, 6)];
+        fields = Fields(buffers, [(0, 7, 0, 1), (1, 7, 1, 2), (2, 7, 0, 3), (3, 7, 0, 3), (4, 8, 0, 1), (5, 8, 2, 2)]);
+        string[] messages = ["GET /x HTTP/1.1\r\nHo", "st: a\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", "hello", "GET /a HTTP/1.1\r\n", "\r\n"];
+        content = (ContentHeader(recordLimit: 64),
+            [.. messages.Select((message, index) => Content(buffers[index], Encoding.ASCII.GetBytes(message), 64, ContentEncodingV1.Binary))]);
+        return [Lifecycle(1, ObservationKind.Create, 4_242, 1_000_000), .. buffers];
+    }
+
     /// <summary>A whole head of exchange 7, decoded from its bytes.</summary>
     private static DecodedContent Head(string head, bool request, TimeSpan? budget = null) =>
         Head(Encoding.ASCII.GetBytes(head), request, budget);

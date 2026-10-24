@@ -2,7 +2,7 @@
 
 Status: **implemented** on the command line (`icat content --decode`, `--part --decode` and `--decoders`, revision
 774; `icat exchanges --decode`, revision 776) and in the window (the content viewer's Decode and Decode its part,
-revision 775, §5a).
+revision 775, §5a; an exchange's conversation, revision 777).
 
 This contract fixes plan M8's decoder contract at its first version: what a decoder is, what it reads, when it reads
 it, and what it says of what it read, for every decoder InterCat has. A decoder owns no bytes: it reads content the
@@ -89,7 +89,8 @@ its part, where one reads the part its buffer belongs to. Decode its part reads 
 disabled, saying why, for a part that is not whole, which is never decoded. The Decoded tab names the decoder and its
 version and the bytes it read - of the record's message, or of the part - and lists each field with its bytes and what
 was not decoded; a field's Show its bytes shows them in the hex view, of the whole part where the decoder read one.
-Nothing is decoded until asked.
+Nothing is decoded until asked. An exchange's conversation (`contracts/http-exchanges-v1.md` §5d) decodes its two
+heads the same way, side by side, when its Decode its heads is pressed.
 
 ## 6. Not defined at this version
 
@@ -97,9 +98,9 @@ Nothing is decoded until asked.
   which the WinINet capture measured here does not carry (`content-v1` §6).
 - **Other mechanisms' decoders**: RPC fragments, named pipe messages and packet streams, which no source here keeps
   with the order a reconstruction needs (plan M8).
-- **A conversation**: a part decoded in the light of another, as a response's body framed by its request's method, and
-  the window's view of an exchange's parts together. Each part is decoded alone; `icat exchanges --decode` sets an
-  exchange's two decoded heads side by side (§5).
+- **A conversation decoded as one**: a part decoded in the light of another, as a response's body framed by its
+  request's method. Each part is decoded alone; `icat exchanges --decode` and an exchange's conversation in the window
+  (§5, §5a) set an exchange's two decoded heads side by side.
 - **A decoding kept, exported or searched**: JSON or columnar metadata, and content search.
 - **Isolation**: a decoder runs in the process that asked, bounded by the bytes and the time above, and never in the
   capture; one whose parsing is larger than these is isolated in an unprivileged worker first (plan M8).

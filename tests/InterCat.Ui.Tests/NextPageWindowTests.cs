@@ -30,7 +30,7 @@ public sealed class NextPageWindowTests
         {
             await Listed(window, workspace, session, () => workspace.HttpReady,
                 "250 exchanges · median 200 ns · 100 listed", "Load more exchanges (M)",
-                " · grouped by WinINet's exchange numbers; E shows the buffers, and C a buffer's content", 200);
+                " · grouped by WinINet's exchange numbers; E shows an exchange's buffers, and C its conversation", 200);
         }
         finally
         {

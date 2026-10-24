@@ -819,6 +819,10 @@
               <!-- A chosen channel or call says what its keys do, as its row's spoken name does. -->
               <TextBlock Text="{Binding SelectionActions}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                          IsVisible="{Binding HasSelectionActions}" />
+              <!-- M8: a chosen HTTP exchange opens its conversation, which reads what its heads say only when asked. -->
+              <Button Content="Read its conversation (C)" Click="OpenConversation" Margin="0,6,0,0"
+                      IsVisible="{Binding HasSelectedHttpExchange}"
+                      AutomationProperties.HelpText="Open the chosen HTTP exchange's request and response side by side; its heads are decoded only when you ask" />
               <!-- §6.7: Enter turns a multi-selection into a filter; this is its visible equivalent. -->
               <Button x:Name="ShowChosenRecordsButton" Margin="0,6,0,0" Content="Show their records (Enter)"
                       Click="ShowChosenRecords" IsVisible="{Binding HasMultiSelection}"

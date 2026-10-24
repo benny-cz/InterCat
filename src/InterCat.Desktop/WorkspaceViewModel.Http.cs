@@ -11,7 +11,8 @@ namespace InterCat.Desktop;
 /// A process's HTTP exchanges on the ladder (ADR-037, M8): the process rung lists them as one channel, the channel rung
 /// lists the exchanges a page at a time, each with what was recorded of its four parts, and an exchange descends to its own
 /// buffers, where C opens a buffer's content and its whole part. Everything a row says comes from the records' metadata and
-/// source fields; no content is read to list them.
+/// source fields; no content is read to list them. C on an exchange opens its conversation, which reads what its heads say
+/// only when asked (`contracts/http-exchanges-v1.md` §5d).
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -32,6 +33,20 @@ public sealed partial class WorkspaceViewModel
     public Task HttpReady { get; private set; } = Task.CompletedTask;
 
     public bool CanLoadMoreExchanges => IsHttpChannelRung && httpExchanges is { Loading: false, Problem: null, More: true };
+
+    /// <summary>The exchange chosen at the HTTP channel rung, whose conversation C opens; null where none is chosen.</summary>
+    public HttpExchangeRow? SelectedHttpExchange => IsHttpChannelRung && DescribedRow is { } row && httpExchanges is { } load
+        ? load.Exchanges.FirstOrDefault(exchange => exchange.Key == row.Key)
+        : null;
+
+    /// <summary>Whether an exchange is chosen, so its conversation can be opened.</summary>
+    public bool HasSelectedHttpExchange => SelectedHttpExchange is not null;
+
+    /// <summary>The process whose exchanges the HTTP channel rung lists, by its name and PID; null elsewhere.</summary>
+    public string? HttpExchangeProcess =>
+        IsHttpChannelRung && HttpExchangeKeys.TryParseChannel(ladder.Current.Focus?.Key, out ProcessInstanceId instance)
+            ? wholeSnapshot.Processes.FirstOrDefault(process => process.Id == instance)?.NameWithPid
+            : null;
 
     /// <summary>Reads the HTTP channel rung's next page of exchanges, after the last one shown.</summary>
     public Task LoadMoreExchangesAsync()
@@ -61,7 +76,7 @@ public sealed partial class WorkspaceViewModel
         return brief
             ? channel.Outcome(CultureInfo.CurrentCulture) + loaded
             : channel.Outcome(CultureInfo.CurrentCulture) + loaded
-                + " · grouped by WinINet's exchange numbers; E shows the buffers, and C a buffer's content";
+                + " · grouped by WinINet's exchange numbers; E shows an exchange's buffers, and C its conversation";
     }
 
     /// <summary>
@@ -254,6 +269,7 @@ public sealed partial class WorkspaceViewModel
             ? [.. exchanges.Exchanges.Select(exchange => HttpExchangeRungRow(exchange, tokens, TimeBase))]
             : [];
         RaiseRpcChanged();
+        OnPropertyChanged(nameof(HasSelectedHttpExchange));
     }
 
     /// <summary>A process's HTTP exchanges as one row: how many, how they were recorded, and the bytes of their messages.</summary>
@@ -294,7 +310,7 @@ public sealed partial class WorkspaceViewModel
             tokens.Label, tokens.Glyph, string.Empty, NavigationState.Name(DetailLevel.Evidence), source)
         {
             SpokenName = $"HTTP exchange at {when}, {label}, exchange {exchange.Number:N0}, {parts}. Press Enter to open its "
-                + "buffers, where C shows a buffer's content.",
+                + "buffers, or C to read its conversation.",
         };
     }
 

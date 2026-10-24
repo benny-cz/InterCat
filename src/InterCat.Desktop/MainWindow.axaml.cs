@@ -753,6 +753,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 OpenContent();
                 e.Handled = true;
                 break;
+            case Key.C when e.KeyModifiers == KeyModifiers.None && viewModel.HasSelectedHttpExchange:
+                // An HTTP exchange opens its conversation, as a record opens its content (M8).
+                OpenConversation();
+                e.Handled = true;
+                break;
             case Key.O when e.KeyModifiers == KeyModifiers.None && viewModel.SelectedRung is { HasOtherEnd: true }:
                 // An RPC call linked to another opens the call at its other end (operations-v1 §5c).
                 e.Handled = viewModel.OpenOtherEnd();
@@ -1757,6 +1762,41 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         catch (InvalidOperationException exception)
         {
             if (!closed) CaptureDetail.Text = "Could not open the record's content: " + exception.Message;
+        }
+        finally
+        {
+            openingRecord = false;
+        }
+    }
+
+    private void OpenConversation(object? sender, RoutedEventArgs eventArgs) => OpenConversation();
+
+    /// <summary>
+    /// Opens the chosen HTTP exchange's conversation (M8, `contracts/http-exchanges-v1.md` §5d): its request and response
+    /// side by side, their heads decoded only when the person asks there. Show its buffers there closes it and opens the
+    /// exchange's buffers here, as Enter on its row does, where C shows a buffer's content.
+    /// </summary>
+    private async void OpenConversation()
+    {
+        if (openingRecord || workspace.SelectedHttpExchange is not { } exchange || currentSessionPath is null
+            || displayedSessionId is not { } sessionId) return;
+        openingRecord = true;
+        try
+        {
+            using var window = new SessionConversationWindow(currentSessionPath, sessionId, exchange.Key, workspace.EvidencePolicy,
+                workspace.HttpExchangeProcess, workspace.TimeBase);
+            if (!await window.ShowDialog<bool>(this) || closed) return;
+            if (workspace.RungRows.FirstOrDefault(row => row.Key == exchange.Key) is { } listed)
+            {
+                workspace.SelectedRung = listed;
+                if (workspace.Descend()) return;
+            }
+
+            Say(CaptureDetail, "The exchange is no longer listed here, so its buffers were not opened.", aloud: true);
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (!closed) CaptureDetail.Text = "Could not open the exchange's conversation: " + exception.Message;
         }
         finally
         {

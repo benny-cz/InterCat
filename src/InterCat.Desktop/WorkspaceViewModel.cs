@@ -3864,6 +3864,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (selectedRelationship is { } chosen) return $"A double click on its edge, or Enter on its row, opens {chosen.Opens}";
             if (DescribedRow is not { } row) return string.Empty;
             string enter = RpcChannelKeys.TryParseChannel(row.Key, out _, out _, out _) ? "Enter lists its calls"
+                : HttpExchangeKeys.TryParseExchange(row.Key, out _, out _) ? "Enter opens its buffers · C reads its conversation"
                 : row.Source.DescendsTo switch
                 {
                     DetailLevel.Evidence => "Enter opens its records",
@@ -3956,6 +3957,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         FollowDescribedBytes();
         OnPropertyChanged(nameof(SelectionActions));
         OnPropertyChanged(nameof(HasSelectionActions));
+        OnPropertyChanged(nameof(HasSelectedHttpExchange));
         RaiseLineageChanged();
     }
 
@@ -6281,6 +6283,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         OnPropertyChanged(nameof(IsEvidenceRung));
+        OnPropertyChanged(nameof(HasSelectedHttpExchange));
         OnPropertyChanged(nameof(HoldsGeneration));
         RaiseRungRows();
         OnPropertyChanged(nameof(CanExport));

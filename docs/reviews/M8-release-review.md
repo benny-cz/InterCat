@@ -74,3 +74,14 @@ every listed head in one pass over the session. A head not whole, or kept withou
 says why beneath, and the answer is partial; the listing writes no JSON and no file. This is the command line's view
 of a conversation, an exchange's two heads side by side, each decoded alone; the window's conversation inspector comes
 next, and nothing else above changes.
+
+## Addendum, revision 777
+
+The window's conversation inspector (`contracts/http-exchanges-v1.md` §5d): C on an exchange opens its request and
+response side by side, what was recorded of each read from the records alone, and Decode its heads decodes both heads
+whole when asked, each field with the bytes of its head it came from; Show its buffers goes on to the exchange's
+buffers, where C shows a buffer's content and its part, so an exchange leads to its messages and they to their
+fragments. Of the deliverables not built, the framing of bodies - by Content-Length or chunked transfer coding, so a
+conversation says whether a response held all its framing declared, never whole by its buffers' flags alone - comes
+next; then bounded content search, export of decoded metadata, the decoder fixture corpus and isolation. Nothing else
+above changes.

@@ -8,8 +8,8 @@ Produced by: the Desktop's process and channel rungs, and
 An HTTP exchange is a request and its response as one client process made them through WinINet, derived from WinINet's
 capture records (`contracts/content-v1.md` §5.1). It is read from the records' metadata and source fields alone: which
 buffers were recorded, the bytes each record measured, their places and ends. It never reads content, so it says how
-large each part was and whether it was recorded whole, and never what it said; only `icat exchanges --decode`, when
-asked, reads the listed exchanges' heads (§5c).
+large each part was and whether it was recorded whole, and never what it said; only `icat exchanges --decode` and an
+exchange's conversation in the window, when asked, read heads (§5c, §5d).
 
 ## 1. Records
 
@@ -130,8 +130,23 @@ a head stops being HTTP/1.1. Every listed head is read under one lease in one pa
 only the exchanges listed are read. Decoded heads are for a person: `--decode` refuses `--json` and `--output`
 (`decoders-v1` §2), and a listing of no exchanges. The figures above the exchanges are read as without `--decode`.
 
+## 5d. An exchange's conversation (revision 777)
+
+In the window, C on an exchange at a process's HTTP exchanges, or its inspector's Read its conversation, opens its
+conversation: its request and its response side by side, each with what was recorded of its head and its body - their
+bytes and buffers, and whether they make the part whole - with when the exchange began, how long it took and which of
+its parts were not recorded whole. That much is read from the records' metadata alone, as §3 is, from the current
+generation by the exchange's key, under the window's evidence policy; a generation that no longer holds the exchange
+says so. Decode its heads reads its two heads, each the whole part its buffers make, from the content kept with
+consent to inspect it, and decodes them as §5c does: each side then says what it said - the request's method and
+target, of which host; the response's status and reason - above each field and the bytes of its head it came from, and
+what was not decoded and why. Decode its heads is offered disabled, saying why, where neither head was recorded whole;
+a whole head kept without consent is decoded to say it read none. Nothing decoded is kept, and no body is read. Show
+its buffers closes the conversation and opens the exchange's buffers, as Enter on its row does, where C shows a
+buffer's content and its whole part: from the exchange to its messages, and on to the fragments they were recorded in.
+
 ## 6. Not defined at this version
 
 - An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
-  asked for reads, for a person and never into a document (§5c, `contracts/decoders-v1.md` §2).
+  asked for reads, for a person and never into a document (§5c, §5d, `contracts/decoders-v1.md` §2).
 - HTTP/2, compressed responses and asynchronous WinINet (ADR-037).

@@ -905,6 +905,7 @@
         "I14: a released session's persisted overview begins where every record is kept, and one counted from before the boundary is counted again",
         "I14: a reopened HTTP session takes its exchanges from its operation index: its first listing, page and spans open no segment, and answer as a grouping of every segment does",
         "I14: a reopened RPC session takes its calls and their other ends from its operation index: its first call ranking, listing and spans open no segment, and answer as a derivation of every segment does",
+        "I14: a reopened session's conversation decodes the heads its operation index names, as a grouping of every segment does",
         "I14: a segment that keeps no tiles is described as such, its rows read, and one with no timed record counts nothing",
         "I14: a server call paired again from a key kept open, read late, links a client call that stands, whose message reached its thread before it",
         "I14: a server call two clients reached is the other's again when a send read late undoes one client's link, though the other client's call stands",
@@ -1329,6 +1330,7 @@
         "P19: the window asks for a content capture of the processes a person chose, every exchange of theirs within the limits chosen"
       ],
       "P2": [
+        "P2: C on an HTTP exchange opens its conversation, which says what each head said only once asked, and Show its buffers opens them",
         "P2: a buffer longer than a view shows at once is shown from its first byte, and the view says where it stopped",
         "P2: a decoding reads at most what a view shows at once, within its time budget, and says where it stopped",
         "P2: a fixture message decodes into the fields its bytes hold, each with its bytes, linked to the record and the decoder's version",
@@ -1339,7 +1341,9 @@
         "P2: a part that is not whole is shown with each gap in place, and no byte stands in for what is missing",
         "P2: a view of a part with gaps stops at the bytes it shows at once, at a buffer's start, and says so",
         "P2: a whole HTTP request or response head decodes into its start line and its field lines, each with its bytes, linked to its part and the decoder's version",
+        "P2: a whole head kept without consent to inspect it is offered, and its decoding says it read none; an exchange no longer held offers nothing",
         "P2: an RPC call never reports a byte value, and the byte criterion stays not measured",
+        "P2: an exchange's conversation is read by its key, from its records alone until its heads are asked for, then each decoded whole",
         "P2: an exchange's heads say what its request asked for, of which host, and what its response answered, from their start lines alone",
         "P2: icat content --decode lists a fixture message's fields with the bytes each came from and what it did not decode, only when asked and never into JSON",
         "P2: icat content --part --decode decodes a whole HTTP head, says a buffer alone and a body are read by none, and --decoders lists every decoder",
@@ -1603,6 +1607,7 @@
         "R15: the card restated after its button waited disabled, as while a finish stops, gives that button the keyboard back",
         "R15: the content, raw record and channel windows name every element a screen reader lands on",
         "R15: the context-menu key and Shift+F10 open the focused ranked row's menu, whose item adds it to the selection",
+        "R15: the conversation window cuts off no text at its smallest and names every element a screen reader lands on",
         "R15: the demo's investigation closed gives Explore the demo, which waited disabled while it opened, the keyboard back",
         "R15: the graph says the node its arrows move to, as a list says its row, and only its own name once the keyboard leaves",
         "R15: the graph's keyboard says a node holding part of the selection holds part of it, as its ranked row says",

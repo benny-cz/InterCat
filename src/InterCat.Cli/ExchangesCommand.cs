@@ -191,7 +191,7 @@ internal static class ExchangesCommand
                 // Each listed exchange's heads, read whole from the kept content, every group's in the document's order.
                 ConsoleUi.Progress("Reading the listed exchanges' heads, each whole, from the content kept with consent to inspect it.");
                 heads = [.. index.Groups.Where(group => pid is not { } only || group.ProcessId == only).Select(group =>
-                    HttpExchangeHeadsQuery.Read(store, manifest.SessionId, segments, index, group, list, cancellationToken))];
+                    HttpExchangeHeadsQuery.Read(store, manifest, index, group, 0, list, cancellationToken))];
             }
         }
 
