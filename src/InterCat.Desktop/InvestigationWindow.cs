@@ -1631,7 +1631,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         if (notesList.SelectedItem is not InvestigationNoteRow row) return;
         if (row.At is null)
         {
-            status.Text = NoPlaceForNote;
+            status.Text = NoPlace(row);
             return;
         }
 
@@ -1716,7 +1716,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         string? none = NotRead ?? (View is { Notes.Count: 0 } ? "Add a note first." : row is null ? "Select a note first." : null);
         Offer(rewordNote, none);
         Offer(removeNote, none);
-        Offer(showNote, none ?? (row is { At: null } ? NoPlaceForNote : null));
+        Offer(showNote, none ?? (row is { At: null } ? NoPlace(row) : null));
     }
 
     private async Task AlignSelectedAsync()
@@ -1753,9 +1753,14 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     private static string NotWhereItWas(InvestigationMemberRow row) =>
         $"{row.Title.Split(',')[0]} is not where it was last found: relink it to open it.";
 
-    /// <summary>Why a note about the whole investigation is not shown on the timeline.</summary>
-    private const string NoPlaceForNote =
-        "That note is about the whole investigation, not an instant, so the timeline has no place for it.";
+    /// <summary>
+    /// Why a note pinned at no instant is not shown on the timeline: it is about the whole investigation, or about a saved
+    /// comparison, which says it when it runs.
+    /// </summary>
+    private static string NoPlace(InvestigationNoteRow row) => row.About is null
+        ? "That note is about the whole investigation, not an instant, so the timeline has no place for it."
+        : "That note is about a saved comparison, not an instant, so the timeline has no place for it; the comparison says it "
+            + "when it runs.";
 
     /// <summary>
     /// Why a member did not open. Its folder is looked at again, and the sessions restated with what it holds now: one that

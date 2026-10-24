@@ -24,7 +24,7 @@ internal sealed record SavedComparisonRow(SavedComparison Comparison) : IAccessi
 }
 
 /// <summary>
-/// The investigation's saved comparisons (`contracts/workspace-v22.md` §7): each in force, by its name and what it
+/// The investigation's saved comparisons (`contracts/workspace-v23.md` §7): each in force, by its name and what it
 /// compares, to open in InterCat's window - its compared session at its interval, and the Compare window on it as saved -
 /// or to remove. A comparison is saved from the Compare window of a session opened from the investigation, or by `icat
 /// workspace comparison`; removing one is a revision of the investigation's file, which keeps the earlier ones.

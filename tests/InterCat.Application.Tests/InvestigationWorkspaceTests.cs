@@ -300,7 +300,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         // A version this one does not read is named, with the versions it does.
         File.WriteAllText(workspace, refused[0]);
-        Assert.Contains("it is 'workspace-v999', not one of workspace-v1 to workspace-v22, the versions this InterCat reads",
+        Assert.Contains("it is 'workspace-v999', not one of workspace-v1 to workspace-v23, the versions this InterCat reads",
             Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
 
         // Two members of one capture, however written, are refused whole.
@@ -1144,7 +1144,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"collectorsAside\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v22", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v23", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, collectorsAside: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
@@ -1180,7 +1180,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"wallClock\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v22", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v23", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, wallClock: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
@@ -1438,6 +1438,84 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             $"\"{InvestigationWorkspace.EighthContract}\"", StringComparison.Ordinal));
         Assert.Contains("holds no note", Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
             StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R22: a note about a saved comparison names it as saved and a row by its key, never by rank, and is kept as revisions")]
+    public void ANoteAboutASavedComparisonNamesItsRowByKey()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now).SessionId;
+        static SavedComparisonInterval Of(Guid session, long start, long end) => new() { SessionId = session, StartTicks = start, EndTicks = end };
+        InvestigationWorkspace.SaveComparison(workspace, "Before the update", Of(a, 0, 100), Of(a, 100, 300), ComparisonMetric.Records,
+            ComparisonGrouping.Process, Now);
+        InvestigationWorkspace.SaveComparison(workspace, "Yesterday", Of(a, 0, 100), Of(a, 200, 300), ComparisonMetric.Records,
+            ComparisonGrouping.Process, Now);
+
+        // About the whole comparison, or a row by its key, the comparison named as it is saved; rewording keeps what it is about.
+        WorkspaceNote whole = InvestigationWorkspace.AddNoteAbout(workspace, "Grew after the patch", new(" before the UPDATE ", null), Now);
+        WorkspaceNote row = InvestigationWorkspace.AddNoteAbout(workspace, "The worker's queue", new("Before the update", " tcp:a|b "), Now);
+        InvestigationWorkspace.AddNoteAbout(workspace, "Elsewhere", new("Yesterday", null), Now);
+        InvestigationWorkspace.AddNote(workspace, "About all of it", null, Now);
+        WorkspaceNote reworded = InvestigationWorkspace.EditNote(workspace, row.NoteId, "The worker's queue doubled", Now);
+        Assert.Equal((new WorkspaceNoteSubject("Before the update", null), (WorkspaceNoteAnchor?)null), (whole.About, whole.At));
+        Assert.Equal((new WorkspaceNoteSubject("Before the update", "tcp:a|b"), "The worker's queue doubled"), (reworded.About, reworded.Text));
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal([whole.NoteId, row.NoteId], InvestigationWorkspace.NotesAbout(read, "BEFORE THE UPDATE ").Select(note => note.NoteId));
+        Assert.Equal("about the comparison 'Before the update'", InvestigationWorkspace.About(read, whole.About!));
+        Assert.Equal("about row tcp:a|b of the comparison 'Before the update'", InvestigationWorkspace.About(read, reworded.About!));
+        Assert.Contains("\"about\": {", File.ReadAllText(workspace), StringComparison.Ordinal);
+
+        // A note is about a comparison in force, and names a row by a key, not too long a one.
+        Assert.Equal("No comparison of this investigation is named 'Tomorrow'.", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.AddNoteAbout(workspace, "Nothing yet", new("Tomorrow", null), Now)).Message);
+        Assert.StartsWith("A note about a row names the row by its key", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.AddNoteAbout(workspace, "Which?", new("Yesterday", "  "), Now)).Message, StringComparison.Ordinal);
+        Assert.StartsWith("A row's key is at most 512 characters", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.AddNoteAbout(workspace, "Too long", new("Yesterday", new string('k', 513)), Now)).Message,
+            StringComparison.Ordinal);
+        Assert.Equal("tcp:" + new string('k', 508), InvestigationWorkspace.AddNoteAbout(workspace, "Long enough",
+            new("Yesterday", "tcp:" + new string('k', 508)), Now).About!.Row);
+        Assert.Throws<ArgumentNullException>(() => InvestigationWorkspace.AddNoteAbout(workspace, "None", null!, Now));
+
+        // A comparison removed keeps the notes about it, which say it is no longer saved.
+        InvestigationWorkspace.RemoveComparison(workspace, "before the update", Now);
+        read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal(2, InvestigationWorkspace.NotesAbout(read, "Before the update").Count);
+        Assert.Equal("about the comparison 'Before the update', which is no longer saved", InvestigationWorkspace.About(read, whole.About!));
+
+        // A file that says otherwise is refused whole: a note about a comparison it never saved, one both pinned and about a
+        // comparison, a row by no key, and notes about comparisons in a file of the version before.
+        string valid = File.ReadAllText(workspace);
+        foreach ((string variant, string why) in new[]
+        {
+            (valid.Replace("\"comparison\": \"Yesterday\"", "\"comparison\": \"Tomorrow\"", StringComparison.Ordinal),
+                "is about a comparison the file never saved"),
+            (valid.Replace("\"row\": \"tcp:a|b\"", "\"row\": \" \"", StringComparison.Ordinal), "names a row by no key"),
+            (valid.Replace("\"about\": {", $"\"at\": {{ \"sessionId\": \"{a}\", \"nanoseconds\": 0 }}, \"about\": {{", StringComparison.Ordinal),
+                "both pinned at an instant and about a comparison"),
+            (valid.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.TwentySecondContract}\"", StringComparison.Ordinal),
+                "holds no note about a comparison"),
+        })
+        {
+            Assert.NotEqual(valid, variant);
+            File.WriteAllText(workspace, variant);
+            Assert.Contains(why, Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+        }
+
+        // A file of the version before, its notes about no comparison, is read, and written as the current one once a note
+        // is about one.
+        string earlier = Path.Combine(root, "earlier" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(earlier, Now);
+        Guid b = InvestigationWorkspace.Add(earlier, Path.Combine(root, "alpha"), Now).SessionId;
+        InvestigationWorkspace.SaveComparison(earlier, "Before", Of(b, 0, 100), Of(b, 100, 200), ComparisonMetric.Records,
+            ComparisonGrouping.Process, Now);
+        InvestigationWorkspace.AddNote(earlier, "A plain note", null, Now);
+        File.WriteAllText(earlier, File.ReadAllText(earlier).Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.TwentySecondContract}\"", StringComparison.Ordinal));
+        Assert.Equal(InvestigationWorkspace.TwentySecondContract, InvestigationWorkspace.Read(earlier).Contract);
+        InvestigationWorkspace.AddNoteAbout(earlier, "Now about it", new("Before", null), Now);
+        Assert.Equal((InvestigationWorkspace.Contract, 2), (InvestigationWorkspace.Read(earlier).Contract,
+            InvestigationWorkspace.NotesInForce(InvestigationWorkspace.Read(earlier)).Count));
     }
 
     [Fact(DisplayName = "R22: two host identities are one host only by a person's confirmation, kept as revisions and withdrawn as one")]

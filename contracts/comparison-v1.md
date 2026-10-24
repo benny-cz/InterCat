@@ -284,7 +284,7 @@ still said.
 
 ## 8c. A saved comparison
 
-An investigation keeps a comparison under a name (`workspace-v22` §7, ADR-061): its two intervals, each of a member's
+An investigation keeps a comparison under a name (`workspace-v23` §7, ADR-061): its two intervals, each of a member's
 session in that session's own ticks, what it compares by and what each row is of - a specification, never an answer.
 `icat workspace comparison` saves one, replacing one of that name, and removes one; `icat workspace show` lists those
 in force in `icat compare`'s words: "[10.0, 20.0) s of session 1a2b3c4d against [0.0, 10.0) s of it, by records, a
@@ -292,10 +292,13 @@ row per process".
 
 `icat compare --workspace <workspace> --saved <name>` runs the one in force under that name, in any case, as the
 command line compares two intervals it is given: each session read where the investigation finds it now, which must
-hold its capture (`workspace-v22` §3), at the generation found there, so a comparison saved before a live capture
-grew reads it as it is. Only how it is shown is chosen: `--limit`, `--json` and `--output` with its options, never a
+hold its capture (`workspace-v23` §3), at the generation found there, so a comparison saved before a live capture grew
+reads it as it is. Only how it is shown is chosen: `--limit`, `--json` and `--output` with its options, never a
 session, an interval, `--rank-by` or `--group-by`. Its text and its file name the comparison and its revision, and a
-redacted report never does, a name being a person's own words (§8b).
+redacted report never does, a name being a person's own words (§8b). A run says the notes a person keeps about the
+comparison and its rows (`workspace-v23` §7, ADR-069) beneath its rows - a row's by its rank and ends in that run, or
+as one the run does not compare - and its document's `saved.notes` carries each with its words and its row's key and
+rank, the rank null where the run does not compare the row; a redacted report carries none.
 
 In the window, Save in the investigation… keeps the comparison shown in the investigation the session shown was opened
 from, under a name it asks for, saying as one is typed whether it replaces a comparison of that name; its baseline

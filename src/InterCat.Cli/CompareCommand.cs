@@ -350,7 +350,19 @@ internal static class CompareCommand
             Contract = "comparison-v1",
             SessionPath = path,
             BaselineSessionPath = baselinePath,
-            Saved = saved is null ? null : new { Workspace = saved.WorkspacePath, saved.Comparison.Name, saved.Comparison.Revision },
+            Saved = saved is null ? null : new
+            {
+                Workspace = saved.WorkspacePath,
+                saved.Comparison.Name,
+                saved.Comparison.Revision,
+                Notes = saved.Notes.Select(note => new
+                {
+                    note.NoteId,
+                    note.Text,
+                    Row = note.About!.Row,
+                    Rank = RankOf(comparison, note),
+                }),
+            },
             Comparison = Json(comparison, limit),
             Timeline = timeline is null || timed is null ? null : new
             {
@@ -564,8 +576,33 @@ internal static class CompareCommand
             ConsoleUi.Note(note);
         }
 
+        if (saved is { Notes.Count: > 0 })
+        {
+            // The notes a person wrote about the comparison and its rows, each row's named by its ends as this run ranks it.
+            ConsoleUi.Line();
+            ConsoleUi.Heading("Notes on this comparison");
+            foreach (WorkspaceNote note in saved.Notes)
+            {
+                string id = note.NoteId.ToString("N")[..8];
+                ConsoleUi.Note(note.About!.Row is not { } key ? $"{id}: {note.Text}"
+                    : RankOf(comparison, note) is { } rank
+                        ? string.Create(culture, $"{id}, about row {rank:N0}, ")
+                            + ComparisonText.Ends(comparison.Relationships[rank - 1], comparison, "and") + $": {note.Text}"
+                        : $"{id}, about row {key}, which this run does not compare: {note.Text}");
+            }
+        }
+
         ConsoleUi.Note((saved is null ? "icat compare <directory>" : "icat compare --workspace <workspace> --saved <name>")
             + " --json returns each row with both intervals' coverage.");
+    }
+
+    /// <summary>The rank a note's row has in a run of its comparison, the most changed 1; null where the run does not compare it.</summary>
+    private static int? RankOf(IntervalComparison comparison, WorkspaceNote note)
+    {
+        int index = note.About?.Row is { } key
+            ? comparison.Relationships.ToList().FindIndex(row => string.Equals(row.Key, key, StringComparison.Ordinal))
+            : -1;
+        return index < 0 ? null : index + 1;
     }
 
     /// <summary>
@@ -574,6 +611,9 @@ internal static class CompareCommand
     /// </summary>
     private sealed record SavedRun(string WorkspacePath, SavedComparison Comparison, string Path, string? BaselinePath)
     {
+        /// <summary>The notes in force about the comparison and its rows, in the order first written (`workspace-v23` §7).</summary>
+        public IReadOnlyList<WorkspaceNote> Notes { get; init; } = [];
+
         /// <summary>
         /// The comparison in force under <paramref name="name"/> in the investigation at <paramref name="workspacePath"/>,
         /// its sessions where the investigation finds them; refused in words when it, or a session of it, is not found.
@@ -589,7 +629,10 @@ internal static class CompareCommand
                     : throw new InvalidOperationException($"The comparison's {role} session {session.ToString("N")[..8]} is not "
                         + $"where the investigation recorded it: {members.First(member => member.Member.SessionId == session).Reason}");
             return new(workspacePath, comparison, Found(comparison.Compared!.SessionId, "compared"),
-                comparison.AcrossCaptures ? Found(comparison.Baseline!.SessionId, "baseline") : null);
+                comparison.AcrossCaptures ? Found(comparison.Baseline!.SessionId, "baseline") : null)
+            {
+                Notes = InvestigationWorkspace.NotesAbout(workspace, comparison.Name),
+            };
         }
 
         /// <summary>"'Before the update', comparison revision 3 of C:\cases\update.icatws".</summary>

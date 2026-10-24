@@ -4,7 +4,7 @@ using InterCat.Domain;
 namespace InterCat.Application;
 
 /// <summary>
-/// One interval a saved comparison names (`contracts/workspace-v22.md` §7): a member session's, half-open in its own
+/// One interval a saved comparison names (`contracts/workspace-v23.md` §7): a member session's, half-open in its own
 /// presentation ticks, as `icat compare` takes it.
 /// </summary>
 public sealed record SavedComparisonInterval
@@ -158,7 +158,7 @@ public static partial class InvestigationWorkspace
     private static int NextComparisonRevision(InvestigationWorkspaceFile workspace) =>
         workspace.Comparisons.Count == 0 ? 1 : checked(workspace.Comparisons.Max(comparison => comparison.Revision) + 1);
 
-    /// <summary>What makes a file's saved comparisons contradict themselves, or null (`contracts/workspace-v22.md` §7).</summary>
+    /// <summary>What makes a file's saved comparisons contradict themselves, or null (`contracts/workspace-v23.md` §7).</summary>
     private static string? ComparisonProblem(InvestigationWorkspaceFile workspace)
     {
         // Saved comparisons arrived with the twenty-second version (revision 758).

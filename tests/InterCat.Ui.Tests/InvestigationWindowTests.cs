@@ -2830,6 +2830,17 @@ public sealed class InvestigationWindowTests
                 WhyNot(window, "Show on the timeline"));
             Assert.Null(Offered(window, "Reword…"));
 
+            // A note about a saved comparison says what it is about, and has no place on the timeline either.
+            InvestigationWorkspace.SaveComparison(workspace, "Before", new() { SessionId = a, StartTicks = 0, EndTicks = 10 },
+                new() { SessionId = a, StartTicks = 10, EndTicks = 20 }, ComparisonMetric.Records, ComparisonGrouping.Process, Committed);
+            _ = InvestigationWorkspace.AddNoteAbout(workspace, "it grew", new("Before", null), Committed);
+            await window.RefreshAsync();
+            WaitFor(() => window.View is { Notes.Count: 2 });
+            Assert.Equal("about the comparison 'Before'", window.View!.Notes[1].Where);
+            window.SelectNote(1);
+            Assert.Equal("That note is about a saved comparison, not an instant, so the timeline has no place for it; the comparison "
+                + "says it when it runs.", WhyNot(window, "Show on the timeline"));
+
             // A session not where it was last found does not open, and says why on Open and when Enter asks it to open.
             window.ShowTab(0);
             Directory.Move(Path.Combine(root.Path, "server"), Path.Combine(root.Path, "server-moved"));

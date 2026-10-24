@@ -88,11 +88,19 @@ public static class InvestigationTimelineText
                 + " by a person's confirmation";
     }
 
-    /// <summary>Where a note is pinned, in words: about the whole investigation, or at an instant of a session and its place.</summary>
+    /// <summary>
+    /// Where a note is pinned, in words: about the whole investigation, about a saved comparison or one of its rows, or at an
+    /// instant of a session and its place.
+    /// </summary>
     public static string NotePlace(InvestigationWorkspaceFile workspace, WorkspaceNote note, CultureInfo culture)
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(note);
+        if (note.About is { } subject)
+        {
+            return InvestigationWorkspace.About(workspace, subject);
+        }
+
         if (note.At is not { } at)
         {
             return "about the whole investigation";

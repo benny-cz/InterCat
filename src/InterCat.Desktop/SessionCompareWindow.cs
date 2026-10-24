@@ -49,7 +49,7 @@ internal sealed record SavedComparisonOpening(SavedComparison Comparison, string
 /// stated only where both intervals measured alike; elsewhere both values stand, with the reason beneath the rows. Enter
 /// on a row closes the window with it, and the workspace opens what it compares. Nothing is written but what a person asks
 /// for: a redacted report saved where they choose, or the comparison saved in the investigation the session was opened
-/// from (`contracts/workspace-v22.md` §7).
+/// from (`contracts/workspace-v23.md` §7).
 /// </summary>
 internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindow
 {
@@ -806,7 +806,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
 
     /// <summary>
     /// Saves the comparison shown in the investigation the session was opened from, under a name asked for
-    /// (`contracts/workspace-v22.md` §7): its two intervals, what it compares by and what its rows are of, never its answer,
+    /// (`contracts/workspace-v23.md` §7): its two intervals, what it compares by and what its rows are of, never its answer,
     /// replacing a comparison of that name; beside the buttons, the name it was saved under, or why it was not.
     /// </summary>
     public Task SaveInInvestigationAsync()

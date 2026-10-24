@@ -57,9 +57,12 @@ public sealed record InvestigationView(
     public string? Panes { get; init; }
 }
 
-/// <summary>A note as the investigation window lists it: its words, and where it is pinned in words.</summary>
+/// <summary>A note as the investigation window lists it: its words, and where it is pinned, or what it is about, in words.</summary>
 public sealed record InvestigationNoteRow(Guid NoteId, string Text, string Where, WorkspaceNoteAnchor? At) : IAccessibleRow
 {
+    /// <summary>The saved comparison, or the row of one, it is about; null for any other note.</summary>
+    public WorkspaceNoteSubject? About { get; init; }
+
     public string Title => Text;
 
     public string AccessibleName => $"Note {NoteId.ToString("N")[..8]}: {Text}. {Where}.";
@@ -161,7 +164,7 @@ public static class InvestigationRows
         [.. InvestigationTimeline.Overlaps(path, cancellationToken).Select(overlap => overlap.Statement(culture))])
         {
             Notes = [.. InvestigationWorkspace.NotesInForce(workspace).Select(note => new InvestigationNoteRow(
-                note.NoteId, note.Text!, InvestigationTimelineText.NotePlace(workspace, note, culture), note.At))],
+                note.NoteId, note.Text!, InvestigationTimelineText.NotePlace(workspace, note, culture), note.At) { About = note.About })],
             Panes = PanesKept(workspace.Panes, culture),
         };
     }

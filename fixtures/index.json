@@ -1955,6 +1955,8 @@
         "R22: a member's layout keeps a grouping by terminal session, and refuses one no view offers",
         "R22: a member's layout keeps its pinned timeline lanes in the order pinned, and refuses what no window can pin",
         "R22: a new investigation starts empty, and an existing file is opened, never written over",
+        "R22: a note about a saved comparison names it as saved and a row by its key, never by rank, and is kept as revisions",
+        "R22: a note about a saved comparison or one of its rows is said when the comparison runs, each row's by its rank and ends",
         "R22: a note is a person's words on the investigation, pinned at a session's instant or not, kept as revisions",
         "R22: a note pinned at a session's instant is placed on the merged time where that session's alignment puts it",
         "R22: a package goes only to a new folder outside every session, and one that stops leaves nothing",

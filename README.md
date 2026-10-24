@@ -79,8 +79,9 @@ programs rather than processes, each one's processes together, so a process that
 `--baseline-session` compares two captures that way, each on its own clock. In the window, Rows compares executables,
 and *Another saved capture…* sets a saved capture's whole recording as the baseline. An investigation keeps a
 comparison under a name (`icat workspace comparison`), and `icat compare --workspace <file> --saved <name>` runs it
-again on its sessions as they are then. In the window, *Save in the investigation…* keeps the comparison shown, and
-the investigation's *Comparisons…* opens it again. `--timeline <rank>` shows when a row changed: each interval cut
+again on its sessions as they are then; `icat workspace note <file> <text> --about <name> [--row <key>]` keeps a note
+about it or one of its rows, which the run says beneath them. In the window, *Save in the investigation…* keeps the
+comparison shown, and the investigation's *Comparisons…* opens it again. `--timeline <rank>` shows when a row changed: each interval cut
 into as many equal columns, compared column by column, and the window's *Timeline* draws the chosen row's. *Show on
 the graph* marks each edge of the graph by how it changed - ▲ up, ▼ down, + appeared, − disappeared, = unchanged, ?
 not comparable, ± both ways - and says the same beneath the graph's header and in the relationship table.

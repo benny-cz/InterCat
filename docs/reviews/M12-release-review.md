@@ -227,3 +227,11 @@ command line's words, and the chosen row's windows drawn bar by bar, each bar sa
 in the window opens the row as a comparison's row is opened. Outlier detection is delivered on both surfaces, its
 labels the same observations; every M12 view is now built on both, and what remains is the milestone's exit review.
 Nothing else above changes.
+
+## Addendum, revision 771
+
+A note can now be about a saved comparison, or about one of its rows by the key the comparison gives it, never its
+rank (`contracts/workspace-v23.md` §7, ADR-069): `icat workspace note --about` writes one, a run of the comparison
+says them beneath its rows, a row's by its rank and ends in that run, and the investigation window lists them with
+what they are about. With the investigation's notes and saved views, and the saved comparisons themselves, they are
+M12's annotations and bookmarks. Writing such a note in the Compare window remains, and nothing else above changes.

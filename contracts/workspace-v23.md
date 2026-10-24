@@ -1,40 +1,41 @@
-# Workspace contract, version 22
+# Workspace contract, version 23
 
-Status: M4 and M12, revision 758 (ADR-038 to ADR-042, ADR-061); versions 1 to 21 were revisions 253, 254, 256, 260,
-264, 265, 266, 269, 270, 271, 280, 301, 339, 343, 360, 388, 406, 419, 422, 470 and 557's, and packages revision 263's
+Status: M4 and M12, revision 771 (ADR-038 to ADR-042, ADR-061, ADR-069); versions 1 to 22 were revisions 253, 254,
+256, 260, 264, 265, 266, 269, 270, 271, 280, 301, 339, 343, 360, 388, 406, 419, 422, 470, 557 and 758's, and packages
+revision 263's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
 Produced by: `icat workspace new | add | relink | alias | align | join | same-host | translate | note | view | comparison |
 package`
 Read by: `icat workspace show | compare | correlate`, `icat compare --workspace <workspace> --saved <name>`
 
-A workspace is an investigation over several separately valid sessions (§8.4). It is one JSON file, by convention named
-`*.icat-workspace`, that references its members by identity and never changes them. Version 2 added its time: one
-member's clock, to which a person aligns the others (§5). Version 3 aligns by what captures record too: one boot's
-counter, exactly, or their wall clocks (§5). Version 4 keeps a person's decisions about candidate joins (§6). Version 5
-lets a person's alignment take a second instant, which measures the two clocks' rate (§5). Version 6 aligns a member to
-any member placed in the workspace's time, not only to its reference (§5). Version 7 keeps a person's confirmations that
-two host identities are one host (§4), version 8 their statements of known address translations (§6), version 9 their
-notes (§7), version 10 their saved views (§7), version 11 how they laid out each session's graph (§7), version 12
-what they rank each session's rows by (§7), version 13 how strongly a record must bind to a process to count as its
+A workspace is an investigation over several separately valid sessions (§8.4). It is one JSON file, by convention
+named `*.icat-workspace`, that references its members by identity and never changes them. Version 2 added its time:
+one member's clock, to which a person aligns the others (§5). Version 3 aligns by what captures record too: one boot's
+counter, exactly, or their wall clocks (§5). Version 4 keeps a person's decisions about candidate joins (§6). Version
+5 lets a person's alignment take a second instant, which measures the two clocks' rate (§5). Version 6 aligns a member
+to any member placed in the workspace's time, not only to its reference (§5). Version 7 keeps a person's confirmations
+that two host identities are one host (§4), version 8 their statements of known address translations (§6), version 9
+their notes (§7), version 10 their saved views (§7), version 11 how they laid out each session's graph (§7), version
+12 what they rank each session's rows by (§7), version 13 how strongly a record must bind to a process to count as its
 own there (§7), version 14 whether each of its timeline lanes is read against its own peak (§7), version 15 how they
 left the window's two main panes (§7), version 16 which process lanes they pinned at the top of each session's
-timeline (§7), version 17 whether they grouped each session's processes by terminal session (§7), version 18
-whether they set InterCat's own processes aside from each session's view (§7), version 19 whether they read each
-session's times on the wall clock its capture's machine read (§7), version 20 the widths they gave the ranked table
-and the inspector by their edges (§7), version 21 whether they opened each session's Other hosts into its busiest
-hosts (§7), and version 22 their saved comparisons of two intervals of its sessions (§7). An earlier
-version's file is read as one without what later versions added - a `workspace-v1` file holds members and host names
-and no time, a `workspace-v2` file manual alignments only, and a `workspace-v5` file members each aligned to the
-reference itself - and each is written as version 22. A kind of fact is
-refused only in a file of a version before the one that added it; until revision 279 each was refused in any version
-before the newest, so a file an earlier version wrote with what that version had added stopped reading once a later
-version appeared.
+timeline (§7), version 17 whether they grouped each session's processes by terminal session (§7), version 18 whether
+they set InterCat's own processes aside from each session's view (§7), version 19 whether they read each session's
+times on the wall clock its capture's machine read (§7), version 20 the widths they gave the ranked table and the
+inspector by their edges (§7), version 21 whether they opened each session's Other hosts into its busiest hosts (§7),
+version 22 their saved comparisons of two intervals of its sessions (§7), and version 23 their notes about a saved
+comparison or one of its rows (§7). An earlier version's file is read as one without what later versions added - a
+`workspace-v1` file holds members and host names and no time, a `workspace-v2` file manual alignments only, and a
+`workspace-v5` file members each aligned to the reference itself - and each is written as version 23. A kind of fact
+is refused only in a file of a version before the one that added it; until revision 279 each was refused in any
+version before the newest, so a file an earlier version wrote with what that version had added stopped reading once a
+later version appeared.
 
 ## 1. The file
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v22"` (`"workspace-v1"` to `"workspace-v21"` are read) |
+| `contract` | `"workspace-v23"` (`"workspace-v1"` to `"workspace-v22"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -314,7 +315,8 @@ lane:
 | `revision` | A positive number, unique among notes and increasing in the order written |
 | `noteId` | The note a revision is of: every revision of one note shares it |
 | `text` | Its words, at most 4,000 characters; null when the revision removes the note |
-| `at` | Where it is pinned: `{ sessionId, nanoseconds }`, an instant of a member's session in its own time; null for a note about the whole investigation |
+| `at` | Where it is pinned: `{ sessionId, nanoseconds }`, an instant of a member's session in its own time; null for a note about the whole investigation or about a saved comparison |
+| `about` | What it is about where it is about a saved comparison: `{ comparison, row }`, the comparison's name as it is saved and, for a note about one of its rows, the row's key as a comparison gives it (`comparison-v1` §8), at most 512 characters; null for any other note, and never set with `at`. Since version 23 |
 | `recordedUtc` | When it was written |
 
 A note's latest revision is in force unless it removes the note; rewording keeps where it is pinned, and every revision
@@ -322,6 +324,16 @@ is kept. `icat workspace note <text> [--at <session>@<seconds>]` adds one, `<not
 `<note> --remove` removes it, `<note>` its identity or a unique leading part; `show` lists those in force with their
 place. A note changes no session and is never evidence. A file whose notes name no note, hold no words or too many,
 are pinned to no member, or appear in a file before version 9, is refused.
+
+A note about a saved comparison (ADR-069) names the comparison as it is saved and, for one of its rows, the row by its
+key, never by its rank, which a comparison run again may change: `icat workspace note <text> --about <comparison>
+[--row <key>]` adds one, about a comparison in force. A comparison removed later keeps the notes about it, said to be
+about one no longer saved. `icat compare --workspace <workspace> --saved <name>` says the notes about it beneath its
+rows, a row's by its rank and ends in that run or as one the run does not compare, and its document carries them
+(`comparison-v1` §8c); a redacted report carries none. The Desktop's investigation window lists them with what they
+are about. A file whose note is about a comparison it never saved, names a row by no key or by one over 512
+characters, is both pinned at an instant and about a comparison, or is about a comparison in a file before version 23,
+is refused.
 
 A saved view is a named interval of the investigation's time, to show on the merged timeline again:
 
@@ -453,7 +465,7 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   `Missing`, to relink.
 - Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments`,
   `joins`, `hostEquivalences`, `addressTranslations`, `notes`, `views`, `comparisons`, `layouts` and `panes`. The file
-  is written as the current version, `workspace-v22`.
+  is written as the current version, `workspace-v23`.
 - The folder must not exist and must lie inside no session. It is built in a private folder beside it,
   `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or

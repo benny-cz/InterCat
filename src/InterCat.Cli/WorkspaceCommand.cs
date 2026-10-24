@@ -6,7 +6,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v22.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v23.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -105,7 +105,7 @@ internal sealed record WorkspaceMemberDocument
     public required IReadOnlyList<Guid> Through { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v22.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v23.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -137,7 +137,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v22.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v23.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -326,6 +326,8 @@ internal static partial class WorkspaceCommand
         string? sync = command.TakeOption("--sync");
         string? output = command.TakeOption("--output");
         string? pinned = command.TakeOption("--at");
+        string? about = command.TakeOption("--about");
+        string? row = command.TakeOption("--row");
         string? replacement = command.TakeOption("--replace");
         string? columnsText = command.TakeOption("--columns");
         string? intervalText = command.TakeOption("--interval");
@@ -381,7 +383,8 @@ internal static partial class WorkspaceCommand
             "join" => (1, 1, "icat workspace join <workspace> <candidate> (--accept | --reject | --withdraw) [--note <text>]"),
             "same-host" => (2, 2, "icat workspace same-host <workspace> <host> <other-host> [--withdraw] [--note <text>]"),
             "translate" => (2, 2, "icat workspace translate <workspace> <seen-endpoint> <endpoint> [--withdraw] [--note <text>]"),
-            "note" => (1, 1, "icat workspace note <workspace> (<text> [--at <session>@<seconds>] | <note> --replace <text> | <note> --remove)"),
+            "note" => (1, 1, "icat workspace note <workspace> (<text> [--at <session>@<seconds> | --about <comparison> [--row <key>]] "
+                + "| <note> --replace <text> | <note> --remove)"),
             "view" => (remove ? 1 : 3, remove ? 1 : 3, "icat workspace view <workspace> <name> (<from-seconds> <to-seconds> | --remove)"),
             "comparison" => (1, 1, "icat workspace comparison <workspace> <name> (--session <session> --interval <start:end> "
                 + "--baseline <start:end> [--baseline-session <session>] [--rank-by records|bytes-sent] "
@@ -391,8 +394,9 @@ internal static partial class WorkspaceCommand
         };
         bool manual = verb == "align" && !withdraw && !sameBoot && !wallClock;
         bool misplaced = (remove && verb is not ("alias" or "note" or "view" or "comparison"))
-            || ((pinned is not null || replacement is not null) && verb != "note")
-            || (verb == "note" && new[] { pinned is not null, replacement is not null, remove }.Count(flag => flag) > 1)
+            || ((pinned is not null || replacement is not null || about is not null || row is not null) && verb != "note")
+            || (verb == "note" && new[] { pinned is not null, replacement is not null, remove, about is not null }.Count(flag => flag) > 1)
+            || (row is not null && about is null)
             || ((sameBoot || wallClock) && verb != "align")
             || (withdraw && verb is not ("align" or "join" or "same-host" or "translate"))
             || ((accept || reject) && verb != "join")
@@ -459,7 +463,7 @@ internal static partial class WorkspaceCommand
                 "alias" => Alias(path, operands[0], remove ? null : operands[1]),
                 "same-host" => SameHost(path, operands[0], operands[1], withdraw, note),
                 "translate" => Translate(path, operands[0], operands[1], withdraw, note),
-                "note" => Note(path, operands[0], pinned, replacement, remove),
+                "note" => Note(path, operands[0], pinned, about, row, replacement, remove),
                 "view" => View(path, operands, remove),
                 "comparison" => SaveComparison(path, operands[0], remove, sessionText, intervalText, baselineText, baselineSessionText,
                     rankByText, groupByText),
@@ -627,10 +631,12 @@ internal static partial class WorkspaceCommand
     }
 
     /// <summary>
-    /// `icat workspace note`: adds a note, pinned at an instant of a member's session when `--at` gives one; replaces a
-    /// note's words with `--replace`; or removes one with `--remove`. Every revision is kept (§8.4).
+    /// `icat workspace note`: adds a note, pinned at an instant of a member's session when `--at` gives one, or about a saved
+    /// comparison or one of its rows when `--about` and `--row` give them; replaces a note's words with `--replace`; or
+    /// removes one with `--remove`. Every revision is kept (§8.4).
     /// </summary>
-    private static InterCatExitCode Note(string path, string operand, string? pinned, string? replacement, bool remove)
+    private static InterCatExitCode Note(string path, string operand, string? pinned, string? about, string? row, string? replacement,
+        bool remove)
     {
         InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
         if (remove || replacement is not null)
@@ -641,6 +647,15 @@ internal static partial class WorkspaceCommand
                 : InvestigationWorkspace.EditNote(path, named.NoteId, replacement!, DateTimeOffset.UtcNow);
             ConsoleUi.Success(string.Create(CultureInfo.InvariantCulture, $"Note {Short(named.NoteId)} ")
                 + (remove ? "removed" : "reworded") + string.Create(CultureInfo.InvariantCulture, $" (note revision {changed.Revision}); its earlier words are kept."));
+            return InterCatExitCode.Success;
+        }
+
+        if (about is not null)
+        {
+            WorkspaceNote noted = InvestigationWorkspace.AddNoteAbout(path, operand, new WorkspaceNoteSubject(about, row), DateTimeOffset.UtcNow);
+            ConsoleUi.Success($"Note {Short(noted.NoteId)} added, "
+                + InvestigationWorkspace.About(InvestigationWorkspace.Read(path), noted.About!)
+                + string.Create(CultureInfo.InvariantCulture, $" (note revision {noted.Revision})."));
             return InterCatExitCode.Success;
         }
 
@@ -1347,7 +1362,8 @@ internal static partial class WorkspaceCommand
             ConsoleUi.Heading("Notes");
             foreach (WorkspaceNote written in notes)
             {
-                string where = written.At is not { } at ? "about the whole investigation"
+                string where = written.About is { } subject ? InvestigationWorkspace.About(current, subject)
+                    : written.At is not { } at ? "about the whole investigation"
                     : InvestigationWorkspace.Place(current, at.SessionId, at.Nanoseconds) is { WorkspaceNanoseconds: { } placed } instant
                         ? $"at session {Short(at.SessionId)}'s {Seconds(at.Nanoseconds)}, the investigation's {Seconds(placed)}"
                             + (instant.Uncertainty is { } uncertainty
@@ -1512,6 +1528,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("icat workspace same-host <workspace> <host> <other-host> [--withdraw] [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace translate <workspace> <seen-endpoint> <endpoint> [--withdraw] [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace note <workspace> <text> [--at <session>@<seconds>] [--json]");
+        ConsoleUi.Line("icat workspace note <workspace> <text> --about <comparison> [--row <key>] [--json]");
         ConsoleUi.Line("icat workspace note <workspace> <note> (--replace <text> | --remove) [--json]");
         ConsoleUi.Line("  A note that starts with a dash follows --, as in: icat workspace note <workspace> -- \"-> retry storm\"");
         ConsoleUi.Line("icat workspace view <workspace> <name> (<from-seconds> <to-seconds> | --remove) [--json]");
@@ -1566,8 +1583,9 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("           proxy's - is an endpoint the other holds, so candidate joins mirror through it and say so.");
         ConsoleUi.Line("           Both with a port, or both an address alone, whose ports pass through; never loopback.");
         ConsoleUi.Line("  note     adds a note to the investigation, pinned with --at at an instant of a session, which");
-        ConsoleUi.Line("           its time places; --replace rewords one and --remove removes it, each a kept revision.");
-        ConsoleUi.Line("           <note> is its identity or a unique leading part.");
+        ConsoleUi.Line("           its time places, or with --about about a saved comparison, and with --row about one of");
+        ConsoleUi.Line("           its rows by the key icat compare --json gives it; --replace rewords one and --remove");
+        ConsoleUi.Line("           removes it, each a kept revision. <note> is its identity or a unique leading part.");
         ConsoleUi.Line("  view     saves an interval of the investigation's time, in seconds of its reference's clock, as a");
         ConsoleUi.Line("           named view the Desktop's timeline can show again; --remove removes it. A view saved on");
         ConsoleUi.Line("           another time reference is kept, and said not to be of the time now.");

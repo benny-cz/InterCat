@@ -3,7 +3,7 @@
 - Status: accepted; revision 758. It records `icat workspace comparison` and `icat compare --saved`, M12's saved
   comparison specifications
 - Date: 2026-10-23
-- Relates to: plan M12, §8.4, §26.3, R22, I16, ADR-038, ADR-039, ADR-058, ADR-060; `contracts/workspace-v22.md` §7,
+- Relates to: plan M12, §8.4, §26.3, R22, I16, ADR-038, ADR-039, ADR-058, ADR-060; `contracts/workspace-v23.md` §7,
   `contracts/comparison-v1.md` §8c
 
 ## Context

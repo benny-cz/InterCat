@@ -470,6 +470,83 @@ public sealed class CompareCommandTests
         }
     }
 
+    [Fact(DisplayName = "R22: a note about a saved comparison or one of its rows is said when the comparison runs, each row's by its rank and ends")]
+    public async Task ANotesAboutASavedComparisonAreSaidWhenItRuns()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(), coverage: Ledger());
+        session.Store.ReleaseSegmentReaders();
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-noted-comparison-");
+        string workspace = Path.Combine(folder.FullName, "update.icat-workspace");
+        string a = TestSessions.Session.ToString("N")[..8];
+        try
+        {
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "new", workspace)).Code);
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "add", workspace, session.Path)).Code);
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "comparison", workspace, "Before the update", "--session", a,
+                "--baseline", "0:10s", "--interval", "10s:30s")).Code);
+            string key = JsonDocument.Parse((await Run("compare", "--workspace", workspace, "--saved", "Before the update", "--json")).Output)
+                .RootElement.GetProperty("comparison").GetProperty("rows")[0].GetProperty("key").GetString()!;
+
+            // A note about the whole comparison, one about its first row by key, and one about a row it does not compare.
+            (InterCatExitCode code, string text, string said) = await Run("workspace", "note", workspace, "Grew after the patch",
+                "--about", "before THE update");
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches(@"Note [0-9a-f]{8} added, about the comparison 'Before the update' \(note revision 1\)\.", said);
+            (code, _, said) = await Run("workspace", "note", workspace, "The worker's queue", "--about", "Before the update", "--row", key);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Contains($", about row {key} of the comparison 'Before the update' (note revision 2).", said, Ordinal);
+            (code, _, said) = await Run("workspace", "note", workspace, "Gone since", "--about", "Before the update", "--row", "tcp:gone");
+            Assert.True(code == InterCatExitCode.Success, said);
+
+            // Run, the comparison says them beneath its rows, a row's by its rank and ends in this run, and one it does not
+            // compare as such; its JSON carries them with each row's key and rank.
+            (code, text, said) = await Run("compare", "--workspace", workspace, "--saved", "Before the update");
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Contains("NOTES ON THIS COMPARISON", text, Ordinal);
+            string flowed = Regex.Replace(text, @"\s+", " ");
+            Assert.Matches(@"[0-9a-f]{8}: Grew after the patch", flowed);
+            Assert.Matches(@"[0-9a-f]{8}, about row 1, PID 100 → 142\.250\.1\.1: The worker's queue", flowed);
+            Assert.Matches(@"[0-9a-f]{8}, about row tcp:gone, which this run does not compare: Gone since", flowed);
+            JsonElement notes = JsonDocument.Parse((await Run("compare", "--workspace", workspace, "--saved", "Before the update", "--json"))
+                .Output).RootElement.GetProperty("saved").GetProperty("notes");
+            Assert.Equal(
+                [("Grew after the patch", (string?)null, (int?)null), ("The worker's queue", key, 1), ("Gone since", "tcp:gone", null)],
+                notes.EnumerateArray().Select(note => (note.GetProperty("text").GetString(), note.GetProperty("row").GetString(),
+                    note.GetProperty("rank").ValueKind == JsonValueKind.Null ? (int?)null : note.GetProperty("rank").GetInt32())));
+
+            // The investigation lists them with what they are about; removed, a comparison keeps them, said no longer saved.
+            (_, text, _) = await Run("workspace", "show", workspace);
+            Assert.Contains("(about the comparison 'Before the update'): Grew after the patch", Regex.Replace(text, @"\s+", " "), Ordinal);
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "comparison", workspace, "Before the update", "--remove")).Code);
+            (_, text, _) = await Run("workspace", "show", workspace);
+            Assert.Contains("(about the comparison 'Before the update', which is no longer saved): Grew after the patch",
+                Regex.Replace(text, @"\s+", " "), Ordinal);
+
+            // Refused: a row with no comparison, a note both pinned and about a comparison, or about one never saved.
+            foreach ((string[] args, string expected) in new (string[], string)[]
+            {
+                (["workspace", "note", workspace, "Which?", "--row", key], "x Use icat workspace note <workspace> "),
+                (["workspace", "note", workspace, "Both", "--about", "Before the update", "--at", a + "@1"], "x Use icat workspace note "),
+                (["workspace", "note", workspace, "Reworded", "--about", "Before the update", "--replace", "x"], "x Use icat workspace note "),
+                (["workspace", "view", workspace, "Again", "0", "1", "--about", "Before the update"], "x Use icat workspace view "),
+                (["workspace", "note", workspace, "Never", "--about", "Before the update"],
+                    "x No comparison of this investigation is named 'Before the update'."),
+            })
+            {
+                (code, string output, string error) = await Run(args);
+                string invocation = "icat " + string.Join(' ', args);
+                Assert.True(code == InterCatExitCode.InvalidInvocation, $"{invocation} exited {code}.");
+                Assert.True(output.Length == 0, $"{invocation} wrote to stdout:\n{output}");
+                Assert.StartsWith(expected, error, Ordinal);
+            }
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
     [Fact(DisplayName = "R18: icat compare --timeline states a row's difference timeline column by column, adding up to the row")]
     public async Task IcatCompareStatesARowsDifferenceTimeline()
     {

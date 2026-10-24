@@ -72,7 +72,7 @@ why this projection and this layout, or what their determinism covers.
 - The determinism holds within one runtime on one processor architecture. Seeding and the parting of coincident nodes
   use the runtime's sine and cosine, whose last bits may differ between platforms, and 120 steps can carry that
   difference into a visibly different layout of unpinned nodes. An investigation carries its pins exactly
-  (`workspace-v22`), not the positions of nodes nobody pinned.
+  (`workspace-v23`), not the positions of nodes nobody pinned.
 - Hit testing scans the drawn nodes and edges, which at 100 nodes and 500 edges is measured to be fast enough; a spatial
   index is owed only when a larger projection needs one.
 - What a drawing can show is bounded by the budget: a machine of thousands of processes is read through its folded
