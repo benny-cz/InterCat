@@ -198,3 +198,14 @@ process spent inside the RPC calls it made, from each call's validated start to 
 process that served them through ALPC, with that server's own time measured over the linked calls alone. A call
 without a validated span is counted by why, never timed, and no wait is said to have blocked or delayed anything, so
 no critical-path or deadlock claim is made. Outliers and the window's waits remain, and nothing else above changes.
+
+## Addendum, revision 768
+
+`icat outliers` gives M12's optional outlier detection on the command line (`contracts/outliers-v1.md`, ADR-068): an
+interval's rows judged against the windows of a baseline, each window as long as the interval, a row listed where its
+records are above or below every window's. Its baseline window, its minimum sample size - 19 windows - and its
+uncertainty - at most 1 time in one more than the windows each way, assuming nothing of how records arrive - are
+stated beside the rows. The exit test that outlier labels describe observations, not malware or root cause, is now met
+on the command line: "R18: an outlier is said in one set of words, the command line's and the window's, each
+describing what was counted and never why" checks every label and note against such words. The window's waits and
+outliers remain, and nothing else above changes.

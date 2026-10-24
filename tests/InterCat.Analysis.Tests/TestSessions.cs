@@ -600,6 +600,112 @@ internal static class TestSessions
     }
 
     /// <summary>
+    /// The outlier fixture's relationships (`contracts/outliers-v1.md`), each a client's TCP connection to a server of its
+    /// own: steady, a burst, stopped, new and varied.
+    /// </summary>
+    public static readonly (int Client, int Server, string ClientEnd, string ServerEnd)[] OutlierPairs =
+    [
+        (100, 200, "127.0.0.1:50000", "127.0.0.1:8080"),
+        (300, 400, "127.0.0.1:50001", "127.0.0.1:9090"),
+        (500, 600, "127.0.0.1:50002", "127.0.0.1:7070"),
+        (700, 800, "127.0.0.1:50003", "127.0.0.1:6060"),
+        (900, 1_000, "127.0.0.1:50004", "127.0.0.1:5050"),
+    ];
+
+    /// <summary>
+    /// An outlier fixture over a baseline of [0, 1,000) ticks and a compared interval of [1,000, 1,050), twenty windows of 50
+    /// ticks: pair 0 of <see cref="OutlierPairs"/> steady throughout, 10 records a window; pairs 1 and 2 with 12 in the
+    /// baseline's first window and 10 in each other, then 50 and none in the compared interval; pair 3 new in the compared
+    /// interval, with 4; pair 4 with 6 in the baseline's first window and 2 in each other and in the compared interval; and a
+    /// UDP flow from PID 1,100 to PID 1,200 throughout, whose sources <see cref="OutlierCoverage"/> changes at the compared
+    /// interval. An exchange is a client's send and its server's receive at one tick; a datagram, its send and its receive.
+    /// </summary>
+    public static ObservationRowV1[] OutlierRows()
+    {
+        IEnumerable<long> Every(long from, long to, long step)
+        {
+            for (long ticks = from; ticks < to; ticks += step) yield return ticks;
+        }
+
+        ObservationRowV1[] Exchange(long ticks, int pair)
+        {
+            (int client, int server, string clientEnd, string serverEnd) = OutlierPairs[pair];
+            ulong ordinal = (ulong)((ticks * 16) + (pair * 2));
+            return
+            [
+                Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 8, client, ordinal).Between(clientEnd, serverEnd),
+                Transfer(ticks, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, server, ordinal + 1).Between(serverEnd, clientEnd),
+            ];
+        }
+
+        // A datagram names its source and its destination on both sides, as the network provider records a UDP flow.
+        ObservationRowV1[] Datagram(long ticks)
+        {
+            ulong ordinal = (ulong)((ticks * 16) + 10);
+            return
+            [
+                Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 8, 1_100, ordinal)
+                    .Between("127.0.0.1:50010", "127.0.0.1:5353") with { Mechanism = Mechanism.Udp },
+                Transfer(ticks, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 1_200, ordinal + 1)
+                    .Between("127.0.0.1:50010", "127.0.0.1:5353") with { Mechanism = Mechanism.Udp },
+            ];
+        }
+
+        ObservationRowV1[] rows =
+        [
+            .. Every(0, 1_050, 10).SelectMany(ticks => Exchange(ticks, 0)),
+            .. Every(0, 1_000, 10).Append(5).Concat(Every(1_000, 1_050, 2)).SelectMany(ticks => Exchange(ticks, 1)),
+            .. Every(0, 1_000, 10).Append(15).SelectMany(ticks => Exchange(ticks, 2)),
+            .. Exchange(1_010, 3), .. Exchange(1_020, 3),
+            .. Every(0, 30, 10).Concat(Enumerable.Range(1, 19).Select(window => (window * 50L) + 5)).Append(1_030)
+                .SelectMany(ticks => Exchange(ticks, 4)),
+            .. Every(0, 1_050, 10).SelectMany(Datagram),
+        ];
+        return [.. rows.OrderBy(row => row.RawRecordOrdinal).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })];
+    }
+
+    /// <summary>
+    /// The outlier fixture's ledger: TCP collected alike throughout, and UDP through another event from native reading 1,000
+    /// on, where the fixture's compared interval starts, so its UDP flow's two intervals are not of one measurement.
+    /// </summary>
+    public static CoverageLedgerV1 OutlierCoverage() => new()
+    {
+        Contract = CoverageLedgerV1.ContractName,
+        Epochs =
+        [
+            .. new[] { (Epoch: 1, First: 0L, Last: 999L, Udp: 11), (Epoch: 2, First: 1_000L, Last: 1_000_000L, Udp: 13) }.Select(epoch =>
+                new CoverageEpochV1
+                {
+                    Epoch = epoch.Epoch,
+                    Acquisition = CoverageAcquisition.LiveCapture,
+                    FirstDeliveredNativeTicks = epoch.First,
+                    LastDeliveredNativeTicks = epoch.Last,
+                    Collected =
+                    [
+                        .. new[] { (10, Mechanism.Tcp), (epoch.Udp, Mechanism.Udp) }.Select(entry => new CoverageCollectedV1
+                        {
+                            ProviderId = NetworkProvider, ProviderName = "network", EventId = entry.Item1, Version = 0, Mechanism = entry.Item2,
+                        }),
+                    ],
+                    Deliveries =
+                    [
+                        .. new[] { 10, epoch.Udp }.Select(eventId => new CoverageDeliveryV1
+                        {
+                            ProviderId = NetworkProvider, EventId = eventId, Version = 0, Delivered = 3, Admitted = 3, Omitted = 0,
+                        }),
+                    ],
+                    Losses =
+                    [
+                        new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 0 },
+                        new CoverageLossV1 { Layer = LossLayer.ConsumerBuffers, Lost = 0 },
+                        new CoverageLossV1 { Layer = LossLayer.CallbackQueue, Lost = 0 },
+                        new CoverageLossV1 { Layer = LossLayer.Storage, Lost = 0 },
+                    ],
+                }),
+        ],
+    };
+
+    /// <summary>
     /// Five exchanges of process 4242: exchange 1 in six buffers, its request and response bodies in two each, the request
     /// body's last raised after the response ended, interleaved with exchange 2's three, whose request had no body; exchange
     /// 3, whose response body's last buffer was not recorded; exchange 1's number again; and exchange 3's again, its request

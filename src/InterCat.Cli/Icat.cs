@@ -53,6 +53,7 @@ internal static class Icat
                 "patterns" => await PatternsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "links" => await LinksCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "waits" => await WaitsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "outliers" => await OutliersCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "evidence" => await EvidenceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "timeline" => await TimelineCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "compare" => await CompareCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -229,6 +230,11 @@ internal static class Icat
         ConsoleUi.Line("             [--json]");
         ConsoleUi.Line("      The time processes spent inside the RPC calls they made, by interface and by the process");
         ConsoleUi.Line("      that served them, with that server's own time; no wait is said to have delayed anything.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat outliers <directory> --interval <start:end> [--baseline <start:end>]");
+        ConsoleUi.Line("                [--group-by process|executable] [--evidence-policy <policy>] [--limit <n>] [--json]");
+        ConsoleUi.Line("      The rows whose records over an interval are above or below every window of its baseline,");
+        ConsoleUi.Line("      each window as long as the interval, with how often chance alone puts a row there.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat channels <directory> [--process <instance-guid> [--one-sided]] [--page-size <1-200>]");
         ConsoleUi.Line("                [--cursor <token>] [--json]");

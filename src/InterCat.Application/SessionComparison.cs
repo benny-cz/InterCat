@@ -455,6 +455,47 @@ public static class SessionComparison
         throw new InvalidOperationException(Unsettled);
     }
 
+    /// <summary>
+    /// The comparison of <paramref name="compared"/> with <paramref name="baseline"/> by records, and each of its rows'
+    /// records in every one of <paramref name="windows"/>, parts of the baseline, all read at one generation
+    /// (`contracts/outliers-v1.md` §2): by the row's key, a count a window, in order, none in a window counting 0 there.
+    /// </summary>
+    internal static (IntervalComparison Whole, IReadOnlyDictionary<string, long[]> Windows) Windowed(
+        SessionStore store,
+        TimeRange baseline,
+        TimeRange compared,
+        IReadOnlyList<TimeRange> windows,
+        EvidencePolicy policy,
+        ComparisonGrouping grouping,
+        CancellationToken cancellationToken)
+    {
+        TimeRange[] asked = [baseline, compared, .. windows];
+        for (int attempt = 1; attempt <= Attempts; attempt++)
+        {
+            if (ReadSession(store, asked, ComparisonMetric.Records, policy, betweenReads: null, cancellationToken) is not { } read)
+            {
+                continue;
+            }
+
+            // A window's rows are those with a record in it or in the compared interval: a row of the comparison with none
+            // in the window keeps its 0 there, and every record in a window is the baseline's, so each row is the whole's.
+            IntervalComparison whole = Of(read, 0, 1, ComparisonMetric.Records, policy, grouping);
+            Dictionary<string, long[]> counts = whole.Relationships.ToDictionary(
+                row => row.Key, _ => new long[windows.Count], StringComparer.Ordinal);
+            for (int window = 0; window < windows.Count; window++)
+            {
+                foreach (ComparedRelationship row in Rows(read, 2 + window, 1, ComparisonMetric.Records, grouping, everyRow: false).Rows)
+                {
+                    counts[row.Key][window] = row.Baseline.Records;
+                }
+            }
+
+            return (whole, counts);
+        }
+
+        throw new InvalidOperationException(Unsettled);
+    }
+
     /// <summary>One attempt: every read the comparison needs, compared once they are all of one generation; null otherwise.</summary>
     private static IntervalComparison? Read(
         SessionStore store,

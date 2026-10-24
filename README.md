@@ -101,6 +101,10 @@ follows a link to its process and Alt+Left goes back.
 by the process that served them, with that server's own share where the two calls are linked; `--process <pid>` lists
 one process's calls and the calls it served. A wait is never said to have blocked or delayed anything.
 
+**Outliers.** `icat outliers <directory> --interval <start:end>` sets each relationship's records over the interval
+beside the records it held in each window of the time before it, every window as long as the interval, and lists those
+above or below every window, saying how often chance alone would put one there. It says what was counted, never why.
+
 F1 in the window lists every key it takes.
 
 ## Build and run
