@@ -1,0 +1,52 @@
+{
+  "decoder": "intercat-content-fixture",
+  "version": 1,
+  "about": "InterCat's content fixture decoder at version 1 (contracts/content-v1.md §4): each case a message InterCat's content fixture sent, its bytes one character each, U+0000 to U+00FF, kept up to its record limit, and the decoding version 1 makes of what was kept. A decoder that decodes any case otherwise is another version, with a corpus of its own (contracts/decoders-v1.md §3a).",
+  "cases": [
+    {
+      "name": "a whole text message",
+      "message": "InterCat content fixture message 7 on conversation 2. The quick brown fox jumps over the lazy dog. ",
+      "recordLimit": 128,
+      "read": [0, 98],
+      "fields": [["message", 33, 33, "7"], ["conversation", 51, 51, "2"], ["filler", 54, 98, "the fixture's filler sentence, repeated (45 bytes)"]],
+      "notDecoded": null,
+      "reachedEnd": false
+    },
+    {
+      "name": "a message cut by its record limit",
+      "message": "InterCat content fixture message 7 on conversation 2. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. ",
+      "recordLimit": 64,
+      "read": [0, 63],
+      "fields": [["message", 33, 33, "7"], ["conversation", 51, 51, "2"], ["filler", 54, 63, "the fixture's filler sentence, repeated (10 bytes)"]],
+      "notDecoded": "The capture kept the first 64 of the message's 144 bytes; the rest was never kept, so it is not decoded.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a message whose number the cut leaves unended",
+      "message": "InterCat content fixture message 1234567",
+      "recordLimit": 40,
+      "read": [0, 39],
+      "fields": [],
+      "notDecoded": "The message ends inside the fixture's header, at byte 33, so it names no more than the fields decoded.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a message that is not the fixture's",
+      "message": "Hello, world.",
+      "recordLimit": 64,
+      "read": [0, 12],
+      "fields": [],
+      "notDecoded": "At byte 0 it leaves the header a fixture text message begins with, so it carries no fields the decoder reads; the fixture's byte messages are bytes alone.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a message whose filler breaks",
+      "message": "InterCat content fixture message 3 on conversation 1. The quick brown cat. ",
+      "recordLimit": 128,
+      "read": [0, 74],
+      "fields": [["message", 33, 33, "3"], ["conversation", 51, 51, "1"], ["filler", 54, 74, "21 bytes, which leave the fixture's filler sentence at byte 70"]],
+      "notDecoded": null,
+      "reachedEnd": false
+    }
+  ]
+}

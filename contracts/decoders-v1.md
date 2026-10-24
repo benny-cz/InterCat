@@ -2,7 +2,8 @@
 
 Status: **implemented** on the command line (`icat content --decode`, `--part --decode` and `--decoders`, revision
 774; `icat exchanges --decode`, revision 776) and in the window (the content viewer's Decode and Decode its part,
-revision 775, §5a; an exchange's conversation, revision 777).
+revision 775, §5a; an exchange's conversation, revision 777); each decoder's corpus pins what its version decodes
+(revision 782, §3a).
 
 This contract fixes plan M8's decoder contract at its first version: what a decoder is, what it reads, when it reads
 it, and what it says of what it read, for every decoder InterCat has. A decoder owns no bytes: it reads content the
@@ -16,7 +17,7 @@ ADR-037 the content and the source it reads.
 | --- | --- |
 | Identity | A stable name for its format: `intercat-content-fixture`, `http1-head`. |
 | Name | The decoder as a person reads it: "InterCat's HTTP/1.1 head decoder". |
-| Version | A whole number. The same bytes decode to the same fields at one version; a decoder whose fields for some bytes change takes the next. |
+| Version | A whole number. The same bytes decode to the same fields at one version, as its corpus holds it to (§3a); a decoder whose fields for some bytes change takes the next. |
 | Reads | What it reads: one record's fragment, or one whole part (`content-v1` §4), of named sources and events, as `icat content --decoders` lists it. |
 
 ## 2. A decoding
@@ -46,6 +47,30 @@ session with a newer decoder changes nothing stored.
 | --- | --- | --- |
 | `intercat-content-fixture` | 1 | One record's message from InterCat's own content fixture: `InterCat-Fixture-Content`'s events 1 and 2 (`content-v1` §4). |
 | `http1-head` | 1 | One whole HTTP/1.1 request or response head WinINet's capture kept: the part of events 2001 and 2003 (§4). |
+
+## 3a. Each decoder's corpus
+
+Every decoder §3 lists has a corpus at its version in `fixtures/decoders`, named for its identity and version
+(`http1-head.v1.json`): cases of what it reads, each with the decoding that version makes of it - the bytes it read,
+each field with its name, the first and last bytes it came from and its value, what it did not decode, and whether it
+reached the empty line that ends a head. A case's bytes are written as text, each byte one character from U+0000 to
+U+00FF, so a head reads as the head it is and a change to a corpus shows in its diff. A test decodes every case as the
+content viewer and the command line ask for it - a head as a whole part, a fixture message as the record the capture
+kept up to its record limit - and requires the corpus's decoding of each, and one corpus for each listed decoder at
+its version and no other:
+
+- **A decoding that changes changes its version.** A decoder that decodes any case otherwise fails at its version: it
+  takes the next, whose corpus holds what it now decodes, and the old corpus goes with the old version, which git
+  keeps beside the code that made it. A decoding names its version (§2), so a version stands for one set of decodings.
+- **No corpus outlives its decoder, and none is missing.** A corpus of a decoder or version InterCat no longer lists
+  fails the test, as does a listed decoder without one.
+
+A corpus pins its cases, not every input: a decoding changed only for bytes no case holds passes it, so a change to a
+decoder brings the case that shows it, which then fails at the old version. The HTTP/1.1 head decoder's corpus holds
+24 heads: request and status lines, with a reason, an empty one and none; lines ended by CRLF and by LF alone; values
+between optional spaces and tabs, empty, or holding bytes outside visible ASCII; bytes after the empty line; each line
+§4 refuses; and heads that end early. The content fixture decoder's holds 5 messages: one whole, one cut by its record
+limit, one cut inside its header, one not the fixture's, and one whose filler breaks.
 
 ## 4. The HTTP/1.1 head decoder
 

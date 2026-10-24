@@ -121,3 +121,12 @@ A buffer's content viewer opens its exchange's conversation (`contracts/http-exc
 deliverable's navigation both ways: an exchange leads to its buffers and to what its heads say, and a buffer to its
 part and to its exchange, each found by raw identity and under the window's evidence policy. The decoder fixture
 corpus comes next, then M8's exit review; nothing else above changes.
+
+## Addendum, revision 782
+
+Each decoder has a fixture corpus at its version (`contracts/decoders-v1.md` §3a): `fixtures/decoders` holds the
+HTTP/1.1 head decoder's 24 heads and the content fixture decoder's 5 messages, each with the decoding that version
+makes of it, and a test decodes every case and requires one corpus for each listed decoder at its version and no
+other, so a decoder whose decoding of a case changes cannot keep its version. The deliverables' decoder fixture corpus
+is built, and with it version pinning: a decoding names its version, and the version names the corpus that says what
+it decodes. M8's exit review comes next; nothing else above changes.

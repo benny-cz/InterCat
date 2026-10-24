@@ -197,6 +197,7 @@ icat profiles explore
 | `capabilities/<build>/` | Machine-readable capability reports, per build and adapter |
 | `fixtures/index.json` | The fixture traceability matrix and the contract-coverage ledger |
 | `fixtures/FX-*/evidence/` | Each measured fixture's curated truth log, scoped observations and result |
+| `fixtures/decoders/` | Each decoder's corpus at its version: cases of what it reads, and the decoding that version makes of each |
 | `bench/results/` | Reproducible measurement runs; their counters are committed, their records are not |
 | `theme/` | Theme tokens and their recorded contrast and separation measurements |
 | `docs/adr/` | Architecture decisions |

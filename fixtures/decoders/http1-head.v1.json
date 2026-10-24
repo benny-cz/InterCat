@@ -1,0 +1,223 @@
+{
+  "decoder": "http1-head",
+  "version": 1,
+  "about": "InterCat's HTTP/1.1 head decoder at version 1 (contracts/decoders-v1.md §4): each case a whole request or response head as WinINet's capture keeps one, its bytes one character each, U+0000 to U+00FF, and the decoding version 1 makes of it - the bytes it read, each field with the first and last bytes it came from and its value, what it did not decode, and whether it reached the empty line that ends a head. A decoder that decodes any case otherwise is another version, with a corpus of its own (§3a).",
+  "cases": [
+    {
+      "name": "a request line, a Host field and the empty line",
+      "head": "request",
+      "bytes": "GET /index.html HTTP/1.1\r\nHost: example\r\n\r\n",
+      "read": [0, 42],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 14, "/index.html"], ["version", 16, 23, "HTTP/1.1"], ["Host", 26, 38, "example"]],
+      "notDecoded": null,
+      "reachedEnd": true
+    },
+    {
+      "name": "a status line with its reason, and a length",
+      "head": "response",
+      "bytes": "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n",
+      "read": [0, 37],
+      "fields": [["version", 0, 7, "HTTP/1.1"], ["status", 9, 11, "200"], ["reason", 13, 14, "OK"], ["Content-Length", 17, 33, "5"]],
+      "notDecoded": null,
+      "reachedEnd": true
+    },
+    {
+      "name": "a status line whose reason is empty",
+      "head": "response",
+      "bytes": "HTTP/1.1 204 \r\n\r\n",
+      "read": [0, 16],
+      "fields": [["version", 0, 7, "HTTP/1.1"], ["status", 9, 11, "204"]],
+      "notDecoded": null,
+      "reachedEnd": true
+    },
+    {
+      "name": "a status line with no reason and no space before it",
+      "head": "response",
+      "bytes": "HTTP/1.1 304\r\n\r\n",
+      "read": [0, 15],
+      "fields": [["version", 0, 7, "HTTP/1.1"], ["status", 9, 11, "304"]],
+      "notDecoded": null,
+      "reachedEnd": true
+    },
+    {
+      "name": "an HTTP/1.0 status line, and a reason of three words",
+      "head": "response",
+      "bytes": "HTTP/1.0 404 Not Found Here\r\nServer: x\r\n\r\n",
+      "read": [0, 41],
+      "fields": [["version", 0, 7, "HTTP/1.0"], ["status", 9, 11, "404"], ["reason", 13, 26, "Not Found Here"], ["Server", 29, 37, "x"]],
+      "notDecoded": null,
+      "reachedEnd": true
+    },
+    {
+      "name": "lines ended by LF alone",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1\nHost: a\n\n",
+      "read": [0, 23],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 4, "/"], ["version", 6, 13, "HTTP/1.1"], ["Host", 15, 21, "a"]],
+      "notDecoded": null,
+      "reachedEnd": true
+    },
+    {
+      "name": "a value between optional spaces and tabs",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1\r\nAccept: \t */* \t\r\n\r\n",
+      "read": [0, 34],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 4, "/"], ["version", 6, 13, "HTTP/1.1"], ["Accept", 16, 30, "*/*"]],
+      "notDecoded": null,
+      "reachedEnd": true
+    },
+    {
+      "name": "an empty value",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1\r\nX-Empty:\r\n\r\n",
+      "read": [0, 27],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 4, "/"], ["version", 6, 13, "HTTP/1.1"], ["X-Empty", 16, 23, ""]],
+      "notDecoded": null,
+      "reachedEnd": true
+    },
+    {
+      "name": "an absolute target with a query",
+      "head": "request",
+      "bytes": "GET http://example.com/a?b=c HTTP/1.1\r\nHost: example.com\r\n\r\n",
+      "read": [0, 59],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 27, "http://example.com/a?b=c"], ["version", 29, 36, "HTTP/1.1"], ["Host", 39, 55, "example.com"]],
+      "notDecoded": null,
+      "reachedEnd": true
+    },
+    {
+      "name": "a value's bytes outside visible ASCII",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1\r\nX-Name: caf\u00C3\u00A9\r\n\r\n",
+      "read": [0, 32],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 4, "/"], ["version", 6, 13, "HTTP/1.1"], ["X-Name", 16, 28, "caf\\xC3\\xA9"]],
+      "notDecoded": null,
+      "reachedEnd": true
+    },
+    {
+      "name": "bytes after the empty line",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1\r\n\r\nbody",
+      "read": [0, 21],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 4, "/"], ["version", 6, 13, "HTTP/1.1"]],
+      "notDecoded": "4 bytes follow the empty line that ends the head; a head holds none, so they are not decoded.",
+      "reachedEnd": true
+    },
+    {
+      "name": "a line continuing the one before it",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1\r\nX-A: 1\r\n  continued\r\nHost: a\r\n\r\n",
+      "read": [0, 47],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 4, "/"], ["version", 6, 13, "HTTP/1.1"], ["X-A", 16, 21, "1"]],
+      "notDecoded": "Line 3, from byte 24, begins with whitespace, continuing the line before it as HTTP/1.1 no longer allows, so the head is not decoded from it on.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a line holding no colon",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1\r\nNo colon here\r\n\r\n",
+      "read": [0, 32],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 4, "/"], ["version", 6, 13, "HTTP/1.1"]],
+      "notDecoded": "Line 2, from byte 16, holds no colon, so it is not a field line, and the head is not decoded from it on.",
+      "reachedEnd": false
+    },
+    {
+      "name": "whitespace before a colon",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1\r\nHost : a\r\n\r\n",
+      "read": [0, 27],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 4, "/"], ["version", 6, 13, "HTTP/1.1"]],
+      "notDecoded": "Line 2, from byte 16, names its field with nothing, or with a character a field name cannot hold - whitespace before its colon is one - so the head is not decoded from it on.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a field named with nothing",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1\r\n: a\r\n\r\n",
+      "read": [0, 22],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 4, "/"], ["version", 6, 13, "HTTP/1.1"]],
+      "notDecoded": "Line 2, from byte 16, names its field with nothing, or with a character a field name cannot hold - whitespace before its colon is one - so the head is not decoded from it on.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a control character in a value",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1\r\nX-A: a\u0001b\r\n\r\n",
+      "read": [0, 27],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 4, "/"], ["version", 6, 13, "HTTP/1.1"]],
+      "notDecoded": "Line 2, from byte 16, holds a control character in its value, so the head is not decoded from it on.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a carriage return ending no line",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1\r\nX-A: a\rb\r\n\r\n",
+      "read": [0, 27],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 4, "/"], ["version", 6, 13, "HTTP/1.1"]],
+      "notDecoded": "Line 2, from byte 16, holds a carriage return that ends no line, so the head is not decoded from it on.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a request line with two spaces",
+      "head": "request",
+      "bytes": "GET  /x HTTP/1.1\r\n\r\n",
+      "read": [0, 19],
+      "fields": [],
+      "notDecoded": "Its first line is not a request line - a method, a target and an HTTP version, one space apart - so nothing is decoded.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a method holding a character no token holds",
+      "head": "request",
+      "bytes": "G@T / HTTP/1.1\r\n\r\n",
+      "read": [0, 17],
+      "fields": [],
+      "notDecoded": "Its first line is not a request line - a method, a target and an HTTP version, one space apart - so nothing is decoded.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a status code of two digits",
+      "head": "response",
+      "bytes": "HTTP/1.1 20 OK\r\n\r\n",
+      "read": [0, 17],
+      "fields": [],
+      "notDecoded": "Its first line is not a status line - an HTTP version, a three-digit status code and a reason, one space apart - so nothing is decoded.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a version that is not HTTP's",
+      "head": "response",
+      "bytes": "HTTX/1.1 200 OK\r\n\r\n",
+      "read": [0, 18],
+      "fields": [],
+      "notDecoded": "Its first line is not a status line - an HTTP version, a three-digit status code and a reason, one space apart - so nothing is decoded.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a head without the empty line that ends it",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1\r\nHost: a\r\n",
+      "read": [0, 24],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 4, "/"], ["version", 6, 13, "HTTP/1.1"], ["Host", 16, 22, "a"]],
+      "notDecoded": "The head ends without the empty line that ends a head, so it may have held more fields than those decoded.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a head ending inside a line",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1\r\nHo",
+      "read": [0, 17],
+      "fields": [["method", 0, 2, "GET"], ["target", 4, 4, "/"], ["version", 6, 13, "HTTP/1.1"]],
+      "notDecoded": "The head ends inside line 2, from byte 16, before the empty line that ends a head, so that line is not decoded.",
+      "reachedEnd": false
+    },
+    {
+      "name": "a head ending before its first line does",
+      "head": "request",
+      "bytes": "GET / HTTP/1.1",
+      "read": [0, 13],
+      "fields": [],
+      "notDecoded": "The head ends before its first line does, so nothing is decoded.",
+      "reachedEnd": false
+    }
+  ]
+}

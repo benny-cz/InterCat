@@ -1353,6 +1353,7 @@
         "P2: an exchange's conversation is read by its key, from its records alone until its heads are asked for, then each decoded whole",
         "P2: an exchange's heads say what its request asked for, of which host, and what its response answered, from their start lines alone",
         "P2: content kept without consent to inspect it is never searched, and is counted; a session keeping none says so",
+        "P2: every decoder InterCat lists has a corpus at its version, and decodes each of its cases exactly as the corpus says",
         "P2: icat content --decode lists a fixture message's fields with the bytes each came from and what it did not decode, only when asked and never into JSON",
         "P2: icat content --find lists the records whose kept bytes hold a text, each with its locator, and shows their bytes only with --previews",
         "P2: icat content --part --decode decodes a whole HTTP head, says a buffer alone and a body are read by none, and --decoders lists every decoder",
