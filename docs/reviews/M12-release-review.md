@@ -218,3 +218,12 @@ callers waited on, and what no time is said for, in the command line's words. Op
 that process's calls and the calls it served, and Select caller and server makes a wait's two processes the selection
 together. Bottleneck views are delivered on both surfaces; the window's outliers remain, and nothing else above
 changes.
+
+## Addendum, revision 770
+
+The window judges its time scope the same way (Outliers…, `contracts/outliers-v1.md` §7): against all the session
+keeps before it or all after it, by process or by executable, the rows above or below every window listed in the
+command line's words, and the chosen row's windows drawn bar by bar, each bar said in words, beside the scope's. Show
+in the window opens the row as a comparison's row is opened. Outlier detection is delivered on both surfaces, its
+labels the same observations; every M12 view is now built on both, and what remains is the milestone's exit review.
+Nothing else above changes.

@@ -1240,6 +1240,32 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     }
 
     /// <summary>
+    /// Judges the time scope's rows against the windows of the time before it, or after it (`contracts/outliers-v1.md` §7),
+    /// counted under the window's evidence policy, and opens the row chosen there as a comparison's row is opened: a
+    /// relationship as a double click on its edge opens it; the rail then has the keyboard.
+    /// </summary>
+    private async void ShowOutliers(object? sender, RoutedEventArgs eventArgs)
+    {
+        WorkspaceViewModel viewModel = workspace;
+        if (!viewModel.CanCompareIntervals || viewModel.ScopeInterval is not { } compared || currentSessionPath is null
+            || displayedSessionId is not { } sessionId || displayedGeneration < 1) return;
+        using var outliers = new OutliersWindow(currentSessionPath, sessionId, displayedGeneration, compared, viewModel.ComparableTime,
+            viewModel.ComparesWithinRecording, viewModel.TimeBase, viewModel.EvidencePolicy)
+        {
+            WhyNotShown = viewModel.WhyNotShown,
+        };
+        try
+        {
+            ComparedRelationship? chosen = await outliers.ShowDialog<ComparedRelationship?>(this);
+            if (!closed && chosen is not null && workspace.OpenCompared(chosen)) FocusRail();
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (!closed) CaptureDetail.Text = "Could not open the outliers: " + exception.Message;
+        }
+    }
+
+    /// <summary>
     /// Marks the graph's edges by a comparison (§8e): the graph given its place back where the timeline filled the column,
     /// and the keyboard, so its marks are explored from it; the line beneath its header says what they are.
     /// </summary>

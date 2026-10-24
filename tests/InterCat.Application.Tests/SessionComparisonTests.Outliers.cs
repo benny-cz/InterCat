@@ -151,11 +151,12 @@ public sealed partial class SessionComparisonTests
         Publish(session.Store, OutlierRows(), coverage: OutlierCoverage());
         OutlierReading reading = ComparisonOutliers.Read(session.Store, new(0, 1_000), new(1_000, 1_050));
 
-        Assert.Equal("[0.000, 0.100) ms, 0.100 ms long, as 20 windows of 5.0 µs, end to end", OutlierText.Baseline(reading, Invariant));
+        Assert.Equal("[0.000, 0.100) ms, 0.100 ms long, as 20 windows of 5.0 µs, end to end",
+            OutlierText.Baseline(reading, culture: Invariant));
         Assert.EndsWith("as 20 windows of 5.0 µs, spread evenly across it", OutlierText.Baseline(reading with
         {
             Comparison = reading.Comparison with { Baseline = new(0, 1_030) },
-        }, Invariant), StringComparison.Ordinal);
+        }, culture: Invariant), StringComparison.Ordinal);
         Assert.Equal("5 rows judged · 2 above every window of their baseline and 1 below every one", OutlierText.Found(reading, Invariant));
         Assert.Equal(
             [

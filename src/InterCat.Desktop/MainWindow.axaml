@@ -135,6 +135,11 @@
             <Button x:Name="CompareButton" Content="Compare with… (Ctrl+B)" Click="CompareIntervals" FontSize="11"
                     Padding="8,2" IsVisible="{Binding CanCompareIntervals}"
                     AutomationProperties.HelpText="Compare what each relationship and each process's connections to other hosts did in this range with another range: the same length before or after it, the whole recording, or one you type" />
+            <!-- The range judged against the windows of the time before or after it, each as long as the range (outliers-v1 §7). -->
+            <Button x:Name="OutliersButton" Content="Outliers…" Click="ShowOutliers" FontSize="11"
+                    Padding="8,2" Margin="6,0,0,0" IsVisible="{Binding CanCompareIntervals}"
+                    ToolTip.Tip="List the relationships whose records in this range are above or below every window of the time before it, each window as long as this range, with how often chance alone puts one there"
+                    AutomationProperties.HelpText="List the relationships whose records in this range are above or below every window of the time before it, each window as long as this range, with how often chance alone puts one there" />
           </WrapPanel>
           <!-- §6.8: an evidence policy other than the default is never invisible, and one action restores the default. -->
           <StackPanel x:Name="EvidencePolicyPanel" Spacing="4" IsVisible="{Binding CountsCandidates}">

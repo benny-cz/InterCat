@@ -18,6 +18,26 @@ public static class OutlierText
         + "they differ, and chance alone puts a few rows there. Only rows whose two intervals were covered and collected "
         + "alike are judged.";
 
+    /// <summary>What a reading that judged no row says of itself where its rows were all ones it could not judge.</summary>
+    public const string NoneJudged = "No row is judged: none was covered and collected alike over both intervals.";
+
+    /// <summary>What a reading says where every row it judged is within its windows' range.</summary>
+    public const string NoneOutside = "No row is above or below every window of its baseline.";
+
+    /// <summary>
+    /// What a reading says where it holds no row at all: no relationship, or by executable no executable's, has a record in
+    /// either interval.
+    /// </summary>
+    public static string NoRow(IntervalComparison comparison)
+    {
+        ArgumentNullException.ThrowIfNull(comparison);
+        return comparison.Grouping == ComparisonGrouping.Executable
+            ? "No relationship between executables, and no executable's connections to another host, has a record in either "
+                + "interval, so none is judged."
+            : "No relationship the overview draws, and no process's connections to another host, has a record in either "
+                + "interval, so none is judged.";
+    }
+
     /// <summary>Where a row's records over the compared interval fall among its windows': "above every window of its baseline".</summary>
     public static string Side(OutlierSide side) => side switch
     {
@@ -28,16 +48,16 @@ public static class OutlierText
     };
 
     /// <summary>
-    /// The baseline as it was judged by: "[0.0, 1.0) s, 1.0 s long, as 20 windows of 50.0 ms, end to end", or "spread evenly
-    /// across it" where the windows do not fill it.
+    /// The baseline as it was judged by, on <paramref name="clock"/>'s time base, session time by default: "[0.0, 1.0) s,
+    /// 1.0 s long, as 20 windows of 50.0 ms, end to end", or "spread evenly across it" where the windows do not fill it.
     /// </summary>
-    public static string Baseline(OutlierReading reading, IFormatProvider? culture = null)
+    public static string Baseline(OutlierReading reading, SessionClock? clock = null, IFormatProvider? culture = null)
     {
         ArgumentNullException.ThrowIfNull(reading);
         culture ??= CultureInfo.CurrentCulture;
         long span = reading.Comparison.Compared.SpanTicks;
         bool filled = (Int128)span * reading.Windows.Count == reading.Comparison.Baseline.SpanTicks;
-        return ComparisonText.Interval(reading.Comparison.Baseline, culture: culture)
+        return ComparisonText.Interval(reading.Comparison.Baseline, clock, culture)
             + string.Create(culture, $", as {reading.Windows.Count:N0} windows of ")
             + WorkspaceTime.FormatDuration(span, culture)
             + (filled ? ", end to end" : ", spread evenly across it");

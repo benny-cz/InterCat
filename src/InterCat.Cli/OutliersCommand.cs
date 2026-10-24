@@ -203,7 +203,7 @@ internal static class OutliersCommand
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(comparison.Generation));
         ConsoleUi.Field("Compared", ComparisonText.Interval(comparison.Compared, culture: culture));
-        ConsoleUi.Field("Baseline", OutlierText.Baseline(reading, culture));
+        ConsoleUi.Field("Baseline", OutlierText.Baseline(reading, culture: culture));
         ConsoleUi.Field("Judged by", "records, both ends' records, " + (comparison.Grouping == ComparisonGrouping.Executable
             ? "a row per executable, each one's processes together by the path their image was witnessed at"
             : "a row per process"));
@@ -220,17 +220,11 @@ internal static class OutliersCommand
         IReadOnlyList<OutlierJudgement> outliers = reading.Outliers;
         if (comparison.Relationships.Count == 0)
         {
-            ConsoleUi.Note(comparison.Grouping == ComparisonGrouping.Executable
-                ? "No relationship between executables, and no executable's connections to another host, has a record in either "
-                    + "interval, so none is judged."
-                : "No relationship the overview draws, and no process's connections to another host, has a record in either "
-                    + "interval, so none is judged.");
+            ConsoleUi.Note(OutlierText.NoRow(comparison));
         }
         else if (outliers.Count == 0)
         {
-            ConsoleUi.Note(reading.Judged.Count == 0
-                ? "No row is judged: none was covered and collected alike over both intervals."
-                : "No row is above or below every window of its baseline.");
+            ConsoleUi.Note(reading.Judged.Count == 0 ? OutlierText.NoneJudged : OutlierText.NoneOutside);
         }
         else
         {

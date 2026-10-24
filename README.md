@@ -106,6 +106,7 @@ two processes the selection.
 **Outliers.** `icat outliers <directory> --interval <start:end>` sets each relationship's records over the interval
 beside the records it held in each window of the time before it, every window as long as the interval, and lists those
 above or below every window, saying how often chance alone would put one there. It says what was counted, never why.
+In the window, Outliers…, beside Compare with…, judges the time scope the same way and draws the chosen row's windows.
 
 F1 in the window lists every key it takes.
 

@@ -1,7 +1,7 @@
 # InterCat outliers v1
 
-Status: **implemented** on the command line (`icat outliers`, revision 768). The window does not judge outliers at
-this version (§7).
+Status: **implemented** on the command line (`icat outliers`, revision 768) and in the window (Outliers…, revision
+770, §7).
 
 This contract fixes plan M12's optional outlier detection for one session's current generation: an interval's rows -
 each relationship between two processes and each process's connections to another host, or by executable the same of
@@ -90,9 +90,32 @@ before where no baseline is named, are refused in words.
 
 A reading's comparison and windows are of one generation (§1).
 
-## 7. Not defined at this version
+## 7. The window
 
-- **Outliers in the window.** The command line judges them (§5).
+Outliers… in InterCat's window, offered beside Compare with… while the window has a time scope - a brush, or else the
+range zoomed to - judges that scope as `icat outliers` judges the compared interval, read from the session's current
+generation under the window's evidence policy:
+
+- **The baseline** is all the session keeps before the scope, as on the command line where none is named (§2), or all
+  after it, to the end of the recording or of the session's records; the rows are each process's or each executable's,
+  as `--group-by` chooses. The baseline and its windows are stated beneath the choice in the command line's words, and
+  a baseline the scope cannot be judged against is refused in them.
+- **The rows above or below every window** are listed, the most records beyond first, each with its ends, what it ran
+  over, its records, its windows' fewest, median and most, how far beyond and where it falls; the status line says how
+  many rows were judged and found, and the evidence policy where it is not the default.
+- **The chosen row's windows are drawn**: a bar per window, the earliest first, then apart and wider the scope's, on
+  one scale of records, with a dashed line at the most and at the fewest any window held. Left, Right, Home and End
+  move a cursor along the bars, and the line beneath states the bar chosen in words - "Window 3 of 20, [x, y): 10
+  records", or the scope's records with where they fall. No meaning rests on colour alone: the scope's bar stands
+  apart, and every bar is said in words (R14, R15).
+- **How often chance alone puts a row outside its range** (§4), what is not judged and why, and what a judgement is
+  and is not are said beneath the rows.
+- **Show in the window**, Enter or a double click, closes the window and shows the chosen row as a comparison's row is
+  shown: a relationship as a double click on its edge opens it, a process's connections to another host at the
+  process. The window itself changes nothing.
+
+## 8. Not defined at this version
+
 - **Bytes** (§4), and any measure other than records.
 - **Two captures**: a baseline read from another capture than the compared interval's.
 - **A seasonal baseline**: windows chosen by time of day or of week; the windows are spread over the baseline as it
