@@ -1191,6 +1191,10 @@
                    (links-v1 §8). -->
               <Button x:Name="LinksButton" Content="Follow its links…" IsEnabled="False"
                       Click="ShowLinks" ToolTip.ShowOnDisabled="True" />
+              <!-- How long processes spent inside the RPC calls they made, by interface and by who served them (waits-v1 §7),
+                   a wait's caller and server one choice away. -->
+              <Button x:Name="WaitsButton" Content="Time inside calls…" IsEnabled="False"
+                      Click="ShowWaits" ToolTip.ShowOnDisabled="True" />
               <!-- Offered while the rung lists something to export, and saying why not while it lists nothing. -->
               <Button x:Name="ExportButton" Content="Export this view (Ctrl+E)" Click="ExportView"
                       IsEnabled="{Binding CanExport}" ToolTip.Tip="{Binding ExportTip}" ToolTip.ShowOnDisabled="True"

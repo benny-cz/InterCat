@@ -1818,6 +1818,35 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
     }
 
+    /// <summary>
+    /// Lists the time processes spent inside the RPC calls they made (`contracts/waits-v1.md` §7), counted under the window's
+    /// evidence policy, the selected process's calls first where one is selected; the caller and server of the wait chosen
+    /// there become the selection, and the graph has the keyboard.
+    /// </summary>
+    private async void ShowWaits(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (currentSessionPath is null || displayedSessionId is not { } sessionId || displayedGeneration < 1
+            || workspace.IsEvidenceRung) return;
+        using var waits = new WaitsWindow(currentSessionPath, sessionId, displayedGeneration, workspace.EvidencePolicy,
+            workspace.SelectedProcess?.Id);
+        try
+        {
+            if (await waits.ShowDialog<WaitChoice?>(this) is not { } chosen || closed) return;
+            if (workspace.ChooseProcesses(chosen.Processes))
+            {
+                GraphSurface.Focus(NavigationMethod.Tab);
+                return;
+            }
+
+            Say(CaptureDetail, "Neither process of the wait is in the generation this window shows; open the time inside calls "
+                + "again once it shows the newer one.", aloud: true);
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (!closed) CaptureDetail.Text = "Could not open the time inside calls: " + exception.Message;
+        }
+    }
+
     private void StopCapture(object? sender, RoutedEventArgs eventArgs)
     {
         Offering.Offer(StopCaptureButton, Stopping, StopDoes);
@@ -5528,6 +5557,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         PatternsButton.IsEnabled = session && !workspace.IsEvidenceRung;
         ProcessNode? linked = workspace.SelectedProcess;
         LinksButton.IsEnabled = session && !workspace.IsEvidenceRung && linked is not null;
+        WaitsButton.IsEnabled = session && !workspace.IsEvidenceRung;
         Explain(ShowRecordsButton, ShowRecordsButton.IsEnabled
             ? "Open this rung's admitted source records in the ladder. Esc comes back here."
             : workspace.IsEvidenceRung ? "You are at the source records. Esc returns to where you were."
@@ -5549,6 +5579,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             : workspace.IsEvidenceRung ? "Esc leaves the source records; a process's links can be listed from any other level."
             : !session ? "Open or record a session first."
             : "Select a process first: its links are listed from it.", "List the selected process's links");
+        Explain(WaitsButton, WaitsButton.IsEnabled
+            ? "List how long each process spent inside the RPC calls it made - by interface and by the process that served them, "
+                + "the most first, with the server's own time - "
+                + (linked is null ? string.Empty : $"starting with {linked.NameWithPid}'s, ")
+                + "and select a wait's caller and server."
+            : workspace.IsEvidenceRung ? "Esc leaves the source records; the time inside calls can be listed from any other level."
+            : "Open or record a session first.", "List the time processes spent inside RPC calls");
 
         // Packaging reads a whole published generation, so it waits until a live capture has stopped. One package is made
         // at a time: its own button cancels it, and the other waits.

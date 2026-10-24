@@ -1615,6 +1615,7 @@
         "R15: the timeline says the moment [ and ] step to, its row and records, and only its own name once the keyboard leaves",
         "R15: the timeline's peak rate reads above its plot, never over a bar, however wide it reads",
         "R15: the views dialog opens on its first view, chosen, else on the name to save the view shown, else on Close",
+        "R15: the waits window cuts off no text at its smallest and names every element a screen reader lands on",
         "R15: the window renders at its minimum size and at a review size",
         "R15: the window renders every rung of the ladder down to evidence",
         "R15: what an action did is said aloud: a pin placed from the inspector says what it keeps",
@@ -1912,6 +1913,7 @@
         "R21: the replay sink reports an unreadable stage total as unknown, not as zero",
         "R21: the timeline counts a connection's records apart, the same records its evidence reads",
         "R21: the timeline counts an exchange's buffers apart, the same records its evidence reads",
+        "R21: the waits window lists one process's calls and the calls it served, says why it lists none, and counts what no time is said for",
         "R21: the window says one direction's bytes in a connection's words, a count of no size agreeing with its noun, and none recorded as such",
         "R21: the window's comparison says why a row cannot be compared, each reason once beneath the rows",
         "R21: total-machine processor time is readable or explicitly unavailable",
@@ -2317,6 +2319,7 @@
         "R18: the machine's rows ranked by a metric are the groups of the icat metric answer its export names, value for value",
         "R18: the patterns window lists what recurs in icat patterns's words, says every end of the chosen pattern, and returns its processes on Enter",
         "R18: the request a ranking names is the one icat metric is asked, its policy written out where not the default",
+        "R18: the waits window lists the time inside calls in icat waits's words, says who served the chosen wait and how long, and returns its caller and server on Enter",
         "R18: two spellings of one request, and a policy that changes nothing, are one identity"
       ],
       "S6": [

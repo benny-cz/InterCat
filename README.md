@@ -99,7 +99,9 @@ follows a link to its process and Alt+Left goes back.
 
 **Waits.** `icat waits <directory>` lists how long each process spent inside the RPC calls it made, by interface and
 by the process that served them, with that server's own share where the two calls are linked; `--process <pid>` lists
-one process's calls and the calls it served. A wait is never said to have blocked or delayed anything.
+one process's calls and the calls it served. A wait is never said to have blocked or delayed anything. In the window,
+Time inside calls… lists the same, the selected process's calls first, and Select caller and server makes a wait's
+two processes the selection.
 
 **Outliers.** `icat outliers <directory> --interval <start:end>` sets each relationship's records over the interval
 beside the records it held in each window of the time before it, every window as long as the interval, and lists those

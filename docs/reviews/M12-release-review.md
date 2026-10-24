@@ -209,3 +209,12 @@ stated beside the rows. The exit test that outlier labels describe observations,
 on the command line: "R18: an outlier is said in one set of words, the command line's and the window's, each
 describing what was counted and never why" checks every label and note against such words. The window's waits and
 outliers remain, and nothing else above changes.
+
+## Addendum, revision 769
+
+The window lists the same waits (Time inside calls…, `contracts/waits-v1.md` §7): each caller's calls by interface and
+by the process that served them, the most time first, with the server's own time over the linked calls, the servers
+callers waited on, and what no time is said for, in the command line's words. Opened with a process selected, it lists
+that process's calls and the calls it served, and Select caller and server makes a wait's two processes the selection
+together. Bottleneck views are delivered on both surfaces; the window's outliers remain, and nothing else above
+changes.

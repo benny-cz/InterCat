@@ -1,7 +1,7 @@
 # InterCat waits v1
 
-Status: **implemented** on the command line (`icat waits`, revision 767). The window does not show waits at this
-version (§7).
+Status: **implemented** on the command line (`icat waits`, revision 767) and in the window (Time inside calls…,
+revision 769, §7).
 
 This contract fixes plan M12's bottleneck views for one session's current generation: the time each process spent
 inside the RPC calls it made, by interface and by the process whose server calls served them, with that server's own
@@ -82,9 +82,29 @@ time is said for, by state, with the calls the policy did not admit.
 
 A reading's overview, calls and other ends are of one generation (§1).
 
-## 7. Not defined at this version
+## 7. The window
 
-- **Waits in the window.** The command line lists them (§5).
+Time inside calls… in InterCat's window lists the same waits in the command line's words, read from the session's
+current generation under the window's evidence policy, over all session times - a time brush does not narrow them:
+
+- **Each wait** by its caller and interface, then who served its calls or why none is named, its calls and failures,
+  its time in calls and, where some are linked, the server's own time: "1. app.exe · PID 400 → svcctl (Service Control
+  Manager) · served by services.exe · PID 1960 · 2 calls, 1 failed · 6.0 µs in calls · the server ran 3.0 µs of 6.0 µs
+  (50%)". The status line says how many calls the list counts, of how many callers, and the evidence policy where it
+  is not the default.
+- **The chosen wait** says who served its calls, how many there were, its time in calls with their median, 95th
+  percentile and longest, and the server's own time, or that none is measured; beside it are the servers callers
+  waited on (§3).
+- **Opened with a process selected**, it lists that process's calls and the calls it served, each caller named, as
+  `--process` does (§5), until the box beneath the list is unticked.
+- **What no time is said for** (§4) is said beneath the list, with what a wait is and is not.
+- **Select caller and server**, Enter or a double click, closes the window and makes the wait's caller and server the
+  selection together, as Ctrl+click does and as a pattern's processes are (ADR-065); a wait no server is named for
+  goes to its caller. A process only a newer generation holds is not selected, and InterCat's window says so. The
+  window itself changes nothing.
+
+## 8. Not defined at this version
+
 - **Other spans**: HTTP exchanges, named pipes, ALPC messages, and a thread's waits on synchronization objects, which
   no capture here records.
 - **Nesting**: a server call's own calls are their own waits; a call made inside another is not joined to it, as
