@@ -50,6 +50,7 @@ internal static class Icat
                 "hosts" => await HostsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "programs" => await ProgramsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "ports" => await PortsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "patterns" => await PatternsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "evidence" => await EvidenceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "timeline" => await TimelineCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "compare" => await CompareCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -209,6 +210,12 @@ internal static class Icat
         ConsoleUi.Line("  icat ports <directory> [--limit <n>] [--investigation <file>] [--json]");
         ConsoleUi.Line("      The ports its processes accepted TCP connections at, each with the process that accepted");
         ConsoleUi.Line("      them and who connected - its processes, other hosts or unobserved ones - the busiest first.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat patterns <directory> [--limit <n> | --pattern <rank>] [--all] [--evidence-policy <policy>]");
+        ConsoleUi.Line("                [--json]");
+        ConsoleUi.Line("      The recurring communication patterns: connections, UDP flows and RPC calls grouped by");
+        ConsoleUi.Line("      mechanism, service port or RPC interface and procedure, and where the server is, with");
+        ConsoleUi.Line("      who took part as client and server; --pattern says how one was grouped and who.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat channels <directory> [--process <instance-guid> [--one-sided]] [--page-size <1-200>]");
         ConsoleUi.Line("                [--cursor <token>] [--json]");

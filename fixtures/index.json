@@ -1400,6 +1400,7 @@
       "P6": [
         "P6: a PID seen only in its own records is one provisional instance, never an invented start",
         "P6: a comparison by executable marks every edge of its processes by their executables' row, and says the mark is of more than the edge",
+        "P6: a pattern groups occurrences by mechanism, service port or interface and procedure, and where the server is, never by a process or address",
         "P6: an end held by two processes, or by records that bind to none, leaves its peers unresolved",
         "P6: reusable values never resolve an instance without lifecycle evidence",
         "P6: when lifecycle evidence cannot tell incarnations apart, only an other end they all agree on is named"
@@ -1807,6 +1808,7 @@
         "R21: a negative result records the control that proves the source was live",
         "R21: a one-sided connection is a candidate join with its mirror in another capture, never where their lifetimes lie apart",
         "R21: a one-sided connection says a direction whose transfers measured no size is unmeasured, and one with none that none was recorded, never 0 B",
+        "R21: a pattern's signature and what it leaves out are said in words, and a UDP flow's service port is the one outside the dynamic range",
         "R21: a process lane's quiet interval is judged by what the capture collected, not left unknown",
         "R21: a process row states what the capture collected and a channel row TCP, over the session and within an interval",
         "R21: a process whose calls and HTTP exchanges could not be read for one reason says so once, naming both",
@@ -2258,6 +2260,8 @@
         "R18: icat overview, channels and evidence read a paired UDP flow as the window does",
         "R18: icat package --interval holds an interval's records and its processes', and icat session says so in the window's words",
         "R18: icat package of a released session says what its source had released, and the package's readers say so too",
+        "R18: icat patterns lists the recurring patterns, the heaviest first, each end in its role, and counts what no pattern holds",
+        "R18: icat patterns refuses a rank it does not have, a limit beside a pattern, and a policy or limit it does not know",
         "R18: icat pin, channels, exchanges, checkpoint and profiles refuse what they cannot read, naming what they expect",
         "R18: icat ports --investigation names, listener by listener, the process of another member's capture whose connection mirrors one it accepted, and refuses an investigation it cannot use",
         "R18: icat ports --program lists one program's processes' listening ports, as its inspector does, and refuses a program it cannot name",

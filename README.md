@@ -85,6 +85,11 @@ into as many equal columns, compared column by column, and the window's *Timelin
 the graph* marks each edge of the graph by how it changed - ▲ up, ▼ down, + appeared, − disappeared, = unchanged, ?
 not comparable, ± both ways - and says the same beneath the graph's header and in the relationship table.
 
+**Patterns.** `icat patterns` groups every connection, UDP flow and RPC call by its kind - its mechanism, the port it
+served or the RPC interface and procedure it called, and whether its server is here or at another host - and lists the
+kinds that recur, the busiest first, with who took part as client and as server and how far through the session each
+recurred. `--pattern <rank>` says how one was grouped and lists everyone in it.
+
 F1 in the window lists every key it takes.
 
 ## Build and run

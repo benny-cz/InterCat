@@ -360,6 +360,89 @@ internal static class TestSessions
             ]);
     }
 
+    /// <summary>The processes of <see cref="PatternRows"/>: two browsers, a server, a resolver and an agent.</summary>
+    public const int PatternBrowser = 3_000, PatternOtherBrowser = 3_001, PatternServer = 4_000, PatternResolver = 5_000,
+        PatternAgent = 6_000;
+
+    /// <summary>
+    /// Two browsers' connections to the server's 8080, three; their connections to two hosts' 443; a host's connection to
+    /// the server's 3389; the resolver's two UDP flows to 8.8.8.8's 53 and two to the server's 5353, and a host's flow to the
+    /// server's 161; the agent's sends on connections it was not seen open, to another host and to the server, its flows
+    /// between two dynamic ports, to another host and to the resolver, and its connection to a port on this machine no
+    /// record holds; and a caller's three calls to the service control manager,
+    /// which the host served.
+    /// </summary>
+    public static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) PatternRows()
+    {
+        (ObservationRowV1[] calls, SourceFieldRowV1[] fields) = LinkedRpcCalls();
+        ObservationRowV1[] rows =
+        [
+            Lifecycle(500, ObservationKind.Create, PatternBrowser, 501) with { ResourceName = @"C:\Apps\browser.exe" },
+            Lifecycle(510, ObservationKind.Create, PatternOtherBrowser, 511) with { ResourceName = @"C:\Apps\browser.exe" },
+            Lifecycle(520, ObservationKind.Create, PatternServer, 521) with { ResourceName = @"C:\Apps\server.exe" },
+            Lifecycle(530, ObservationKind.Create, PatternResolver, 531) with { ResourceName = @"C:\Apps\resolver.exe" },
+            Lifecycle(540, ObservationKind.Create, PatternAgent, 541) with { ResourceName = @"C:\Apps\agent.exe" },
+            .. OpenedConnection(1_000, PatternBrowser, PatternServer, "127.0.0.1:50000", "127.0.0.1:8080"),
+            .. OpenedConnection(1_100, PatternOtherBrowser, PatternServer, "127.0.0.1:50001", "127.0.0.1:8080"),
+            .. OpenedConnection(8_000, PatternBrowser, PatternServer, "127.0.0.1:50002", "127.0.0.1:8080"),
+            Transfer(2_000, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, PatternBrowser)
+                .Between("192.168.1.10:52000", "142.250.1.1:443"),
+            Transfer(2_001, ObservationKind.Send, AccountingSide.SendSide, 100, PatternBrowser)
+                .Between("192.168.1.10:52000", "142.250.1.1:443"),
+            Transfer(6_000, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, PatternOtherBrowser)
+                .Between("192.168.1.10:52001", "142.250.1.2:443"),
+            Transfer(6_001, ObservationKind.Send, AccountingSide.SendSide, 100, PatternOtherBrowser)
+                .Between("192.168.1.10:52001", "142.250.1.2:443"),
+            Transfer(3_000, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, PatternServer)
+                .Between("192.168.1.10:3389", "10.0.0.5:51000"),
+            Transfer(3_001, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, PatternServer)
+                .Between("192.168.1.10:3389", "10.0.0.5:51000"),
+            Transfer(4_000, ObservationKind.Send, AccountingSide.SendSide, 40, PatternResolver)
+                .Between("192.168.1.10:53000", "8.8.8.8:53") with { Mechanism = Mechanism.Udp },
+            Transfer(9_000, ObservationKind.Send, AccountingSide.SendSide, 40, PatternResolver)
+                .Between("192.168.1.10:53001", "8.8.8.8:53") with { Mechanism = Mechanism.Udp },
+            Transfer(5_000, ObservationKind.Send, AccountingSide.SendSide, 10, PatternAgent)
+                .Between("192.168.1.10:52002", "13.107.4.50:443"),
+            Transfer(7_000, ObservationKind.Send, AccountingSide.SendSide, 10, PatternAgent)
+                .Between("192.168.1.10:52003", "20.0.0.1:50001") with { Mechanism = Mechanism.Udp },
+            Transfer(4_500, ObservationKind.Send, AccountingSide.SendSide, 30, PatternResolver)
+                .Between("127.0.0.1:50100", "127.0.0.1:5353") with { Mechanism = Mechanism.Udp },
+            Transfer(4_501, ObservationKind.Receive, AccountingSide.ReceiveSide, 30, PatternServer)
+                .Between("127.0.0.1:50100", "127.0.0.1:5353") with { Mechanism = Mechanism.Udp },
+            Transfer(4_600, ObservationKind.Send, AccountingSide.SendSide, 30, PatternResolver)
+                .Between("127.0.0.1:50101", "127.0.0.1:5353") with { Mechanism = Mechanism.Udp },
+            Transfer(4_601, ObservationKind.Receive, AccountingSide.ReceiveSide, 30, PatternServer)
+                .Between("127.0.0.1:50101", "127.0.0.1:5353") with { Mechanism = Mechanism.Udp },
+            Transfer(7_500, ObservationKind.Receive, AccountingSide.ReceiveSide, 20, PatternServer)
+                .Between("10.0.0.9:55000", "192.168.1.10:161") with { Mechanism = Mechanism.Udp },
+            Transfer(8_500, ObservationKind.Send, AccountingSide.SendSide, 30, PatternAgent)
+                .Between("127.0.0.1:50200", "127.0.0.1:50300") with { Mechanism = Mechanism.Udp },
+            Transfer(8_501, ObservationKind.Receive, AccountingSide.ReceiveSide, 30, PatternResolver)
+                .Between("127.0.0.1:50200", "127.0.0.1:50300") with { Mechanism = Mechanism.Udp },
+            Transfer(9_700, ObservationKind.Send, AccountingSide.SendSide, 20, PatternAgent).Between("127.0.0.1:50400", "127.0.0.1:7000"),
+            Transfer(9_701, ObservationKind.Receive, AccountingSide.ReceiveSide, 20, PatternServer)
+                .Between("127.0.0.1:7000", "127.0.0.1:50400"),
+            Transfer(9_500, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, PatternAgent)
+                .Between("127.0.0.1:52010", "127.0.0.1:9000"),
+            Transfer(9_501, ObservationKind.Send, AccountingSide.SendSide, 10, PatternAgent).Between("127.0.0.1:52010", "127.0.0.1:9000"),
+            Lifecycle(10_000, ObservationKind.Exit, PatternAgent, 10_001),
+            .. calls,
+        ];
+        return ([.. rows.OrderBy(row => row.NativeTicks).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })],
+            fields);
+    }
+
+    /// <summary>
+    /// One TCP connection <paramref name="maker"/> made to <paramref name="taker"/>, opened at both ends, and a send across it.
+    /// </summary>
+    private static ObservationRowV1[] OpenedConnection(long ticks, int maker, int taker, string from, string to) =>
+    [
+        Transfer(ticks, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, maker).Between(from, to),
+        Transfer(ticks + 1, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, taker).Between(to, from),
+        Transfer(ticks + 2, ObservationKind.Send, AccountingSide.SendSide, 64, maker).Between(from, to),
+        Transfer(ticks + 3, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, taker).Between(to, from),
+    ];
+
     private static Guid RpcActivity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
 
     /// <summary>

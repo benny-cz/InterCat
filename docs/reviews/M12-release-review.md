@@ -154,3 +154,12 @@ a comparison by executable on every edge of its processes with a broken ring. Th
 each edge's card and the relationship table say the same in words, an unmarked edge is said to hold no record in
 either interval, and rows no edge draws are counted. Graph overlays are now built; recurring patterns, outliers and
 causal navigation remain, and nothing else above changes.
+
+## Addendum, revision 763
+
+`icat patterns` lists the recurring communication patterns (`contracts/patterns-v1.md`, ADR-064): every TCP connection
+the capture saw open, UDP flow and RPC call grouped by its mechanism, its service port or RPC interface and procedure,
+and where its server end is, with who took part in each role and how far through the session it recurred; a connection
+seen open at neither end, a flow between dynamic ports and a call no start named are counted apart. The explainable
+pattern groups M12 delivers are now on the command line; the window's patterns, outliers and causal navigation remain,
+and nothing else above changes.
