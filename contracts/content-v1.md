@@ -178,6 +178,11 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   written `\xHH` (a UTF-16 code unit `\uHHHH`), so the marks around the match are never the content's own. A record
   not searched - kept without consent, past a budget, or in a chunk that could not be read - leaves the answer
   partial, since it may hold the text. A search refuses `--json` and a record's locator, and nothing it finds is kept.
+  Since revision 780 the window's Find in kept content… (Ctrl+Shift+F) searches the same way, the records of the PID
+  selected there alone where asked: its records found are listed in reading order, each with its time, PID, mechanism
+  and event and how often and where it holds the text, its bytes around the first match shown only when asked; it says
+  what was searched and what was not, and a record found opens in the content viewer, its bytes hidden until asked
+  there.
 - **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
   kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
 - **Nothing else.** The window's search, rankings, metrics, the share report (`intercat-share-report-v1`), the
@@ -261,5 +266,4 @@ their requests by path, all 1,024 parts matched the server's bodies and none the
   content only from its client's own processes (`contracts/broker-v1.md` §2.1, ADR-049).
 - Content an imported file already holds (§11.1).
 - A decoder of a format `decoders-v1` §3 does not list, and a decoding kept or shared (`decoders-v1` §6).
-- A search of a part's buffers as one, a search in the window, and a search's records kept, exported or read by a
-  program.
+- A search of a part's buffers as one, and a search's records kept, exported or read by a program.

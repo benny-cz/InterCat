@@ -48,6 +48,7 @@ internal static class WindowKeys
             + "the timeline and the inspector, or the tables while they are shown"),
         new("Anywhere", "Tab or Shift+Tab", "move through the window's controls in reading order"),
         new("Anywhere", "Ctrl+F", "search for a group, process, channel or lane, or type a time to go to it"),
+        new("Anywhere", "Ctrl+Shift+F", "find a text in the content the session kept with consent to inspect it"),
         new("Anywhere", "Enter", "open the chosen row's level, or with several processes chosen, list their records"),
         new("Anywhere", "E", "list the records behind what is chosen, within the analysis interval"),
         new("Anywhere", "Esc", "go back a level to where you were, and at the top clear the selection; during a drag, "

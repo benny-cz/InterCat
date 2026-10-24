@@ -1331,6 +1331,8 @@
       ],
       "P2": [
         "P2: C on an HTTP exchange opens its conversation, which says what each head said only once asked, and Show its buffers opens them",
+        "P2: Find in kept content lists the records holding a text without a byte of them unless asked, and a record found opens in the content viewer",
+        "P2: Find in kept content never searches bytes kept without consent and says how many it left, says when more hold it than it lists and when none is kept, and with no process selected offers no narrowing",
         "P2: a body is set beside the length its head declares, and said to disagree with it only where its recorded bytes do",
         "P2: a buffer longer than a view shows at once is shown from its first byte, and the view says where it stopped",
         "P2: a content search lists the records whose kept bytes hold a text, how often and where first, and shows no byte unless previews are asked for",
@@ -1610,6 +1612,7 @@
         "R15: the breadcrumb returns to a named rung and drops the rungs below it",
         "R15: the capture card says aloud what changes the capture's state, and a newer generation's count in silence",
         "R15: the card restated after its button waited disabled, as while a finish stops, gives that button the keyboard back",
+        "R15: the content search window cuts off no text at its smallest and names every element a screen reader lands on",
         "R15: the content, raw record and channel windows name every element a screen reader lands on",
         "R15: the context-menu key and Shift+F10 open the focused ranked row's menu, whose item adds it to the selection",
         "R15: the conversation window cuts off no text at its smallest and names every element a screen reader lands on",

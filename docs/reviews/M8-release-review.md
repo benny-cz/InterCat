@@ -104,3 +104,13 @@ not search and leaving the answer partial where it skipped any; it shows no byte
 inert text. The exit test's search that respects scope and redaction holds for it: consent bounds what it reads,
 `--pid` what it lists, and a redacted package keeps no chunk to search. It says plainly what it cannot find: a match
 split across two buffers. The window's search of kept content comes next; nothing else above changes.
+
+## Addendum, revision 780
+
+The window searches kept content (`contracts/content-v1.md` §4): Find in kept content… (Ctrl+Shift+F) lists the
+records holding a text, as `icat content --find` does, with the bytes around each match only when asked, and opens a
+record found in the content viewer, so a text leads to its record and the record to its part. Of the deliverables not
+built, the step from a buffer's part to its exchange's conversation, which closes the navigation from a fragment to
+its message to its operation, comes next, then the decoder fixture corpus; export of decoded metadata needs a
+consented export contract first, and other mechanisms' reconstruction and the isolation of decoders need Windows
+sources or a parser larger than the bounded ones here. Nothing else above changes.

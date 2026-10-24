@@ -33,6 +33,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     private string? currentSessionPath;
     private bool openingSession;
     private bool openingRecord;
+    private bool findingContent;
     private bool exporting;
 
     /// <summary>The package being made, while one is; its cancellation is its share button's second meaning.</summary>
@@ -532,6 +533,15 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         {
             e.Handled = true;
             _ = ShowKeysAsync();
+            return;
+        }
+
+        // Ctrl+Shift+F finds a text in the kept content from wherever the keyboard is, as Find in kept content… does
+        // (content-v1 §4); Ctrl+F alone searches what the window draws.
+        if (e.Key == Key.F && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
+        {
+            if (FindContentButton.IsEnabled) _ = FindContentAsync();
+            e.Handled = true;
             return;
         }
 
@@ -1910,6 +1920,33 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         catch (InvalidOperationException exception)
         {
             if (!closed) CaptureDetail.Text = "Could not open the time inside calls: " + exception.Message;
+        }
+    }
+
+    private void FindContent(object? sender, RoutedEventArgs eventArgs) => _ = FindContentAsync();
+
+    /// <summary>
+    /// Finds a text in the content the session kept with consent to inspect it (`contracts/content-v1.md` §4), the selected
+    /// process's records alone where asked; a record found opens in the content viewer from there. The window itself changes
+    /// nothing here.
+    /// </summary>
+    private async Task FindContentAsync()
+    {
+        if (findingContent || currentSessionPath is null || displayedSessionId is not { } sessionId || displayedGeneration < 1) return;
+        findingContent = true;
+        try
+        {
+            using var finder = new ContentSearchWindow(currentSessionPath, sessionId, workspace.SelectedProcess?.ProcessId,
+                workspace.TimeBase);
+            await finder.ShowDialog(this);
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (!closed) CaptureDetail.Text = "Could not open the content search: " + exception.Message;
+        }
+        finally
+        {
+            findingContent = false;
         }
     }
 
@@ -5624,6 +5661,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         ProcessNode? linked = workspace.SelectedProcess;
         LinksButton.IsEnabled = session && !workspace.IsEvidenceRung && linked is not null;
         WaitsButton.IsEnabled = session && !workspace.IsEvidenceRung;
+        FindContentButton.IsEnabled = session;
         Explain(ShowRecordsButton, ShowRecordsButton.IsEnabled
             ? "Open this rung's admitted source records in the ladder. Esc comes back here."
             : workspace.IsEvidenceRung ? "You are at the source records. Esc returns to where you were."
@@ -5652,6 +5690,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 + "and select a wait's caller and server."
             : workspace.IsEvidenceRung ? "Esc leaves the source records; the time inside calls can be listed from any other level."
             : "Open or record a session first.", "List the time processes spent inside RPC calls");
+        Explain(FindContentButton, FindContentButton.IsEnabled
+            ? "Find a text in the content this session kept with consent to inspect it, each record's bytes on their own, "
+                + "and inspect a record that holds it. Its bytes are shown only when you ask (Ctrl+Shift+F)."
+            : "Open or record a session first.", "Find a text in the session's kept content");
 
         // Packaging reads a whole published generation, so it waits until a live capture has stopped. One package is made
         // at a time: its own button cancels it, and the other waits.

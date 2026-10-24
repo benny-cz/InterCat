@@ -35,10 +35,18 @@ public sealed record ContentSearchRequest
 }
 
 /// <summary>
-/// A record whose kept bytes hold the text: the evidence-page locator that names it in the generation read, its row, how
-/// many times its bytes hold the text and where first, and - only when previews were asked for - the bytes around that.
+/// A record whose kept bytes hold the text: the evidence-page locator that names it in the generation read, its identity
+/// and row, how many times its bytes hold the text and where first, and - only when previews were asked for - the bytes
+/// around that.
 /// </summary>
-public sealed record ContentSearchHit(string Segment, int Row, ObservationRowV1 Observation, int Matches, int FirstAt, ContentPreview? Preview);
+public sealed record ContentSearchHit(
+    string Segment,
+    int Row,
+    ObservationId ObservationId,
+    ObservationRowV1 Observation,
+    int Matches,
+    int FirstAt,
+    ContentPreview? Preview);
 
 /// <summary>
 /// The kept bytes around a match, as inert text: up to <see cref="ContentSearch.PreviewBytes"/> before and after, each
@@ -210,7 +218,8 @@ public static class ContentSearch
                         break;
                     }
 
-                    hits.Add(new(name, index, row, matches, first, request.Previews ? Preview(bytes, first, pattern.Length, wide) : null));
+                    hits.Add(new(name, index, row.ObservationIdIn(segment.CaptureId, segment.Derivation), row, matches, first,
+                        request.Previews ? Preview(bytes, first, pattern.Length, wide) : null));
                 }
 
                 if (stopped is not null || more)
