@@ -180,9 +180,11 @@ another host's - is a row of that process's rung beside its paired channels, as 
 - its records are its holder's transfer and lifecycle records that name its channel, and its bytes are what the
   holder's own sends and receives measured, `TransportObserved` like a paired channel's, so it ranks beside them under
   a byte ranking, and a transfer of no stated size is counted as such (R3);
-- Enter opens its records: a transfer has no operation rung. `icat channels --process <instance> --one-sided` lists the
-  same (`connection-list-v2` since revision 574, each connection's `opening` beside it), and `icat evidence --channel
-  <key>` reads a connection's records.
+- Enter opens its records: a transfer has no operation rung. `icat channels --process <pid | instance> --one-sided`
+  lists the same (`connection-list-v2` since revision 574, each connection's `opening` beside it; since revision 802 a
+  process is named by the PID it alone held as well as by its instance, and one naming no process of the session is
+  refused in words, never listed with no connection), and `icat evidence --channel <key>` reads a connection's
+  records.
 
 A one-sided channel with an undecided or unbound holder is not listed; nor is an undecided incarnation's. Since
 revision 249 a connection's evidence rung focuses the timeline on its records, as a paired channel's does - by its

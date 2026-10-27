@@ -630,6 +630,8 @@ Revision 800 lets a content search find a text three or more buffers of one HTTP
 
 Revision 801 runs whole what a coverage pass over `icat metric` found no test ran; its paragraph below says the four faults that found.
 
+Revision 802 runs what a coverage pass over the graph's, the tiles' and the timeline's derivations found real data reaches and no test ran; its paragraph below says the fault in `icat channels` it found.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -1904,3 +1906,22 @@ names them so, and a ranking none of whose rows resolves says so in place of a t
 rest in words and in JSON. Of the command's 1,591 such lines, 65 run in none: 22 record declarations the
 instrumentation counts, and 43 sessions and requests no test makes, among them a capture that recorded its stop, a
 session publishing no derived segment or describing no clock, other byte domains measured, and two guards.
+
+Revision 802 runs what a coverage pass over the graph's, the tiles' and the timeline's derivations found real data
+reaches and no test ran (R10). Of the lines a test can reach, 77 of the graph projection's 949 ran in none, 85 of the
+tile index's 3,391 and 47 of the timeline's 1,002, nearly all guards against a damaged file, a sum past what it holds
+or a call no caller makes. Three paths real data takes were among them. A focus on a group, a process or a channel
+over a session one of whose segments reads backwards, as ETW delivers a busy processor's buffer late, has no level
+spanning the segments to count from, and counts that segment from its rows and every other from its section (§12.1
+S4): a test now has it count exactly what the rows count, opening that segment alone. A graph weighed by bytes, as the
+window draws it under a byte ranking, finds a relationship inside a node in that node (§6.3). And a column reaching
+past the last time a session's nanoseconds hold, which an `--interval` can name, maps to no reading of the clock, so
+its coverage is unknown (I3), never its end wrapped to a time after the epoch. Two members no caller used are gone.
+The pass also found a fault beside them: `icat channels --process` took an instance id alone, and one naming no
+process of the session was refused in the window's words, "Return to the overview and select it again", with the exit
+code of a permission failure, or with `--one-sided` listed as a process with no connection. It now names a process by
+the PID it alone held or by its instance, as `icat links`, `waits` and `content` do, and refuses a reused PID, naming
+each holder, or one naming no process, in their words and as a mistake in what was asked (P6, R18). Its pages in
+words, each saying the cursor of the next, and a stale cursor's restart are run too. Of those lines, 76 of the graph
+projection's run in none now, 85 of the tile index's and 37 of the timeline's 998, each a guard, and 13 of the 155 of
+`icat channels`, a folder that is not there and a session that cannot be read.

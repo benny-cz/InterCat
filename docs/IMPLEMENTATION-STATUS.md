@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-27 · Plan revision: 801 · Branch: `main`
+Updated: 2026-10-27 · Plan revision: 802 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,31 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 802 — a coverage pass over the graph's, the tiles' and the timeline's derivations:**
+  - Of the lines a test can reach, 77 of the graph projection's 949 ran in none, 85 of the tile index's 3,391 and 47
+    of the timeline's 1,002. Nearly all are guards against a damaged file, a sum past what it holds or a call no
+    caller makes; three paths real data takes were among them, and run now.
+  - A group's, a process's or a channel's focus over a session one of whose segments reads backwards, as ETW delivers
+    a busy processor's buffer late, counts that segment from its rows and every other from its section, exactly as the
+    rows count, opening that segment alone. A graph weighed by bytes still finds a relationship inside a node in that
+    node. A column reaching past the last time a session's nanoseconds hold, which `--interval` can name, says its
+    coverage unknown rather than wrapping its end to a time after the epoch. Two members no caller used are gone.
+  - `icat channels --process` took an instance id alone, and one naming no process of the session was refused in the
+    window's words, "Return to the overview and select it again", with a permission failure's exit code, or with
+    `--one-sided` listed as a process with no connection. It names a process by the PID it alone held or by its
+    instance, as `icat links`, `waits` and `content` do, and refuses a reused PID or one naming no process in their
+    words, as a mistake in what was asked. Its pages in words, each saying the cursor of the next, and a stale
+    cursor's restart ran in no test, and do now.
+  - Of those lines, 76 of the graph projection's run in none now, 85 of the tile index's and 37 of the timeline's 998:
+    guards against damaged files, sums past what they hold and calls no caller makes; and 13 of the 155 of `icat
+    channels`, a folder that is not there and a session that cannot be read.
+  - Debug and Release each ran 3,293 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the 2 new tests. All 8 mutations were caught: a segment reading backwards left uncounted by
+    a focus, a graph weighed by another metric losing the relationships inside its nodes, and a column's end wrapped
+    past what a session's nanoseconds hold; and in icat channels, a process naming none refused with a permission
+    failure's code, --one-sided without --process let through, the process named resolved to another, the next
+    page's cursor left out and a stale cursor's page listed.
 
 - **Revision 801 — a coverage pass over `icat metric`:**
   - Of the 1,580 lines of `icat metric`'s command a test can reach, 351 ran in none: RPC calls started, completed,

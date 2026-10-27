@@ -266,6 +266,87 @@ public sealed partial class SessionTileIndexTests
         reopened.ReleaseSegmentReaders();
     }
 
+    [Fact(DisplayName = "I4: a group's, a process's and a channel's focus count a segment whose readings go backwards from its rows and every other from its section, exactly as the rows count")]
+    public void AFocusReadsTheRowsOfASegmentGoingBackwards()
+    {
+        var random = new Random(20_261_027);
+        int counted = 0;
+        for (int trial = 0; trial < 4; trial++)
+        {
+            // The same capture twice, with its checkpoint's tiles and without; in both, the first chunk that can have them
+            // has two sends or receives trade times, so the segment holding them reads backwards and no level spans it.
+            List<(ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)> chunks = Stretched(random, 1_000);
+            int turned = chunks.FindIndex(chunk => Turned(chunk.Rows) is not null);
+            Assert.True(turned >= 0);
+            chunks[turned] = (Turned(chunks[turned].Rows)!, chunks[turned].Fields);
+            using var tiled = new TemporarySession();
+            using var twin = new TemporarySession();
+            foreach ((ObservationRowV1[] rows, SourceFieldRowV1[] fields) in chunks)
+            {
+                _ = Publish(tiled.Store, rows, rowsPerSegment: 1_000, fields: fields);
+                _ = Publish(twin.Store, rows, rowsPerSegment: 1_000, fields: fields);
+            }
+
+            Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(tiled.Store, Committed).Outcome);
+            tiled.Store.ReleaseSegmentReaders();
+            Assert.False(FileOf(tiled).Spans);
+            Bound bound = Bind(twin.Store);
+            Assert.Equal(1, bound.Segments.Count(segment => SegmentTimeTiles.Of(segment) is { First: not null, Ordered: false }));
+            long[] ticks = [.. bound.Segments.SelectMany(segment => Enumerable.Range(0, segment.RowCount)
+                .Select(row => segment.SignedValue(SegmentColumnId.SessionRelativeTicks, row))
+                .Where(nanoseconds => nanoseconds is not null).Select(nanoseconds => nanoseconds!.Value / 100))];
+            var whole = new TimeRange(ticks.Min(), ticks.Max() + 1);
+            ProcessInstanceId[] instances = [.. bound.Processes.Instances.Select(instance => instance.Id)];
+            TimelineFocus[] focuses =
+            [
+                new(null, instances),
+                .. instances.Select(instance => new TimelineFocus(null, [instance])),
+                .. bound.Relations.Relations.Where(relation => TransportRelationIndex.Relates(relation.Mechanism))
+                    .Select(relation => relation.StableKey).Concat(bound.Relations.OneSided.Select(connection => connection.StableKey))
+                    .Distinct(StringComparer.Ordinal).Select(key => new TimelineFocus(key, [])),
+            ];
+
+            SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
+            foreach (EvidencePolicy policy in Enum.GetValues<EvidencePolicy>())
+            {
+                foreach (TimelineFocus focus in focuses)
+                {
+                    ProcessInstanceId[]? lanes = focus.ChannelKey is null && focus.OwnerProcesses.Count > 1 ? [.. instances.Take(2)] : null;
+                    List<string> expected = Outcome(() => SessionTimelineQuery.Focused(twin.Store, whole, 97, focus, policy, lanes));
+                    Assert.Equal(expected, Outcome(() => SessionTimelineQuery.Focused(reopened, whole, 97, focus, policy, lanes)));
+                    counted += expected[0].StartsWith("refused ", StringComparison.Ordinal) ? 0 : 1;
+                }
+            }
+
+            // The segment reading backwards is the only one opened.
+            Assert.Equal(1, reopened.SegmentReaderCache.Entries);
+            Assert.Null(SessionDerivationCache.For(reopened.Current!).TilesProblem);
+            reopened.ReleaseSegmentReaders();
+            twin.Store.ReleaseSegmentReaders();
+        }
+
+        Assert.True(counted >= 40, $"Only {counted} focuses were counted.");
+    }
+
+    /// <summary>
+    /// <paramref name="rows"/> with the first send or receive and the first after it at another time trading times, so they
+    /// read backwards; null where no two differ.
+    /// </summary>
+    private static ObservationRowV1[]? Turned(ObservationRowV1[] rows)
+    {
+        int[] moved = [.. Enumerable.Range(0, rows.Length).Where(index => rows[index].SessionRelativeTicks is not null
+            && rows[index].Kind is ObservationKind.Send or ObservationKind.Receive)];
+        if (moved.Skip(1).FirstOrDefault(index => rows[index].SessionRelativeTicks != rows[moved[0]].SessionRelativeTicks) is not (> 0 and int later))
+        {
+            return null;
+        }
+
+        ObservationRowV1[] turned = [.. rows];
+        turned[moved[0]] = rows[moved[0]] with { SessionRelativeTicks = rows[later].SessionRelativeTicks };
+        turned[later] = rows[later] with { SessionRelativeTicks = rows[moved[0]].SessionRelativeTicks };
+        return turned;
+    }
+
     [Theory(DisplayName = "I4: a damaged spanning section is refused, never misread: the query counts from the segments' rows instead")]
     [InlineData(0)]
     [InlineData(1)]

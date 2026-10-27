@@ -1204,6 +1204,7 @@
         "I4: a focus narrowed to a code no direction is reads its rows, which a tile index does not keep apart, and counts what they count",
         "I4: a focus on the whole session's records of one mechanism counts what its rows count from the whole timeline's own counts, and opens no segment the whole does not; narrowed to a direction too, it reads its rows",
         "I4: a generation's tile index refused once is not read again for it, and says why",
+        "I4: a group's, a process's and a channel's focus count a segment whose readings go backwards from its rows and every other from its section, exactly as the rows count",
         "I4: a persisted overview of a few records over a long extent reads back: its column widths bound nothing that follows",
         "I4: a persisted overview reads back as the counts it was written from, and is refused, never misread, when damaged",
         "I4: a record is counted in the column whose stated interval holds it, at every boundary",
@@ -1446,6 +1447,7 @@
         "P6: a content search kept to a process instance finds that instance's records alone, never those of another process given its PID again",
         "P6: a pattern groups occurrences by mechanism, service port or interface and procedure, and where the server is, never by a process or address",
         "P6: an end held by two processes, or by records that bind to none, leaves its peers unresolved",
+        "P6: icat channels --process names a process by the PID it alone held or by its instance, and refuses in words one naming no process or a reused PID, never listing it as a process with no channel",
         "P6: icat content --find --process keeps to one process's records, never those of another process given its PID again",
         "P6: reusable values never resolve an instance without lifecycle evidence",
         "P6: when lifecycle evidence cannot tell incarnations apart, only an other end they all agree on is named"

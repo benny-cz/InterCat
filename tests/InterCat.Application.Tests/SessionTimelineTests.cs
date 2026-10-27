@@ -611,6 +611,16 @@ public sealed class SessionTimelineTests
         var quiet = new TimeRange(-30_000_000_000_000_000, 10_000_000_000_000_000);
         TimelineBucket empty = Assert.Single(SessionTimelineQuery.Detail(session.Store, quiet, 1).Buckets);
         Assert.Equal((0, CoverageState.Covered), (empty.ObservationCount, empty.Coverage));
+
+        // A column reaching past the last time a session's nanoseconds hold maps to no readings of the clock, so its coverage
+        // is unknown, never a neighbour's, while it still counts the record it holds; so is its mechanism's lane there. The
+        // second ends where its nanoseconds, wrapped, would read 84 after the epoch.
+        foreach (long end in new[] { long.MaxValue, 184_467_440_737_095_517 })
+        {
+            SessionTimelineDetail beyond = SessionTimelineQuery.Detail(session.Store, new TimeRange(0, end), 1);
+            Assert.Equal((1, CoverageState.UnknownCoverage), (Assert.Single(beyond.Buckets).ObservationCount, beyond.Buckets[0].Coverage));
+            Assert.Equal(CoverageState.UnknownCoverage, Assert.Single(Assert.Single(beyond.MechanismLanes).Buckets).Coverage);
+        }
     }
 
     private static int ColumnAt(SessionMinimap minimap, long tick) =>

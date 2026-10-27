@@ -35,19 +35,14 @@ internal static class ChannelsCommand
         bool invalidSize = size is not null &&
             (!int.TryParse(size, NumberStyles.None, CultureInfo.InvariantCulture, out pageSize)
                 || pageSize is < 1 or > SessionChannelQuery.MaximumPageSize);
-        bool invalidProcess = processText is not null
-            && (!Guid.TryParse(processText, out Guid parsed) || parsed == Guid.Empty);
         bool json = command.TryTakeFlag("--json");
         bool oneSided = command.TryTakeFlag("--one-sided");
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
-        if (directory is null || hasUnknown || invalidProcess || invalidSize)
+        if (directory is null || hasUnknown || invalidSize)
         {
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat channels <directory>."
                 : hasUnknown ? command.Refusal(unknown!)
-                : invalidProcess
-                    ? $"--process expects a process instance id, as icat overview or icat processes prints it; '{processText}' "
-                        + "is not one."
-                    : string.Create(CultureInfo.CurrentCulture,
+                : string.Create(CultureInfo.CurrentCulture,
                         $"--page-size expects a number of channels from 1 to {SessionChannelQuery.MaximumPageSize:N0}; '{size}' is not one."));
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
@@ -60,12 +55,41 @@ internal static class ChannelsCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        ProcessInstanceId? scope = processText is null ? null : new(Guid.Parse(processText));
+        if (oneSided && processText is null)
+        {
+            return Refuse("--one-sided lists one process's connections: name it with --process <pid | instance>.");
+        }
+
+        // A process is named by a PID one process alone held, else by its instance, as every command names one (P6); one
+        // naming no process of the session is refused in words, never listed as a process with no channel.
+        ProcessInstanceId? scope = null;
+        if (processText is not null)
+        {
+            ConsoleUi.Progress("Projecting the current generation, to find the process --process names.");
+            Dictionary<ProcessInstanceId, ProcessNode> processes;
+            try
+            {
+                processes = SessionOverviewProjector.Project(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)),
+                    followRpcCalls: false, cancellationToken: cancellationToken).Nodes.ToDictionary(node => node.Id);
+            }
+            catch (InvalidOperationException exception) when (exception is not NoSessionException)
+            {
+                ConsoleUi.Failure(exception.Message);
+                return InterCatExitCode.PermissionOrCapabilityFailure;
+            }
+
+            if (ProcessOption.Resolve(processes, "--process", processText, out string? unresolved) is not { } named)
+            {
+                ConsoleUi.Failure(unresolved!);
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            scope = named;
+        }
+
         if (oneSided)
         {
-            return scope is { } instance
-                ? OneSided(path, instance, json, cancellationToken)
-                : Refuse("--one-sided lists one process's connections: name it with --process <instance-guid>.");
+            return OneSided(path, scope!.Value, json, cancellationToken);
         }
 
         SessionChannelPage page;
@@ -190,13 +214,14 @@ internal static class ChannelsCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat channels <session-directory> [--process <instance-guid> [--one-sided]] [--page-size <1-200>]");
+        ConsoleUi.Line("icat channels <session-directory> [--process <pid | instance> [--one-sided]] [--page-size <1-200>]");
         ConsoleUi.Line("              [--cursor <token>] [--json]");
         ConsoleUi.Line("  Read-only pages of admitted paired TCP and UDP channels, even above the overview bound, the");
         ConsoleUi.Line("  busiest first by the records at their two ends, each named by the processes at its two ends - the");
         ConsoleUi.Line("  one that made it first, an arrow at the one it connected to - with its key, and what the capture");
         ConsoleUi.Line("  covered of each transport, from its coverage ledger, so a page of none is not read as no traffic.");
-        ConsoleUi.Line("  A stale cursor requests an explicit restart; --process scopes by stable instance ID.");
+        ConsoleUi.Line("  A stale cursor requests an explicit restart; --process scopes to one process, by the PID it alone");
+        ConsoleUi.Line("  held or its instance id as icat processes prints it.");
         ConsoleUi.Line("  --one-sided lists the process's connections whose other end no record holds - most often");
         ConsoleUi.Line("  another host's - with their records and bytes, as its rung does.");
     }

@@ -1328,11 +1328,6 @@ internal sealed class FocusRows
                 ? binding.Instance
                 : null;
         }
-
-        /// <summary>The canonical admitted owner of an included row, for an L1 group partition.</summary>
-        public ProcessInstanceId? OwnerId(int row) => OwnerPosition(row) is { } position
-            ? scope.processes!.Instances[position].Id
-            : null;
     }
 }
 
@@ -1373,9 +1368,6 @@ internal sealed class TimelineColumns
 
     /// <summary>The interval the columns divide.</summary>
     public TimeRange Interval => interval;
-
-    /// <summary>Whether each column's count is also kept per mechanism.</summary>
-    internal bool TalliesMechanisms => mechanisms is not null;
 
     /// <summary>
     /// Every nonzero count of one mechanism in one column, by column and then mechanism code: what a persisted overview

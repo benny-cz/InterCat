@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using InterCat.Analysis;
 using InterCat.Analysis.Tests;
+using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -58,9 +60,91 @@ public sealed class ChannelsCommandTests
         while (cursor is not null);
         Assert.Equal(keys, paged);
 
+        // In words too, each page saying how to read the next, which the cursor it names reads.
+        (code, text, said) = await Run("channels", session.Path, "--page-size", "1");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m) · 6 observed records\r?$", text);
+        string next = Regex.Match(text, @"Next page: icat channels <directory> --cursor (\S+)").Groups[1].Value;
+        Assert.NotEmpty(next);
+        (code, text, said) = await Run("channels", session.Path, "--page-size", "1", "--cursor", next);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m) · 2 observed records\r?$", text);
+
+        // A cursor read after the session published another generation asks for a restart, no channel silently shifted.
+        Publish(session.Store,
+        [
+            Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 1, 700, 11)
+                .Between("127.0.0.1:50003", "127.0.0.1:6060") with { SessionRelativeTicks = 1_600 },
+        ]);
+        session.Store.ReleaseSegmentReaders();
+        (code, text, said) = await Run("channels", session.Path, "--page-size", "1", "--cursor", next);
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Contains("Restart from the first page; no channel was silently shifted.", Regex.Replace(text + said, @"\s+", " "), Ordinal);
+        Assert.DoesNotContain("observed record", text, Ordinal);
+
         // Its help says the order.
         (_, text, _) = await Run("channels", "--help");
         Assert.Contains("busiest first by the records at their two ends", Regex.Replace(text, @"\s+", " "), Ordinal);
+    }
+
+    [Fact(DisplayName = "P6: icat channels --process names a process by the PID it alone held or by its instance, and refuses in words one naming no process or a reused PID, never listing it as a process with no channel")]
+    public async Task AProcessIsNamedAsEveryCommandNamesOne()
+    {
+        // PID 100 was held twice, its first holder sending to PID 200 before it exited and another took the PID.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 100) with { ResourceName = @"C:\Tools\first.exe" },
+            Lifecycle(15, ObservationKind.Exit, 100, 101),
+            Lifecycle(16, ObservationKind.Create, 100, 102) with { ResourceName = @"C:\Tools\second.exe" },
+            .. Rows(),
+        ]);
+        ProcessNode[] holders = [.. SessionOverviewProjector.Project(session.Store).Nodes.Where(node => node.ProcessId == 100)
+            .OrderBy(node => node.PidHolder)];
+        ProcessInstanceId server = SessionOverviewProjector.Project(session.Store).Nodes.Single(node => node.ProcessId == 300).Id;
+        session.Store.ReleaseSegmentReaders();
+        Assert.Equal(2, holders.Length);
+
+        // A PID one process alone held names it, as its instance does: its one channel, the busiest's six records.
+        foreach (string named in new[] { "300", server.ToString() })
+        {
+            (InterCatExitCode code, string text, string said) = await Run("channels", session.Path, "--process", named);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches(@"(?m)^  Process instance +" + Regex.Escape(server.ToString()) + @"\r?$", text);
+            Assert.Matches(@"(?m)^  Channels in scope +1\r?$", text);
+            Assert.Matches(@"(?m) · 6 observed records\r?$", text);
+        }
+
+        // The first holder of the reused PID, by its instance: the channel it held, and no other holder's.
+        (InterCatExitCode first, string held, string why) = await Run("channels", session.Path, "--process", holders[0].Id.ToString());
+        Assert.True(first == InterCatExitCode.Success, why);
+        Assert.Matches(@"(?m)^  Channels in scope +1\r?$", held);
+        Assert.Matches(@"(?m) · 2 observed records\r?$", held);
+
+        // A reused PID, a PID or an instance naming no process, and what is neither are refused as every command refuses
+        // them, a process's one-sided connections too, rather than listed as none.
+        string nobody = Guid.NewGuid().ToString();
+        foreach ((string[] args, string refusal) in new (string[], string)[]
+        {
+            (["--process", "100"], $"--process 100 names 2 processes, since the PID was reused: {holders[0].Id} (first.exe · PID 100 #1), "
+                + $"{holders[1].Id} (second.exe · PID 100 #2). Name one by its instance id: --process <instance>."),
+            (["--process", "999"], "--process 999 names no process: no process of the session held PID 999."),
+            (["--process", nobody], $"--process {nobody} names no process instance of the session's current generation."),
+            (["--process", nobody, "--one-sided"], $"--process {nobody} names no process instance of the session's current generation."),
+            (["--process", "x"], "--process names a process by its PID or its instance id, as icat processes prints them; 'x' is neither."),
+            (["--one-sided"], "--one-sided lists one process's connections: name it with --process <pid | instance>."),
+        })
+        {
+            (InterCatExitCode code, string text, string said) = await Run(["channels", session.Path, .. args]);
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains(refusal, Regex.Replace(said, @"\s+", " "), Ordinal);
+            Assert.DoesNotContain("Channels in scope", text, Ordinal);
+        }
+
+        // Its help says how a process is named.
+        (_, string help, _) = await Run("channels", "--help");
+        Assert.Contains("--process <pid | instance>", help, Ordinal);
+        Assert.Contains("by the PID it alone held or its instance id as icat processes prints it", Regex.Replace(help, @"\s+", " "), Ordinal);
     }
 
     /// <summary>

@@ -245,6 +245,12 @@ public sealed class GraphProjectionTests
         Assert.Contains("internal", display.RelationshipKeys);
         Assert.Contains(display.Nodes, node => node.InternalRelationships == 1 && node.Relationships == 3);
 
+        // Weighed by another metric, a relationship inside a node is still found in it, and the node carries its weight.
+        GraphDisplay weighed = display.WithMagnitudes(_ => 40, node => node.Members.Count * 1_000L);
+        GraphDisplayNode holding = weighed.NodeOfRelationship("internal")!;
+        Assert.Equal((display.NodeOfRelationship("internal")!.Key, (long?)2_000, false), (holding.Key, holding.Magnitude, holding.Unmeasured));
+        Assert.Same(weighed.Node(holding.Key), holding);
+
         WorkspaceSnapshot scoped = snapshot with
         {
             Edges =

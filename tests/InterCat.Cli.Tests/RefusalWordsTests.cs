@@ -38,7 +38,7 @@ public sealed class RefusalWordsTests : IDisposable
         { ["pin", "{session}", "--from", "0 s"], "A pin says why it keeps the records, so whoever finds it later knows: --reason <text>." },
         { ["pin", "{session}", "--remove", "zzz"], "No pin of this session is named zzz. icat pin \"{session}\" lists them." },
         { ["pin"], "A session directory is required: icat pin <directory>." },
-        { ["channels", "{session}", "--process", "x"], "--process expects a process instance id, as icat overview or icat processes prints it; 'x' is not one." },
+        { ["channels", "{session}", "--process", "x"], "--process names a process by its PID or its instance id, as icat processes prints them; 'x' is neither." },
         { ["channels", "{session}", "--page-size", "0"], "--page-size expects a number of channels from 1 to 200; '0' is not one." },
         { ["channels", "{session}", "--cursor", "bogus"], "The channel cursor is malformed; restart from the first page." },
         { ["exchanges", "{session}", "--pid", "x"], "--pid expects a process id; 'x' is not one." },
