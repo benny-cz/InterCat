@@ -51,6 +51,8 @@ internal static class ContentCommand
         string? policyText = command.TakeOption("--evidence-policy");
         string? limitText = command.TakeOption("--limit");
         string? outputText = command.TakeOption("--output");
+        string? maxMibText = command.TakeOption("--max-mib");
+        string? maxSecondsText = command.TakeOption("--max-seconds");
         string? directory = command.TakePositional();
         bool reveal = command.TryTakeFlag("--reveal");
         bool wholePart = command.TryTakeFlag("--part");
@@ -67,6 +69,8 @@ internal static class ContentCommand
             bool names = sessionText is not null || generationText is not null || segment is not null || rowText is not null;
             int pid = 0;
             int limit = 50;
+            int maxMib = (int)(ContentSearch.DefaultMaximumBytes / MiB);
+            int maxSeconds = (int)ContentSearch.DefaultBudget.TotalSeconds;
             bool policyRead = EvidencePolicyOption.TryParse(policyText, out EvidencePolicy policy, out string? policyRefusal);
             string? refused = directory is null ? "A session directory is required: icat content <directory> --find <text>."
                 : hasUnknown ? command.Refusal(unknown!)
@@ -89,6 +93,13 @@ internal static class ContentCommand
                 : limitText is not null && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit)
                     || limit is < 1 or > 10_000)
                     ? $"--limit expects a number of records from 1 to 10,000; '{limitText}' is not one."
+                : maxMibText is not null && (!int.TryParse(maxMibText, NumberStyles.None, CultureInfo.InvariantCulture, out maxMib)
+                    || maxMib is < 1 or > MaximumMib)
+                    ? $"--max-mib expects a number of mebibytes from 1 to 65,536; '{maxMibText}' is not one."
+                : maxSecondsText is not null
+                    && (!int.TryParse(maxSecondsText, NumberStyles.None, CultureInfo.InvariantCulture, out maxSeconds)
+                        || maxSeconds is < 1 or > MaximumSeconds)
+                    ? $"--max-seconds expects a number of seconds from 1 to 3,600; '{maxSecondsText}' is not one."
                 : null;
             if (refused is not null)
             {
@@ -105,14 +116,16 @@ internal static class ContentCommand
                 Policy = policy,
                 Limit = limit,
                 Previews = previews,
+                MaximumBytes = maxMib * MiB,
+                Budget = TimeSpan.FromSeconds(maxSeconds),
             }, cancellationToken).ConfigureAwait(false);
         }
 
         if (pidText is not null || processText is not null || policyText is not null || limitText is not null || ignoreCase
-            || previews || outputText is not null)
+            || previews || outputText is not null || maxMibText is not null || maxSecondsText is not null)
         {
-            ConsoleUi.Failure("--pid, --process, --evidence-policy, --limit, --ignore-case, --previews and --output apply only to "
-                + "--find.");
+            ConsoleUi.Failure("--pid, --process, --evidence-policy, --limit, --max-mib, --max-seconds, --ignore-case, --previews "
+                + "and --output apply only to --find.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -615,6 +628,12 @@ internal static class ContentCommand
         }
 
         if (request.IgnoreCase) ConsoleUi.Field("Letters", "A to Z matched in either case");
+        if (request.MaximumBytes != ContentSearch.DefaultMaximumBytes || request.Budget != ContentSearch.DefaultBudget)
+        {
+            ConsoleUi.Field("Budgets", string.Create(culture,
+                $"{request.MaximumBytes / MiB:N0} MiB read and {request.Budget.TotalSeconds:N0} seconds"));
+        }
+
         ConsoleUi.Field("Searched", "the kept bytes of " + CountText.Of(result.RecordsRead, "record")
             + string.Create(culture, $", {result.BytesRead:N0} B"));
         if (result.WithoutConsent > 0)
@@ -634,7 +653,11 @@ internal static class ContentCommand
             : CountText.Of(result.Hits.Count, "record"));
         if (result.NoneKept is { } none) ConsoleUi.Note(none);
         if (result.Unreadable is { } unreadable) ConsoleUi.Warn(unreadable);
-        if (result.Stopped is { } stopped) ConsoleUi.Warn(stopped);
+        if (result.Stopped is { } stopped)
+        {
+            ConsoleUi.Warn(stopped);
+            ConsoleUi.Note("--max-mib and --max-seconds let a search read more, up to 65,536 MiB and 3,600 seconds.");
+        }
         if (result.Hits.Count > 0)
         {
             ConsoleUi.Line();
@@ -693,6 +716,15 @@ internal static class ContentCommand
         return result.Partial ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
     }
 
+    /// <summary>A mebibyte, the unit --max-mib counts in.</summary>
+    private const long MiB = 1024 * 1024;
+
+    /// <summary>The most mebibytes --max-mib lets a search read.</summary>
+    private const int MaximumMib = 65_536;
+
+    /// <summary>The most seconds --max-seconds lets a search read for.</summary>
+    private const int MaximumSeconds = 3_600;
+
     /// <summary>What a table of records found with previews holds, said beside the file written: content.</summary>
     internal const string PreviewsContent = "It holds the bytes around each match, read from content the session kept with "
         + "consent to inspect it: it is content, to be shared only as that content would be.";
@@ -703,7 +735,7 @@ internal static class ContentCommand
         ConsoleUi.Line("             [--part] [--reveal] [--decode] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
         ConsoleUi.Line("icat content <session-directory> --find <text> [--ignore-case] [--process <pid | instance>");
         ConsoleUi.Line("             [--evidence-policy <policy>] | --pid <id>] [--limit <n>] [--previews]");
-        ConsoleUi.Line("             [--output <file.csv> [--overwrite]]");
+        ConsoleUi.Line("             [--max-mib <n>] [--max-seconds <n>] [--output <file.csv> [--overwrite]]");
         ConsoleUi.Line("icat content --decoders");
         ConsoleUi.Line("  One record's kept content, from an icat evidence page's exact row locator (ADR-036): what the");
         ConsoleUi.Line("  bytes are, how many of the message were kept and which are missing, and what they were kept");
@@ -723,7 +755,8 @@ internal static class ContentCommand
         ConsoleUi.Line("  a record's bytes declare UTF-16 - and lists the records holding it, each with its locator, showing");
         ConsoleUi.Line("  none of their bytes unless --previews shows those around each one's first match. Content kept");
         ConsoleUi.Line("  without consent to inspect it is never searched. Each record is searched on its own, within 256 MiB");
-        ConsoleUi.Line("  and 10 seconds, and what was not searched is said; --limit sets how many records are listed (50).");
+        ConsoleUi.Line("  and 10 seconds unless --max-mib and --max-seconds set others, up to 65,536 MiB and 3,600 seconds,");
+        ConsoleUi.Line("  and what was not searched is said; --limit sets how many records are listed (50).");
         ConsoleUi.Line("  --process keeps to one process's records: its PID where one process alone held it, else its");
         ConsoleUi.Line("  instance id as icat processes prints it, each record bound to it as the evidence policy admits");
         ConsoleUi.Line("  (include-correlated); --pid keeps to the records that carry a PID, whichever process held it.");

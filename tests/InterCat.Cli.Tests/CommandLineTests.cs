@@ -3215,6 +3215,40 @@ public sealed class CommandLineTests : IDisposable
         Assert.Single(File.ReadAllText(table).Split("\r\n", StringSplitOptions.RemoveEmptyEntries));
     }
 
+    [Fact(DisplayName = "P2: icat content --find reads within the budgets it is given, says them, and says how to read more where one stopped it")]
+    public async Task KeptContentIsSearchedWithinTheBudgetsGiven()
+    {
+        // Two records, each keeping 600,000 bytes.
+        ObservationRowV1[] rows =
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 600_000, 4_242, 1),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 600_000, 4_242, 2),
+        ];
+        using var kept = new TemporarySession();
+        Publish(kept.Store, rows, content: (ContentHeader(1_048_576),
+            [.. rows.Select(row => Content(row, new byte[600_000], 1_048_576, ContentEncodingV1.Binary))]));
+        kept.Store.ReleaseSegmentReaders();
+
+        // A budget of one mebibyte reads the first record alone, says it stopped there, and how to read more.
+        (InterCatExitCode code, string output, string said) = await Run("content", kept.Path, "--find", "example.com", "--max-mib", "1");
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Matches(@"(?m)^  Budgets +1 MiB read and 10 seconds\r?$", output);
+        Assert.Matches(@"(?m)^  Searched +the kept bytes of 1 record, 600,000 B\r?$", output);
+        Assert.Contains("The search stopped at its budget of 1,048,576 bytes read, after 1 record;", said, StringComparison.Ordinal);
+        Assert.Contains("--max-mib and --max-seconds let a search read more, up to 65,536 MiB and 3,600 seconds.",
+            Regex.Replace(output + said, @"\s+", " "), StringComparison.Ordinal);
+
+        // Given more, it reads both; within the budgets it is given by default it says none.
+        (code, output, said) = await Run("content", kept.Path, "--find", "example.com", "--max-mib", "2", "--max-seconds", "60");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Budgets +2 MiB read and 60 seconds\r?$", output);
+        Assert.Matches(@"(?m)^  Searched +the kept bytes of 2 records, 1,200,000 B\r?$", output);
+        Assert.DoesNotContain("--max-mib and --max-seconds let", output + said, StringComparison.Ordinal);
+        (code, output, _) = await Run("content", kept.Path, "--find", "example.com");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.DoesNotContain("Budgets", output, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "P2: icat content --find finds a text two buffers of one HTTP part split, saying it began in the buffer before")]
     public async Task KeptContentIsSearchedAcrossABuffersSeam()
     {

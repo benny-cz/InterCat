@@ -271,3 +271,10 @@ limits above there: a search that ends at a budget, is stopped, or finds more re
 would read on from, and Search on reads on from there as one search from the start would, never listing a record twice
 nor losing a match a seam splits, its list and words then the whole search's. `icat content --find` keeps its budgets
 as before. Nothing else above changes.
+
+## Addendum, revision 794
+
+`icat content --find` takes budgets of its own (`contracts/content-v1.md` §4): `--max-mib` and `--max-seconds` set how
+much it reads and for how long, up to 65,536 MiB and 3,600 seconds, and an answer within budgets other than the
+default states them, while one a budget stopped says how to read more. The command line's answer is printed once, so
+it reads further in one search rather than reading on. Nothing else above changes.

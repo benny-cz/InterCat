@@ -1371,6 +1371,7 @@
         "P2: icat content --find --output writes the records listed to a table, the bytes around each match only with --previews, saying it is content",
         "P2: icat content --find finds a text two buffers of one HTTP part split, saying it began in the buffer before",
         "P2: icat content --find lists the records whose kept bytes hold a text, each with its locator, and shows their bytes only with --previews",
+        "P2: icat content --find reads within the budgets it is given, says them, and says how to read more where one stopped it",
         "P2: icat content --part --decode decodes a whole HTTP head, says a buffer alone and a body are read by none, and --decoders lists every decoder",
         "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one",
         "P2: icat content shows and saves a whole HTTP part as one, and refuses --part of a record that belongs to none",
