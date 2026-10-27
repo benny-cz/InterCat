@@ -91,6 +91,20 @@ public static class LinkText
         };
     }
 
+    /// <summary>
+    /// What of a process began outside the interval its links were read over, in one sentence: "3 of the starts, calls,
+    /// connections and flows it took part in began outside the interval, so none of them is listed here." Null where none
+    /// did, or where no interval was read.
+    /// </summary>
+    public static string? Outside(StepLinks links)
+    {
+        ArgumentNullException.ThrowIfNull(links);
+        return links.OutsideInterval == 0 ? null
+            : string.Create(CultureInfo.CurrentCulture, $"{links.OutsideInterval:N0} of the starts, calls, connections and flows it ")
+                + "took part in began outside the interval, so " + (links.OutsideInterval == 1 ? "it is not" : "none of them is")
+                + " listed here.";
+    }
+
     /// <summary>A link's strength as a word: "direct", "correlated", "candidate".</summary>
     public static string Strength(RelationStrength strength) => strength.ToString().ToLowerInvariant();
 

@@ -1977,15 +1977,16 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     }
 
     /// <summary>
-    /// Lists the selected process's links (`contracts/links-v1.md` §8) under the window's evidence policy, followed from
-    /// process to process there; the process the list is centred on when Select this process closes it becomes the
-    /// selection, and the graph has the keyboard.
+    /// Lists the selected process's links (`contracts/links-v1.md` §8) over the window's time scope under the window's
+    /// evidence policy, followed from process to process there; the process the list is centred on when Select this process
+    /// closes it becomes the selection, and the graph has the keyboard.
     /// </summary>
     private async void ShowLinks(object? sender, RoutedEventArgs eventArgs)
     {
         if (currentSessionPath is null || displayedSessionId is not { } sessionId || displayedGeneration < 1
             || workspace.IsEvidenceRung || workspace.SelectedProcess is not { } process) return;
-        using var links = new LinksWindow(currentSessionPath, sessionId, displayedGeneration, workspace.EvidencePolicy, process.Id);
+        using var links = new LinksWindow(currentSessionPath, sessionId, displayedGeneration, workspace.EvidencePolicy, process.Id,
+            workspace.ScopeInterval, workspace.TimeBase);
         try
         {
             if (await links.ShowDialog<ProcessInstanceId?>(this) is not { } chosen || closed) return;

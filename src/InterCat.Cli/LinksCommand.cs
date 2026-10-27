@@ -31,6 +31,7 @@ internal static class LinksCommand
         string? processText = command.TakeOption("--process");
         string? toText = command.TakeOption("--to");
         string? policyText = command.TakeOption("--evidence-policy");
+        string? intervalText = command.TakeOption("--interval");
         bool json = command.TryTakeFlag("--json");
         string? directory = command.TakePositional();
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
@@ -49,6 +50,18 @@ internal static class LinksCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        // An interval keeps the links to the starts, calls and connections that began in it (`links-v1` §1).
+        TimeRange? interval = null;
+        if (intervalText is not null)
+        {
+            interval = TickInterval.Read(intervalText, out string? tooWide);
+            if (interval is null)
+            {
+                ConsoleUi.Failure(tooWide ?? "--interval names no interval: " + TickInterval.Takes + ".");
+                return InterCatExitCode.InvalidInvocation;
+            }
+        }
+
         string path = Path.GetFullPath(directory);
         if (!Directory.Exists(path))
         {
@@ -60,7 +73,7 @@ internal static class LinksCommand
         LinkReading reading;
         try
         {
-            reading = EvidenceLinks.Read(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), policy, cancellationToken);
+            reading = EvidenceLinks.Read(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), policy, interval, cancellationToken);
         }
         catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
@@ -121,6 +134,7 @@ internal static class LinksCommand
         reading.Generation,
         Rule = EvidenceLinks.Rule,
         EvidencePolicy = reading.Policy.ToString(),
+        Interval = reading.Interval is { } read ? new { read.StartTicks, read.EndTicks } : null,
         Coverage = reading.Coverage.Select(coverage => new
         {
             Mechanism = MechanismText.Name(coverage.Mechanism),
@@ -128,6 +142,7 @@ internal static class LinksCommand
             coverage.Reason,
         }),
         Process = End(reading, LinkEnd.Of(links.Step)),
+        links.OutsideInterval,
         LedToIt = links.LedToIt.Select(link => Link(reading, link, links.Step)),
         ItLedTo = links.ItLedTo.Select(link => Link(reading, link, links.Step)),
         NotFollowed = links.NotFollowed.Select(link => Link(reading, link, links.Step)),
@@ -227,6 +242,12 @@ internal static class LinksCommand
             ConsoleUi.Note(unlinked);
         }
 
+        if (LinkText.Outside(links) is { } outside)
+        {
+            ConsoleUi.Heading("Outside the interval");
+            ConsoleUi.Note(outside);
+        }
+
         ConsoleUi.Line();
         if (links.LedToIt.Concat(links.ItLedTo).Concat(links.NotFollowed).Any(link => LinkText.Other(link, step).Address is not null))
         {
@@ -251,6 +272,11 @@ internal static class LinksCommand
     {
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Generation", reading.Generation.ToString(CultureInfo.CurrentCulture));
+        if (reading.Interval is { } interval)
+        {
+            ConsoleUi.Field("Interval", ComparisonText.Interval(interval, null, CultureInfo.CurrentCulture) + ", what began in it alone");
+        }
+
         ConsoleUi.Field("Follows", "links the " + CommandArgument.Typed(reading.Policy) + " evidence policy admits: "
             + WorkspaceLayout.Series([.. EvidenceLinks.Followed(reading.Policy).Select(LinkText.Strength)]));
         ConsoleUi.Field("Coverage", CoverageText.Unlabelled(reading.Coverage));
@@ -282,7 +308,7 @@ internal static class LinksCommand
         }
 
         ConsoleUi.Note($"No chain of links the {CommandArgument.Typed(reading.Policy)} evidence policy follows leads from {fromName} "
-            + $"to {toName}.");
+            + $"to {toName}" + (reading.Interval is null ? "." : " in the interval."));
         if (EvidenceLinks.Chain(reading, from, to, everyLink: true) is { } unfollowed)
         {
             RelationStrength weakest = EvidenceLinks.Weakest(unfollowed);
@@ -302,7 +328,7 @@ internal static class LinksCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat links <session-directory> --process <pid | instance> [--to <pid | instance>]");
-        ConsoleUi.Line("           [--evidence-policy <policy>] [--json]");
+        ConsoleUi.Line("           [--interval <start:end>] [--evidence-policy <policy>] [--json]");
         ConsoleUi.Line("  A process's links, each a recorded fact by one documented rule: its parent and children, the");
         ConsoleUi.Line("  processes whose calls it served or that served its calls, through each call's one ALPC message,");
         ConsoleUi.Line("  and the ends it connected to or that connected to it, as the capture saw each connection open.");
@@ -310,6 +336,7 @@ internal static class LinksCommand
         ConsoleUi.Line("  within a second of it that nothing links to it are listed as near in time, never as a link.");
         ConsoleUi.Line("  --to <process> finds the shortest chain of followed links from it to another process.");
         ConsoleUi.Line("  --evidence-policy follows links as the overview admits them, include-correlated unless it says");
-        ConsoleUi.Line("  so; --json writes them as a document.");
+        ConsoleUi.Line("  so; --json writes them as a document. --interval keeps them to the starts, calls and connections");
+        ConsoleUi.Line("  that began in it, and counts those that began outside it.");
     }
 }

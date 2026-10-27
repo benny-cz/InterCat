@@ -338,3 +338,10 @@ The time inside calls reads an interval of a session (`contracts/waits-v1.md` §
 window's Time inside calls… over the window's time scope, time the calls that began in it, each to its stop, and count
 those that began outside it apart. Of the limits above, waits no longer read only a whole generation; links still do.
 Nothing else above changes.
+
+## Addendum, revision 797
+
+Causal links read an interval of a session (`contracts/links-v1.md` §1): `icat links --interval`, and the window's
+Follow its links… over the window's time scope, list and follow the starts, calls and connections that began in it,
+and say how much of a process began outside it. Of the limits above, patterns, links and waits now each read a whole
+generation or one interval of it; none reads two captures. Nothing else above changes.

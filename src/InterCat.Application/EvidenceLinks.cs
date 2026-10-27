@@ -94,6 +94,15 @@ public sealed record LinkReading(
     /// <summary>What of each process's activity links it to nothing; absent where nothing of it is unlinked.</summary>
     public required IReadOnlyDictionary<ProcessInstanceId, UnlinkedActivity> Unlinked { get; init; }
 
+    /// <summary>The interval the links were read over, in presentation ticks; none for the whole generation.</summary>
+    public TimeRange? Interval { get; init; }
+
+    /// <summary>
+    /// For each process, how many of the starts, calls, connections and flows it took part in began outside
+    /// <see cref="Interval"/>, so that none of them is read; absent where none did.
+    /// </summary>
+    public IReadOnlyDictionary<ProcessInstanceId, long> OutsideInterval { get; init; } = new Dictionary<ProcessInstanceId, long>();
+
     /// <summary>Whether the evidence policy follows <paramref name="link"/>: whether it admits its strength.</summary>
     public bool Follows(EvidenceLink link)
     {
@@ -123,6 +132,9 @@ public sealed record StepLinks(ProcessInstanceId Step)
     public required IReadOnlyList<NearProcess> Near { get; init; }
 
     public required UnlinkedActivity Unlinked { get; init; }
+
+    /// <summary>How many of the starts, calls, connections and flows it took part in began outside the reading's interval.</summary>
+    public long OutsideInterval { get; init; }
 }
 
 /// <summary>
@@ -146,11 +158,13 @@ public static class EvidenceLinks
     /// <summary>
     /// Reads the links of <paramref name="store"/>'s current generation under <paramref name="policy"/>: its overview naming
     /// its processes, then, under one lease of that generation, its processes, relations, calls and their other ends,
-    /// read again where a newer generation was published between them.
+    /// read again where a newer generation was published between them. Within <paramref name="interval"/>, in presentation
+    /// ticks, only what began in it is read: a process started there, a call made there, a connection or flow opened there.
     /// </summary>
     public static LinkReading Read(
         SessionStore store,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        TimeRange? interval = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -181,13 +195,14 @@ public static class EvidenceLinks
             IReadOnlyList<MechanismCoverage> coverage = SessionCoverage.ForMechanisms(
                 SessionSegments.CoverageLedger(store.Root, manifest),
                 [Mechanism.ProcessLifecycle, Mechanism.Tcp, Mechanism.Rpc, Mechanism.Alpc]);
-            return Of(overview, processes, relations, peers, clock, coverage, cancellationToken);
+            return Of(overview, processes, relations, peers, clock, coverage, interval, cancellationToken);
         }
     }
 
     /// <summary>
-    /// One generation's links from its overview, processes, relations and the other ends of its calls: each link once, by
-    /// its kind, ends, interface or port and strength, with how many times the evidence holds it.
+    /// One generation's links from its overview, processes, relations and the other ends of its calls, over an interval of
+    /// it or all of it: each link once, by its kind, ends, interface or port and strength, with how many times the evidence
+    /// holds it.
     /// </summary>
     internal static LinkReading Of(
         SessionOverviewBundle overview,
@@ -196,6 +211,7 @@ public static class EvidenceLinks
         RpcPeerIndex peers,
         SourceClockDescriptor clock,
         IReadOnlyList<MechanismCoverage> coverage,
+        TimeRange? interval,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(overview);
@@ -204,16 +220,40 @@ public static class EvidenceLinks
         ArgumentNullException.ThrowIfNull(peers);
         var links = new Dictionary<(LinkKind Kind, LinkEnd From, LinkEnd To, Guid? Interface, ushort? Port, RelationStrength Strength), long>();
         var unlinked = new Dictionary<ProcessInstanceId, Unlinked>();
+        var outside = new Dictionary<ProcessInstanceId, long>();
+        long Ticks(long nativeTicks) => (long)(SourceClockMath.SessionNanoseconds(clock, nativeTicks) / 100);
+        var created = new Dictionary<ProcessInstanceId, long>();
+        foreach (ProcessInstance instance in processes.Instances)
+        {
+            if (instance.CreatedNativeTicks is { } native)
+            {
+                created[instance.Id] = Ticks(native);
+            }
+        }
 
-        // A process started another where the child's record names it: by its start key, directly, or by its PID alone.
+        // Within an interval, a start, call, connection or flow is read where it began; one that began outside it, or at no
+        // time a record states, is counted apart for each process it touches, and nothing else of it.
+        bool Outside(long? began, ProcessInstanceId? one, ProcessInstanceId? other = null)
+        {
+            if (interval is not { } within || began is { } at && within.Contains(at)) return false;
+            if (one is { } first) outside[first] = outside.GetValueOrDefault(first) + 1;
+            if (other is { } second && second != one) outside[second] = outside.GetValueOrDefault(second) + 1;
+            return true;
+        }
+
+        // A process started another where the child's record names it: by its start key, directly, or by its PID alone. It
+        // began where the child's creation was witnessed; one witnessed by no record began before the capture.
         foreach (ProcessNode node in overview.Nodes)
         {
+            long? born = created.TryGetValue(node.Id, out long at) ? at : null;
             if (node.Parent is { } parent && node.ParentBinding is { } binding)
             {
+                if (Outside(born, parent, node.Id)) continue;
                 Add(LinkKind.Started, LinkEnd.Of(parent), LinkEnd.Of(node.Id), null, null, binding, 1);
             }
             else if (node.ParentProcessId is { } named)
             {
+                if (Outside(born, node.Id)) continue;
                 UnlinkedOf(node.Id).UnheldParent = named;
             }
         }
@@ -225,7 +265,8 @@ public static class EvidenceLinks
             cancellationToken.ThrowIfCancellationRequested();
             if (!group.Process.IsBound) continue;
             ProcessInstanceId process = instances[group.Process.Instance].Id;
-            RpcPeerCounts counts = peers.CountsOf(group);
+            int[]? began = interval is null ? null : Within(group, process);
+            RpcPeerCounts counts = peers.CountsOf(group, began);
             if (group.Side == RpcCallSide.Server)
             {
                 if (counts.Calls > counts.Served) UnlinkedOf(process).CallsNotReached += counts.Calls - counts.Served;
@@ -238,7 +279,7 @@ public static class EvidenceLinks
                 unresolved[state] = unresolved.GetValueOrDefault(state) + calls;
             }
 
-            foreach (RpcPeerTally served in peers.PeersOf(group))
+            foreach (RpcPeerTally served in peers.PeersOf(group, began))
             {
                 if (!served.Process.IsBound) continue;
                 Add(LinkKind.Called, LinkEnd.Of(process), LinkEnd.Of(instances[served.Process.Instance].Id), served.Interface,
@@ -251,6 +292,8 @@ public static class EvidenceLinks
         foreach (TransportRelation relation in relations.Relations)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (relation.Mechanism is not (Mechanism.Tcp or Mechanism.Udp)
+                || Outside(Ticks(relation.FirstNativeTicks), relation.First.Id, relation.Second.Id)) continue;
             if (relation.Mechanism == Mechanism.Udp)
             {
                 UnlinkedOf(relation.First.Id).Flows++;
@@ -258,7 +301,6 @@ public static class EvidenceLinks
                 continue;
             }
 
-            if (relation.Mechanism != Mechanism.Tcp) continue;
             if (ConnectionOpens.AcceptingPort(relation) is not { } port)
             {
                 UnlinkedOf(relation.First.Id).UnopenedConnections++;
@@ -275,13 +317,14 @@ public static class EvidenceLinks
         foreach (TransportConnection connection in relations.OneSided)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (connection.Mechanism is not (Mechanism.Tcp or Mechanism.Udp)
+                || Outside(Ticks(connection.FirstNativeTicks), connection.Holder.Id)) continue;
             if (connection.Mechanism == Mechanism.Udp)
             {
                 UnlinkedOf(connection.Holder.Id).Flows++;
                 continue;
             }
 
-            if (connection.Mechanism != Mechanism.Tcp) continue;
             string local = HostScopeKeys.EndpointAddress(connection.LocalEndpoint);
             string remote = HostScopeKeys.EndpointAddress(connection.RemoteEndpoint);
             LinkEnd other = CommunicationPatterns.OnThisMachine(local, remote) ? LinkEnd.UnseenEnd : LinkEnd.Host(remote);
@@ -300,15 +343,6 @@ public static class EvidenceLinks
             }
         }
 
-        var created = new Dictionary<ProcessInstanceId, long>();
-        foreach (ProcessInstance instance in processes.Instances)
-        {
-            if (instance.CreatedNativeTicks is { } native)
-            {
-                created[instance.Id] = (long)(SourceClockMath.SessionNanoseconds(clock, native) / 100);
-            }
-        }
-
         return new(overview.SessionId, overview.Generation, overview.Policy, coverage,
             [.. links.Select(entry => new EvidenceLink(entry.Key.Kind, entry.Key.From, entry.Key.To, entry.Key.Strength)
             {
@@ -320,7 +354,35 @@ public static class EvidenceLinks
             Processes = overview.Nodes.ToDictionary(node => node.Id),
             Created = created,
             Unlinked = unlinked.ToDictionary(entry => entry.Key, entry => entry.Value.Activity()),
+            Interval = interval,
+            OutsideInterval = outside,
         };
+
+        // The positions of a group's calls that began in the interval. A client call began at its start, or its stop where
+        // no start was recorded, and one outside it is counted for its caller and, where it was served, for the server;
+        // a server call no client call reached is placed by its own, and one that was reached is counted with the client
+        // call that reached it, wherever that began.
+        int[] Within(RpcCallGroup group, ProcessInstanceId process)
+        {
+            var positions = new List<int>();
+            int position = 0;
+            foreach (RpcCallSpan span in peers.Calls.SpansOf(group))
+            {
+                (RpcCallGroup Group, int Position)? other = peers.OtherCallOf(group, position);
+                long? began = (span.StartNanoseconds ?? span.StopNanoseconds) / 100;
+                ProcessInstanceId? server = group.Side == RpcCallSide.Client && other is { Group.Process.IsBound: true } served
+                    ? instances[served.Group.Process.Instance].Id
+                    : null;
+                if (group.Side == RpcCallSide.Server && other is not null || !Outside(began, process, server))
+                {
+                    positions.Add(position);
+                }
+
+                position++;
+            }
+
+            return [.. positions];
+        }
 
         void Add(LinkKind kind, LinkEnd from, LinkEnd to, Guid? rpcInterface, ushort? port, RelationStrength strength, long times)
         {
@@ -374,6 +436,7 @@ public static class EvidenceLinks
                     .ThenBy(near => near.Process.ToString(), StringComparer.Ordinal),
             ],
             Unlinked = reading.Unlinked.GetValueOrDefault(step) ?? UnlinkedActivity.None,
+            OutsideInterval = reading.OutsideInterval.GetValueOrDefault(step),
         };
     }
 

@@ -46,6 +46,7 @@ internal sealed class LinksWindow : Window, IDisposable
     private readonly Guid expectedSessionId;
     private readonly long expectedGeneration;
     private readonly EvidencePolicy policy;
+    private readonly TimeRange? interval;
     private readonly CancellationTokenSource lifetime = new();
     private readonly Stack<ProcessInstanceId> walked = new();
     private readonly TextBlock heading = new() { TextWrapping = TextWrapping.Wrap, FontWeight = FontWeight.SemiBold };
@@ -60,6 +61,7 @@ internal sealed class LinksWindow : Window, IDisposable
     private readonly TextBlock notFollowedNote = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
     private readonly TextBlock near = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock unlinked = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock outside = new() { TextWrapping = TextWrapping.Wrap };
     private readonly StackPanel notFollowedPanel = new() { Spacing = 4 };
     private readonly StackPanel unlinkedPanel = new() { Spacing = 4 };
     private readonly Button back = new() { Content = "Back" };
@@ -77,13 +79,20 @@ internal sealed class LinksWindow : Window, IDisposable
 
     /// <param name="step">The process to list the links of first: the one selected in InterCat's window.</param>
     /// <param name="policy">The evidence policy InterCat's window counts under, so the two follow alike.</param>
-    public LinksWindow(string path, Guid expectedSessionId, long expectedGeneration, EvidencePolicy policy, ProcessInstanceId step)
+    /// <param name="interval">
+    /// InterCat's window's time scope, in presentation ticks, whose starts, calls and connections alone - those that began in
+    /// it - are linked; none for the whole session.
+    /// </param>
+    /// <param name="clock">InterCat's window's clock, which says the interval as that window says its time scope.</param>
+    public LinksWindow(string path, Guid expectedSessionId, long expectedGeneration, EvidencePolicy policy, ProcessInstanceId step,
+        TimeRange? interval = null, SessionClock? clock = null)
     {
         this.path = path;
         this.expectedSessionId = expectedSessionId;
         this.expectedGeneration = expectedGeneration;
         this.policy = policy;
         this.step = step;
+        this.interval = interval;
         Title = "InterCat · Links";
         Width = 1_000;
         Height = 720;
@@ -92,6 +101,15 @@ internal sealed class LinksWindow : Window, IDisposable
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
         heading.Text = "Links";
+        var scope = new TextBlock
+        {
+            Text = interval is { } scoped
+                ? "What led to it and what it led to over the window's time scope, what began in it alone · "
+                    + ComparisonText.Interval(scoped, clock, CultureInfo.CurrentCulture)
+                : "What led to it and what it led to · all session times",
+            TextWrapping = TextWrapping.Wrap,
+        };
+        AutomationProperties.SetName(scope, "What the links are read over");
         status.Text = "Reading the session's links…";
         AutomationProperties.SetName(heading, "Whose links these are");
         AutomationProperties.SetName(trail, "The links followed to here");
@@ -100,6 +118,7 @@ internal sealed class LinksWindow : Window, IDisposable
         AutomationProperties.SetName(coverage, "What the capture covered");
         AutomationProperties.SetName(near, "Created near it in time, linked to it by nothing");
         AutomationProperties.SetName(unlinked, "What of it links to nothing");
+        AutomationProperties.SetName(outside, "What of it began outside the interval");
         var note = new TextBlock { Text = LinkText.Note, TextWrapping = TextWrapping.Wrap, FontSize = 11 };
 
         foreach ((ListBox list, string name) in new[]
@@ -177,7 +196,7 @@ internal sealed class LinksWindow : Window, IDisposable
         var beneath = new StackPanel
         {
             Spacing = 8,
-            Children = { notFollowedPanel, Label("Near in time"), near, unlinkedPanel, note },
+            Children = { notFollowedPanel, Label("Near in time"), near, unlinkedPanel, outside, note },
         };
         var footer = new StackPanel
         {
@@ -187,7 +206,7 @@ internal sealed class LinksWindow : Window, IDisposable
             Children = { back, follow, select, close },
         };
         var grid = new Grid { Margin = new Thickness(16), RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"), RowSpacing = 10 };
-        var header = new StackPanel { Spacing = 4, Children = { heading, trail, status, coverage } };
+        var header = new StackPanel { Spacing = 4, Children = { heading, scope, trail, status, coverage } };
         var below = new ScrollViewer { Content = beneath, MaxHeight = 260 };
         Grid.SetRow(header, 0);
         Grid.SetRow(lists, 1);
@@ -238,7 +257,7 @@ internal sealed class LinksWindow : Window, IDisposable
 
             // A folder that now holds another session is refused as every read of the workspace's is.
             LinkReading read = await Task.Run(() => EvidenceLinks.Read(
-                SharedSessionStores.Open(path, expectedSessionId), policy, token), token);
+                SharedSessionStores.Open(path, expectedSessionId), policy, interval, token), token);
             if (closed) return;
             if (read.Generation < expectedGeneration)
             {
@@ -287,7 +306,7 @@ internal sealed class LinksWindow : Window, IDisposable
         if (reading is not { } read || centre is not { } process)
         {
             foreach (ListBox list in new[] { ledToIt, itLedTo, notFollowed }) list.ItemsSource = Array.Empty<LinkRow>();
-            noneLedToIt.IsVisible = ledToNothing.IsVisible = notFollowedPanel.IsVisible = unlinkedPanel.IsVisible = false;
+            noneLedToIt.IsVisible = ledToNothing.IsVisible = notFollowedPanel.IsVisible = unlinkedPanel.IsVisible = outside.IsVisible = false;
             Offer();
             return;
         }
@@ -322,6 +341,8 @@ internal sealed class LinksWindow : Window, IDisposable
                         + LinkText.Near(each, culture))) + ".";
         unlinked.Text = LinkText.Unlinked(links.Unlinked) ?? string.Empty;
         unlinkedPanel.IsVisible = unlinked.Text.Length > 0;
+        outside.Text = LinkText.Outside(links) ?? string.Empty;
+        outside.IsVisible = outside.Text.Length > 0;
         Offer();
         KeepKeyboard();
     }

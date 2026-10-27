@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-27 · Plan revision: 796 · Branch: `main`
+Updated: 2026-10-27 · Plan revision: 797 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -65,37 +65,37 @@ window (revision 757) and comparisons saved in an investigation, on the command 
 row's difference timeline, stated (revision 760) and drawn in the window (revision 761), a comparison shown on the
 graph (revision 762), recurring communication patterns, on the command line (revision 763) and in the window (revision
 764), over an interval of a session too (revision 795), and causal navigation over the links the evidence records, on
-the command line (revision 765) and in the window (revision 766), the time spent inside calls, on the command line
-(revision 767) and in the window (revision 769), over an interval too (revision 796), and outliers against a
-baseline's windows, on the command line (revision 768) and in the window (revision 770); M12's exit gate is met ([the
-M12 exit review](reviews/M12-release-review.md), revision 773). M8 began with HTTP/1.1 heads decoded from WinINet's
-whole parts (revision 774), since its validated content source exists here while M6, M7 and M9 need Windows sources,
-and its exit gate is met for HTTP through WinINet ([the M8 exit review](reviews/M8-release-review.md), revision 786);
-M4 and M5 are not complete. All three of §11.3's sharing presets exist: a metadata-only **report**, a reopenable
-redacted **session package**, and an exact, unredacted **original evidence package**. The communication graph is a
-bounded §6.3 projection with a relationship-first §19.4 layout, qualified on two real sessions, one sparse and one
-dense. Since revision 545 it relates processes by paired UDP flows beside TCP connections, a pair's edges side by
-side. Processes with no relationship are counted in one parked node, since revision 546 the less busy of those that
-only reach other hosts in another, past the eight busiest - since revision 593 the eight busiest programs, several
-processes of one drawn as its node - and groups collapse only under budget pressure. Since revision 550 the Other
-hosts node names the busiest addresses the drawn processes' connections ran to, and since revision 555 Enter on it
-draws them on their own; since revision 564 a host chosen there, and since revision 565 one chosen in the list it
-gives the inspector, is the records of every connection to it, which the timeline highlights and E lists, as `icat
-evidence --host` reads them since revision 563. Since revision 570 a member of an investigation names each host's
-candidate other ends in another member's capture, never as an established join, and since revision 571 a session
-opened from its investigation names them in the window. Hubs draw as stars with components apart, executable groups
-read as file names, and positions survive descents and live publications. A bounded metadata search now finds groups,
-process instances and channels by name, PID or endpoint, and since revision 551 processes by an address they reached,
-which since revision 553 the graph marks; endpoint strings and addresses can match but are omitted from result
-snippets. Graph marks now explain their scope and evidence on hover; nodes can be dragged into pinned positions or
-pinned from the keyboard, and an explicit re-layout preserves those user constraints. Below the machine rung the graph
-draws only the rung's neighbourhood, and one **Rest of the machine** node counts every other process. Double-clicking
-a relationship's edge, or Enter on its row in the relationship table, opens its channel, or an RPC relationship's
-linked calls. The timeline draws in colour the records E would list for the rung, over every record in grey. A
-timeline cell explains itself on hover, as graph marks do, and once chosen in the inspector, which lists its first
-records; since revision 471 the graph highlights what they belong to. Since revision 493 the graph's nodes travel to
-new places and a new selection's ring settles onto its node, and since revision 494 a timeline coming back to the
-newest generation is carried there, unless the platform reduces motion.
+the command line (revision 765) and in the window (revision 766), over an interval too (revision 797), the time spent
+inside calls, on the command line (revision 767) and in the window (revision 769), over an interval too (revision
+796), and outliers against a baseline's windows, on the command line (revision 768) and in the window (revision 770);
+M12's exit gate is met ([the M12 exit review](reviews/M12-release-review.md), revision 773). M8 began with HTTP/1.1
+heads decoded from WinINet's whole parts (revision 774), since its validated content source exists here while M6, M7
+and M9 need Windows sources, and its exit gate is met for HTTP through WinINet ([the M8 exit
+review](reviews/M8-release-review.md), revision 786); M4 and M5 are not complete. All three of §11.3's sharing presets
+exist: a metadata-only **report**, a reopenable redacted **session package**, and an exact, unredacted **original
+evidence package**. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout,
+qualified on two real sessions, one sparse and one dense. Since revision 545 it relates processes by paired UDP flows
+beside TCP connections, a pair's edges side by side. Processes with no relationship are counted in one parked node,
+since revision 546 the less busy of those that only reach other hosts in another, past the eight busiest - since
+revision 593 the eight busiest programs, several processes of one drawn as its node - and groups collapse only under
+budget pressure. Since revision 550 the Other hosts node names the busiest addresses the drawn processes' connections
+ran to, and since revision 555 Enter on it draws them on their own; since revision 564 a host chosen there, and since
+revision 565 one chosen in the list it gives the inspector, is the records of every connection to it, which the
+timeline highlights and E lists, as `icat evidence --host` reads them since revision 563. Since revision 570 a member
+of an investigation names each host's candidate other ends in another member's capture, never as an established join,
+and since revision 571 a session opened from its investigation names them in the window. Hubs draw as stars with
+components apart, executable groups read as file names, and positions survive descents and live publications. A
+bounded metadata search now finds groups, process instances and channels by name, PID or endpoint, and since revision
+551 processes by an address they reached, which since revision 553 the graph marks; endpoint strings and addresses can
+match but are omitted from result snippets. Graph marks now explain their scope and evidence on hover; nodes can be
+dragged into pinned positions or pinned from the keyboard, and an explicit re-layout preserves those user constraints.
+Below the machine rung the graph draws only the rung's neighbourhood, and one **Rest of the machine** node counts
+every other process. Double-clicking a relationship's edge, or Enter on its row in the relationship table, opens its
+channel, or an RPC relationship's linked calls. The timeline draws in colour the records E would list for the rung,
+over every record in grey. A timeline cell explains itself on hover, as graph marks do, and once chosen in the
+inspector, which lists its first records; since revision 471 the graph highlights what they belong to. Since revision
+493 the graph's nodes travel to new places and a new selection's ring settles onto its node, and since revision 494 a
+timeline coming back to the newest generation is carried there, unless the platform reduces motion.
 
 The ordinary user's path is `icat capture` or Desktop Explore through the broker; `icat import` builds a session from
 ETL. `icat session`, `processes`, `metric`, `overview`, `timeline`, `evidence`, `raw`, `retain`, and `export` inspect or
@@ -125,9 +125,27 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions; since revision 258 (ADR-041) `icat workspace correlate` proposes candidate joins between captures, since revision 259 the investigation window aligns sessions and lists candidates, since revision 260 (`workspace-v4`) a person's decisions about candidates are kept revisions, flagged when the alignments change, since revision 261 the window draws the merged time, a lane per session, since revision 262 two captures of one host that ran at once are flagged, since revision 263 (ADR-042) an investigation is packaged with its sessions, since revision 264 (`workspace-v5`) two instants a person reads in both measure the clocks' rate, since revision 265 (`workspace-v6`) a session is aligned through another, since revision 266 (`workspace-v7`) a person confirms two host identities are one host, since revision 267 the window compares two instants, since revision 268 it zooms the merged time and opens a column's records, since revision 269 (`workspace-v8`) candidates mirror through known address translations, since revision 270 (`workspace-v9`) a person keeps notes, pinned on the merged time, since revision 271 (`workspace-v10`) saved views of it, since revision 276 a capture that ends before its last publication, as a killed broker's does, still names its boot and start's wall clock to align by, since revision 277 candidate joins and the merged time name the generation of each capture they read (I16), since revision 347 its window lists what it keeps of each session's view, as `icat workspace show` does, since revision 381 its merged time hatches, and says, where a session's capture saw nothing (R21), since revision 383 its candidate joins say what each compared capture covered of TCP and UDP, and since revision 384 `icat workspace timeline` draws its merged time as the window does (R18), and since revision 428 its axis ticks round instants of the 1–2–5 ladder, each named where it is drawn, and its words say times in the digits their span needs; since revision 430 its Align dialog opens on the alignment in force; since revision 496 a session it opens is shown in front of it, its window InterCat's peer | A known two-host exchange (needs a second host); alignment from shared markers, which waits on a marker both captures record (M7, M11). |
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4). Since revision 787 the gate's content-export review ([review](reviews/M5-content-export-review.md)) lists every path by which kept content leaves InterCat, a test keeping it whole | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 | M8 reconstruction and decoders | Exit gate met for HTTP through WinINet ([review](reviews/M8-release-review.md), revision 786): a decoder contract (`decoders-v1`, ADR-070) holding the fixture decoder and an HTTP/1.1 head decoder; `icat content --part --decode` decodes a whole request or response head kept with consent into its start line and field lines, each with its bytes, stopping where HTTP/1.1 does not hold, and `icat content --decoders` lists the decoders; since revision 775 the content viewer's Decode its part does the same, and since revision 776 `icat exchanges --decode` lists each exchange's request, host and status from its whole heads, and since revision 777 C on an exchange opens its conversation, its heads decoded when asked, and since revision 778 each body is set beside the length its head declares, and since revision 779 `icat content --find` searches kept content within its budgets, as the window's Find in kept content… does since revision 780 (each keeping to a process by its instance since revision 788, and finding a text two buffers of one HTTP part split since revision 789, the window's stopped when asked, keeping what it found, since revision 790, and what either lists written to a table when asked since revision 792, the window's read on from where it ended since revision 793, the command line's within budgets of its own since revision 794), and since revision 781 a buffer's viewer opens its exchange's conversation, and since revision 782 each decoder's corpus pins what its version decodes, and since revision 783 `icat exchanges --decode` writes the listed exchanges' heads when asked, as JSON or a table, saying it holds content, as the window's Export with their heads… does since revision 784, and since revision 785 a decoder that fails says so, stopping nothing, and since revision 791 the content viewer names InterCat's decoders where none reads a record | None in its exit gate. Bodies' content, other mechanisms' reconstruction and a decoder worker wait on the sources and decoders M6, M7 and M9 bring (the review's limits). |
-| M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns and waits read a whole generation or one interval of it, links a whole generation, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
+| M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 797 — causal links read an interval of a session:**
+  - `icat links --interval <start:end>`, and the window's Follow its links… over the window's time scope, list and
+    follow what began in the interval alone: a start where the child's creation was witnessed (a start a rundown names
+    began before the capture), a call where the client's began, a server call no client reached at its own start, and
+    a connection or flow at its first record. What of a process began outside it is counted for each process it
+    touches, never also as not linked, and said beneath its links; a chain runs through the interval's links alone,
+    and says so where none does; nearness still reads every witnessed creation. `--json` adds `interval` and
+    `outsideInterval`.
+  - Debug and Release each ran 3,273 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the 4 new tests. All 31 mutations were caught: what began outside the interval read as in
+    it, or a start no record witnessed read as in it, either process it touches left uncounted or a process
+    connected to itself counted twice, a start, an unheld parent, a connection or a flow read outside it, a group's
+    calls counted or linked over the whole session, a server call a client reached placed by its own start, a served
+    call's server left uncounted, a call placed by its stop, the interval never read or kept, a process's outside
+    count unset or unsaid, or said as listed, the interval, its outside count, its heading or its chain's absence
+    unsaid on the command line or in its document, never read by the window or InterCat's window, or the window's
+    scope and outside count unsaid or said off its clock.
 
 - **Revision 796 — the time inside calls reads an interval of a session:**
   - `icat waits --interval <start:end>`, and the window's Time inside calls… over the window's time scope, time the

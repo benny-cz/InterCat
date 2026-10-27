@@ -244,6 +244,61 @@ public sealed class LinksWindowTests
         owner.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R18: over InterCat's window's time scope, the links window lists and follows what began in it alone, and counts what of the process began outside it")]
+    public async Task TheWindowKeepsToTheTimeScope()
+    {
+        using var session = Session();
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        ProcessInstanceId Of(int pid) => overview.Nodes.Single(node => node.ProcessId == pid && node.PidHolder == 1).Id;
+        var interval = new TimeRange(50, 1_250);
+        SessionClock clock = SessionClock.Wall(new SessionWallClock(0, new DateTimeOffset(2026, 10, 27, 12, 0, 0, TimeSpan.Zero), null, 200),
+            TimeZoneInfo.Utc, interval);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        using (var window = new LinksWindow(session.Path, overview.SessionId, overview.Generation, EvidencePolicy.IncludeCorrelated,
+            Of(LinkApp), interval, clock))
+        {
+            _ = window.ShowDialog<ProcessInstanceId?>(owner);
+            TextBlock status = Named<TextBlock>(window, "Links status");
+            await Until(() => status.Text?.StartsWith("Generation", StringComparison.Ordinal) == true);
+
+            // The scope is said on InterCat's window's clock, here the wall clock; app.exe's start began before it, so nothing
+            // led to it there, and what it led to there is its calls and first two connections.
+            TextBlock scope = Named<TextBlock>(window, "What the links are read over");
+            Assert.Equal("What led to it and what it led to over the window's time scope, what began in it alone · "
+                + ComparisonText.Interval(interval, clock, CultureInfo.CurrentCulture), scope.Text);
+            Assert.Contains("12:00:00", scope.Text, StringComparison.Ordinal);
+            Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"Generation {overview.Generation:N0} · follows direct and ")
+                + "correlated links · 0 links led to it, 3 links it led to", status.Text);
+            Assert.True(Showing(window, "Nothing the evidence policy follows led to it."));
+            TextBlock outside = Named<TextBlock>(window, "What of it began outside the interval");
+            Assert.Equal(("6 of the starts, calls, connections and flows it took part in began outside the interval, so none of them "
+                + "is listed here.", true), (outside.Text, outside.IsEffectivelyVisible));
+
+            // A link followed there leads to its process's links in the same scope.
+            ListBox itLedTo = Named<ListBox>(window, ItLedTo);
+            itLedTo.SelectedIndex = 0;
+            Labelled(window, "Follow").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal("Links of services.exe · PID 1960", Named<TextBlock>(window, "Whose links these are").Text);
+            Assert.Single(Named<ListBox>(window, LedToIt).Items);
+            Assert.False(outside.IsVisible);
+            window.Close();
+        }
+
+        // Without one, the links are all the session's.
+        using (var window = new LinksWindow(session.Path, overview.SessionId, overview.Generation, EvidencePolicy.IncludeCorrelated,
+            Of(LinkApp)))
+        {
+            _ = window.ShowDialog<ProcessInstanceId?>(owner);
+            await Until(() => Named<TextBlock>(window, "Links status").Text?.StartsWith("Generation", StringComparison.Ordinal) == true);
+            Assert.Equal("What led to it and what it led to · all session times", Named<TextBlock>(window, "What the links are read over").Text);
+            Assert.False(Named<TextBlock>(window, "What of it began outside the interval").IsVisible);
+            window.Close();
+        }
+
+        owner.Close();
+    }
+
     [AvaloniaFact(DisplayName = "§6.7: Follow its links… lists the selected process's links, and the process they reach becomes the selection")]
     public async Task TheMainWindowFollowsLinks()
     {
@@ -260,13 +315,30 @@ public sealed class LinksWindowTests
             Button button = window.GetControl<Button>("LinksButton");
             Assert.Equal("Select a process first: its links are listed from it.", Offers.WhyNot(button));
 
-            // Its links follow the selected process, and the one Select this process closes on becomes the selection.
+            // Its links follow the selected process, over the window's time scope where it has one, said on the window's clock.
+            workspace.SelectProcess(workspace.Snapshot.Processes.Single(process => process.ProcessId == LinkApp).Id);
+            var scope = new TimeRange(50, 1_250);
+            workspace.SelectInterval(scope);
+            await workspace.IntervalReady;
+            Dispatch();
+            LinksWindow links = Opened(window, button);
+            await Until(() => Named<TextBlock>(links, "Links status").Text?.StartsWith("Generation", StringComparison.Ordinal) == true);
+            Assert.Equal("What led to it and what it led to over the window's time scope, what began in it alone · "
+                + ComparisonText.Interval(scope, workspace.TimeBase, CultureInfo.CurrentCulture),
+                Named<TextBlock>(links, "What the links are read over").Text);
+            Assert.Equal(0, Named<ListBox>(links, LedToIt).ItemCount);
+            links.Close();
+            await Until(() => window.OwnedWindows.Count == 0);
+            workspace.ClearSelection();
+            Assert.Null(workspace.ScopeInterval);
+
+            // Let go of the scope, they are the session's, and the one Select this process closes on becomes the selection.
             workspace.SelectProcess(workspace.Snapshot.Processes.Single(process => process.ProcessId == LinkApp).Id);
             Dispatch();
             Assert.True(button.IsEnabled);
             Assert.Equal("List the selected process's links", AutomationProperties.GetHelpText(button));
             Assert.StartsWith("List what led to app.exe · PID 400 and what it led to", ToolTip.GetTip(button) as string, StringComparison.Ordinal);
-            LinksWindow links = Opened(window, button);
+            links = Opened(window, button);
             await Until(() => Named<TextBlock>(links, "Links status").Text?.StartsWith("Generation", StringComparison.Ordinal) == true);
             Named<ListBox>(links, ItLedTo).SelectedIndex = 0;
             Labelled(links, "Follow").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

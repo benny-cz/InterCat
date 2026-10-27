@@ -156,6 +156,45 @@ public sealed class LinksCommandTests
         Assert.Equal((false, JsonValueKind.Null), (chain.GetProperty("found").GetBoolean(), chain.GetProperty("weakest").ValueKind));
     }
 
+    [Fact(DisplayName = "R18: icat links --interval lists what began in the interval alone, saying the interval and counting what of the process began outside it")]
+    public async Task IcatLinksReadsAnInterval()
+    {
+        using var session = Session();
+
+        // From 50 to 1,250: app.exe's calls and its first two connections; its start, and its later connections and flows,
+        // began outside it.
+        (InterCatExitCode code, string text, string said) = await Run("links", session.Path, "--process", "400", "--interval", "50:1250");
+        Assert.True(code == InterCatExitCode.Success, said);
+        string interval = ComparisonText.Interval(new TimeRange(50, 1_250), culture: System.Globalization.CultureInfo.CurrentCulture);
+        Assert.Matches(new Regex("^  Interval +" + Regex.Escape(interval + ", what began in it alone") + @"\r?$", RegexOptions.Multiline), text);
+        Assert.Contains("Nothing the evidence policy follows led to it.", text, Ordinal);
+        Assert.Equal(["served its calls", "it connected to", "it connected to"], Rows(text, "IT LED TO").Select(row => row.Split(" | ")[0]));
+        string flowed = Regex.Replace(text, @"\s+", " ");
+        Assert.Contains("1 call whose other end is unresolved: no ALPC send on its thread during the call.", flowed, Ordinal);
+        Assert.Contains("OUTSIDE THE INTERVAL", text, Ordinal);
+        Assert.Contains("6 of the starts, calls, connections and flows it took part in began outside the interval, so none of them is "
+            + "listed here.", flowed, Ordinal);
+
+        // A chain runs through the interval's links alone, and says so where none does.
+        (code, text, said) = await Run("links", session.Path, "--process", "300", "--to", "1960", "--interval", "50:1250");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("No chain of links the include-correlated evidence policy follows leads from shell.exe · PID 300 to "
+            + "services.exe · PID 1960 in the interval.", Regex.Replace(text, @"\s+", " "), Ordinal);
+        (code, text, said) = await Run("links", session.Path, "--process", "300", "--to", "1960");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.DoesNotContain("OUTSIDE THE INTERVAL", text, Ordinal);
+
+        // The document says the interval and how much of the process began outside it.
+        (code, text, said) = await Run("links", session.Path, "--process", "400", "--interval", "50:1250", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement root = JsonDocument.Parse(text).RootElement;
+        Assert.Equal((50L, 1_250L, 6L), (root.GetProperty("interval").GetProperty("startTicks").GetInt64(),
+            root.GetProperty("interval").GetProperty("endTicks").GetInt64(), root.GetProperty("outsideInterval").GetInt64()));
+        (code, text, _) = await Run("links", session.Path, "--process", "400", "--json");
+        root = JsonDocument.Parse(text).RootElement;
+        Assert.Equal((JsonValueKind.Null, 0L), (root.GetProperty("interval").ValueKind, root.GetProperty("outsideInterval").GetInt64()));
+    }
+
     [Fact(DisplayName = "R18: icat links refuses a process it cannot name, a PID the session reused, a chain to itself, and a policy it does not know")]
     public async Task IcatLinksRefusesWhatItCannotName()
     {
@@ -177,6 +216,8 @@ public sealed class LinksCommandTests
             (["--process", "400", "--to", "400"], "--to names the process --process names: a chain leads from one process to another."),
             (["--process", "400", "--evidence-policy", "2"], "--evidence-policy expects one of: DirectOnly, IncludeCorrelated, "
                 + "IncludeCandidates, AllIncludingConflicting. '2' is not one."),
+            (["--process", "400", "--interval", "1250:50"], "--interval names no interval: start:end, each bound a count of "
+                + "100-nanosecond session ticks or a time with its unit, such as 1.5s, 250ms or 40us, with its end after its start."),
         })
         {
             (InterCatExitCode code, _, string said) = await Run(["links", session.Path, .. args]);

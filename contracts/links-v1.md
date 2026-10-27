@@ -1,13 +1,14 @@
 # InterCat links v1
 
 Status: **implemented** on the command line (`icat links`, revision 765) and in the window (Follow its links…,
-revision 766, §8).
+revision 766, §8), over an interval of a session since revision 797 (§1).
 
-This contract fixes plan M12's causal navigation for one session's current generation: the links its evidence records
-between processes, other hosts and ends no record holds, each by one documented rule and at one strength; the links a
-view follows, which are only those its evidence policy admits; and what is listed beside them and never followed. It
-owns no bytes: every link is read from derivations the overview already makes (`entities-v1` §3, `operations-v1` §5c,
-`relations-v1` §5), and reading links changes none of them. ADR-066 records the decisions.
+This contract fixes plan M12's causal navigation for one session's current generation, or what began in an interval of
+it: the links its evidence records between processes, other hosts and ends no record holds, each by one documented
+rule and at one strength; the links a view follows, which are only those its evidence policy admits; and what is
+listed beside them and never followed. It owns no bytes: every link is read from derivations the overview already
+makes (`entities-v1` §3, `operations-v1` §5c, `relations-v1` §5), and reading links changes none of them. ADR-066
+records the decisions.
 
 ## 1. A reading
 
@@ -15,6 +16,12 @@ owns no bytes: every link is read from derivations the overview already makes (`
   calls, all of one generation, read again where a newer one was published between them.
 - An **evidence policy**, `IncludeCorrelated` by default. It decides which links a view follows (§3); a reading holds
   every link whatever its strength.
+- An **interval**, optionally, in presentation ticks (since revision 797): the links are then made of what began in
+  it, and so is what links to nothing (§4): a start where the child's creation was witnessed, a call where the
+  client's started or, where no start was recorded, stopped, and a connection or flow where its first record was
+  raised. A start no record witnessed began before the capture, so no interval holds it. A server call a client
+  reached began with that client's call, wherever the server's began; one no client reached, at its own start. What
+  began outside the interval is counted apart, for each process it touches (§3), and nothing else of it is read.
 - Each of process lifecycle's, TCP's, RPC's and ALPC's coverage over the session, stated beside the links (R21), so a
   link the capture could not have seen is not read as one that did not happen.
 
@@ -44,9 +51,14 @@ A view of one process lists:
   to.
 - **Not followed**: the links touching it at a strength the policy does not admit. Each is possible, not established;
   it is listed and never followed, and no chain is made through it.
+- **Outside the interval**, where one was asked for (§1): how many of the starts, calls, connections and flows it took
+  part in began outside it, a served call counted for both its caller and its server, so none of them is listed and
+  none is counted as linking to nothing. Its links, what links to nothing and what began outside add up to what the
+  whole session holds of it.
 - **Near in time**: the processes whose creation was witnessed within a second of its own, before or after, and that
   no link joins to it, followed or not, the nearest first. Nearness is never a link (P8, plan §7.4): it is listed so a
   person does not mistake it for one, and nothing follows it. A process whose creation was not witnessed is near none.
+  Nearness reads every witnessed creation, over whatever interval the links were read.
 
 Each list orders its links by kind - `Started`, `Called`, `Connected` - then the most held first, then processes
 before hosts and the end no record holds, each by name.
@@ -68,7 +80,7 @@ A **chain** from one process to another is the shortest sequence of links the po
 the previous one led to, through processes alone: another host or an unseen end is an address, never a step, so
 nothing is chained through it. Among chains as short, the one whose links come first by kind and then by the instance
 they lead to. A chain is as strong as its weakest link (ADR-055), and claims no more than its links: never a cause of
-what the last process did.
+what the last process did. Over an interval, a chain runs through the links that began in it alone.
 
 Where none leads there, a view says so, and says whether one would through links the policy does not follow - with the
 narrowest policy that follows them - and whether one leads the other way.
@@ -86,12 +98,19 @@ held it in the session, else by its instance id; a reused PID is refused with ea
 started app.exe · PID 400" - with its evidence and strength, and the chain's weakest; one to itself is refused.
 `--evidence-policy` takes a policy as written or in kebab form, `include-correlated` unless it says so.
 
-`--json` writes `evidence-links-v1`: the session, generation, rule and policy; each mechanism's coverage; the process;
-its links led to it, led to and not followed, each with its kind, both ends - their kind (`Process`, `Host` or
-`UnseenEnd`), instance, PID and name, or address - its strength, occurrences, interface and its documented name, port
-and evidence; whether its creation was witnessed, the window of nearness in ticks and each near process with its
-offset; what of it links to nothing; and, with `--to`, the chain: its end, whether one was found, its weakest strength
-and its links.
+`--interval <start:end>` reads the links over an interval (§1, since revision 797), each bound a count of
+100-nanosecond session ticks or a time with its unit, as every command that takes an interval reads one. The answer
+then states the interval and how many of the starts, calls, connections and flows the process took part in began
+outside it, and a chain is sought through the interval's links alone, its absence said of the interval. An interval
+whose end is not after its start is refused.
+
+`--json` writes `evidence-links-v1`: the session, generation, rule and policy; additively since revision 797, the
+interval read, as its start and end ticks or null; each mechanism's coverage; the process, and, additively, how many
+of the starts, calls, connections and flows it took part in began outside the interval; its links led to it, led to
+and not followed, each with its kind, both ends - their kind (`Process`, `Host` or `UnseenEnd`), instance, PID and
+name, or address - its strength, occurrences, interface and its documented name, port and evidence; whether its
+creation was witnessed, the window of nearness in ticks and each near process with its offset; what of it links to
+nothing; and, with `--to`, the chain: its end, whether one was found, its weakest strength and its links.
 
 ## 7. One generation
 
@@ -101,15 +120,17 @@ them, they are read again, up to three times, and then refused with a reason rat
 ## 8. The window
 
 Follow its links…, among the actions beside the graph, is offered for the selected process at any rung but its source
-records. It reads the session's current generation under the window's evidence policy and lists, in the command line's
-words (R18):
+records. It reads the session's current generation under the window's evidence policy, over the window's time scope
+(plan §6.4) where it has one since revision 797, said on the window's clock above the lists and kept for every process
+followed to, and lists, in the command line's words (R18):
 
 - **Led to it** and **It led to**, side by side: each link by what its other end is to the process and that end, then
   its evidence and strength; where one holds none, it says so in its place.
 - **Not followed**, where links touching the process are at a strength the policy does not admit, saying so.
 - **Near in time**, as text and never as a link anything follows, and **Not linked** where something of it is.
 - **About it**: the generation read and, where it is newer than the window shows, which generation the window shows;
-  the strengths the policy follows; how many links led to it and it led to; and each mechanism's coverage.
+  the strengths the policy follows; how many links led to it and it led to; each mechanism's coverage; and, over an
+  interval, how much of it began outside it.
 
 Enter, a double click or Follow follows the chosen link to the process at its other end, either way along it, and
 centres the list on that process, the path walked said above it; Back or Alt+Left returns a link at a time. A link to
@@ -124,4 +145,4 @@ says so. Escape and Close choose nothing.
   and ends, its evidence counted.
 - **Other links**: named pipes, ALPC ports beside RPC, HTTP exchanges to the connections that carried them, an ETW
   related activity id, and thread nesting, none of which a rule here follows.
-- **Links over an interval**, or across captures; a reading is of a whole generation.
+- **Links across captures**: a reading is of one generation, whole or over one interval of it (§1).

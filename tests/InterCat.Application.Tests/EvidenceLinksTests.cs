@@ -184,6 +184,110 @@ public sealed class EvidenceLinksTests
             reading.Coverage.Select(coverage => coverage.Mechanism));
     }
 
+    [Fact(DisplayName = "R21: links read over an interval are made of what began in it alone, and what of a process began outside it is counted, never read as none")]
+    public void LinksReadOverAnInterval()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkRows();
+        Publish(session.Store, rows, fields: fields, coverage: TransportLedger(tcp: true, udp: true));
+        LinkReading whole = EvidenceLinks.Read(session.Store);
+        Assert.Equal(((TimeRange?)null, 0), (whole.Interval, whole.OutsideInterval.Count));
+
+        // From 50 to 1,250: app.exe's calls and its first two connections, and a host's connection to server.exe. The
+        // processes were started before it, and the later connections and flows began after it.
+        var interval = new TimeRange(50, 1_250);
+        LinkReading read = EvidenceLinks.Read(session.Store, interval: interval);
+        ProcessInstanceId Of(int pid) => read.Processes.Values.Single(node => node.ProcessId == pid && node.PidHolder == 1).Id;
+        string End(LinkEnd end) => end.Process is { } id ? read.Processes[id].PidLabel : end.Address ?? "unseen";
+        Assert.Equal(interval, read.Interval);
+        Assert.Equal(
+            [
+                "Called PID 400 > PID 1960 x2",
+                "Connected 10.0.0.5 > PID 4000 x1",
+                "Connected PID 400 > 93.184.216.34 x1",
+                "Connected PID 400 > PID 4000 x1",
+            ],
+            read.Links.Select(link => $"{link.Kind} {End(link.From)} > {End(link.To)} x{link.Occurrences}").Order(StringComparer.Ordinal));
+
+        // app.exe: nothing that led to it began in the interval; what it led to did, and its unlinked call; its start, two
+        // connections and two flows began after it, and a connection to an end no record holds.
+        StepLinks app = EvidenceLinks.Of(read, Of(LinkApp));
+        Assert.Empty(app.LedToIt);
+        Assert.Equal(["PID 1960", "PID 4000", "93.184.216.34"], app.ItLedTo.Select(link => End(link.To)));
+        Assert.Equal([(RpcPeerState.NoSend, 1L)], app.Unlinked.UnresolvedCalls.Select(entry => (entry.Key, entry.Value)));
+        Assert.Equal((0L, 0L, 6L), (app.Unlinked.UnopenedConnections, app.Unlinked.Flows, app.OutsideInterval));
+        Assert.Equal("6 of the starts, calls, connections and flows it took part in began outside the interval, so none of them is "
+            + "listed here.", LinkText.Outside(app));
+        Assert.Null(LinkText.Outside(EvidenceLinks.Of(whole, Of(LinkApp))));
+
+        // A server call no client call reached is placed by its own start; one a client reached, with the client's call.
+        StepLinks services = EvidenceLinks.Of(read, Of(LinkServices));
+        Assert.Equal((2L, 2L, 0L), (services.LedToIt.Single().Occurrences, services.Unlinked.CallsNotReached, services.OutsideInterval));
+        Assert.Equal((null, 1L), (EvidenceLinks.Of(read, Of(LinkOther)).Unlinked.UnheldParent, EvidenceLinks.Of(read, Of(LinkOther)).OutsideInterval));
+        Assert.Equal((2L, 3L), (EvidenceLinks.Of(read, Of(LinkShell)).OutsideInterval, EvidenceLinks.Of(read, Of(LinkServer)).OutsideInterval));
+
+        // Each start, call, connection and flow a process took part in is linked, unlinked or outside the interval, never
+        // two of them.
+        foreach (ProcessInstanceId process in whole.Processes.Keys)
+        {
+            Assert.Equal(Held(EvidenceLinks.Of(whole, process)), Held(EvidenceLinks.Of(read, process)) + read.OutsideInterval.GetValueOrDefault(process));
+        }
+
+        Assert.Equal("1 of the starts, calls, connections and flows it took part in began outside the interval, so it is not listed "
+            + "here.", LinkText.Outside(EvidenceLinks.Of(read, Of(LinkOther))));
+
+        // From 206: app.exe's first call, served, and its second, whose other end is unresolved, began before it, as did a
+        // call services.exe served that no client reached, each placed where it began even where it ended inside; a server
+        // call a client reached is counted with that client's call, for both processes.
+        LinkReading later = EvidenceLinks.Read(session.Store, interval: new TimeRange(206, 1_250));
+        StepLinks laterApp = EvidenceLinks.Of(later, Of(LinkApp));
+        Assert.Equal((1L, 0, 8L), (laterApp.ItLedTo[0].Occurrences, laterApp.Unlinked.UnresolvedCalls.Count, laterApp.OutsideInterval));
+        StepLinks laterServices = EvidenceLinks.Of(later, Of(LinkServices));
+        Assert.Equal((1L, 1L, 2L), (laterServices.LedToIt.Single().Occurrences, laterServices.Unlinked.CallsNotReached,
+            laterServices.OutsideInterval));
+        foreach (ProcessInstanceId process in whole.Processes.Keys)
+        {
+            Assert.Equal(Held(EvidenceLinks.Of(whole, process)), Held(EvidenceLinks.Of(later, process)) + later.OutsideInterval.GetValueOrDefault(process));
+        }
+
+        // A chain runs through the interval's links alone.
+        Assert.NotNull(EvidenceLinks.Chain(whole, Of(LinkShell), Of(LinkServices)));
+        Assert.Null(EvidenceLinks.Chain(read, Of(LinkShell), Of(LinkServices), everyLink: true));
+        Assert.Equal([LinkKind.Called], EvidenceLinks.Chain(read, Of(LinkApp), Of(LinkServices))!.Select(link => link.Kind));
+
+        static long Held(StepLinks links) => links.LedToIt.Concat(links.ItLedTo).Concat(links.NotFollowed).Sum(link => link.Occurrences)
+            + links.Unlinked.UnopenedConnections + links.Unlinked.Flows + links.Unlinked.UnresolvedCalls.Values.Sum()
+            + links.Unlinked.CallsNotReached + (links.Unlinked.UnheldParent is null ? 0 : 1);
+    }
+
+    [Fact(DisplayName = "R21: a process whose creation no record witnessed was started before the capture, so no interval holds its start")]
+    public void AStartNoRecordWitnessedIsInNoInterval()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1 parent = Lifecycle(10, ObservationKind.Inventory, 500, 1) with { ResourceName = @"C:\Apps\parent.exe" };
+        ObservationRowV1 child = Lifecycle(20, ObservationKind.Inventory, 600, 2) with { ResourceName = @"C:\Apps\child.exe" };
+        ObservationRowV1 born = Lifecycle(30, ObservationKind.Create, 700, 3) with { ResourceName = @"C:\Apps\born.exe" };
+        Publish(session.Store, [.. new[] { parent, child, born }.Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })],
+            fields:
+            [
+                Field(parent, SourceField.ProcessStartSequence, 900),
+                Field(child, SourceField.ParentProcessId, 500),
+                Field(child, SourceField.ParentStartSequence, 900),
+                Field(born, SourceField.ParentProcessId, 500),
+            ]);
+        LinkReading whole = EvidenceLinks.Read(session.Store);
+        Assert.Equal(2, whole.Links.Count(link => link.Kind == LinkKind.Started));
+
+        // Over all the capture holds, the start a rundown names by the parent's start key is still outside it; the start
+        // witnessed at 30 is in it.
+        LinkReading read = EvidenceLinks.Read(session.Store, interval: new TimeRange(0, 1_000));
+        ProcessInstanceId Of(int pid) => read.Processes.Values.Single(node => node.ProcessId == pid).Id;
+        EvidenceLink started = Assert.Single(read.Links);
+        Assert.Equal((Of(500), Of(700)), (started.From.Process!.Value, started.To.Process!.Value));
+        Assert.Equal((1L, 1L, 0L), (read.OutsideInterval.GetValueOrDefault(Of(500)), read.OutsideInterval.GetValueOrDefault(Of(600)),
+            read.OutsideInterval.GetValueOrDefault(Of(700))));
+    }
+
     [Fact(DisplayName = "R18: a link, its evidence, what is near and what links to nothing are said in one set of words, the command line's and the window's")]
     public void LinksAreSaidInOneSetOfWords()
     {
