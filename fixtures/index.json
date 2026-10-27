@@ -1338,6 +1338,7 @@
         "P2: a buffer longer than a view shows at once is shown from its first byte, and the view says where it stopped",
         "P2: a buffer's content viewer opens its exchange's conversation, which offers no buffers from there, and a record of no exchange offers none",
         "P2: a content search lists the records whose kept bytes hold a text, how often and where first, and shows no byte unless previews are asked for",
+        "P2: a decoder that fails on its bytes decodes nothing and says it failed and how, stopping nothing that asked it",
         "P2: a decoding reads at most what a view shows at once, within its time budget, and says where it stopped",
         "P2: a fixture message decodes into the fields its bytes hold, each with its bytes, linked to the record and the decoder's version",
         "P2: a fixture message the capture cut, or that ends or leaves its header, decodes only what its bytes show and says why the rest does not",

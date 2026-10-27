@@ -139,7 +139,8 @@ public static partial class ContentDecoders
                 : throw new InvalidOperationException("A decoding reads the part's bytes, which were not read.");
         }
 
-        return HttpHeads.Decode(record, name, bytes, row.EventId == HttpHeads.RequestHead, budget ?? Budget);
+        return Contained(HttpHeadDecoder, record, name,
+            () => HttpHeads.Decode(record, name, bytes, row.EventId == HttpHeads.RequestHead, budget ?? Budget));
     }
 
     /// <summary>
@@ -174,7 +175,39 @@ public static partial class ContentDecoders
             throw new InvalidOperationException("A decoding reads the kept bytes, which were not read.");
         }
 
-        return FixtureMessages.Decode(record, kept, bytes, entry.Fragment, budget ?? Budget);
+        return Contained(Known.Single(decoder => decoder.Id == FixtureMessages.Id), record, null,
+            () => FixtureMessages.Decode(record, kept, bytes, entry.Fragment, budget ?? Budget));
+    }
+
+    /// <summary>
+    /// <paramref name="decode"/>'s decoding of <paramref name="record"/>'s bytes or <paramref name="part"/>, or, where the
+    /// decoder throws on them, a decoding of nothing that says it failed and how (`contracts/decoders-v1.md` §2). A
+    /// decoder's failure is its own fault, never the evidence's: it stops nothing that asked it - a view, a listing, an
+    /// export - and the bytes stay as they are, shown and saved as before.
+    /// </summary>
+    internal static DecodedContent Contained(ContentDecoderInfo decoder, RawRecordId record, string? part, Func<DecodedContent> decode)
+    {
+        ArgumentNullException.ThrowIfNull(decoder);
+        ArgumentNullException.ThrowIfNull(decode);
+        try
+        {
+            return decode();
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return new()
+            {
+                DecoderId = decoder.Id,
+                Decoder = decoder.Name,
+                DecoderVersion = decoder.Version,
+                Record = record,
+                Part = part,
+                Read = null,
+                Fields = [],
+                NotDecoded = $"The decoder failed on these bytes ({exception.GetType().Name}: {exception.Message.TrimEnd('.')}), so "
+                    + "nothing is decoded: the failure is the decoder's, not the evidence's, and the bytes stay as they are.",
+            };
+        }
     }
 
     /// <summary>

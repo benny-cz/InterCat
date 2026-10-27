@@ -148,3 +148,11 @@ with their heads… says first what its table holds and that it is content, and 
 every exchange the rung lists in its scope with what its heads say, as `icat exchanges --decode --format csv` writes
 them. Every deliverable M8 can build on the sources here is built; its exit review comes next, and nothing else above
 changes.
+
+## Addendum, revision 785
+
+A decoder's failure is contained (`contracts/decoders-v1.md` §2): a decoder that throws on some bytes decodes nothing
+and says it failed and how, as a decoding of nothing under its name and version, so the content viewer, a
+conversation, `icat content --decode`, `icat exchanges --decode` and an export of heads each say why instead of
+stopping. Decoders still run in the process that asked, never in the capture; M8's exit review comes next, and nothing
+else above changes.

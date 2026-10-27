@@ -38,6 +38,9 @@ made:
   missing bytes (P2).
 - **Within bounds**: at most the first 64 KiB of the bytes, as a view shows, and at most 250 ms, saying where either
   stopped it.
+- **Contained** (revision 785): a decoder that fails on some bytes - its own fault, never the evidence's - decodes
+  nothing and says it failed and how, so the view, listing or export that asked goes on, and the bytes stay as they
+  are, shown and saved as before.
 - **Inert**: its fields are text that nothing renders, runs or fetches.
 
 A decoding is never kept: no store, package or report holds one, and `icat content --json` refuses `--decode`, so

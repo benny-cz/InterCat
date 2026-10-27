@@ -51,7 +51,9 @@ so a head part is exactly what the process sent or read.
   listed exchange's two decoded heads side by side (`icat exchanges --decode`), each still decoded alone. Revision 777
   does the same in the window, in an exchange's conversation. Revision 778 sets each body beside the length its head
   declares (`http-exchanges-v1` §5e), reading none of it. Revision 783 writes the listed exchanges' heads to a
-  document asked for with them, which says it holds content (ADR-071, `http-exchanges-v1` §5f).
+  document asked for with them, which says it holds content (ADR-071, `http-exchanges-v1` §5f). Revision 785 contains
+  a decoder's failure in the process that asked: it is said as a decoding of nothing, which stops no view, listing or
+  export (`decoders-v1` §2).
 
 ## Alternatives considered
 

@@ -132,6 +132,33 @@ public sealed class HttpHeadDecodingTests
         }
     }
 
+    [Fact(DisplayName = "P2: a decoder that fails on its bytes decodes nothing and says it failed and how, stopping nothing that asked it")]
+    public void ADecoderThatFailsSaysSo()
+    {
+        // The failure - here a decoder reading past its bytes - is said as the decoding of nothing, under the decoder's
+        // name and version and the part it was asked for, so a view, a listing or an export shows why instead of stopping.
+        var record = new RawRecordId(Capture, 1, 1, 9);
+        int[] none = [];
+        DecodedContent failed = ContentDecoders.Contained(ContentDecoders.HttpHeadDecoder, record, "the request head of exchange 7",
+            () => new DecodedContent
+            {
+                DecoderId = "http1-head", Decoder = "past its bytes", DecoderVersion = none[0], Record = record, Read = null, Fields = [],
+            });
+        Assert.Equal(("http1-head", "InterCat's HTTP/1.1 head decoder", 1, record, "the request head of exchange 7"),
+            (failed.DecoderId, failed.Decoder, failed.DecoderVersion, failed.Record, failed.Part));
+        Assert.Equal(((ContentRange?)null, 0, false), (failed.Read, failed.Fields.Count, failed.ReachedEnd));
+        Assert.Equal("The decoder failed on these bytes (IndexOutOfRangeException: Index was outside the bounds of the array), "
+            + "so nothing is decoded: the failure is the decoder's, not the evidence's, and the bytes stay as they are.",
+            failed.NotDecoded);
+
+        // A decoding that does not fail is the decoder's own, as it made it; running out of memory is not the decoder's
+        // to contain.
+        DecodedContent made = failed with { NotDecoded = null };
+        Assert.Same(made, ContentDecoders.Contained(ContentDecoders.HttpHeadDecoder, record, null, () => made));
+        Assert.Throws<OutOfMemoryException>(() => ContentDecoders.Contained(ContentDecoders.HttpHeadDecoder, record, null,
+            () => made with { Fields = [new("past every array", new byte[int.MaxValue].Length.ToString(CultureInfo.InvariantCulture), new(0, 0))] }));
+    }
+
     [Fact(DisplayName = "P2: a head decoding reads at most what a view shows at once, within its time budget, and says where it stopped")]
     public void AHeadDecodingIsBounded()
     {
