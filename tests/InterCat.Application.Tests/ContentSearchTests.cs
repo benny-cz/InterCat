@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using InterCat.Analysis.Tests;
 using InterCat.Domain;
@@ -146,6 +147,83 @@ public sealed class ContentSearchTests
             [.. ContentSearch.Find(session.Store, id, request).Hits.Select(hit => hit.Observation.RawRecordOrdinal)];
         int NotAdmitted(ContentSearchRequest request) => ContentSearch.Find(session.Store, id, request).NotAdmitted;
     }
+
+    [Fact(DisplayName = "P2: a content search finds a text two buffers of one HTTP part split, none counted twice across the part, and never across a gap, a cut or another part")]
+    public void ASearchFindsATextTwoBuffersSplit()
+    {
+        // Process 4242's HTTP buffers, each part's in order: a request head naming the host across its seam; a body naming
+        // it whole, then across each of its two seams; a body whose match ends where another would begin across the seam;
+        // parts split across a buffer never recorded, a buffer the session's 26-byte record limit cut, a part's end, a
+        // part's start, two parts and three buffers; a UTF-16 body naming it across its seam; bytes that read as the
+        // host's name only across two encodings, or across a UTF-16 buffer that ends inside a code unit; and a body whose
+        // later buffer holds "abab" where a match across the seam already took its first two bytes.
+        (long Exchange, ushort Event, long Sequence, long Flags, byte[] Bytes, bool Wide)[] buffers =
+        [
+            (7, 2001, 0, 1, A("GET / HTTP/1.1\r\nHost: exam"), false), (7, 2001, 1, 2, A("ple.com\r\n\r\n"), false),
+            (8, 2004, 0, 1, A("example.com and exa"), false), (8, 2004, 1, 0, A("mple.com, ex"), false), (8, 2004, 2, 2, A("ample.com"), false),
+            (9, 2004, 0, 1, A("xxabab"), false), (9, 2004, 1, 2, A("abxx"), false),
+            (10, 2004, 0, 1, A("Host: exam"), false), (10, 2004, 2, 2, A("ple.com"), false),
+            (11, 2004, 0, 1, A("0123456789012345Host: examYYYY"), false), (11, 2004, 1, 2, A("ple.com"), false),
+            (12, 2004, 0, 3, A("Host: exam"), false), (12, 2004, 1, 2, A("ple.com"), false),
+            (13, 2004, 0, 1, A("Host: exam"), false), (13, 2004, 1, 1, A("ple.com"), false),
+            (14, 2003, 0, 1, A("Host: exam"), false), (14, 2004, 1, 2, A("ple.com"), false),
+            (15, 2004, 0, 1, A("Host: ex"), false), (15, 2004, 1, 0, A("am"), false), (15, 2004, 2, 2, A("ple.com"), false),
+            (16, 2004, 0, 1, W("Host: exam"), true), (16, 2004, 1, 2, W("ple.com"), true),
+            (17, 2004, 0, 1, W("\u7865\u6D61"), true), (17, 2004, 1, 2, A("ple.com"), false),
+            (18, 2004, 0, 1, [.. A("AAAAAAAAAAAAA"), .. W("exam")], true), (18, 2004, 1, 2, W("ple.com"), true),
+            (19, 2004, 0, 1, A("xxab"), false), (19, 2004, 1, 2, A("abab"), false),
+        ];
+        ObservationRowV1[] rows = [.. buffers.Select((buffer, index) => Http(10 + index, buffer.Event, (ulong)index + 1))];
+        using var session = new TemporarySession();
+        Publish(session.Store, rows,
+            fields:
+            [
+                .. buffers.SelectMany((buffer, index) => new[]
+                {
+                    Field(rows[index], SourceField.HttpExchangeId, buffer.Exchange),
+                    Field(rows[index], SourceField.ContentBufferSequence, buffer.Sequence),
+                    Field(rows[index], SourceField.ContentBufferFlags, buffer.Flags),
+                }),
+            ],
+            content: (ContentHeader(26), [.. buffers.Select((buffer, index) => Content(rows[index], buffer.Bytes, 26,
+                buffer.Wide ? ContentEncodingV1.Utf16LittleEndian : ContentEncodingV1.Binary))]));
+        session.Store.ReleaseSegmentReaders();
+        Guid id = session.Store.SessionId;
+
+        // A match the seam splits is the later buffer's, begun before its first byte; one that would overlap a match the
+        // buffer before already holds is not counted again; and nothing is found across anything not kept between them.
+        ContentSearchResult found = ContentSearch.Find(session.Store, id, new() { Text = "example.com" });
+        Assert.Equal([(2UL, 1, -4), (3UL, 1, 0), (4UL, 1, -3), (5UL, 1, -2), (22UL, 1, -8)],
+            found.Hits.Select(hit => (hit.Observation.RawRecordOrdinal, hit.Matches, hit.FirstAt)));
+        Assert.Equal((28, 293L), (found.RecordsRead, found.BytesRead));
+        Assert.Equal(found.Hits.Select(hit => hit.Observation.RawRecordOrdinal),
+            ContentSearch.Find(session.Store, id, new() { Text = "EXAMPLE.com", IgnoreCase = true }).Hits.Select(hit => hit.Observation.RawRecordOrdinal));
+        Assert.Equal([(6UL, 1, 2), (28UL, 1, -2)], ContentSearch.Find(session.Store, id, new() { Text = "abab" }).Hits
+            .Select(hit => (hit.Observation.RawRecordOrdinal, hit.Matches, hit.FirstAt)));
+
+        // Asked for, the bytes around a match across a seam are shown from both buffers.
+        ContentSearchHit[] previewed = [.. ContentSearch.Find(session.Store, id, new() { Text = "example.com", Previews = true }).Hits];
+        Assert.Equal(new ContentPreview("HTTP/1.1\\x0D\\x0AHost: ", "example.com", "\\x0D\\x0A\\x0D\\x0A"), previewed[0].Preview);
+        Assert.Equal(new ContentPreview("example.com and ", "example.com", ", ex"), previewed[2].Preview);
+        Assert.Equal(new ContentPreview("Host: ", "example.com", string.Empty), previewed[4].Preview);
+        Assert.Equal(("byte 0", "4 bytes before it, in the buffer before it in its part"),
+            (ContentSearch.FirstAtText(previewed[1], CultureInfo.InvariantCulture), ContentSearch.FirstAtText(previewed[0], CultureInfo.InvariantCulture)));
+
+        static byte[] A(string text) => Encoding.ASCII.GetBytes(text);
+        static byte[] W(string text) => Encoding.Unicode.GetBytes(text);
+    }
+
+    private static ObservationRowV1 Http(long ticks, ushort eventId, ulong ordinal) =>
+        Transfer(ticks, eventId <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
+            eventId <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, 1, null, ordinal) with
+        {
+            Mechanism = Mechanism.Http,
+            Layer = ObservationLayer.Application,
+            EventId = eventId,
+            HeaderProcessId = 4_242,
+            Direction = eventId <= 2002 ? Direction.Outbound : Direction.Inbound,
+            ByteDomain = ByteDomain.ApplicationPayload,
+        };
 
     /// <summary>
     /// Eight records' messages, each kept up to 64 bytes under <paramref name="inspection"/>: process 4242's request head

@@ -405,7 +405,7 @@ public static class SessionContentPartQuery
     private static string Capital(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
 
     /// <summary>Every record's exchange, place and ends, read from the generation's source fields by column.</summary>
-    private static Dictionary<(uint, uint, ulong), PartFields> ReadPartFields(
+    internal static Dictionary<(uint, uint, ulong), PartFields> ReadPartFields(
         SessionStore store, SessionManifestV1 manifest, CancellationToken cancellationToken)
     {
         var fields = new Dictionary<(uint, uint, ulong), PartFields>();
@@ -448,5 +448,6 @@ public static class SessionContentPartQuery
         return fields;
     }
 
-    private readonly record struct PartFields(long? Exchange, long? Sequence, long? Flags);
+    /// <summary>A buffer's exchange number, its place in its part and its ends, as its source fields hold them.</summary>
+    internal readonly record struct PartFields(long? Exchange, long? Sequence, long? Flags);
 }

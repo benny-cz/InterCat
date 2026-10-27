@@ -642,7 +642,7 @@ internal static class ContentCommand
                     MechanismText.Name(hit.Observation.Mechanism),
                     hit.Observation.EventId.ToString(CultureInfo.InvariantCulture),
                     ConsoleUi.Count(hit.Matches),
-                    string.Create(culture, $"byte {hit.FirstAt:N0}"),
+                    hit.FirstAt >= 0 ? string.Create(culture, $"byte {hit.FirstAt:N0}") : string.Create(culture, $"{-hit.FirstAt:N0} B before"),
                     hit.Segment,
                     hit.Row.ToString(CultureInfo.InvariantCulture),
                 ])]);
@@ -656,6 +656,12 @@ internal static class ContentCommand
         }
 
         ConsoleUi.Line();
+        if (result.Hits.Any(hit => hit.FirstAt < 0))
+        {
+            ConsoleUi.Note("A record first at \"N B before\" holds a match that began N bytes before its first byte, in the buffer "
+                + "before it in its HTTP part.");
+        }
+
         ConsoleUi.Note(ContentSearch.Exactness);
         if (result.Hits.Count > 0)
         {

@@ -236,3 +236,13 @@ instance id, refusing a reused PID with each of its holders, and keeps to the re
 policy admits, counting those the policy leaves out; the window's Find in kept content… keeps to the process selected
 there the same way, under the window's policy. `--pid` still keeps to the records that carry a PID, and says it is
 whichever process held it. Nothing else above changes.
+
+## Addendum, revision 789
+
+A search finds a text two buffers of one HTTP part split (`contracts/content-v1.md` §4), which lifts the limit above
+that a match split across two buffers was not found. A buffer is searched with the end of the buffer right before it
+in its part, where that one was kept whole, of one encoding and, in UTF-16, ending at a code unit's end; the match is
+listed on the later buffer, begun that many bytes before its first byte, its preview taking the bytes of both, and
+matches are counted from the part's start, none overlapping another across it. A match across three buffers, or across
+a buffer not recorded, not kept or cut, is still not found, as the sentence every answer carries says. Nothing else
+above changes.

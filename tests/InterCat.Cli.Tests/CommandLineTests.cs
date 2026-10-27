@@ -3163,6 +3163,54 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"(?m)^  Searched +the kept bytes of 0 records, 0 B\r?$", output);
     }
 
+    [Fact(DisplayName = "P2: icat content --find finds a text two buffers of one HTTP part split, saying it began in the buffer before")]
+    public async Task KeptContentIsSearchedAcrossABuffersSeam()
+    {
+        // Exchange 7's request head in two buffers, the host's name split between them.
+        ObservationRowV1[] rows = [Wininet(10, 2001, 1), Wininet(11, 2001, 2)];
+        string[] buffers = ["GET / HTTP/1.1\r\nHost: exam", "ple.com\r\n\r\n"];
+        using var kept = new TemporarySession();
+        Publish(kept.Store, rows,
+            fields:
+            [
+                .. rows.SelectMany((row, index) => new[]
+                {
+                    Field(row, SourceField.HttpExchangeId, 7),
+                    Field(row, SourceField.ContentBufferSequence, index),
+                    Field(row, SourceField.ContentBufferFlags, index + 1),
+                }),
+            ],
+            content: (ContentHeader(64), [.. buffers.Select((buffer, index) => Content(rows[index],
+                System.Text.Encoding.ASCII.GetBytes(buffer), 64, ContentEncodingV1.Binary))]));
+        kept.Store.ReleaseSegmentReaders();
+
+        // The later buffer holds it, begun 4 bytes before its first byte, and its preview shows both buffers' bytes.
+        (InterCatExitCode code, string output, string said) = await Run("content", kept.Path, "--find", "example.com", "--previews");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Found +1 record\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +4242 +HTTP +2001 +1 +4 B before +\S+ +1\r?$", output);
+        Assert.Contains(" row 1: HTTP/1.1\\x0D\\x0AHost: ⟦example.com⟧\\x0D\\x0A\\x0D\\x0A", output, StringComparison.Ordinal);
+        Assert.Contains("A record first at \"N B before\" holds a match that began N bytes before its first byte, in the buffer "
+            + "before it in its HTTP part.", Regex.Replace(output, @"\s+", " "), StringComparison.Ordinal);
+
+        // A text one buffer holds says nothing of the buffer before.
+        (_, output, _) = await Run("content", kept.Path, "--find", "GET");
+        Assert.Matches(@"(?m)^  \S+ +4242 +HTTP +2001 +1 +byte 0 +\S+ +0\r?$", output);
+        Assert.DoesNotContain("B before", output, StringComparison.Ordinal);
+
+        static ObservationRowV1 Wininet(long ticks, ushort eventId, ulong ordinal) =>
+            Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 1, null, ordinal) with
+            {
+                Mechanism = Mechanism.Http,
+                Layer = ObservationLayer.Application,
+                EventId = eventId,
+                HeaderProcessId = 4_242,
+                Direction = Direction.Outbound,
+                ByteDomain = ByteDomain.ApplicationPayload,
+                SessionRelativeTicks = ticks * 1_000,
+            };
+    }
+
     [Fact(DisplayName = "P6: icat content --find --process keeps to one process's records, never those of another process given its PID again")]
     public async Task KeptContentIsSearchedForOneProcess()
     {

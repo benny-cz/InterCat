@@ -278,7 +278,8 @@ internal sealed class ContentSearchWindow : Window, IDisposable
             + " · " + MechanismText.Name(observation.Mechanism)
             + string.Create(CultureInfo.InvariantCulture, $" event {observation.EventId}");
         string detail = (hit.Matches == 1 ? "Holds it once" : "Holds it " + CountText.Of(hit.Matches, "time") + ", none overlapping")
-            + string.Create(culture, $", first at byte {hit.FirstAt:N0}");
+            + (hit.FirstAt >= 0 ? ", first at " : hit.Matches == 1 ? ", beginning " : ", the first beginning ")
+            + ContentSearch.FirstAtText(hit, culture);
         return new(hit, title, detail, hit.Preview is { } preview ? preview.Before + "⟦" + preview.Match + "⟧" + preview.After : null);
     }
 

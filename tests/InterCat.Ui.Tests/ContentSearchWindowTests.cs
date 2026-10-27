@@ -241,6 +241,59 @@ public sealed class ContentSearchWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "P2: Find in kept content finds a text two buffers of one HTTP part split, saying it began in the buffer before")]
+    public async Task ATextTwoBuffersSplitIsFound()
+    {
+        // Exchange 7's request head in two buffers, the host's name split between them.
+        ObservationRowV1[] rows = [Buffer(10, 1), Buffer(11, 2)];
+        string[] buffers = ["GET / HTTP/1.1\r\nHost: exam", "ple.com\r\n\r\n"];
+        using var session = new TemporarySession();
+        Publish(session.Store, rows,
+            fields:
+            [
+                .. rows.SelectMany((row, index) => new[]
+                {
+                    Field(row, SourceField.HttpExchangeId, 7),
+                    Field(row, SourceField.ContentBufferSequence, index),
+                    Field(row, SourceField.ContentBufferFlags, index + 1),
+                }),
+            ],
+            content: (ContentHeader(64), [.. buffers.Select((buffer, index) => Content(rows[index], Encoding.ASCII.GetBytes(buffer), 64,
+                ContentEncodingV1.Binary))]));
+        session.Store.ReleaseSegmentReaders();
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            // The later buffer holds it, begun before its first byte, its preview showing both buffers' bytes.
+            using var window = new ContentSearchWindow(session.Path, session.Store.SessionId, null, Clock);
+            _ = window.ShowDialog(owner);
+            Check(window, "Show the bytes around each match");
+            Box(window).Text = "example.com";
+            Labelled(window, "Find").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).Contains("hold", StringComparison.Ordinal));
+            ContentSearchRow found = Assert.Single(Rows(window));
+            Assert.Equal(("Holds it once, beginning 4 bytes before it, in the buffer before it in its part",
+                "HTTP/1.1\\x0D\\x0AHost: ⟦example.com⟧\\x0D\\x0A\\x0D\\x0A"), (found.Detail, found.Preview));
+            Assert.Equal("1 record holds it. Searched the kept bytes of 2 records (37 B).", Status(window));
+            window.Close();
+        }
+        finally
+        {
+            owner.Close();
+        }
+
+        static ObservationRowV1 Buffer(long ticks, ulong ordinal) => Record(ticks, ordinal, 0) with
+        {
+            OwnerProcessId = null,
+            HeaderProcessId = 4_242,
+            Mechanism = Mechanism.Http,
+            Layer = ObservationLayer.Application,
+            EventId = 2001,
+            ByteDomain = ByteDomain.ApplicationPayload,
+        };
+    }
+
     [AvaloniaFact(DisplayName = "R15: the content search window cuts off no text at its smallest and names every element a screen reader lands on")]
     public async Task TheWindowIsLegibleAndHeard()
     {
