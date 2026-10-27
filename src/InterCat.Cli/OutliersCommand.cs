@@ -104,11 +104,6 @@ internal static class OutliersCommand
             ConsoleUi.Progress("Projecting the current generation, then reading the interval, its baseline and each of the baseline's windows.");
             reading = ComparisonOutliers.Read(store, baseline, compared.Value, policy, grouping!.Value, cancellationToken);
         }
-        catch (InvalidDataException exception)
-        {
-            ConsoleUi.Failure(exception.Message);
-            return InterCatExitCode.PermissionOrCapabilityFailure;
-        }
         catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
             ConsoleUi.Failure(exception.Message);

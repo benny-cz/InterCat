@@ -95,11 +95,6 @@ internal static class TimelineCommand
                 measured = SessionIntervalByteQuery.Measure(store, interval.Value, columns, scope, cancellationToken: cancellationToken);
             }
         }
-        catch (InvalidDataException exception)
-        {
-            ConsoleUi.Failure(exception.Message);
-            return InterCatExitCode.PermissionOrCapabilityFailure;
-        }
         catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
             ConsoleUi.Failure(exception.Message);

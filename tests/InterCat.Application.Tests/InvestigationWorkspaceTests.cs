@@ -714,12 +714,13 @@ public sealed class InvestigationWorkspaceTests : IDisposable
                 StringComparison.Ordinal),
             valid.Replace("\"revision\": 4,", "\"revision\": 3,", StringComparison.Ordinal),
             valid.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.TwentyFirstContract}\"", StringComparison.Ordinal),
+            valid.Replace("\"comparisons\": [", "\"comparisons\": [\n    null,", StringComparison.Ordinal),
         ];
         string[] reasons = ["compares two captures by process", "comparison revision 3 is not named, compares no two intervals",
             "comparison revision 4 is not named, compares no two intervals", "comparison revision 3 is not named",
             "comparison revision 2 is not named, compares no two intervals of its sessions, compares by no metric",
             "compares no two intervals", "compares no two intervals", "comparison revision 3 is not a unique positive number",
-            "file holds no saved comparison"];
+            "file holds no saved comparison", "it lists an empty comparison"];
         for (int index = 0; index < refused.Length; index++)
         {
             Assert.NotEqual(valid, refused[index]);
@@ -1432,6 +1433,13 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AddNote(workspace, "Elsewhere", new WorkspaceNoteAnchor(Guid.NewGuid(), 0), Now));
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.EditNote(workspace, about.NoteId, "Back", Now));
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.RemoveNote(workspace, Guid.NewGuid(), Now));
+
+        // A file whose note says nothing is refused whole, saying which revision.
+        string kept = File.ReadAllText(workspace);
+        File.WriteAllText(workspace, kept.Replace("\"First stall: 800 ms\"", "\"   \"", StringComparison.Ordinal));
+        Assert.Contains("note revision 3 names no note, holds no words or too many, or is pinned to a session not in it",
+            Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+        File.WriteAllText(workspace, kept);
 
         // An earlier version's file holds no note.
         File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"",

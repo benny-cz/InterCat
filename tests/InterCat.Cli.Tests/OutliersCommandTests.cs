@@ -93,6 +93,63 @@ public sealed class OutliersCommandTests
         Assert.Contains("Processes whose executable was not witnessed are in no row", flowed, Ordinal);
     }
 
+    [Fact(DisplayName = "R18: icat outliers and icat compare write a process's connections to another host, and by executable an executable's, in words and as JSON")]
+    public async Task HostAndExecutableRowsAreWritten()
+    {
+        // The outlier fixture, its PIDs 300 and 400 running witnessed executables, and PID 300 connecting to another host's
+        // 443 and accepting a connection from it: a send in each of the baseline's windows, and ten in the compared interval.
+        long[] sends = [.. Enumerable.Range(0, 20).Select(window => (window * 50L) + 25), .. Enumerable.Range(0, 10).Select(index => 1_001L + (index * 5))];
+        ObservationRowV1[] host =
+        [
+            Lifecycle(0, ObservationKind.Inventory, 300, 14) with { ResourceName = @"C:\Apps\worker.exe" },
+            Lifecycle(0, ObservationKind.Inventory, 400, 15) with { ResourceName = @"C:\Apps\queue.exe" },
+            Transfer(1, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 28).Between("192.168.1.10:52000", "142.250.1.1:443"),
+            Transfer(2, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 44).Between("192.168.1.10:8443", "142.250.1.1:51000"),
+            .. sends.Select(ticks => Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 8, 300, (ulong)((ticks * 16) + 12))
+                .Between("192.168.1.10:52000", "142.250.1.1:443")),
+        ];
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. OutlierRows().Concat(host.Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 }))
+            .OrderBy(row => row.RawRecordOrdinal)], coverage: OutlierCoverage());
+        session.Store.ReleaseSegmentReaders();
+
+        // A process's connections to another host are a row of their own, connected from both ends.
+        (InterCatExitCode code, string text, string said) = await Run("outliers", session.Path, "--interval", "1000:1050", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement reached = JsonDocument.Parse(text).RootElement.GetProperty("listed").EnumerateArray()
+            .Single(row => row.GetProperty("kind").GetString() == "OtherHost");
+        Assert.Equal((300, JsonValueKind.Null, "142.250.1.1", "Both", "Above"), (reached.GetProperty("source").GetProperty("processId").GetInt32(),
+            reached.GetProperty("target").ValueKind, reached.GetProperty("address").GetString(), reached.GetProperty("connected").GetString(),
+            reached.GetProperty("side").GetString()));
+
+        // By executable, the two executables are a row, and the one that reached the host another, each named by its group.
+        (code, text, said) = await Run("outliers", session.Path, "--interval", "1000:1050", "--group-by", "executable");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(
+            [
+                "queue.exe and worker.exe | TCP | 50 | 10 to 12, median 10 | 38 more than the most | above every window of its baseline",
+                "worker.exe ⇄ 142.250.1.1 | TCP at 443 and 8443 | 10 | 1 to 3, median 1 | 7 more than the most | above every window of its baseline",
+            ],
+            Rows(text, "OUTLIERS", "Relationship"));
+        (code, text, said) = await Run("outliers", session.Path, "--interval", "1000:1050", "--group-by", "executable", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(["ExecutableToOtherHost | worker.exe |  | 142.250.1.1", "Executables | queue.exe | worker.exe | "],
+            JsonDocument.Parse(text).RootElement.GetProperty("listed").EnumerateArray().Select(row => row.GetProperty("kind").GetString()
+                + " | " + row.GetProperty("source").GetProperty("name").GetString() + " | " + Named(row.GetProperty("target")) + " | "
+                + row.GetProperty("address").GetString()).Order(StringComparer.Ordinal));
+        (code, text, said) = await Run("compare", session.Path, "--baseline", "0:1000", "--interval", "1000:1050", "--group-by", "executable",
+            "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement executableHost = JsonDocument.Parse(text).RootElement.GetProperty("comparison").GetProperty("rows").EnumerateArray()
+            .Single(row => row.GetProperty("kind").GetString() == "ExecutableToOtherHost");
+        Assert.Equal(("worker.exe", @"C:\Apps\worker.exe", JsonValueKind.Null, "142.250.1.1", "Both"),
+            (executableHost.GetProperty("source").GetProperty("name").GetString(), executableHost.GetProperty("source").GetProperty("path").GetString(),
+                executableHost.GetProperty("target").ValueKind, executableHost.GetProperty("address").GetString(),
+                executableHost.GetProperty("connected").GetString()));
+
+        static string? Named(JsonElement end) => end.ValueKind == JsonValueKind.Null ? null : end.GetProperty("name").GetString();
+    }
+
     [Fact(DisplayName = "R21: icat outliers says why it judges nothing, and refuses a baseline it cannot judge by in words")]
     public async Task IcatOutliersRefusesWhatItCannotJudge()
     {

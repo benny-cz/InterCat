@@ -374,6 +374,30 @@ public sealed class WaitsWindowTests
             await Until(() => window.OwnedWindows.Count == 0);
             Assert.Equal(LinkOther, workspace.SelectedProcess!.ProcessId);
 
+            // A newer generation the window does not show yet: the list says so, and a wait only it holds selects nothing,
+            // which the window says.
+            var activity = new Guid(90, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
+            Publish(session.Store,
+            [
+                Lifecycle(20_000, ObservationKind.Create, 7_000, 20_001) with { ResourceName = @"C:\Apps\late.exe" },
+                RpcCall(20_100, ObservationKind.RequestStart, Direction.Outbound, 7_000, 20_100, activity, ServiceControlInterface),
+                RpcCall(20_120, ObservationKind.RequestEnd, Direction.Outbound, 7_000, 20_101, activity, status: 0),
+            ]);
+            waits = Opened(window, button);
+            TextBlock status = Named<TextBlock>(waits, "Waits status");
+            await Until(() => status.Text?.StartsWith("Generation", StringComparison.Ordinal) == true);
+            Assert.Contains(" (InterCat's window shows generation 1: a process only the newer one holds is not selected there)",
+                status.Text, StringComparison.Ordinal);
+            Only(waits).IsChecked = false;
+            list = Named<ListBox>(waits, Listed);
+            await Until(() => list.Items.Cast<WaitRow>().Any(row => row.Title.Contains("late.exe", StringComparison.Ordinal)));
+            list.SelectedIndex = list.Items.Cast<WaitRow>().ToList().FindIndex(row => row.Title.Contains("late.exe", StringComparison.Ordinal));
+            Labelled(waits, GoToCaller).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => window.OwnedWindows.Count == 0);
+            Assert.Equal("Neither process of the wait is in the generation this window shows; open the time inside calls again once "
+                + "it shows the newer one.", window.GetControl<TextBlock>("CaptureDetail").Text);
+            Assert.Equal(LinkOther, workspace.SelectedProcess!.ProcessId);
+
             // Among the source records the time inside calls waits, saying how to leave them.
             Assert.True(workspace.ShowEvidence());
             await workspace.EvidenceReady;

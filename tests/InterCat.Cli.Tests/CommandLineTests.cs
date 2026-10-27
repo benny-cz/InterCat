@@ -120,6 +120,25 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "§20.4: a folder that is not there is refused by every reader of M12 and M8 in one sentence, naming it")]
+    public async Task AFolderNotThereIsNamed()
+    {
+        string nowhere = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N"));
+        foreach (string[] args in new string[][]
+        {
+            ["patterns", nowhere], ["links", nowhere, "--process", "100"], ["waits", nowhere],
+            ["outliers", nowhere, "--interval", "100:110"], ["compare", nowhere, "--baseline", "0:10", "--interval", "10:20"],
+            ["timeline", nowhere, "--interval", "0:10"], ["content", nowhere, "--find", "x"],
+        })
+        {
+            (InterCatExitCode code, string output, string said) = await Run(args);
+            string invocation = "icat " + string.Join(' ', args);
+            Assert.True(code == InterCatExitCode.InvalidInvocation && output.Length == 0, $"{invocation} exited {code}: {output}");
+            Assert.True(said.Contains($"No session directory at {nowhere}.", StringComparison.Ordinal), $"{invocation} said: {said}");
+            Assert.False(Directory.Exists(nowhere), $"{invocation} made {nowhere}.");
+        }
+    }
+
     [Fact(DisplayName = "§20.4: a folder no session was published in is refused in a person's words, and every reader leaves it as it was")]
     public async Task AFolderWithNoSessionIsLeftAsItWas()
     {
@@ -210,6 +229,8 @@ public sealed class CommandLineTests : IDisposable
             [.. bytesSent, "--group-by", "executable"],
             [.. bytesSent, "--group-by", "process"],
             new[] { "processes", oversized.Path, "--rank-by", "bytes-sent" },
+            ["compare", oversized.Path, "--baseline", "0:5000", "--interval", "5000:15000", "--rank-by", "bytes-sent"],
+            ["timeline", oversized.Path, "--interval", "0:15000", "--bytes"],
         })
         {
             (InterCatExitCode code, _, string said) = await Run(args);
@@ -264,7 +285,17 @@ public sealed class CommandLineTests : IDisposable
             byte[] bytes = File.ReadAllBytes(segment);
             bytes[^1] ^= 0xFF;
             File.WriteAllBytes(segment, bytes);
-            foreach (string[] args in new[] { ["overview", damaged], new[] { "export", damaged, "--output", Path.Combine(exported, "rows.csv") } })
+            // Every reader of the session says so in the same words and with the same code, a comparison, an outlier
+            // judgement and a timeline as well.
+            foreach (string[] args in new string[][]
+            {
+                ["overview", damaged], ["export", damaged, "--output", Path.Combine(exported, "rows.csv")],
+                ["patterns", damaged], ["links", damaged, "--process", "100"], ["waits", damaged],
+                ["outliers", damaged, "--interval", "100:110"], ["compare", damaged, "--baseline", "0:10", "--interval", "10:20"],
+                ["channels", damaged], ["hosts", damaged], ["programs", damaged], ["ports", damaged], ["evidence", damaged],
+                ["timeline", damaged, "--interval", "0:10"], ["processes", damaged], ["operations", damaged], ["exchanges", damaged],
+                ["metric", damaged, "--metric", "observations"], ["content", damaged, "--find", "x"],
+            })
             {
                 (InterCatExitCode code, string output, string said) = await Run(args);
                 string invocation = "icat " + string.Join(' ', args);

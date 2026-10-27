@@ -109,6 +109,25 @@ public sealed class OutliersWindowTests
         chart.MoveTo(21);
         Assert.Equal(20, chart.ChosenBar);
 
+        // A key the chart does not take leaves its bar chosen; a click chooses the bar under it - a window's, or the time
+        // scope's - and one in the gap between them chooses none.
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.None);
+        Assert.Equal(20, chart.ChosenBar);
+        double slot = (chart.Bounds.Width - 12) / 24;
+        void ClickAt(double x)
+        {
+            Avalonia.Point at = Avalonia.VisualExtensions.TranslatePoint(chart, new Avalonia.Point(x, 70), window)!.Value;
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+        }
+
+        ClickAt(6 + (slot * 0.5));
+        Assert.Equal(0, chart.ChosenBar);
+        ClickAt(6 + (slot * 20.5));
+        Assert.Equal(0, chart.ChosenBar);
+        ClickAt(6 + (slot * 22));
+        Assert.Equal(20, chart.ChosenBar);
+
         // The row below every window says so, its chart from its compared bar; one within would say no more than within.
         list.SelectedIndex = 1;
         Assert.Equal("Beyond: 10 fewer than the fewest", Starting(window, "Beyond: ").Text);

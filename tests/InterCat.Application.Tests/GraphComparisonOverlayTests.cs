@@ -110,6 +110,16 @@ public sealed class GraphComparisonOverlayTests
         Assert.Equal("? not comparable: Not covered.", doubted.Describe(doubted.Edges["tcp:1:2"], culture));
         Assert.Equal((1, 0, 0, 4), (doubted.Drawn, doubted.Inside, doubted.Undrawn, doubted.Unmarked));
 
+        // Several rows' changes are each counted in their own words, whichever they are.
+        GraphComparisonOverlay grew = GraphComparisonOverlay.Of(Comparison(ComparisonGrouping.Process,
+            Row(1, 1, Pair("tcp:1:3", Client, Worker)), Row(0, 2, Pair("tcp:1:4", Client, Helper))), Display(), Overview(), [ClientHosts]);
+        Assert.Equal("▲ up across its 2 rows compared: 1 unchanged, 1 appeared", grew.Describe(grew.Edges["cluster-edge:group"], culture));
+        GraphComparisonOverlay doubtful = GraphComparisonOverlay.Of(Comparison(ComparisonGrouping.Process,
+            Row(2, 0, Pair("tcp:1:3", Client, Worker)), NotComparable("Not covered.") with { Relationship = Pair("tcp:1:4", Client, Helper) }),
+            Display(), Overview(), [ClientHosts]);
+        Assert.Equal("? not comparable across its 2 rows compared: 1 disappeared, 1 not comparable",
+            doubtful.Describe(doubtful.Edges["cluster-edge:group"], culture));
+
         // The line beneath the graph's header says it all, the marks with their glyphs, so a missing mark is never read as no change.
         string before = WorkspaceTime.FormatHalfOpenRange(Before, culture), after = WorkspaceTime.FormatHalfOpenRange(After, culture);
         Assert.Equal($"The graph marks each edge by how it changed from {before} to {after}, by records, a row per process. 4 edges "

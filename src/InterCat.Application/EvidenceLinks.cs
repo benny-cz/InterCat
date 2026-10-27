@@ -31,8 +31,6 @@ public sealed record LinkEnd(ProcessInstanceId? Process, string? Address)
     public static LinkEnd Of(ProcessInstanceId process) => new(process, null);
 
     public static LinkEnd Host(string address) => new(null, address);
-
-    public bool Unseen => Process is null && Address is null;
 }
 
 /// <summary>

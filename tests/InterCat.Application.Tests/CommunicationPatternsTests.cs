@@ -150,6 +150,20 @@ public sealed class CommunicationPatternsTests
             + reading.UnopenedConnections + reading.DynamicFlows + reading.CallsWithoutInterface + reading.NotAdmitted;
     }
 
+    [Fact(DisplayName = "R21: an RPC call no recorded start named an interface for is in no pattern, and is counted and said apart")]
+    public void ACallWithNoInterfaceIsCountedApart()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = WaitRows();
+        Publish(session.Store, rows, fields: fields);
+
+        // A call whose start was not recorded names no interface, so it is in no pattern; it is counted apart, and said.
+        PatternReading read = CommunicationPatterns.Read(session.Store);
+        Assert.Equal(1L, read.CallsWithoutInterface);
+        Assert.Contains("1 RPC call no recorded start named an interface for", PatternText.Apart(read, System.Globalization.CultureInfo.InvariantCulture),
+            StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "R21: a pattern's signature and what it leaves out are said in words, and a UDP flow's service port is the one outside the dynamic range")]
     public void APatternIsExplained()
     {

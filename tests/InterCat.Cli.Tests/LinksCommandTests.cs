@@ -60,6 +60,11 @@ public sealed class LinksCommandTests
             + "held when the child was created, after another process had held it | candidate"], Rows(text, "NOT FOLLOWED"));
         Assert.DoesNotContain("NOT LINKED", text, Ordinal);
         Assert.DoesNotContain("Another host is named", text, Ordinal);
+        (code, text, said) = await Run("links", session.Path, "--process", "420", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement unfollowed = Assert.Single(JsonDocument.Parse(text).RootElement.GetProperty("notFollowed").EnumerateArray());
+        Assert.Equal(("Started", "Candidate", 77), (unfollowed.GetProperty("kind").GetString(), unfollowed.GetProperty("strength").GetString(),
+            unfollowed.GetProperty("from").GetProperty("processId").GetInt32()));
         (code, text, said) = await Run("links", session.Path, "--process", "450");
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Contains("No other process was created within a second of it without a link to it.", text, Ordinal);

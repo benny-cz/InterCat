@@ -176,7 +176,9 @@ public sealed class SessionCompareWindowTests
             await workspace.LayoutReady;
             workspace.SelectInterval(new TimeRange(10 * Second, 20 * Second));
             Dispatch();
-            Task comparing = window.CompareIntervalsAsync();
+
+            // The button beside the graph opens it, as Ctrl+B does.
+            window.GetControl<Button>("CompareButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             SessionCompareWindow dialog = await Opened(window);
             await dialog.Compared;
             Dispatch();
@@ -188,9 +190,8 @@ public sealed class SessionCompareWindowTests
             int depth = workspace.Crumbs.Count;
             Button show = dialog.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, "Show in the window"));
             show.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-            await comparing;
-            Dispatch();
-            Assert.True(((WorkspaceViewModel)window.DataContext!).Crumbs.Count > depth);
+            await Until(() => !window.OwnedWindows.OfType<SessionCompareWindow>().Any());
+            await Until(() => ((WorkspaceViewModel)window.DataContext!).Crumbs.Count > depth);
             Assert.Contains(((WorkspaceViewModel)window.DataContext!).Crumbs, crumb => crumb.Label.Contains("PID 300", StringComparison.Ordinal));
         }
         finally
@@ -1375,6 +1376,79 @@ public sealed class SessionCompareWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R21: the investigation's saved comparisons say why one could not be listed, removed or opened, and Escape closes their list")]
+    public async Task WhatTheSavedComparisonsCouldNotDoIsSaid()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(), coverage: Ledger());
+        session.Store.ReleaseSegmentReaders();
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-unread-");
+        string workspace = Path.Combine(folder.FullName, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, DateTimeOffset.UtcNow);
+        Guid id = InvestigationWorkspace.Add(workspace, session.Path, DateTimeOffset.UtcNow).SessionId;
+        SavedComparison saved = InvestigationWorkspace.SaveComparison(workspace, "before the update",
+            new SavedComparisonInterval { SessionId = id, StartTicks = 0, EndTicks = 10 * Second },
+            new SavedComparisonInterval { SessionId = id, StartTicks = 10 * Second, EndTicks = 30 * Second },
+            ComparisonMetric.Records, ComparisonGrouping.Process, DateTimeOffset.UtcNow);
+        string recorded = File.ReadAllText(workspace);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            // Listed, then unreadable by the time it is removed: the list says why it was not, and the file is as it was.
+            {
+                var choosing = new InvestigationComparisonsWindow(workspace);
+                _ = choosing.ShowDialog<SavedComparison?>(owner);
+                await Until(() => choosing.Listed.Count == 1);
+                File.WriteAllText(workspace, "{ not an investigation");
+                choosing.Select(0);
+                Click(Labelled(choosing, "Remove"));
+                await Until(() => choosing.Status.Contains("was not removed", StringComparison.Ordinal));
+                Assert.StartsWith("'before the update' was not removed: ", choosing.Status, StringComparison.Ordinal);
+                Assert.Equal("{ not an investigation", File.ReadAllText(workspace));
+
+                // Escape closes the list, choosing nothing.
+                Dispatch();
+                choosing.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+                await Until(() => !choosing.IsVisible);
+            }
+
+            // An investigation that cannot be read lists nothing, and says why.
+            {
+                var unread = new InvestigationComparisonsWindow(workspace);
+                _ = unread.ShowDialog<SavedComparison?>(owner);
+                await Until(() => unread.Status.StartsWith("The investigation could not be read: ", StringComparison.Ordinal));
+                Assert.Empty(unread.Listed);
+                Assert.Equal("The investigation could not be read; the status line says why.", Offers.WhyNot(Labelled(unread, "Open")));
+                unread.Close();
+            }
+
+            // The investigation's window opens a saved comparison only once it has read the investigation, and only where
+            // InterCat's window is open to show it in, saying so.
+            using (var window = new InvestigationWindow(workspace, openSession: null))
+            {
+                window.Show();
+                await window.RefreshAsync();
+                Assert.False(await window.OpenComparisonAsync(saved));
+                Assert.Equal("'before the update' was not opened: The investigation could not be read: Refresh reads it again.",
+                    Status(window));
+                File.WriteAllText(workspace, recorded);
+                await window.RefreshAsync();
+                Assert.False(await window.OpenComparisonAsync(saved));
+                Assert.Equal("'before the update' was not opened: InterCat's window is not open to show it in.", Status(window));
+                window.Close();
+            }
+        }
+        finally
+        {
+            owner.Close();
+            folder.Delete(recursive: true);
+        }
+
+        static string Status(Window window) => window.GetVisualDescendants().OfType<TextBlock>()
+            .Single(block => AutomationProperties.GetName(block) == "Investigation status").Text ?? string.Empty;
+    }
+
     [AvaloniaFact(DisplayName = "R21: the Compare window draws the chosen row's columns, a column the capture did not collect hatched and said why")]
     public async Task TheWindowDrawsTheChosenRowsColumns()
     {
@@ -1453,6 +1527,14 @@ public sealed class SessionCompareWindowTests
                 Assert.StartsWith($"Column {press.Column} of 20: ", comparing.TimelineSaid, StringComparison.Ordinal);
             }
 
+            // A key it does not take leaves the column chosen, which a screen reader hears as the chart's status.
+            comparing.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(1, chart.ChosenColumn);
+            Avalonia.Automation.Peers.AutomationPeer peer = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(chart);
+            Assert.Equal("difference timeline", peer.GetLocalizedControlType());
+            Assert.StartsWith("Column 2 of 20: ", peer.GetItemStatus(), StringComparison.Ordinal);
+
             // A click chooses the column under it.
             Point eleventh = chart.TranslatePoint(new Point(6 + ((chart.Bounds.Width - 12) * 10.5 / 20), 60), comparing)!.Value;
             comparing.MouseDown(eleventh, MouseButton.Left);
@@ -1484,6 +1566,92 @@ public sealed class SessionCompareWindowTests
         {
             comparing.Close();
             owner.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R21: the Compare window compares a typed baseline on Enter, its save prompt takes Enter and Escape, and it says why it could not save or compare")]
+    public async Task WhatTheCompareWindowCouldNotDoIsSaid()
+    {
+        using var session = new TemporarySession(Guid.Parse("0c0c0c0c-0000-4000-8000-000000000799"));
+        Publish(session.Store, Rows(), coverage: Ledger());
+        session.Store.ReleaseSegmentReaders();
+        DirectoryInfo folder = Directory.CreateTempSubdirectory("intercat-compare-trouble-");
+        string workspace = Path.Combine(folder.FullName, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, DateTimeOffset.UtcNow);
+        InvestigationWorkspace.Add(workspace, session.Path, DateTimeOffset.UtcNow);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        session.Store.ReleaseSegmentReaders();
+        SessionClock clock = SessionClock.Session(TimeZoneInfo.Utc);
+        var scope = new TimeRange(12 * Second, 16 * Second);
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            using (var comparing = new SessionCompareWindow(session.Path, overview.SessionId, scope, overview.Extent!.Value, recorded: false,
+                clock, EvidencePolicy.IncludeCorrelated, workspace))
+            {
+                _ = comparing.ShowDialog<ComparedRelationship?>(owner);
+                await Until(() => comparing.Shown is not null);
+                await comparing.Compared;
+
+                // A baseline typed in seconds is compared when Enter is pressed in either box.
+                comparing.ChooseBaseline(comparing.Offered.ToList().IndexOf("Another interval, typed in seconds…"));
+                await comparing.Compared;
+                comparing.Enter(0.ToString(culture), 4.ToString(culture));
+                TextBox end = comparing.GetLogicalDescendants().OfType<TextBox>()
+                    .Single(box => AutomationProperties.GetName(box) == "The baseline's end, in seconds of session time");
+                end.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+                await Until(() => comparing.Rows.Count > 0);
+                await comparing.Compared;
+                Dispatch();
+                Assert.Equal(["appeared", "unchanged"], comparing.Rows.Select(row => row.ChangeCell));
+
+                // An investigation that can no longer be read is said, and nothing is saved.
+                File.WriteAllText(workspace, "{ not an investigation");
+                Click(Labelled(comparing, "Save in the investigation…"));
+                await Until(() => comparing.OwnedWindows.Count == 1 || comparing.Done.Length > 0);
+                if (comparing.OwnedWindows.Count == 1)
+                {
+                    Window asked = comparing.OwnedWindows[0];
+                    asked.GetLogicalDescendants().OfType<TextBox>().Single().Text = "nightly";
+                    Dispatch();
+                    Press(asked, "Save");
+                }
+
+                await comparing.SavedIn;
+                Dispatch();
+                Assert.StartsWith("The comparison was not saved: ", comparing.Done, StringComparison.Ordinal);
+                comparing.Close();
+            }
+
+            // The save prompt keeps a name on Enter in its box, and Escape keeps none.
+            Window prompt = SessionCompareWindow.SavePrompt("case" + InvestigationWorkspace.Extension, "described", []);
+            Task<string?> named = prompt.ShowDialog<string?>(owner);
+            Dispatch();
+            prompt.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Assert.Null(await named);
+            prompt = SessionCompareWindow.SavePrompt("case" + InvestigationWorkspace.Extension, "described", []);
+            named = prompt.ShowDialog<string?>(owner);
+            await Until(() => prompt.GetLogicalDescendants().OfType<TextBox>().Single().IsKeyboardFocusWithin);
+            prompt.GetLogicalDescendants().OfType<TextBox>().Single().Text = " nightly ";
+            Dispatch();
+            prompt.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Assert.Equal("nightly", await named);
+
+            // A folder that now holds another session is said, and nothing is compared.
+            using var other = new SessionCompareWindow(session.Path, Guid.NewGuid(), scope, overview.Extent!.Value, recorded: false, clock,
+                EvidencePolicy.IncludeCorrelated);
+            _ = other.ShowDialog<ComparedRelationship?>(owner);
+            await Until(() => other.Said.StartsWith("Could not compare", StringComparison.Ordinal));
+            Assert.StartsWith("Could not compare the two intervals: ", other.Said, StringComparison.Ordinal);
+            Assert.Empty(other.Rows);
+            other.Close();
+        }
+        finally
+        {
+            owner.Close();
+            folder.Delete(recursive: true);
         }
     }
 

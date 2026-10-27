@@ -232,9 +232,6 @@ internal sealed class LinksWindow : Window, IDisposable
         lifetime.Dispose();
     }
 
-    /// <summary>The process the window is centred on now: the one it opened on, or the last one a link was followed to.</summary>
-    internal ProcessInstanceId Step => step;
-
     /// <summary>A column of links under its label, with what it says where it holds none in the list's place.</summary>
     private static DockPanel Column(string label, ListBox list, TextBlock none, int column)
     {

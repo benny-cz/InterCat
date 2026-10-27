@@ -624,6 +624,8 @@ Revision 797 lets causal links read an interval of a session; its paragraph belo
 
 Revision 798 runs whole what a coverage pass over revisions 774 to 797 found no test ran; its paragraph below says what that found and what stays untested.
 
+Revision 799 runs whole what a coverage pass over revisions 752 to 773 found no test ran; its paragraph below says the two gaps it found and what stays untested.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -1839,3 +1841,32 @@ Revision 796 reads the time inside calls over an interval, as revision 795 reads
 Revision 797 reads causal links over an interval, the last of M12's views beside the graph to keep to the window's time scope. Each link's occurrence is read where it began. A start began where the child's creation was witnessed, so a start a rundown names, which no record witnessed, began before the capture and no interval holds it. A call began where the client's started, or stopped where no start was recorded, so a server call a client reached is read with that client's call, wherever the server's began, and only a server call no client reached is placed by its own start. A connection or flow began at its first record. What began outside the interval is counted for each process it touches, a served call for both its caller and its server, and never also as not linked, so for each process the links listed, what links to nothing and what began outside add up to the whole session's. A chain runs through the interval's links alone. Nearness in time is not a link, and keeps reading every witnessed creation.
 
 Revision 798 runs whole what a coverage pass over revisions 774 to 797 found no test ran (R10), as revision 711 did for 699 to 710. Of the 2,621 lines those revisions added that a test can reach, 91 ran in none. One was a gap, not a test missing: a content search skipped a record the capture kept no byte of, its content limit reached, without counting it, so an answer could say no record held a text while the content of some was never kept (R21). The search now counts them, the command line and the window say how many were not searched, and the answer stays whole for them, as for a cut record, which is searched in the bytes it kept; an empty message kept whole holds nothing to find and is not counted. New tests run the rest that a person or real data reaches: a time scope's RPC calls the evidence policy does not admit, counted as such; the window's search of a folder that now holds another session, a table it cannot write, and Escape on it and on its prompt; a buffer's exchange not admitted under direct evidence; a conversation and an exchange lookup in another session's folder; an exchange no longer listed when its conversation asks for its buffers; a heads table that cannot be written; `icat content --find` on a missing folder and on one no session was published in; and `--format json` named. What stays untested, 37 of 2,632 lines: 11 the instrumentation counts that hold no statement - a record's declaration, a closing brace, a switch arm or a catch filter whose body runs; 6 a window closed while its read runs, which cancels it; 14 guards no window action reaches - an export pressed while not offered, a conversation opened with none chosen, a dialog that fails to open, and a heads table refused between offering and reading it; 4 the process `--process` named released before the search reads it; and 2 an empty pattern, which every caller refuses before searching.
+
+Revision 799 runs whole what a coverage pass over revisions 752 to 773 found no test ran (R10), as revision 798 did
+for 774 to 797. Of the 6,966 lines those revisions added that a test can reach and no later revision rewrote, 239 ran
+in none. Two were gaps, not tests missing. `icat compare` and `icat outliers` caught a session that does not verify
+and exited 3, a permission or capability failure, where §20.4 makes a session that does not verify corrupted input,
+exit 4, in every command that reads one; `icat timeline`, older, did the same. The three now leave it to the handler
+every reader shares, and a test holds every reader of a session to it, as another holds each reader of M12 and M8 to
+naming a folder that is not there. And an investigation file a person edited to list an empty saved comparison stopped
+its reader with no reason given, because the notes about comparisons, which revision 771 added, were checked before
+the comparisons they name, where §26.3 has a hand-edited file refused in words; the comparisons are now checked first,
+and every list of the file, nested ones too, was tried with an empty entry, each refused naming its list. New tests
+run the rest that a person or real data reaches: JSON written as asked whatever the file is named; a difference
+timeline's reasons, each said once beneath its columns; the links not followed in `icat links --json`; a process's
+connections to another host, made and accepted, and by executable an executable's, in `icat outliers` and `icat
+compare`, in words and JSON; a comparison's rates at every scale, a byte rate under a byte a second, sends that
+recorded no size, no send and a lower bound; an RPC call no recorded start named an interface for, counted apart from
+the patterns; the graph overlay's words for each change several rows made; a note with no words; the Compare window
+comparing a typed baseline on Enter, saying why it could not save in an unreadable investigation or compare in a
+folder now holding another session, and its save prompt's Enter and Escape; the saved comparisons saying why one could
+not be listed or removed and closing on Escape, and the investigation's window saying why a saved one was not opened;
+the difference timeline's and the outliers chart's keys they do not take, their names to a screen reader and a click
+on a bar or between them; the Compare with… button; and a wait whose processes only a newer generation holds.
+`LinkEnd.Unseen` and `LinksWindow.Step`, which nothing called, are gone. What stays untested, 98 of 6,954 lines: 42 a
+reading a newer generation interrupted three times over, or another session took the folder from, while patterns,
+links, waits or a comparison were read, and the five commands' answers to it; 24 a window closed, or a newer request
+made, while its read runs, which lets the read go; 25 InterCat's window refusing an action pressed while it is not
+offered, a dialog or file picker that fails to open, or itself closed beneath a dialog; 5 guards no caller reaches - a
+format, grouping or row kind out of range, a pattern listed but not shown, and a capture whose segments name no clock;
+and 2 record declarations the instrumentation counts.

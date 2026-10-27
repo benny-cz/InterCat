@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-27 · Plan revision: 798 · Branch: `main`
+Updated: 2026-10-27 · Plan revision: 799 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,33 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 799 — a coverage pass over revisions 752 to 773:**
+  - Of the 6,966 lines revisions 752 to 773 added that a test can reach and no later revision rewrote, 239 ran in
+    none. Two were gaps. `icat compare` and `icat outliers`, as the older `icat timeline` did, exited 3, a permission
+    or capability failure, on a session that does not verify, where §20.4 has every reader exit 4, corrupted input;
+    they now do. And an investigation file edited to list an empty saved comparison stopped its reader without a
+    reason, its notes read first; it is refused in words now, as an empty entry of every other list is.
+  - New tests run what else could be reached: every reader of a session on a damaged one and on a missing folder,
+    sizes past a sum for `icat compare` and `icat timeline`, JSON written when asked whatever the file is named, a
+    difference timeline's reasons and the links not followed in JSON, a process's and an executable's connections to
+    another host in words and JSON, a comparison's words at every scale, an RPC call no start named an interface for,
+    the overlay's words for every change, a note with no words, and in the windows the Compare window's Enter, save
+    prompt and failures, the saved comparisons' failures and Escape, the charts' keys and clicks, the Compare button
+    and a wait only a newer generation holds. `LinkEnd.Unseen` and `LinksWindow.Step`, which nothing called, are gone.
+  - Of 6,954 such lines, 98 run in none: 42 a reading a newer generation interrupted three times or another session
+    took the folder from, and the commands' answers to it; 24 a window closed or a request replaced while its read
+    runs; 25 an action pressed while not offered, a dialog that fails to open, or InterCat's window closed beneath
+    one; 5 guards no caller reaches; and 2 record declarations the instrumentation counts.
+  - Debug and Release each ran 3,283 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the 5 new tests. All 57 mutations were caught: a damaged session answered as a permission
+    failure again by icat compare, outliers or timeline; a missing folder not refused by any of seven readers; JSON
+    written as CSV; a difference timeline's reasons unnumbered; links not followed left out of JSON; five comparison
+    words; a call naming no interface uncounted or unsaid; an investigation's comparisons checked after its notes,
+    an empty one unsaid or a blank note read; four overlay words; a host or executable row's kind, ends, ports,
+    two-way connection or JSON source, target, name or path wrong in icat outliers or compare; and seventeen window
+    behaviours, from the Compare window's Enter, save prompt and failures to the charts' keys and clicks, the
+    Compare button and a wait only a newer generation holds.
 
 - **Revision 798 — a coverage pass over revisions 774 to 797:**
   - Of the 2,621 lines revisions 774 to 797 added that a test can reach, 91 ran in none. One was a gap: a content

@@ -120,6 +120,13 @@ public sealed class CompareCommandTests
         Assert.DoesNotContain("[2]", text, Ordinal);
         Assert.Contains("  Coverage in the baseline: a partial gap, not extrapolated, for TCP: ", text, Ordinal);
 
+        // A row's difference timeline says the same, once beneath its columns.
+        (code, text, said) = await Run("compare", session.Path, "--baseline", "0:10s", "--interval", "10s:30s", "--timeline", "1",
+            "--columns", "2");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(2, Regex.Count(text, @"(?m) not comparable \[1\]\r?$"));
+        Assert.Matches(@"(?m)^  \[1\] TCP has a partial gap over the baseline, not extrapolated: .*3 lost events.*\.\r?$", text);
+
         // Nothing in either interval: no row, and why none.
         (code, text, _) = await Run("compare", session.Path, "--baseline", "31s:32s", "--interval", "33s:35s");
         Assert.Equal(InterCatExitCode.Success, code);
@@ -691,6 +698,15 @@ public sealed class CompareCommandTests
                     json.RootElement.GetProperty("comparison").GetProperty("complete").GetBoolean()));
                 Assert.Equal(["OtherHost", "Processes", "OtherHost", "Processes"],
                     json.RootElement.GetProperty("rows").EnumerateArray().Select(row => row.GetProperty("kind").GetString()));
+            }
+
+            // Named, the format is the one asked for, whatever the file's name says.
+            string named = Path.Combine(folder.FullName, "share.csv.txt");
+            (code, _, said) = await Run([.. compare, "--output", named, "--share-redacted", "--format", "json"]);
+            Assert.True(code == InterCatExitCode.Success, said);
+            using (JsonDocument json = JsonDocument.Parse(File.ReadAllText(named)))
+            {
+                Assert.Equal("comparison", json.RootElement.GetProperty("kind").GetString());
             }
 
             // A file there is replaced only when asked, and then with as many rows as --limit asks.

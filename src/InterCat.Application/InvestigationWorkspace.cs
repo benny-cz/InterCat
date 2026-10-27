@@ -670,12 +670,13 @@ public static partial class InvestigationWorkspace
             return $"host {Short(host.Key)} has two names";
         }
 
+        // A note can be about a saved comparison, so the comparisons are found whole before the notes that name them.
         return workspace.HostAliases.GroupBy(alias => alias.Alias.Trim(), StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1) is { } name
             ? $"'{name.Key}' names two host identities"
             : TimeProblem(workspace) ?? JoinProblem(workspace) ?? HostProblem(workspace) ?? TranslationProblem(workspace)
-                ?? NoteProblem(workspace) ?? ViewProblem(workspace) ?? LayoutProblem(workspace) ?? PanesProblem(workspace)
-                ?? ComparisonProblem(workspace);
+                ?? ComparisonProblem(workspace) ?? NoteProblem(workspace) ?? ViewProblem(workspace) ?? LayoutProblem(workspace)
+                ?? PanesProblem(workspace);
     }
 
     /// <summary>

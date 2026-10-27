@@ -53,10 +53,12 @@ later version appeared.
 
 A workspace is written whole to a temporary file beside it and moved into place, so a reader sees the old file or the
 new one, and only over the text it was read from: a change made meanwhile is refused, never written over. It is kept
-beside its sessions, never in a session's directory. A file is refused whole when it has another contract, a field this
-version does not define (so a later version's file is never rewritten without it), a member without its identities, two
-members of one session or one capture, a name that is empty, doubled or given to two hosts, or a time that contradicts
-itself (§5).
+beside its sessions, never in a session's directory. A file is refused whole when it has another contract, a field
+this version does not define (so a later version's file is never rewritten without it), a member without its
+identities, two members of one session or one capture, a name that is empty, doubled or given to two hosts, or a time
+that contradicts itself (§5). An entry left empty in any of its lists is refused the same way, the reason naming the
+list; since revision 799 among its saved comparisons too, where the notes about them, read first, stopped its reader
+without a reason.
 
 ## 2. A member
 

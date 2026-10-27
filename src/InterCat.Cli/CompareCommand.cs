@@ -201,11 +201,6 @@ internal static class CompareCommand
             ConsoleUi.Failure(SessionComparison.ColumnsPastTicks);
             return InterCatExitCode.InvalidInvocation;
         }
-        catch (InvalidDataException exception)
-        {
-            ConsoleUi.Failure(exception.Message);
-            return InterCatExitCode.PermissionOrCapabilityFailure;
-        }
         catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
             ConsoleUi.Failure(exception.Message);

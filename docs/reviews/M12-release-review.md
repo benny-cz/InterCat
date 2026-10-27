@@ -345,3 +345,15 @@ Causal links read an interval of a session (`contracts/links-v1.md` §1): `icat 
 Follow its links… over the window's time scope, list and follow the starts, calls and connections that began in it,
 and say how much of a process began outside it. Of the limits above, patterns, links and waits now each read a whole
 generation or one interval of it; none reads two captures. Nothing else above changes.
+
+## Addendum, revision 799
+
+A coverage pass over revisions 752 to 773 ran the lines they added that a test can reach and no later revision rewrote
+(R10). It found two gaps in what M12 claims. `icat compare` and `icat outliers`, as the older `icat timeline` did,
+answered a session that does not verify with the exit code of a permission or capability failure, where the plan's
+§20.4 has every command that reads a session answer it as corrupted input; they now do. And an investigation file
+edited by hand to list an empty saved comparison stopped its reader without a reason, the notes about comparisons read
+before the comparisons they name; it is now refused in words, as an empty entry of any other list is
+(`contracts/workspace-v23.md` §1). Every other line run by no test is a reading a newer generation interrupted, a
+window closed or a request replaced while it reads, a guard no window action reaches, or a line the instrumentation
+counts that holds no statement, as the plan's log lists. Nothing else above changes.
