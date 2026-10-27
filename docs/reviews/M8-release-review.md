@@ -156,3 +156,74 @@ and says it failed and how, as a decoding of nothing under its name and version,
 conversation, `icat content --decode`, `icat exchanges --decode` and an export of heads each say why instead of
 stopping. Decoders still run in the process that asked, never in the capture; M8's exit review comes next, and nothing
 else above changes.
+
+## Exit review, revision 786
+
+Date: 2026-10-27, at plan revision 786
+Method: §15.2's questions are answered again for M8 as built; each implementation item and deliverable of plan M8 is
+checked against what ships and the tests that hold it, and each exit test against named tests, all of which passed in
+revision 785's suites; what M8 does not do is listed as its limits.
+
+### The user problem, answered
+
+A person who kept their own processes' HTTP messages sees, beside which process talked to which host, what each
+exchange asked for and what it was answered. In the window an exchange's conversation sets its request and response
+side by side and decodes their heads when asked, a buffer leads to its exchange, a text is found in kept content, and
+a process's exchanges export with what their heads say; the command line says the same. Nothing is decoded unasked,
+nothing decoded is kept, and a conversation is never shown more complete than its buffers and its heads' declarations
+make it.
+
+### Implementation and deliverables
+
+| Item | Built | Where, and the tests that hold it |
+| --- | --- | --- |
+| A decoder contract: input classification, protocol and version, framing rules, resource budgets and output provenance | Revision 774 | `decoders-v1` §1 to §4, ADR-070; "P2: a whole HTTP request or response head decodes into its start line and its field lines, each with its bytes, linked to its part and the decoder's version"; "P2: a head decoding reads at most what a view shows at once, within its time budget, and says where it stopped" |
+| Reconstruction where the source supplies its order | Revisions 242, 305 and 778 | A WinINet part is assembled from its buffers only whole, its gaps named in place (`content-v1` §4); WinINet keeps a chunked body without its framing (FX-HTTP-003), so a body is set beside the length its head declares instead (`http-exchanges-v1` §5e); "I21: a part is assembled only from every buffer from its first to its last, each kept whole; else its gaps are named"; "P2: a body is set beside the length its head declares, and said to disagree with it only where its recorded bytes do" |
+| Missing-range, duplicate, out-of-order, retransmitted and truncated states | Revisions 242, 244 and 305 | A part's buffers never recorded, not kept or cut by the record limit are each named; a buffer numbered no later than the one before it opens another use and is never merged: "R22: an exchange number used again in one process ID is two parts, told apart in time, never one". A WinINet buffer is one API call's, so none is a duplicate or a retransmission of another: those states belong to packet streams, which no source here keeps |
+| The first real decoder chosen by validated fixtures and user value | Revision 774 | HTTP/1.1 heads from WinINet's parts, which FX-HTTP-001 to FX-HTTP-003 measured equal to the wire |
+| Decoders isolated; decoded metadata kept apart from content | Revisions 774, 783 and 785 | A decoder runs only where a person asks, in their unprivileged window or command line and never in the capture ("P12: the capture callback reaches no query, store, file, network, name or symbol lookup, decoder or wait, and only reviewed locks"), and its failure is contained: "P2: a decoder that fails on its bytes decodes nothing and says it failed and how, stopping nothing that asked it". A decoding is kept nowhere InterCat reads, and written only to a document asked for with it (ADR-070, ADR-071). A separate worker waits on a larger decoder (Limits) |
+| Conversation inspector | Revision 777 | "P2: C on an HTTP exchange opens its conversation, which says what each head said only once asked, and Show its buffers opens them" |
+| Fragment-to-message-to-operation navigation | Revisions 777 and 781 | "I21: a buffer leads to the exchange it belongs to, by its raw identity under the evidence policy, and a record of none says why"; "P2: a buffer's content viewer opens its exchange's conversation, which offers no buffers from there, and a record of no exchange offers none" |
+| Decoder manager and version pinning | Revisions 774 and 782 | `icat content --decoders` lists every decoder, its version and what it reads, and each decoding names its decoder and version; "P2: every decoder InterCat lists has a corpus at its version, and decodes each of its cases exactly as the corpus says". No decoder runs unasked, so none is switched on or off |
+| Bounded content search, previews off until asked | Revisions 779 and 780 | "P2: a content search lists the records whose kept bytes hold a text, how often and where first, and shows no byte unless previews are asked for"; "P2: Find in kept content lists the records holding a text without a byte of them unless asked, and a record found opens in the content viewer" |
+| JSON and columnar metadata export; explicit binary content export | Revisions 783 and 784; 236 and 242 | "P2: icat exchanges writes the listed exchanges' heads only when asked, as content, in JSON or as a table whose cells a spreadsheet will not evaluate"; "P2: a process's exchanges export with what their heads say only once the window has said the table is content, each exchange of the scope a line"; "P2: icat content shows and saves a whole HTTP part as one, and refuses --part of a record that belongs to none" |
+| Decoder fixture corpus | Revision 782 | `fixtures/decoders` (`decoders-v1` §3a); "P2: every decoder InterCat lists has a corpus at its version, and decodes each of its cases exactly as the corpus says" |
+
+### M8's exit tests
+
+| Exit test | Verdict | Evidence |
+| --- | --- | --- |
+| Fragmented, malformed and truncated conversations never become falsely complete | Met | "I21: a part is assembled only from every buffer from its first to its last, each kept whole; else its gaps are named"; "P2: a head HTTP/1.1 does not allow, or one that ends early, decodes only as far as its bytes show, and says why the rest does not"; "P2: a head decoded to the empty line that ends it says so, and a head not decoded declares nothing of its body"; "P2: a body is set beside the length its head declares, and said to disagree with it only where its recorded bytes do" |
+| Correlation remains correct under concurrent calls and direction changes | Met for WinINet's parts | FX-HTTP-003 measured 256 exchanges of eight clients in one process, 254 begun before an earlier one ended, every part equal to the server's; a part is one event's buffers, so one direction's; "I21: parts read together are each the part their buffer belongs to, exactly as one read alone is"; "R22: an exchange number used again in one process ID is two parts, told apart in time, never one" |
+| Decoder timeout or crash does not stop capture | Met | No decoder runs in the capture ("P12: the capture callback reaches no query, store, file, network, name or symbol lookup, decoder or wait, and only reviewed locks"); a decoding stops at its budget ("P2: a head decoding reads at most what a view shows at once, within its time budget, and says where it stopped"), and a decoder's failure stops nothing that asked it ("P2: a decoder that fails on its bytes decodes nothing and says it failed and how, stopping nothing that asked it") |
+| Opening a source with a new decoder changes a derived revision only | Met, more strictly | A decoding is never kept, so a new decoder changes nothing stored (`decoders-v1` §2); its version is pinned by its corpus, and an export names it and is never read back (ADR-071) |
+| Content search and export respect scope and redaction | Met | "P2: content kept without consent to inspect it is never searched, and is counted; a session keeping none says so"; "P2: heads kept without consent to inspect them are exported undecoded, each cell saying why, and never as what they said"; an export holds only the exchanges listed or in the rung's scope, and `http-exchanges-v1` none of their heads; "I22: a redacted package keeps no content and says so; the original package carries it and says how much" |
+
+### Supported environments, overhead and deployment
+
+Every view runs wherever a session opens: the command line wherever .NET 10 runs, and the window, on any session
+holding WinINet's content, which a capture keeps on Windows through its content profile (ADR-037). No decoding, search
+or export adds overhead to a capture: each reads content already kept, when a person asks, within its bounds. Nothing
+is deployed beyond the command line and the window.
+
+### Limits
+
+- Only HTTP/1.1 heads through WinINet are decoded. Bodies' content, coded or compressed bodies, HTTP/2 and HTTP/3, RPC
+  fragments, pipe messages and packet streams have no decoder or reconstruction, since no source here keeps them with
+  the order reconstruction needs; they wait on M6, M7 and M9's sources, under the same contract.
+- Decoders run in the process that asked. An exception is contained, but a failure the process cannot survive would
+  end the window or the command; a decoder whose parsing is larger than these bounded ones is isolated in an
+  unprivileged worker first (ADR-070).
+- A search reads each record's bytes on their own, so a match split across two buffers is not found; its budgets are
+  fixed, its narrowing is to a process ID rather than an instance, and what it finds is not exported.
+- A response's body is judged without its request's method where that request's head was not decoded, and a coded
+  body's length is never compared.
+- The window lists no decoders of its own: a decoding names its decoder and version where it is shown, and `icat
+  content --decoders` lists them all.
+
+### Verdict
+
+M8's exit gate is met for HTTP through WinINet, the content source this build qualifies. Every deliverable is built on
+the command line and in the window, and every exit test holds by the tests named above. The limits are limits of what
+M8 claims, each said where it applies; other mechanisms' reconstruction and a decoder worker come with the sources and
+decoders M6, M7 and M9 bring, which M8's contract already takes.
