@@ -140,7 +140,7 @@ public sealed class CommandLineTests : IDisposable
                 ["compare", folder, "--baseline", "0:10", "--interval", "10:20"],
                 ["export", folder, "--output", Path.Combine(package, "rows.csv")], ["processes", folder], ["operations", folder],
                 ["exchanges", folder], ["metric", folder, "--metric", "observations"], ["raw", folder, .. record],
-                ["content", folder, .. record], ["package", folder, "--redacted", "--output", package],
+                ["content", folder, .. record], ["content", folder, "--find", "x"], ["package", folder, "--redacted", "--output", package],
                 ["retain", folder, "--release-content"], ["retain", folder, "--release-journal-before-record", "1"],
                 ["retain", folder, "--release-before", "1 s"],
                 ["rederive", folder], ["compact", folder], ["checkpoint", folder],
@@ -2977,6 +2977,12 @@ public sealed class CommandLineTests : IDisposable
             Assert.Contains("GET /index.html", listing, StringComparison.Ordinal);
             Assert.Contains($"HTTP exchanges and what their heads say written to {json}.", said, StringComparison.Ordinal);
             Assert.Contains("! It holds what the listed exchanges' heads say", said, StringComparison.Ordinal);
+
+            // Named, the format is the one asked for, whatever the file's name says.
+            string named = Path.Combine(files.Path, "heads.csv.txt");
+            (code, _, said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode", "--output", named, "--format", "json");
+            Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+            Assert.Equal(output.TrimEnd(), File.ReadAllText(named));
         }
 
         // Without --decode, http-exchanges-v1 holds no head's value and says nothing of content or a decoder.

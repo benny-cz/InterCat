@@ -128,6 +128,76 @@ public sealed class ContentSearchWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R21: Find in kept content says how many records the capture kept no byte of, and why it could not search or export, rather than failing")]
+    public async Task WhatCouldNotBeSearchedOrExportedIsSaid()
+    {
+        // A record holding the text, and one the capture kept no byte of, its content limit reached.
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = [Record(10, 1, 4_242), Record(20, 2, 4_242)];
+        (ContentFragmentV1 omitted, _) = Content(rows[1], new byte[50], 64);
+        Publish(session.Store, rows, content: (ContentHeader(64),
+        [
+            Content(rows[0], Encoding.ASCII.GetBytes("example.com"), 64, ContentEncodingV1.Binary),
+            (omitted with { Disposition = ContentDispositionV1.OmittedBySessionLimit, Kept = 0 }, ReadOnlyMemory<byte>.Empty),
+        ]));
+        session.Store.ReleaseSegmentReaders();
+        using var files = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        string blocker = Path.Combine(files.Path, "blocker");
+        File.WriteAllText(blocker, "a file where a folder would be");
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            using var window = new ContentSearchWindow(session.Path, session.Store.SessionId, null, Clock);
+            var choices = new AnsweredChoices(window);
+            window.Choices = choices;
+            _ = window.ShowDialog(owner);
+            Box(window).Text = "example.com";
+            Labelled(window, "Find").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).Contains("holds it", StringComparison.Ordinal));
+            Assert.Equal("1 record holds it. Searched the kept bytes of 1 record (11 B); 1 record the capture kept no byte of, having "
+                + "reached its content limit, was not searched.", Status(window));
+            ContentSearchRow row = Assert.Single(Rows(window));
+            Assert.Equal($"{row.Title} · {row.Detail}", row.ToString());
+
+            // A table that cannot be written is said, and nothing is left half written.
+            choices.Answer(Path.Combine(blocker, "found.csv"));
+            Labelled(window, "Export…").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).StartsWith("Could not export", StringComparison.Ordinal));
+            Assert.StartsWith("Could not export the records found: ", Status(window), StringComparison.Ordinal);
+            Assert.Equal("Write the records listed to a CSV table", Offers.Offered(Labelled(window, "Export…")));
+
+            // With the bytes around each match shown, Escape declines the warning that the table is content, as Cancel does.
+            Check(window, "Show the bytes around each match");
+            Labelled(window, "Find").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).Contains("holds it", StringComparison.Ordinal));
+            Labelled(window, "Export…").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => window.OwnedWindows.Count == 1);
+            Dispatch();
+            window.OwnedWindows[0].KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            await Until(() => window.OwnedWindows.Count == 0);
+            Assert.Single(choices.Saves);
+
+            // Escape closes the window, as it cancels InterCat's prompts.
+            Dispatch();
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            await Until(() => !window.IsVisible);
+
+            // A folder holding another session than the one the window was opened for is said, never searched.
+            using var other = new ContentSearchWindow(session.Path, Guid.NewGuid(), null, Clock);
+            _ = other.ShowDialog(owner);
+            Box(other).Text = "example.com";
+            Labelled(other, "Find").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(other).StartsWith("Could not search", StringComparison.Ordinal));
+            Assert.StartsWith("Could not search the kept content: ", Status(other), StringComparison.Ordinal);
+            other.Close();
+        }
+        finally
+        {
+            owner.Close();
+        }
+    }
+
     /// <summary>What the window says once it has searched <paramref name="session"/> for <paramref name="text"/>.</summary>
     private static async Task<string> Searched(Window owner, TemporarySession session, string text)
     {

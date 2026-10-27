@@ -278,3 +278,12 @@ as before. Nothing else above changes.
 much it reads and for how long, up to 65,536 MiB and 3,600 seconds, and an answer within budgets other than the
 default states them, while one a budget stopped says how to read more. The command line's answer is printed once, so
 it reads further in one search rather than reading on. Nothing else above changes.
+
+## Addendum, revision 798
+
+A coverage pass over revisions 774 to 797 ran the lines they added that a test can reach (R10). It found one gap in
+what M8 claims: a content search skipped a record the capture kept no byte of, its content limit reached, without
+counting it, so an answer could say no record held a text while some records' content was never kept. Since this
+revision the search counts them and both surfaces say so (`contracts/content-v1.md` §4). Every other line run by no
+test is a guard a person cannot reach, a window closed while it reads, or a line the instrumentation counts that holds
+no statement, as the plan's log lists. Nothing else above changes.

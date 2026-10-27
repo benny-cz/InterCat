@@ -102,6 +102,12 @@ public sealed record ContentSearchResult
     public required int WithoutConsent { get; init; }
 
     /// <summary>
+    /// The records in scope the capture kept no byte of, having reached its content limit: nothing of them could be
+    /// searched, as a cut record is searched in the bytes kept, so the answer is not partial for them.
+    /// </summary>
+    public int Omitted { get; init; }
+
+    /// <summary>
     /// The records with kept content bound to the process instance asked for more weakly than the evidence policy admits -
     /// a later holder's of a reused PID binds its records as candidates - which are not searched, since under the policy
     /// they are not the process's.
@@ -139,6 +145,7 @@ public sealed record ContentSearchResult
             RecordsRead = RecordsRead + later.RecordsRead,
             BytesRead = BytesRead + later.BytesRead,
             WithoutConsent = WithoutConsent + later.WithoutConsent,
+            Omitted = Omitted + later.Omitted,
             NotAdmitted = NotAdmitted + later.NotAdmitted,
             Unreadable = later.Unreadable ?? Unreadable,
         };
@@ -312,7 +319,7 @@ public static class ContentSearch
         var hits = new List<ContentSearchHit>();
         var chunks = new Dictionary<string, FileStream>(StringComparer.Ordinal);
         Stopwatch elapsed = Stopwatch.StartNew();
-        int read = 0, withoutConsent = 0, notAdmitted = 0;
+        int read = 0, withoutConsent = 0, notAdmitted = 0, omitted = 0;
         long bytesRead = 0;
         bool more = false;
         string? stopped = null;
@@ -371,9 +378,12 @@ public static class ContentSearch
                         continue;
                     }
 
+                    // A record the capture kept no byte of, its content limit reached, is counted; an empty message kept
+                    // whole holds nothing to find.
                     int kept = entry.Fragment.Kept;
                     if (kept == 0)
                     {
+                        if (entry.Fragment.Disposition == ContentDispositionV1.OmittedBySessionLimit) omitted++;
                         continue;
                     }
 
@@ -491,6 +501,7 @@ public static class ContentSearch
             RecordsRead = read,
             BytesRead = bytesRead,
             WithoutConsent = withoutConsent,
+            Omitted = omitted,
             NotAdmitted = notAdmitted,
             Stopped = stopped,
             Unreadable = unreadable,

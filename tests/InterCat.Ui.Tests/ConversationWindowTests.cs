@@ -241,6 +241,90 @@ public sealed class ConversationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R7: an exchange the window no longer lists when its conversation asks for its buffers is said, and its buffers are not opened")]
+    public async Task BuffersOfAnExchangeNoLongerListedAreNotOpened()
+    {
+        using var session = Session(ContentInspectionV1.HexAndText);
+        (MainWindow window, WorkspaceViewModel workspace, _) = await HttpExchangeLaneTests.OpenExchanges(session);
+        try
+        {
+            workspace.SelectedRung = workspace.RungRows[0];
+            Dispatch();
+            string key = workspace.RungRows[0].Key;
+            window.KeyPressQwerty(PhysicalKey.C, RawInputModifiers.None);
+            SessionConversationWindow conversation = await Owned(window);
+            await Until(() => Status(conversation).StartsWith("Read from generation", StringComparison.Ordinal));
+
+            // While it is open, the time scope moves past the exchange, which InterCat's window then no longer lists.
+            workspace.SelectInterval(new TimeRange(35, 45));
+            await workspace.IntervalReady;
+            await workspace.HttpReady;
+            Dispatch();
+            Assert.DoesNotContain(workspace.RungRows, row => row.Key == key);
+            Labelled(conversation, "Show its buffers").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => window.OwnedWindows.Count == 0);
+            Assert.Equal("The exchange is no longer listed here, so its buffers were not opened.",
+                window.GetControl<TextBlock>("CaptureDetail").Text);
+            Assert.True(workspace.IsHttpChannelRung);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R21: a buffer's exchange its process's binding does not admit, and a folder holding another session, are said rather than read")]
+    public async Task WhatCannotBeReadIsSaid()
+    {
+        using var session = Session(ContentInspectionV1.HexAndText);
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+        SessionEvidenceRecord buffer = page.Records.Single(record => record.Observation.RawRecordOrdinal == 2);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            // Under direct evidence alone, the exchange's process is not admitted, so its conversation is not read.
+            using (var content = new SessionContentWindow(session.Path, page.SessionId, buffer, EvidencePolicy.DirectOnly,
+                SessionClock.Session(TimeZoneInfo.Utc)))
+            {
+                _ = content.ShowDialog(owner);
+                Button open = Labelled(content, "Its exchange's conversation…");
+                await Until(() => open.IsEffectivelyVisible && open.IsEffectivelyEnabled
+                    && Labelled(content, "Show the kept bytes") is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true });
+                open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await Until(() => Texts(content).Any(text => text.StartsWith("Its exchange's process is not admitted", StringComparison.Ordinal)));
+                Assert.Contains("Its exchange's process is not admitted under the direct-only evidence policy InterCat's window counts "
+                    + "under, so its conversation is not read.", Texts(content));
+                Assert.Empty(content.OwnedWindows);
+                content.Close();
+            }
+
+            // A folder that now holds another session is said, by the viewer looking for a buffer's exchange and by the
+            // conversation reading one.
+            using (var content = new SessionContentWindow(session.Path, Guid.NewGuid(), buffer, EvidencePolicy.IncludeCorrelated,
+                SessionClock.Session(TimeZoneInfo.Utc)))
+            {
+                _ = content.ShowDialog(owner);
+                Button open = Labelled(content, "Its exchange's conversation…");
+                await Until(() => open.IsEffectivelyVisible && open.IsEffectivelyEnabled
+                    && Texts(content).Any(text => text.StartsWith("Could not read the record's kept content", StringComparison.Ordinal)));
+                open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await Until(() => Texts(content).Any(text => text.StartsWith("Could not find this buffer's exchange: ", StringComparison.Ordinal)));
+                content.Close();
+            }
+
+            using var conversation = new SessionConversationWindow(session.Path, Guid.NewGuid(), "no exchange", EvidencePolicy.IncludeCorrelated,
+                null, SessionClock.Session(TimeZoneInfo.Utc));
+            _ = conversation.ShowDialog<bool>(owner);
+            await Until(() => Status(conversation).StartsWith("Could not read the exchange: ", StringComparison.Ordinal));
+            conversation.Close();
+        }
+        finally
+        {
+            owner.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R15: the conversation window cuts off no text at its smallest and names every element a screen reader lands on")]
     public async Task TheWindowIsLegibleAndHeard()
     {
@@ -340,9 +424,20 @@ public sealed class ConversationWindowTests
 
             // Written, the table holds every exchange the rung lists, a line each, with what its heads say; a head not
             // whole is not decoded, and its cell says why.
+            // A table that cannot be written is said, and nothing is left half written.
+            string blocker = Path.Combine(files.Path, "blocker");
+            File.WriteAllText(blocker, "a file where a folder would be");
+            choices.Answer(Path.Combine(blocker, "heads.csv"));
+            export.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => window.OwnedWindows.Count == 1);
+            Labelled(window.OwnedWindows[0], "Choose table file").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => detail.Text?.StartsWith("Could not export the exchanges' heads: ", StringComparison.Ordinal) == true);
+
             string path = Path.Combine(files.Path, "heads.csv");
             HttpHeadsExport written = await window.WriteHttpHeadsAsync(path);
             Assert.Equal((4, 1, false), (written.Exchanges, written.Undecoded, written.More));
+            Assert.Contains("; 2 heads were not decoded, their cells saying why.", MainWindow.HttpHeadsWritten(written with { Undecoded = 2 }, path),
+                StringComparison.Ordinal);
             string[] lines = File.ReadAllText(path).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
             Assert.Equal(string.Join(",", [.. HttpExchangeTable.Columns, .. HttpExchangeTable.HeadColumns]), lines[0]);
             Assert.Equal(5, lines.Length);

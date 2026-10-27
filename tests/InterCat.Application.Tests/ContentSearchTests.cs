@@ -219,6 +219,27 @@ public sealed class ContentSearchTests
             (nothing.NoneKept, nothing.Partial, nothing.RecordsRead));
     }
 
+    [Fact(DisplayName = "R21: a record the capture kept no byte of, its content limit reached, is counted as not searched; an empty message kept whole is not")]
+    public void ARecordKeptWithNoByteIsCounted()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = [Record(10, 1, 4_242), Record(20, 2, 4_242), Record(30, 3, 4_242)];
+        (ContentFragmentV1 omitted, _) = Content(rows[2], new byte[50], 64);
+        Publish(session.Store, rows, content: (ContentHeader(64),
+        [
+            Content(rows[0], Encoding.ASCII.GetBytes("example.com"), 64, ContentEncodingV1.Binary),
+            Content(rows[1], Array.Empty<byte>(), 64),
+            (omitted with { Disposition = ContentDispositionV1.OmittedBySessionLimit, Kept = 0 }, ReadOnlyMemory<byte>.Empty),
+        ]));
+        session.Store.ReleaseSegmentReaders();
+
+        // The record found is read; the empty one holds nothing to find; the omitted one is counted, the answer whole, as a
+        // cut record's is, since nothing of it was kept to search.
+        ContentSearchResult found = ContentSearch.Find(session.Store, session.Store.SessionId, new() { Text = "example.com" });
+        Assert.Equal((1, 1, 1, false), (found.Hits.Count, found.RecordsRead, found.Omitted, found.Partial));
+        Assert.Equal(2, found.Then(found).Omitted);
+    }
+
     [Fact(DisplayName = "P6: a content search kept to a process instance finds that instance's records alone, never those of another process given its PID again")]
     public void ASearchKeepsToOneHolderOfAReusedPid()
     {

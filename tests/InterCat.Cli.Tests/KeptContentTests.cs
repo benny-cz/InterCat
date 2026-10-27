@@ -110,6 +110,16 @@ public sealed class KeptContentTests : IDisposable
         Assert.Contains("No byte of this message was kept, so there is nothing to show or save.", notKept, StringComparison.Ordinal);
         Assert.Equal(InterCatExitCode.PartialResultSuccess, (await Run([.. Locator(4), "--reveal"])).Code);
 
+        // A search counts the record not kept as not searched, its answer whole; the empty message holds nothing to find.
+        (InterCatExitCode searched, string found, string why) = await Run("content", kept.Path, "--find", "world");
+        Assert.True(searched == InterCatExitCode.Success, why);
+        Assert.Matches(@"(?m)^  Searched +the kept bytes of 2 records, 75 B\r?$", found);
+        Assert.Matches(@"(?m)^  Not searched +1 record the capture kept no byte of, having reached its content limit\r?$", found);
+        string nowhere = Path.Combine(root.Path, "nowhere");
+        (InterCatExitCode missing, _, string none) = await Run("content", nowhere, "--find", "world");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, missing);
+        Assert.Contains($"No session directory at {nowhere}.", none, StringComparison.Ordinal);
+
         // Kept without consent to inspect it, it is never shown or saved one record at a time.
         using var withheld = new TemporarySession();
         ObservationRowV1 row = Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 5, 100, 1);

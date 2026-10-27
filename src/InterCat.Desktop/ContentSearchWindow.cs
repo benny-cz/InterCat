@@ -440,6 +440,8 @@ internal sealed class ContentSearchWindow : Window, IDisposable
             + string.Create(culture, $" ({found.BytesRead:N0} B)")
             + (found.WithoutConsent == 0 ? string.Empty : "; " + CountText.Of(found.WithoutConsent, "record") + " kept without "
                 + "consent to inspect " + CountText.Agree(found.WithoutConsent, "its bytes was", "their bytes were") + " not searched")
+            + (found.Omitted == 0 ? string.Empty : "; " + CountText.Of(found.Omitted, "record") + " the capture kept no byte of, "
+                + "having reached its content limit, " + CountText.Agree(found.Omitted, "was", "were") + " not searched")
             + (found.NotAdmitted == 0 ? string.Empty : "; " + CountText.Of(found.NotAdmitted, "record") + " bound to the process "
                 + "more weakly than the window's evidence policy admits " + CountText.Agree(found.NotAdmitted, "was", "were")
                 + " not searched");

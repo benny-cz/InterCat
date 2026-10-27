@@ -141,6 +141,11 @@ public sealed class CommunicationPatternsTests
         Assert.True(direct.NotAdmitted > 0);
         Assert.Equal((0L, Items(direct)), (before.NotAdmitted, before.OutsideInterval));
 
+        // The calls that began in an interval and that the policy does not admit are counted as such, the rest outside it.
+        PatternReading calls = CommunicationPatterns.Read(session.Store, EvidencePolicy.DirectOnly, new TimeRange(0, 500));
+        Assert.True(calls.NotAdmitted > 0);
+        Assert.Equal(Items(direct), Items(calls) + calls.OutsideInterval);
+
         static long Items(PatternReading reading) => reading.Patterns.Sum(pattern => pattern.Occurrences + pattern.Served)
             + reading.UnopenedConnections + reading.DynamicFlows + reading.CallsWithoutInterface + reading.NotAdmitted;
     }

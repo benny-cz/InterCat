@@ -192,30 +192,33 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   most 16 either side and from the buffer before where the match began there, as inert text in which a byte outside
   visible ASCII, and a backslash, is written `\xHH` (a UTF-16 code unit `\uHHHH`), so the marks around the match are
   never the content's own. A record not searched - kept without consent, past a budget, or in a chunk that could not
-  be read - leaves the answer partial, since it may hold the text. A search refuses `--json` and a record's locator,
-  and nothing it finds is kept but a table a person asks for: since revision 792 `--output <file>` writes the records
-  listed to a CSV table - each record's session, generation, segment and row, its time as seconds after the capture
-  epoch, its process ID, mechanism and event, how many times it holds the text and where first (negative where the
-  match began in the buffer before it), and the text searched for and whether letters matched in either case - adding
-  the bytes around each first match, as the previews show them, only with `--previews`, which makes the table content
-  and is said beside the file written; a file already there is replaced only with `--overwrite`. Its numbers are
-  invariant, and a text cell is quoted where it holds a comma, a quote or a line end and neutralized where a
-  spreadsheet would evaluate it. Since revision 780 the window's Find in kept content… (Ctrl+Shift+F) searches the
-  same way, the records of the process selected there alone where asked (since revision 788 those bound to it under
-  the window's evidence policy, never every record of its PID): its records found are listed in reading order, each
-  with its time, PID, mechanism and event and how often and where it holds the text, its bytes around the first match
-  shown only when asked; it says what was searched and what was not, and a record found opens in the content viewer,
-  its bytes hidden until asked there. Since revision 790 its Stop, offered while a search runs, ends the search before
-  the next record it would read: what it found is listed, and it says it was stopped when asked and after how many
-  records, the answer partial; closing the window still abandons a search, listing nothing. Since revision 792 its
-  Export… writes the records listed to the same table, and where the previews were shown it says first that the table
-  is content, asking for its file only once that is accepted. Since revision 793 a search that ends before reading
-  every record it could - at a budget, stopped, or finding more records than it lists - says where it would read on
-  from, and the window's Search on reads on from there as one search from the start would: the records after those
-  listed, never one twice, a match a seam splits found across the pages too, and at least one record read each time,
-  so no record longer than a budget holds it in place. What the window then lists and says is the whole search's so
-  far, each record's bytes counted once. It reads on in the session's current generation only where that still holds
-  every segment the search had read, in its place; otherwise it is refused, and the search is begun again.
+  be read - leaves the answer partial, since it may hold the text. Since revision 798 a record the capture kept no
+  byte of, having reached its content limit, is counted and said as not searched, the answer whole for it as for a cut
+  record, which is searched in the bytes it kept; an empty message kept whole holds nothing to find. A search refuses
+  `--json` and a record's locator, and nothing it finds is kept but a table a person asks for: since revision 792
+  `--output <file>` writes the records listed to a CSV table - each record's session, generation, segment and row, its
+  time as seconds after the capture epoch, its process ID, mechanism and event, how many times it holds the text and
+  where first (negative where the match began in the buffer before it), and the text searched for and whether letters
+  matched in either case - adding the bytes around each first match, as the previews show them, only with
+  `--previews`, which makes the table content and is said beside the file written; a file already there is replaced
+  only with `--overwrite`. Its numbers are invariant, and a text cell is quoted where it holds a comma, a quote or a
+  line end and neutralized where a spreadsheet would evaluate it. Since revision 780 the window's Find in kept
+  content… (Ctrl+Shift+F) searches the same way, the records of the process selected there alone where asked (since
+  revision 788 those bound to it under the window's evidence policy, never every record of its PID): its records found
+  are listed in reading order, each with its time, PID, mechanism and event and how often and where it holds the text,
+  its bytes around the first match shown only when asked; it says what was searched and what was not, and a record
+  found opens in the content viewer, its bytes hidden until asked there. Since revision 790 its Stop, offered while a
+  search runs, ends the search before the next record it would read: what it found is listed, and it says it was
+  stopped when asked and after how many records, the answer partial; closing the window still abandons a search,
+  listing nothing. Since revision 792 its Export… writes the records listed to the same table, and where the previews
+  were shown it says first that the table is content, asking for its file only once that is accepted. Since revision
+  793 a search that ends before reading every record it could - at a budget, stopped, or finding more records than it
+  lists - says where it would read on from, and the window's Search on reads on from there as one search from the
+  start would: the records after those listed, never one twice, a match a seam splits found across the pages too, and
+  at least one record read each time, so no record longer than a budget holds it in place. What the window then lists
+  and says is the whole search's so far, each record's bytes counted once. It reads on in the session's current
+  generation only where that still holds every segment the search had read, in its place; otherwise it is refused, and
+  the search is begun again.
 - **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
   kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
 - **Nothing else.** The window's search, rankings, metrics, the share report (`intercat-share-report-v1`), the

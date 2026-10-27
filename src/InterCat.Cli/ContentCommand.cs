@@ -642,6 +642,12 @@ internal static class ContentCommand
                 + CountText.Agree(result.WithoutConsent, "its bytes", "their bytes"));
         }
 
+        if (result.Omitted > 0)
+        {
+            ConsoleUi.Field("Not searched", CountText.Of(result.Omitted, "record") + " the capture kept no byte of, having reached "
+                + "its content limit");
+        }
+
         if (result.NotAdmitted > 0)
         {
             ConsoleUi.Field("Not searched", CountText.Of(result.NotAdmitted, "record") + " bound to it more weakly than the "
