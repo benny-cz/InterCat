@@ -2005,16 +2005,16 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     }
 
     /// <summary>
-    /// Lists the time processes spent inside the RPC calls they made (`contracts/waits-v1.md` §7), counted under the window's
-    /// evidence policy, the selected process's calls first where one is selected; the caller and server of the wait chosen
-    /// there become the selection, and the graph has the keyboard.
+    /// Lists the time processes spent inside the RPC calls they made (`contracts/waits-v1.md` §7) over the window's time scope,
+    /// counted under the window's evidence policy, the selected process's calls first where one is selected; the caller and
+    /// server of the wait chosen there become the selection, and the graph has the keyboard.
     /// </summary>
     private async void ShowWaits(object? sender, RoutedEventArgs eventArgs)
     {
         if (currentSessionPath is null || displayedSessionId is not { } sessionId || displayedGeneration < 1
             || workspace.IsEvidenceRung) return;
         using var waits = new WaitsWindow(currentSessionPath, sessionId, displayedGeneration, workspace.EvidencePolicy,
-            workspace.SelectedProcess?.Id);
+            workspace.SelectedProcess?.Id, workspace.ScopeInterval, workspace.TimeBase);
         try
         {
             if (await waits.ShowDialog<WaitChoice?>(this) is not { } chosen || closed) return;

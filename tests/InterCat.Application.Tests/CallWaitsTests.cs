@@ -90,6 +90,58 @@ public sealed class CallWaitsTests
             && wait.InCalls == 1_000);
     }
 
+    [Fact(DisplayName = "R21: waits read over an interval time the calls that began in it alone, each to its stop, and count those that began outside it")]
+    public void WaitsReadOverAnInterval()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = WaitRows();
+        Publish(session.Store, rows, fields: fields);
+        WaitReading whole = CallWaits.Read(session.Store);
+        Assert.Equal(((TimeRange?)null, 0L), (whole.Interval, whole.OutsideInterval));
+
+        // From 150 to 500: PID 400's second and third calls to the service control manager, the third linked to the call PID
+        // 1960 served, and PID 600's two short calls; PID 400's first call and its two after 500 began outside it.
+        var interval = new TimeRange(150, 500);
+        WaitReading read = CallWaits.Read(session.Store, interval: interval);
+        ProcessInstanceId Of(int pid) => read.Processes.Values.Single(node => node.ProcessId == pid && node.PidHolder == 1).Id;
+        Assert.Equal(interval, read.Interval);
+        Assert.Equal(
+            [
+                (Of(400), (ProcessInstanceId?)Of(1_960), 1L, 1L, 4_000L, 1L, 2_500L),
+                (Of(WaitBrief), (ProcessInstanceId?)null, 2L, 0L, 1_000L, 0L, 0L),
+                (Of(400), (ProcessInstanceId?)null, 1L, 0L, 1_000L, 0L, 0L),
+            ],
+            read.Waits.Select(wait => (wait.Caller, wait.Server, wait.Calls, wait.Failed, wait.InCalls, wait.Linked, wait.ServerRan)));
+        Assert.All(read.Waits, wait => Assert.Equal(ServiceControlInterface, wait.Interface));
+
+        // The calls no time is said for began in it too, and are counted as in the whole session; the three that began
+        // outside it are counted apart, so every call is counted once.
+        Assert.Equal(whole.NotValidated.OrderBy(entry => entry.Key), read.NotValidated.OrderBy(entry => entry.Key));
+        Assert.Equal((1L, 3L), (read.NotAdmitted, read.OutsideInterval));
+        Assert.Equal(Calls(whole), Calls(read) + read.OutsideInterval);
+        Assert.EndsWith(", or 3 calls that began outside the interval.", WaitText.NotCounted(read), StringComparison.Ordinal);
+
+        // A call is timed to its stop, even past the interval's end.
+        WaitReading cut = CallWaits.Read(session.Store, interval: new TimeRange(250, 320));
+        Assert.Equal((4_000L, 2_500L), (Assert.Single(cut.Waits).InCalls, cut.Waits[0].ServerRan));
+
+        // An interval no call began in holds no wait, which is said of the interval; under a narrower evidence policy, what
+        // began outside it is counted there alone, never as unadmitted too.
+        WaitReading direct = CallWaits.Read(session.Store, EvidencePolicy.DirectOnly);
+        WaitReading before = CallWaits.Read(session.Store, EvidencePolicy.DirectOnly, new TimeRange(-2_000, -1_000));
+        Assert.True(direct.NotAdmitted > 0);
+        Assert.Empty(before.Waits);
+        Assert.Equal((0L, 0L, Calls(direct)), (before.NotAdmitted, before.NotValidated.Values.Sum(), before.OutsideInterval));
+        Assert.Equal("No completed call began in the interval; the coverage above says whether one could have been seen.",
+            WaitText.None(before));
+        Assert.Equal("No completed call is in this session; the coverage above says whether one could have been seen.",
+            WaitText.None(whole));
+        Assert.Equal("No time is said for 11 calls that began outside the interval.", WaitText.NotCounted(before));
+
+        static long Calls(WaitReading reading) =>
+            reading.Waits.Sum(wait => wait.Calls) + reading.NotValidated.Values.Sum() + reading.NotAdmitted;
+    }
+
     [Fact(DisplayName = "R3: a call served by a process the evidence policy does not admit names no server, and its server's time is said only where admitted")]
     public void AServerNotAdmittedIsNotNamed()
     {

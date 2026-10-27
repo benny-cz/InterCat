@@ -110,6 +110,8 @@ public sealed class WaitsCommandTests
             (["--process", "999"], "--process 999 names no process: no process of the session held PID 999."),
             (["--evidence-policy", "2"], "--evidence-policy expects one of: DirectOnly, IncludeCorrelated, IncludeCandidates, "
                 + "AllIncludingConflicting. '2' is not one."),
+            (["--interval", "500:150"], "--interval names no interval: start:end, each bound a count of 100-nanosecond session "
+                + "ticks or a time with its unit, such as 1.5s, 250ms or 40us, with its end after its start."),
         })
         {
             (InterCatExitCode refused, _, string why) = await Run(["waits", session.Path, .. args]);
@@ -123,6 +125,62 @@ public sealed class WaitsCommandTests
         (InterCatExitCode help, string usage, _) = await Run("waits", "--help");
         Assert.Equal(InterCatExitCode.Success, help);
         Assert.Contains("icat waits <session-directory> [--process <pid | instance>] [--limit <n>]", usage, Ordinal);
+    }
+
+    [Fact(DisplayName = "R18: icat waits --interval times the calls that began in the interval alone, each to its stop, saying the interval and counting those that began outside it")]
+    public async Task IcatWaitsReadsAnInterval()
+    {
+        using var session = Session(WaitRows());
+
+        // From 150 to 500: PID 400's second and third calls to the service control manager, the third linked to the call PID
+        // 1960 served, and PID 600's two short calls; PID 400's first call and its two after 500 began outside it.
+        (InterCatExitCode code, string text, string said) = await Run("waits", session.Path, "--interval", "150:500");
+        Assert.True(code == InterCatExitCode.Success, said);
+        string interval = ComparisonText.Interval(new TimeRange(150, 500), culture: System.Globalization.CultureInfo.CurrentCulture);
+        Assert.Matches(new Regex("^  Interval +" + Regex.Escape(interval + ", the calls that began in it alone") + @"\r?$", RegexOptions.Multiline),
+            text);
+        Assert.Matches(@"(?m)^  Counted +4 completed calls of 2 processes, the most time first\r?$", text);
+        string[] waits = Rows(text, "WAITS", "Caller");
+        Assert.Equal(3, waits.Length);
+        Assert.Equal("PID 400 | svcctl (Service Control Manager) | PID 1960 | 1 | 1 | 4.0 µs | 4.0 µs | 4.0 µs | 4.0 µs | 2.5 µs of 4.0 µs (62%)",
+            waits[0]);
+        Assert.StartsWith("PID 600 | svcctl (Service Control Manager) | not linked: ", waits[1], Ordinal);
+        Assert.Contains(" | 2 | 0 | 1.0 µs | ", waits[1], Ordinal);
+        Assert.StartsWith("PID 400 | svcctl (Service Control Manager) | not linked: ", waits[2], Ordinal);
+        Assert.Equal(["PID 1960 | 1 | 1 | 4.0 µs | 2.5 µs of 4.0 µs (62%)"], Rows(text, "SERVERS", "Server"));
+        string words = Regex.Replace(text, @"\s+", " ");
+        Assert.Contains("No time is said for 3 calls whose span is not validated: 1 open at capture end, 1 start not observed and 1 "
+            + "no activity id, or 1 call the include-correlated evidence policy does not admit the caller of, or 3 calls that began "
+            + "outside the interval.", words, Ordinal);
+        Assert.Contains(WaitText.IntervalNote, words, Ordinal);
+
+        // A call is timed to its stop, even past the interval's end.
+        (code, text, said) = await Run("waits", session.Path, "--interval", "250:320");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(["PID 400 | svcctl (Service Control Manager) | PID 1960 | 1 | 1 | 4.0 µs | 4.0 µs | 4.0 µs | 4.0 µs | 2.5 µs of 4.0 µs (62%)"],
+            Rows(text, "WAITS", "Caller"));
+
+        // One process over the interval: the calls it began in it, and the calls it served that began there.
+        (code, text, said) = await Run("waits", session.Path, "--process", "1960", "--interval", "150:500");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("It began no completed call in the interval.", text, Ordinal);
+        Assert.Equal(["PID 400 | svcctl (Service Control Manager) | 1 | 4.0 µs | 2.5 µs of 4.0 µs (62%)"], Rows(text, "CALLS IT SERVED", "Caller"));
+
+        // An interval no call began in says so, counting every call outside it.
+        (code, text, said) = await Run("waits", session.Path, "--interval", "2000:3000");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("No completed call began in the interval; the coverage above says whether one could have been seen.", text, Ordinal);
+        Assert.Contains("No time is said for 11 calls that began outside the interval.", Regex.Replace(text, @"\s+", " "), Ordinal);
+
+        // The document says the interval and how many calls began outside it.
+        (code, text, said) = await Run("waits", session.Path, "--interval", "150:500", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement root = JsonDocument.Parse(text).RootElement;
+        Assert.Equal((150L, 500L, 3L), (root.GetProperty("interval").GetProperty("startTicks").GetInt64(),
+            root.GetProperty("interval").GetProperty("endTicks").GetInt64(), root.GetProperty("outsideInterval").GetInt64()));
+        (code, text, _) = await Run("waits", session.Path, "--json");
+        root = JsonDocument.Parse(text).RootElement;
+        Assert.Equal((JsonValueKind.Null, 0L), (root.GetProperty("interval").ValueKind, root.GetProperty("outsideInterval").GetInt64()));
     }
 
     private static TemporarySession Session((ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) session)

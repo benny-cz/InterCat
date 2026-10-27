@@ -74,6 +74,12 @@ public sealed record WaitReading(
 
     /// <summary>Client calls whose caller the evidence policy does not admit, or binds to no process.</summary>
     public required long NotAdmitted { get; init; }
+
+    /// <summary>The interval the waits were read over, in presentation ticks; none for the whole generation.</summary>
+    public TimeRange? Interval { get; init; }
+
+    /// <summary>Client calls that began outside <see cref="Interval"/>: no time is said for them there.</summary>
+    public long OutsideInterval { get; init; }
 }
 
 /// <summary>
@@ -91,11 +97,13 @@ public static class CallWaits
     /// <summary>
     /// Reads the waits of <paramref name="store"/>'s current generation under <paramref name="policy"/>: its overview naming its
     /// processes, then, under one lease of that generation, its calls and their other ends, read again where a newer
-    /// generation was published between them.
+    /// generation was published between them. Within <paramref name="interval"/>, in presentation ticks, only the calls that
+    /// began in it are read, each timed to its stop; those that began outside it are counted apart.
     /// </summary>
     public static WaitReading Read(
         SessionStore store,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        TimeRange? interval = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -122,15 +130,16 @@ public static class CallWaits
             RpcPeerIndex peers = new GenerationSegments(store, manifest, clock).RpcPeers(cancellationToken);
             IReadOnlyList<MechanismCoverage> coverage = SessionCoverage.ForMechanisms(
                 SessionSegments.CoverageLedger(store.Root, manifest), [Mechanism.Rpc, Mechanism.Alpc]);
-            return Of(overview, peers, coverage, cancellationToken);
+            return Of(overview, peers, coverage, interval, cancellationToken);
         }
     }
 
-    /// <summary>One generation's waits from its overview and the other ends of its calls.</summary>
+    /// <summary>One generation's waits from its overview and the other ends of its calls, over an interval of it or all of it.</summary>
     internal static WaitReading Of(
         SessionOverviewBundle overview,
         RpcPeerIndex peers,
         IReadOnlyList<MechanismCoverage> coverage,
+        TimeRange? interval,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(overview);
@@ -141,23 +150,39 @@ public static class CallWaits
         var spans = new Dictionary<RpcCallGroup, RpcCallSpan[]>(ReferenceEqualityComparer.Instance);
         var tallies = new Dictionary<(ProcessInstanceId Caller, Guid? Interface, ProcessInstanceId? Server), Tally>();
         var notValidated = new Dictionary<RpcCallState, long>();
-        long notAdmitted = 0;
+        long notAdmitted = 0, outside = 0;
         foreach (RpcCallGroup group in calls.Groups)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (group.Side != RpcCallSide.Client) continue;
-            if (!group.Process.IsBound || !group.Process.IsAdmittedUnder(policy))
+            bool admitted = group.Process.IsBound && group.Process.IsAdmittedUnder(policy);
+            if (!admitted && interval is null)
             {
                 notAdmitted += group.Counts.Calls;
                 continue;
             }
 
-            ProcessInstanceId caller = instances[group.Process.Instance].Id;
+            // Within an interval, a call is read where it began: its start, or its stop where no start was recorded. One that
+            // began outside it is counted apart, and nothing else of it.
+            ProcessInstanceId? caller = admitted ? instances[group.Process.Instance].Id : null;
             RpcCallSpan[] own = SpansOf(group);
             var unlinked = new List<int>();
             for (int position = 0; position < own.Length; position++)
             {
                 RpcCallSpan span = own[position];
+                if (interval is { } within && (span.StartNanoseconds ?? span.StopNanoseconds) is { } placed
+                    && !within.Contains(placed / 100))
+                {
+                    outside++;
+                    continue;
+                }
+
+                if (caller is not { } made)
+                {
+                    notAdmitted++;
+                    continue;
+                }
+
                 if (span.State != RpcCallState.Completed || span.StartNanoseconds is not { } start || span.StopNanoseconds is not { } stop)
                 {
                     notValidated[span.State] = notValidated.GetValueOrDefault(span.State) + 1;
@@ -169,7 +194,7 @@ public static class CallWaits
                 (RpcCallGroup Group, int Position)? other = peers.OtherCallOf(group, position);
                 if (other is { } served && served.Group.Process.IsBound && served.Group.Process.IsAdmittedUnder(policy))
                 {
-                    Tally tally = TallyOf(caller, group.Interface, instances[served.Group.Process.Instance].Id);
+                    Tally tally = TallyOf(made, group.Interface, instances[served.Group.Process.Instance].Id);
                     tally.Add(took, failed);
                     RpcCallSpan ran = SpansOf(served.Group)[served.Position];
                     if (ran.State == RpcCallState.Completed && ran.StartNanoseconds is { } began && ran.StopNanoseconds is { } ended)
@@ -180,7 +205,7 @@ public static class CallWaits
                     continue;
                 }
 
-                Tally none = TallyOf(caller, group.Interface, null);
+                Tally none = TallyOf(made, group.Interface, null);
                 none.Add(took, failed);
                 if (other is not null)
                 {
@@ -192,9 +217,9 @@ public static class CallWaits
                 }
             }
 
-            if (unlinked.Count > 0)
+            if (unlinked.Count > 0 && caller is { } unserved)
             {
-                Tally none = TallyOf(caller, group.Interface, null);
+                Tally none = TallyOf(unserved, group.Interface, null);
                 foreach ((RpcPeerState state, long count) in peers.CountsOf(group, unlinked).Unresolved)
                 {
                     none.Unresolved[state] = none.Unresolved.GetValueOrDefault(state) + count;
@@ -217,6 +242,8 @@ public static class CallWaits
             Processes = processes,
             NotValidated = notValidated,
             NotAdmitted = notAdmitted,
+            Interval = interval,
+            OutsideInterval = outside,
         };
 
         RpcCallSpan[] SpansOf(RpcCallGroup group)

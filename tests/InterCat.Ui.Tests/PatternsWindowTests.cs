@@ -162,7 +162,7 @@ public sealed class PatternsWindowTests
         owner.Close();
     }
 
-    [AvaloniaFact(DisplayName = "P6: over InterCat's window's time scope, the patterns window lists what began in it alone, spread over its tenths, and counts what began outside it")]
+    [AvaloniaFact(DisplayName = "R18: over InterCat's window's time scope, the patterns window lists what began in it alone, spread over its tenths, and counts what began outside it")]
     public async Task TheWindowKeepsToTheTimeScope()
     {
         using var session = new TemporarySession();

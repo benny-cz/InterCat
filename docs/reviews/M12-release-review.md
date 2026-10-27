@@ -331,3 +331,10 @@ window's Recurring patterns… over the window's time scope, make the patterns o
 began in it, spread its tenths over it and count what began outside it apart, so a person reads what recurred in the
 time they are looking at. Of the limits above, patterns no longer read only a whole generation; links and waits still
 do, and none reads two captures. Nothing else above changes.
+
+## Addendum, revision 796
+
+The time inside calls reads an interval of a session (`contracts/waits-v1.md` §1): `icat waits --interval`, and the
+window's Time inside calls… over the window's time scope, time the calls that began in it, each to its stop, and count
+those that began outside it apart. Of the limits above, waits no longer read only a whole generation; links still do.
+Nothing else above changes.

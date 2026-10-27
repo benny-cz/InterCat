@@ -48,6 +48,7 @@ internal sealed class WaitsWindow : Window, IDisposable
     private readonly long expectedGeneration;
     private readonly EvidencePolicy policy;
     private readonly ProcessInstanceId? process;
+    private readonly TimeRange? interval;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock coverage = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
@@ -74,13 +75,20 @@ internal sealed class WaitsWindow : Window, IDisposable
 
     /// <param name="policy">The evidence policy InterCat's window counts under, so the two count alike.</param>
     /// <param name="process">The process selected in InterCat's window, whose calls are listed first; none for every caller's.</param>
-    public WaitsWindow(string path, Guid expectedSessionId, long expectedGeneration, EvidencePolicy policy, ProcessInstanceId? process)
+    /// <param name="interval">
+    /// InterCat's window's time scope, in presentation ticks, whose calls alone - those that began in it - are listed; none for
+    /// the whole session.
+    /// </param>
+    /// <param name="clock">InterCat's window's clock, which says the interval as that window says its time scope.</param>
+    public WaitsWindow(string path, Guid expectedSessionId, long expectedGeneration, EvidencePolicy policy, ProcessInstanceId? process,
+        TimeRange? interval = null, SessionClock? clock = null)
     {
         this.path = path;
         this.expectedSessionId = expectedSessionId;
         this.expectedGeneration = expectedGeneration;
         this.policy = policy;
         this.process = process;
+        this.interval = interval;
         Title = "InterCat · Time inside calls";
         Width = 1_000;
         Height = 700;
@@ -90,8 +98,10 @@ internal sealed class WaitsWindow : Window, IDisposable
 
         var scope = new TextBlock
         {
-            Text = "The time each process spent inside the RPC calls it made, the most first · all session times (a time brush "
-                + "does not narrow this list)",
+            Text = interval is { } scoped
+                ? "The time each process spent inside the RPC calls it began over the window's time scope, the most first · "
+                    + ComparisonText.Interval(scoped, clock, CultureInfo.CurrentCulture)
+                : "The time each process spent inside the RPC calls it made, the most first · all session times",
             TextWrapping = TextWrapping.Wrap,
             FontWeight = FontWeight.SemiBold,
         };
@@ -99,7 +109,12 @@ internal sealed class WaitsWindow : Window, IDisposable
         AutomationProperties.SetName(status, "Waits status");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(coverage, "What the capture covered");
-        var note = new TextBlock { Text = WaitText.Note, TextWrapping = TextWrapping.Wrap, FontSize = 11 };
+        var note = new TextBlock
+        {
+            Text = interval is null ? WaitText.Note : WaitText.Note + " " + WaitText.IntervalNote,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+        };
         AutomationProperties.SetName(notCounted, "What no time is said for");
 
         // A wait reads by its caller and interface, then by who served it and how long its calls took, each wrapping within
@@ -217,7 +232,8 @@ internal sealed class WaitsWindow : Window, IDisposable
             CancellationToken token = lifetime.Token;
 
             // A folder that now holds another session is refused as every read of the workspace's is.
-            WaitReading read = await Task.Run(() => CallWaits.Read(SharedSessionStores.Open(path, expectedSessionId), policy, token), token);
+            WaitReading read = await Task.Run(() => CallWaits.Read(SharedSessionStores.Open(path, expectedSessionId), policy, interval,
+                token), token);
             if (closed) return;
             if (read.Generation < expectedGeneration)
             {
@@ -322,7 +338,9 @@ internal sealed class WaitsWindow : Window, IDisposable
     private void ShowSelected()
     {
         WaitRow? row = waits.SelectedItem as WaitRow;
-        string? none = loading ? Reading : unshown ?? (reading?.Waits.Count == 0 ? "This session holds no completed call." : null);
+        string? none = loading ? Reading : unshown ?? (reading?.Waits.Count == 0
+            ? interval is null ? "This session holds no completed call." : "No completed call began in the interval."
+            : null);
         Offering.Offer(only, none ?? (process is null ? "No process was selected in InterCat's window, so every caller's calls are listed." : null),
             "List only the selected process's calls and the calls it served, as icat waits --process does");
         ProcessInstanceId[] processes = row is null ? [] : Processes(row.Wait);
@@ -339,8 +357,9 @@ internal sealed class WaitsWindow : Window, IDisposable
         if (row is null || reading is not { } read)
         {
             heading.Text = reading is null ? string.Empty
-                : reading.Waits.Count == 0 ? "No completed call is in this session; the coverage above says whether one could have been seen."
-                : "It made no completed call; unticking the box below lists every caller's.";
+                : reading.Waits.Count == 0 ? WaitText.None(reading)
+                : (interval is null ? "It made no completed call" : "It began no completed call in the interval")
+                    + "; unticking the box below lists every caller's.";
             return;
         }
 

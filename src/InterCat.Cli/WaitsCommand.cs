@@ -42,6 +42,7 @@ internal static class WaitsCommand
         string? processText = command.TakeOption("--process");
         string? limitText = command.TakeOption("--limit");
         string? policyText = command.TakeOption("--evidence-policy");
+        string? intervalText = command.TakeOption("--interval");
         bool json = command.TryTakeFlag("--json");
         string? directory = command.TakePositional();
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
@@ -66,6 +67,18 @@ internal static class WaitsCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        // An interval keeps the waits to the calls that began in it (`waits-v1` §1).
+        TimeRange? interval = null;
+        if (intervalText is not null)
+        {
+            interval = TickInterval.Read(intervalText, out string? tooWide);
+            if (interval is null)
+            {
+                ConsoleUi.Failure(tooWide ?? "--interval names no interval: " + TickInterval.Takes + ".");
+                return InterCatExitCode.InvalidInvocation;
+            }
+        }
+
         string path = Path.GetFullPath(directory);
         if (!Directory.Exists(path))
         {
@@ -77,7 +90,7 @@ internal static class WaitsCommand
         WaitReading reading;
         try
         {
-            reading = CallWaits.Read(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), policy, cancellationToken);
+            reading = CallWaits.Read(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), policy, interval, cancellationToken);
         }
         catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
@@ -117,6 +130,8 @@ internal static class WaitsCommand
         reading.SessionId,
         reading.Generation,
         EvidencePolicy = reading.Policy.ToString(),
+        Interval = reading.Interval is { } read ? new { read.StartTicks, read.EndTicks } : null,
+        reading.OutsideInterval,
         Coverage = reading.Coverage.Select(coverage => new
         {
             Mechanism = MechanismText.Name(coverage.Mechanism),
@@ -172,6 +187,11 @@ internal static class WaitsCommand
         ConsoleUi.Heading(process is { } one ? "Waits of " + WaitText.Named(reading, one) : "Waits");
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Generation", reading.Generation.ToString(culture));
+        if (reading.Interval is { } interval)
+        {
+            ConsoleUi.Field("Interval", ComparisonText.Interval(interval, null, culture) + ", the calls that began in it alone");
+        }
+
         ConsoleUi.Field("Coverage", CoverageText.Unlabelled(reading.Coverage));
         int callers = made.Select(wait => wait.Caller).Distinct().Count();
         ConsoleUi.Field("Counted", process is null
@@ -182,9 +202,8 @@ internal static class WaitsCommand
         if (process is not null) ConsoleUi.Heading("Its calls");
         if (made.Length == 0)
         {
-            ConsoleUi.Note(process is null
-                ? "No completed call is in this session; the coverage above says whether one could have been seen."
-                : "It made no completed call.");
+            ConsoleUi.Note(process is null ? WaitText.None(reading)
+                : reading.Interval is null ? "It made no completed call." : "It began no completed call in the interval.");
         }
         else
         {
@@ -251,16 +270,22 @@ internal static class WaitsCommand
         }
 
         ConsoleUi.Note(WaitText.Note);
+        if (reading.Interval is not null)
+        {
+            ConsoleUi.Note(WaitText.IntervalNote);
+        }
     }
 
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat waits <session-directory> [--process <pid | instance>] [--limit <n>]");
-        ConsoleUi.Line("           [--evidence-policy <policy>] [--json]");
+        ConsoleUi.Line("           [--interval <start:end>] [--evidence-policy <policy>] [--json]");
         ConsoleUi.Line("  The time each process spent inside the RPC calls it made, from each call's start to its stop,");
         ConsoleUi.Line("  by interface and by the process that served them through ALPC, the most time first, with the");
         ConsoleUi.Line("  server's own time where its call completed too, and the servers callers waited on. No wait is");
         ConsoleUi.Line("  said to have blocked or delayed anything. --process lists one process's calls and those it");
         ConsoleUi.Line("  served; --limit lists that many rows, 20 unless it says so; --json writes them as a document.");
+        ConsoleUi.Line("  --interval keeps them to the calls that began in it, each timed to its stop, and counts those that");
+        ConsoleUi.Line("  began outside it.");
     }
 }

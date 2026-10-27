@@ -102,7 +102,7 @@ public sealed class CommunicationPatternsTests
             + direct.DynamicFlows + direct.NotAdmitted);
     }
 
-    [Fact(DisplayName = "P6: patterns read over an interval group what began in it alone, spread over its tenths, and count what began outside it")]
+    [Fact(DisplayName = "R21: patterns read over an interval group what began in it alone, spread over its tenths, and count what began outside it")]
     public void PatternsReadOverAnInterval()
     {
         using var session = new TemporarySession();

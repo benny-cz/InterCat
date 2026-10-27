@@ -17,6 +17,21 @@ public static class WaitText
         + "anything. Where a call is linked to the server call that served it, the server's time is that call's own; the rest "
         + "of the wait is not attributed.";
 
+    /// <summary>What a list of waits read over an interval says beneath it, after <see cref="Note"/>: where a call is read, and to when.</summary>
+    public const string IntervalNote = "Over an interval, a call is read where it began, at its start or, where no start was "
+        + "recorded, its stop, and timed to its stop even past the interval's end; one that began before it is not read.";
+
+    /// <summary>
+    /// What a reading that holds no completed call says of itself, the command line and the window alike: that the session
+    /// holds none, or that none began in the interval, and where to read whether one could have been seen.
+    /// </summary>
+    public static string None(WaitReading reading)
+    {
+        ArgumentNullException.ThrowIfNull(reading);
+        return (reading.Interval is null ? "No completed call is in this session" : "No completed call began in the interval")
+            + "; the coverage above says whether one could have been seen.";
+    }
+
     /// <summary>A process as a list of waits names it, as the overview does.</summary>
     public static string Named(WaitReading reading, ProcessInstanceId process)
     {
@@ -63,7 +78,7 @@ public static class WaitText
 
     /// <summary>
     /// What no time is said for, in one sentence: "No time is said for 2 calls whose span is not validated: 1 open at capture
-    /// end and 1 start not observed." Null where every call is counted.
+    /// end and 1 start not observed, or 3 calls that began outside the interval." Null where every call is counted.
     /// </summary>
     public static string? NotCounted(WaitReading reading)
     {
@@ -85,6 +100,11 @@ public static class WaitText
         {
             parts.Add(CountText.Of(reading.NotAdmitted, "call", "calls") + $" the {CommandArgument.Typed(reading.Policy)} evidence "
                 + "policy does not admit the caller of");
+        }
+
+        if (reading.OutsideInterval > 0)
+        {
+            parts.Add(CountText.Of(reading.OutsideInterval, "call", "calls") + " that began outside the interval");
         }
 
         return parts.Count > 0 ? "No time is said for " + string.Join(", or ", parts) + "." : null;

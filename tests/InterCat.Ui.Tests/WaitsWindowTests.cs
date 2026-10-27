@@ -244,6 +244,69 @@ public sealed class WaitsWindowTests
         owner.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R18: over InterCat's window's time scope, the waits window times the calls that began in it alone, each to its stop, and counts those that began outside it")]
+    public async Task TheWindowKeepsToTheTimeScope()
+    {
+        using var session = Session(WaitRows());
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        ProcessInstanceId server = overview.Nodes.Single(node => node.ProcessId == 1_960 && node.PidHolder == 1).Id;
+        var interval = new TimeRange(150, 500);
+        SessionClock clock = SessionClock.Wall(new SessionWallClock(0, new DateTimeOffset(2026, 10, 27, 12, 0, 0, TimeSpan.Zero), null, 200),
+            TimeZoneInfo.Utc, interval);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        using (var window = new WaitsWindow(session.Path, overview.SessionId, overview.Generation, EvidencePolicy.IncludeCorrelated, null,
+            interval, clock))
+        {
+            _ = window.ShowDialog<WaitChoice?>(owner);
+            ListBox list = Named<ListBox>(window, Listed);
+            await Until(() => list.ItemCount > 0);
+
+            // The scope is said on InterCat's window's clock, here the wall clock; PID 400's second and third calls and PID
+            // 600's two began in it, and the three that began outside it are counted beneath, with a call timed to its stop.
+            Assert.Equal("The time each process spent inside the RPC calls it began over the window's time scope, the most first · "
+                + ComparisonText.Interval(interval, clock, CultureInfo.CurrentCulture), Starting(window, "The time each process").Text);
+            Assert.Contains("12:00:00", Starting(window, "The time each process").Text, StringComparison.Ordinal);
+            Assert.Equal(3, list.ItemCount);
+            Assert.Equal("1. PID 400 → svcctl (Service Control Manager) · served by PID 1960 · 1 call, 1 failed · 4.0 µs in calls · the "
+                + "server ran 2.5 µs of 4.0 µs (62%)", list.Items[0]?.ToString());
+            Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"Generation {overview.Generation:N0} · 4 completed calls of 2 ")
+                + "processes, the most time first", Named<TextBlock>(window, "Waits status").Text);
+            Assert.EndsWith(", or 3 calls that began outside the interval.", Named<TextBlock>(window, "What no time is said for").Text,
+                StringComparison.Ordinal);
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), block => block.Text == WaitText.Note + " " + WaitText.IntervalNote);
+            window.Close();
+        }
+
+        // A process over the interval: the calls it began there, here none, and the calls it served that began there.
+        using (var window = new WaitsWindow(session.Path, overview.SessionId, overview.Generation, EvidencePolicy.IncludeCorrelated, server,
+            interval, clock))
+        {
+            _ = window.ShowDialog<WaitChoice?>(owner);
+            await Until(() => Named<TextBlock>(window, "Waits status").Text?.StartsWith("Generation", StringComparison.Ordinal) == true);
+            Assert.Equal("It began no completed call in the interval; unticking the box below lists every caller's.",
+                Starting(window, "It began").Text);
+            Assert.Equal(["PID 400 → svcctl (Service Control Manager) · 1 call, 1 failed · 4.0 µs in calls · it ran 2.5 µs of 4.0 µs (62%)"],
+                Named<ListBox>(window, "Calls it served").Items.Cast<string>());
+            window.Close();
+        }
+
+        // An interval no call began in holds none, which the window says of the interval.
+        using (var window = new WaitsWindow(session.Path, overview.SessionId, overview.Generation, EvidencePolicy.IncludeCorrelated, null,
+            new TimeRange(2_000, 3_000), clock))
+        {
+            _ = window.ShowDialog<WaitChoice?>(owner);
+            await Until(() => Named<TextBlock>(window, "Waits status").Text?.StartsWith("Generation", StringComparison.Ordinal) == true);
+            Assert.Equal("No completed call began in the interval; the coverage above says whether one could have been seen.",
+                Starting(window, "No completed call").Text);
+            Assert.Equal("No completed call began in the interval.", Offers.WhyNot(Labelled(window, SelectBoth)));
+            Assert.Equal("No time is said for 11 calls that began outside the interval.", Named<TextBlock>(window, "What no time is said for").Text);
+            window.Close();
+        }
+
+        owner.Close();
+    }
+
     [AvaloniaFact(DisplayName = "§6.7: Time inside calls… selects the chosen wait's caller and server together, or goes to its caller, starting with the selected process's calls")]
     public async Task TheWaitsProcessesBecomeTheSelection()
     {
@@ -263,9 +326,27 @@ public sealed class WaitsWindowTests
             Assert.Equal("List how long each process spent inside the RPC calls it made - by interface and by the process that "
                 + "served them, the most first, with the server's own time - and select a wait's caller and server.", ToolTip.GetTip(button));
 
-            // The first wait's caller and server become the selection together, and the graph has the keyboard.
+            // Over a time scope, the list keeps to the calls that began in it, said on the window's clock; let go, it is the
+            // session's.
+            var scope = new TimeRange(150, 500);
+            workspace.SelectInterval(scope);
+            await workspace.IntervalReady;
+            Dispatch();
             WaitsWindow waits = Opened(window, button);
             ListBox list = Named<ListBox>(waits, Listed);
+            await Until(() => list.ItemCount > 0);
+            Assert.Equal("The time each process spent inside the RPC calls it began over the window's time scope, the most first · "
+                + ComparisonText.Interval(scope, workspace.TimeBase, CultureInfo.CurrentCulture), Starting(waits, "The time each process").Text);
+            Assert.Equal([LinkApp, LinkApp], list.Items.Cast<WaitRow>().Select(row => workspace.WholeSnapshot.Processes
+                .Single(process => process.Id == row.Wait.Caller).ProcessId));
+            waits.Close();
+            await Until(() => window.OwnedWindows.Count == 0);
+            workspace.ClearSelection();
+            Assert.Null(workspace.ScopeInterval);
+
+            // The first wait's caller and server become the selection together, and the graph has the keyboard.
+            waits = Opened(window, button);
+            list = Named<ListBox>(waits, Listed);
             await Until(() => list.ItemCount > 0);
             Labelled(waits, SelectBoth).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => window.OwnedWindows.Count == 0 && workspace.HasMultiSelection);

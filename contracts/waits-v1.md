@@ -1,13 +1,13 @@
 # InterCat waits v1
 
 Status: **implemented** on the command line (`icat waits`, revision 767) and in the window (Time inside calls…,
-revision 769, §7).
+revision 769, §7), over an interval of a session since revision 796 (§1).
 
-This contract fixes plan M12's bottleneck views for one session's current generation: the time each process spent
-inside the RPC calls it made, by interface and by the process whose server calls served them, with that server's own
-time beside it where the two calls are linked; the servers callers waited on; and what no time is said for. It owns no
-bytes: every span is read from the calls `operations-v1` derives and every link from its §5c, and reading waits
-changes neither. ADR-067 records the decisions.
+This contract fixes plan M12's bottleneck views for one session's current generation, or the calls that began in an
+interval of it: the time each process spent inside the RPC calls it made, by interface and by the process whose server
+calls served them, with that server's own time beside it where the two calls are linked; the servers callers waited
+on; and what no time is said for. It owns no bytes: every span is read from the calls `operations-v1` derives and
+every link from its §5c, and reading waits changes neither. ADR-067 records the decisions.
 
 ## 1. A reading
 
@@ -16,6 +16,10 @@ changes neither. ADR-067 records the decisions.
   mixed (R7).
 - An **evidence policy**, `IncludeCorrelated` by default, which admits a caller and a server by their calls' process
   bindings as the overview admits them.
+- An **interval**, optionally, in presentation ticks (since revision 796): the waits are then made of the client calls
+  that began in it, at their start or, where no start was recorded, at their stop, each timed to its stop even past
+  the interval's end, and a linked server call's time is its whole span wherever it falls. A call that began before
+  the interval is outside it. What began outside it is counted apart (§4) and nothing else of it is read.
 - RPC's and ALPC's coverage over the session, stated beside the waits (R21), so a session that could not have recorded
   a call or its other end is not read as one that made none.
 
@@ -59,6 +63,9 @@ No call is timed without a validated span, and each such call is counted by why:
 - **Calls whose span is not validated**, by state: open at capture end, start not observed, no activity id, or
   ambiguous (`operations-v1` §4).
 - **Calls whose caller the evidence policy does not admit**, or that bind to no process.
+- **Calls that began outside the interval**, where one was asked for (§1): counted there alone, before their span or
+  caller is read, so every client call is timed, not validated, not admitted or outside the interval, never two of
+  them.
 
 ## 5. The command line
 
@@ -72,7 +79,14 @@ them. Beneath are the servers callers waited on, what no time is said for, and w
 named; a process is named by its PID where one process alone held it in the session, else by its instance id.
 `--evidence-policy` takes a policy as written or in kebab form.
 
-`--json` writes `call-waits-v1`: the session, generation and policy; RPC's and ALPC's coverage; the process, with
+`--interval <start:end>` reads the waits over an interval (§1, since revision 796), each bound a count of
+100-nanosecond session ticks or a time with its unit, as every command that takes an interval reads one. The answer
+then states the interval, counts the calls that began outside it with what no time is said for, and says where a call
+is read and that it is timed to its stop; an interval no completed call began in says so of the interval. An interval
+whose end is not after its start is refused.
+
+`--json` writes `call-waits-v1`: the session, generation and policy; additively since revision 796, the interval read,
+as its start and end ticks or null, and how many calls began outside it; RPC's and ALPC's coverage; the process, with
 `--process`; how many waits there are and those listed, each with its caller and server - instance, PID and name - its
 interface and documented name, calls, failures, time in calls and its distribution, linked calls, their time in calls,
 the server's time, and why no server is named; the calls it served, with `--process`, or else the servers; and what no
@@ -85,7 +99,9 @@ A reading's overview, calls and other ends are of one generation (§1).
 ## 7. The window
 
 Time inside calls… in InterCat's window lists the same waits in the command line's words, read from the session's
-current generation under the window's evidence policy, over all session times - a time brush does not narrow them:
+current generation under the window's evidence policy, over the window's time scope (plan §6.4) where it has one since
+revision 796 - the brushed interval or the visible range while the timeline is zoomed, said on the window's clock
+above the list - and otherwise over all session times:
 
 - **Each wait** by its caller and interface, then who served its calls or why none is named, its calls and failures,
   its time in calls and, where some are linked, the server's own time: "1. app.exe · PID 400 → svcctl (Service Control
@@ -97,7 +113,8 @@ current generation under the window's evidence policy, over all session times - 
   waited on (§3).
 - **Opened with a process selected**, it lists that process's calls and the calls it served, each caller named, as
   `--process` does (§5), until the box beneath the list is unticked.
-- **What no time is said for** (§4) is said beneath the list, with what a wait is and is not.
+- **What no time is said for** (§4) is said beneath the list, with what a wait is and is not, and, over an interval,
+  where a call is read and that it is timed to its stop.
 - **Select caller and server**, Enter or a double click, closes the window and makes the wait's caller and server the
   selection together, as Ctrl+click does and as a pattern's processes are (ADR-065); a wait no server is named for
   goes to its caller. A process only a newer generation holds is not selected, and InterCat's window says so. The
@@ -109,4 +126,4 @@ current generation under the window's evidence policy, over all session times - 
   no capture here records.
 - **Nesting**: a server call's own calls are their own waits; a call made inside another is not joined to it, as
   `operations-v1` §8 leaves thread nesting undefined.
-- **Waits over an interval**, or across captures; a reading is of a whole generation.
+- **Waits across captures**: a reading is of one generation, whole or over one interval of it (§1).

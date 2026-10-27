@@ -140,7 +140,7 @@ public sealed class PatternsCommandTests
         Assert.Contains("PATTERN 5: UDP AT PORT 5353 HERE", text, Ordinal);
     }
 
-    [Fact(DisplayName = "P6: icat patterns --interval groups what began in the interval alone, saying the interval and counting what began outside it")]
+    [Fact(DisplayName = "R18: icat patterns --interval groups what began in the interval alone, saying the interval and counting what began outside it")]
     public async Task IcatPatternsReadsAnInterval()
     {
         using var session = new TemporarySession();
