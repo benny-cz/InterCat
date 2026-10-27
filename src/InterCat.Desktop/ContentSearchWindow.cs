@@ -48,6 +48,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
     private readonly TextBox text = new() { Watermark = "Text to find" };
     private readonly Button find = new() { Content = "Find" };
     private readonly Button stop = new() { Content = "Stop" };
+    private readonly Button searchOn = new() { Content = "Search on" };
     private readonly CheckBox ignoreCase = new() { Content = "Letters A to Z in either case" };
     private readonly CheckBox only = new();
     private readonly CheckBox previews = new() { Content = "Show the bytes around each match" };
@@ -157,6 +158,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         text.TextChanged += (_, _) => Offer();
         find.Click += (_, _) => _ = FindAsync();
         stop.Click += (_, _) => stopping?.Cancel();
+        searchOn.Click += (_, _) => _ = SearchOnAsync();
         inspect.Click += (_, _) => _ = InspectAsync();
         export.Click += (_, _) => _ = ExportAsync();
         close.Click += (_, _) => Close();
@@ -169,12 +171,14 @@ internal sealed class ContentSearchWindow : Window, IDisposable
             key.Handled = true;
         };
 
-        var query = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), ColumnSpacing = 8 };
+        var query = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"), ColumnSpacing = 8 };
         Grid.SetColumn(find, 1);
         Grid.SetColumn(stop, 2);
+        Grid.SetColumn(searchOn, 3);
         query.Children.Add(text);
         query.Children.Add(find);
         query.Children.Add(stop);
+        query.Children.Add(searchOn);
         var options = new WrapPanel { Orientation = Orientation.Horizontal, Children = { ignoreCase, only, previews } };
         foreach (Control option in options.Children)
         {
@@ -221,6 +225,10 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         Offering.Offer(find, searching ? Searching : string.IsNullOrEmpty(text.Text) ? "Type the text to find first." : null,
             "Search the kept content for the text");
         Offering.Offer(stop, searching ? null : "No search is running.", "Stop the search before the next record, keeping what it has found");
+        Offering.Offer(searchOn, searching ? Searching
+            : found is null ? "Find a text first; a search that ends before reading every record can then search on."
+            : found.Continuation is null ? "The search read every record it could, so there is nothing to search on." : null,
+            "Read on from where the search ended, adding what it finds after the records listed");
         Offering.Offer(inspect, searching ? Searching
             : results.SelectedItem is not null ? null
             : !searched ? "Find a text first; a record holding it can then be inspected."
@@ -321,23 +329,43 @@ internal sealed class ContentSearchWindow : Window, IDisposable
     /// Searches the kept content for the text typed, off the window's thread, as the options ask, and lists what it found;
     /// a search already running is let finish, since it stops at its budget, or when Stop stops it.
     /// </summary>
-    private async Task FindAsync()
+    private Task FindAsync()
     {
-        if (closed || searching || string.IsNullOrEmpty(text.Text)) return;
-        var request = new ContentSearchRequest
+        if (closed || searching || string.IsNullOrEmpty(text.Text)) return Task.CompletedTask;
+        return SearchAsync(new ContentSearchRequest
         {
             Text = text.Text,
             IgnoreCase = ignoreCase.IsChecked == true,
             ProcessInstance = only.IsChecked == true ? process?.Id : null,
             Policy = policy,
             Previews = previews.IsChecked == true,
-        };
+        }, null);
+    }
+
+    /// <summary>
+    /// Reads on from where the last search ended, as it was asked, and adds what it finds after the records listed: the list
+    /// and what the window says are then the whole search's so far.
+    /// </summary>
+    private Task SearchOnAsync() =>
+        closed || searching || found?.Continuation is not { } from ? Task.CompletedTask : SearchAsync(from.Request, from);
+
+    /// <summary>
+    /// Searches as <paramref name="request"/> asks, or reads on from <paramref name="from"/>, off the window's thread, and
+    /// lists what it found: alone for a new search, after the records listed for one read on.
+    /// </summary>
+    private async Task SearchAsync(ContentSearchRequest request, ContentSearchContinuation? from)
+    {
+        ContentSearchResult? earlier = from is null ? null : found;
         searching = true;
-        rows = [];
-        found = null;
-        asked = request;
-        results.ItemsSource = rows;
-        status.Text = "Searching the kept content…";
+        if (earlier is null)
+        {
+            rows = [];
+            found = null;
+            asked = request;
+            results.ItemsSource = rows;
+        }
+
+        status.Text = earlier is null ? "Searching the kept content…" : "Searching on from where the search ended…";
         using var stopped = new CancellationTokenSource();
         stopping = stopped;
         Offer();
@@ -345,18 +373,20 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         {
             CancellationToken token = lifetime.Token;
             CancellationToken stop = stopped.Token;
-            ContentSearchResult result = await Task.Run(() => ContentSearch.Find(
-                SharedSessionStores.Open(path, expectedSessionId), expectedSessionId, request, token, stop), token);
+            ContentSearchResult result = await Task.Run(() => from is null
+                ? ContentSearch.Find(SharedSessionStores.Open(path, expectedSessionId), expectedSessionId, request, token, stop)
+                : ContentSearch.Continue(SharedSessionStores.Open(path, expectedSessionId), expectedSessionId, from, token, stop), token);
             if (closed) return;
             CultureInfo culture = CultureInfo.CurrentCulture;
-            found = result;
-            rows = [.. result.Hits.Select(hit => Row(hit, culture))];
+            int listed = rows.Length;
+            found = earlier is null ? result : earlier.Then(result);
+            rows = [.. rows, .. result.Hits.Select(hit => Row(hit, culture))];
             results.ItemsSource = rows;
             searched = true;
-            status.Text = Said(result, culture);
-            if (rows.Length > 0)
+            status.Text = Said(found, culture);
+            if (rows.Length > listed)
             {
-                results.SelectedIndex = 0;
+                results.SelectedIndex = listed;
             }
         }
         catch (OperationCanceledException) when (closed)

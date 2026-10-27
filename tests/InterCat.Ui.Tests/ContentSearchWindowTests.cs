@@ -404,6 +404,61 @@ public sealed class ContentSearchWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "P2: Find in kept content searches on from where a search ended, adding what it finds after the records listed, and says what the whole search read")]
+    public async Task ASearchIsSearchedOn()
+    {
+        // Fifty-one records naming the host: a search lists fifty and says there are more.
+        using var many = new TemporarySession();
+        ObservationRowV1[] records = [.. Enumerable.Range(1, 51).Select(index => Record(index, (ulong)index, 4_242))];
+        Publish(many.Store, records, content: (ContentHeader(64),
+            [.. records.Select(record => Content(record, Encoding.ASCII.GetBytes("example.com"), 64, ContentEncodingV1.Binary))]));
+        many.Store.ReleaseSegmentReaders();
+        using var files = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            using var window = new ContentSearchWindow(many.Path, many.Store.SessionId, null, Clock);
+            var choices = new AnsweredChoices(window);
+            window.Choices = choices;
+            _ = window.ShowDialog(owner);
+            Button on = Labelled(window, "Search on");
+            Assert.Equal("Find a text first; a search that ends before reading every record can then search on.", Offers.WhyNot(on));
+            Box(window).Text = "example.com";
+            Labelled(window, "Find").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).StartsWith("More than", StringComparison.Ordinal));
+            Assert.Equal("More than 50 records hold it; the first 50 are listed. Searched the kept bytes of 51 records (561 B).",
+                Status(window));
+            Assert.Equal("Read on from where the search ended, adding what it finds after the records listed", Offers.Offered(on));
+
+            // Searched on, the record past the limit is listed after the fifty, chosen, and what the window says is the whole
+            // search's: the record it read to know there were more is counted once.
+            on.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).StartsWith("51 records", StringComparison.Ordinal));
+            Assert.Equal("51 records hold it. Searched the kept bytes of 51 records (561 B).", Status(window));
+            Assert.Equal(51, Rows(window).Length);
+            Assert.Equal(50, window.GetLogicalDescendants().OfType<ListBox>().Single().SelectedIndex);
+            Assert.Equal("The search read every record it could, so there is nothing to search on.", Offers.WhyNot(on));
+
+            // Exported, the table holds every record the search listed.
+            string table = Path.Combine(files.Path, "all.csv");
+            choices.Answer(table);
+            Labelled(window, "Export…").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).StartsWith("Exported", StringComparison.Ordinal));
+            Assert.Equal(52, File.ReadAllText(table).Split("\r\n", StringSplitOptions.RemoveEmptyEntries).Length);
+
+            // A new search starts the list again.
+            Labelled(window, "Find").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).StartsWith("More than", StringComparison.Ordinal));
+            Assert.Equal(50, Rows(window).Length);
+            window.Close();
+        }
+        finally
+        {
+            owner.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R15: the content search window cuts off no text at its smallest and names every element a screen reader lands on")]
     public async Task TheWindowIsLegibleAndHeard()
     {

@@ -117,8 +117,70 @@ public sealed record ContentSearchResult
     /// <summary>Why the session keeps no content to search - none was kept, or a release gave it up; null when it keeps some.</summary>
     public string? NoneKept { get; init; }
 
+    /// <summary>
+    /// Where the search reads on from, when it ended before reading every record it could - at a budget, stopped, or finding
+    /// more records than it lists; null when it read them all.
+    /// </summary>
+    public ContentSearchContinuation? Continuation { get; init; }
+
     /// <summary>Whether a record not listed may still hold the text: some kept bytes were not read, for whatever reason.</summary>
     public bool Partial => WithoutConsent > 0 || Stopped is not null || Unreadable is not null;
+
+    /// <summary>
+    /// This answer and <paramref name="later"/>, read on from it, as one search's: every record either listed, in order,
+    /// what each read summed, and how the later one ended.
+    /// </summary>
+    public ContentSearchResult Then(ContentSearchResult later)
+    {
+        ArgumentNullException.ThrowIfNull(later);
+        return later with
+        {
+            Hits = [.. Hits, .. later.Hits],
+            RecordsRead = RecordsRead + later.RecordsRead,
+            BytesRead = BytesRead + later.BytesRead,
+            WithoutConsent = WithoutConsent + later.WithoutConsent,
+            NotAdmitted = NotAdmitted + later.NotAdmitted,
+            Unreadable = later.Unreadable ?? Unreadable,
+        };
+    }
+}
+
+/// <summary>
+/// Where a content search that ended before reading every record it could reads on from (`contracts/content-v1.md` §4):
+/// what it was asked, the segments it read up to the one it stopped in, the record there it had neither listed nor read,
+/// and the ends of the HTTP parts it had open, so reading on lists the records after those listed as one search from the
+/// start would, never one twice and never losing a match a seam splits.
+/// </summary>
+public sealed class ContentSearchContinuation
+{
+    internal ContentSearchContinuation(Guid sessionId, ContentSearchRequest request, IReadOnlyList<string> segments, int row,
+        bool counted, IReadOnlyDictionary<(long Exchange, ushort Event, int Process, Mechanism Mechanism), ContentSearch.Seam> seams)
+    {
+        SessionId = sessionId;
+        Request = request;
+        Segments = segments;
+        Row = row;
+        Counted = counted;
+        Seams = seams;
+    }
+
+    /// <summary>The session the search read.</summary>
+    public Guid SessionId { get; }
+
+    /// <summary>What the search was asked, which reading on asks again.</summary>
+    public ContentSearchRequest Request { get; }
+
+    /// <summary>The segments the search read, in their order, the last the one it stopped in.</summary>
+    internal IReadOnlyList<string> Segments { get; }
+
+    /// <summary>The row of the last segment the search stopped before.</summary>
+    internal int Row { get; }
+
+    /// <summary>Whether the search read that row's record, and counted its bytes, before it stopped: it held the text past the limit.</summary>
+    internal bool Counted { get; }
+
+    /// <summary>The end of each HTTP part the search had open, which the part's next buffer is searched with.</summary>
+    internal IReadOnlyDictionary<(long Exchange, ushort Event, int Process, Mechanism Mechanism), ContentSearch.Seam> Seams { get; }
 }
 
 /// <summary>
@@ -166,7 +228,32 @@ public static class ContentSearch
         Guid expectedSessionId,
         ContentSearchRequest request,
         CancellationToken cancellationToken = default,
+        CancellationToken stop = default) => Run(store, expectedSessionId, request, null, cancellationToken, stop);
+
+    /// <summary>
+    /// Reads on from where <paramref name="from"/>'s search ended, as that search would have: the records after those it
+    /// listed, within budgets of their own, a match a seam splits found as across any other. It reads at least the record it
+    /// stopped before, so a record longer than its byte budget never holds it in place. It reads the session's current
+    /// generation, refused where that no longer holds every segment the search had read.
+    /// </summary>
+    public static ContentSearchResult Continue(
+        SessionStore store,
+        Guid expectedSessionId,
+        ContentSearchContinuation from,
+        CancellationToken cancellationToken = default,
         CancellationToken stop = default)
+    {
+        ArgumentNullException.ThrowIfNull(from);
+        return Run(store, expectedSessionId, from.Request, from, cancellationToken, stop);
+    }
+
+    private static ContentSearchResult Run(
+        SessionStore store,
+        Guid expectedSessionId,
+        ContentSearchRequest request,
+        ContentSearchContinuation? from,
+        CancellationToken cancellationToken,
+        CancellationToken stop)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(request);
@@ -185,9 +272,17 @@ public static class ContentSearch
 
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
-        if (manifest.SessionId != expectedSessionId)
+        if (manifest.SessionId != expectedSessionId || from is not null && from.SessionId != manifest.SessionId)
         {
             throw new InvalidOperationException(SessionStore.AnotherSession);
+        }
+
+        // A search reads on only where every segment it read is still the generation's, in its place.
+        string[] names = [.. SessionSegments.Names(manifest)];
+        if (from is not null && !names.Take(from.Segments.Count).SequenceEqual(from.Segments, StringComparer.Ordinal))
+        {
+            throw new InvalidOperationException("The session no longer holds every segment this search had read, so it cannot "
+                + "read on from where it stopped; search again from its start.");
         }
 
         SessionContentIndex content = manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content)
@@ -225,18 +320,30 @@ public static class ContentSearch
         // The buffers of WinINet's HTTP parts, read when the search first meets an HTTP record, and the end of each part's
         // latest buffer read, which the next buffer of the part is searched with.
         Dictionary<(uint, uint, ulong), SessionContentPartQuery.PartFields>? parts = null;
-        var seams = new Dictionary<(long Exchange, ushort Event, int Process, Mechanism Mechanism), Seam>();
+        var seams = from is null
+            ? new Dictionary<(long Exchange, ushort Event, int Process, Mechanism Mechanism), Seam>()
+            : new Dictionary<(long Exchange, ushort Event, int Process, Mechanism Mechanism), Seam>(from.Seams);
+
+        // Where the search ended before reading every record it could, which it reads on from, and whether the page that
+        // ended there counted that record's bytes. A page read on reads at least that record, counting it only where the
+        // page before did not.
+        (int Segment, int Row, bool Counted)? resume = null;
+        int firstSegment = from is null ? 0 : from.Segments.Count - 1;
+        bool progress = from is not null;
         try
         {
-            foreach (string name in content.Fragments == 0 ? [] : SessionSegments.Names(manifest))
+            for (int segmentAt = firstSegment; segmentAt < (content.Fragments == 0 ? 0 : names.Length) && stopped is null && !more;
+                segmentAt++)
             {
+                string name = names[segmentAt];
                 cancellationToken.ThrowIfCancellationRequested();
                 SegmentReaderV1 segment = SessionSegments.Open(store, manifest, name);
                 SegmentColumnSlice streams = segment.Slice(SegmentColumnId.RawStreamId);
                 SegmentColumnSlice epochs = segment.Slice(SegmentColumnId.RawSourceEpoch);
                 SegmentColumnSlice ordinals = segment.Slice(SegmentColumnId.RawRecordOrdinal);
                 PackedOwners? owners = processes is null ? null : SegmentBindings.OwnersOf(segment, processes);
-                for (int index = 0; index < segment.RowCount && stopped is null && !more; index++)
+                for (int index = from is not null && segmentAt == firstSegment ? from.Row : 0;
+                    index < segment.RowCount && stopped is null && !more; index++)
                 {
                     if (content.Find(new RawRecordId(segment.CaptureId, (uint)streams.UnsignedAt(index)!.Value,
                         (uint)epochs.UnsignedAt(index)!.Value, ordinals.UnsignedAt(index)!.Value)) is not { } entry)
@@ -276,11 +383,14 @@ public static class ContentSearch
                     {
                         stopped = "The search was stopped when asked, after " + CountText.Of(read, "record") + "; the rest "
                             + "were not searched, so a record not listed may still hold the text.";
+                        resume = (segmentAt, index, false);
                         break;
                     }
 
-                    if (bytesRead + kept > request.MaximumBytes || elapsed.Elapsed >= request.Budget)
+                    // A search read on reads at least the record it stopped before, so its budgets never hold it in place.
+                    if (!progress && (bytesRead + kept > request.MaximumBytes || elapsed.Elapsed >= request.Budget))
                     {
+                        resume = (segmentAt, index, false);
                         stopped = "The search stopped at its budget of "
                             + (bytesRead + kept > request.MaximumBytes
                                 ? CountText.Of(request.MaximumBytes, "byte") + " read"
@@ -298,8 +408,13 @@ public static class ContentSearch
                     }
 
                     byte[] bytes = ContentChunkV1.ReadBytes(chunk, entry.Entry, kept);
-                    read++;
-                    bytesRead += kept;
+                    progress = false;
+                    if (!(from is { Counted: true } && segmentAt == firstSegment && index == from.Row))
+                    {
+                        read++;
+                        bytesRead += kept;
+                    }
+
                     bool wide = entry.Fragment.Encoding == ContentEncodingV1.Utf16LittleEndian;
                     byte[] pattern = wide ? utf16 : utf8;
 
@@ -317,6 +432,16 @@ public static class ContentSearch
                     int across = before is null ? -1 : Across(before, bytes, pattern, request.IgnoreCase, wide);
                     int start = across > 0 ? pattern.Length - across : 0;
                     (int matches, int first, int end) = Count(Fold(bytes, request.IgnoreCase, wide), pattern, aligned: wide, start);
+
+                    // A record holding the text past the limit is where the search reads on from: read again then, with
+                    // the parts' ends as they were before it, its bytes counted here.
+                    if ((matches > 0 || across > 0) && hits.Count == request.Limit)
+                    {
+                        more = true;
+                        resume = (segmentAt, index, true);
+                        break;
+                    }
+
                     if (place is { } here)
                     {
                         // A part ends at the buffer flagged its last, so only the parts still open keep an end.
@@ -334,12 +459,6 @@ public static class ContentSearch
                     if (matches == 0)
                     {
                         continue;
-                    }
-
-                    if (hits.Count == request.Limit)
-                    {
-                        more = true;
-                        break;
                     }
 
                     hits.Add(new(name, index, row.ObservationIdIn(segment.CaptureId, segment.Derivation), row, matches, first,
@@ -376,6 +495,10 @@ public static class ContentSearch
             Stopped = stopped,
             Unreadable = unreadable,
             NoneKept = noneKept,
+            Continuation = resume is { } point
+                ? new(manifest.SessionId, request, names[..(point.Segment + 1)], point.Row, point.Counted,
+                    new Dictionary<(long Exchange, ushort Event, int Process, Mechanism Mechanism), Seam>(seams))
+                : null,
         };
     }
 
@@ -448,7 +571,7 @@ public static class ContentSearch
     /// A buffer's place in its HTTP part (M8): the part - its exchange's number, its event, the process that raised it and
     /// its mechanism, as a part's buffers are found - and the buffer's sequence and ends.
     /// </summary>
-    private readonly record struct PartPlace((long Exchange, ushort Event, int Process, Mechanism Mechanism) Part, long Sequence,
+    internal readonly record struct PartPlace((long Exchange, ushort Event, int Process, Mechanism Mechanism) Part, long Sequence,
         long Flags)
     {
         public static PartPlace? Of(Dictionary<(uint, uint, ulong), SessionContentPartQuery.PartFields> parts, ObservationRowV1 row) =>
@@ -463,7 +586,7 @@ public static class ContentSearch
     /// encoding, its length, where its last match counted ends, and its last bytes, enough for a match across its seam
     /// and the bytes before that match. A part's buffer flagged its last keeps none.
     /// </summary>
-    private sealed record Seam(long Sequence, bool Whole, bool Wide, int Kept, int End, byte[] Tail)
+    internal sealed record Seam(long Sequence, bool Whole, bool Wide, int Kept, int End, byte[] Tail)
     {
         /// <summary>
         /// Whether <paramref name="next"/> is the buffer right after this one in their part, nothing between them missing:

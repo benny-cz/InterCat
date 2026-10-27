@@ -263,3 +263,11 @@ with its locator, time, process, mechanism and event, how often it holds the tex
 searched for, adding the bytes around each first match only where previews were asked for, which makes the table
 content, said beside the file and, in the window, before its file is chosen. Of the search's limits above, its fixed
 budgets remain. Nothing else above changes.
+
+## Addendum, revision 793
+
+A search's budgets no longer end it in the window (`contracts/content-v1.md` §4), which lifts the last of the search's
+limits above there: a search that ends at a budget, is stopped, or finds more records than it lists says where it
+would read on from, and Search on reads on from there as one search from the start would, never listing a record twice
+nor losing a match a seam splits, its list and words then the whole search's. `icat content --find` keeps its budgets
+as before. Nothing else above changes.

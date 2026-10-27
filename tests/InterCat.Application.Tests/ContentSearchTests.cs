@@ -83,6 +83,11 @@ public sealed class ContentSearchTests
         Assert.ThrowsAny<OperationCanceledException>(() => ContentSearch.Find(session.Store, id, new() { Text = "example.com" },
             new CancellationToken(canceled: true)));
 
+        // Read on, a stopped search lists what it had not read, from the record it stopped before.
+        ContentSearchResult after = ContentSearch.Continue(session.Store, id, stopped.Continuation!);
+        Assert.Equal([1UL, 3UL, 6UL], after.Hits.Select(hit => hit.Observation.RawRecordOrdinal));
+        Assert.Equal((8, (ContentSearchContinuation?)null), (after.RecordsRead, after.Continuation));
+
         // A stop asked for once the search has read every record changes nothing.
         using var late = new CancellationTokenSource();
         ContentSearchResult whole = ContentSearch.Find(session.Store, id, new() { Text = "example.com" }, CancellationToken.None, late.Token);
@@ -134,6 +139,70 @@ public sealed class ContentSearchTests
         previewed = previewed with { Text = "=hyperlink" };
         Assert.Contains(",'=hyperlink,true,,'=HYPERLINK,", ContentSearchTable.Csv(
             ContentSearch.Find(formula.Store, formula.Store.SessionId, previewed), previewed), StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "P2: a content search read on from where it ended lists what one search from the start would, never a record twice, every count summed once")]
+    public void ASearchReadsOnFromWhereItEnded()
+    {
+        using var session = Session(ContentInspectionV1.HexAndText);
+        Guid id = session.Store.SessionId;
+        ContentSearchResult whole = ContentSearch.Find(session.Store, id, new() { Text = "example.com" });
+        Assert.Null(whole.Continuation);
+
+        // The same records in segments of three rows, so pages end and begin in segments after the first.
+        (ObservationRowV1 Row, byte[] Bytes, ContentEncodingV1 Encoding)[] messages = Messages();
+        using var segmented = new TemporarySession();
+        Publish(segmented.Store, [.. messages.Select(message => message.Row)], rowsPerSegment: 3, content: (ContentHeader(64),
+            [.. messages.Select(message => Content(message.Row, message.Bytes, 64, message.Encoding))]));
+        segmented.Store.ReleaseSegmentReaders();
+        Assert.True(new HashSet<string>(ContentSearch.Find(segmented.Store, id, new() { Text = "e" }).Hits.Select(hit => hit.Segment)).Count > 1);
+
+        // Ended at its limit, a page reads on from the record past it; ended at a budget of bytes or of time, from the record
+        // it did not read, reading at least that one, so even a budget no record fits in reads every record in the end.
+        foreach ((SessionStore store, ContentSearchRequest request) in new (SessionStore, ContentSearchRequest)[]
+        {
+            (session.Store, new() { Text = "example.com", Limit = 1 }),
+            (session.Store, new() { Text = "example.com", MaximumBytes = 30 }),
+            (session.Store, new() { Text = "example.com", Budget = TimeSpan.Zero }),
+            (segmented.Store, new() { Text = "example.com", Limit = 1 }),
+            (segmented.Store, new() { Text = "example.com", MaximumBytes = 30 }),
+        })
+        {
+            List<ContentSearchResult> pages = [ContentSearch.Find(store, id, request)];
+            while (pages[^1].Continuation is { } next && pages.Count < 20)
+            {
+                Assert.Same(request, next.Request);
+                pages.Add(ContentSearch.Continue(store, id, next));
+            }
+
+            ContentSearchResult joined = pages.Skip(1).Aggregate(pages[0], (earlier, later) => earlier.Then(later));
+            Assert.Null(joined.Continuation);
+            Assert.Equal(whole.Hits.Select(Key), joined.Hits.Select(Key));
+            Assert.Equal((whole.RecordsRead, whole.BytesRead, whole.WithoutConsent, (string?)null, false),
+                (joined.RecordsRead, joined.BytesRead, joined.WithoutConsent, joined.Stopped, joined.More));
+            Assert.True(pages.Count > 2, $"{pages.Count} pages");
+        }
+
+        // The pages of a limited search say there are more until the last, which reads to the end.
+        ContentSearchResult first = ContentSearch.Find(session.Store, id, new() { Text = "example.com", Limit = 2 });
+        Assert.Equal((true, false, 6), (first.More, first.Partial, first.RecordsRead));
+        ContentSearchResult rest = ContentSearch.Continue(session.Store, id, first.Continuation!);
+        Assert.Equal([6UL], rest.Hits.Select(hit => hit.Observation.RawRecordOrdinal));
+        Assert.Equal((false, 2, (ContentSearchContinuation?)null), (rest.More, rest.RecordsRead, rest.Continuation));
+
+        // Read on in another session, or in one that no longer holds every segment the search read, it is refused.
+        using var other = new TemporarySession(Guid.NewGuid());
+        Publish(other.Store, [.. Messages().Select(message => message.Row)]);
+        other.Store.ReleaseSegmentReaders();
+        Assert.Equal(SessionStore.AnotherSession, Assert.Throws<InvalidOperationException>(() =>
+            ContentSearch.Continue(other.Store, other.Store.SessionId, first.Continuation!)).Message);
+        var released = new ContentSearchContinuation(id, first.Continuation!.Request, ["segment-released-since"], 0, false,
+            new Dictionary<(long Exchange, ushort Event, int Process, Mechanism Mechanism), ContentSearch.Seam>());
+        Assert.Equal("The session no longer holds every segment this search had read, so it cannot read on from where it stopped; "
+            + "search again from its start.", Assert.Throws<InvalidOperationException>(() =>
+                ContentSearch.Continue(session.Store, id, released)).Message);
+
+        static (ulong, int, int) Key(ContentSearchHit hit) => (hit.Observation.RawRecordOrdinal, hit.Matches, hit.FirstAt);
     }
 
     [Fact(DisplayName = "P2: content kept without consent to inspect it is never searched, and is counted; a session keeping none says so")]
@@ -268,6 +337,29 @@ public sealed class ContentSearchTests
             ContentSearch.Find(session.Store, id, new() { Text = "EXAMPLE.com", IgnoreCase = true }).Hits.Select(hit => hit.Observation.RawRecordOrdinal));
         Assert.Equal([(6UL, 1, 2), (28UL, 1, -2)], ContentSearch.Find(session.Store, id, new() { Text = "abab" }).Hits
             .Select(hit => (hit.Observation.RawRecordOrdinal, hit.Matches, hit.FirstAt)));
+
+        // Read on page by page, one record found or one buffer read at a time, the search finds the same, the ends of the
+        // parts it had open kept from page to page.
+        foreach (ContentSearchRequest paged in new ContentSearchRequest[]
+        {
+            new() { Text = "example.com", Limit = 1 }, new() { Text = "example.com", MaximumBytes = 1 },
+            new() { Text = "abab", Limit = 1 }, new() { Text = "abab", MaximumBytes = 1 },
+        })
+        {
+            ContentSearchResult page = ContentSearch.Find(session.Store, id, paged);
+            List<ContentSearchHit> listed = [.. page.Hits];
+            for (int pages = 1; page.Continuation is { } next && pages < 100; pages++)
+            {
+                page = ContentSearch.Continue(session.Store, id, next);
+                listed.AddRange(page.Hits);
+            }
+
+            Assert.Null(page.Continuation);
+
+            Assert.Equal(ContentSearch.Find(session.Store, id, paged with { Limit = 50, MaximumBytes = ContentSearch.DefaultMaximumBytes })
+                .Hits.Select(hit => (hit.Observation.RawRecordOrdinal, hit.Matches, hit.FirstAt)),
+                listed.Select(hit => (hit.Observation.RawRecordOrdinal, hit.Matches, hit.FirstAt)));
+        }
 
         // Asked for, the bytes around a match across a seam are shown from both buffers.
         ContentSearchHit[] previewed = [.. ContentSearch.Find(session.Store, id, new() { Text = "example.com", Previews = true }).Hits];
