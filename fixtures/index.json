@@ -1428,10 +1428,13 @@
         "P5: two records at one instant with one size are two observations, counted and listed twice"
       ],
       "P6": [
+        "P6: Find in kept content keeps to the selected process's records, never those of another process given its PID again",
         "P6: a PID seen only in its own records is one provisional instance, never an invented start",
         "P6: a comparison by executable marks every edge of its processes by their executables' row, and says the mark is of more than the edge",
+        "P6: a content search kept to a process instance finds that instance's records alone, never those of another process given its PID again",
         "P6: a pattern groups occurrences by mechanism, service port or interface and procedure, and where the server is, never by a process or address",
         "P6: an end held by two processes, or by records that bind to none, leaves its peers unresolved",
+        "P6: icat content --find --process keeps to one process's records, never those of another process given its PID again",
         "P6: reusable values never resolve an instance without lifecycle evidence",
         "P6: when lifecycle evidence cannot tell incarnations apart, only an other end they all agree on is named"
       ],

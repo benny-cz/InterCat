@@ -47,6 +47,8 @@ internal static class ContentCommand
         string? saveOption = command.TakeOption("--save");
         string? find = command.TakeOption("--find");
         string? pidText = command.TakeOption("--pid");
+        string? processText = command.TakeOption("--process");
+        string? policyText = command.TakeOption("--evidence-policy");
         string? limitText = command.TakeOption("--limit");
         string? directory = command.TakePositional();
         bool reveal = command.TryTakeFlag("--reveal");
@@ -64,6 +66,7 @@ internal static class ContentCommand
             bool names = sessionText is not null || generationText is not null || segment is not null || rowText is not null;
             int pid = 0;
             int limit = 50;
+            bool policyRead = EvidencePolicyOption.TryParse(policyText, out EvidencePolicy policy, out string? policyRefusal);
             string? refused = directory is null ? "A session directory is required: icat content <directory> --find <text>."
                 : hasUnknown ? command.Refusal(unknown!)
                 : find.Length == 0 ? "--find needs the text to look for."
@@ -72,8 +75,16 @@ internal static class ContentCommand
                     || overwrite
                     ? "--find searches the session's kept content, not one record: leave out the record's locator and "
                         + "--reveal, --save, --decode, --part, --from and --to."
+                // A PID another process may have been given again names no process (P6): --pid keeps to the records that
+                // carry it, --process to the records bound to one process, as every other view binds them.
+                : pidText is not null && processText is not null
+                    ? "--pid keeps to the records that carry a PID, whichever process held it, and --process to the records "
+                        + "of one process: give one of them."
                 : pidText is not null && !int.TryParse(pidText, NumberStyles.None, CultureInfo.InvariantCulture, out pid)
                     ? $"--pid expects a process id; '{pidText}' is not one."
+                : policyText is not null && processText is null
+                    ? "--evidence-policy chooses which records bind to the process --process names: give --process with it."
+                : !policyRead ? policyRefusal
                 : limitText is not null && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit)
                     || limit is < 1 or > 10_000)
                     ? $"--limit expects a number of records from 1 to 10,000; '{limitText}' is not one."
@@ -85,19 +96,21 @@ internal static class ContentCommand
                 return InterCatExitCode.InvalidInvocation;
             }
 
-            return Find(directory!, new ContentSearchRequest
+            return Find(directory!, processText, new ContentSearchRequest
             {
                 Text = find,
                 IgnoreCase = ignoreCase,
                 ProcessId = pidText is null ? null : pid,
+                Policy = policy,
                 Limit = limit,
                 Previews = previews,
             }, cancellationToken);
         }
 
-        if (pidText is not null || limitText is not null || ignoreCase || previews)
+        if (pidText is not null || processText is not null || policyText is not null || limitText is not null || ignoreCase
+            || previews)
         {
-            ConsoleUi.Failure("--pid, --limit, --ignore-case and --previews apply only to --find.");
+            ConsoleUi.Failure("--pid, --process, --evidence-policy, --limit, --ignore-case and --previews apply only to --find.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -528,9 +541,11 @@ internal static class ContentCommand
     /// <summary>
     /// Searches the session's kept content for a text (`contracts/content-v1.md` §4): the records holding it, each with the
     /// locator that shows its bytes, what was searched and what was not, and - only with --previews - the bytes around each
-    /// record's first match, inert.
+    /// record's first match, inert. <paramref name="processText"/> keeps it to one process's records, the process named as
+    /// every other command names it.
     /// </summary>
-    private static InterCatExitCode Find(string directory, ContentSearchRequest request, CancellationToken cancellationToken)
+    private static InterCatExitCode Find(string directory, string? processText, ContentSearchRequest request,
+        CancellationToken cancellationToken)
     {
         string path = Path.GetFullPath(directory);
         if (!Directory.Exists(path))
@@ -545,8 +560,36 @@ internal static class ContentCommand
             return Icat.NoSession();
         }
 
-        ConsoleUi.Progress("Searching the content kept with consent to inspect it, each record's bytes on their own.");
-        ContentSearchResult result = ContentSearch.Find(store, store.SessionId, request, cancellationToken);
+        // A process is named by a PID one process alone held, else by its instance, and the search keeps to the records
+        // bound to it under the evidence policy - never to every holder of its PID (P6).
+        ProcessNode? process = null;
+        ContentSearchResult result;
+        try
+        {
+            if (processText is not null)
+            {
+                ConsoleUi.Progress("Projecting the current generation, to find the process --process names.");
+                Dictionary<ProcessInstanceId, ProcessNode> processes = SessionOverviewProjector.Project(store, request.Policy,
+                    followRpcCalls: false, cancellationToken: cancellationToken).Nodes.ToDictionary(node => node.Id);
+                if (ProcessOption.Resolve(processes, "--process", processText, out string? unresolved) is not { } named)
+                {
+                    ConsoleUi.Failure(unresolved!);
+                    return InterCatExitCode.InvalidInvocation;
+                }
+
+                process = processes[named];
+                request = request with { ProcessInstance = named };
+            }
+
+            ConsoleUi.Progress("Searching the content kept with consent to inspect it, each record's bytes on their own.");
+            result = ContentSearch.Find(store, store.SessionId, request, cancellationToken);
+        }
+        catch (InvalidOperationException exception) when (exception is not NoSessionException)
+        {
+            ConsoleUi.Failure(exception.Message);
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+
         SourceClockDescriptor? clock;
         using (EvidenceLease lease = store.AcquireLease())
         {
@@ -559,7 +602,13 @@ internal static class ContentCommand
         ConsoleUi.Field("Text", $"\"{request.Text}\"");
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(result.Generation));
-        if (request.ProcessId is { } pid) ConsoleUi.Field("Records of", string.Create(culture, $"PID {pid}"));
+        if (request.ProcessId is { } pid) ConsoleUi.Field("Records of", string.Create(culture, $"PID {pid}, whichever process held it"));
+        if (process is not null)
+        {
+            ConsoleUi.Field("Records of", $"{CollectorText.Named(process)}, instance {process.Id}");
+            ConsoleUi.Field("Bound to it", "as the " + CommandArgument.Typed(request.Policy) + " evidence policy admits");
+        }
+
         if (request.IgnoreCase) ConsoleUi.Field("Letters", "A to Z matched in either case");
         ConsoleUi.Field("Searched", "the kept bytes of " + CountText.Of(result.RecordsRead, "record")
             + string.Create(culture, $", {result.BytesRead:N0} B"));
@@ -567,6 +616,12 @@ internal static class ContentCommand
         {
             ConsoleUi.Field("Not searched", CountText.Of(result.WithoutConsent, "record") + " kept without consent to inspect "
                 + CountText.Agree(result.WithoutConsent, "its bytes", "their bytes"));
+        }
+
+        if (result.NotAdmitted > 0)
+        {
+            ConsoleUi.Field("Not searched", CountText.Of(result.NotAdmitted, "record") + " bound to it more weakly than the "
+                + CommandArgument.Typed(request.Policy) + " evidence policy admits");
         }
 
         ConsoleUi.Field("Found", result.Hits.Count == 0 ? "no record holding it"
@@ -615,7 +670,8 @@ internal static class ContentCommand
     {
         ConsoleUi.Line("icat content <session-directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
         ConsoleUi.Line("             [--part] [--reveal] [--decode] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
-        ConsoleUi.Line("icat content <session-directory> --find <text> [--ignore-case] [--pid <id>] [--limit <n>] [--previews]");
+        ConsoleUi.Line("icat content <session-directory> --find <text> [--ignore-case] [--process <pid | instance>");
+        ConsoleUi.Line("             [--evidence-policy <policy>] | --pid <id>] [--limit <n>] [--previews]");
         ConsoleUi.Line("icat content --decoders");
         ConsoleUi.Line("  One record's kept content, from an icat evidence page's exact row locator (ADR-036): what the");
         ConsoleUi.Line("  bytes are, how many of the message were kept and which are missing, and what they were kept");
@@ -636,5 +692,8 @@ internal static class ContentCommand
         ConsoleUi.Line("  none of their bytes unless --previews shows those around each one's first match. Content kept");
         ConsoleUi.Line("  without consent to inspect it is never searched. Each record is searched on its own, within 256 MiB");
         ConsoleUi.Line("  and 10 seconds, and what was not searched is said; --limit sets how many records are listed (50).");
+        ConsoleUi.Line("  --process keeps to one process's records: its PID where one process alone held it, else its");
+        ConsoleUi.Line("  instance id as icat processes prints it, each record bound to it as the evidence policy admits");
+        ConsoleUi.Line("  (include-correlated); --pid keeps to the records that carry a PID, whichever process held it.");
     }
 }

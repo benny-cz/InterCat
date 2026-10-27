@@ -169,23 +169,29 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   whole.
 - **A search** (revision 779). `icat content <session> --find <text>` searches the kept content for a text, only when
   a person asks: its UTF-8 bytes, or its UTF-16 bytes in a record whose bytes declare UTF-16; with `--ignore-case` a
-  letter A to Z in either case; and with `--pid` only a process's records - the one a record names as its owner, else
-  the one that raised it. It reads only bytes kept under `hex-text` inspection: a record kept without that consent is
-  never searched, and is counted as not searched. Each record's kept bytes are searched on their own, so a match split
-  across two records - two buffers of one HTTP part - is not found, and a cut record is searched in the bytes kept. It
-  reads at most 256 MiB and for at most 10 seconds, checked before each record is read, and lists at most `--limit`
-  records, 50 unless asked, in reading order: each with its time, process, mechanism and event, how many times its
-  bytes hold the text, none overlapping, and where first, and the exact locator `icat content` shows its bytes from;
-  finding one more says there are more. It shows no byte unless `--previews` asks for the bytes around each record's
-  first match, at most 16 either side, as inert text in which a byte outside visible ASCII, and a backslash, is
-  written `\xHH` (a UTF-16 code unit `\uHHHH`), so the marks around the match are never the content's own. A record
-  not searched - kept without consent, past a budget, or in a chunk that could not be read - leaves the answer
-  partial, since it may hold the text. A search refuses `--json` and a record's locator, and nothing it finds is kept.
-  Since revision 780 the window's Find in kept content… (Ctrl+Shift+F) searches the same way, the records of the PID
-  selected there alone where asked: its records found are listed in reading order, each with its time, PID, mechanism
-  and event and how often and where it holds the text, its bytes around the first match shown only when asked; it says
-  what was searched and what was not, and a record found opens in the content viewer, its bytes hidden until asked
-  there.
+  letter A to Z in either case; with `--pid` only the records that carry a PID - the one a record names as its owner,
+  else the one that raised it - whichever process held it; and, since revision 788, with `--process` only one
+  process's records: the process named by a PID one process alone held, else by its instance id, a reused PID refused
+  with each of its holders, and each record bound to it as `--evidence-policy` admits (include-correlated unless
+  asked), never by a PID another process held too (`contracts/entities-v1.md`). Its records the policy leaves out - a
+  later holder's of a reused PID binds its records as candidates - are counted as not searched, and the answer is not
+  partial for them, since under the policy they are not the process's. It reads only bytes kept under `hex-text`
+  inspection: a record kept without that consent is never searched, and is counted as not searched. Each record's kept
+  bytes are searched on their own, so a match split across two records - two buffers of one HTTP part - is not found,
+  and a cut record is searched in the bytes kept. It reads at most 256 MiB and for at most 10 seconds, checked before
+  each record is read, and lists at most `--limit` records, 50 unless asked, in reading order: each with its time,
+  process, mechanism and event, how many times its bytes hold the text, none overlapping, and where first, and the
+  exact locator `icat content` shows its bytes from; finding one more says there are more. It shows no byte unless
+  `--previews` asks for the bytes around each record's first match, at most 16 either side, as inert text in which a
+  byte outside visible ASCII, and a backslash, is written `\xHH` (a UTF-16 code unit `\uHHHH`), so the marks around
+  the match are never the content's own. A record not searched - kept without consent, past a budget, or in a chunk
+  that could not be read - leaves the answer partial, since it may hold the text. A search refuses `--json` and a
+  record's locator, and nothing it finds is kept. Since revision 780 the window's Find in kept content… (Ctrl+Shift+F)
+  searches the same way, the records of the process selected there alone where asked (since revision 788 those bound
+  to it under the window's evidence policy, never every record of its PID): its records found are listed in reading
+  order, each with its time, PID, mechanism and event and how often and where it holds the text, its bytes around the
+  first match shown only when asked; it says what was searched and what was not, and a record found opens in the
+  content viewer, its bytes hidden until asked there.
 - **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
   kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
 - **Nothing else.** The window's search, rankings, metrics, the share report (`intercat-share-report-v1`), the

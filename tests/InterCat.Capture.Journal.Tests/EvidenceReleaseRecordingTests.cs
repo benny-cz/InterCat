@@ -95,11 +95,14 @@ public sealed class EvidenceReleaseRecordingTests
         var script = new Script(host, store);
 
         // Thirty bursts of 1,000 records, each published before the next: some three times the 1 MiB allowance in all - its
-        // own test finds 10,000 such records overrun it - and a small part of it in any two chunks.
-        for (int chunk = 1; chunk <= 30; chunk++)
+        // own test finds 10,000 such records overrun it - and a small part of it in any two chunks. Each burst waits for a
+        // publication after its own start, so one that a publication split leaves its tail to the next chunk alone, and
+        // chunks never come to hold many bursts however slowly the machine runs.
+        for (int burst = 1; burst <= 30; burst++)
         {
+            script.Mark();
             script.Burst(1_000);
-            script.Published(chunk);
+            script.PublishedSinceMark();
         }
 
         LiveCaptureResult result = await LiveRecorder.RecordAsync(
@@ -221,6 +224,7 @@ public sealed class EvidenceReleaseRecordingTests
     {
         private readonly long start = Stopwatch.GetTimestamp();
         private int ordinal;
+        private long mark;
 
         public void Burst(int records)
         {
@@ -247,6 +251,16 @@ public sealed class EvidenceReleaseRecordingTests
         /// releases state they gave up.
         /// </summary>
         public void Published(int chunks) => host.PauseUntil(() => Count() >= chunks, TimeSpan.FromSeconds(30));
+
+        /// <summary>Notes, once the capture reaches it, how many chunks the recording has published so far.</summary>
+        public void Mark() => host.PauseUntil(() =>
+        {
+            Interlocked.Exchange(ref mark, Count());
+            return true;
+        }, TimeSpan.FromSeconds(30));
+
+        /// <summary>Waits until the recording has published a chunk since the capture reached the last <see cref="Mark"/>.</summary>
+        public void PublishedSinceMark() => host.PauseUntil(() => Count() > Interlocked.Read(ref mark), TimeSpan.FromSeconds(30));
 
         /// <summary>How many chunks the recording has published so far, those it released among them.</summary>
         public long Count() => store.Current is { } current

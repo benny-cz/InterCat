@@ -81,6 +81,72 @@ public sealed class ContentSearchTests
             (nothing.NoneKept, nothing.Partial, nothing.RecordsRead));
     }
 
+    [Fact(DisplayName = "P6: a content search kept to a process instance finds that instance's records alone, never those of another process given its PID again")]
+    public void ASearchKeepsToOneHolderOfAReusedPid()
+    {
+        // PID 4242 held twice - created at 1 and exited at 30, then created again at 40 - each holder's records naming the
+        // host, among them an HTTP buffer of the first, bound to it by the PID that raised it.
+        ObservationRowV1[] records =
+        [
+            Record(10, 1, 4_242),
+            Record(15, 2, 4_242) with
+            {
+                OwnerProcessId = null,
+                HeaderProcessId = 4_242,
+                Mechanism = Mechanism.Http,
+                Layer = ObservationLayer.Application,
+                EventId = 2001,
+                ByteDomain = ByteDomain.ApplicationPayload,
+            },
+            Record(20, 3, 4_242),
+            Record(50, 4, 4_242),
+        ];
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 4_242, 100) with { ResourceName = @"C:\Tools\first.exe" },
+            Lifecycle(30, ObservationKind.Exit, 4_242, 101),
+            Lifecycle(40, ObservationKind.Create, 4_242, 102) with { ResourceName = @"C:\Tools\second.exe" },
+            .. records,
+        ], content: (ContentHeader(64), [.. records.Select(row => Content(row, Encoding.ASCII.GetBytes("Host: example.com"), 64,
+            ContentEncodingV1.Binary))]));
+        session.Store.ReleaseSegmentReaders();
+        Guid id = session.Store.SessionId;
+        ProcessNode[] holders = [.. SessionOverviewProjector.Project(session.Store).Nodes.Where(node => node.ProcessId == 4_242)
+            .OrderBy(node => node.PidHolder)];
+        Assert.Equal(["first.exe", "second.exe"], holders.Select(node => node.Name));
+
+        // By its PID a search lists every record either holder raised; by an instance, that holder's alone, and only where
+        // the evidence policy admits their binding. The first holder's records bind to it by their PID and time, a
+        // correlation, which a policy of direct evidence alone does not admit; the second's, whose end was not seen, bind
+        // to it as a candidate, which only a policy that admits candidates does.
+        Assert.Equal([1UL, 2UL, 3UL, 4UL], Ordinals(new() { Text = "example.com", ProcessId = 4_242 }));
+        Assert.Equal([1UL, 2UL, 3UL], Ordinals(new() { Text = "example.com", ProcessInstance = holders[0].Id }));
+        Assert.Empty(Ordinals(new() { Text = "example.com", ProcessInstance = holders[0].Id, Policy = EvidencePolicy.DirectOnly }));
+        Assert.Empty(Ordinals(new() { Text = "example.com", ProcessInstance = holders[1].Id }));
+        Assert.Equal([4UL], Ordinals(new() { Text = "example.com", ProcessInstance = holders[1].Id, Policy = EvidencePolicy.IncludeCandidates }));
+
+        // The process's own records a policy leaves out are counted, and no other process's are.
+        Assert.Equal((0, 3, 1, 0, 3), (NotAdmitted(new() { Text = "example.com", ProcessInstance = holders[0].Id }),
+            NotAdmitted(new() { Text = "example.com", ProcessInstance = holders[0].Id, Policy = EvidencePolicy.DirectOnly }),
+            NotAdmitted(new() { Text = "example.com", ProcessInstance = holders[1].Id }),
+            NotAdmitted(new() { Text = "example.com", ProcessInstance = holders[1].Id, Policy = EvidencePolicy.IncludeCandidates }),
+            ContentSearch.Find(session.Store, id, new() { Text = "example.com", ProcessInstance = holders[0].Id }).RecordsRead));
+
+        // An instance the generation does not hold, a PID and an instance at once, or a policy InterCat does not define,
+        // is refused.
+        Assert.Throws<InvalidOperationException>(() => ContentSearch.Find(session.Store, id,
+            new() { Text = "example.com", ProcessInstance = new ProcessInstanceId(Guid.NewGuid()) }));
+        Assert.Throws<ArgumentException>(() => ContentSearch.Find(session.Store, id,
+            new() { Text = "example.com", ProcessId = 4_242, ProcessInstance = holders[0].Id }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ContentSearch.Find(session.Store, id,
+            new() { Text = "example.com", ProcessInstance = holders[0].Id, Policy = (EvidencePolicy)99 }));
+
+        ulong[] Ordinals(ContentSearchRequest request) =>
+            [.. ContentSearch.Find(session.Store, id, request).Hits.Select(hit => hit.Observation.RawRecordOrdinal)];
+        int NotAdmitted(ContentSearchRequest request) => ContentSearch.Find(session.Store, id, request).NotAdmitted;
+    }
+
     /// <summary>
     /// Eight records' messages, each kept up to 64 bytes under <paramref name="inspection"/>: process 4242's request head
     /// naming the host; its head split across two records; its body naming the host twice; a record naming nothing;

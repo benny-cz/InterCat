@@ -3147,7 +3147,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Matches(@"(?m)^  Text +""EXAMPLE.COM""\r?$", output);
         Assert.Matches(@"(?m)^  Letters +A to Z matched in either case\r?$", output);
-        Assert.Matches(@"(?m)^  Records of +PID 4242\r?$", output);
+        Assert.Matches(@"(?m)^  Records of +PID 4242, whichever process held it\r?$", output);
         Assert.Matches(@"(?m)^  Found +more than 1 record; the first 1 listed\r?$", output);
         Assert.Contains(" row 0: HTTP/1.1\\x0D\\x0AHost: ⟦example.com⟧\\x0D\\x0A\\x0D\\x0A", output, StringComparison.Ordinal);
         (_, output, _) = await Run("content", kept.Path, "--find", "nothing", "--pid", "4242");
@@ -3161,6 +3161,75 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
         Assert.Matches(@"(?m)^  Not searched +3 records kept without consent to inspect their bytes\r?$", output);
         Assert.Matches(@"(?m)^  Searched +the kept bytes of 0 records, 0 B\r?$", output);
+    }
+
+    [Fact(DisplayName = "P6: icat content --find --process keeps to one process's records, never those of another process given its PID again")]
+    public async Task KeptContentIsSearchedForOneProcess()
+    {
+        // PID 4242 held twice - created at 1 and exited at 30, then created again at 40 - each holder's records naming the
+        // host.
+        ObservationRowV1[] records =
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 17, 4_242, 1),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 17, 4_242, 2),
+            Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 17, 4_242, 3),
+        ];
+        using var kept = new TemporarySession();
+        Publish(kept.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 4_242, 100) with { ResourceName = @"C:\Tools\first.exe" },
+            Lifecycle(30, ObservationKind.Exit, 4_242, 101),
+            Lifecycle(40, ObservationKind.Create, 4_242, 102) with { ResourceName = @"C:\Tools\second.exe" },
+            .. records,
+        ], content: (ContentHeader(64), [.. records.Select(row => Content(row, System.Text.Encoding.ASCII.GetBytes("Host: example.com"),
+            64, ContentEncodingV1.Binary))]));
+        kept.Store.ReleaseSegmentReaders();
+        ProcessNode[] holders = [.. SessionOverviewProjector.Project(kept.Store).Nodes.Where(node => node.ProcessId == 4_242)
+            .OrderBy(node => node.PidHolder)];
+        kept.Store.ReleaseSegmentReaders();
+
+        // A PID the session reused names no one process: each holder is named, to be chosen by its instance id.
+        (InterCatExitCode code, string output, string said) = await Run("content", kept.Path, "--find", "example.com",
+            "--process", "4242");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains($"--process 4242 names 2 processes, since the PID was reused: {holders[0].Id} (first.exe · PID 4242 #1), "
+            + $"{holders[1].Id} (second.exe · PID 4242 #2). Name one by its instance id: --process <instance>.",
+            Regex.Replace(said, @"\s+", " "), StringComparison.Ordinal);
+
+        // By its instance, the first holder's records alone, bound to it by their PID and time.
+        (code, output, said) = await Run("content", kept.Path, "--find", "example.com", "--process", holders[0].Id.ToString());
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(new Regex(@"^  Records of +first\.exe · PID 4242 #1, instance " + Regex.Escape(holders[0].Id.ToString())
+            + @"\r?$", RegexOptions.Multiline), output);
+        Assert.Matches(@"(?m)^  Bound to it +as the include-correlated evidence policy admits\r?$", output);
+        Assert.Matches(@"(?m)^  Found +2 records\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +4242 +TCP +10 +1 +byte 6 +\S+ +1\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +4242 +TCP +10 +1 +byte 6 +\S+ +2\r?$", output);
+
+        // The second holder's record binds to it only as a candidate, since its end was not seen: found where the
+        // evidence policy admits candidates. By the PID, every holder's records are found, and said to be.
+        (code, output, said) = await Run("content", kept.Path, "--find", "example.com", "--process", holders[1].Id.ToString());
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Not searched +1 record bound to it more weakly than the include-correlated evidence policy admits\r?$",
+            output);
+        Assert.Matches(@"(?m)^  Found +no record holding it\r?$", output);
+        (code, output, said) = await Run("content", kept.Path, "--find", "example.com", "--process", holders[1].Id.ToString(),
+            "--evidence-policy", "include-candidates");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Bound to it +as the include-candidates evidence policy admits\r?$", output);
+        Assert.Matches(@"(?m)^  Found +1 record\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +4242 +TCP +10 +1 +byte 6 +\S+ +5\r?$", output);
+        (code, output, said) = await Run("content", kept.Path, "--find", "example.com", "--pid", "4242");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Records of +PID 4242, whichever process held it\r?$", output);
+        Assert.Matches(@"(?m)^  Found +3 records\r?$", output);
+
+        // An instance the session's current generation does not hold is refused.
+        string unknown = Guid.NewGuid().ToString();
+        (code, _, said) = await Run("content", kept.Path, "--find", "example.com", "--process", unknown);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains($"--process {unknown} names no process instance of the session's current generation.", said,
+            StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "S5: icat retain --release-before discloses what an interval release gives up and keeps, and performs it only when told why, once the capture has finished")]

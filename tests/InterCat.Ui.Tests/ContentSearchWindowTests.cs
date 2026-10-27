@@ -33,7 +33,7 @@ public sealed class ContentSearchWindowTests
         owner.Show();
         try
         {
-            using var window = new ContentSearchWindow(session.Path, session.Store.SessionId, 4_242, Clock);
+            using var window = new ContentSearchWindow(session.Path, session.Store.SessionId, Selected(session, 4_242), Clock);
             _ = window.ShowDialog(owner);
             await Until(() => window.FocusManager?.GetFocusedElement() == Box(window));
             Assert.Equal("Type the text to find first.", Offers.WhyNot(Labelled(window, "Find")));
@@ -158,13 +158,20 @@ public sealed class ContentSearchWindowTests
             Assert.StartsWith("Find a text in the content this session kept with consent to inspect it", ToolTip.GetTip(button) as string,
                 StringComparison.Ordinal);
             Assert.Equal("Find a text in the session's kept content", AutomationProperties.GetHelpText(button));
+            // With no process selected nothing narrows the search; with one selected, its records alone may be searched.
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            workspace.SelectedProcess = null;
             button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => window.OwnedWindows.OfType<ContentSearchWindow>().Any());
+            Assert.False(Narrowing(window.OwnedWindows.OfType<ContentSearchWindow>().Single()).IsEnabled);
             window.OwnedWindows.OfType<ContentSearchWindow>().Single().Close();
             await Until(() => window.OwnedWindows.Count == 0);
 
+            workspace.SelectedProcess = workspace.Snapshot.Processes.Single(process => process.ProcessId == 4_242);
             window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.Control | RawInputModifiers.Shift);
             await Until(() => window.OwnedWindows.OfType<ContentSearchWindow>().Any());
+            CheckBox only = Narrowing(window.OwnedWindows.OfType<ContentSearchWindow>().Single());
+            Assert.Equal(("Only the records of PID 4242", true), (only.Content as string, only.IsEnabled));
             window.OwnedWindows.OfType<ContentSearchWindow>().Single().Close();
             await Until(() => window.OwnedWindows.Count == 0);
             Assert.Contains(WindowKeys.All, key => (key.Where, key.Keys) == ("Anywhere", "Ctrl+Shift+F"));
@@ -172,6 +179,65 @@ public sealed class ContentSearchWindowTests
         finally
         {
             window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "P6: Find in kept content keeps to the selected process's records, never those of another process given its PID again")]
+    public async Task TheSelectedProcessKeepsToItsOwnRecords()
+    {
+        // PID 4242 held twice - created at 1 and exited at 30, then created again at 40 - each holder's records naming the
+        // host.
+        ObservationRowV1[] records = [Record(10, 1, 4_242), Record(20, 2, 4_242), Record(50, 3, 4_242)];
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 4_242, 100) with { ResourceName = @"C:\Tools\first.exe" },
+            Lifecycle(30, ObservationKind.Exit, 4_242, 101),
+            Lifecycle(40, ObservationKind.Create, 4_242, 102) with { ResourceName = @"C:\Tools\second.exe" },
+            .. records,
+        ], content: (ContentHeader(64, ContentInspectionV1.HexAndText),
+            [.. records.Select(row => Content(row, Encoding.ASCII.GetBytes("Host: example.com"), 64, ContentEncodingV1.Binary))]));
+        session.Store.ReleaseSegmentReaders();
+        ProcessNode[] holders = [.. SessionOverviewProjector.Project(session.Store).Nodes.Where(node => node.ProcessId == 4_242)
+            .OrderBy(node => node.PidHolder)];
+        session.Store.ReleaseSegmentReaders();
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            // The first holder's records alone, bound to it by their PID and time; the second holder's record, bound to it
+            // only as a candidate since a late record of the first cannot be told apart from it, where the window's
+            // evidence policy admits candidates.
+            foreach ((ProcessNode holder, EvidencePolicy policy, string[] found, string answer) in
+                new (ProcessNode, EvidencePolicy, string[], string)[]
+            {
+                (holders[0], EvidencePolicy.IncludeCorrelated,
+                    ["+0.000001 s · PID 4242 · TCP event 10", "+0.000002 s · PID 4242 · TCP event 10"],
+                    "2 records hold it. Searched the kept bytes of 2 records (34 B)."),
+                (holders[1], EvidencePolicy.IncludeCorrelated, [],
+                    "No record holds it. Searched the kept bytes of 0 records (0 B); 1 record bound to the process more weakly "
+                        + "than the window's evidence policy admits was not searched."),
+                (holders[1], EvidencePolicy.IncludeCandidates, ["+0.000005 s · PID 4242 · TCP event 10"],
+                    "1 record holds it. Searched the kept bytes of 1 record (17 B)."),
+            })
+            {
+                using var window = new ContentSearchWindow(session.Path, session.Store.SessionId, holder, Clock, policy);
+                _ = window.ShowDialog(owner);
+                await Until(() => window.FocusManager?.GetFocusedElement() == Box(window));
+                Check(window, "Only the records of " + holder.NameWithPid);
+                Box(window).Text = "example.com";
+                Labelled(window, "Find").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await Until(() => Status(window).Contains("hold", StringComparison.Ordinal));
+                Assert.Equal(found, Rows(window).Select(row => row.Title));
+                Assert.Equal(answer, Status(window));
+                window.Close();
+            }
+
+            Assert.Equal(["first.exe · PID 4242 #1", "second.exe · PID 4242 #2"], holders.Select(holder => holder.NameWithPid));
+        }
+        finally
+        {
+            owner.Close();
         }
     }
 
@@ -184,7 +250,7 @@ public sealed class ContentSearchWindowTests
         var problems = new List<string>();
         try
         {
-            using var window = new ContentSearchWindow(session.Path, session.Store.SessionId, 4_242, Clock);
+            using var window = new ContentSearchWindow(session.Path, session.Store.SessionId, Selected(session, 4_242), Clock);
             window.Width = window.MinWidth;
             window.Height = window.MinHeight;
             _ = window.ShowDialog(owner);
@@ -230,10 +296,22 @@ public sealed class ContentSearchWindowTests
         return session;
     }
 
+    /// <summary>The one process that held <paramref name="pid"/> in <paramref name="session"/>, as InterCat's window selects it.</summary>
+    private static ProcessNode Selected(TemporarySession session, int pid)
+    {
+        ProcessNode selected = SessionOverviewProjector.Project(session.Store).Nodes.Single(node => node.ProcessId == pid);
+        session.Store.ReleaseSegmentReaders();
+        return selected;
+    }
+
     private static ObservationRowV1 Record(long ticks, ulong ordinal, int process) =>
         Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 10, process, ordinal) with { SessionRelativeTicks = ticks * 100 };
 
     private static TextBox Box(Window window) => window.GetLogicalDescendants().OfType<TextBox>().Single();
+
+    /// <summary>The check box that keeps a search to the process selected in InterCat's window.</summary>
+    private static CheckBox Narrowing(Window window) => window.GetLogicalDescendants().OfType<CheckBox>()
+        .Single(box => box.Content is string label && label.StartsWith("Only the ", StringComparison.Ordinal));
 
     private static void Check(Window window, string label)
     {

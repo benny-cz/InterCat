@@ -227,3 +227,12 @@ M8's exit gate is met for HTTP through WinINet, the content source this build qu
 the command line and in the window, and every exit test holds by the tests named above. The limits are limits of what
 M8 claims, each said where it applies; other mechanisms' reconstruction and a decoder worker come with the sources and
 decoders M6, M7 and M9 bring, which M8's contract already takes.
+
+## Addendum, revision 788
+
+A search narrows by process instance (`contracts/content-v1.md` §4), which lifts the limit above that its narrowing
+was to a process ID. `icat content --find --process` names a process by a PID one process alone held, else by its
+instance id, refusing a reused PID with each of its holders, and keeps to the records bound to it as the evidence
+policy admits, counting those the policy leaves out; the window's Find in kept content… keeps to the process selected
+there the same way, under the window's policy. `--pid` still keeps to the records that carry a PID, and says it is
+whichever process held it. Nothing else above changes.

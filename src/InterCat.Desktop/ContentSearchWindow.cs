@@ -41,7 +41,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
 
     private readonly string path;
     private readonly Guid expectedSessionId;
-    private readonly int? process;
+    private readonly ProcessNode? process;
     private readonly SessionClock clock;
     private readonly EvidencePolicy policy;
     private readonly CancellationTokenSource lifetime = new();
@@ -60,11 +60,17 @@ internal sealed class ContentSearchWindow : Window, IDisposable
     private bool closed;
     private bool disposed;
 
-    /// <param name="process">The PID of the process selected in InterCat's window, whose records alone may be searched; none for every one's.</param>
+    /// <param name="process">
+    /// The process selected in InterCat's window, whose records alone may be searched - those bound to it under
+    /// <paramref name="policy"/>, never every record of a PID another process may have held too; none for every one's.
+    /// </param>
     /// <param name="clock">InterCat's window's clock, which says when each record found was raised, as its rows do.</param>
-    /// <param name="policy">The evidence policy InterCat's window counts under, which a record found opens its content under.</param>
+    /// <param name="policy">
+    /// The evidence policy InterCat's window counts under, which a record found binds to the selected process and opens
+    /// its content under.
+    /// </param>
     public ContentSearchWindow(
-        string path, Guid expectedSessionId, int? process, SessionClock clock, EvidencePolicy policy = EvidencePolicy.IncludeCorrelated)
+        string path, Guid expectedSessionId, ProcessNode? process, SessionClock clock, EvidencePolicy policy = EvidencePolicy.IncludeCorrelated)
     {
         this.policy = policy;
         this.path = path;
@@ -97,7 +103,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         AutomationProperties.SetName(text, "Text to find");
         AutomationProperties.SetName(status, "Search status");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
-        only.Content = process is { } pid ? string.Create(CultureInfo.CurrentCulture, $"Only the records of PID {pid}") : "Only the selected process's records";
+        only.Content = process is { } selected ? "Only the records of " + selected.NameWithPid : "Only the selected process's records";
         Offering.Offer(only, process is null ? "Select a process in InterCat's window first: its records are then searched alone." : null,
             "Search only the records of the process selected in InterCat's window");
         Offering.Offer(previews, null, "Show, beside each record found, the kept bytes around its first match, as inert text");
@@ -218,7 +224,8 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         {
             Text = text.Text,
             IgnoreCase = ignoreCase.IsChecked == true,
-            ProcessId = only.IsChecked == true ? process : null,
+            ProcessInstance = only.IsChecked == true ? process?.Id : null,
+            Policy = policy,
             Previews = previews.IsChecked == true,
         };
         searching = true;
@@ -290,7 +297,10 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         string read = "Searched the kept bytes of " + CountText.Of(found.RecordsRead, "record")
             + string.Create(culture, $" ({found.BytesRead:N0} B)")
             + (found.WithoutConsent == 0 ? string.Empty : "; " + CountText.Of(found.WithoutConsent, "record") + " kept without "
-                + "consent to inspect " + CountText.Agree(found.WithoutConsent, "its bytes was", "their bytes were") + " not searched");
+                + "consent to inspect " + CountText.Agree(found.WithoutConsent, "its bytes was", "their bytes were") + " not searched")
+            + (found.NotAdmitted == 0 ? string.Empty : "; " + CountText.Of(found.NotAdmitted, "record") + " bound to the process "
+                + "more weakly than the window's evidence policy admits " + CountText.Agree(found.NotAdmitted, "was", "were")
+                + " not searched");
         return held + ". " + read + "." + (found.Unreadable is { } unreadable ? " " + unreadable : string.Empty)
             + (found.Stopped is { } stopped ? " " + stopped : string.Empty);
     }

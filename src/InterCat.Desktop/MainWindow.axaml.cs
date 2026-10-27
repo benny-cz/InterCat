@@ -2045,7 +2045,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         findingContent = true;
         try
         {
-            using var finder = new ContentSearchWindow(currentSessionPath, sessionId, workspace.SelectedProcess?.ProcessId,
+            using var finder = new ContentSearchWindow(currentSessionPath, sessionId, workspace.SelectedProcess,
                 workspace.TimeBase, workspace.EvidencePolicy);
             await finder.ShowDialog(this);
         }

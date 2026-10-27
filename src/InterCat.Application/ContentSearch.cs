@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using InterCat.Analysis;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -20,6 +21,16 @@ public sealed record ContentSearchRequest
 
     /// <summary>Only the records of this process ID - the one a record names as its owner, else the one that raised it.</summary>
     public int? ProcessId { get; init; }
+
+    /// <summary>
+    /// Only the records bound to this process instance under <see cref="Policy"/>, as every other view binds a record to
+    /// its owner - never by a process ID another process may have been given again (P6). It is not given with
+    /// <see cref="ProcessId"/>.
+    /// </summary>
+    public ProcessInstanceId? ProcessInstance { get; init; }
+
+    /// <summary>The evidence policy a record's binding to <see cref="ProcessInstance"/> must be admitted under.</summary>
+    public EvidencePolicy Policy { get; init; } = EvidencePolicy.IncludeCorrelated;
 
     /// <summary>How many records holding the text are listed at most; finding one more says there are more.</summary>
     public int Limit { get; init; } = 50;
@@ -79,6 +90,13 @@ public sealed record ContentSearchResult
     /// <summary>The records in scope kept without consent to inspect them, whose bytes are never searched.</summary>
     public required int WithoutConsent { get; init; }
 
+    /// <summary>
+    /// The records with kept content bound to the process instance asked for more weakly than the evidence policy admits -
+    /// a later holder's of a reused PID binds its records as candidates - which are not searched, since under the policy
+    /// they are not the process's.
+    /// </summary>
+    public int NotAdmitted { get; init; }
+
     /// <summary>Why the search stopped before reading every record it could, as a sentence; null when it read them all.</summary>
     public string? Stopped { get; init; }
 
@@ -125,6 +143,16 @@ public static class ContentSearch
         ArgumentException.ThrowIfNullOrEmpty(request.Text);
         ArgumentOutOfRangeException.ThrowIfLessThan(request.Limit, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(request.MaximumBytes, 1);
+        if (request.ProcessId is not null && request.ProcessInstance is not null)
+        {
+            throw new ArgumentException("A search keeps to a process ID or to a process instance, not both.", nameof(request));
+        }
+
+        if (!Enum.IsDefined(request.Policy))
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), "The evidence policy is not one InterCat defines.");
+        }
+
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
         if (manifest.SessionId != expectedSessionId)
@@ -138,12 +166,28 @@ public static class ContentSearch
         string? unreadable = content.Problem is { } unread ? $"Some kept content could not be read ({unread}), so it was not searched." : null;
         string? noneKept = content.Fragments > 0 || unreadable is not null ? null
             : SessionContentQuery.ReleasedContent(manifest) ?? "The session keeps no content, so there was nothing to search.";
+        // A process instance keeps the search to the records bound to it, as the window binds every record to its owner.
+        ProcessInstanceIndex? processes = null;
+        int wanted = -1;
+        if (request.ProcessInstance is { } instance && content.Fragments > 0)
+        {
+            processes = SessionSegments.SourceClock(store.Root, manifest) is { } clock
+                ? new GenerationSegments(store, manifest, clock).Processes(cancellationToken)
+                : throw new InvalidOperationException("The generation names no source clock, so no record binds to a process instance.");
+            wanted = processes.PositionOf(instance);
+            if (wanted < 0)
+            {
+                throw new InvalidOperationException(
+                    "This generation holds no such process instance; it may have been released since it was chosen.");
+            }
+        }
+
         byte[] utf8 = Fold(Encoding.UTF8.GetBytes(request.Text), request.IgnoreCase, utf16: false);
         byte[] utf16 = Fold(Encoding.Unicode.GetBytes(request.Text), request.IgnoreCase, utf16: true);
         var hits = new List<ContentSearchHit>();
         var chunks = new Dictionary<string, FileStream>(StringComparer.Ordinal);
         Stopwatch elapsed = Stopwatch.StartNew();
-        int read = 0, withoutConsent = 0;
+        int read = 0, withoutConsent = 0, notAdmitted = 0;
         long bytesRead = 0;
         bool more = false;
         string? stopped = null;
@@ -156,11 +200,20 @@ public static class ContentSearch
                 SegmentColumnSlice streams = segment.Slice(SegmentColumnId.RawStreamId);
                 SegmentColumnSlice epochs = segment.Slice(SegmentColumnId.RawSourceEpoch);
                 SegmentColumnSlice ordinals = segment.Slice(SegmentColumnId.RawRecordOrdinal);
+                PackedOwners? owners = processes is null ? null : SegmentBindings.OwnersOf(segment, processes);
                 for (int index = 0; index < segment.RowCount && stopped is null && !more; index++)
                 {
                     if (content.Find(new RawRecordId(segment.CaptureId, (uint)streams.UnsignedAt(index)!.Value,
                         (uint)epochs.UnsignedAt(index)!.Value, ordinals.UnsignedAt(index)!.Value)) is not { } entry)
                     {
+                        continue;
+                    }
+
+                    if (owners is { } bound && bound[index] is var owner
+                        && (owner.Instance != wanted || !owner.IsAdmittedUnder(request.Policy)))
+                    {
+                        // The process's own records the policy leaves out are counted, so the answer can say so.
+                        if (owner.Instance == wanted) notAdmitted++;
                         continue;
                     }
 
@@ -245,6 +298,7 @@ public static class ContentSearch
             RecordsRead = read,
             BytesRead = bytesRead,
             WithoutConsent = withoutConsent,
+            NotAdmitted = notAdmitted,
             Stopped = stopped,
             Unreadable = unreadable,
             NoneKept = noneKept,
