@@ -246,3 +246,11 @@ listed on the later buffer, begun that many bytes before its first byte, its pre
 matches are counted from the part's start, none overlapping another across it. A match across three buffers, or across
 a buffer not recorded, not kept or cut, is still not found, as the sentence every answer carries says. Nothing else
 above changes.
+
+## Addendum, revision 791
+
+The window names InterCat's decoders (`contracts/decoders-v1.md` §5a), which lifts the limit above that it listed none
+of its own. Where no decoder reads a record or its part, the content viewer's Decode is offered disabled, saying so -
+of a body's buffer, that InterCat decodes a head and never a body - and naming each decoder by its name, identifier
+and version, and what it reads, as `icat content --decoders` lists them; where one does, Decode and Decode its part
+name it as before. Nothing else above changes.

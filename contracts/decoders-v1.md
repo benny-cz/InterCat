@@ -121,13 +121,15 @@ table (§5f there).
 
 The content viewer offers a decoding once a record's bytes are shown: Decode, where a decoder reads the record; Decode
 its part, where one reads the part its buffer belongs to. Decode its part reads the whole part, and is offered
-disabled, saying why, for a part that is not whole, which is never decoded. The Decoded tab names the decoder and its
-version and the bytes it read - of the record's message, or of the part - and lists each field with its bytes and what
-was not decoded; a field's Show its bytes shows them in the hex view, of the whole part where the decoder read one.
-Nothing is decoded until asked. An exchange's conversation (`contracts/http-exchanges-v1.md` §5d) decodes its two
-heads the same way, side by side, when its Decode its heads is pressed. Since revision 784 a process's HTTP exchanges
-export with what their heads say, as a table, once the window has said the table is content
-(`contracts/http-exchanges-v1.md` §5f).
+disabled, saying why, for a part that is not whole, which is never decoded. Since revision 791, where no decoder reads
+the record or its part, Decode is offered disabled too, saying so - of a body's buffer, that InterCat decodes a head
+and never a body - and naming §3's decoders, each by its name, identifier and version, and what each reads, as `icat
+content --decoders` lists them. The Decoded tab names the decoder and its version and the bytes it read - of the
+record's message, or of the part - and lists each field with its bytes and what was not decoded; a field's Show its
+bytes shows them in the hex view, of the whole part where the decoder read one. Nothing is decoded until asked. An
+exchange's conversation (`contracts/http-exchanges-v1.md` §5d) decodes its two heads the same way, side by side, when
+its Decode its heads is pressed. Since revision 784 a process's HTTP exchanges export with what their heads say, as a
+table, once the window has said the table is content (`contracts/http-exchanges-v1.md` §5f).
 
 ## 6. Not defined at this version
 

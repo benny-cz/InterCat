@@ -83,6 +83,14 @@ public static partial class ContentDecoders
     /// <summary>The HTTP/1.1 head decoder, which reads an exchange's request and response heads.</summary>
     public static ContentDecoderInfo HttpHeadDecoder => Known.Single(decoder => decoder.Id == HttpHeads.Id);
 
+    /// <summary>
+    /// InterCat's decoders in a sentence, each by its name, identifier and version and what it reads, as `icat content
+    /// --decoders` lists them: what a view says where no decoder reads what it shows.
+    /// </summary>
+    public static string Listed { get; } = "InterCat's decoders, each at its version: "
+        + string.Join("; ", Known.Select(decoder => string.Create(CultureInfo.InvariantCulture,
+            $"{decoder.Name} ({decoder.Id}, version {decoder.Version}) reads {decoder.Reads}"))) + ".";
+
     /// <summary>The name of the decoder that reads <paramref name="row"/>'s content, or null when none does.</summary>
     public static string? For(ObservationRowV1 row)
     {

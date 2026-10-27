@@ -355,7 +355,9 @@ public sealed class ConversationWindowTests
                 + "It holds content: share it only as you would that content.", MainWindow.HttpHeadsWritten(written, path));
 
             // A brushed interval exports the exchanges listed in it alone, and a limit says it left the rest out.
+            // The interval's counts are applied once read, and only then is the rung's HTTP read again for it.
             workspace.SelectInterval(new TimeRange(15, 35));
+            await workspace.IntervalReady;
             await workspace.HttpReady;
             Dispatch();
             Assert.Equal(2, workspace.RungRows.Count);

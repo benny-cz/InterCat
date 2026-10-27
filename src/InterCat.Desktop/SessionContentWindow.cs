@@ -501,6 +501,15 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
                 Offering.Offer(decode, WhyNotDecodePart(decodable), decodes);
                 decode.IsVisible = true;
             }
+            else
+            {
+                // Where no decoder reads the record or its part, Decode says so and which decoders InterCat has, rather
+                // than hiding that decoding exists (R15).
+                Offering.Offer(decode, (part is { IsPart: true } body
+                    ? $"No decoder reads {body.Name}: InterCat decodes an HTTP request or response head, never a body. "
+                    : "No decoder reads this record's content. ") + ContentDecoders.Listed);
+                decode.IsVisible = true;
+            }
 
             Show(kept.Value);
         }

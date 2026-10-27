@@ -27,6 +27,12 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public sealed class ContentWindowTests
 {
+    /// <summary>InterCat's decoders, as Decode names them where none reads a record.</summary>
+    private const string Decoders = "InterCat's decoders, each at its version: InterCat's content fixture decoder "
+        + "(intercat-content-fixture, version 1) reads one record's message from InterCat's own content fixture, events 1 and 2 "
+        + "of InterCat-Fixture-Content; InterCat's HTTP/1.1 head decoder (http1-head, version 1) reads a whole HTTP/1.1 request "
+        + "or response head WinINet's capture kept, events 2001 and 2003, read as its part.";
+
     [AvaloniaFact(DisplayName = "§3.7: the content viewer states its facts, hides the bytes until asked, then shows the chosen range")]
     public async Task TheViewerShowsBytesOnlyWhenAsked()
     {
@@ -72,7 +78,9 @@ public sealed class ContentWindowTests
         ListBox hex = Named<ListBox>(window, "Hex view of the chosen bytes");
         Assert.False(reveal.IsEffectivelyVisible);
 
-        // Shown, the bytes can be copied and saved, each button saying what it does.
+        // Shown, the bytes can be copied and saved, each button saying what it does; no decoder reads them, which Decode
+        // says, with the decoders InterCat has.
+        Assert.Equal("No decoder reads this record's content. " + Decoders, Offers.WhyNot(Labelled(window, "Decode")));
         const string Reading = "The kept bytes are being read and checked.";
         Assert.Equal([(false, Reading)], revealSaid);
         Assert.Equal([(false, Reading), (true, "Copy the chosen bytes as hex")], copySaid);
@@ -465,14 +473,14 @@ public sealed class ContentWindowTests
         Assert.Equal(4, Lines(hex).Count());
         window.Close();
 
-        // A record no decoder reads offers no decoding.
+        // A record no decoder reads offers no decoding, saying why and which decoders InterCat has.
         using var other = new SessionContentWindow(session.Path, page.SessionId, Record(2));
         other.Show();
         WaitFor(() => Texts(other).Any(text => text.StartsWith("Checked content-0000000001.icatc", StringComparison.Ordinal)));
         Named<Button>(other, "Show the kept bytes").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         WaitFor(() => other.GetVisualDescendants().OfType<ListBox>().Any(list =>
             AutomationProperties.GetName(list) == "Hex view of the chosen bytes" && list.ItemsSource is IEnumerable<ContentLine>));
-        Assert.False(Named<Button>(other, "Decode the kept bytes").IsEffectivelyVisible);
+        Assert.Equal("No decoder reads this record's content. " + Decoders, Offers.WhyNot(Named<Button>(other, "Decode the kept bytes")));
         other.Close();
     }
 
@@ -619,9 +627,12 @@ public sealed class ContentWindowTests
         Assert.False(gapped.GetVisualDescendants().OfType<TabItem>().Single(tab => Equals(tab.Header, "Decoded")).IsVisible);
         gapped.Close();
 
-        // A body's buffer offers no decoding.
+        // A body's buffer offers no decoding, saying why and which decoders InterCat has.
         using SessionContentWindow body = Shown(5);
-        Assert.False(Labelled(body, "Decode").IsEffectivelyVisible);
+        Button undecoded = Labelled(body, "Decode");
+        Assert.True(undecoded.IsEffectivelyVisible);
+        Assert.Equal("No decoder reads the response body of exchange 7: InterCat decodes an HTTP request or response head, never "
+            + "a body. " + Decoders, Offers.WhyNot(undecoded));
         body.Close();
 
         static ObservationRowV1 Head(long ticks, ulong ordinal) =>
