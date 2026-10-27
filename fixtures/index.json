@@ -1175,6 +1175,7 @@
         "I22: an interval package's ledger keeps only the epochs that spoke for the interval, numbered again, or none",
         "I22: an interval's coverage spans exactly the readings whose session time it holds, its bounds either side of zero",
         "I22: an interval's preview measures what its package holds, and an interval with no record is refused",
+        "I22: an investigation's package says how much message content its sessions kept before it is saved, and one keeping none adds nothing",
         "I22: an ordinary session names no policy, and a generation naming two is refused",
         "I22: each source field joins its own observation, whatever order the fields arrive in",
         "I22: icat compare --output writes the comparison whole, or with --share-redacted a report that names no process",
@@ -1309,6 +1310,7 @@
       "P16": [
         "P16: a support bundle says a session it cannot read by its folder, in its reader's words, and a ledger it lacks as unknown",
         "P16: committed transport fixture evidence holds only the loopback flows its truth names",
+        "P16: every source file that reads kept content has its row in the content-export review, and every row's file still does",
         "P16: icat support lists what a bundle holds before writing it, and says a session it cannot read by its folder",
         "P16: icat support writes versions, capabilities and each session's counters, and no name, endpoint, host or path",
         "P16: no product code opens a connection, sends a request or looks up a name, and it is built only on reviewed packages",

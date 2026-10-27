@@ -260,6 +260,39 @@ public sealed class InvestigationPackageTests : IDisposable
         Assert.Equal(["the retry storm starts at the second login", "the retry storm", null], packaged.Notes.Select(kept => kept.Text));
     }
 
+    [Fact(DisplayName = "I22: an investigation's package says how much message content its sessions kept before it is saved, and one keeping none adds nothing")]
+    public void APackageSaysTheContentItsSessionsKept()
+    {
+        string workspace = Path.Combine(root, "case", "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Now);
+        SessionStore plain = NewSession(Path.Combine(root, "case", "plain"), "lab-1");
+        string keptPath = Path.Combine(root, "case", "kept");
+        Directory.CreateDirectory(keptPath);
+        SessionStore kept = SessionStore.Open(LocalOwnedDirectory.Open(keptPath), Guid.NewGuid(), "package-tests");
+        CaptureId capture = CaptureId.New();
+        ObservationRowV1[] rows = [.. Rows(1_000), .. Rows(2_000)];
+        Publish(kept, rows, capture: capture, clock: ClockFor(new ClockId(Guid.NewGuid()), "lab-2"),
+            content: (ContentHeader(64, capture: capture),
+                [.. rows.Select(row => Content(row, "GET / HTTP/1.1\r\n"u8.ToArray(), 64, ContentEncodingV1.Binary))]));
+        kept.ReleaseSegmentReaders();
+        Guid withNone = InvestigationWorkspace.Add(workspace, plain.Root.Path, Now).SessionId;
+        InvestigationWorkspace.Add(workspace, kept.Root.Path, Now);
+
+        // Before anything is saved, the package says that one of its sessions holds message content, and how much.
+        InvestigationPackagePreview preview = InvestigationPackage.Preview(workspace);
+        long bytes = preview.Copied.Sum(member => member.Copy!.ContentChunks.Sum(file => file.LengthBytes));
+        Assert.True(bytes > 0);
+        string unredacted = Assert.Single(InvestigationPackage.Disclosure(preview, CultureInfo.InvariantCulture),
+            paragraph => paragraph.StartsWith("Unredacted: ", StringComparison.Ordinal));
+        Assert.EndsWith(string.Create(CultureInfo.InvariantCulture,
+            $" One session also holds the message content its capture kept: the bytes of 2 records, {bytes:N0} bytes in all, as ")
+            + "sensitive as the messages they came from.", unredacted, StringComparison.Ordinal);
+
+        // Packaged without that session, the package holds metadata alone and says so.
+        InvestigationPackagePreview metadata = InvestigationPackage.Select(preview, [withNone]);
+        Assert.Contains("Unredacted: " + OriginalEvidencePackage.Contents, InvestigationPackage.Disclosure(metadata, CultureInfo.InvariantCulture));
+    }
+
     [Fact(DisplayName = "§11.3: a package of redacted packages only is stated as pseudonymized, never unredacted")]
     public void APackageOfRedactedPackagesIsNeverCalledUnredacted()
     {

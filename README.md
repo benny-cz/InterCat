@@ -203,6 +203,6 @@ icat profiles explore
 | `bench/results/` | Reproducible measurement runs; their counters are committed, their records are not |
 | `theme/` | Theme tokens and their recorded contrast and separation measurements |
 | `docs/adr/` | Architecture decisions |
-| `docs/reviews/` | Scored interaction reviews with the screens they were taken from |
+| `docs/reviews/` | Milestone reviews, the content-export review, and scored interaction reviews with the screens they were taken from |
 | `docs/PER-BUILD-COVERAGE.md` | Each mechanism's measured tier on each Windows build, from the fixture evidence |
 | `docs/IMPLEMENTATION-STATUS.md` | Where implementation stands and what comes next |
