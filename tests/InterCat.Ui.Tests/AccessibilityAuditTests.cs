@@ -60,7 +60,7 @@ public sealed partial class AccessibilityAuditTests
     }
 
     [AvaloniaFact(DisplayName = "R15: a lane selector's options and its chosen value read as sentences and labels, not record fields")]
-    public void LaneSelectorsReadAsWords()
+    public async Task LaneSelectorsReadAsWords()
     {
         using var session = new TemporarySession();
         Publish(session.Store, Exchange(10));
@@ -88,7 +88,52 @@ public sealed partial class AccessibilityAuditTests
         IValueProvider value = Assert.IsAssignableFrom<IValueProvider>(ControlAutomationPeer.CreatePeerForElement(lanes));
         Assert.Equal("TCP", value.Value);
         Assert.Equal("All mechanisms", workspace.TimelineLaneOptions[0].ToString());
+        workspace.SelectTimelineLane(null);
+
+        // A process's source-direction rows and a channel's ends are chosen the same way, each option a sentence that says
+        // what choosing it shows, and the chosen one read as its label.
+        for (int depth = 0; depth < 3; depth++)
+        {
+            workspace.SelectedRung = workspace.RungRows[0];
+            Assert.True(workspace.Descend(), $"Could not descend from {workspace.LevelBadge}.");
+            await workspace.TimelineDetailReady;
+            Dispatch();
+            if (depth == 1)
+            {
+                Spoken(window, "DirectionLaneSelector", workspace.DirectionLaneOptions);
+                Assert.Equal(["All directions; show this process's complete interval counts",
+                    "Outbound source-direction lane; show its exact interval counts and step within this lane"],
+                    workspace.DirectionLaneOptions.Take(2).Select(option => option.AccessibleName));
+                workspace.SelectDirectionLane(Direction.Outbound);
+                Dispatch();
+                Assert.Equal("Outbound", Assert.IsAssignableFrom<IValueProvider>(ControlAutomationPeer.CreatePeerForElement(
+                    window.GetControl<ComboBox>("DirectionLaneSelector"))).Value);
+                workspace.SelectDirectionLane(null);
+            }
+        }
+
+        Spoken(window, "ChannelEndSelector", workspace.ChannelEndOptions);
+        Assert.Equal("Both ends; show the channel's complete interval counts", workspace.ChannelEndOptions[0].AccessibleName);
+        Assert.Equal(workspace.ChannelEndOptions[1].Label + " end; show its exact interval counts and step within this end",
+            workspace.ChannelEndOptions[1].AccessibleName);
         window.Close();
+
+        static void Spoken(MainWindow window, string name, IReadOnlyList<IAccessibleRow> options)
+        {
+            ComboBox selector = window.GetControl<ComboBox>(name);
+            Assert.True(selector.IsVisible, $"{name} is not shown.");
+            Assert.True(options.Count > 1, $"{name} offers no lane but the whole.");
+            selector.IsDropDownOpen = true;
+            Dispatch();
+            for (int index = 0; index < options.Count; index++)
+            {
+                Control item = Assert.IsAssignableFrom<Control>(selector.ContainerFromIndex(index));
+                Assert.Equal(options[index].AccessibleName, AutomationProperties.GetName(item));
+            }
+
+            selector.IsDropDownOpen = false;
+            Dispatch();
+        }
     }
 
     /// <summary>Walks the window's automation tree and checks every element a screen reader lands on.</summary>

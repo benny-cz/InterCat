@@ -209,10 +209,14 @@ hashed:
   (`tile-index-v1` §4): a zoom reads what it draws, and a session's whole tile index would be read for none. A
   chunk's tiles (revision 739) are not hashed at all: they decide no generation (`tile-index-v1` §6).
 
-Every other kind is small and carries no checksum of its own, so it is hashed at open as before. After its first
-view, the viewer hashes each file it listed. A file whose digest disagrees is reported and forgotten, so the next
-lease measures it again and fails its generation over to the last-known-good, exactly as opening would have. A
-store that publishes, and every command-line reader, still hashes everything at open.
+Every other kind is small and carries no checksum of its own, so it is hashed at open as before. After its first view,
+the viewer hashes each file it listed. A file whose digest disagrees is reported and forgotten, so the next lease
+measures it again and fails its generation over to the last-known-good, exactly as opening would have; with none to
+fail over to, the session is refused, as opening refuses it. Since revision 803 the viewer keeps the store that
+refused it, where it had opened one afresh, which listed the changed file without hashing it and showed the session as
+published, then found the file changed again and opened the session again, on and on: the window says that what it
+shows was read before the change was found, and opening the session again is refused, saying why. A store that
+publishes, and every command-line reader, still hashes everything at open.
 
 Opening **reports and keeps** every unreferenced file, including `stg-` files. A second process may have
 completed a staged file and not yet committed it, so opening cannot infer that a staging name was

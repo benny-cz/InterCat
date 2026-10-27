@@ -632,6 +632,8 @@ Revision 801 runs whole what a coverage pass over `icat metric` found no test ra
 
 Revision 802 runs what a coverage pass over the graph's, the tiles' and the timeline's derivations found real data reaches and no test ran; its paragraph below says the fault in `icat channels` it found.
 
+Revision 803 runs what a coverage pass over the window's workspace found a person reaches and no test ran; its paragraph below says the fault in reopening a session whose files changed that it found.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -1925,3 +1927,20 @@ each holder, or one naming no process, in their words and as a mistake in what w
 words, each saying the cursor of the next, and a stale cursor's restart are run too. Of those lines, 76 of the graph
 projection's run in none now, 85 of the tile index's and 37 of the timeline's 998, each a guard, and 13 of the 155 of
 `icat channels`, a folder that is not there and a session that cannot be read.
+
+Revision 803 runs what a coverage pass over the window's workspace found a person reaches and no test ran (R10). Of
+the lines a test can reach, 183 of the workspace view model's 4,687 ran in none and 149 of the main window's 3,855,
+most of them guards, failures said in words that only a session breaking mid-read reaches, and what only a live
+capture on Windows reaches. Among the rest: the direction and channel-end selectors' options, never read as a screen
+reader hears them, are each a sentence saying what choosing it shows, the chosen one read as its label (R15); a
+process's records the source marked bidirectional, or marked no way, are said as it marked them in a chosen cell's
+explanation and in its row's card, never given a direction (§6.6); inside a group, Ctrl+Space on a process's row
+chooses that process and takes it out alone, each row saying whether it holds its process, and a set of more than
+three names its first three and counts the rest (§6.7); and a group's row only some of whose processes are chosen is
+marked lighter and says it is partly in the selection (R15). The pass also found a fault. A session of one generation
+whose files changed after they were published was opened again as though they had not: the check after its first view
+had its store refuse the changed file (`store-v1`), the window's registry of stores read that refusal as the folder
+holding another session and opened the session afresh, with a store that lists self-checking files without hashing
+them, and the check that followed found the file changed again and opened it again, on and on. A store whose lease
+refuses the session's files as changed is now kept, since it still holds its session: the view stays, the window says
+that what it shows was read before the change was found, and opening the session again is refused, saying why (S7).

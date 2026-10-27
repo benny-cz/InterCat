@@ -135,13 +135,20 @@ internal sealed class SessionStoreRegistry
 
     /// <summary>
     /// Whether a store's directory still holds the session it was opened for: a lease refuses one that now holds another
-    /// session, or none.
+    /// session, or none. A lease refused because the session's files changed after they were published still holds its
+    /// session: a store opened afresh lists the files without hashing them, so it would pass the changed ones off as
+    /// published - and a window checking them would find them changed again and open the session again, on and on -
+    /// while every read through the kept store says what is wrong.
     /// </summary>
     private static bool StillHolds(SessionStore store)
     {
         try
         {
             using EvidenceLease lease = store.AcquireLease();
+            return true;
+        }
+        catch (InvalidDataException exception) when (exception.Message is not (SessionStore.AnotherSession or SessionStore.SessionGone))
+        {
             return true;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException

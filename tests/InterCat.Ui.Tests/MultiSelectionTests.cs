@@ -280,6 +280,44 @@ public sealed class MultiSelectionTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R15: a group's ranked row only some of whose processes are in the selection is marked partly in it, and says so")]
+    public void AGroupPartlyChosenSaysSo()
+    {
+        // third.exe runs twice: PID 300 relates to nothing, and PID 301 talks to the server, so each is drawn apart.
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Named(), .. Exchange(30), .. Third(20),
+            Lifecycle(4, ObservationKind.Inventory, 301, 4) with { ResourceName = @"C:\Tools\third.exe", SessionRelativeTicks = 400 },
+            Transfer(80, ObservationKind.Send, AccountingSide.SendSide, 64, 301, 9_000)
+                .Between("127.0.0.1:50005", ServerEnd) with { SessionRelativeTicks = 8_000 },
+            Transfer(81, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 9_001)
+                .Between(ServerEnd, "127.0.0.1:50005") with { SessionRelativeTicks = 8_100 }]);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        ListBox list = window.GetControl<ListBox>("RungList");
+        Control third = list.ContainerFromIndex(Row(workspace, "third"))!;
+        Control client = list.ContainerFromIndex(Row(workspace, "client"))!;
+
+        // PID 301 chosen from the graph: third.exe's row holds part of the selection, is marked lighter, and says so.
+        GraphDisplayNode talking = NodeOf(workspace, 301);
+        Assert.Equal([talking.Members.Single()], workspace.Snapshot.Processes.Where(process => process.ProcessId == 301).Select(process => process.Id));
+        workspace.ToggleGraphNodeInSelection(talking.Key);
+        Dispatch();
+        Assert.Equal((false, true), (third.Classes.Contains("chosen"), third.Classes.Contains("chosenPart")));
+        Assert.Equal("partly in the selection", AutomationProperties.GetItemStatus(third));
+        Assert.Equal((false, false, null), (client.Classes.Contains("chosen"), client.Classes.Contains("chosenPart"),
+            AutomationProperties.GetItemStatus(client)));
+
+        // PID 300 chosen too: the whole group is in it, and its row says so.
+        workspace.ToggleGraphNodeInSelection(NodeOf(workspace, 300).Key);
+        Dispatch();
+        Assert.Equal((true, false), (third.Classes.Contains("chosen"), third.Classes.Contains("chosenPart")));
+        Assert.Equal("in the selection", AutomationProperties.GetItemStatus(third));
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: the context-menu key and Shift+F10 open the focused ranked row's menu, whose item adds it to the selection")]
     public void TheRowMenuOpensFromTheKeyboard()
     {

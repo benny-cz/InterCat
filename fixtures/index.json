@@ -1579,6 +1579,7 @@
         "R15: a capture's update gives the window no keyboard while another window is the one in use, and Stop has it once this one is",
         "R15: a channel page that could not be read leaves Show and Next saying why, never that no channel is in scope",
         "R15: a custom workspace header names its session without inventing a capture gap",
+        "R15: a group's ranked row only some of whose processes are in the selection is marked partly in it, and says so",
         "R15: a lane selector's options and its chosen value read as sentences and labels, not record fields",
         "R15: a lane's bytes are its own records': a process's, one direction of them, a channel end's, a mechanism's",
         "R15: a main-window action not offered says why on itself - its tooltip, shown disabled, and its help text - and what it does once offered",

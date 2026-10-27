@@ -586,6 +586,43 @@ public sealed class RankingSelectorTests
         Assert.Equal(SelectionShare.None, workspace.ShareOf(group));
     });
 
+    [Fact(DisplayName = "§6.7: a process's row chooses its process and says so, Ctrl+Space taking it out alone, and a set of more than three names its first three and counts the rest")]
+    public void ProcessRowsChooseTheirProcess() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Hub());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+
+        // Every group's row chosen at the machine rung: the selection names its first three processes and counts the rest.
+        foreach (RungRow row in workspace.RungRows.ToArray())
+        {
+            workspace.ToggleRungInSelection(row);
+        }
+
+        IReadOnlyList<ProcessNode> chosen = workspace.ChosenProcesses;
+        Assert.Equal(5, chosen.Count);
+        Assert.Equal(string.Join(", ", chosen.Take(3).Select(process => process.NameWithPid))
+            + " and 2 more · Ctrl+click or Ctrl+Space adds or removes · Enter lists their records", workspace.SelectionSubtitle);
+
+        // Inside client.exe its two instances are its rows: each row holds its process wholly or not at all, and Ctrl+Space
+        // on one takes that one out alone.
+        ProcessNode[] clients = [.. workspace.Snapshot.Processes.Where(node => node.ProcessId is 200 or 201).OrderBy(node => node.ProcessId)];
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == clients[0].GroupKey);
+        Assert.True(workspace.Descend());
+        RungRow first = workspace.RungRows.Single(row => row.Key == clients[0].Id.ToString());
+        RungRow second = workspace.RungRows.Single(row => row.Key == clients[1].Id.ToString());
+        workspace.ClearSelection();
+        Assert.False(workspace.HasMultiSelection);
+        workspace.ToggleRungInSelection(first);
+        Assert.Equal((SelectionShare.All, SelectionShare.None), (workspace.ShareOf(first), workspace.ShareOf(second)));
+        workspace.ToggleRungInSelection(second);
+        workspace.ToggleRungInSelection(first);
+        Assert.Equal([clients[1].Id], workspace.ChosenProcesses.Select(process => process.Id));
+        Assert.Equal((SelectionShare.None, SelectionShare.All), (workspace.ShareOf(first), workspace.ShareOf(second)));
+        Assert.Equal("1 selected process", workspace.SelectionTitle);
+    });
+
     /// <summary>
     /// hub.exe talks to three clients over paired TCP: two instances of client.exe and one of other.exe; lone.exe's one
     /// send reached no process the capture can name.

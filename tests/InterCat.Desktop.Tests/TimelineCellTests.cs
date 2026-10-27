@@ -343,6 +343,25 @@ public sealed class TimelineCellTests
         workspace.SelectDirectionLane(Direction.DirectionNotApplicable);
         Assert.Contains(" with no data direction ", workspace.CellExplanation, StringComparison.Ordinal);
         Assert.DoesNotContain("marked outbound", workspace.CellExplanation, StringComparison.Ordinal);
+
+        // Records the source marked both ways, or marked no way, are said as it marked them, never given a direction; so is
+        // what their row's card says each cell holds.
+        foreach ((Direction direction, string domain, string meaning) in new[]
+        {
+            (Direction.Bidirectional, "marked bidirectional", "Direction: bidirectional, as the source marked these records"),
+            (Direction.UnknownDirection, "with no stated direction",
+                "Direction: unknown · the source stated none for these records, and none is inferred"),
+        })
+        {
+            workspace.SelectDirectionLane(direction);
+            Assert.StartsWith($"No record of {client.NameWithPid} {domain} has a session time in this interval.", workspace.CellExplanation,
+                StringComparison.Ordinal);
+            HoverCard card = workspace.DescribeTimelineHover(
+                workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == direction).Buckets[0], 1, directionLane: direction);
+            Assert.Contains($" {domain} · accounting: one owner and one source direction per record", card.Lines[1], StringComparison.Ordinal);
+            Assert.Contains(meaning, card.Lines);
+        }
+
         workspace.SelectDirectionLane(null);
         workspace.ChooseTimelineCell(sent, directionLane: Direction.Outbound);
         Assert.NotNull(workspace.CaptureNavigation().ExplainedCell);

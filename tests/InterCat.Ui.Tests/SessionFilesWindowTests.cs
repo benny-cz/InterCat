@@ -98,6 +98,65 @@ public sealed class SessionFilesWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§20.1: a session of one generation whose files changed after publication stays shown, says it was read before the change was found, and is not opened again as published")]
+    public async Task ChangedFilesOfTheOnlyGenerationAreSaid()
+    {
+        using var root = new TemporaryDirectory();
+        string session = Directory.CreateDirectory(Path.Combine(root.Path, "explore-20260926T200000Z-one")).FullName;
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(session), Guid.NewGuid(), "files-window-tests");
+        string only = Publish(store, Exchange(first: 0, count: 20)).Segments[0].Name;
+        store.ReleaseSegmentReaders();
+        string file = Path.Combine(session, only);
+        Damage(file, (int)new FileInfo(file).Length - 1);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        using var release = new ManualResetEventSlim();
+        try
+        {
+            Func<SessionStore, StoreContentReport> verify = window.SessionFilesVerifier;
+            window.SessionFilesVerifier = opened =>
+            {
+                release.Wait();
+                return verify(opened);
+            };
+            Assert.True(await window.OpenSessionAsync(session));
+            Dispatch();
+            Assert.Equal(1, Assert.IsType<WorkspaceViewModel>(window.DataContext).DisplayedGeneration);
+
+            // No earlier generation is there to fall back to: the one shown stays, said to be read from changed files, and the
+            // session is not opened again as though its files had been published as they are.
+            var shown = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            release.Set();
+            Task checkedOnce = window.SessionFilesChecked;
+            await checkedOnce;
+            for (int pump = 0; pump < 20; pump++)
+            {
+                Dispatch();
+                await Task.Delay(5);
+            }
+
+            Assert.Same(shown, window.DataContext);
+            Assert.Same(checkedOnce, window.SessionFilesChecked);
+            Assert.Equal("Could not open this session", window.GetControl<TextBlock>("CaptureStatus").Text);
+            Assert.StartsWith("Some of this session's files changed after they were published (", Detail(window), StringComparison.Ordinal);
+            Assert.Contains($"'{only}' does not match what generation 1 records", Detail(window), StringComparison.Ordinal);
+            Assert.EndsWith("), and no earlier generation is complete. What is shown was read before that was found, from files "
+                + "that no longer hold what was recorded.", Detail(window), StringComparison.Ordinal);
+
+            // Opened again, it is refused, saying why, rather than read as the files now are.
+            Assert.False(await window.OpenSessionAsync(session));
+            Dispatch();
+            Assert.Same(shown, window.DataContext);
+            Assert.Contains($"'{only}' does not match what generation 1 records", Detail(window), StringComparison.Ordinal);
+            Assert.EndsWith(" What the window shows is unchanged.", Detail(window), StringComparison.Ordinal);
+        }
+        finally
+        {
+            release.Set();
+            window.Close();
+        }
+    }
+
     /// <summary>A session with two generations; the second publishes its own segment, whose name is returned.</summary>
     [AvaloniaFact(DisplayName = "§20.1: a package asked for while a session's files are checked waits for the check, and asks about what the check leaves shown")]
     public async Task APackageWaitsForTheFilesCheck()
