@@ -1446,6 +1446,9 @@
         "P6: a pattern groups occurrences by mechanism, service port or interface and procedure, and where the server is, never by a process or address",
         "P6: an end held by two processes, or by records that bind to none, leaves its peers unresolved",
         "P6: icat content --find --process keeps to one process's records, never those of another process given its PID again",
+        "P6: icat patterns --interval groups what began in the interval alone, saying the interval and counting what began outside it",
+        "P6: over InterCat's window's time scope, the patterns window lists what began in it alone, spread over its tenths, and counts what began outside it",
+        "P6: patterns read over an interval group what began in it alone, spread over its tenths, and count what began outside it",
         "P6: reusable values never resolve an instance without lifecycle evidence",
         "P6: when lifecycle evidence cannot tell incarnations apart, only an other end they all agree on is named"
       ],

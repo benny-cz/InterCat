@@ -1948,15 +1948,16 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     }
 
     /// <summary>
-    /// Lists the session's recurring communication patterns (`contracts/patterns-v1.md` §7), counted under the window's
-    /// evidence policy; the processes of the pattern chosen there become the selection, and the graph has the keyboard, so
-    /// Enter lists their records.
+    /// Lists the session's recurring communication patterns (`contracts/patterns-v1.md` §7) over the window's time scope,
+    /// counted under the window's evidence policy; the processes of the pattern chosen there become the selection, and the
+    /// graph has the keyboard, so Enter lists their records.
     /// </summary>
     private async void ShowPatterns(object? sender, RoutedEventArgs eventArgs)
     {
         if (currentSessionPath is null || displayedSessionId is not { } sessionId || displayedGeneration < 1
             || workspace.IsEvidenceRung) return;
-        using var patterns = new PatternsWindow(currentSessionPath, sessionId, displayedGeneration, workspace.EvidencePolicy);
+        using var patterns = new PatternsWindow(currentSessionPath, sessionId, displayedGeneration, workspace.EvidencePolicy,
+            workspace.ScopeInterval, workspace.TimeBase);
         try
         {
             if (await patterns.ShowDialog<PatternChoice?>(this) is not { } chosen || closed) return;

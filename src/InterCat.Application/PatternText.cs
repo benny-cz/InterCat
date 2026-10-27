@@ -11,11 +11,15 @@ namespace InterCat.Application;
 /// </summary>
 public static class PatternText
 {
-    /// <summary>What a list of patterns says of itself beneath it, the command line and the window alike.</summary>
-    public const string Note = "A pattern groups what recurs by its mechanism, its service port or RPC interface and procedure, "
-        + "and where its server end is, never by a process, address or time; its clients and servers say who took part, a "
-        + "process by its executable's processes counted as programs. Tenths says in how many tenths of the session an "
-        + "occurrence began.";
+    /// <summary>
+    /// What a list of patterns says of itself beneath it, the command line and the window alike: its tenths are the
+    /// session's, or the interval's where <paramref name="interval"/> keeps it to what began in one.
+    /// </summary>
+    public static string Note(TimeRange? interval) =>
+        "A pattern groups what recurs by its mechanism, its service port or RPC interface and procedure, and where its server "
+        + "end is, never by a process, address or time; its clients and servers say who took part, a process by its "
+        + "executable's processes counted as programs. Tenths says in how many tenths of the "
+        + (interval is null ? "session" : "interval") + " an occurrence began.";
 
     /// <summary>What a list of a pattern's ends says where one is another host.</summary>
     public const string HostNote = "Another host is named by its address: who is at it is not observed.";
@@ -50,10 +54,11 @@ public static class PatternText
     public static string None(PatternReading reading)
     {
         ArgumentNullException.ThrowIfNull(reading);
+        string holds = reading.Interval is null ? "This session holds" : "The interval holds";
         return reading.NotAdmitted > 0
-            ? $"This session holds no pattern the {CommandArgument.Typed(reading.Policy)} evidence policy admits; what it did not "
+            ? $"{holds} no pattern the {CommandArgument.Typed(reading.Policy)} evidence policy admits; what it did not "
                 + "admit is counted beneath, and the coverage above says whether any could have been seen."
-            : "This session holds no pattern: no TCP connection the capture saw open, UDP flow with a service port or RPC call "
+            : $"{holds} no pattern: no TCP connection the capture saw open, UDP flow with a service port or RPC call "
                 + "naming its interface is in it; the coverage above says whether one could have been seen.";
     }
 
@@ -73,7 +78,8 @@ public static class PatternText
 
     /// <summary>
     /// When a pattern occurred: "3 connections, the first beginning at 0.100 ms and the last at 0.800 ms, in 3 of the
-    /// session's 10 tenths"; its occurrences alone where none had a session time.
+    /// session's 10 tenths", the interval's where the reading keeps to one; its occurrences alone where none had a session
+    /// time.
     /// </summary>
     public static string When(PatternReading reading, CommunicationPattern pattern, IFormatProvider? culture = null)
     {
@@ -83,7 +89,9 @@ public static class PatternText
         return Occurred(pattern, culture) + (pattern.FirstTicks is { } first && pattern.LastTicks is { } last && reading.Span is { } span
             ? ", the first beginning at " + WorkspaceTime.FormatInstant(first, span.SpanTicks, culture) + " and the last at "
                 + WorkspaceTime.FormatInstant(last, span.SpanTicks, culture)
-                + string.Create(culture, $", in {pattern.Tenths:N0} of the session's {CommunicationPatterns.Parts:N0} tenths")
+                + string.Create(culture, $", in {pattern.Tenths:N0} of the ")
+                + (reading.Interval is null ? "session's" : "interval's")
+                + string.Create(culture, $" {CommunicationPatterns.Parts:N0} tenths")
             : string.Empty);
     }
 
@@ -203,6 +211,11 @@ public static class PatternText
         {
             string policy = CommandArgument.Typed(reading.Policy);
             apart.Add(string.Create(culture, $"{reading.NotAdmitted:N0} the {policy} evidence policy did not admit"));
+        }
+
+        if (reading.OutsideInterval > 0)
+        {
+            apart.Add(string.Create(culture, $"{reading.OutsideInterval:N0} connections, flows and calls that began outside the interval"));
         }
 
         return apart.Count > 0 ? "In no pattern: " + WorkspaceLayout.Series(apart) + "." : null;

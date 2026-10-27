@@ -117,6 +117,15 @@ public sealed record PatternReading(
 
     /// <summary>Connections, flows and calls the evidence policy did not admit.</summary>
     public long NotAdmitted { get; init; }
+
+    /// <summary>
+    /// The interval read, in presentation ticks, whose tenths <see cref="CommunicationPattern.Tenths"/> then counts; null
+    /// where the whole generation was read.
+    /// </summary>
+    public TimeRange? Interval { get; init; }
+
+    /// <summary>Connections, flows and calls that began outside <see cref="Interval"/>: no pattern of it holds them.</summary>
+    public long OutsideInterval { get; init; }
 }
 
 /// <summary>
@@ -138,11 +147,14 @@ public static class CommunicationPatterns
 
     /// <summary>
     /// Reads every pattern of <paramref name="store"/>'s current generation under <paramref name="policy"/>: its overview,
-    /// its connections and its calls, all of one generation, read again where a newer one was published meanwhile.
+    /// its connections and its calls, all of one generation, read again where a newer one was published meanwhile. Given an
+    /// <paramref name="interval"/>, in presentation ticks, only the connections, flows and calls that began inside it make
+    /// patterns, those that began outside it counted apart.
     /// </summary>
     public static PatternReading Read(
         SessionStore store,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        TimeRange? interval = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -171,7 +183,7 @@ public static class CommunicationPatterns
             RpcCallIndex calls = generation.RpcCalls(cancellationToken);
             IReadOnlyList<MechanismCoverage> coverage = SessionCoverage.ForMechanisms(
                 SessionSegments.CoverageLedger(store.Root, manifest), [Mechanism.Tcp, Mechanism.Udp, Mechanism.Rpc]);
-            return Of(overview, relations, calls, clock, coverage, cancellationToken);
+            return Of(overview, relations, calls, clock, coverage, interval, cancellationToken);
         }
     }
 
@@ -224,8 +236,8 @@ public static class CommunicationPatterns
     public static bool IsDynamic(ushort port) => port >= FirstDynamicPort;
 
     /// <summary>
-    /// The patterns of one generation's relations and calls, its overview naming their processes and its span placing
-    /// their occurrences: the heaviest first, then by key.
+    /// The patterns of one generation's relations and calls, its overview naming their processes and its span - or the
+    /// <paramref name="interval"/> read - placing their occurrences: the heaviest first, then by key.
     /// </summary>
     internal static PatternReading Of(
         SessionOverviewBundle overview,
@@ -233,21 +245,32 @@ public static class CommunicationPatterns
         RpcCallIndex calls,
         SourceClockDescriptor clock,
         IReadOnlyList<MechanismCoverage> coverage,
+        TimeRange? interval,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(overview);
         ArgumentNullException.ThrowIfNull(relations);
         ArgumentNullException.ThrowIfNull(calls);
         EvidencePolicy policy = overview.Policy;
-        TimeRange? span = overview.Recording ?? overview.Extent;
+        TimeRange? span = interval ?? overview.Recording ?? overview.Extent;
         var tallies = new Dictionary<string, Tally>(StringComparer.Ordinal);
-        long unopened = 0, dynamic = 0, unnamed = 0, notAdmitted = 0;
+        long unopened = 0, dynamic = 0, unnamed = 0, notAdmitted = 0, outside = 0;
         long Ticks(long nativeTicks) => (long)(SourceClockMath.SessionNanoseconds(clock, nativeTicks) / 100);
+
+        // Within an interval, a connection, flow or call is read where it began inside it; one that began outside it is
+        // counted apart, and nothing else of it.
+        bool Outside(long at)
+        {
+            if (interval is not { } within || within.Contains(at)) return false;
+            outside++;
+            return true;
+        }
 
         foreach (TransportRelation relation in relations.Relations)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (relation.Mechanism is not (Mechanism.Tcp or Mechanism.Udp)) continue;
+            if (Outside(Ticks(relation.FirstNativeTicks))) continue;
             if (!SessionOverviewProjector.Admitted(relation.Strength, policy))
             {
                 notAdmitted++;
@@ -287,6 +310,8 @@ public static class CommunicationPatterns
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (connection.Mechanism is not (Mechanism.Tcp or Mechanism.Udp)) continue;
+            long at = Ticks(connection.FirstNativeTicks);
+            if (Outside(at)) continue;
             if (!SessionOverviewProjector.Admitted(connection.Strength, policy))
             {
                 notAdmitted++;
@@ -300,7 +325,6 @@ public static class CommunicationPatterns
             Participant holder = Participant.Of(connection.Holder);
             ushort? localPort = ConnectionOpens.PortOf(connection.LocalEndpoint);
             ushort? remotePort = ConnectionOpens.PortOf(connection.RemoteEndpoint);
-            long at = Ticks(connection.FirstNativeTicks);
             if (connection.Mechanism == Mechanism.Tcp)
             {
                 if (connection.Opening == ConnectionOpening.Accepted && localPort is { } accepted)
@@ -340,7 +364,8 @@ public static class CommunicationPatterns
         foreach (RpcCallGroup group in calls.Groups)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!group.Process.IsAdmittedUnder(policy))
+            bool admitted = group.Process.IsAdmittedUnder(policy);
+            if (!admitted && interval is null)
             {
                 notAdmitted += group.Counts.Calls;
                 continue;
@@ -350,6 +375,13 @@ public static class CommunicationPatterns
             Participant process = Participant.Of(calls.Processes.Instances[group.Process.Instance]);
             foreach (RpcCallSpan call in calls.SpansOf(group))
             {
+                if ((call.StartNanoseconds ?? call.StopNanoseconds) is { } placed && Outside(placed / 100)) continue;
+                if (!admitted)
+                {
+                    notAdmitted++;
+                    continue;
+                }
+
                 if (call.StartNanoseconds is not { } started || group.Interface is not { } rpcInterface)
                 {
                     unnamed++;
@@ -374,6 +406,8 @@ public static class CommunicationPatterns
             DynamicFlows = dynamic,
             CallsWithoutInterface = unnamed,
             NotAdmitted = notAdmitted,
+            Interval = interval,
+            OutsideInterval = outside,
         };
 
         Tally TallyOf(Mechanism mechanism, PatternPlace place, ushort? port, Guid? rpcInterface = null, long? procedure = null)

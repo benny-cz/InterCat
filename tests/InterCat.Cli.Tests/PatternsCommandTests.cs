@@ -140,6 +140,43 @@ public sealed class PatternsCommandTests
         Assert.Contains("PATTERN 5: UDP AT PORT 5353 HERE", text, Ordinal);
     }
 
+    [Fact(DisplayName = "P6: icat patterns --interval groups what began in the interval alone, saying the interval and counting what began outside it")]
+    public async Task IcatPatternsReadsAnInterval()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = PatternRows();
+        Publish(session.Store, rows, fields: fields, coverage: TransportLedger(tcp: true, udp: true));
+        session.Store.ReleaseSegmentReaders();
+
+        // Over the browsers' first two connections, their pattern holds those two, spread over the interval's tenths.
+        (InterCatExitCode code, string text, string said) = await Run("patterns", session.Path, "--interval", "500:2000", "--all");
+        Assert.True(code == InterCatExitCode.Success, said);
+        string interval = ComparisonText.Interval(new TimeRange(500, 2_000), culture: System.Globalization.CultureInfo.CurrentCulture);
+        Assert.Matches(new Regex("^  Interval +" + Regex.Escape(interval + ", what began in it alone") + @"\r?$", RegexOptions.Multiline), text);
+        Assert.Matches(new Regex("^  Spread over +" + Regex.Escape(interval + ", in tenths") + @"\r?$", RegexOptions.Multiline), text);
+        Assert.Equal(["1 | TCP at port 8080 here | 2 connections | 2 processes of 1 program | 1 process of 1 program | 2 of 10"],
+            Listed(text));
+        string words = Regex.Replace(text, @"\s+", " ");
+        Assert.Contains("Tenths says in how many tenths of the interval an occurrence began.", words, Ordinal);
+        Assert.Contains("In no pattern: 20 connections, flows and calls that began outside the interval.", words, Ordinal);
+
+        // The pattern's occurrences are placed in the interval's tenths.
+        (code, text, said) = await Run("patterns", session.Path, "--interval", "500:2000", "--pattern", "1");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains(", in 2 of the interval's 10 tenths", Regex.Replace(text, @"\s+", " "), Ordinal);
+
+        // The document says the interval and how many began outside it.
+        (code, text, said) = await Run("patterns", session.Path, "--interval", "500:2000", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement root = JsonDocument.Parse(text).RootElement;
+        Assert.Equal((500L, 2_000L), (root.GetProperty("interval").GetProperty("startTicks").GetInt64(),
+            root.GetProperty("interval").GetProperty("endTicks").GetInt64()));
+        Assert.True(root.GetProperty("outsideInterval").GetInt64() > 0);
+        (code, text, _) = await Run("patterns", session.Path, "--json");
+        Assert.Equal((JsonValueKind.Null, 0L), (JsonDocument.Parse(text).RootElement.GetProperty("interval").ValueKind,
+            JsonDocument.Parse(text).RootElement.GetProperty("outsideInterval").GetInt64()));
+    }
+
     [Fact(DisplayName = "R18: icat patterns refuses a rank it does not have, a limit beside a pattern, and a policy or limit it does not know")]
     public async Task IcatPatternsRefusesWhatItCannotList()
     {
@@ -153,10 +190,13 @@ public sealed class PatternsCommandTests
             (["--pattern", "0"], "--pattern names a pattern by its rank, 1 for the heaviest; '0' is not one."),
             (["--pattern", "6"], "--pattern 6 names no pattern: the session has 5 recurring patterns; --all counts those that occurred once."),
             (["--pattern", "9", "--all"], "--pattern 9 names no pattern: the session has 8 patterns."),
+            (["--pattern", "2", "--interval", "500:2000"], "--pattern 2 names no pattern: the interval holds 1 recurring pattern."),
             (["--pattern", "1", "--limit", "2"], "--limit lists patterns and --pattern shows one; pass one of them."),
             (["--limit", "0"], "--limit expects a number of patterns of 1 or more; '0' is not one."),
             (["--evidence-policy", "2"], "--evidence-policy expects one of: DirectOnly, IncludeCorrelated, IncludeCandidates, "
                 + "AllIncludingConflicting. '2' is not one."),
+            (["--interval", "2000:500"], "--interval names no interval: start:end, each bound a count of 100-nanosecond session "
+                + "ticks or a time with its unit, such as 1.5s, 250ms or 40us, with its end after its start."),
         })
         {
             (InterCatExitCode code, _, string said) = await Run(["patterns", session.Path, .. args]);

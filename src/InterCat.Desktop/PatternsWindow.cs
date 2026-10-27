@@ -47,6 +47,7 @@ internal sealed class PatternsWindow : Window, IDisposable
     private readonly Guid expectedSessionId;
     private readonly long expectedGeneration;
     private readonly EvidencePolicy policy;
+    private readonly TimeRange? interval;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock coverage = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11 };
@@ -72,12 +73,19 @@ internal sealed class PatternsWindow : Window, IDisposable
     private string? unshown;
 
     /// <param name="policy">The evidence policy InterCat's window counts under, so the two count alike.</param>
-    public PatternsWindow(string path, Guid expectedSessionId, long expectedGeneration, EvidencePolicy policy)
+    /// <param name="interval">
+    /// InterCat's window's time scope, in presentation ticks, whose connections, flows and calls alone make the patterns
+    /// listed; none for the whole session.
+    /// </param>
+    /// <param name="clock">InterCat's window's clock, which says the interval as that window says its time scope.</param>
+    public PatternsWindow(string path, Guid expectedSessionId, long expectedGeneration, EvidencePolicy policy,
+        TimeRange? interval = null, SessionClock? clock = null)
     {
         this.path = path;
         this.expectedSessionId = expectedSessionId;
         this.expectedGeneration = expectedGeneration;
         this.policy = policy;
+        this.interval = interval;
         Title = "InterCat · Recurring patterns";
         Width = 1_000;
         Height = 700;
@@ -87,8 +95,10 @@ internal sealed class PatternsWindow : Window, IDisposable
 
         var scope = new TextBlock
         {
-            Text = "What recurs in this session's communication, the heaviest first · all session times (a time brush does not "
-                + "narrow this list)",
+            Text = interval is { } scoped
+                ? "What recurs in this session's communication over the window's time scope, the heaviest first · "
+                    + ComparisonText.Interval(scoped, clock, CultureInfo.CurrentCulture)
+                : "What recurs in this session's communication, the heaviest first · all session times",
             TextWrapping = TextWrapping.Wrap,
             FontWeight = FontWeight.SemiBold,
         };
@@ -96,7 +106,7 @@ internal sealed class PatternsWindow : Window, IDisposable
         AutomationProperties.SetName(status, "Patterns status");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(coverage, "What the capture covered");
-        var note = new TextBlock { Text = PatternText.Note, TextWrapping = TextWrapping.Wrap, FontSize = 11 };
+        var note = new TextBlock { Text = PatternText.Note(interval), TextWrapping = TextWrapping.Wrap, FontSize = 11 };
         AutomationProperties.SetName(apart, "What no pattern holds");
 
         // A pattern reads by its signature, then by how often it occurred and who took part, each wrapping within the list
@@ -215,7 +225,7 @@ internal sealed class PatternsWindow : Window, IDisposable
 
             // A folder that now holds another session is refused as every read of the workspace's is.
             PatternReading read = await Task.Run(() => CommunicationPatterns.Read(
-                SharedSessionStores.Open(path, expectedSessionId), policy, token), token);
+                SharedSessionStores.Open(path, expectedSessionId), policy, interval, token), token);
             if (closed) return;
             if (read.Generation < expectedGeneration)
             {
@@ -293,10 +303,12 @@ internal sealed class PatternsWindow : Window, IDisposable
     private void ShowSelected()
     {
         PatternRow? row = patterns.SelectedItem as PatternRow;
-        string? none = loading ? Reading : unshown ?? (reading?.Patterns.Count == 0 ? "This session holds no pattern." : null);
+        string? none = loading ? Reading : unshown
+            ?? (reading?.Patterns.Count == 0 ? (interval is null ? "This session" : "The interval") + " holds no pattern." : null);
         bool anyOnce = reading?.Patterns.Any(pattern => !pattern.Recurring) == true;
         Offering.Offer(once,
-            none ?? (anyOnce ? null : "Every pattern in this session occurred more than once, so the list holds them all."),
+            none ?? (anyOnce ? null : "Every pattern in " + (interval is null ? "this session" : "the interval")
+                + " occurred more than once, so the list holds them all."),
             "List the patterns that occurred only once as well, after those that recur");
         ProcessInstanceId[] processes = row is null ? [] : Processes(row.Pattern);
         choose.Content = processes.Length == 1 ? "Go to its process" : "Select its processes";

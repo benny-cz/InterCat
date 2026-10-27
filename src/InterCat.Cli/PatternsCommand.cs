@@ -33,6 +33,7 @@ internal static class PatternsCommand
         string? limitText = command.TakeOption("--limit");
         string? rankText = command.TakeOption("--pattern");
         string? policyText = command.TakeOption("--evidence-policy");
+        string? intervalText = command.TakeOption("--interval");
         bool all = command.TryTakeFlag("--all");
         bool json = command.TryTakeFlag("--json");
         string? directory = command.TakePositional();
@@ -78,6 +79,18 @@ internal static class PatternsCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        // An interval keeps the patterns to the connections, flows and calls that began in it (`patterns-v1` §1).
+        TimeRange? interval = null;
+        if (intervalText is not null)
+        {
+            interval = TickInterval.Read(intervalText, out string? tooWide);
+            if (interval is null)
+            {
+                ConsoleUi.Failure(tooWide ?? "--interval names no interval: " + TickInterval.Takes + ".");
+                return InterCatExitCode.InvalidInvocation;
+            }
+        }
+
         string path = Path.GetFullPath(directory);
         if (!Directory.Exists(path))
         {
@@ -89,7 +102,8 @@ internal static class PatternsCommand
         PatternReading reading;
         try
         {
-            reading = CommunicationPatterns.Read(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), policy, cancellationToken);
+            reading = CommunicationPatterns.Read(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), policy, interval,
+                cancellationToken);
         }
         catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
@@ -101,7 +115,8 @@ internal static class PatternsCommand
         CommunicationPattern[] shown = [.. reading.Patterns.Where(pattern => all || pattern.Recurring)];
         if (rank is { } one && one > shown.Length)
         {
-            ConsoleUi.Failure(string.Create(CultureInfo.CurrentCulture, $"--pattern {one} names no pattern: the session has ")
+            ConsoleUi.Failure(string.Create(CultureInfo.CurrentCulture, $"--pattern {one} names no pattern: ")
+                + (reading.Interval is null ? "the session has " : "the interval holds ")
                 + CountText.Of(shown.Length, all ? "pattern" : "recurring pattern", all ? "patterns" : "recurring patterns")
                 + (all || shown.Length == reading.Patterns.Count ? "." : "; --all counts those that occurred once."));
             return InterCatExitCode.InvalidInvocation;
@@ -150,6 +165,8 @@ internal static class PatternsCommand
         reading.DynamicFlows,
         reading.CallsWithoutInterface,
         reading.NotAdmitted,
+        Interval = reading.Interval is { } read ? new { read.StartTicks, read.EndTicks } : null,
+        reading.OutsideInterval,
         Listed = listed.Select(pattern => new
         {
             Rank = rank ?? Rank(shown, pattern),
@@ -201,6 +218,11 @@ internal static class PatternsCommand
         ConsoleUi.Heading("Communication patterns");
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Generation", reading.Generation.ToString(culture));
+        if (reading.Interval is { } interval)
+        {
+            ConsoleUi.Field("Interval", ComparisonText.Interval(interval, null, culture) + ", what began in it alone");
+        }
+
         if (reading.Span is { } span)
         {
             ConsoleUi.Field("Spread over", ComparisonText.Interval(span, null, culture) + ", in tenths");
@@ -235,7 +257,8 @@ internal static class PatternsCommand
                 $"{shown.Length - listed.Length:N0} more, lighter; --limit {shown.Length:N0} lists every one."));
         }
 
-        ConsoleUi.Note(PatternText.Note + " --pattern <rank> says what a pattern's signature is made of and lists every participant.");
+        ConsoleUi.Note(PatternText.Note(reading.Interval)
+            + " --pattern <rank> says what a pattern's signature is made of and lists every participant.");
         Apart(reading);
     }
 
@@ -283,13 +306,15 @@ internal static class PatternsCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat patterns <session-directory> [--limit <n> | --pattern <rank>] [--all]");
-        ConsoleUi.Line("              [--evidence-policy <policy>] [--json]");
+        ConsoleUi.Line("              [--interval <start:end>] [--evidence-policy <policy>] [--json]");
         ConsoleUi.Line("  The session's recurring communication patterns: every TCP connection the capture saw open, UDP");
         ConsoleUi.Line("  flow and RPC call grouped by its mechanism, its service port or RPC interface and procedure,");
         ConsoleUi.Line("  and where its server end is - never by a process, address or time - the heaviest first, with");
         ConsoleUi.Line("  who took part as a client and as a server and in how many tenths of the session it occurred.");
         ConsoleUi.Line("  --pattern <rank> says what one pattern's signature is made of and lists every participant.");
         ConsoleUi.Line("  --all lists patterns that occurred once too. --limit lists that many, 20 unless it says so.");
+        ConsoleUi.Line("  --interval keeps them to the connections, flows and calls that began in it, its tenths then the");
+        ConsoleUi.Line("  interval's, and counts those that began outside it.");
         ConsoleUi.Line("  --evidence-policy admits relations and calls as the overview does, IncludeCorrelated unless");
         ConsoleUi.Line("  it says so; --json writes them as a document.");
     }

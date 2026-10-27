@@ -323,3 +323,11 @@ M12's exit gate is met. Every implementation item and deliverable of plan M12 is
 window, and every exit test holds by the tests named above. The limits listed are limits of what M12 claims, each said
 where it applies, not unfinished parts; M12 is complete. Richer sources from M6 to M10, where they come, are optional
 inputs to the same views.
+
+## Addendum, revision 795
+
+Recurring patterns read an interval of a session (`contracts/patterns-v1.md` §1): `icat patterns --interval`, and the
+window's Recurring patterns… over the window's time scope, make the patterns of the connections, flows and calls that
+began in it, spread its tenths over it and count what began outside it apart, so a person reads what recurred in the
+time they are looking at. Of the limits above, patterns no longer read only a whole generation; links and waits still
+do, and none reads two captures. Nothing else above changes.

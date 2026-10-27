@@ -69,7 +69,7 @@ public sealed class PatternsWindowTests
         Assert.Equal("Coverage: covered for TCP and UDP · no other mechanism collected", Named<TextBlock>(window, "What the capture covered").Text);
         Assert.Equal("In no pattern: 2 TCP connections the capture saw open at neither end, so no end of them has a role and 2 UDP "
             + "flows between two dynamic ports, which have no service port.", Named<TextBlock>(window, "What no pattern holds").Text);
-        Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), block => block.Text == PatternText.Note);
+        Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), block => block.Text == PatternText.Note(null));
 
         // The heaviest has the keyboard, and a screen reader hears each row whole.
         Dispatch();
@@ -159,6 +159,58 @@ public sealed class PatternsWindowTests
         Dispatch();
         await Until(() => cancelled.IsCompleted);
         Assert.Null(await cancelled);
+        owner.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "P6: over InterCat's window's time scope, the patterns window lists what began in it alone, spread over its tenths, and counts what began outside it")]
+    public async Task TheWindowKeepsToTheTimeScope()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = PatternRows();
+        Publish(session.Store, rows, fields: fields, coverage: TransportLedger(tcp: true, udp: true));
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var interval = new TimeRange(500, 2_000);
+        SessionClock clock = SessionClock.Wall(new SessionWallClock(0, new DateTimeOffset(2026, 10, 27, 12, 0, 0, TimeSpan.Zero), null, 200),
+            TimeZoneInfo.Utc, interval);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        using (var window = new PatternsWindow(session.Path, overview.SessionId, overview.Generation, EvidencePolicy.IncludeCorrelated,
+            interval, clock))
+        {
+            _ = window.ShowDialog<PatternChoice?>(owner);
+            ListBox list = Named<ListBox>(window, "Recurring communication patterns. Enter selects the chosen pattern's processes.");
+            await Until(() => list.ItemCount > 0);
+
+            // The scope is said on InterCat's window's clock, here the wall clock; the browsers' first two connections alone
+            // make the local pattern, spread over the interval's tenths, and the rest began outside it, which is counted.
+            Assert.Equal("What recurs in this session's communication over the window's time scope, the heaviest first · "
+                + ComparisonText.Interval(interval, clock, CultureInfo.CurrentCulture), Starting(window, "What recurs").Text);
+            Assert.Contains("12:00:00", Starting(window, "What recurs").Text, StringComparison.Ordinal);
+            Assert.Equal(["1. TCP at port 8080 here · 2 connections · clients: 2 processes of 1 program · servers: 1 process of 1 "
+                + "program · in 2 of 10 tenths"], list.Items.Select(item => item?.ToString()));
+            Assert.Equal("Occurred: 2 connections, the first beginning at " + WorkspaceTime.FormatInstant(1_000, interval.SpanTicks,
+                CultureInfo.CurrentCulture) + " and the last at " + WorkspaceTime.FormatInstant(1_100, interval.SpanTicks,
+                CultureInfo.CurrentCulture) + ", in 2 of the interval's 10 tenths", Starting(window, "Occurred: ").Text);
+            Assert.Equal("In no pattern: 20 connections, flows and calls that began outside the interval.",
+                Named<TextBlock>(window, "What no pattern holds").Text);
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), block => block.Text == PatternText.Note(interval));
+            Assert.Equal("Every pattern in the interval occurred more than once, so the list holds them all.", Offers.WhyNot(Once(window)));
+            window.Close();
+        }
+
+        // An interval nothing began in holds no pattern, which the window says of the interval.
+        using (var window = new PatternsWindow(session.Path, overview.SessionId, overview.Generation, EvidencePolicy.IncludeCorrelated,
+            new TimeRange(20_000, 30_000), clock))
+        {
+            _ = window.ShowDialog<PatternChoice?>(owner);
+            await Until(() => Named<TextBlock>(window, "Patterns status").Text?.StartsWith("Generation", StringComparison.Ordinal) == true);
+            Assert.StartsWith("The interval holds no pattern: ", Starting(window, "The interval").Text, StringComparison.Ordinal);
+            Assert.Equal("The interval holds no pattern.", Offers.WhyNot(Labelled(window, SelectThem)));
+            Assert.EndsWith(" connections, flows and calls that began outside the interval.",
+                Named<TextBlock>(window, "What no pattern holds").Text, StringComparison.Ordinal);
+            window.Close();
+        }
+
         owner.Close();
     }
 
@@ -304,9 +356,25 @@ public sealed class PatternsWindowTests
             Assert.Equal("List what recurs in this session's communication - each service, port and RPC procedure, the heaviest "
                 + "first, with who took part - and select a pattern's processes.", ToolTip.GetTip(button));
 
-            // The local pattern's three processes become the selection together, and the graph has the keyboard.
+            // Over a time scope, the list keeps to what began in it, said on the window's clock; let go, it is the session's.
+            var scope = new TimeRange(500, 2_000);
+            workspace.SelectInterval(scope);
+            await workspace.IntervalReady;
+            Dispatch();
             PatternsWindow patterns = Opened(window, button);
             ListBox list = Named<ListBox>(patterns, "Recurring communication patterns. Enter selects the chosen pattern's processes.");
+            await Until(() => list.ItemCount > 0);
+            Assert.Equal("What recurs in this session's communication over the window's time scope, the heaviest first · "
+                + ComparisonText.Interval(scope, workspace.TimeBase, CultureInfo.CurrentCulture), Starting(patterns, "What recurs").Text);
+            Assert.Equal(["tcp:here:8080"], list.Items.Cast<PatternRow>().Select(row => row.Pattern.Key));
+            patterns.Close();
+            await Until(() => window.OwnedWindows.Count == 0);
+            workspace.ClearSelection();
+            Assert.Null(workspace.ScopeInterval);
+
+            // The local pattern's three processes become the selection together, and the graph has the keyboard.
+            patterns = Opened(window, button);
+            list = Named<ListBox>(patterns, "Recurring communication patterns. Enter selects the chosen pattern's processes.");
             await Until(() => list.ItemCount > 0);
             list.SelectedIndex = 1;
             Labelled(patterns, SelectThem).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

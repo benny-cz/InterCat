@@ -1,14 +1,14 @@
 # InterCat communication patterns v1
 
 Status: **implemented** on the command line (`icat patterns`, revision 763) and in the window (Recurring patterns…,
-revision 764, §7).
+revision 764, §7), over an interval of a session since revision 795 (§1).
 
 This contract fixes plan M12's recurring communication patterns - its explainable pattern groups - for one session's
-current generation: every TCP connection the capture saw open, every UDP flow and every RPC call, each grouped by a
-structural signature, with who took part in each role and how far through the session it recurred. It owns no bytes:
-every occurrence is read from the generation's published segments through the derivations the overview already makes
-(`relations-v1`, `operations-v1`, `entities-v1`), and reading patterns changes none of them. ADR-064 records the
-decisions.
+current generation, or what began in an interval of it: every TCP connection the capture saw open, every UDP flow and
+every RPC call, each grouped by a structural signature, with who took part in each role and how far through the
+session, or the interval, it recurred. It owns no bytes: every occurrence is read from the generation's published
+segments through the derivations the overview already makes (`relations-v1`, `operations-v1`, `entities-v1`), and
+reading patterns changes none of them. ADR-064 records the decisions.
 
 ## 1. A request
 
@@ -16,6 +16,11 @@ decisions.
   generation, read again where a newer one was published between them.
 - An **evidence policy**, `IncludeCorrelated` by default, which admits a relation by its strength and a call by its
   process binding as the overview admits them; what it does not admit is counted apart (§4).
+- An **interval**, optionally, in presentation ticks (since revision 795): the patterns are then made of the
+  connections, flows and calls that began in it, a connection or flow where its first record was raised and a call at
+  its start, or at its stop where no start was recorded. One that began outside it is counted apart (§4) and nothing
+  else of it is read, so none is counted twice; one that began before it and ran on into it began outside it. Its
+  tenths are then the interval's (§3).
 
 ## 2. Signatures
 
@@ -48,7 +53,7 @@ A pattern is one signature with the occurrences that share it:
 | Weight | Its occurrences, or of RPC the more of its calls made and served: what it is ranked by. |
 | Clients, servers | Each end in that role, with how many occurrences it took part in, the most first, then processes before hosts and the end no record holds, each in ordinal order. |
 | First, last | When its first and last occurrences began, in presentation ticks: a connection or flow by its first record, a call by its start. |
-| Tenths | In how many of ten equal parts of the session an occurrence began: of its recording where its capture recorded a stop, else of the span of its records; one before or after it in the nearest part. |
+| Tenths | In how many of ten equal parts of the session an occurrence began: of the interval where one was asked for (§1), else of its recording where its capture recorded a stop, else of the span of its records; one before or after it in the nearest part. |
 | Recurring | Whether its weight is more than one. |
 
 Patterns are ranked by weight, then by signature in ordinal order. A pattern is explained by its mechanism: what its
@@ -62,6 +67,9 @@ No occurrence is dropped silently: what no pattern holds is counted, each by why
 - **UDP flows between two dynamic ports**: they have no service port.
 - **RPC calls no recorded start named an interface for**: their start was not recorded, or named none.
 - **What the evidence policy did not admit**: relations by their strength, calls by their process's binding.
+- **What began outside the interval**, where one was asked for (§1): counted there alone, before its evidence policy
+  or roles are read, so every connection, flow and call is in a pattern, counted apart for one reason, or outside the
+  interval, never two of them.
 
 Absence is never stated as none: each mechanism's coverage over the session is stated beside the patterns (R21), so a
 mechanism the capture did not collect is not read as one nothing used.
@@ -76,16 +84,23 @@ record holds - and its tenths. It states the session's span, each mechanism's co
 how many occurred once, and what no pattern holds. `--all` lists those that occurred once too. A session holding no
 pattern says so: none at all, or none the evidence policy admits, the policy named as `--evidence-policy` takes it.
 
+`--interval <start:end>` reads the patterns over an interval (§1, since revision 795), each bound a count of
+100-nanosecond session ticks or a time with its unit, as every command that takes an interval reads one. The list then
+states the interval, spreads the tenths over it and counts what began outside it with what no pattern holds; an
+interval holding none says so of the interval, and a rank past those it holds is refused in its words. An interval
+whose end is not after its start is refused.
+
 `--pattern <rank>` shows one: its signature as a key, what it is made of, when it occurred, and every participant in
 each role with its occurrences, a process named as the overview names it and with the program it ran. A rank past
 those listed is refused, as are `--pattern` beside `--limit`, a limit below one and a policy not named.
 
-`--json` writes `communication-patterns-v1`: the session, its generation and policy; its span and the ten parts; each
-mechanism's coverage; how many patterns there are, recur and occurred once, and whether those listed include them;
-what is counted apart (§4); and each pattern listed with its rank, key, mechanism, place, port, interface and its
-documented name, procedure, signature in words, explanation, occurrences, served, first and last ticks, tenths, and
-its clients and servers - each with its kind (`Process`, `Host` or `UnseenEnd`), instance, PID, name and program, or
-address, and its occurrences.
+`--json` writes `communication-patterns-v1`: the session, its generation and policy; additively since revision 795,
+the interval read, as its start and end ticks or null, and how many connections, flows and calls began outside it; its
+span and the ten parts; each mechanism's coverage; how many patterns there are, recur and occurred once, and whether
+those listed include them; what is counted apart (§4); and each pattern listed with its rank, key, mechanism, place,
+port, interface and its documented name, procedure, signature in words, explanation, occurrences, served, first and
+last ticks, tenths, and its clients and servers - each with its kind (`Process`, `Host` or `UnseenEnd`), instance,
+PID, name and program, or address, and its occurrences.
 
 ## 6. One generation
 
@@ -95,9 +110,13 @@ them, they are read again, up to three times, and then refused with a reason rat
 ## 7. The window
 
 Recurring patterns…, among the actions beside the graph, is offered for a session at any rung but its source records.
-It reads the session's current generation under the window's evidence policy and says it in the command line's words
-(R18):
+It reads the session's current generation under the window's evidence policy, over the window's time scope (plan §6.4)
+where it has one, and says it in the command line's words (R18):
 
+- **The scope.** Above the list, what it reads over (since revision 795): the window's time scope, the brushed
+  interval or the visible range while the timeline is zoomed, said on the window's clock, its tenths then the
+  interval's and what began outside it counted with what no pattern holds; or all session times. Before it, the list
+  read the whole session whatever the scope.
 - **The list.** The recurring patterns, the heaviest first, each by its rank and its signature in words, then how many
   times it occurred, its clients and servers counted and its tenths. *Include those that occurred once* lists those
   after them, the chosen pattern staying chosen.
@@ -121,6 +140,6 @@ interface between its two ends, so marking it would claim more than the pattern 
 
 - **Other mechanisms' patterns**: HTTP exchanges, named pipes and ALPC ports, whose structural signatures need their
   own normalization (plan M12's source-specific normalization).
-- **Patterns over an interval**, or across captures; a reading is of a whole generation.
-- **Periodicity.** Tenths say how far through the session a pattern recurred, never at what interval: no period is
-  inferred from the times its occurrences began.
+- **Patterns across captures**: a reading is of one generation, whole or over one interval of it (§1).
+- **Periodicity.** Tenths say how far through the session, or the interval read, a pattern recurred, never how often:
+  no period is inferred from the times its occurrences began.

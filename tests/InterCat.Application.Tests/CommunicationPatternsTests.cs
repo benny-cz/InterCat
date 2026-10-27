@@ -102,6 +102,49 @@ public sealed class CommunicationPatternsTests
             + direct.DynamicFlows + direct.NotAdmitted);
     }
 
+    [Fact(DisplayName = "P6: patterns read over an interval group what began in it alone, spread over its tenths, and count what began outside it")]
+    public void PatternsReadOverAnInterval()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = PatternRows();
+        Publish(session.Store, rows, fields: fields, coverage: TransportLedger(tcp: true, udp: true));
+        PatternReading whole = CommunicationPatterns.Read(session.Store);
+        Assert.Equal(((TimeRange?)null, 0L), (whole.Interval, whole.OutsideInterval));
+
+        // Over the browsers' first two connections: they alone make the local pattern, spread over the interval's tenths.
+        var interval = new TimeRange(500, 2_000);
+        PatternReading read = CommunicationPatterns.Read(session.Store, interval: interval);
+        Assert.Equal((interval, interval), (read.Interval, read.Span));
+        CommunicationPattern local = read.Patterns.Single(pattern => pattern.Key == "tcp:here:8080");
+        Assert.Equal((2L, 1_000L, 1_100L), (local.Occurrences, local.FirstTicks, local.LastTicks));
+        Assert.Equal((3, 4), (CommunicationPatterns.PartOf(interval, 1_000), CommunicationPatterns.PartOf(interval, 1_100)));
+        Assert.Equal(2, local.Tenths);
+        Assert.All(read.Patterns.SelectMany(pattern => new[] { pattern.FirstTicks, pattern.LastTicks }),
+            at => Assert.True(at is null || interval.Contains(at.Value)));
+
+        // Every connection, flow and call is in a pattern, counted apart, or began outside the interval: none is lost.
+        Assert.True(read.OutsideInterval > 0);
+        Assert.Equal(Items(whole), Items(read) + read.OutsideInterval);
+
+        // An interval nothing began in holds no pattern, and says so, counting all of it outside.
+        PatternReading empty = CommunicationPatterns.Read(session.Store, interval: new TimeRange(-2_000, -1_000));
+        Assert.Empty(empty.Patterns);
+        Assert.Equal(Items(whole), empty.OutsideInterval);
+        Assert.StartsWith("The interval holds no pattern: ", PatternText.None(empty), StringComparison.Ordinal);
+        Assert.EndsWith(" connections, flows and calls that began outside the interval.", PatternText.Apart(empty, System.Globalization.CultureInfo.InvariantCulture),
+            StringComparison.Ordinal);
+        Assert.StartsWith("This session holds no pattern", PatternText.None(whole), StringComparison.Ordinal);
+
+        // Under a narrower evidence policy, what began outside the interval is counted there alone, never as unadmitted too.
+        PatternReading direct = CommunicationPatterns.Read(session.Store, EvidencePolicy.DirectOnly);
+        PatternReading before = CommunicationPatterns.Read(session.Store, EvidencePolicy.DirectOnly, new TimeRange(-2_000, -1_000));
+        Assert.True(direct.NotAdmitted > 0);
+        Assert.Equal((0L, Items(direct)), (before.NotAdmitted, before.OutsideInterval));
+
+        static long Items(PatternReading reading) => reading.Patterns.Sum(pattern => pattern.Occurrences + pattern.Served)
+            + reading.UnopenedConnections + reading.DynamicFlows + reading.CallsWithoutInterface + reading.NotAdmitted;
+    }
+
     [Fact(DisplayName = "R21: a pattern's signature and what it leaves out are said in words, and a UDP flow's service port is the one outside the dynamic range")]
     public void APatternIsExplained()
     {
