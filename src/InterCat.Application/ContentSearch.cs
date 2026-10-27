@@ -51,12 +51,12 @@ public sealed record ContentSearchRequest
 /// around that.
 /// </summary>
 /// <param name="Matches">
-/// How many times its bytes hold the text, none overlapping another across its HTTP part: a match the seam with the buffer
+/// How many times its bytes hold the text, none overlapping another across its HTTP part: a match the seam with the buffers
 /// before it splits among them.
 /// </param>
 /// <param name="FirstAt">
-/// Where its first match begins in its kept bytes; negative where that match began in the buffer before it in its HTTP
-/// part, that many bytes before its first byte.
+/// Where its first match begins in its kept bytes; negative where that match began earlier in its HTTP part, in the
+/// buffers kept whole right before it, that many bytes before its first byte.
 /// </param>
 public sealed record ContentSearchHit(
     string Segment,
@@ -192,9 +192,9 @@ public sealed class ContentSearchContinuation
 
 /// <summary>
 /// Searches a session's kept content for a text, only when a person asks (`contracts/content-v1.md` §4): only the bytes
-/// kept with consent to inspect them, each record's on its own and a buffer of an HTTP part with the end of the buffer
-/// before it, within a budget of bytes and time and a number of records listed, saying what it did not read. It is exact
-/// within the bytes it reads together; a match split across any other two records, or across what was not kept, is not
+/// kept with consent to inspect them, each record's on its own and a buffer of an HTTP part with the buffers kept whole
+/// right before it, within a budget of bytes and time and a number of records listed, saying what it did not read. It is
+/// exact within the bytes it reads together; a match split across any other records, or across what was not kept, is not
 /// found, and a record whose message was cut is searched in the bytes kept. Nothing it finds is kept, and it shows no byte
 /// unless previews are asked for.
 /// </summary>
@@ -211,19 +211,19 @@ public static class ContentSearch
 
     /// <summary>The sentence every search's answer carries about what it can and cannot find.</summary>
     public const string Exactness = "Each record's kept bytes are searched on their own, and a buffer of an HTTP part with the "
-        + "end of the buffer before it where that one was kept whole; a match split across any other two records, or across "
-        + "what was not kept, is not found, and a record whose message was cut is searched in the bytes kept.";
+        + "buffers kept whole right before it in the part; a match split across any other records, or across what was not "
+        + "kept, is not found, and a record whose message was cut is searched in the bytes kept.";
 
     /// <summary>
-    /// Where a record's first match begins, in words: at a byte of its own, or that many bytes before it, in the buffer
-    /// before it in its HTTP part.
+    /// Where a record's first match begins, in words: at a byte of its own, or that many bytes before it in its HTTP part,
+    /// in the buffers kept whole right before it.
     /// </summary>
     public static string FirstAtText(ContentSearchHit hit, CultureInfo culture)
     {
         ArgumentNullException.ThrowIfNull(hit);
         return hit.FirstAt >= 0
             ? string.Create(culture, $"byte {hit.FirstAt:N0}")
-            : CountText.Of(-hit.FirstAt, "byte") + " before it, in the buffer before it in its part";
+            : CountText.Of(-hit.FirstAt, "byte") + " before it in its part";
     }
 
     /// <summary>
@@ -428,9 +428,9 @@ public static class ContentSearch
                     bool wide = entry.Fragment.Encoding == ContentEncodingV1.Utf16LittleEndian;
                     byte[] pattern = wide ? utf16 : utf8;
 
-                    // A buffer of an HTTP part is searched with the end of the buffer before it, where that one was kept
-                    // whole and read here: a match the seam splits is this buffer's, begun before its first byte, and its
-                    // own are counted after that one, so no two overlap across the part.
+                    // A buffer of an HTTP part is searched with the end of the buffers right before it, where each was
+                    // kept whole and read here: a match the seam splits is this buffer's, begun before its first byte, and
+                    // its own are counted after that one, so no two overlap across the part.
                     PartPlace? place = null;
                     if (row.Mechanism == Mechanism.Http)
                     {
@@ -454,10 +454,11 @@ public static class ContentSearch
 
                     if (place is { } here)
                     {
-                        // A part ends at the buffer flagged its last, so only the parts still open keep an end.
+                        // A part ends at the buffer flagged its last, so only the parts still open keep an end. A buffer
+                        // that follows the end kept adds to it, so a text too long for it may still end in a buffer after it.
                         if ((here.Flags & 2) != 0) seams.Remove(here.Part);
-                        else seams[here.Part] = new(here.Sequence, entry.Fragment.Disposition == ContentDispositionV1.Whole, wide, kept,
-                            end, bytes[^Math.Min(bytes.Length, pattern.Length + PreviewBytes)..]);
+                        else seams[here.Part] = Seam.After(before, here.Sequence, entry.Fragment.Disposition == ContentDispositionV1.Whole,
+                            wide, bytes, across > 0 || matches > 0 ? end : null, pattern.Length + PreviewBytes);
                     }
 
                     if (across > 0)
@@ -553,13 +554,13 @@ public static class ContentSearch
 
     /// <summary>
     /// How many bytes before <paramref name="bytes"/>' first byte a match the seam with <paramref name="before"/> splits
-    /// began, or -1 where none does: one that begins after the last match counted in the buffer before and ends in
+    /// began, or -1 where none does: one that begins after the last match counted in the buffers before and ends in
     /// <paramref name="bytes"/>. Every match in the bytes either side of the seam, each shorter than the text, spans it.
     /// </summary>
     private static int Across(Seam before, byte[] bytes, byte[] pattern, bool ignoreCase, bool wide)
     {
         int span = pattern.Length - (wide ? 2 : 1);
-        int tail = before.Kept - Math.Max(before.End, before.Kept - span);
+        int tail = Math.Min(before.Free, span);
         int head = Math.Min(bytes.Length, span);
         if (tail <= 0 || head <= 0)
         {
@@ -593,12 +594,28 @@ public static class ContentSearch
     }
 
     /// <summary>
-    /// The end of the latest buffer of an open HTTP part the search read: its place, whether it was kept whole, its
-    /// encoding, its length, where its last match counted ends, and its last bytes, enough for a match across its seam
-    /// and the bytes before that match. A part's buffer flagged its last keeps none.
+    /// The end of an open HTTP part the search read: its latest buffer's place, whether that one was kept whole, its
+    /// encoding and length; how many of the last bytes of the buffers read in a row up to it come after the last match
+    /// counted in them; and their last bytes, enough for a match across the seam with the next buffer and the bytes before
+    /// that match. A part's buffer flagged its last keeps none.
     /// </summary>
-    internal sealed record Seam(long Sequence, bool Whole, bool Wide, int Kept, int End, byte[] Tail)
+    internal sealed record Seam(long Sequence, bool Whole, bool Wide, int Kept, int Free, byte[] Tail)
     {
+        /// <summary>
+        /// The end of a part once <paramref name="bytes"/> are read after <paramref name="before"/>, the end of the buffers
+        /// right before them, or after none where they begin a run: how many of the run's last bytes come after its last
+        /// match, the one ending at <paramref name="matchEnd"/> in these bytes where one does, and at most
+        /// <paramref name="keep"/> of its last bytes.
+        /// </summary>
+        public static Seam After(Seam? before, long sequence, bool whole, bool wide, byte[] bytes, int? matchEnd, int keep)
+        {
+            int free = matchEnd is { } ended ? bytes.Length - ended : (before?.Free ?? 0) + bytes.Length;
+            byte[] tail = before is null || bytes.Length >= keep
+                ? bytes[^Math.Min(bytes.Length, keep)..]
+                : [.. before.Tail[^Math.Min(before.Tail.Length, keep - bytes.Length)..], .. bytes];
+            return new(sequence, whole, wide, bytes.Length, Math.Min(free, tail.Length), tail);
+        }
+
         /// <summary>
         /// Whether <paramref name="next"/> is the buffer right after this one in their part, nothing between them missing:
         /// this one kept whole, the next not flagged first, both of one encoding, and in UTF-16 this one ending at a code

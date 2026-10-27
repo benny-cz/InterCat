@@ -287,3 +287,12 @@ counting it, so an answer could say no record held a text while some records' co
 revision the search counts them and both surfaces say so (`contracts/content-v1.md` §4). Every other line run by no
 test is a guard a person cannot reach, a window closed while it reads, or a line the instrumentation counts that holds
 no statement, as the plan's log lists. Nothing else above changes.
+
+## Addendum, revision 800
+
+A search finds a text three or more buffers of one HTTP part split (`contracts/content-v1.md` §4), which lifts the
+limit revision 789's addendum kept, that a match across three buffers was not found. A buffer is searched with the end
+of the buffers before it, as far back as each was kept whole right after the one before, so a buffer shorter than the
+text no longer hides a match running through it, and a part's matches are those one search of its bytes from the start
+finds. Where a match began is said as so many bytes before the record in its part, no longer as in the buffer before
+it, which it need not be. Nothing else above changes.

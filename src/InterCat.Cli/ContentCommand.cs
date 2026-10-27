@@ -692,8 +692,8 @@ internal static class ContentCommand
         ConsoleUi.Line();
         if (result.Hits.Any(hit => hit.FirstAt < 0))
         {
-            ConsoleUi.Note("A record first at \"N B before\" holds a match that began N bytes before its first byte, in the buffer "
-                + "before it in its HTTP part.");
+            ConsoleUi.Note("A record first at \"N B before\" holds a match that began N bytes before its first byte, earlier in "
+                + "its HTTP part.");
         }
 
         ConsoleUi.Note(ContentSearch.Exactness);

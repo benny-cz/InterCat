@@ -626,6 +626,8 @@ Revision 798 runs whole what a coverage pass over revisions 774 to 797 found no 
 
 Revision 799 runs whole what a coverage pass over revisions 752 to 773 found no test ran; its paragraph below says the two gaps it found and what stays untested.
 
+Revision 800 lets a content search find a text three or more buffers of one HTTP part split; its paragraph below says how a part's buffers are joined.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -1870,3 +1872,14 @@ made, while its read runs, which lets the read go; 25 InterCat's window refusing
 offered, a dialog or file picker that fails to open, or itself closed beneath a dialog; 5 guards no caller reaches - a
 format, grouping or row kind out of range, a pattern listed but not shown, and a capture whose segments name no clock;
 and 2 record declarations the instrumentation counts.
+
+Revision 800 lets a content search find a text three or more buffers of one HTTP part split (M8), which revision 789
+left unfound: a buffer was searched with the end of the buffer right before it alone, so a text running through a
+buffer shorter than itself was found nowhere, though a part's buffers are as short as an application's reads of it. A
+buffer is now searched with the end of the run of buffers before it, as far back as each was kept whole, of one
+encoding and right after the one before, the run's end kept as its last bytes and how many of them follow its last
+match. A match is the buffer's it ends in, begun that many bytes before its first byte, and a part's matches are those
+one search of its bytes from the start finds, none overlapping another, which a test checks against such a search over
+parts cut at random, read whole, a record at a time and a match at a time. Where a match began is said as so many
+bytes before the record in its part, no longer as in the buffer before it, which it need not be. A part's start, or a
+buffer not recorded, not kept, cut or of another encoding, still ends the run.

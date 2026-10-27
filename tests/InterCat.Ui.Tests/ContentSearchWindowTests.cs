@@ -311,12 +311,12 @@ public sealed class ContentSearchWindowTests
         }
     }
 
-    [AvaloniaFact(DisplayName = "P2: Find in kept content finds a text two buffers of one HTTP part split, saying it began in the buffer before")]
+    [AvaloniaFact(DisplayName = "P2: Find in kept content finds a text the buffers of one HTTP part split, saying how far before the last it began")]
     public async Task ATextTwoBuffersSplitIsFound()
     {
-        // Exchange 7's request head in two buffers, the host's name split between them.
-        ObservationRowV1[] rows = [Buffer(10, 1), Buffer(11, 2)];
-        string[] buffers = ["GET / HTTP/1.1\r\nHost: exam", "ple.com\r\n\r\n"];
+        // Exchange 7's request head in three buffers, the host's name split across them.
+        ObservationRowV1[] rows = [Buffer(10, 1), Buffer(11, 2), Buffer(12, 3)];
+        string[] buffers = ["GET / HTTP/1.1\r\nHost: ex", "am", "ple.com\r\n\r\n"];
         using var session = new TemporarySession();
         Publish(session.Store, rows,
             fields:
@@ -325,7 +325,7 @@ public sealed class ContentSearchWindowTests
                 {
                     Field(row, SourceField.HttpExchangeId, 7),
                     Field(row, SourceField.ContentBufferSequence, index),
-                    Field(row, SourceField.ContentBufferFlags, index + 1),
+                    Field(row, SourceField.ContentBufferFlags, index == 0 ? 1 : index == rows.Length - 1 ? 2 : 0),
                 }),
             ],
             content: (ContentHeader(64), [.. buffers.Select((buffer, index) => Content(rows[index], Encoding.ASCII.GetBytes(buffer), 64,
@@ -335,7 +335,7 @@ public sealed class ContentSearchWindowTests
         owner.Show();
         try
         {
-            // The later buffer holds it, begun before its first byte, its preview showing both buffers' bytes.
+            // The last buffer holds it, begun before its first byte, its preview showing the three buffers' bytes.
             using var window = new ContentSearchWindow(session.Path, session.Store.SessionId, null, Clock);
             _ = window.ShowDialog(owner);
             Check(window, "Show the bytes around each match");
@@ -343,9 +343,9 @@ public sealed class ContentSearchWindowTests
             Labelled(window, "Find").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => Status(window).Contains("hold", StringComparison.Ordinal));
             ContentSearchRow found = Assert.Single(Rows(window));
-            Assert.Equal(("Holds it once, beginning 4 bytes before it, in the buffer before it in its part",
+            Assert.Equal(("Holds it once, beginning 4 bytes before it in its part",
                 "HTTP/1.1\\x0D\\x0AHost: ⟦example.com⟧\\x0D\\x0A\\x0D\\x0A"), (found.Detail, found.Preview));
-            Assert.Equal("1 record holds it. Searched the kept bytes of 2 records (37 B).", Status(window));
+            Assert.Equal("1 record holds it. Searched the kept bytes of 3 records (37 B).", Status(window));
             window.Close();
         }
         finally

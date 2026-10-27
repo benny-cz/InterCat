@@ -312,7 +312,7 @@ public sealed class ContentSearchTests
         // Process 4242's HTTP buffers, each part's in order: a request head naming the host across its seam; a body naming
         // it whole, then across each of its two seams; a body whose match ends where another would begin across the seam;
         // parts split across a buffer never recorded, a buffer the session's 26-byte record limit cut, a part's end, a
-        // part's start, two parts and three buffers; a UTF-16 body naming it across its seam; bytes that read as the
+        // part's start and two parts; one split across three buffers; a UTF-16 body naming it across its seam; bytes that read as the
         // host's name only across two encodings, or across a UTF-16 buffer that ends inside a code unit; and a body whose
         // later buffer holds "abab" where a match across the seam already took its first two bytes.
         (long Exchange, ushort Event, long Sequence, long Flags, byte[] Bytes, bool Wide)[] buffers =
@@ -351,7 +351,7 @@ public sealed class ContentSearchTests
         // A match the seam splits is the later buffer's, begun before its first byte; one that would overlap a match the
         // buffer before already holds is not counted again; and nothing is found across anything not kept between them.
         ContentSearchResult found = ContentSearch.Find(session.Store, id, new() { Text = "example.com" });
-        Assert.Equal([(2UL, 1, -4), (3UL, 1, 0), (4UL, 1, -3), (5UL, 1, -2), (22UL, 1, -8)],
+        Assert.Equal([(2UL, 1, -4), (3UL, 1, 0), (4UL, 1, -3), (5UL, 1, -2), (20UL, 1, -4), (22UL, 1, -8)],
             found.Hits.Select(hit => (hit.Observation.RawRecordOrdinal, hit.Matches, hit.FirstAt)));
         Assert.Equal((28, 293L), (found.RecordsRead, found.BytesRead));
         Assert.Equal(found.Hits.Select(hit => hit.Observation.RawRecordOrdinal),
@@ -387,11 +387,127 @@ public sealed class ContentSearchTests
         Assert.Equal(new ContentPreview("HTTP/1.1\\x0D\\x0AHost: ", "example.com", "\\x0D\\x0A\\x0D\\x0A"), previewed[0].Preview);
         Assert.Equal(new ContentPreview("example.com and ", "example.com", ", ex"), previewed[2].Preview);
         Assert.Equal(new ContentPreview("Host: ", "example.com", string.Empty), previewed[4].Preview);
-        Assert.Equal(("byte 0", "4 bytes before it, in the buffer before it in its part"),
+        Assert.Equal(("byte 0", "4 bytes before it in its part"),
             (ContentSearch.FirstAtText(previewed[1], CultureInfo.InvariantCulture), ContentSearch.FirstAtText(previewed[0], CultureInfo.InvariantCulture)));
 
         static byte[] A(string text) => Encoding.ASCII.GetBytes(text);
         static byte[] W(string text) => Encoding.Unicode.GetBytes(text);
+    }
+
+    [Fact(DisplayName = "P2: a content search finds a text however many buffers of one HTTP part split it, as one search of the part's bytes would, read on or not")]
+    public void ASearchFindsATextManyBuffersSplit()
+    {
+        // Process 4242's HTTP parts, each a text cut at random places into buffers of one to seven bytes, or in UTF-16 of
+        // one to four code units. "abcab" overlaps itself, so where each match begins hangs on every match before it in its
+        // part. Beside them, the host's name split across four buffers; across three, the second flagged a part's first;
+        // and across three, the second in another encoding.
+        var random = new Random(800);
+        (string Text, bool Wide)[] parts =
+        [
+            ("xxabcabcabxabcabcabcabxxxabcab abcabcab", false), ("abcababcababcabcabxabc abcab", false),
+            ("ABCABcabcAbCab abcab, abcabcabcab", false), ("abcabcabcabcabcab, abcab", true), ("x abcabcab ABCAB abcab", true),
+        ];
+        var buffers = new List<(long Exchange, long Sequence, long Flags, byte[] Bytes, bool Wide)>();
+        for (int part = 0; part < parts.Length; part++)
+        {
+            byte[] bytes = Encoded(parts[part].Text, parts[part].Wide);
+            var cut = new List<byte[]>();
+            for (int at = 0; at < bytes.Length; at += cut[^1].Length)
+            {
+                cut.Add(bytes[at..Math.Min(bytes.Length, at + (parts[part].Wide ? 2 * random.Next(1, 5) : random.Next(1, 8)))]);
+            }
+
+            buffers.AddRange(cut.Select((buffer, index) =>
+                ((long)part + 1, (long)index, (index == 0 ? 1L : 0) | (index == cut.Count - 1 ? 2L : 0), buffer, parts[part].Wide)));
+        }
+
+        buffers.AddRange(
+        [
+            (9, 0, 1, Encoded("Host: ex", false), false), (9, 1, 0, Encoded("am", false), false), (9, 2, 0, Encoded("pl", false), false),
+            (9, 3, 2, Encoded("e.com", false), false),
+            (10, 0, 1, Encoded("Host: ex", false), false), (10, 1, 1, Encoded("am", false), false), (10, 2, 2, Encoded("ple.com", false), false),
+            (11, 0, 1, Encoded("Host: ex", false), false), (11, 1, 0, Encoded("am", true), true), (11, 2, 2, Encoded("ple.com", false), false),
+        ]);
+        ObservationRowV1[] rows = [.. buffers.Select((buffer, index) => Http(10 + index, 2004, (ulong)index + 1))];
+        using var session = new TemporarySession();
+        Publish(session.Store, rows,
+            fields:
+            [
+                .. buffers.SelectMany((buffer, index) => new[]
+                {
+                    Field(rows[index], SourceField.HttpExchangeId, buffer.Exchange),
+                    Field(rows[index], SourceField.ContentBufferSequence, buffer.Sequence),
+                    Field(rows[index], SourceField.ContentBufferFlags, buffer.Flags),
+                }),
+            ],
+            content: (ContentHeader(64), [.. buffers.Select((buffer, index) => Content(rows[index], buffer.Bytes, 64,
+                buffer.Wide ? ContentEncodingV1.Utf16LittleEndian : ContentEncodingV1.Binary))]));
+        session.Store.ReleaseSegmentReaders();
+        Guid id = session.Store.SessionId;
+
+        // Each record holds the matches that end in it as one search of its part's bytes from the start finds them, none
+        // overlapping another, its first begun where that search began it; read on a record at a time, or a match at a
+        // time, the search finds the same.
+        foreach (ContentSearchRequest request in new ContentSearchRequest[] { new() { Text = "abcab" }, new() { Text = "ABCAB", IgnoreCase = true } })
+        {
+            var expected = new List<(ulong Ordinal, int Matches, int FirstAt)>();
+            int offset = 0;
+            foreach ((string text, bool wide) in parts)
+            {
+                byte[] bytes = Encoded(request.IgnoreCase ? Lower(text) : text, wide);
+                byte[] pattern = Encoded(request.IgnoreCase ? Lower(request.Text) : request.Text, wide);
+                var ends = new List<(int Start, int End)>();
+                for (int at = 0; at + pattern.Length <= bytes.Length;)
+                {
+                    if ((!wide || at % 2 == 0) && bytes.AsSpan(at, pattern.Length).SequenceEqual(pattern))
+                    {
+                        ends.Add((at, at + pattern.Length));
+                        at += pattern.Length;
+                    }
+                    else
+                    {
+                        at++;
+                    }
+                }
+
+                int start = 0;
+                for (int index = offset; index < buffers.Count && buffers[index].Exchange == buffers[offset].Exchange; index++)
+                {
+                    int length = buffers[index].Bytes.Length;
+                    (int Start, int End)[] held = [.. ends.Where(match => match.End > start && match.End <= start + length)];
+                    if (held.Length > 0) expected.Add(((ulong)index + 1, held.Length, held[0].Start - start));
+                    start += length;
+                }
+
+                offset += buffers.Skip(offset).TakeWhile(buffer => buffer.Exchange == buffers[offset].Exchange).Count();
+            }
+
+            Assert.Contains(expected, hit => hit.FirstAt < 0 && -hit.FirstAt > buffers[(int)hit.Ordinal - 2].Bytes.Length);
+            foreach (ContentSearchRequest asked in new[] { request, request with { MaximumBytes = 1 }, request with { Limit = 1 } })
+            {
+                ContentSearchResult page = ContentSearch.Find(session.Store, id, asked);
+                List<ContentSearchHit> listed = [.. page.Hits];
+                for (int pages = 1; page.Continuation is { } next && pages < 500; pages++)
+                {
+                    page = ContentSearch.Continue(session.Store, id, next);
+                    listed.AddRange(page.Hits);
+                }
+
+                Assert.Null(page.Continuation);
+                Assert.Equal(expected, listed.Select(hit => (hit.Observation.RawRecordOrdinal, hit.Matches, hit.FirstAt)));
+            }
+        }
+
+        // The host's name split across four buffers is the last one's, begun 6 bytes before it, and its preview shows them
+        // all; across a part's start, or a buffer of another encoding, it is not found.
+        ContentSearchHit found = Assert.Single(ContentSearch.Find(session.Store, id, new() { Text = "example.com", Previews = true }).Hits);
+        Assert.Equal(((ulong)buffers.FindIndex(buffer => buffer is { Exchange: 9, Sequence: 3 }) + 1, 1, -6),
+            (found.Observation.RawRecordOrdinal, found.Matches, found.FirstAt));
+        Assert.Equal(new ContentPreview("Host: ", "example.com", string.Empty), found.Preview);
+        Assert.Equal("6 bytes before it in its part", ContentSearch.FirstAtText(found, CultureInfo.InvariantCulture));
+
+        static byte[] Encoded(string text, bool wide) => wide ? Encoding.Unicode.GetBytes(text) : Encoding.ASCII.GetBytes(text);
+        static string Lower(string text) => new([.. text.Select(letter => letter is >= 'A' and <= 'Z' ? (char)(letter + 32) : letter)]);
     }
 
     private static ObservationRowV1 Http(long ticks, ushort eventId, ulong ordinal) =>
