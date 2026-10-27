@@ -154,11 +154,16 @@ public static class ContentSearch
             : CountText.Of(-hit.FirstAt, "byte") + " before it, in the buffer before it in its part";
     }
 
+    /// <summary>
+    /// Searches as <paramref name="request"/> asks. Cancelled, it throws and lists nothing; <paramref name="stop"/>ped, it
+    /// ends before the next record it would read and answers with what it found, saying it was stopped.
+    /// </summary>
     public static ContentSearchResult Find(
         SessionStore store,
         Guid expectedSessionId,
         ContentSearchRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        CancellationToken stop = default)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(request);
@@ -262,7 +267,15 @@ public static class ContentSearch
                         continue;
                     }
 
-                    // The budgets are checked before a record is read, so what was read is all stated and none is half read.
+                    // A stop and the budgets are checked before a record is read, so what was read is all stated and none
+                    // is half read.
+                    if (stop.IsCancellationRequested)
+                    {
+                        stopped = "The search was stopped when asked, after " + CountText.Of(read, "record") + "; the rest "
+                            + "were not searched, so a record not listed may still hold the text.";
+                        break;
+                    }
+
                     if (bytesRead + kept > request.MaximumBytes || elapsed.Elapsed >= request.Budget)
                     {
                         stopped = "The search stopped at its budget of "

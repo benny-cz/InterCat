@@ -68,6 +68,28 @@ public sealed class ContentSearchTests
         Assert.Throws<ArgumentException>(() => ContentSearch.Find(session.Store, id, new() { Text = string.Empty }));
     }
 
+    [Fact(DisplayName = "P2: a content search stopped when asked answers with what it found before, says it was stopped and is partial; one cancelled lists nothing")]
+    public void AStoppedSearchSaysSo()
+    {
+        using var session = Session(ContentInspectionV1.HexAndText);
+        Guid id = session.Store.SessionId;
+
+        // Stopped, it ends before the next record it would read and answers; cancelled, it throws and answers nothing.
+        ContentSearchResult stopped = ContentSearch.Find(session.Store, id, new() { Text = "example.com" }, CancellationToken.None,
+            new CancellationToken(canceled: true));
+        Assert.Equal((0, 0, true), (stopped.RecordsRead, stopped.Hits.Count, stopped.Partial));
+        Assert.Equal("The search was stopped when asked, after 0 records; the rest were not searched, so a record not listed may "
+            + "still hold the text.", stopped.Stopped);
+        Assert.ThrowsAny<OperationCanceledException>(() => ContentSearch.Find(session.Store, id, new() { Text = "example.com" },
+            new CancellationToken(canceled: true)));
+
+        // A stop asked for once the search has read every record changes nothing.
+        using var late = new CancellationTokenSource();
+        ContentSearchResult whole = ContentSearch.Find(session.Store, id, new() { Text = "example.com" }, CancellationToken.None, late.Token);
+        late.Cancel();
+        Assert.Equal((8, 3, (string?)null, false), (whole.RecordsRead, whole.Hits.Count, whole.Stopped, whole.Partial));
+    }
+
     [Fact(DisplayName = "P2: content kept without consent to inspect it is never searched, and is counted; a session keeping none says so")]
     public void ContentKeptWithoutConsentIsNeverSearched()
     {

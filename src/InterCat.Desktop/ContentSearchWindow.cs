@@ -35,7 +35,7 @@ internal sealed record ContentSearchRow(ContentSearchHit Hit, string Title, stri
 internal sealed class ContentSearchWindow : Window, IDisposable
 {
     /// <summary>Why the window's actions wait while a search runs.</summary>
-    private const string Searching = "A search is running; it stops at its budget, or when this window closes.";
+    private const string Searching = "A search is running; it stops at its budget, or when you stop it, keeping what it found.";
 
     private static readonly FontFamily Monospace = new("Cascadia Mono, Consolas, Courier New");
 
@@ -47,6 +47,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
     private readonly CancellationTokenSource lifetime = new();
     private readonly TextBox text = new() { Watermark = "Text to find" };
     private readonly Button find = new() { Content = "Find" };
+    private readonly Button stop = new() { Content = "Stop" };
     private readonly CheckBox ignoreCase = new() { Content = "Letters A to Z in either case" };
     private readonly CheckBox only = new();
     private readonly CheckBox previews = new() { Content = "Show the bytes around each match" };
@@ -55,6 +56,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
     private readonly Button inspect = new() { Content = "Inspect its content" };
     private readonly Button close = new() { Content = "Close" };
     private ContentSearchRow[] rows = [];
+    private CancellationTokenSource? stopping;
     private bool searched;
     private bool searching;
     private bool closed;
@@ -149,6 +151,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         };
         text.TextChanged += (_, _) => Offer();
         find.Click += (_, _) => _ = FindAsync();
+        stop.Click += (_, _) => stopping?.Cancel();
         inspect.Click += (_, _) => _ = InspectAsync();
         close.Click += (_, _) => Close();
 
@@ -160,10 +163,12 @@ internal sealed class ContentSearchWindow : Window, IDisposable
             key.Handled = true;
         };
 
-        var query = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
+        var query = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), ColumnSpacing = 8 };
         Grid.SetColumn(find, 1);
+        Grid.SetColumn(stop, 2);
         query.Children.Add(text);
         query.Children.Add(find);
+        query.Children.Add(stop);
         var options = new WrapPanel { Orientation = Orientation.Horizontal, Children = { ignoreCase, only, previews } };
         foreach (Control option in options.Children)
         {
@@ -201,11 +206,12 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         lifetime.Dispose();
     }
 
-    /// <summary>Offers Find and Inspect its content, or says why not on each (R15); offered, each says what it does.</summary>
+    /// <summary>Offers Find, Stop and Inspect its content, or says why not on each (R15); offered, each says what it does.</summary>
     private void Offer()
     {
         Offering.Offer(find, searching ? Searching : string.IsNullOrEmpty(text.Text) ? "Type the text to find first." : null,
             "Search the kept content for the text");
+        Offering.Offer(stop, searching ? null : "No search is running.", "Stop the search before the next record, keeping what it has found");
         Offering.Offer(inspect, searching ? Searching
             : results.SelectedItem is not null ? null
             : !searched ? "Find a text first; a record holding it can then be inspected."
@@ -215,7 +221,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
 
     /// <summary>
     /// Searches the kept content for the text typed, off the window's thread, as the options ask, and lists what it found;
-    /// a search already running is let finish, since it stops at its budget.
+    /// a search already running is let finish, since it stops at its budget, or when Stop stops it.
     /// </summary>
     private async Task FindAsync()
     {
@@ -232,12 +238,15 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         rows = [];
         results.ItemsSource = rows;
         status.Text = "Searching the kept content…";
+        using var stopped = new CancellationTokenSource();
+        stopping = stopped;
         Offer();
         try
         {
             CancellationToken token = lifetime.Token;
+            CancellationToken stop = stopped.Token;
             ContentSearchResult found = await Task.Run(() => ContentSearch.Find(
-                SharedSessionStores.Open(path, expectedSessionId), expectedSessionId, request, token), token);
+                SharedSessionStores.Open(path, expectedSessionId), expectedSessionId, request, token, stop), token);
             if (closed) return;
             CultureInfo culture = CultureInfo.CurrentCulture;
             rows = [.. found.Hits.Select(hit => Row(hit, culture))];
@@ -261,6 +270,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         finally
         {
             searching = false;
+            stopping = null;
             if (!closed)
             {
                 Offer();

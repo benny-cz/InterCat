@@ -196,7 +196,9 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   788 those bound to it under the window's evidence policy, never every record of its PID): its records found are
   listed in reading order, each with its time, PID, mechanism and event and how often and where it holds the text, its
   bytes around the first match shown only when asked; it says what was searched and what was not, and a record found
-  opens in the content viewer, its bytes hidden until asked there.
+  opens in the content viewer, its bytes hidden until asked there. Since revision 790 its Stop, offered while a search
+  runs, ends the search before the next record it would read: what it found is listed, and it says it was stopped when
+  asked and after how many records, the answer partial; closing the window still abandons a search, listing nothing.
 - **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
   kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
 - **Nothing else.** The window's search, rankings, metrics, the share report (`intercat-share-report-v1`), the

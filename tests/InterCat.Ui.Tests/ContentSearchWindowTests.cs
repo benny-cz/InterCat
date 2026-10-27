@@ -294,6 +294,48 @@ public sealed class ContentSearchWindowTests
         };
     }
 
+    [AvaloniaFact(DisplayName = "P2: Find in kept content offers Stop while a search runs, which ends it keeping what it found, and says it was stopped")]
+    public async Task ARunningSearchIsStopped()
+    {
+        // Ten thousand records kept, none holding the text, so a search reads them all unless it is stopped.
+        ObservationRowV1[] records = [.. Enumerable.Range(1, 10_000).Select(index => Record(index, (ulong)index, 4_242))];
+        using var session = new TemporarySession();
+        Publish(session.Store, records, content: (ContentHeader(64),
+            [.. records.Select(record => Content(record, Encoding.ASCII.GetBytes("nothing here"), 64, ContentEncodingV1.Binary))]));
+        session.Store.ReleaseSegmentReaders();
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            using var window = new ContentSearchWindow(session.Path, session.Store.SessionId, null, Clock);
+            _ = window.ShowDialog(owner);
+            Assert.Equal("No search is running.", Offers.WhyNot(Labelled(window, "Stop")));
+
+            // Stop, offered while the search runs, ends it before the next record; what it read is said, and the answer
+            // partial.
+            Box(window).Text = "example.com";
+            Labelled(window, "Find").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal("Stop the search before the next record, keeping what it has found", Offers.Offered(Labelled(window, "Stop")));
+            Assert.Equal("A search is running; it stops at its budget, or when you stop it, keeping what it found.",
+                Offers.WhyNot(Labelled(window, "Find")));
+            Labelled(window, "Stop").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).StartsWith("No record holds it", StringComparison.Ordinal));
+            Assert.Contains(". The search was stopped when asked, after ", Status(window), StringComparison.Ordinal);
+            Assert.DoesNotContain("after 10,000 records", Status(window), StringComparison.Ordinal);
+            Assert.Equal("No search is running.", Offers.WhyNot(Labelled(window, "Stop")));
+
+            // Searched again, it reads every record.
+            Labelled(window, "Find").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).StartsWith("No record holds it", StringComparison.Ordinal));
+            Assert.Equal("No record holds it. Searched the kept bytes of 10,000 records (120,000 B).", Status(window));
+            window.Close();
+        }
+        finally
+        {
+            owner.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R15: the content search window cuts off no text at its smallest and names every element a screen reader lands on")]
     public async Task TheWindowIsLegibleAndHeard()
     {
