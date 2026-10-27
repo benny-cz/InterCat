@@ -86,6 +86,9 @@ public sealed record ContentSearchResult
 
     public required long Generation { get; init; }
 
+    /// <summary>The source clock of the generation searched, which says when each record found was raised; null where none is described.</summary>
+    public SourceClockDescriptor? Clock { get; init; }
+
     public required IReadOnlyList<ContentSearchHit> Hits { get; init; }
 
     /// <summary>Whether a record beyond those listed holds the text: the search stopped at the first one past the limit.</summary>
@@ -363,6 +366,7 @@ public static class ContentSearch
         {
             SessionId = manifest.SessionId,
             Generation = manifest.Generation,
+            Clock = SessionSegments.SourceClock(store.Root, manifest),
             Hits = hits,
             More = more,
             RecordsRead = read,

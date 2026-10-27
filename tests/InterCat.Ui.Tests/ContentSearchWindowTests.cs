@@ -336,6 +336,74 @@ public sealed class ContentSearchWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "P2: Find in kept content exports the records listed, asking first where the bytes around each match were shown, since the table is then content")]
+    public async Task TheRecordsFoundAreExported()
+    {
+        using var session = Session(ContentInspectionV1.HexAndText);
+        using var files = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            using var window = new ContentSearchWindow(session.Path, session.Store.SessionId, null, Clock);
+            var choices = new AnsweredChoices(window);
+            window.Choices = choices;
+            _ = window.ShowDialog(owner);
+            Button export = Labelled(window, "Export…");
+            Assert.Equal("Find a text first; the records found can then be exported.", Offers.WhyNot(export));
+
+            // Without previews the table holds no byte, so it is written once its file is chosen.
+            Box(window).Text = "example.com";
+            Labelled(window, "Find").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).Contains("hold it", StringComparison.Ordinal));
+            Assert.Equal("Write the records listed to a CSV table", Offers.Offered(export));
+            string plain = Path.Combine(files.Path, "plain.csv");
+            choices.Answer(plain);
+            export.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).StartsWith("Exported", StringComparison.Ordinal));
+            Assert.Equal($"Exported the 2 records listed to {plain}.", Status(window));
+            Assert.Equal(("Export the records found", "kept-content-search.csv"), (choices.Saves[0].Title, choices.Saves[0].SuggestedFileName));
+            Assert.Equal(3, File.ReadAllText(plain).Split("\r\n", StringSplitOptions.RemoveEmptyEntries).Length);
+            Assert.Empty(window.OwnedWindows);
+
+            // With the bytes around each match shown, the window says first that the table is content: declined, it asks
+            // for no file; accepted, it writes the bytes as the search showed them, and says the table holds content.
+            Check(window, "Show the bytes around each match");
+            Labelled(window, "Find").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).Contains("hold it", StringComparison.Ordinal));
+            Assert.Equal("Write the records listed to a CSV table, with the bytes around each first match, which makes it content",
+                Offers.Offered(export));
+            export.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => window.OwnedWindows.Count == 1);
+            Assert.Contains(ContentSearchWindow.PreviewsAreContent, window.OwnedWindows[0].GetVisualDescendantsText());
+            Labelled(window.OwnedWindows[0], "Cancel").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => window.OwnedWindows.Count == 0);
+            Assert.Single(choices.Saves);
+            string previewed = Path.Combine(files.Path, "previewed.csv");
+            choices.Answer(previewed);
+            export.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => window.OwnedWindows.Count == 1);
+            Labelled(window.OwnedWindows[0], "Choose table file").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).StartsWith("Exported", StringComparison.Ordinal));
+            Assert.Equal($"Exported the 2 records listed to {previewed}, each with the bytes around its first match. It holds content: "
+                + "share it only as you would that content.", Status(window));
+            string[] lines = File.ReadAllText(previewed).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+            Assert.Equal(string.Join(",", [.. ContentSearchTable.Columns, .. ContentSearchTable.PreviewColumns]), lines[0]);
+            Assert.EndsWith(",HTTP/1.1\\x0D\\x0AHost: ,example.com,\\x0D\\x0A\\x0D\\x0A", lines[1], StringComparison.Ordinal);
+
+            // A search listing nothing has nothing to export.
+            Box(window).Text = "absent";
+            Labelled(window, "Find").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(window).StartsWith("No record holds it", StringComparison.Ordinal));
+            Assert.Equal("No record holding the text is listed.", Offers.WhyNot(export));
+            window.Close();
+        }
+        finally
+        {
+            owner.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R15: the content search window cuts off no text at its smallest and names every element a screen reader lands on")]
     public async Task TheWindowIsLegibleAndHeard()
     {

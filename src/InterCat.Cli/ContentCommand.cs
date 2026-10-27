@@ -50,6 +50,7 @@ internal static class ContentCommand
         string? processText = command.TakeOption("--process");
         string? policyText = command.TakeOption("--evidence-policy");
         string? limitText = command.TakeOption("--limit");
+        string? outputText = command.TakeOption("--output");
         string? directory = command.TakePositional();
         bool reveal = command.TryTakeFlag("--reveal");
         bool wholePart = command.TryTakeFlag("--part");
@@ -72,9 +73,9 @@ internal static class ContentCommand
                 : find.Length == 0 ? "--find needs the text to look for."
                 : json ? "--find lists the records holding the text for a person, never into JSON: leave out --json."
                 : names || reveal || wholePart || decode || saveOption is not null || fromText is not null || toText is not null
-                    || overwrite
                     ? "--find searches the session's kept content, not one record: leave out the record's locator and "
                         + "--reveal, --save, --decode, --part, --from and --to."
+                : overwrite && outputText is null ? "--overwrite replaces the file --output names: give --output with it."
                 // A PID another process may have been given again names no process (P6): --pid keeps to the records that
                 // carry it, --process to the records bound to one process, as every other view binds them.
                 : pidText is not null && processText is not null
@@ -96,7 +97,7 @@ internal static class ContentCommand
                 return InterCatExitCode.InvalidInvocation;
             }
 
-            return Find(directory!, processText, new ContentSearchRequest
+            return await FindAsync(directory!, processText, outputText, overwrite, new ContentSearchRequest
             {
                 Text = find,
                 IgnoreCase = ignoreCase,
@@ -104,13 +105,14 @@ internal static class ContentCommand
                 Policy = policy,
                 Limit = limit,
                 Previews = previews,
-            }, cancellationToken);
+            }, cancellationToken).ConfigureAwait(false);
         }
 
         if (pidText is not null || processText is not null || policyText is not null || limitText is not null || ignoreCase
-            || previews)
+            || previews || outputText is not null)
         {
-            ConsoleUi.Failure("--pid, --process, --evidence-policy, --limit, --ignore-case and --previews apply only to --find.");
+            ConsoleUi.Failure("--pid, --process, --evidence-policy, --limit, --ignore-case, --previews and --output apply only to "
+                + "--find.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -542,15 +544,22 @@ internal static class ContentCommand
     /// Searches the session's kept content for a text (`contracts/content-v1.md` §4): the records holding it, each with the
     /// locator that shows its bytes, what was searched and what was not, and - only with --previews - the bytes around each
     /// record's first match, inert. <paramref name="processText"/> keeps it to one process's records, the process named as
-    /// every other command names it.
+    /// every other command names it, and <paramref name="outputText"/> writes the records listed to a table.
     /// </summary>
-    private static InterCatExitCode Find(string directory, string? processText, ContentSearchRequest request,
-        CancellationToken cancellationToken)
+    private static async Task<InterCatExitCode> FindAsync(string directory, string? processText, string? outputText, bool overwrite,
+        ContentSearchRequest request, CancellationToken cancellationToken)
     {
         string path = Path.GetFullPath(directory);
         if (!Directory.Exists(path))
         {
             ConsoleUi.Failure($"No session directory at {path}.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        string? outputPath = outputText is null ? null : Path.GetFullPath(outputText);
+        if (outputPath is not null && File.Exists(outputPath) && !overwrite)
+        {
+            ConsoleUi.Failure($"{outputPath} exists. Pass --overwrite to replace it.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -590,11 +599,7 @@ internal static class ContentCommand
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
-        SourceClockDescriptor? clock;
-        using (EvidenceLease lease = store.AcquireLease())
-        {
-            clock = SessionSegments.SourceClock(store.Root, lease.Manifest);
-        }
+        SourceClockDescriptor? clock = result.Clock;
 
         CultureInfo culture = CultureInfo.CurrentCulture;
         // The heading is set in capitals, so the text searched for - whose case may matter - is a field of its own.
@@ -669,8 +674,28 @@ internal static class ContentCommand
                 + "--segment <segment> --row <row> --reveal shows a record's kept bytes.");
         }
 
+        // The records listed go to a table only when asked; the bytes around their matches only with --previews, which
+        // makes the table content.
+        if (outputPath is not null)
+        {
+            await ExportFileWriter.WriteAsync(outputPath, ContentSearchTable.Csv(result, request), overwrite, cancellationToken)
+                .ConfigureAwait(false);
+            ConsoleUi.Success(result.Hits.Count == 0
+                ? $"No record was listed, so the table written to {outputPath} holds its header alone."
+                : $"The {CountText.Of(result.Hits.Count, "record")} listed written to {outputPath}"
+                    + (request.Previews ? ", each with the bytes around its first match." : "."));
+            if (request.Previews && result.Hits.Count > 0)
+            {
+                ConsoleUi.Warn(PreviewsContent);
+            }
+        }
+
         return result.Partial ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
     }
+
+    /// <summary>What a table of records found with previews holds, said beside the file written: content.</summary>
+    internal const string PreviewsContent = "It holds the bytes around each match, read from content the session kept with "
+        + "consent to inspect it: it is content, to be shared only as that content would be.";
 
     private static void PrintHelp()
     {
@@ -678,6 +703,7 @@ internal static class ContentCommand
         ConsoleUi.Line("             [--part] [--reveal] [--decode] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
         ConsoleUi.Line("icat content <session-directory> --find <text> [--ignore-case] [--process <pid | instance>");
         ConsoleUi.Line("             [--evidence-policy <policy>] | --pid <id>] [--limit <n>] [--previews]");
+        ConsoleUi.Line("             [--output <file.csv> [--overwrite]]");
         ConsoleUi.Line("icat content --decoders");
         ConsoleUi.Line("  One record's kept content, from an icat evidence page's exact row locator (ADR-036): what the");
         ConsoleUi.Line("  bytes are, how many of the message were kept and which are missing, and what they were kept");
@@ -701,5 +727,7 @@ internal static class ContentCommand
         ConsoleUi.Line("  --process keeps to one process's records: its PID where one process alone held it, else its");
         ConsoleUi.Line("  instance id as icat processes prints it, each record bound to it as the evidence policy admits");
         ConsoleUi.Line("  (include-correlated); --pid keeps to the records that carry a PID, whichever process held it.");
+        ConsoleUi.Line("  --output writes the records listed to a CSV table, with the bytes around each first match only");
+        ConsoleUi.Line("  with --previews, which makes the table content.");
     }
 }

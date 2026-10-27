@@ -90,6 +90,52 @@ public sealed class ContentSearchTests
         Assert.Equal((8, 3, (string?)null, false), (whole.RecordsRead, whole.Hits.Count, whole.Stopped, whole.Partial));
     }
 
+    [Fact(DisplayName = "P2: the records a content search lists write as a table, the bytes around each match only where previews were asked for, every text cell neutralized")]
+    public void TheRecordsFoundWriteAsATable()
+    {
+        using var session = Session(ContentInspectionV1.HexAndText);
+        Guid id = session.Store.SessionId;
+
+        // A line per record listed, in its order, with the locator that shows its bytes, when it was raised and by whom,
+        // how often it holds the text and where first, and what was searched for and how; no byte of it.
+        var asked = new ContentSearchRequest { Text = "example.com", Limit = 2 };
+        ContentSearchResult found = ContentSearch.Find(session.Store, id, asked);
+        string[] lines = ContentSearchTable.Csv(found, asked).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(string.Join(",", ContentSearchTable.Columns), lines[0]);
+        Assert.Equal(3, lines.Length);
+        Assert.NotNull(found.Clock);
+        Assert.Equal([.. found.Hits.Select(hit => string.Join(",", id.ToString("N"), found.Generation.ToString(CultureInfo.InvariantCulture),
+            hit.Segment, hit.Row.ToString(CultureInfo.InvariantCulture),
+            SessionTimeText.EpochSeconds(found.Clock!.Value, hit.Observation.NativeTicks), "4242", "TCP", "10",
+            hit.Matches.ToString(CultureInfo.InvariantCulture), hit.FirstAt.ToString(CultureInfo.InvariantCulture), "example.com", "false"))],
+            lines.Skip(1));
+        Assert.DoesNotContain("Host", string.Join("\n", lines), StringComparison.Ordinal);
+
+        // A record the kernel raised names the process that owns it, not the kernel.
+        var owned = new ContentSearchRequest { Text = "example.com", IgnoreCase = true, ProcessId = 5_151 };
+        Assert.EndsWith(",5151,TCP,10,1,0,example.com,true", ContentSearchTable.Csv(ContentSearch.Find(session.Store, id, owned), owned)
+            .TrimEnd(), StringComparison.Ordinal);
+
+        // With previews, the bytes around each first match as the search shows them; a cell a spreadsheet would evaluate
+        // begins with an apostrophe, and one holding a comma or a quote is quoted.
+        using var formula = new TemporarySession();
+        ObservationRowV1 record = Record(10, 1, 4_242);
+        Publish(formula.Store, [record], content: (ContentHeader(64),
+            [Content(record, Encoding.ASCII.GetBytes("=HYPERLINK(\"http://x\",1)"), 64, ContentEncodingV1.Binary)]));
+        formula.Store.ReleaseSegmentReaders();
+        var previewed = new ContentSearchRequest { Text = "-HYPERLINK", Previews = true, IgnoreCase = true };
+        Assert.Empty(ContentSearch.Find(formula.Store, formula.Store.SessionId, previewed).Hits);
+        Assert.Equal(string.Join(",", [.. ContentSearchTable.Columns, .. ContentSearchTable.PreviewColumns]),
+            ContentSearchTable.Csv(ContentSearch.Find(formula.Store, formula.Store.SessionId, previewed), previewed).TrimEnd());
+        previewed = previewed with { Text = "hyperlink" };
+        string[] cells = ContentSearchTable.Csv(ContentSearch.Find(formula.Store, formula.Store.SessionId, previewed), previewed)
+            .Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.EndsWith(",1,1,hyperlink,true,'=,HYPERLINK,\"(\"\"http://x\"\",1)\"", cells[1], StringComparison.Ordinal);
+        previewed = previewed with { Text = "=hyperlink" };
+        Assert.Contains(",'=hyperlink,true,,'=HYPERLINK,", ContentSearchTable.Csv(
+            ContentSearch.Find(formula.Store, formula.Store.SessionId, previewed), previewed), StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "P2: content kept without consent to inspect it is never searched, and is counted; a session keeping none says so")]
     public void ContentKeptWithoutConsentIsNeverSearched()
     {

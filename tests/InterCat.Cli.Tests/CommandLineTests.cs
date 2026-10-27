@@ -3163,6 +3163,58 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"(?m)^  Searched +the kept bytes of 0 records, 0 B\r?$", output);
     }
 
+    [Fact(DisplayName = "P2: icat content --find --output writes the records listed to a table, the bytes around each match only with --previews, saying it is content")]
+    public async Task TheRecordsFoundAreWrittenWhenAsked()
+    {
+        // Process 4242's head naming the host and its record naming it twice; process 5151's record naming nothing.
+        ObservationRowV1[] rows =
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 10, 4_242, 1),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 10, 4_242, 2),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 10, 5_151, 3),
+        ];
+        string[] messages = ["GET / HTTP/1.1\r\nHost: example.com\r\n\r\n", "example.com, example.com", "nothing here"];
+        using var kept = new TemporarySession();
+        Publish(kept.Store, rows, content: (ContentHeader(64),
+            [.. messages.Select((message, index) => Content(rows[index], System.Text.Encoding.ASCII.GetBytes(message), 64, ContentEncodingV1.Binary))]));
+        kept.Store.ReleaseSegmentReaders();
+        using var files = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        string table = Path.Combine(files.Path, "found.csv");
+
+        // The records listed are written, a line each, with no byte of them.
+        (InterCatExitCode code, string output, string said) = await Run("content", kept.Path, "--find", "example.com", "--output", table);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Found +2 records\r?$", output);
+        Assert.Contains($"The 2 records listed written to {table}.", said, StringComparison.Ordinal);
+        Assert.DoesNotContain("It holds the bytes", said, StringComparison.Ordinal);
+        string[] lines = File.ReadAllText(table).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal([string.Join(",", ContentSearchTable.Columns)], lines[..1]);
+        Assert.Equal(3, lines.Length);
+        Assert.EndsWith(",4242,TCP,10,1,22,example.com,false", lines[1], StringComparison.Ordinal);
+        Assert.EndsWith(",4242,TCP,10,2,0,example.com,false", lines[2], StringComparison.Ordinal);
+
+        // A file already there is replaced only when told to; with previews the table holds the bytes around each match,
+        // and says it is content.
+        (code, _, said) = await Run("content", kept.Path, "--find", "example.com", "--output", table);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains($"{table} exists. Pass --overwrite to replace it.", said, StringComparison.Ordinal);
+        (code, _, said) = await Run("content", kept.Path, "--find", "example.com", "--output", table, "--overwrite", "--previews");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains($"The 2 records listed written to {table}, each with the bytes around its first match.", said, StringComparison.Ordinal);
+        Assert.Contains("It holds the bytes around each match, read from content the session kept with consent to inspect it: it "
+            + "is content, to be shared only as that content would be.", Regex.Replace(said, @"\s+", " "), StringComparison.Ordinal);
+        lines = File.ReadAllText(table).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(string.Join(",", [.. ContentSearchTable.Columns, .. ContentSearchTable.PreviewColumns]), lines[0]);
+        Assert.EndsWith(",example.com,false,HTTP/1.1\\x0D\\x0AHost: ,example.com,\\x0D\\x0A\\x0D\\x0A", lines[1], StringComparison.Ordinal);
+
+        // A search listing nothing writes the table's header alone, and says so.
+        (code, _, said) = await Run("content", kept.Path, "--find", "absent", "--output", table, "--overwrite", "--previews");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains($"No record was listed, so the table written to {table} holds its header alone.", said, StringComparison.Ordinal);
+        Assert.DoesNotContain("It holds the bytes", said, StringComparison.Ordinal);
+        Assert.Single(File.ReadAllText(table).Split("\r\n", StringSplitOptions.RemoveEmptyEntries));
+    }
+
     [Fact(DisplayName = "P2: icat content --find finds a text two buffers of one HTTP part split, saying it began in the buffer before")]
     public async Task KeptContentIsSearchedAcrossABuffersSeam()
     {

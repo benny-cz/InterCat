@@ -254,3 +254,12 @@ of its own. Where no decoder reads a record or its part, the content viewer's De
 of a body's buffer, that InterCat decodes a head and never a body - and naming each decoder by its name, identifier
 and version, and what it reads, as `icat content --decoders` lists them; where one does, Decode and Decode its part
 name it as before. Nothing else above changes.
+
+## Addendum, revision 792
+
+What a search finds is written to a table when asked (`contracts/content-v1.md` §4), which lifts the limit above that
+it was not exported: `icat content --find --output` and the search window's Export… write the records listed, each
+with its locator, time, process, mechanism and event, how often it holds the text and where first, and the text
+searched for, adding the bytes around each first match only where previews were asked for, which makes the table
+content, said beside the file and, in the window, before its file is chosen. Of the search's limits above, its fixed
+budgets remain. Nothing else above changes.

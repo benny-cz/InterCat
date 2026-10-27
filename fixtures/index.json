@@ -1334,6 +1334,7 @@
       ],
       "P2": [
         "P2: C on an HTTP exchange opens its conversation, which says what each head said only once asked, and Show its buffers opens them",
+        "P2: Find in kept content exports the records listed, asking first where the bytes around each match were shown, since the table is then content",
         "P2: Find in kept content finds a text two buffers of one HTTP part split, saying it began in the buffer before",
         "P2: Find in kept content lists the records holding a text without a byte of them unless asked, and a record found opens in the content viewer",
         "P2: Find in kept content never searches bytes kept without consent and says how many it left, says when more hold it than it lists and when none is kept, and with no process selected offers no narrowing",
@@ -1365,6 +1366,7 @@
         "P2: every decoder InterCat lists has a corpus at its version, and decodes each of its cases exactly as the corpus says",
         "P2: heads kept without consent to inspect them are exported undecoded, each cell saying why, and never as what they said",
         "P2: icat content --decode lists a fixture message's fields with the bytes each came from and what it did not decode, only when asked and never into JSON",
+        "P2: icat content --find --output writes the records listed to a table, the bytes around each match only with --previews, saying it is content",
         "P2: icat content --find finds a text two buffers of one HTTP part split, saying it began in the buffer before",
         "P2: icat content --find lists the records whose kept bytes hold a text, each with its locator, and shows their bytes only with --previews",
         "P2: icat content --part --decode decodes a whole HTTP head, says a buffer alone and a body are read by none, and --decoders lists every decoder",
@@ -1372,7 +1374,8 @@
         "P2: icat content shows and saves a whole HTTP part as one, and refuses --part of a record that belongs to none",
         "P2: icat exchanges --decode says what each listed request asked for, of which host, and what its response answered, each head read whole",
         "P2: icat exchanges writes the listed exchanges' heads only when asked, as content, in JSON or as a table whose cells a spreadsheet will not evaluate",
-        "P2: the content viewer decodes a buffer's whole HTTP head only when asked, shows a field's bytes in the part, and never decodes a head that is not whole"
+        "P2: the content viewer decodes a buffer's whole HTTP head only when asked, shows a field's bytes in the part, and never decodes a head that is not whole",
+        "P2: the records a content search lists write as a table, the bytes around each match only where previews were asked for, every text cell neutralized"
       ],
       "P20": [
         "P20: no product code reads another process's memory, duplicates its handles, or opens a pipe but the broker's"

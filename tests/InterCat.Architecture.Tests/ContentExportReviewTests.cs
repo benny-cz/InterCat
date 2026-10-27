@@ -53,6 +53,7 @@ public sealed partial class ContentExportReviewTests
     /// </summary>
     [GeneratedRegex(@"\bContentChunk\w*\b|\b(?:SessionContentQuery\.(?:Read|ReadAt)|SessionContentPartQuery\.(?:Read|ReadMany)"
         + @"|SessionContentIndex\.ReadBytes|ContentSearch\.Find|ContentDecoders\.(?:Decode|DecodePart)|HttpExchangeHeadsQuery\.(?:Read|ReadAt)"
-        + @"|SessionHttpExchanges\.(?:Conversation|Table)|HttpExchangeTable\.Csv|OriginalEvidencePackage\.\w+|SessionRawRecordQuery\.\w+)\(")]
+        + @"|SessionHttpExchanges\.(?:Conversation|Table)|HttpExchangeTable\.Csv|ContentSearchTable\.Csv|OriginalEvidencePackage\.\w+"
+        + @"|SessionRawRecordQuery\.\w+)\(")]
     private static partial Regex ContentPattern();
 }

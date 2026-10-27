@@ -54,11 +54,15 @@ internal sealed class ContentSearchWindow : Window, IDisposable
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, Text = "Type a text and press Find." };
     private readonly ListBox results = new();
     private readonly Button inspect = new() { Content = "Inspect its content" };
+    private readonly Button export = new() { Content = "Export…" };
     private readonly Button close = new() { Content = "Close" };
     private ContentSearchRow[] rows = [];
     private CancellationTokenSource? stopping;
     private bool searched;
     private bool searching;
+    private bool exporting;
+    private ContentSearchResult? found;
+    private ContentSearchRequest? asked;
     private bool closed;
     private bool disposed;
 
@@ -79,6 +83,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         this.expectedSessionId = expectedSessionId;
         this.process = process;
         this.clock = clock;
+        Choices = new PathChoices(this);
         Title = "InterCat · Find in kept content";
         Width = 920;
         Height = 660;
@@ -153,6 +158,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         find.Click += (_, _) => _ = FindAsync();
         stop.Click += (_, _) => stopping?.Cancel();
         inspect.Click += (_, _) => _ = InspectAsync();
+        export.Click += (_, _) => _ = ExportAsync();
         close.Click += (_, _) => Close();
 
         // Escape closes the window, as it cancels InterCat's prompts and every Windows dialog.
@@ -177,7 +183,7 @@ internal sealed class ContentSearchWindow : Window, IDisposable
 
         var header = new StackPanel { Spacing = 8, Children = { heading, disclosure, query, options, status } };
         var footer = new DockPanel { LastChildFill = true };
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { inspect, close } };
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { inspect, export, close } };
         DockPanel.SetDock(actions, Dock.Right);
         exactness.VerticalAlignment = VerticalAlignment.Center;
         exactness.Margin = new Thickness(0, 0, 16, 0);
@@ -206,7 +212,10 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         lifetime.Dispose();
     }
 
-    /// <summary>Offers Find, Stop and Inspect its content, or says why not on each (R15); offered, each says what it does.</summary>
+    /// <summary>Picks the file a table of the records found is written to; a test answers it as a person would.</summary>
+    internal PathChoices Choices { get; set; }
+
+    /// <summary>Offers Find, Stop, Inspect its content and Export, or says why not on each (R15); offered, each says what it does.</summary>
     private void Offer()
     {
         Offering.Offer(find, searching ? Searching : string.IsNullOrEmpty(text.Text) ? "Type the text to find first." : null,
@@ -217,7 +226,96 @@ internal sealed class ContentSearchWindow : Window, IDisposable
             : !searched ? "Find a text first; a record holding it can then be inspected."
             : rows.Length == 0 ? "No record holding the text is listed." : "Choose a record first.",
             "Open the chosen record's kept content, its bytes hidden until you ask there");
+        Offering.Offer(export, searching ? Searching
+            : found is null ? "Find a text first; the records found can then be exported."
+            : rows.Length == 0 ? "No record holding the text is listed."
+            : exporting ? "The records found are being exported." : null,
+            "Write the records listed to a CSV table"
+                + (asked?.Previews == true ? ", with the bytes around each first match, which makes it content" : string.Empty));
     }
+
+    /// <summary>
+    /// Writes the records listed to a table the person chooses (`contracts/content-v1.md` §4): with the bytes around each
+    /// first match only where the search showed them, and then only once the window has said the table is content.
+    /// </summary>
+    private async Task ExportAsync()
+    {
+        if (exporting || closed || searching || found is not { Hits.Count: > 0 } listed || asked is not { } request) return;
+        exporting = true;
+        Offer();
+        try
+        {
+            if (request.Previews && (!await PreviewsPrompt().ShowDialog<bool>(this) || closed)) return;
+            string? destination = await Choices.SaveFileAsync(new()
+            {
+                Title = "Export the records found",
+                SuggestedFileName = "kept-content-search.csv",
+                DefaultExtension = "csv",
+                FileTypeChoices = [new("CSV, one line per record") { Patterns = ["*.csv"] }],
+            });
+            if (destination is null || closed) return;
+            await ExportFileWriter.WriteAsync(destination, ContentSearchTable.Csv(listed, request), overwrite: true);
+            if (!closed)
+            {
+                status.Text = $"Exported the {CountText.Of(listed.Hits.Count, "record")} listed to {destination}"
+                    + (request.Previews
+                        ? ", each with the bytes around its first match. It holds content: share it only as you would that content."
+                        : ".");
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            if (!closed) status.Text = "Could not export the records found: " + exception.Message;
+        }
+        finally
+        {
+            exporting = false;
+            if (!closed) Offer();
+        }
+    }
+
+    /// <summary>What a table of the records found with their previews holds, asked before its file is chosen; true to choose it.</summary>
+    internal static Window PreviewsPrompt()
+    {
+        var prompt = new Window
+        {
+            Title = "Export the records with the bytes around each match?", Width = 540,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+        };
+        var cancel = new Button { Content = "Cancel" };
+        var proceed = new Button { Content = "Choose table file" };
+        cancel.Click += (_, _) => prompt.Close(false);
+        proceed.Click += (_, _) => prompt.Close(true);
+        prompt.Opened += (_, _) => cancel.Focus();
+        prompt.KeyDown += (_, key) =>
+        {
+            if (key.Key != Key.Escape) return;
+            prompt.Close(false);
+            key.Handled = true;
+        };
+        prompt.Content = new StackPanel
+        {
+            Margin = new Thickness(20), Spacing = 12,
+            Children =
+            {
+                new TextBlock { Text = PreviewsHold, TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Text = PreviewsAreContent, TextWrapping = TextWrapping.Wrap },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
+                    HorizontalAlignment = HorizontalAlignment.Right, Children = { cancel, proceed } },
+            },
+        };
+        return prompt;
+    }
+
+    /// <summary>What a table of the records found with their previews holds, as its prompt says it first.</summary>
+    internal const string PreviewsHold = "This writes a table of the records listed, one line each, with the bytes around "
+        + "each first match as the search showed them. A value a spreadsheet would evaluate begins with an apostrophe.";
+
+    /// <summary>Why the table is content, as its prompt says it.</summary>
+    internal const string PreviewsAreContent = "Those bytes are read from the content this session kept with consent to "
+        + "inspect it, so the table is content: share it only as you would that content.";
 
     /// <summary>
     /// Searches the kept content for the text typed, off the window's thread, as the options ask, and lists what it found;
@@ -236,6 +334,8 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         };
         searching = true;
         rows = [];
+        found = null;
+        asked = request;
         results.ItemsSource = rows;
         status.Text = "Searching the kept content…";
         using var stopped = new CancellationTokenSource();
@@ -245,14 +345,15 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         {
             CancellationToken token = lifetime.Token;
             CancellationToken stop = stopped.Token;
-            ContentSearchResult found = await Task.Run(() => ContentSearch.Find(
+            ContentSearchResult result = await Task.Run(() => ContentSearch.Find(
                 SharedSessionStores.Open(path, expectedSessionId), expectedSessionId, request, token, stop), token);
             if (closed) return;
             CultureInfo culture = CultureInfo.CurrentCulture;
-            rows = [.. found.Hits.Select(hit => Row(hit, culture))];
+            found = result;
+            rows = [.. result.Hits.Select(hit => Row(hit, culture))];
             results.ItemsSource = rows;
             searched = true;
-            status.Text = Said(found, culture);
+            status.Text = Said(result, culture);
             if (rows.Length > 0)
             {
                 results.SelectedIndex = 0;
