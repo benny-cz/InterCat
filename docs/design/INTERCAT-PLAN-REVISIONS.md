@@ -628,6 +628,8 @@ Revision 799 runs whole what a coverage pass over revisions 752 to 773 found no 
 
 Revision 800 lets a content search find a text three or more buffers of one HTTP part split; its paragraph below says how a part's buffers are joined.
 
+Revision 801 runs whole what a coverage pass over `icat metric` found no test ran; its paragraph below says the four faults that found.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -1883,3 +1885,22 @@ one search of its bytes from the start finds, none overlapping another, which a 
 parts cut at random, read whole, a record at a time and a match at a time. Where a match began is said as so many
 bytes before the record in its part, no longer as in the buffer before it, which it need not be. A part's start, or a
 buffer not recorded, not kept, cut or of another encoding, still ends the run.
+
+Revision 801 runs whole what a coverage pass over `icat metric` found no test ran (R10): 351 of the 1,580 lines of its
+command a test can reach, among them RPC calls started, completed, failed and timed in words with what each call's
+records establish, peers and channels, rankings by mechanism, executable, the other end and per second with a
+remainder past `--top`, the records between two sets, `--output`, `--print-canonical` and most of its refusals.
+Running them found four faults. Grouped by process, executable or session, a count of peers or channels no record in
+scope identified one of answered a total of none, which the command line said as "at least 0 channels in scope", where
+the ungrouped count is `NothingMeasured` and `metrics-v1` §6 has a peer count be so (R21): grouped, its total is now
+unavailable the same way, its groups each unmeasured beside it, every record that identifies none counted once by why,
+and a record a process without the grouping's fact made still identifies one, as the window's ranking has it. A
+request no derived operation answers, such as peers grouped with no focus, was headed "No logical operations" though
+the session held calls; the command line says that no derived operation answers it, the result keeping its code. A
+count of no observation said the session publishes no coverage ledger yet, a sentence older than the ledger, beside
+the coverage the answer states; it now says so only where the generation publishes none. And a ranking by mechanism
+named its rows by their codes, "Rpc" and "ProcessLifecycle", where the window's lanes say "RPC" and "Process" (R5); it
+names them so, and a ranking none of whose rows resolves says so in place of a table of headers alone. Tests run the
+rest in words and in JSON. Of the command's 1,591 such lines, 65 run in none: 22 record declarations the
+instrumentation counts, and 43 sessions and requests no test makes, among them a capture that recorded its stop, a
+session publishing no derived segment or describing no clock, other byte domains measured, and two guards.

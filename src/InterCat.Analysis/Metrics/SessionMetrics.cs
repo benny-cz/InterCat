@@ -957,6 +957,14 @@ public static partial class SessionMetrics
             caveats = [.. caveats, OperationCoverageCaveat(coverage)];
         }
 
+        // A count of no observation is no finding that nothing happened, and where no ledger says what the sources could
+        // have seen, that is said too.
+        if (materialized.Metric == Metric.Observations && answer is { IsAvailable: true, Value: 0 } && !coverage.LedgerPublished)
+        {
+            caveats = [.. caveats, "This generation publishes no coverage ledger, so nothing says whether its sources could "
+                + "have recorded an observation in scope."];
+        }
+
         return answer with { Identity = identity, Coverage = coverage, Caveats = caveats };
     }
 
@@ -1437,7 +1445,7 @@ public static partial class SessionMetrics
         {
             caveats.Add(
                 "No observation is in scope. That is a count of records, not a finding that nothing happened: "
-                + "coverage is stated separately from data, and this session publishes no coverage ledger yet (R21).");
+                + "coverage is stated separately from data (R21).");
         }
 
         return context.Answer(request) with

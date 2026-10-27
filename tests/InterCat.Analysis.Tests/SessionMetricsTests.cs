@@ -352,6 +352,24 @@ public sealed class SessionMetricsTests
         Assert.Equal(1, rpc.KnownContributions);
     }
 
+    [Fact(DisplayName = "R21: a count of no observation is no finding that nothing happened, and says no ledger is published only where none is")]
+    public void ACountOfNoObservationSaysWhatCoverageIs()
+    {
+        // A TCP send, read for UDP: no observation is in scope, in a session with a coverage ledger and in one without.
+        foreach (bool published in new[] { true, false })
+        {
+            using var session = new TemporarySession();
+            Publish(session.Store, [Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 10, owner: 1_000, 0)],
+                coverage: published ? TransportLedger(tcp: true, udp: false) : null);
+            MetricResult none = Evaluate(session.Store, AnalysisBasis.SourceObservations, Metric.Observations, mechanism: Mechanism.Udp);
+            Assert.Equal(0, none.Value);
+            Assert.Contains("No observation is in scope. That is a count of records, not a finding that nothing happened: coverage "
+                + "is stated separately from data (R21).", none.Caveats);
+            Assert.Equal(!published, none.Caveats.Contains("This generation publishes no coverage ledger, so nothing says whether its "
+                + "sources could have recorded an observation in scope."));
+        }
+    }
+
     [Fact(DisplayName = "I3: an interval scopes every metric half-open, and a rate divides by the whole of it")]
     public void AnIntervalScopesEveryMetric()
     {

@@ -693,6 +693,73 @@ public sealed class RelationTests
         Assert.Contains("for each process, executable or session", (channels with { Grouping = LaneGrouping.Mechanism }).Check()!.Reason, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R21: grouped, a peer or channel count no record identifies one of is unmeasured, as ungrouped, never zero")]
+    public void AGroupedCountOfNothingIdentifiedIsUnmeasured()
+    {
+        // A process's two sends, neither naming its endpoint pair, and a third record whose process the capture never saw
+        // created: no record identifies a peer or a channel.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Apps\app.exe" },
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 3),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 64, null, 4),
+        ]);
+
+        // Grouped by process or executable, neither count is a zero: each is unavailable, saying why, as a channel count
+        // over the whole scope is, the record with no process counted once among those that identify nothing, and the
+        // process's group stays, unmeasured, beside it.
+        foreach ((Metric metric, LaneGrouping grouping, string noun, string why) in new[]
+        {
+            (Metric.ActivePeers, LaneGrouping.InstanceOnly, "peer", "PeerEndpointIncomplete 2"),
+            (Metric.ActiveChannels, LaneGrouping.InstanceOnly, "channel", "PeerEndpointIncomplete 3"),
+            (Metric.ActiveChannels, LaneGrouping.Executable, "channel", "PeerEndpointIncomplete 3"),
+        })
+        {
+            MetricResult grouped = SessionMetrics.Evaluate(session.Store, Request(metric) with { Grouping = grouping });
+            Assert.Equal((MetricUnavailableReason.NothingMeasured, (long?)null), (grouped.Unavailable, grouped.Value));
+            MetricGroup group = Assert.Single(grouped.Groups);
+            Assert.Equal(((long?)null, 0L, 2L), (group.Value, group.KnownContributions, group.UnknownContributions));
+            Assert.StartsWith($"None of the 3 records in scope that have another end identifies a {noun} (", grouped.UnavailableExplanation,
+                StringComparison.Ordinal);
+            Assert.EndsWith("), so none can be counted. Zero would be a guess about what the capture could not resolve.",
+                grouped.UnavailableExplanation, StringComparison.Ordinal);
+            Assert.Contains(why, grouped.UnavailableExplanation, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(SessionMetrics.Evaluate(session.Store, Request(Metric.ActiveChannels)).UnavailableExplanation,
+            SessionMetrics.Evaluate(session.Store, Request(Metric.ActiveChannels) with { Grouping = LaneGrouping.InstanceOnly }).UnavailableExplanation);
+
+        // One record that identifies a channel makes the grouped count one: an answer, its process ranked.
+        using var connected = new TemporarySession();
+        Publish(connected.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1),
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2).Between(ClientEnd, ServerEnd),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 3),
+        ]);
+        MetricResult counted = SessionMetrics.Evaluate(connected.Store, Request(Metric.ActiveChannels) with { Grouping = LaneGrouping.InstanceOnly });
+        Assert.Equal((MetricUnavailableReason.None, (long?)1, 1L), (counted.Unavailable, counted.Value, counted.Groups.Single().Value));
+
+        // A record made by a process of no witnessed executable still identifies its peer, the server's receive outside
+        // the interval: by executable the count is an answer, never unmeasured for the group its process lacks.
+        using var ungrouped = new TemporarySession();
+        Publish(ungrouped.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1),
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Apps\server.exe" },
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 3).Between(ClientEnd, ServerEnd),
+            Transfer(20, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 4).Between(ServerEnd, ClientEnd),
+        ]);
+        MetricResult byExecutable = SessionMetrics.Evaluate(ungrouped.Store, Request(Metric.ActivePeers) with
+        {
+            Grouping = LaneGrouping.Executable,
+            Interval = new TimeRange(0, 15),
+        });
+        Assert.Equal((MetricUnavailableReason.None, (long?)1), (byExecutable.Unavailable, byExecutable.Value));
+    }
+
     [Fact(DisplayName = "R22: two connections on one reused port are two channels, and undecided ones are a lower bound")]
     public void ReusedAndUndecidedConnectionsAreCountedSoundly()
     {

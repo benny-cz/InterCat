@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-27 · Plan revision: 800 · Branch: `main`
+Updated: 2026-10-27 · Plan revision: 801 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,30 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 801 — a coverage pass over `icat metric`:**
+  - Of the 1,580 lines of `icat metric`'s command a test can reach, 351 ran in none: RPC calls started, completed,
+    failed and timed in words, peers and channels, rankings by mechanism, executable and the other end, the records
+    between two sets, `--output`, `--print-canonical` and most refusals. Running them found four faults, now fixed.
+  - Grouped, a peer or channel count no record identified one of answered a total of none, "at least 0 channels in
+    scope", where ungrouped it is unmeasured, as the contract has a peer count be; its total is `NothingMeasured` now,
+    its groups each unmeasured beside it, each record that identifies none counted once by why. A request no derived
+    operation answers was headed "No logical operations", though the session held calls; it says that no derived
+    operation answers it.
+  - A count of no observation said the session publishes no coverage ledger, whether it did or not; it says so only
+    where none is published. A ranking by mechanism named its rows by their codes, "Rpc" and "ProcessLifecycle"; it
+    names them as the window's lanes do, and a ranking with no row says so in place of an empty table.
+  - Of 1,591 such lines, 65 run in none now: 22 record declarations the instrumentation counts, and 43 sessions and
+    requests no test makes - a capture that recorded its stop, a session publishing no derived segment or describing
+    no clock, a bound beyond the clock on its own side, other byte domains measured, a remainder past `--top` by
+    mechanism, session or instance, metrics and aliases no test names, and two guards.
+  - Debug and Release each ran 3,291 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the 7 new tests. All 21 mutations were caught: the zero count's claim of no ledger restored,
+    or the no-ledger sentence unsaid; the reason's old words, the mechanism codes, an empty ranking's table or
+    words; the calls' counted words, an unpaired failure unsaid, a statistic's or a direction's words, a remainder's
+    label, a byte rate's unit, a focus's peers' words, an empty file written and the sets unparsed; and in a grouped
+    count, a total of none, a record of a process without the grouping's fact identifying nothing, the reasons
+    swapped or counted twice, the groups dropped and one record said in the plural.
 
 - **Revision 800 — a content search finds a text three or more buffers of one HTTP part split (M8):**
   - A buffer of an HTTP part is searched with the end of the buffers kept whole right before it, back through as many

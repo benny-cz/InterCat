@@ -93,12 +93,7 @@ public static partial class SessionMetrics
             return answer with
             {
                 Unavailable = MetricUnavailableReason.NothingMeasured,
-                UnavailableExplanation =
-                    (unknown == 1
-                        ? $"The one record in scope that has another end identifies no {noun} ("
-                        : $"None of the {unknown:N0} records in scope that have another end identifies a {noun} (")
-                    + Reasons(unknownReasons) + "), so none can be counted. Zero would be a guess about what the "
-                    + "capture could not resolve.",
+                UnavailableExplanation = NothingIdentified(noun, unknown, unknownReasons),
                 Unit = null,
             };
         }
@@ -142,6 +137,8 @@ public static partial class SessionMetrics
         // One tally per group key: an instance's identity, an executable's path folded case-insensitively, or a session.
         var tallies = new Dictionary<string, DistinctTally>(StringComparer.Ordinal);
         var unattributed = new Dictionary<ProcessBindingReason, long>();
+        var unidentified = new Dictionary<ProcessBindingReason, long>();
+        bool identified = false;
         var everything = new HashSet<int>();
         long outsideProjection = 0;
         long outsideProcess = 0;
@@ -180,6 +177,18 @@ public static partial class SessionMetrics
                 if (!peers && channels![row].IsKnown)
                 {
                     everything.Add(channels[row].Channel);
+                }
+
+                // Whether the record identifies a channel, or a peer at either end, whatever group its process is in; and
+                // where it identifies none, why, once: what a count that nothing identifies says.
+                if (peers ? ownerKnown && peerKnown : channels![row].IsKnown)
+                {
+                    identified = true;
+                }
+                else
+                {
+                    ProcessBindingReason missing = peers && !ownerKnown ? adds.PeerUnknown : adds.OwnerUnknown;
+                    unidentified[missing] = unidentified.GetValueOrDefault(missing) + 1;
                 }
 
                 if (ownerKnown && peerKnown && KeyOf(owner) is { } shared && shared == KeyOf(peer))
@@ -279,7 +288,7 @@ public static partial class SessionMetrics
         }
 
         caveats.AddRange(GroupingCaveats(roles, request, []));
-        return context.Answer(request) with
+        MetricResult grouped = context.Answer(request) with
         {
             Value = everything.Count,
             Unit = MeasurementUnit.Count,
@@ -305,6 +314,20 @@ public static partial class SessionMetrics
             RelationRule = TransportRelationIndex.RelationRule,
             Caveats = caveats,
         };
+
+        // Grouped as ungrouped, nothing identified among records that have another end is not "none": the total is no
+        // observed zero, so it is unavailable, its groups each unmeasured beside it (R21, P1). A record a process without
+        // the grouping's fact made can still identify one, which its group being unknown does not undo.
+        long none = unidentified.Values.Sum();
+        return !identified && none > 0
+            ? grouped with
+            {
+                Value = null,
+                Unit = null,
+                Unavailable = MetricUnavailableReason.NothingMeasured,
+                UnavailableExplanation = NothingIdentified(peers ? "peer" : "channel", none, unidentified),
+            }
+            : grouped;
 
         // The group a bound process belongs to, or null when it lacks the fact the grouping needs.
         string? KeyOf(ProcessBinding subject)
@@ -505,6 +528,13 @@ public static partial class SessionMetrics
 
     private static ProcessBindingReason UnknownReason(ProcessBinding binding) =>
         binding.IsBound ? ProcessBindingReason.NotAdmittedByPolicy : binding.Reason;
+
+    /// <summary>Why a peer or channel count that no record in scope with another end identifies one of is not a count of zero.</summary>
+    private static string NothingIdentified(string noun, long unidentified, IReadOnlyDictionary<ProcessBindingReason, long> reasons) =>
+        (unidentified == 1
+            ? $"The one record in scope that has another end identifies no {noun} ("
+            : $"None of the {unidentified:N0} records in scope that have another end identifies a {noun} (")
+        + Reasons(reasons) + "), so none can be counted. Zero would be a guess about what the capture could not resolve.";
 
     private static string Reasons(IReadOnlyDictionary<ProcessBindingReason, long> reasons) =>
         string.Join(", ", reasons.OrderBy(entry => entry.Key).Select(entry => $"{entry.Key} {entry.Value:N0}"));

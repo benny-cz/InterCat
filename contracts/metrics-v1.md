@@ -227,7 +227,7 @@ partition the total: their values add up to it, and a result says so.
 | Grouping | A record belongs to | Available |
 |---|---|---|
 | `InstanceOnly` | the process instance it is attributed to, below, under the request's evidence policy (`contracts/entities-v1.md`) | yes |
-| `Mechanism` | its mechanism, a fact about the record | yes |
+| `Mechanism` | its mechanism, a fact about the record; `icat metric` names it as the window's lanes do, "TCP", "RPC" or "Process", since revision 801, the result keeping its code | yes |
 | `Executable` | the witnessed full image path of the instance it is attributed to; paths compare case-insensitively | yes when at least one path is witnessed |
 | `UserSession` | the terminal session of the instance it is attributed to, as that instance's lifecycle records name it | yes when at least one is named |
 | `Peer` | the process at its other end from the focused process, under `relations-v1` | yes, with a process focus |
@@ -284,30 +284,32 @@ exactly as a peer grouping lists it, so a focus's count equals the number of pro
 
 A record whose other end is unresolved, or resolved at a strength the policy does not admit, names no peer. It is an
 **unknown contribution** with its reason (`unknownCounterparts`), and the count is a lower bound beside those records.
-A remote process is not a process instance of the capture and is never counted. A record with no other end at all -
-a lifecycle record - is neither. When records in scope have another end and none resolves it, the count is
-`NothingMeasured`, and a group with no resolved peer is unmeasured, never ranked at zero (R21).
+A remote process is not a process instance of the capture and is never counted. A record with no other end at all - a
+lifecycle record - is neither. When records in scope have another end and none resolves it, the count is
+`NothingMeasured`, and a group with no resolved peer is unmeasured, never ranked at zero (R21). Grouped, where no
+record in scope resolves a peer, the total is `NothingMeasured` too, never one of none, its groups each unmeasured
+beside it (since revision 801); a record that a process without the grouping's fact made still resolves one.
 
 Distinct counts overlap: a record between two resolved processes makes each the other's peer, so it counts in both
 groups. A grouped peer count therefore does **not** partition its total, and says so; its total is the number of
 distinct processes with at least one resolved peer, and a remainder is the distinct count over the union of the
 groups it merges.
 
-`ActiveChannels` counts **connection incarnations** under `relations-v1` §5a and its
-`transport-endpoint-relation-v4` rule: the two ends of one connection are one
-channel, a port reused by a later connection is another, and a connection whose other end no record holds is a
-one-sided channel. A UDP datagram flow between two ends, which has no connection lifecycle, is one channel for the
-capture. It needs no subject: over the whole scope it counts every channel, with a focus the channels of the
-records the focus keeps, and grouped by process or executable each group's channels, overlapping as peers do; the
-grouped total is every distinct channel in scope. With one process focus and `Peer` grouping, each peer row is the
-distinct count of connection incarnations with that peer. Known channels whose other process cannot be resolved
-remain in unattributed reason rows and in the global count, but never in a guessed peer row. Peer rows are not
-claimed to partition the global count while other ends remain unresolved; a top-N remainder is the distinct union
-of the hidden peer rows' channels, not the sum of record counts. A record of a mechanism no relation rule covers, a
-record with no
-endpoint pair, and a record of an undecided connection on the side whose incarnations are not counted identify no
-channel: they are unknown contributions with their reason, and the count is a lower bound beside them. Where the
-capture lost a connect, accept or disconnect, two connections on one port are one channel.
+`ActiveChannels` counts **connection incarnations** under `relations-v1` §5a and its `transport-endpoint-relation-v4`
+rule: the two ends of one connection are one channel, a port reused by a later connection is another, and a connection
+whose other end no record holds is a one-sided channel. A UDP datagram flow between two ends, which has no connection
+lifecycle, is one channel for the capture. It needs no subject: over the whole scope it counts every channel, with a
+focus the channels of the records the focus keeps, and grouped by process or executable each group's channels,
+overlapping as peers do; the grouped total is every distinct channel in scope. With one process focus and `Peer`
+grouping, each peer row is the distinct count of connection incarnations with that peer. Known channels whose other
+process cannot be resolved remain in unattributed reason rows and in the global count, but never in a guessed peer
+row. Peer rows are not claimed to partition the global count while other ends remain unresolved; a top-N remainder is
+the distinct union of the hidden peer rows' channels, not the sum of record counts. A record of a mechanism no
+relation rule covers, a record with no endpoint pair, and a record of an undecided connection on the side whose
+incarnations are not counted identify no channel: they are unknown contributions with their reason, and the count is a
+lower bound beside them. Where the capture lost a connect, accept or disconnect, two connections on one port are one
+channel. Where no record in scope identifies a channel, the count is `NothingMeasured`, grouped or not, each record
+that identifies none counted once by why, and a grouped answer keeps its groups, each unmeasured (since revision 801).
 
 ## 7. Rates
 
@@ -348,7 +350,7 @@ with no value:
 | `NoStatusDomain` | `Errors`: §7.3 names a status domain §23 assigns no enumeration |
 | `NoTransferAssociations` | `CanonicalOwner`, before a correlator proves an association between one send record and one receive record |
 | `NoInterval` | a rate with no interval |
-| `NothingMeasured` | a byte total that takes no known contribution, and an error count over completed calls none of which carried a status (§8a) |
+| `NothingMeasured` | a byte total that takes no known contribution, an error count over completed calls none of which carried a status (§8a), and a count of peers or channels no record in scope identifies one of, grouped or not (§6) |
 | `GroupingNotDerived` | a grouping whose derivation this session does not have |
 | `NoParticipantRelations` | not produced since `relations-v1`; it answered `participant(P)` before any relation was derived, and keeps that meaning for older results |
 | `ProcessInstanceNotFound` | a process filter or its `peer` names no instance in the selected generation |
@@ -358,8 +360,11 @@ when no contribution in scope is known — there is no declared slot the account
 unknown — the result has no value, states which, and names the other domains records in scope do measure.
 An observed zero is a known contribution, and a total of known zeros is zero.
 
-An observation count of zero is a count of records, not a finding that nothing happened: coverage is stated
-separately from data (R21), and the result says so.
+An observation count of zero is a count of records, not a finding that nothing happened: coverage is stated separately
+from data (R21), and the result says so; since revision 801 it says the generation publishes no coverage ledger only
+where it publishes none. `icat metric` heads each unavailable result's explanation with its reason in words, and since
+revision 801 says `NoLogicalOperations` as no derived operation answering the request, since a session that cannot
+answer one may still hold calls.
 
 ## 8a. The logical-operations basis (revision 183)
 

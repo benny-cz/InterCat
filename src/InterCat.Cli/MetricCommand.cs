@@ -893,7 +893,7 @@ internal static class MetricCommand
             result.Clock,
             pidReused: group.Process!.LifecycleEpoch > 1
                 || result.Groups.Any(other => other.Process is { } peer && peer.ProcessId == group.Process.ProcessId && peer.Id != group.Process.Id)),
-        MetricGroupKind.Mechanism => group.Mechanism!.Value.ToString(),
+        MetricGroupKind.Mechanism => MechanismText.Name(group.Mechanism!.Value),
         MetricGroupKind.Executable => group.Executable!,
         MetricGroupKind.UserSession => GroupingText.Session(group.TerminalSession!.Value),
         MetricGroupKind.Unattributed => BindingText.Reason(group.Reason!.Value),
@@ -954,7 +954,17 @@ internal static class MetricCommand
             (false, true) => ["Rank", "Mechanism", "Value", measuredHeader],
             (false, false) => ["Rank", "Mechanism", "Value"],
         };
-        ConsoleUi.Table(headers, rows);
+        if (rows.Count > 0)
+        {
+            ConsoleUi.Table(headers, rows);
+        }
+        else
+        {
+            // A table of no row would read as rows lost; every contribution is in the reasons beneath, or there is none.
+            ConsoleUi.Line(grouping.Unattributed.Count > 0
+                ? "  No row: every contribution is listed beneath by why it belongs to none."
+                : "  No row: nothing in scope contributes.");
+        }
         if (grouping.Unattributed.Count > 0)
         {
             ConsoleUi.Line();
@@ -1133,7 +1143,7 @@ internal static class MetricCommand
         if (!document.Available)
         {
             ConsoleUi.Heading("Unavailable");
-            ConsoleUi.Field("Reason", Words(document.Unavailable!.Reason));
+            ConsoleUi.Field("Reason", Reason(document.Unavailable!.Reason));
             ConsoleUi.Line();
             ConsoleUi.Note(document.Unavailable.Explanation);
             if (result.Unavailable == MetricUnavailableReason.NoInterval)
@@ -1582,6 +1592,14 @@ internal static class MetricCommand
 
     /// <summary>`icat metric --matrix --json`'s contract: §5.3's matrix, one entry per metric (`metrics-v1` §2).</summary>
     public const string MatrixContract = "metric-matrix-v1";
+
+    /// <summary>
+    /// Why a request is unavailable, as its explanation's heading: the reason's name in words, but where no operation
+    /// derived answers the request it says so, rather than that the session holds no operation when it holds calls.
+    /// </summary>
+    private static string Reason(string reason) => reason == nameof(MetricUnavailableReason.NoLogicalOperations)
+        ? "No derived operation answers it"
+        : Words(reason);
 
     private static void RenderMatrix(bool json)
     {
