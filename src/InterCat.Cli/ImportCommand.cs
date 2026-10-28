@@ -210,6 +210,14 @@ internal static partial class ImportCommand
         }
 
         string? sessionPath = intoOption is null ? null : Path.GetFullPath(intoOption);
+        // A file at --into itself is said where every other destination is; one above it, here, before the file is read.
+        if (sessionPath is not null && !File.Exists(sessionPath)
+            && OutputFiles.FolderRefusal(sessionPath, "an import publishes into a folder") is { } blocked)
+        {
+            ConsoleUi.Failure(blocked);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         string? outputPath = outputOption is null ? null : Path.GetFullPath(outputOption);
         if (OutputFiles.Refusal(outputPath, overwrite) is { } refusedOutput)
         {

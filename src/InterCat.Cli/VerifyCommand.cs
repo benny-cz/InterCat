@@ -96,6 +96,12 @@ internal static class VerifyCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        if (OutputFiles.FolderRefusal(outputDirectory, "icat verify writes the curated run into a folder") is { } blocked)
+        {
+            ConsoleUi.Failure(blocked);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         if (Directory.Exists(outputDirectory) && Directory.EnumerateFileSystemEntries(outputDirectory).Any() && !overwrite)
         {
             ConsoleUi.Failure($"{outputDirectory} already contains files. Pass --overwrite to replace known outputs.");

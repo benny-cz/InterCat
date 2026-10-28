@@ -52,6 +52,12 @@ internal static class DemoCommand
             return Task.FromResult(InterCatExitCode.InvalidInvocation);
         }
 
+        if (OutputFiles.FolderRefusal(full, "the demo is written into a new or empty folder") is { } blocked)
+        {
+            ConsoleUi.Failure(blocked);
+            return Task.FromResult(InterCatExitCode.InvalidInvocation);
+        }
+
         ConsoleUi.Progress(DemoInvestigation.Disclosure + " Writing its two sessions and the investigation that holds them.");
         DemoInvestigationResult made = DemoInvestigation.Create(full, cancellationToken);
         var document = new DemoDocument

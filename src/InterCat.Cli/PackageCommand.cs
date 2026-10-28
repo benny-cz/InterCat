@@ -158,6 +158,13 @@ internal static class PackageCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        if (!check && destination is not null
+            && OutputFiles.FolderRefusal(destination, "a package is written into a new folder") is { } blocked)
+        {
+            ConsoleUi.Failure(blocked);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         string? report = reportOption is null ? null : Path.GetFullPath(reportOption);
         if (OutputFiles.Refusal(report, overwrite, "--report", "the report") is { } refusedOutput)
         {

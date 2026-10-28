@@ -168,6 +168,12 @@ internal static class RecordCommand
         }
 
         string full = Path.GetFullPath(sessionPath);
+        if (OutputFiles.FolderRefusal(full, "icat record records into a new folder") is { } blocked)
+        {
+            ConsoleUi.Failure(blocked);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         if (Directory.Exists(full) && Directory.EnumerateFileSystemEntries(full).Any())
         {
             ConsoleUi.Failure(

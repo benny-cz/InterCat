@@ -678,6 +678,8 @@ Revision 824 has `icat record` and `icat measure` say they need Windows away fro
 
 Revision 825 refuses a folder where a report would be written before any work, through one check every command that writes a named file uses.
 
+Revision 826 refuses a file that stands where a command must make a folder, or above a file it writes, before any work, naming it.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2221,3 +2223,14 @@ with `--overwrite` or without, naming the option that named it, `--output`, `--r
 is refused without `--overwrite` in the words revision 815 gave every command. The test of a report that exists now
 runs nineteen commands, at a file and at a folder, among them `icat support`, `content --find --output`, `import`,
 `compare`, `package --report` and `content --save`, which no test had run so.
+
+Revision 826 is the other half of revision 825 (R18). A report named beneath a file, `--output notes.txt/report.json`,
+passed the check, since neither a folder nor a file stood at the path itself, so the command did its work and then
+failed to make the report's folder with "The file ... already exists", exit code 4, which names neither the report nor
+the file in its way. The commands that make a folder a person names did the same: `icat follow` deriving into a file,
+`icat verify` writing its curated run into one, `icat record` recording into one, and `icat demo`, `icat package` and
+`icat import --into` making a folder beneath one, each failed in .NET's words, exit code 4. The shared check of a file
+a command writes now also refuses a file standing where a folder above it must be, and a check of a folder a command
+makes refuses a file at it or above it; each names the file in the way, before anything is read or printed. `icat
+import --into` naming a file itself keeps its own, fuller words, and the commands' own rules for a folder that exists,
+empty or not, stand as they were.

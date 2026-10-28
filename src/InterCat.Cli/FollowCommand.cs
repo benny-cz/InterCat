@@ -93,6 +93,12 @@ internal static class FollowCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        if (OutputFiles.FolderRefusal(sessionPath, "icat follow derives the session into a folder") is { } blocked)
+        {
+            ConsoleUi.Failure(blocked);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         int pollSeconds = DefaultPollSeconds;
         if (pollOption is not null
             && (!int.TryParse(pollOption, NumberStyles.None, CultureInfo.InvariantCulture, out pollSeconds)

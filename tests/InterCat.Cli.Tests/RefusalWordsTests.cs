@@ -200,6 +200,49 @@ public sealed class RefusalWordsTests : IDisposable
         Assert.Empty(Directory.EnumerateFileSystemEntries(folder));
     }
 
+    [Fact(DisplayName = "R18: a file standing where a command must make a folder, or above a file it writes, is refused by name before anything is read")]
+    public async Task AFileInTheWayIsNamed()
+    {
+        string file = Path.Combine(root.Path, "a-file");
+        File.WriteAllText(file, "not a folder");
+        string beneath = Path.Combine(file, "inside");
+        string etl = Path.Combine(root.Path, "source.etl");
+        File.WriteAllBytes(etl, [0, 1, 2, 3]);
+
+        // A file a command writes, beneath it.
+        foreach (string[] args in new[]
+        {
+            ["capabilities", "--output", Path.Combine(beneath, "report.json")], ["support", "--output", Path.Combine(beneath, "b.zip")],
+            new[] { "session", session.Path, "--output", Path.Combine(beneath, "report.json") },
+        })
+        {
+            (InterCatExitCode code, string output, string said) = await Run(args);
+            Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, output));
+            Assert.Contains($"{args[^1]} cannot be written: {file} is a file, not a folder.", said, StringComparison.Ordinal);
+        }
+
+        // A folder a command makes, at it or beneath it.
+        foreach ((string[] args, string folder, string? purpose) in new (string[], string, string?)[]
+        {
+            // --once, so a follow let past the check says the folder holds no recording rather than waiting for one.
+            (["follow", root.Path, file, "--once"], file, "icat follow derives the session into a folder"),
+            (["follow", root.Path, beneath, "--once"], beneath, null),
+            (["verify", "tcp", "--run", root.Path, "--output", file], file, "icat verify writes the curated run into a folder"),
+            (["record", file], file, "icat record records into a new folder"),
+            (["demo", beneath], beneath, null),
+            (["package", session.Path, "--original", "--output", beneath], beneath, null),
+            (["import", etl, "--into", beneath], beneath, null),
+        })
+        {
+            (InterCatExitCode code, string output, string said) = await Run(args);
+            Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, output));
+            Assert.Contains(purpose is null ? $"{folder} cannot be made: {file} is a file, not a folder." : $"{folder} is a file, and {purpose}.",
+                said, StringComparison.Ordinal);
+        }
+
+        Assert.Equal("not a folder", File.ReadAllText(file));
+    }
+
     /// <summary>Every command that writes a file a person names, each asked to write it to <paramref name="target"/>.</summary>
     private string[][] Reporting(string target)
     {
