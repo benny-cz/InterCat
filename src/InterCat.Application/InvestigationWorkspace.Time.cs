@@ -221,13 +221,16 @@ public static partial class InvestigationWorkspace
     /// </summary>
     public const double MostPartsPerMillion = 1_000;
 
-    /// <summary>The rate of the member's clock against the reference's that two anchors measure, as parts per million off 1.</summary>
+    /// <summary>
+    /// The rate of the member's clock against the reference's that two anchors measure, as parts per million off 1: how much
+    /// more of the member's time than of the reference's passes between them, positive where the member's clock runs fast.
+    /// </summary>
     public static double MeasuredPartsPerMillion(WorkspaceAlignment alignment)
     {
         ArgumentNullException.ThrowIfNull(alignment);
         return alignment is { SessionNanoseconds: { } first, ReferenceNanoseconds: { } reference,
             SecondSessionNanoseconds: { } second, SecondReferenceNanoseconds: { } secondReference }
-            ? (((double)checked(secondReference - reference) / checked(second - first)) - 1) * 1_000_000
+            ? (((double)checked(second - first) / checked(secondReference - reference)) - 1) * 1_000_000
             : throw new InvalidOperationException($"Alignment revision {alignment.Revision} has one anchor, which measures no rate.");
     }
 

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-27 · Plan revision: 803 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 804 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,24 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 804 — a coverage pass over `icat workspace`:**
+  - Of the 1,224 lines of `icat workspace`'s command a test can reach, 107 ran in none: an alignment at two instants
+    and the rate it measures, a note reworded, removed or pinned at an instant, a view removed or refused for ending
+    before it starts, a folder holding no session added, a decision rejected or written as JSON, and the refusals of a
+    candidate named by no number and of a grouping no saved comparison makes. Tests run them now.
+  - Running them found a measurement said backwards. Two instants measure the rate of a member's clock against the
+    reference's, and the window and the command line said it with its sign turned - the reference's rate against the
+    member's - so a clock running 10 ppm slow read "+10 ppm against the reference's", where the session clock's own
+    "ran +10.0 ppm against the capture's own clock" means it gained. The rate is now the member's against the
+    reference's, as it was named, positive where the member's clock runs fast; the mapping and its uncertainty, which
+    use the measured rate itself, never changed.
+  - Debug and Release each ran 3,299 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index indexes none of the 3 new tests, each of a plan section. All 14 mutations were caught: the rate's
+    sign turned back, a second pair naming the sessions crossed taken, the rate unsaid, the one instant's warning
+    given for two, earlier revisions unsaid; a note's change said the other way, a pinned note unpinned, a backwards
+    view saved, a view's removal said as saved; a folder not added left unnamed, a candidate's refusal and a
+    rejection reworded, a decision's JSON unwritten and an unknown grouping saved.
 
 - **Revision 803 — a coverage pass over the window's workspace:**
   - Of the lines a test can reach, 183 of the workspace view model's 4,687 ran in none and 149 of the main window's

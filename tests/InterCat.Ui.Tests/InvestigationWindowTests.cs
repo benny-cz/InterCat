@@ -1157,7 +1157,7 @@ public sealed class InvestigationWindowTests
             Assert.StartsWith($"Aligned by a person at two instants: its {1m.ToString("0.000", culture)} s and {11m.ToString("0.000", culture)} s "
                 + $"are the reference's {3m.ToString("0.000", culture)} s and {13.0001m.ToString("0.000######", culture)} s, within ±",
                 time, StringComparison.Ordinal);
-            Assert.EndsWith($", so its clock runs +10 ppm against the reference's, its rate wandering at most {0.5m.ToString("0.###", culture)} ppm",
+            Assert.EndsWith($", so its clock runs −10 ppm against the reference's, its rate wandering at most {0.5m.ToString("0.###", culture)} ppm",
                 time, StringComparison.Ordinal);
 
             // Opened again, the dialog starts from that alignment, says it, and aligning from it states the same again.

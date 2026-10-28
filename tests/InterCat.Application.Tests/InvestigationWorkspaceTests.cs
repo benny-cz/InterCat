@@ -1825,7 +1825,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         WorkspaceAlignment alignment = InvestigationWorkspace.Align(
             workspace, b, Seconds(1), a, Seconds(3), 1_000, 0.5, "two consoles", Now, (Seconds(11), Seconds(13) + 100_000));
         Assert.Equal((Seconds(11), Seconds(13) + 100_000), (alignment.SecondSessionNanoseconds!.Value, alignment.SecondReferenceNanoseconds!.Value));
-        Assert.Equal(10, InvestigationWorkspace.MeasuredPartsPerMillion(alignment), 6);
+        Assert.Equal(-9.9999, InvestigationWorkspace.MeasuredPartsPerMillion(alignment), 4);
         InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
         Assert.Equal((InvestigationWorkspace.Contract, alignment), (read.Contract, Assert.Single(read.Alignments)));
 

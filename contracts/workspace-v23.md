@@ -169,15 +169,18 @@ no drift stated, the drift is unknown, and so is every uncertainty away from the
 its reference the workspace's time; withdrawing the last alignment in force leaves the workspace without one, so the
 next may choose another. Every revision is kept.
 
-With a second anchor `(t2, r2)` well apart from the first `(t1, r1)`, a manual alignment measures the clocks' rate
-`s = (r2 - r1) / (t2 - t1)` and maps `t` to `r1 + s * (t - t1)`, rounded to the nanosecond. Its uncertainty adds
-`withinNanoseconds`, which holds between the anchors; beyond them, that bound carried along the rate,
-`2 * withinNanoseconds / |t2 - t1|` for every nanosecond past the nearer; `2 * driftPartsPerMillion * d / 10^6`, `d`
-being the distance from the nearer anchor - a rate that may wander by w from a constant moves an instant by up to 2w
-times that distance; and 1 ns of rounding (§8.2). With no drift stated the wander is unknown, and so is every
-uncertainty but at the anchors themselves. A second anchor at the first's instant in either session, or measuring a rate
-more than 1,000 ppm from 1 - which no working clock runs at, so an instant was misread - is refused. A member's span is
-as uncertain as its widest instant, which lies at an end of it or midway between its anchors.
+With a second anchor `(t2, r2)` well apart from the first `(t1, r1)`, a manual alignment measures the clocks' rate `s
+= (r2 - r1) / (t2 - t1)` and maps `t` to `r1 + s * (t - t1)`, rounded to the nanosecond. The window and `icat
+workspace` say the rate as the member's clock's against the reference's, `(t2 - t1) / (r2 - r1) - 1` in parts per
+million, positive where the member's clock runs fast; until revision 804 they said `s - 1`, the reference's against
+the member's, so a clock running slow read as running fast. Its uncertainty adds `withinNanoseconds`, which holds
+between the anchors; beyond them, that bound carried along the rate, `2 * withinNanoseconds / |t2 - t1|` for every
+nanosecond past the nearer; `2 * driftPartsPerMillion * d / 10^6`, `d` being the distance from the nearer anchor - a
+rate that may wander by w from a constant moves an instant by up to 2w times that distance; and 1 ns of rounding
+(§8.2). With no drift stated the wander is unknown, and so is every uncertainty but at the anchors themselves. A
+second anchor at the first's instant in either session, or measuring a rate more than 1,000 ppm from 1 - which no
+working clock runs at, so an instant was misread - is refused. A member's span is as uncertain as its widest instant,
+which lies at an end of it or midway between its anchors.
 
 A member aligned to another aligned member is placed through both alignments in turn, and on through that member's to
 the reference: each adds its own uncertainty, taken at the widest instant what was carried so far allows, and carries

@@ -116,6 +116,125 @@ public sealed class InvestigationCommandTests : IDisposable
         Assert.Equal(2, InvestigationWorkspace.Read(workspace).Alignments.Count);
     }
 
+    [Fact(DisplayName = "§8.2: a session aligned at two instants says the rate they measure its clock running at against the reference's, with its sign, on the command line")]
+    public async Task TwoInstantsSayTheClocksRate()
+    {
+        (string workspace, string client, string server) = await TwoHosts();
+
+        // A second pair of instants naming the sessions the other way round is refused, and nothing is aligned.
+        (InterCatExitCode crossed, _, string why) = await Run("workspace", "align", workspace, $"{server}@1", $"{client}@1.75",
+            $"{client}@11", $"{server}@11.7501", "--within", "1ms");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, crossed);
+        Assert.Contains("A second instant names the same two sessions as the first, in the same order: "
+            + $"{server}@<seconds> {client}@<seconds>.", why, StringComparison.Ordinal);
+        Assert.Empty(InvestigationWorkspace.Read(workspace).Alignments);
+
+        // The server's 1 s is the client's 1.75 s and its 11 s the client's 11.7499 s: while the server's clock counted 10 s,
+        // the client's counted 9.9999 s, so the server's runs 10 ppm fast against the client's, and is said to.
+        (InterCatExitCode aligned, string shown, string said) = await Run("workspace", "align", workspace, $"{server}@1",
+            $"{client}@1.75", $"{server}@11", $"{client}@11.7499", "--within", "1ms");
+        Assert.Equal(InterCatExitCode.Success, aligned);
+        Assert.Contains($"Session {server} at 1.000 s is session {client} at 1.750 s, and at 11.000 s its 11.7499 s, within ±",
+            said, StringComparison.Ordinal);
+        Assert.Contains("The two instants measure its clock running +10 ppm against the reference's.", shown, StringComparison.Ordinal);
+        Assert.Contains("No bound on the rate's wander was stated, so away from the two instants this session's uncertainty is "
+            + "unknown and no order is stated there.", said, StringComparison.Ordinal);
+        Assert.Contains("rate +10 ppm, wander not stated", shown, StringComparison.Ordinal);
+        Assert.Equal(10.0001, InvestigationWorkspace.MeasuredPartsPerMillion(Assert.Single(InvestigationWorkspace.Read(workspace).Alignments)), 4);
+
+        // Aligned again, with a bound on the rate's wander: the revision before it is kept, and said to be.
+        (InterCatExitCode again, string bounded, _) = await Run("workspace", "align", workspace, $"{server}@1", $"{client}@1.75",
+            $"{server}@11", $"{client}@11.7499", "--within", "1ms", "--drift-ppm", "0.5");
+        Assert.Equal(InterCatExitCode.Success, again);
+        Assert.Contains("rate +10 ppm, wander ≤ 0.5 ppm", bounded, StringComparison.Ordinal);
+        Assert.Contains("1 earlier alignment revision is kept in the file; icat workspace show --json lists it.",
+            (await Run("workspace", "show", workspace)).Output, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "§8.4: a note is reworded, removed and pinned at an instant, and a view saved, refused backwards and removed, each a revision on the command line")]
+    public async Task NotesAndViewsAreRevisions()
+    {
+        (string workspace, string client, string server) = await TwoHosts();
+        Assert.Equal(InterCatExitCode.Success, (await Run(
+            "workspace", "align", workspace, server, client, "--wall-clock", "--sync", "5ms", "--drift-ppm", "50")).Code);
+
+        // A note about the whole investigation, named by its identity's first eight digits, is reworded and then removed; every
+        // revision is kept.
+        (InterCatExitCode noted, _, string added) = await Run("workspace", "note", workspace, "the first words");
+        Assert.Equal(InterCatExitCode.Success, noted);
+        string note = System.Text.RegularExpressions.Regex.Match(added,
+            @"Note ([0-9a-f]{8}) added, about the whole investigation \(note revision 1\)\.").Groups[1].Value;
+        Assert.NotEmpty(note);
+        (InterCatExitCode reworded, string rewrittenShown, string rewritten) = await Run(
+            "workspace", "note", workspace, note, "--replace", "the second words");
+        Assert.Equal(InterCatExitCode.Success, reworded);
+        Assert.Contains($"Note {note} reworded (note revision 2); its earlier words are kept.", rewritten, StringComparison.Ordinal);
+        Assert.Contains("the second words", rewrittenShown, StringComparison.Ordinal);
+        Assert.DoesNotContain("the first words", rewrittenShown, StringComparison.Ordinal);
+        (InterCatExitCode removed, string removedShown, string gone) = await Run("workspace", "note", workspace, note, "--remove");
+        Assert.Equal(InterCatExitCode.Success, removed);
+        Assert.Contains($"Note {note} removed (note revision 3); its earlier words are kept.", gone, StringComparison.Ordinal);
+        Assert.DoesNotContain("the second words", removedShown, StringComparison.Ordinal);
+        Assert.Equal(3, InvestigationWorkspace.Read(workspace).Notes.Count);
+
+        // A note pinned at an instant of a session says where.
+        (InterCatExitCode pinned, _, string where) = await Run("workspace", "note", workspace, "the retry storm", "--at", $"{server}@1.5");
+        Assert.Equal(InterCatExitCode.Success, pinned);
+        Assert.Matches($@"Note [0-9a-f]{{8}} added, pinned at session {server}'s 1\.500 s \(note revision 4\)\.", where);
+
+        // A view of the investigation's time is saved, one whose end is not after its start refused, and one removed, its
+        // revisions kept.
+        (InterCatExitCode saved, _, string kept) = await Run("workspace", "view", workspace, "incident", "1", "2.5");
+        Assert.Equal(InterCatExitCode.Success, saved);
+        Assert.Contains("View 'incident' saved: ", kept, StringComparison.Ordinal);
+        Assert.Contains(" of the investigation's time (view revision 1).", kept, StringComparison.Ordinal);
+        (InterCatExitCode backwards, _, string refusal) = await Run("workspace", "view", workspace, "backwards", "3", "2");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, backwards);
+        Assert.Contains("A view shows some of the investigation's time, so its end comes after its start; 2.000 s is not after 3.000 s.",
+            refusal, StringComparison.Ordinal);
+        (InterCatExitCode unsaved, _, string dropped) = await Run("workspace", "view", workspace, "incident", "--remove");
+        Assert.Equal(InterCatExitCode.Success, unsaved);
+        Assert.Contains("View 'incident' removed (view revision 2); its revisions are kept.", dropped, StringComparison.Ordinal);
+        Assert.Equal(2, InvestigationWorkspace.Read(workspace).Views.Count);
+    }
+
+    [Fact(DisplayName = "§8.3: icat workspace says why a folder holding no session is not added, refuses a candidate not named by its number and a grouping it does not compare by, and writes a decision as its file records it")]
+    public async Task AddsAndDecisionsSayWhatTheyDid()
+    {
+        (string workspace, string client, _) = await TwoHosts();
+
+        // A folder holding no session is not added, and says why; the investigation is as it was.
+        string empty = Directory.CreateDirectory(Path.Combine(folder, "empty")).FullName;
+        (InterCatExitCode unadded, _, string why) = await Run("workspace", "add", workspace, empty);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, unadded);
+        Assert.Contains($"{empty} was not added: ", why, StringComparison.Ordinal);
+        Assert.Equal(2, InvestigationWorkspace.Read(workspace).Members.Count);
+
+        // A candidate is named by its number in correlate's list, and a saved comparison groups by process or executable rows.
+        (InterCatExitCode unnumbered, _, string number) = await Run("workspace", "join", workspace, "first", "--accept");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, unnumbered);
+        Assert.Contains("A candidate is named by its number in icat workspace correlate's list; 'first' is not one.", number,
+            StringComparison.Ordinal);
+        (InterCatExitCode ungrouped, _, string grouping) = await Run("workspace", "comparison", workspace, "saved", "--session", client,
+            "--interval", "0:10000000", "--baseline", "10000000:20000000", "--group-by", "thread");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, ungrouped);
+        Assert.Contains("--group-by compares process or executable rows; 'thread' is neither.", grouping, StringComparison.Ordinal);
+        Assert.Empty(InvestigationWorkspace.Read(workspace).Comparisons);
+
+        // Rejected, the candidate is said not to be one connection; as JSON, a decision is written as the file records it.
+        (InterCatExitCode rejected, _, string decided) = await Run("workspace", "join", workspace, "1", "--reject");
+        Assert.Equal(InterCatExitCode.Success, rejected);
+        Assert.Contains("Candidate 1 (10.0.0.10:50100 ⇄ 10.0.0.20:443) is rejected: its two ends are not one connection "
+            + "(join revision 1).", decided, StringComparison.Ordinal);
+        (InterCatExitCode withdrawn, string written, _) = await Run("workspace", "join", workspace, "1", "--withdraw", "--json");
+        Assert.Equal(InterCatExitCode.Success, withdrawn);
+        using JsonDocument join = JsonDocument.Parse(written);
+        WorkspaceJoin recorded = InvestigationWorkspace.Read(workspace).Joins[^1];
+        Assert.Equal((2, "Withdrawn", recorded.First.Key, recorded.Second.Key), (join.RootElement.GetProperty("revision").GetInt32(),
+            join.RootElement.GetProperty("decision").GetString(), join.RootElement.GetProperty("first").GetProperty("key").GetString(),
+            join.RootElement.GetProperty("second").GetProperty("key").GetString()));
+    }
+
     [Fact(DisplayName = "§8.3: a host is named, hosts are said to be one and a translation is stated on the command line, each withdrawn as a revision")]
     public async Task HostsAndTranslationsAreRevisions()
     {
