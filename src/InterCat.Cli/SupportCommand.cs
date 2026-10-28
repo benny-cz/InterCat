@@ -50,9 +50,9 @@ internal static class SupportCommand
         }
 
         string? target = output is null ? null : Path.GetFullPath(output);
-        if (target is not null && File.Exists(target) && !overwrite)
+        if (OutputFiles.Refusal(target, overwrite) is { } refusedOutput)
         {
-            ConsoleUi.Failure($"{target} exists. Pass --overwrite to replace it.");
+            ConsoleUi.Failure(refusedOutput);
             return InterCatExitCode.InvalidInvocation;
         }
 

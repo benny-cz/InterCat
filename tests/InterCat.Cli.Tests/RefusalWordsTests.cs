@@ -173,17 +173,7 @@ public sealed class RefusalWordsTests : IDisposable
     {
         string report = Path.Combine(root.Path, "report.json");
         File.WriteAllText(report, "{}");
-        foreach (string[] args in new[]
-        {
-            ["profiles", "explore", "--output", report], ["exchanges", session.Path, "--output", report],
-            ["checkpoint", session.Path, "--output", report], ["compact", session.Path, "--output", report],
-            ["capabilities", "--output", report], ["export", session.Path, "--output", report],
-            ["operations", session.Path, "--output", report], ["metric", session.Path, "--metric", "observations", "--output", report],
-            ["processes", session.Path, "--output", report], ["session", session.Path, "--output", report],
-            ["rederive", session.Path, "--check", "--output", report],
-            new[] { "retain", session.Path, "--release-before", "1 s", "--output", report },
-            ["bench", "--no-storage-probe", "--output", report],
-        })
+        foreach (string[] args in Reporting(report))
         {
             // Refused before anything is read, so nothing is said of what would have been written.
             (InterCatExitCode code, string output, string said) = await Run(args);
@@ -192,6 +182,45 @@ public sealed class RefusalWordsTests : IDisposable
         }
 
         Assert.Equal("{}", File.ReadAllText(report));
+    }
+
+    [Fact(DisplayName = "R18: a folder where a report would be written is refused as one before anything is read, with --overwrite or without")]
+    public async Task AFolderIsNoReport()
+    {
+        string folder = Path.Combine(root.Path, "reports");
+        Directory.CreateDirectory(folder);
+        foreach (string[] args in Reporting(folder).SelectMany(args => new[] { args, [.. args, "--overwrite"] }))
+        {
+            (InterCatExitCode code, string output, string said) = await Run(args);
+            Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, output));
+            string option = args.Contains("--report") ? "--report" : args.Contains("--save") ? "--save" : "--output";
+            Assert.Contains($"{folder} is a folder; {option} names the file to write, never a folder.", said, StringComparison.Ordinal);
+        }
+
+        Assert.Empty(Directory.EnumerateFileSystemEntries(folder));
+    }
+
+    /// <summary>Every command that writes a file a person names, each asked to write it to <paramref name="target"/>.</summary>
+    private string[][] Reporting(string target)
+    {
+        string etl = Path.Combine(root.Path, "source.etl");
+        File.WriteAllBytes(etl, [0, 1, 2, 3]);
+        return
+        [
+            ["profiles", "explore", "--output", target], ["exchanges", session.Path, "--output", target],
+            ["checkpoint", session.Path, "--output", target], ["compact", session.Path, "--output", target],
+            ["capabilities", "--output", target], ["export", session.Path, "--output", target],
+            ["operations", session.Path, "--output", target], ["metric", session.Path, "--metric", "observations", "--output", target],
+            ["processes", session.Path, "--output", target], ["session", session.Path, "--output", target],
+            ["rederive", session.Path, "--check", "--output", target],
+            ["retain", session.Path, "--release-before", "1 s", "--output", target],
+            ["bench", "--no-storage-probe", "--output", target], ["support", "--output", target],
+            ["content", session.Path, "--find", "x", "--output", target], ["import", etl, "--output", target],
+            ["compare", session.Path, "--baseline", "0:100", "--interval", "100:200", "--output", target],
+            ["package", session.Path, "--original", "--output", Path.Combine(root.Path, "package"), "--report", target],
+            ["content", session.Path, "--session-id", Guid.NewGuid().ToString(), "--generation", "1", "--segment", "s", "--row", "0",
+                "--save", target],
+        ];
     }
 
     [Fact(DisplayName = "R18: icat bench writes its baseline where asked, and refuses a series it cannot read in words, never with a stack trace")]

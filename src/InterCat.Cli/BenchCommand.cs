@@ -51,9 +51,9 @@ internal static class BenchCommand
 
         // A report it may not write and a series it cannot read are refused before anything is measured or printed.
         string? path = output is null ? null : Path.GetFullPath(output);
-        if (path is not null && File.Exists(path) && !overwrite)
+        if (OutputFiles.Refusal(path, overwrite) is { } refusedOutput)
         {
-            ConsoleUi.Failure($"{path} exists. Pass --overwrite to replace it.");
+            ConsoleUi.Failure(refusedOutput);
             return InterCatExitCode.InvalidInvocation;
         }
 

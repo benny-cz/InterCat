@@ -61,9 +61,9 @@ internal static class CheckpointCommand
         }
 
         string? output = outputOption is null ? null : System.IO.Path.GetFullPath(outputOption);
-        if (output is not null && File.Exists(output) && !overwrite)
+        if (OutputFiles.Refusal(output, overwrite, "--output", "the report") is { } refusedOutput)
         {
-            ConsoleUi.Failure($"{output} exists. Pass --overwrite to replace the report.");
+            ConsoleUi.Failure(refusedOutput);
             return InterCatExitCode.InvalidInvocation;
         }
 

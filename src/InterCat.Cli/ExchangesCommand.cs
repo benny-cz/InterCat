@@ -243,9 +243,9 @@ internal static class ExchangesCommand
         }
 
         string? outputPath = outputOption is null ? null : Path.GetFullPath(outputOption);
-        if (outputPath is not null && File.Exists(outputPath) && !overwrite)
+        if (OutputFiles.Refusal(outputPath, overwrite) is { } refusedOutput)
         {
-            ConsoleUi.Failure($"{outputPath} exists. Pass --overwrite to replace it.");
+            ConsoleUi.Failure(refusedOutput);
             return InterCatExitCode.InvalidInvocation;
         }
 

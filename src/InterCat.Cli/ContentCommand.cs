@@ -161,9 +161,9 @@ internal static class ContentCommand
         }
 
         string? savePath = saveOption is null ? null : Path.GetFullPath(saveOption);
-        if (savePath is not null && File.Exists(savePath) && !overwrite)
+        if (OutputFiles.Refusal(savePath, overwrite, "--save") is { } refusedOutput)
         {
-            ConsoleUi.Failure($"{savePath} exists. Pass --overwrite to replace it.");
+            ConsoleUi.Failure(refusedOutput);
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -586,9 +586,9 @@ internal static class ContentCommand
         }
 
         string? outputPath = outputText is null ? null : Path.GetFullPath(outputText);
-        if (outputPath is not null && File.Exists(outputPath) && !overwrite)
+        if (OutputFiles.Refusal(outputPath, overwrite) is { } refusedOutput)
         {
-            ConsoleUi.Failure($"{outputPath} exists. Pass --overwrite to replace it.");
+            ConsoleUi.Failure(refusedOutput);
             return InterCatExitCode.InvalidInvocation;
         }
 

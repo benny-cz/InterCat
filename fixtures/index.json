@@ -2303,6 +2303,7 @@
         "R18: a compaction not published is said once, in words that keep the session whole, wherever it is said, and why last",
         "R18: a demo session says it was generated wherever the window shows it, in icat's words",
         "R18: a file icat compare writes holds every row unless --limit is given, where the screen lists fifty",
+        "R18: a folder where a report would be written is refused as one before anything is read, with --overwrite or without",
         "R18: a follow counts its published chunks and records as the card does, one in the singular",
         "R18: a group's RPC call time is its members' calls together, as the duration metric grouped by executable or by session answers",
         "R18: a group's lanes measured together hold what the byte measure answers for each process and every record",

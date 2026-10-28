@@ -676,6 +676,8 @@ Revision 823 refuses an empty argument, as an unset variable leaves one, by what
 
 Revision 824 has `icat record` and `icat measure` say they need Windows away from it, and `icat measure` refuse a whole number it cannot read rather than measure with its default.
 
+Revision 825 refuses a folder where a report would be written before any work, through one check every command that writes a named file uses.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2209,3 +2211,13 @@ measure` read `--seed`, `--messages`, `--calls` and its other whole numbers thro
 could not parse for an option not given, so `--seed abc` measured with the default seed and said nothing of it; the
 reader now keeps the value's refusal, and `icat measure` gives it, naming the option and the value, before it starts
 anything.
+
+Revision 825 makes one check of the nineteen that guarded a command's report file (R18). Each command that writes a
+file a person names checked only whether a file stood there; a folder did not, so `icat capabilities --output
+reports`, say, probed the machine, printed its report and only then failed to write it, with "Access to the path ...
+is denied", exit code 3, which named a permission rather than the folder. The nineteen copies are one,
+`OutputFiles.Refusal`, which every such command uses before it reads or prints anything: a folder is refused as one,
+with `--overwrite` or without, naming the option that named it, `--output`, `--report` or `--save`; a file that exists
+is refused without `--overwrite` in the words revision 815 gave every command. The test of a report that exists now
+runs nineteen commands, at a file and at a folder, among them `icat support`, `content --find --output`, `import`,
+`compare`, `package --report` and `content --save`, which no test had run so.

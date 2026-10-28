@@ -31,9 +31,9 @@ internal static class CapabilitiesCommand
 
         // A report that exists is refused before anything is read, as every command refuses it.
         string? fullPath = outputPath is null ? null : Path.GetFullPath(outputPath);
-        if (fullPath is not null && File.Exists(fullPath) && !overwrite)
+        if (OutputFiles.Refusal(fullPath, overwrite) is { } refusedOutput)
         {
-            ConsoleUi.Failure($"{fullPath} exists. Pass --overwrite to replace it.");
+            ConsoleUi.Failure(refusedOutput);
             return InterCatExitCode.InvalidInvocation;
         }
 

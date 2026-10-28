@@ -101,9 +101,9 @@ internal static class ExportCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        if (File.Exists(destination) && !overwrite)
+        if (OutputFiles.Refusal(destination, overwrite) is { } refusedOutput)
         {
-            ConsoleUi.Failure($"{destination} exists. Pass --overwrite to replace it.");
+            ConsoleUi.Failure(refusedOutput);
             return InterCatExitCode.InvalidInvocation;
         }
 

@@ -159,9 +159,9 @@ internal static class PackageCommand
         }
 
         string? report = reportOption is null ? null : Path.GetFullPath(reportOption);
-        if (report is not null && File.Exists(report) && !overwrite)
+        if (OutputFiles.Refusal(report, overwrite, "--report", "the report") is { } refusedOutput)
         {
-            ConsoleUi.Failure($"{report} exists. Pass --overwrite to replace the report.");
+            ConsoleUi.Failure(refusedOutput);
             return InterCatExitCode.InvalidInvocation;
         }
 

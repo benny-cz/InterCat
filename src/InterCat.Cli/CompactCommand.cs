@@ -69,9 +69,9 @@ internal static class CompactCommand
         }
 
         string? output = outputOption is null ? null : Path.GetFullPath(outputOption);
-        if (output is not null && File.Exists(output) && !overwrite)
+        if (OutputFiles.Refusal(output, overwrite, "--output", "the report") is { } refusedOutput)
         {
-            ConsoleUi.Failure($"{output} exists. Pass --overwrite to replace the report.");
+            ConsoleUi.Failure(refusedOutput);
             return InterCatExitCode.InvalidInvocation;
         }
 
