@@ -141,7 +141,7 @@ internal static class OperationsCommand
 
         if (sessionPath is null)
         {
-            ConsoleUi.Failure("A session directory is required: icat operations <directory>");
+            ConsoleUi.Failure("A session directory is required: icat operations <directory>.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -193,13 +193,9 @@ internal static class OperationsCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated;
-        if (policyOption is not null
-            && (!Enum.TryParse(policyOption.Replace("-", string.Empty, StringComparison.Ordinal), ignoreCase: true, out policy)
-                || !Enum.IsDefined(policy)))
+        if (!EvidencePolicyOption.TryParse(policyOption, out EvidencePolicy policy, out string? policyRefusal))
         {
-            ConsoleUi.Failure(
-                $"--evidence-policy expects one of: {string.Join(", ", Enum.GetNames<EvidencePolicy>())}. '{policyOption}' is not one.");
+            ConsoleUi.Failure(policyRefusal!);
             return InterCatExitCode.InvalidInvocation;
         }
 

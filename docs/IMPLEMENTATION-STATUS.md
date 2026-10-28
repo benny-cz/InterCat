@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 819 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 820 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 820 — every command reads `--evidence-policy` alike (R18):**
+  - Ten commands take `--evidence-policy`. Seven read it by the policy's name, as written or in kebab form, and refuse
+    its number, which is what the durable format stores and not what a person types; `icat exchanges`, `operations`
+    and `processes` read it with code of their own that took `2` as a policy. They now read it as the others do, and a
+    theory runs all ten, a number refused in the same words and either form of a name taken.
+  - `icat exchanges` says one HTTP record that names no exchange as one, where it said "1 HTTP records name no
+    exchange"; that line and the note that no exchange is grouped had never run. `icat exchanges`, `operations`,
+    `processes`, `session` and `record` end their refusal of a missing directory with a full stop, as every other
+    command's does.
+  - Debug and Release each ran 3,395 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the new R18 theory, of ten runs, and the new R22 test. All 7 mutations were caught: icat
+    exchanges, operations and processes each ignoring the policy given; one unnumbered record said as many; icat
+    exchanges' and icat record's missing-directory refusals unpunctuated; and icat exchanges' missing session folder
+    unnamed.
 
 - **Revision 819 — `icat content` and `icat raw` refuse a mistaken locator as a mistake (R10):**
   - A `--segment` the generation does not name was answered as damage to the session, exit code 4 in the storage

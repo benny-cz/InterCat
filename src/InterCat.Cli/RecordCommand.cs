@@ -82,7 +82,7 @@ internal static class RecordCommand
 
         if (sessionPath is null)
         {
-            ConsoleUi.Failure("A new session directory is required: icat record <directory>");
+            ConsoleUi.Failure("A new session directory is required: icat record <directory>.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }

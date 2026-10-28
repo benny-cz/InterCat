@@ -258,7 +258,7 @@ internal static class SessionCommand
 
         if (sessionPath is null)
         {
-            ConsoleUi.Failure("A session directory is required: icat session <directory>");
+            ConsoleUi.Failure("A session directory is required: icat session <directory>.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }

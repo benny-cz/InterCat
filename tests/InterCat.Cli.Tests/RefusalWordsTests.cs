@@ -48,6 +48,12 @@ public sealed class RefusalWordsTests : IDisposable
         { ["exchanges", "{session}", "--decode"], "--decode reads the heads of the exchanges listed: give --pid, or --exchanges with a number." },
         { ["exchanges", "{session}", "--exchanges", "lots"], "--exchanges expects a number of exchanges per process up to 10,000; 'lots' is not one." },
         { ["checkpoint"], "A published session directory is required: icat checkpoint <directory>." },
+        { ["exchanges"], "A session directory is required: icat exchanges <directory>." },
+        { ["exchanges", "{nowhere}"], "No session directory at {nowhere}." },
+        { ["operations"], "A session directory is required: icat operations <directory>." },
+        { ["processes"], "A session directory is required: icat processes <directory>." },
+        { ["session"], "A session directory is required: icat session <directory>." },
+        { ["record"], "A new session directory is required: icat record <directory>." },
         { ["content", "{session}", "--find", "x", "--json"], "--find lists the records holding the text for a person, never into JSON: leave out --json." },
         { ["content", "{session}", "--find", "x", "--reveal"],
             "--find searches the session's kept content, not one record: leave out the record's locator and --reveal, --save, --decode, --part, --from and --to." },
@@ -113,10 +119,47 @@ public sealed class RefusalWordsTests : IDisposable
     [MemberData(nameof(Refusals))]
     public async Task WhatCannotBeReadIsRefused(string[] args, string expected)
     {
-        (InterCatExitCode code, string output, string said) = await Run([.. args.Select(arg => arg.Replace("{session}", session.Path, StringComparison.Ordinal))]);
+        string nowhere = Path.Combine(root.Path, "nowhere");
+        string Placed(string text) =>
+            text.Replace("{session}", session.Path, StringComparison.Ordinal).Replace("{nowhere}", nowhere, StringComparison.Ordinal);
+        (InterCatExitCode code, string output, string said) = await Run([.. args.Select(Placed)]);
 
         Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, output));
-        Assert.Contains(expected.Replace("{session}", session.Path, StringComparison.Ordinal), said, StringComparison.Ordinal);
+        Assert.Contains(Placed(expected), said, StringComparison.Ordinal);
+    }
+
+    /// <summary>Every command that takes --evidence-policy, as it runs over the session with nothing else wrong.</summary>
+    public static TheoryData<string[]> PolicyRuns => new()
+    {
+        { ["evidence", "{session}"] },
+        { ["exchanges", "{session}"] },
+        { ["links", "{session}", "--process", "100"] },
+        { ["metric", "{session}", "--metric", "observations"] },
+        { ["operations", "{session}"] },
+        { ["outliers", "{session}", "--interval", "195:200"] },
+        { ["patterns", "{session}"] },
+        { ["processes", "{session}"] },
+        { ["waits", "{session}"] },
+        { ["content", "{session}", "--find", "x", "--process", "100"] },
+    };
+
+    [Theory(DisplayName = "R18: every command that takes --evidence-policy reads a policy by its name, as written or in kebab form, never by its number")]
+    [MemberData(nameof(PolicyRuns))]
+    public async Task EveryCommandReadsAPolicyByName(string[] args)
+    {
+        string[] With(string policy) =>
+            [.. args.Select(arg => arg.Replace("{session}", session.Path, StringComparison.Ordinal)), "--evidence-policy", policy];
+
+        // A number is what the durable format stores, not what a person types.
+        (InterCatExitCode code, string output, string said) = await Run(With("2"));
+        Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, output));
+        Assert.Contains("--evidence-policy expects one of: DirectOnly, IncludeCorrelated, IncludeCandidates, AllIncludingConflicting. "
+            + "'2' is not one.", said, StringComparison.Ordinal);
+        foreach (string named in new[] { "direct-only", "DirectOnly" })
+        {
+            (code, _, said) = await Run(With(named));
+            Assert.True(code == InterCatExitCode.Success, said);
+        }
     }
 
     [Fact(DisplayName = "R18: a report file that exists is never replaced without --overwrite, as icat profiles says it as every command does")]

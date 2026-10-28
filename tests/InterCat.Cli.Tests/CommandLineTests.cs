@@ -2556,6 +2556,29 @@ public sealed class CommandLineTests : IDisposable
             answer => Assert.DoesNotContain(nameof(ProcessBindingReason.NotAdmittedByPolicy), answer, StringComparison.Ordinal));
     }
 
+    [Fact(DisplayName = "R22: icat exchanges counts the HTTP records that name no exchange apart, in words that agree with the count")]
+    public async Task UnnumberedRecordsAreCountedApart()
+    {
+        // Exchange 4's response body in two buffers, and a third buffer whose record names no exchange.
+        ObservationRowV1[] bodies = [Body(10, 1), Body(12, 2), Body(14, 3)];
+        using var one = new TemporarySession();
+        Publish(one.Store, bodies, fields: [.. bodies.Take(2).Select(row => Field(row, SourceField.HttpExchangeId, 4))]);
+        one.Store.ReleaseSegmentReaders();
+        (InterCatExitCode code, string output, string said) = await Run("exchanges", one.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Unnumbered +1 HTTP record names no exchange and belongs to none\r?$", output);
+
+        // Where none names one, no exchange is grouped, and why is said.
+        using var none = new TemporarySession();
+        Publish(none.Store, bodies);
+        none.Store.ReleaseSegmentReaders();
+        (code, output, said) = await Run("exchanges", none.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Unnumbered +3 HTTP records name no exchange and belong to none\r?$", output);
+        Assert.Contains("No HTTP exchange is grouped: its HTTP records name no exchange number, so none can be told apart", output,
+            StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one")]
     public async Task APartThatIsNotWholeShowsItsGaps()
     {

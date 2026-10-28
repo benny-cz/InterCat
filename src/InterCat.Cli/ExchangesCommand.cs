@@ -177,7 +177,7 @@ internal static class ExchangesCommand
 
         if (sessionPath is null)
         {
-            ConsoleUi.Failure("A session directory is required: icat exchanges <directory>");
+            ConsoleUi.Failure("A session directory is required: icat exchanges <directory>.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -236,13 +236,9 @@ internal static class ExchangesCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated;
-        if (policyOption is not null
-            && (!Enum.TryParse(policyOption.Replace("-", string.Empty, StringComparison.Ordinal), ignoreCase: true, out policy)
-                || !Enum.IsDefined(policy)))
+        if (!EvidencePolicyOption.TryParse(policyOption, out EvidencePolicy policy, out string? policyRefusal))
         {
-            ConsoleUi.Failure(
-                $"--evidence-policy expects one of: {string.Join(", ", Enum.GetNames<EvidencePolicy>())}. '{policyOption}' is not one.");
+            ConsoleUi.Failure(policyRefusal!);
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -452,8 +448,10 @@ internal static class ExchangesCommand
         ConsoleUi.Field("Rules", $"{document.GroupingRule} over {document.BindingRule}, evidence policy {document.EvidencePolicy}");
         if (document.RecordsWithoutExchange > 0)
         {
-            ConsoleUi.Field("Unnumbered", string.Create(CultureInfo.CurrentCulture,
-                $"{document.RecordsWithoutExchange:N0} HTTP records name no exchange and belong to none"));
+            ConsoleUi.Field("Unnumbered", document.RecordsWithoutExchange == 1
+                ? "1 HTTP record names no exchange and belongs to none"
+                : string.Create(CultureInfo.CurrentCulture,
+                    $"{document.RecordsWithoutExchange:N0} HTTP records name no exchange and belong to none"));
         }
 
         // Whether an exchange listed nowhere could have been seen at all is the ledger's to say (R21).
