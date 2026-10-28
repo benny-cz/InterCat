@@ -4378,6 +4378,111 @@ public sealed class CommandLineTests : IDisposable
         static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
     }
 
+    [Fact(DisplayName = "R18: icat package --check measures a redacted package of an interval in words and as a report, writing no package, and a package or report already there is refused, as icat session's report is")]
+    public async Task APackageIsMeasuredWithoutBeingWritten()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "intercat-measured-package-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            string held = Held(folder, "source", "measured-host",
+            [
+                Timed(Lifecycle(10, ObservationKind.Create, 4_242, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+                Timed(Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 300, 4_242, 10).Between("10.0.0.1:40000", "10.0.0.2:443")),
+                Timed(Transfer(5_000, ObservationKind.Send, AccountingSide.SendSide, 400, 4_242, 11).Between("10.0.0.1:40000", "10.0.0.2:443")),
+            ]);
+            string package = Path.Combine(folder, "package");
+            string report = Path.Combine(folder, "reports", "measured.json");
+
+            // Measured, the package is said as it would be written - its interval, with the lifecycle record from outside it -
+            // and nothing is written but the report asked for, which holds what --json prints.
+            (InterCatExitCode code, string output, string said) = await Run("package", held, "--redacted", "--interval", "4000:6000",
+                "--check", "--report", report);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Contains("This was a measurement; nothing was written. Run without --check, with --output, to write the package.",
+                output, StringComparison.Ordinal);
+            Assert.Matches(new Regex(string.Create(CultureInfo.CurrentCulture,
+                $@"(?m)^  Interval +ticks {4_000:N0} to {6_000:N0} of the source's 3 rows, with 1 lifecycle record from outside it\r?$")), output);
+            Assert.Contains($"Package report written to {report}.", said, StringComparison.Ordinal);
+            Assert.False(Directory.Exists(package));
+            Assert.Equal((await Run("package", held, "--redacted", "--interval", "4000:6000", "--check", "--json")).Output.TrimEnd(),
+                File.ReadAllText(report).TrimEnd());
+
+            // A report already there is kept unless --overwrite is given, and a package is written only to a new directory.
+            (code, _, said) = await Run("package", held, "--redacted", "--check", "--report", report);
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains($"{report} exists. Pass --overwrite to replace the report.", said, StringComparison.Ordinal);
+            Directory.CreateDirectory(package);
+            (code, _, said) = await Run("package", held, "--redacted", "--output", package);
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains($"{package} already exists. A package is written only to a new directory.", said, StringComparison.Ordinal);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(package));
+
+            // icat session writes its report where --output says, keeps a file there unless --overwrite, and takes --rows as a
+            // count of rows.
+            string described = Path.Combine(folder, "reports", "session.json");
+            (code, _, said) = await Run("session", held, "--output", described);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Contains($"Session report written to {described}.", said, StringComparison.Ordinal);
+            Assert.Equal((await Run("session", held, "--json")).Output.TrimEnd(), File.ReadAllText(described).TrimEnd());
+            (code, _, said) = await Run("session", held, "--output", described);
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains($"{described} exists. Pass --overwrite to replace it.", said, StringComparison.Ordinal);
+            (code, _, said) = await Run("session", held, "--rows", "many");
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains("--rows expects a whole number up to 10,000; 'many' is not one.", said, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        }
+
+        static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
+    }
+
+    [Fact(DisplayName = "I18: icat retain measures a release a pin stops partway in words - the pin, what goes before it - and offers no later moment past the pin")]
+    public async Task AReleaseAPinStopsIsMeasuredInWords()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "intercat-pinned-release-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // Four chunks of one recording, a send in each, read at 0.0001 s, 1.0001 s, 2.0001 s and 3.0001 s.
+            string held = Directory.CreateDirectory(Path.Combine(folder, "pinned")).FullName;
+            SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(held), Guid.NewGuid(), "command-line-tests");
+            CaptureId capture = CaptureId.New();
+            SourceClockDescriptor clock = ClockFor(ClockId.New(), "pinned-host");
+            for (int chunk = 0; chunk < 4; chunk++)
+            {
+                long ticks = 1_000 + (chunk * 10_000_000L);
+                Publish(store, [Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 300, 4_242, (ulong)(chunk + 1))
+                    .Between("10.0.0.1:40000", "10.0.0.2:443") with { SessionRelativeTicks = ticks * 100 }], capture: capture, clock: clock);
+            }
+
+            store.ReleaseSegmentReaders();
+
+            // Unpinned, a release before 1.5 s gives up the two oldest chunks, and a later moment would give up the third too.
+            (InterCatExitCode code, string output, string said) = await Run("retain", held, "--release-before", "1.5 s");
+            Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+            Assert.Matches(@"(?m)^  Gives up more +before a later moment, up to 2\.000100001 s, from which a release takes every chunk "
+                + @"but the newest\r?$", output);
+
+            // Pinned from 2 s, a release asked for before 3 s stops at the pin, which it names, and gives up the two records read
+            // before it; no later moment is offered past the pin, asked for before it or after.
+            Assert.Equal(InterCatExitCode.Success, (await Run("pin", held, "--from", "2 s", "--reason", "the incident", "--allow-mib", "64")).Code);
+            (code, output, said) = await Run("retain", held, "--release-before", "3 s");
+            Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+            Assert.Matches(@"(?m)^  Pinned +pin [0-9a-f]{8} keeps every record from 2\.000 s \(the incident\)\r?$", output);
+            Assert.Matches(@"(?m)^  Gives up +2 records in the 2 oldest chunks of 4, and 1 row derived from them\r?$", output);
+            Assert.Contains("A pin keeps every record read from 2.000 s (the incident), so this release stops there: it gives up only "
+                + "records read before the pin.", output, StringComparison.Ordinal);
+            Assert.DoesNotContain("Gives up more", output, StringComparison.Ordinal);
+            Assert.DoesNotContain("Gives up more", (await Run("retain", held, "--release-before", "1.5 s")).Output, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        }
+    }
+
     [Fact(DisplayName = "R18: icat package of a released session says what its source had released, and the package's readers say so too")]
     public async Task APackageOfAReleasedSessionSaysSo()
     {

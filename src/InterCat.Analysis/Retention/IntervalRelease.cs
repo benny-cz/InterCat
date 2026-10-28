@@ -96,8 +96,9 @@ public sealed record IntervalReleasePreview
     public long? EarliestReleasingNanoseconds { get; init; }
 
     /// <summary>
-    /// The smallest boundary from which a release takes every unit it can - all but the newest that holds records - so a
-    /// later one releases no more; null when no unit can be taken.
+    /// The smallest boundary from which a release takes every unit it can while the pins stand - all but the newest that
+    /// holds records, and none holding a record read from the earliest pin's moment on - so a later one releases no more;
+    /// null when no unit can be taken.
     /// </summary>
     public long? MostReleasingNanoseconds { get; init; }
 
@@ -242,6 +243,9 @@ public static class IntervalRelease
         // it gives up was then read before the pin. Publication checks the pins again, while it holds them.
         RetentionPin? heldBy = EarliestPinBefore(store, boundary);
         long planned = heldBy?.FromNanoseconds ?? boundary;
+
+        // No release gives up a record read from the earliest pin's moment on, so the most one can take stops before it too.
+        long? pinnedFrom = EarliestPinBefore(store, long.MaxValue)?.FromNanoseconds;
         (IReadOnlyList<JournalReleaseUnit> units, bool chunked) = JournalRetention.Units(store, manifest, cancellationToken);
         var slots = new UnitSlots(units);
         IReadOnlyList<string> observationNames = SessionSegments.Names(manifest);
@@ -291,13 +295,15 @@ public static class IntervalRelease
         int takenAsked = 0;
         bool blocked = false;
         bool blockedAsked = false;
+        bool pinnedOn = false;
         for (int slot = 0; slot < releasable; slot++)
         {
             running = Max(running, latest[slot]);
+            pinnedOn |= latest[slot] >= pinnedFrom;
             if (running is { } reached)
             {
                 earliest ??= reached + 1;
-                most = reached + 1;
+                most = pinnedOn ? most : reached + 1;
             }
 
             blocked |= latest[slot] >= planned;

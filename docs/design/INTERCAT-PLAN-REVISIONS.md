@@ -638,6 +638,8 @@ Revision 804 runs what a coverage pass over `icat workspace` found no test ran; 
 
 Revision 805 runs what a coverage pass over `icat processes` and `icat pin` found no test ran; it found nothing to change.
 
+Revision 806 runs what a coverage pass over `icat retain`, `icat session` and `icat package` found no test ran; its paragraph below says the later moment past a pin it found offered.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -1970,3 +1972,15 @@ allowance asked for, said in words with what it keeps and that the content of th
 its own, the pins standing listed, and the refusals of a reason past its bound, an identity two pins share and a
 session none of whose records has a session time (`store-v1` §8). Every path did as its contract says; the pass found
 nothing to change.
+
+Revision 806 runs what a coverage pass over `icat retain`, `icat session` and `icat package` found no test ran (R10):
+81 of the 798 lines of the first's command a test can reach, 65 of the 947 of the second's and 63 of the 429 of the
+third's, among them a redacted package measured with `--check`, its interval said and its `--report` written, a
+package or a report already there refused, `icat session`'s report written with `--output` and kept from being
+replaced unless asked, a `--rows` that is no count refused, and a release a pin stops partway, measured. Running them
+found a later moment offered past a pin. A measured release says, where one exists, a later moment before which a
+release would give up more (ADR-043); `IntervalReleasePreview.MostReleasingNanoseconds` was found among every chunk
+but the newest as though no pin stood (ADR-046), so with a pin from 2 s `icat retain` offered a release up to 2.0001
+s, which the pin forbids and which would have given up nothing more. It now stops before the earliest pin, whether the
+release asked for reaches the pin or not, as its documentation says a later boundary releases no more; `icat retain
+--json`'s `mostReleasingNanoseconds` is it.

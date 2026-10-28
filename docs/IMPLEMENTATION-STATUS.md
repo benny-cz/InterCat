@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 805 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 806 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 806 — a coverage pass over `icat retain`, `icat session` and `icat package`:**
+  - Of the lines of their commands a test can reach, 81 of `icat retain`'s 798 ran in none, 65 of `icat session`'s 947
+    and 63 of `icat package`'s 429: a redacted package measured with `--check`, its interval said and its `--report`
+    written; a package or a report already there refused; `icat session`'s report written with `--output`, kept from
+    being replaced unless asked, and a `--rows` that is no count refused; and a release a pin stops partway, measured.
+    Tests run them now.
+  - Running them found a later moment offered past a pin. A measured release says, where one exists, a later moment
+    before which a release would give up more; it was found among every chunk but the newest as though no pin stood,
+    so with a pin from 2 s `icat retain` offered a release up to 2.0001 s, which the pin forbids and which would have
+    given up nothing more. The most a release can give up now stops before the earliest pin, whether the release asked
+    for reaches it or not, and `icat retain --json`'s `mostReleasingNanoseconds` with it.
+  - Debug and Release each ran 3,303 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the 2 new tests. All 12 mutations were caught: the most a release gives up taken past the
+    pins, or past them only where the release asked for does not reach them; the pin's note and the pinned field
+    unsaid; the measurement's note and the interval's words changed, the package's and the session's reports left
+    empty or replaced unasked, a package written into a folder already there, and the refusal of --rows reworded.
 
 - **Revision 805 — a coverage pass over `icat processes` and `icat pin`:**
   - Of the 802 lines of `icat processes`' command a test can reach, 54 ran in none: a process's parent, named by its

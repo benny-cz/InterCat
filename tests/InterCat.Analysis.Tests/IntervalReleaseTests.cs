@@ -345,7 +345,8 @@ public sealed class IntervalReleaseTests
         Publish(session.Store, Timed(Transfer(300, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 3).Between(Client, Server)));
         Publish(session.Store, Timed(Transfer(400, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 4).Between(Client, Server)));
         IntervalReleasePreview unpinned = IntervalRelease.Preview(session.Store, 35_000);
-        Assert.Equal((2, 30_001L, (RetentionPin?)null), (unpinned.ReleasedUnits, unpinned.BoundaryNanoseconds!.Value, unpinned.HeldBy));
+        Assert.Equal((2, 30_001L, (RetentionPin?)null, 30_001L),
+            (unpinned.ReleasedUnits, unpinned.BoundaryNanoseconds!.Value, unpinned.HeldBy, unpinned.MostReleasingNanoseconds!.Value));
 
         // A pin from 25 µs keeps the second chunk: asked for the records before 35 µs, a release takes only the first, and
         // is held by the earliest pin before 35 µs, whichever was placed first.
@@ -354,6 +355,11 @@ public sealed class IntervalReleaseTests
         IntervalReleasePreview held = IntervalRelease.Preview(session.Store, 35_000);
         Assert.Equal((pin, 1, 20_001L, IntervalReleaseObstacle.None, 35_000L),
             (held.HeldBy, held.ReleasedUnits, held.BoundaryNanoseconds!.Value, held.Obstacle, held.RequestedNanoseconds));
+
+        // While the pins stand no later boundary gives up more than that, so none is offered past the earliest pin, asked for
+        // past it or not.
+        Assert.Equal(20_001L, held.MostReleasingNanoseconds!.Value);
+        Assert.Equal(20_001L, IntervalRelease.Preview(session.Store, 15_000).MostReleasingNanoseconds!.Value);
 
         // A pin from the boundary asked for, or after it, holds nothing back.
         Assert.Null(IntervalRelease.Preview(session.Store, 25_000).HeldBy);
@@ -382,7 +388,8 @@ public sealed class IntervalReleaseTests
         Assert.Equal(later, IntervalRelease.Preview(session.Store, 35_000).HeldBy);
         Assert.Equal(later, session.Store.Unpin(later.Id));
         IntervalReleasePreview free = IntervalRelease.Preview(session.Store, 35_000);
-        Assert.Equal((1, 30_001L, (RetentionPin?)null), (free.ReleasedUnits, free.BoundaryNanoseconds!.Value, free.HeldBy));
+        Assert.Equal((1, 30_001L, (RetentionPin?)null, 30_001L),
+            (free.ReleasedUnits, free.BoundaryNanoseconds!.Value, free.HeldBy, free.MostReleasingNanoseconds!.Value));
     }
 
     /// <summary>
