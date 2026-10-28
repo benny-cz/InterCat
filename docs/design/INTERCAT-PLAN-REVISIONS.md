@@ -636,6 +636,8 @@ Revision 803 runs what a coverage pass over the window's workspace found a perso
 
 Revision 804 runs what a coverage pass over `icat workspace` found no test ran; its paragraph below says the rate it found said with its sign turned.
 
+Revision 805 runs what a coverage pass over `icat processes` and `icat pin` found no test ran; it found nothing to change.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -1958,3 +1960,13 @@ clock running 10 ppm slow, where the session clock's own words, "ran +10.0 ppm a
 it gained (R5). The rate said is now `(t2 - t1) / (r2 - r1) - 1`, the member's against the reference's, positive where
 its clock runs fast, as its name and documentation always had it. What the rate places was never affected: the mapping
 and its uncertainty use `s` itself.
+
+Revision 805 runs what a coverage pass over `icat processes` and `icat pin` found no test ran (R10): 54 of the 802
+lines of the first's command a test can reach and 38 of the 227 of the second's. Among them: a process's parent, named
+by its instance or by the source alone, its terminal session and the gaps in its evidence, the words for an instance
+running when the capture began, first seen exiting or replaced with no exit seen, the instances past `--top`, and what
+it lists written to `--output`, which keeps a file there unless asked to replace it (§7.2); and a pin placed with the
+allowance asked for, said in words with what it keeps and that the content of the records it keeps stays releasable on
+its own, the pins standing listed, and the refusals of a reason past its bound, an identity two pins share and a
+session none of whose records has a session time (`store-v1` §8). Every path did as its contract says; the pass found
+nothing to change.

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 804 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 805 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 805 — a coverage pass over `icat processes` and `icat pin`:**
+  - Of the 802 lines of `icat processes`' command a test can reach, 54 ran in none: a process's parent, named by its
+    instance or by the source alone, its terminal session and the gaps in its evidence, the words for an instance
+    running when the capture began, first seen exiting or replaced with no exit seen, the instances past `--top`, and
+    what it lists written to `--output`, which keeps a file there unless asked to replace it.
+  - Of the 227 of `icat pin`'s, 38 ran in none: a pin placed with the allowance asked for, said in words with what it
+    keeps, and that the content kept of those records stays releasable on its own, the pins standing listed, and the
+    refusals of a reason past its bound, an identity two pins share and a session none of whose records has a session
+    time. Tests run both now; every path did as its contract says, and nothing was changed.
+  - Debug and Release each ran 3,301 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index indexes neither of the 2 new tests, each of a plan section. All 17 mutations were caught: in icat
+    processes, a parent's instance or its absence unsaid, the terminal session or the evidence gaps unsaid, a
+    lifetime's or a witness's words changed, a replacement's missing exit unsaid, the rest past --top uncounted, the
+    output unwritten or replaced unasked; in icat pin, an allowance read in kibibytes, the placed pin's heading, the
+    pins unlisted, the content note unsaid, the reason's bound moved, a shared identity's pins unlisted and an
+    untimed session's refusal reworded.
 
 - **Revision 804 — a coverage pass over `icat workspace`:**
   - Of the 1,224 lines of `icat workspace`'s command a test can reach, 107 ran in none: an alignment at two instants
