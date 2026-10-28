@@ -92,6 +92,24 @@ public sealed class JournalProbeTests
         Assert.Equal(new byte[] { 16, 17, 18, 19, 20 }, result.Envelope.ExtendedItems[0].Bytes.ToArray());
     }
 
+    [Fact(DisplayName = "I8: a journal probe clock frame whose rounding the contract does not define is refused, never converted by")]
+    public void AProbeClockFrameOfAnUndefinedRoundingIsRefused()
+    {
+        var clock = new SourceClockDescriptor(ClockId.New(), HostId.New(), SourceClockKind.Monotonic, TimestampEncoding.Qpc,
+            10_000_000, 0, TimestampRounding.NearestEven, 1_000_000_000);
+        byte[] encoded = JournalProbeCodec.EncodeClock(clock);
+
+        // After the frame's 12-byte header and its payload's digest, the payload: two identities, the kind, the encoding,
+        // the rate and the epoch, then the rounding. Its digest is made again, so only the rounding is wrong.
+        byte[] payload = encoded[44..];
+        Assert.Equal((int)TimestampRounding.NearestEven, BitConverter.ToInt32(payload, 56));
+        payload[56] = 9;
+        byte[] forged = [.. encoded[..12], .. System.Security.Cryptography.SHA256.HashData(payload), .. payload];
+
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(() => JournalProbeCodec.DecodeClock(forged));
+        Assert.StartsWith("Journal probe clock frame describes no clock this contract converts: ", refusal.Message, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "Journal probe rejects a corrupted checksummed batch")]
     public void CorruptedBatchIsRejected()
     {

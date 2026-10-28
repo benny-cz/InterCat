@@ -89,15 +89,25 @@ public static class JournalProbeCodec
 
         using var payloadStream = new MemoryStream(payload, writable: false);
         using var payloadReader = new BinaryReader(payloadStream, Encoding.UTF8, leaveOpen: false);
-        var descriptor = new SourceClockDescriptor(
-            new ClockId(ReadGuid(payloadReader)),
-            new HostId(ReadGuid(payloadReader)),
-            (SourceClockKind)payloadReader.ReadInt32(),
-            (TimestampEncoding)payloadReader.ReadInt32(),
-            payloadReader.ReadInt64(),
-            payloadReader.ReadInt64(),
-            (TimestampRounding)payloadReader.ReadInt32(),
-            payloadReader.ReadInt64());
+        SourceClockDescriptor descriptor;
+        try
+        {
+            descriptor = new SourceClockDescriptor(
+                new ClockId(ReadGuid(payloadReader)),
+                new HostId(ReadGuid(payloadReader)),
+                (SourceClockKind)payloadReader.ReadInt32(),
+                (TimestampEncoding)payloadReader.ReadInt32(),
+                payloadReader.ReadInt64(),
+                payloadReader.ReadInt64(),
+                (TimestampRounding)payloadReader.ReadInt32(),
+                payloadReader.ReadInt64());
+        }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidDataException("Journal probe clock frame describes no clock this contract converts: "
+                + exception.Message, exception);
+        }
+
         return payloadStream.Position == payloadStream.Length
             ? descriptor
             : throw new InvalidDataException("Journal probe clock payload has bytes outside its declared fields.");

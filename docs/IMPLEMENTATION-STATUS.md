@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 812 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 813 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 813 — a clock descriptor refuses what the contract does not define:**
+  - A coverage pass over the domain found that a source clock descriptor refused a kind or encoding of 0 but took any
+    other value its code does not define, and any rounding at all. A journal clock frame of rounding 9 was read, and
+    its first reading's conversion then threw, neither quarantined nor the journal refused as damaged. The descriptor
+    now refuses a kind, an encoding or a rounding the contract does not define, and both journal readers,
+    `journal-v1`'s and the probe's, refuse such a frame as malformed evidence and say why; `journal-v1` says so.
+  - The pass also runs two quarantines no test ran: a reading in another encoding than its clock's, and one past what
+    a session instant holds.
+  - Debug and Release each ran 3,337 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the 4 new tests, of I8; one is a theory of 4 cases. All 8 mutations were caught: an
+    undefined rounding, kind or encoding taken, by the descriptor or from a journal's frame; a reading in another
+    encoding converted, and one past what a session instant holds converted; and either journal's refusal said
+    without what it refused.
 
 - **Revision 812 — verbs that agree with their counts:**
   - Revision 811 swept the nouns after a count; this sweeps the verbs, and found four said wrongly of one. A graph

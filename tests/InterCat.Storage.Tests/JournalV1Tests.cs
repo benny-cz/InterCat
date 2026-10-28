@@ -339,6 +339,27 @@ public sealed class JournalV1Tests
         Assert.Contains("describes no source clock", refusal.Message, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I8: a clock frame whose rounding the contract does not define is refused as the journal is read, never converted by")]
+    public void AClockFrameOfAnUndefinedRoundingIsRefused()
+    {
+        // The rounding follows the two identities, the kind, the encoding, the rate and the epoch; the digest is the frame's.
+        byte[] payload = JournalV1Codec.EncodeClock(Clock())[8..^32];
+        Assert.Equal((byte)TimestampRounding.NearestEven, payload[50]);
+        payload[50] = 9;
+        byte[] file =
+        [
+            .. JournalV1Codec.EncodeHeader(CaptureId.New(), Created),
+            .. JournalV1Codec.EncodeFrame(JournalFrameKind.SourceClock, payload),
+            .. JournalV1Codec.EncodeSchemaTable(new JournalV1SchemaTable()),
+            .. JournalV1Codec.EncodeTerminal(),
+        ];
+
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(() => JournalV1Reader.Read(file));
+
+        Assert.StartsWith("A journal-v1 source clock frame describes no clock this contract converts: ", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("nearest even tick", refusal.Message, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "I8: a second clock frame is refused rather than silently replacing the first")]
     public void SecondClockFrameIsRefused()
     {

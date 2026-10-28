@@ -132,15 +132,25 @@ public static class JournalV1Codec
     public static SourceClockDescriptor DecodeClock(ReadOnlySpan<byte> payload)
     {
         var reader = new SpanReader(payload);
-        var clock = new SourceClockDescriptor(
-            new ClockId(reader.ReadGuid()),
-            new HostId(reader.ReadGuid()),
-            (SourceClockKind)reader.ReadByte(),
-            (TimestampEncoding)reader.ReadByte(),
-            reader.ReadInt64(),
-            reader.ReadInt64(),
-            (TimestampRounding)reader.ReadByte(),
-            reader.ReadInt64());
+        SourceClockDescriptor clock;
+        try
+        {
+            clock = new SourceClockDescriptor(
+                new ClockId(reader.ReadGuid()),
+                new HostId(reader.ReadGuid()),
+                (SourceClockKind)reader.ReadByte(),
+                (TimestampEncoding)reader.ReadByte(),
+                reader.ReadInt64(),
+                reader.ReadInt64(),
+                (TimestampRounding)reader.ReadByte(),
+                reader.ReadInt64());
+        }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidDataException("A journal-v1 source clock frame describes no clock this contract converts: "
+                + exception.Message, exception);
+        }
+
         reader.EnsureConsumed("source clock frame");
         return clock;
     }

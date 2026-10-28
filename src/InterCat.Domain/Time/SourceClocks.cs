@@ -103,6 +103,20 @@ public readonly record struct SourceClockDescriptor
             throw new ArgumentException("A persisted clock descriptor must declare its kind and timestamp encoding.");
         }
 
+        // A value the contract does not define converts nothing: a rounding outside it would fail every reading's conversion
+        // rather than quarantine it, so it is refused here, where the descriptor is read.
+        if (!Enum.IsDefined(kind) || !Enum.IsDefined(encoding))
+        {
+            throw new ArgumentException(
+                $"A clock descriptor declares kind {(int)kind} and timestamp encoding {(int)encoding}; the contract defines no such pair.");
+        }
+
+        if (!Enum.IsDefined(rounding))
+        {
+            throw new ArgumentOutOfRangeException(nameof(rounding), rounding,
+                "A clock descriptor rounds toward zero or to the nearest even tick, and the contract defines no other rounding.");
+        }
+
         Id = id;
         HostId = hostId;
         Kind = kind;

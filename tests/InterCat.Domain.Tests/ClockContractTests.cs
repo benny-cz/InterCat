@@ -84,6 +84,32 @@ public sealed class ClockContractTests
         Assert.Null(implausible.SessionTime);
     }
 
+    [Fact(DisplayName = "I8: a reading in another encoding, or past what a session instant holds, is quarantined rather than converted")]
+    public void AReadingInAnotherEncodingOrPastTheRangeIsQuarantined()
+    {
+        // A clock of one tick a second: a session instant holds about 9.2 billion of its seconds.
+        var clockId = new ClockId(Guid.Parse("55555555-5555-4555-8555-555555555555"));
+        var clock = new SourceClockDescriptor(clockId, new HostId(Guid.Parse("11111111-1111-4111-8111-111111111111")),
+            SourceClockKind.Monotonic, TimestampEncoding.Qpc, ticksPerSecond: 1, captureEpochNativeTicks: 0,
+            TimestampRounding.NearestEven, maximumAbsoluteSessionNanoseconds: long.MaxValue);
+
+        TimestampConversionResult otherEncoding = SourceClockMath.ConvertToSession(clock, new NativeTimestamp(clockId, TimestampEncoding.FileTimeUtc, 5));
+        Assert.Equal((TimestampQuarantineReason.EncodingMismatch, (SessionTimestamp?)null), (otherEncoding.QuarantineReason, otherEncoding.SessionTime));
+        TimestampConversionResult past = SourceClockMath.ConvertToSession(clock, new NativeTimestamp(clockId, TimestampEncoding.Qpc, 10_000_000_000));
+        Assert.Equal((TimestampQuarantineReason.Overflow, false), (past.QuarantineReason, past.IsValid));
+        TimestampConversionResult within = SourceClockMath.ConvertToSession(clock, new NativeTimestamp(clockId, TimestampEncoding.Qpc, 9_000_000_000));
+        Assert.Equal(9_000_000_000_000_000_000, within.SessionTime!.Value.Nanoseconds);
+    }
+
+    [Theory(DisplayName = "I8: a clock descriptor refuses a kind, a timestamp encoding or a rounding the contract does not define")]
+    [InlineData(9, 1, 2)]
+    [InlineData(1, 9, 2)]
+    [InlineData(1, 1, 0)]
+    [InlineData(1, 1, 3)]
+    public void AClockOfUndefinedValuesIsRefused(int kind, int encoding, int rounding) =>
+        Assert.ThrowsAny<ArgumentException>(() => new SourceClockDescriptor(ClockId.New(), HostId.New(), (SourceClockKind)kind,
+            (TimestampEncoding)encoding, 10_000_000, 0, (TimestampRounding)rounding, 1_000));
+
     [Theory(DisplayName = "Clock contract uses explicit nearest-even rounding")]
     [InlineData(5, 2)]
     [InlineData(15, 8)]

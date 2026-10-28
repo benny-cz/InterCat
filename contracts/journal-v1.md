@@ -88,6 +88,11 @@ rounding                u8   EN-TimestampRounding
 maximumAbsoluteSessionNanoseconds i64
 ```
 
+A frame is refused as it is read, and no reading is converted by it, when an identity is empty, its rate or
+plausibility window is zero or less, its kind or encoding is 0 (unknown), or its kind, encoding or rounding is a value
+its code does not define (revision 813): a reader that took such a clock would fail at its first reading rather than
+say the journal is damaged.
+
 ### SchemaTableFrame payload
 
 The schema and policy tables records reference by number. They travel with the journal because the
