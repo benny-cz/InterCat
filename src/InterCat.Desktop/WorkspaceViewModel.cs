@@ -3314,8 +3314,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (SelectedProcessLane is { } processLane)
             {
                 string owner = selectedProcess is { } process ? process.NameWithPid : processLane.ProcessId.ToString();
-                return string.Create(CultureInfo.CurrentCulture,
-                    $"{owner} owner records · {intervalCells:N0} exact intervals");
+                return $"{owner} owner records · " + CountText.Of(intervalCells, "exact interval");
             }
             if (SelectedDirectionBucketLane is { } directionLane)
             {
@@ -3336,9 +3335,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return timelineDetail is { } detail && !Whole(detail.Interval)
                 && !(drawnTimeline is { } drawn && Whole(drawn.Viewport))
                 && (!ShowsMechanismLanes || SelectedTimelineMechanism is null || HasCompleteLaneDetail)
-                ? string.Create(CultureInfo.CurrentCulture,
-                    $"Zoomed view {TimeBase.Range(detail.Interval, CultureInfo.CurrentCulture)} in {intervalCells:N0} intervals{lane}")
-                : string.Create(CultureInfo.CurrentCulture, $"Whole session in {intervalCells:N0} intervals{lane}");
+                ? $"Zoomed view {TimeBase.Range(detail.Interval, CultureInfo.CurrentCulture)} in {CountText.Of(intervalCells, "interval")}{lane}"
+                : $"Whole session in {CountText.Of(intervalCells, "interval")}{lane}";
         }
     }
 

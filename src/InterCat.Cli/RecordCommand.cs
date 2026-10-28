@@ -339,11 +339,7 @@ internal static class RecordCommand
         ConsoleUi.Field("Profile", document.Mechanism is null ? document.Profile : $"{document.Profile} ({document.Mechanism})");
         ConsoleUi.Field("Generation", document.Generation is { } generation ? ConsoleUi.Count(generation) : "none published");
         ConsoleUi.Field("Journaled records", ConsoleUi.Count(document.JournaledRecords));
-        ConsoleUi.Field(
-            "Published",
-            document.Publications == 1
-                ? "once, when the capture stopped"
-                : $"{document.Publications:N0} generations, one journal chunk each; the last holds them all");
+        ConsoleUi.Field("Published", Published(document.Publications));
         if (document.Compactions > 0)
         {
             ConsoleUi.Field(
@@ -415,6 +411,17 @@ internal static class RecordCommand
                 : $"icat session \"{document.Path}\" shows what it holds; icat processes and icat metric read it.");
         ConsoleUi.Success($"Recorded {CountText.Of(document.JournaledRecords, "record")}.");
     }
+
+    /// <summary>
+    /// How a recording published, as its report says it: nothing, once when it stopped, or a generation for each journal
+    /// chunk, the last holding them all.
+    /// </summary>
+    internal static string Published(int publications) => publications switch
+    {
+        0 => "nothing",
+        1 => "once, when the capture stopped",
+        _ => string.Create(CultureInfo.CurrentCulture, $"{publications:N0} generations, one journal chunk each; the last holds them all"),
+    };
 
     private static void PrintHelp()
     {

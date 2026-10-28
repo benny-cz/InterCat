@@ -668,6 +668,11 @@ internal static partial class ImportCommand
         };
     }
 
+    /// <summary>What an import spilled to disk, as its report says it: nothing, or its runs and their bytes, each counted.</summary>
+    internal static string Spilled(ImportSpillDocument spill) => spill.RunsWritten == 0
+        ? "nothing; the index fitted in memory"
+        : CountText.Of(spill.RunsWritten, "run") + ", " + CountText.Of(spill.BytesSpilled, "byte");
+
     private static void Render(ImportSummaryDocument document, EtlImportResult result)
     {
         ConsoleUi.Heading("Canonical import");
@@ -699,11 +704,7 @@ internal static partial class ImportCommand
             document.Counts.MaximumMultiplicity == 1
                 ? "1 (no two records shared an instant and a key)"
                 : $"{document.Counts.MaximumMultiplicity:N0} indistinguishable records");
-        ConsoleUi.Field(
-            "Spilled",
-            document.Spill.RunsWritten == 0
-                ? "nothing; the index fitted in memory"
-                : $"{document.Spill.RunsWritten:N0} runs, {document.Spill.BytesSpilled:N0} bytes");
+        ConsoleUi.Field("Spilled", Spilled(document.Spill));
         ConsoleUi.Field("Elapsed", $"{result.ElapsedMilliseconds:N0} ms");
 
         if (document.Session is { } session)

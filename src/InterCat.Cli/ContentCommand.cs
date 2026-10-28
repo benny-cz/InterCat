@@ -630,8 +630,8 @@ internal static class ContentCommand
         if (request.IgnoreCase) ConsoleUi.Field("Letters", "A to Z matched in either case");
         if (request.MaximumBytes != ContentSearch.DefaultMaximumBytes || request.Budget != ContentSearch.DefaultBudget)
         {
-            ConsoleUi.Field("Budgets", string.Create(culture,
-                $"{request.MaximumBytes / MiB:N0} MiB read and {request.Budget.TotalSeconds:N0} seconds"));
+            ConsoleUi.Field("Budgets", string.Create(culture, $"{request.MaximumBytes / MiB:N0} MiB read and ")
+                + CountText.Of((long)request.Budget.TotalSeconds, "second"));
         }
 
         ConsoleUi.Field("Searched", "the kept bytes of " + CountText.Of(result.RecordsRead, "record")

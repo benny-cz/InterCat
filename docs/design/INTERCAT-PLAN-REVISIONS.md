@@ -648,6 +648,8 @@ Revision 809 runs what a coverage pass over the investigation's words found no t
 
 Revision 810 runs what a coverage pass over the content viewer, the channel list and pin removal found no test ran; its paragraph below says the text notes it found in the plural for one.
 
+Revision 811 sweeps the counts the command line and the window print before a noun, and makes the five that read wrongly for one, or none, agree with their counts.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2040,3 +2042,14 @@ holds another session, said with the store's reason (I18). Running them found th
 invisible characters are shown as marks" and "1 show as �" of a single character; each note now agrees with its count.
 What stays unrun of the viewer is a part it does not read, kept without consent in another chunk or past the 64 MiB a
 part is read up to, and a decoding asked for where no decoder reads the record, which its button already refuses.
+
+Revision 811 sweeps the counts the command line and the window print before a noun for those that a count of one, or
+of none, reads wrongly, as revisions 809 and 810 had found two. It found five: `icat import` said "1 runs" spilled
+(§18.4); `icat content --find --max-seconds 1` said "1 seconds" (P2); the interval table of a session one tick long,
+whose timeline is one column, said "Whole session in 1 intervals", as did a view drawn in one column (§6.2); and an
+`icat record` that published nothing said "0 generations, one journal chunk each; the last holds them all" (§20.1).
+Each now agrees with its count through `CountText`, and a recording that published nothing says it published nothing.
+Every other count the sweep found is said by `CountText` or `Spoken`, or cannot be one where it is said: an aggregate
+on the graph folds two processes at least, a toggle offers more than its list names, and an outlier baseline holds 19
+windows at least (`outliers-v1` §2). The import's spill and the recording's publications, which only a real trace or a
+Windows capture make, are said by small functions their tests reach.

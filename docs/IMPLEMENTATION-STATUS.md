@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 810 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 811 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 811 — counts said in words that agree with them:**
+  - A sweep of the counts the command line and the window print before a noun found five that a count of one, or of
+    none, reads wrongly. `icat import` said "1 runs" spilled; `icat content --find --max-seconds 1` said "1 seconds";
+    the interval table of a session one tick long said "Whole session in 1 intervals", as did a view drawn in one
+    column; and an `icat record` that published nothing said "0 generations, one journal chunk each; the last holds
+    them all". Each now agrees with its count, and a recording that published nothing says so.
+  - Every other count the sweep found is said by `CountText` or `Spoken`, or cannot be one where it is said: an
+    aggregate on the graph folds two processes at least, a toggle offers more than its list names, and an outlier
+    baseline holds 19 windows at least. The import's and the recording's words, which only a real trace or a Windows
+    capture make, are said by small functions their tests reach; a process lane's caption counts its intervals as the
+    table's does.
+  - Debug and Release each ran 3,324 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index indexes none of the 3 new tests, each of a plan section; two are theories of 3 cases. All 6
+    mutations were caught: a recording that published nothing said as generations; one run, one byte spilled or a
+    budget of one second said in the plural; and a whole session or a zoomed view in one interval said in the
+    plural.
 
 - **Revision 810 — a coverage pass over the content viewer, channel list and pin removal; one character said as one:**
   - Of the lines a test can reach, 21 of the content viewer's 670 ran in none, 8 of the channel list's 187 and 15 of

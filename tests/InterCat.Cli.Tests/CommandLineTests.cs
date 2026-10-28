@@ -3286,6 +3286,9 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"(?m)^  Budgets +2 MiB read and 60 seconds\r?$", output);
         Assert.Matches(@"(?m)^  Searched +the kept bytes of 2 records, 1,200,000 B\r?$", output);
         Assert.DoesNotContain("--max-mib and --max-seconds let", output + said, StringComparison.Ordinal);
+        (code, output, said) = await Run("content", kept.Path, "--find", "example.com", "--max-mib", "2", "--max-seconds", "1");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Budgets +2 MiB read and 1 second\r?$", output);
         (code, output, _) = await Run("content", kept.Path, "--find", "example.com");
         Assert.Equal(InterCatExitCode.Success, code);
         Assert.DoesNotContain("Budgets", output, StringComparison.Ordinal);

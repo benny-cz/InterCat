@@ -47,6 +47,13 @@ public sealed class TimelineDetailTests
         Assert.Equal(detail.Buckets.Count, workspace.Intervals.Count);
         Assert.EndsWith("µs", workspace.Intervals[0].Window, StringComparison.Ordinal);
         Assert.StartsWith("Zoomed view", workspace.IntervalTableScope, StringComparison.Ordinal);
+        Assert.Contains(" in 24 intervals · ", workspace.IntervalTableScope, StringComparison.Ordinal);
+
+        // Drawn in one column, the view is said to be in one interval.
+        workspace.RequestTimelineDetail(zoomed, 1);
+        await workspace.TimelineDetailReady;
+        Assert.Single(workspace.TimelineDetail!.Buckets);
+        Assert.Contains(" in 1 interval · ", workspace.IntervalTableScope, StringComparison.Ordinal);
 
         // Only the newest viewport's answer is applied, whichever request finishes first.
         workspace.RequestTimelineDetail(new TimeRange(10, 100), 8);
@@ -170,6 +177,20 @@ public sealed class TimelineDetailTests
         return new(OverviewWorkspace.From(overview), overview.GraphIdentity,
             new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
     }
+
+    [Fact(DisplayName = "§6.2: a session one tick long is drawn in one interval, and its interval table says it of one")]
+    public void ASessionOneTickLongIsInOneInterval() => SingleThreadedContext.Run(() =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [Timed(Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between(ClientEnd, ServerEnd))]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        Assert.Single(workspace.Snapshot.Timeline);
+        Assert.StartsWith("Whole session in 1 interval", workspace.IntervalTableScope, StringComparison.Ordinal);
+        Assert.DoesNotContain("1 intervals", workspace.IntervalTableScope, StringComparison.Ordinal);
+        return Task.CompletedTask;
+    });
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 }
