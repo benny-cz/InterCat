@@ -1224,6 +1224,18 @@ public sealed class CommandLineTests : IDisposable
             rederiving, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R18: every command answers --help with its own synopsis on stdout, on any system, capture's too")]
+    public async Task EveryCommandGivesItsHelp()
+    {
+        foreach (string command in Commands)
+        {
+            (InterCatExitCode code, string output, string error) = await Run(command, "--help");
+            Assert.True(code == InterCatExitCode.Success, $"icat {command} --help exited {code}: {error}");
+            Assert.True(output.Contains("icat " + command, StringComparison.Ordinal), $"icat {command} --help names no synopsis:\n{output}");
+            Assert.True(error.Length == 0, $"icat {command} --help said on stderr:\n{error}");
+        }
+    }
+
     [Fact(DisplayName = "R18: a refused invocation says why on stderr, and leaves stdout to the answer it did not give")]
     public async Task ARefusedInvocationLeavesStdoutToTheAnswer()
     {

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 820 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 821 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 821 — `icat bench` answers as every command does, and `icat capture --help` anywhere (R18):**
+  - `icat bench` refused `--help` as an unknown option and named an unknown option in words of its own; it now gives
+    its help, and refuses an unknown option in the words every command uses, its help after them.
+  - A `--series` file that is not JSON ended `icat bench` with an unhandled exception and its stack trace, and a
+    missing one was called corrupted input; the first is now refused as a series it cannot read, exit code 4, and the
+    second as a mistake, exit code 2, naming the path. A report it may not write over is refused before the machine is
+    measured or anything is printed.
+  - Away from Windows, `icat capture --help` gives capture's help, which now says it runs on Windows alone, rather
+    than refusing to run; a test asks every command for its help.
+  - Debug and Release each ran 3,400 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the two new R18 tests. All 7 mutations were caught: icat bench's help and capture's away
+    from Windows each taken for an unknown option; icat bench naming an unknown option in its own words, writing
+    over a report unasked, calling a missing series damage, and ending with an exception on a series that is not
+    JSON or whose JSON is no object.
 
 - **Revision 820 — every command reads `--evidence-policy` alike (R18):**
   - Ten commands take `--evidence-policy`. Seven read it by the policy's name, as written or in kebab form, and refuse

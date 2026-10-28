@@ -42,7 +42,7 @@ internal static class Icat
                 "import" => await ImportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "record" => await RecordCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "capture" when OperatingSystem.IsWindows() => await CaptureCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
-                "capture" => CaptureNeedsWindows(),
+                "capture" => CaptureNeedsWindows(command),
                 "rederive" => await RederiveCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "session" => await SessionCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "overview" => await OverviewCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -121,10 +121,17 @@ internal static class Icat
 
     /// <summary>
     /// icat capture starts the capture broker, which records through ETW and runs on Windows alone: elsewhere the command is
-    /// known, and says why it cannot run and what can, rather than calling itself unknown.
+    /// known, gives its help as every command does, and says why it cannot run and what can, rather than calling itself
+    /// unknown.
     /// </summary>
-    private static InterCatExitCode CaptureNeedsWindows()
+    private static InterCatExitCode CaptureNeedsWindows(CommandLine command)
     {
+        if (command.TryTakeFlag("--help") || command.TryTakeFlag("-h"))
+        {
+            CaptureRequests.PrintHelp();
+            return InterCatExitCode.Success;
+        }
+
         ConsoleUi.Failure("icat capture needs Windows: it starts the capture broker, which records through ETW. Here, a "
             + "session captured on Windows can be opened, measured, exported and packaged.");
         return InterCatExitCode.PermissionOrCapabilityFailure;

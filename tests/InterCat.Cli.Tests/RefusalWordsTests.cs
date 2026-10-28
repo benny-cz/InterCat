@@ -54,6 +54,8 @@ public sealed class RefusalWordsTests : IDisposable
         { ["processes"], "A session directory is required: icat processes <directory>." },
         { ["session"], "A session directory is required: icat session <directory>." },
         { ["record"], "A new session directory is required: icat record <directory>." },
+        { ["bench", "--bogus"], "Unknown or incomplete option: --bogus" },
+        { ["bench", "--no-storage-probe", "--series", "{nowhere}"], "No series result at {nowhere}." },
         { ["content", "{session}", "--find", "x", "--json"], "--find lists the records holding the text for a person, never into JSON: leave out --json." },
         { ["content", "{session}", "--find", "x", "--reveal"],
             "--find searches the session's kept content, not one record: leave out the record's locator and --reveal, --save, --decode, --part, --from and --to." },
@@ -176,6 +178,7 @@ public sealed class RefusalWordsTests : IDisposable
             ["processes", session.Path, "--output", report], ["session", session.Path, "--output", report],
             ["rederive", session.Path, "--check", "--output", report],
             new[] { "retain", session.Path, "--release-before", "1 s", "--output", report },
+            ["bench", "--no-storage-probe", "--output", report],
         })
         {
             // Refused before anything is read, so nothing is said of what would have been written.
@@ -185,6 +188,34 @@ public sealed class RefusalWordsTests : IDisposable
         }
 
         Assert.Equal("{}", File.ReadAllText(report));
+    }
+
+    [Fact(DisplayName = "R18: icat bench writes its baseline where asked, and refuses a series it cannot read in words, never with a stack trace")]
+    public async Task TheBaselineIsWrittenAndASeriesReadOrRefused()
+    {
+        string baseline = Path.Combine(root.Path, "out", "baseline.json");
+        (InterCatExitCode code, string output, string said) = await Run("bench", "--no-storage-probe", "--output", baseline);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains($"Baseline written to {baseline}.", said, StringComparison.Ordinal);
+        using (System.Text.Json.JsonDocument written = System.Text.Json.JsonDocument.Parse(File.ReadAllText(baseline)))
+        {
+            Assert.Equal("intercat.baseline.v1", written.RootElement.GetProperty("schema").GetString());
+        }
+
+        Assert.Contains("SECTION 12 BUDGETS", output, StringComparison.Ordinal);
+
+        // A file that is not a series result is said to be, and is no budget of the baseline.
+        string notJson = Path.Combine(root.Path, "series.txt");
+        File.WriteAllText(notJson, "not json");
+        string noBudgets = Path.Combine(root.Path, "series.json");
+        File.WriteAllText(noBudgets, "[1, 2]");
+        foreach (string series in new[] { notJson, noBudgets })
+        {
+            (code, output, said) = await Run("bench", "--no-storage-probe", "--series", series);
+            Assert.Equal((InterCatExitCode.CorruptedInput, string.Empty), (code, output));
+            Assert.StartsWith($"x '{series}' ", said, StringComparison.Ordinal);
+            Assert.DoesNotContain("   at ", said, StringComparison.Ordinal);
+        }
     }
 
     [Fact(DisplayName = "R18: icat profiles writes its catalog to --output as --json prints it, into a folder it makes, and says it wrote the catalog there")]
@@ -206,7 +237,7 @@ public sealed class RefusalWordsTests : IDisposable
         { ["processes", "{session}", "--json"] }, { ["programs", "{session}", "--json"] }, { ["session", "{session}", "--json"] },
         { ["timeline", "{session}", "--interval", "0:1000", "--json"] }, { ["waits", "{session}", "--json"] },
         { ["checkpoint", "{session}", "--json"] }, { ["capabilities", "--json"] }, { ["profiles", "--json"] },
-        { ["profiles", "explore", "--json"] },
+        { ["profiles", "explore", "--json"] }, { ["bench", "--no-storage-probe", "--json"] },
     };
 
     [Theory(DisplayName = "R18: a command asked for --json prints one JSON document and nothing else, what it says of its work going to the error stream")]

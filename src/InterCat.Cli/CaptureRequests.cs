@@ -130,4 +130,41 @@ internal static class CaptureRequests
                 return null;
         }
     }
+
+    /// <summary>
+    /// icat capture's help, which reads the same on any system: what it asks of the broker is read anywhere, though the
+    /// broker runs on Windows alone.
+    /// </summary>
+    internal static void PrintHelp()
+    {
+        ConsoleUi.Line("  icat capture <new-session-dir> [--duration <seconds>]");
+        ConsoleUi.Line("               [--profile " + string.Join("|", CaptureRequests.Profiles) + "]");
+        ConsoleUi.Line("               [--mechanism tcp|http] [--pid <id,...>] [--allow-broader]");
+        ConsoleUi.Line("               [--max-journal-mib <n>] [--min-free-mib <n>] [--keep-last <seconds>] [--broker <exe>]");
+        ConsoleUi.Line("               [--json]");
+        ConsoleUi.Line("               content: " + ContentRequestOptions.Synopsis);
+        ConsoleUi.Line("                        " + ContentRequestOptions.Limits);
+        ConsoleUi.Line("      Captures live without running icat elevated: the capture broker is started on demand");
+        ConsoleUi.Line("      (Windows asks for approval), records evidence only, and this process derives the session.");
+        ConsoleUi.Line($"      Stops at --duration (default {CaptureRequests.DefaultSeconds} s) or on Ctrl+C; everything published is "
+            + "kept. If this");
+        ConsoleUi.Line("      process ends early, icat follow <new-session-dir> finishes the session from the ticket");
+        ConsoleUi.Line("      it leaves beside it. --keep-last keeps the session to the newest stretch of session time");
+        ConsoleUi.Line("      that long, releasing the records read before it, but for what later ones rest on, and the");
+        ConsoleUi.Line("      broker releases its own copy of what the session gave up, so --max-journal-mib bounds what");
+        ConsoleUi.Line("      it holds rather than all it recorded. A pin (icat pin) keeps the records read from its");
+        ConsoleUi.Line("      moment; once the session holds more than the pin allows, the capture stops rather than");
+        ConsoleUi.Line("      release them.");
+        ConsoleUi.Line("      --profile rpc-peers records lifecycle, RPC calls and TCP and UDP with the kernel's ALPC");
+        ConsoleUi.Line("      messages, which link each RPC call to the process that served it, drawn in the graph as it");
+        ConsoleUi.Line("      records. Its private system logger takes one of the eight a machine can run, and a machine");
+        ConsoleUi.Line("      running all eight refuses it; icat profiles rpc-peers states its cost.");
+        ConsoleUi.Line("      --profile content keeps the messages of the processes --pid names - WinINet's HTTP");
+        ConsoleUi.Line("      exchanges, etw/manifest/Microsoft-Windows-WinINet-Capture - as icat record does, through");
+        ConsoleUi.Line("      the broker: only your own processes, in this sign-in and at no higher integrity, which it");
+        ConsoleUi.Line("      holds open while it records. The review names each by what it runs and when it started,");
+        ConsoleUi.Line("      and a process whose ID passed to another before the capture starts is refused. It stops");
+        ConsoleUi.Line("      when kept content reaches --max-session-bytes, and takes no --keep-last.");
+        ConsoleUi.Line("      It runs on Windows alone, as the broker does; a session it captured opens anywhere.");
+    }
 }

@@ -31,6 +31,11 @@ internal static class BenchCommand
     public static async Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
+        if (command.TryTakeFlag("--help") || command.TryTakeFlag("-h"))
+        {
+            PrintHelp();
+            return InterCatExitCode.Success;
+        }
 
         string? output = command.TakeOption("--output");
         string? series = command.TakeOption("--series");
@@ -39,15 +44,28 @@ internal static class BenchCommand
         bool skipStorage = command.TryTakeFlag("--no-storage-probe");
         if (command.TryReportUnknown(out string? unknown))
         {
-            ConsoleUi.Failure(
-                $"Unknown option: {unknown}. Accepted: --output, --series, --overwrite, --json, "
-                + "--no-storage-probe.");
+            ConsoleUi.Failure(command.Refusal(unknown!));
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 
-        string probeDirectory = output is null
-            ? Path.GetFullPath(".")
-            : Path.GetDirectoryName(Path.GetFullPath(output)) ?? Path.GetFullPath(".");
+        // A report it may not write and a series it cannot read are refused before anything is measured or printed.
+        string? path = output is null ? null : Path.GetFullPath(output);
+        if (path is not null && File.Exists(path) && !overwrite)
+        {
+            ConsoleUi.Failure($"{path} exists. Pass --overwrite to replace it.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        string? seriesPath = series is null ? null : Path.GetFullPath(series);
+        if (seriesPath is not null && !File.Exists(seriesPath))
+        {
+            ConsoleUi.Failure($"No series result at {seriesPath}.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        IReadOnlyList<BudgetResult> measured = ReadSeriesBudgets(seriesPath);
+        string probeDirectory = path is null ? Path.GetFullPath(".") : Path.GetDirectoryName(path) ?? Path.GetFullPath(".");
 
         if (!skipStorage)
         {
@@ -67,7 +85,7 @@ internal static class BenchCommand
             Machine = machine,
             Environment = CapabilityInventoryProbe.DescribeEnvironment(new TraceEventSessionHost().IsElevated),
             Budgets = PerformanceBudgets.Complete(
-                ReadSeriesBudgets(series),
+                measured,
                 series is null
                     ? "Nothing in this baseline measures this budget. Pass --series <series.json> from an "
                         + "IC-009 comparison run to fill in the callback stages."
@@ -92,15 +110,8 @@ internal static class BenchCommand
             Print(report);
         }
 
-        if (output is not null)
+        if (path is not null)
         {
-            string path = Path.GetFullPath(output);
-            if (File.Exists(path) && !overwrite)
-            {
-                ConsoleUi.Failure($"Refusing to replace '{path}'. Pass --overwrite to replace it.");
-                return InterCatExitCode.InvalidInvocation;
-            }
-
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             await File.WriteAllTextAsync(
                 path,
@@ -119,28 +130,33 @@ internal static class BenchCommand
     /// than each carrying its own half of the table. A series that cannot be read is refused with the
     /// reason; it is never treated as an empty one, which would read as "nothing was measured".
     /// </summary>
-    private static IReadOnlyList<BudgetResult> ReadSeriesBudgets(string? seriesPath)
+    private static IReadOnlyList<BudgetResult> ReadSeriesBudgets(string? path)
     {
-        if (seriesPath is null)
+        if (path is null)
         {
             return [];
         }
 
-        string path = Path.GetFullPath(seriesPath);
-        if (!File.Exists(path))
+        BudgetResult[] results;
+        try
         {
-            throw new FileNotFoundException("The named series result does not exist.", path);
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("budgets", out JsonElement budgets))
+            {
+                throw new InvalidDataException(
+                    $"'{path}' has no budgets array. It was produced before IC-010 added one, or is no series result.");
+            }
+
+            results = budgets.Deserialize<BudgetResult[]>(JsonContracts.Indented)
+                ?? throw new InvalidDataException($"'{path}' has an unreadable budgets array.");
+        }
+        catch (JsonException exception)
+        {
+            // A file that is not the JSON a series writes is refused in its reader's words, never with a stack trace.
+            throw new InvalidDataException($"'{path}' is not a series result: {exception.Message}", exception);
         }
 
-        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(path));
-        if (!document.RootElement.TryGetProperty("budgets", out JsonElement budgets))
-        {
-            throw new InvalidDataException(
-                $"'{path}' has no budgets array. It was produced before IC-010 added one.");
-        }
-
-        BudgetResult[] results = budgets.Deserialize<BudgetResult[]>(JsonContracts.Indented)
-            ?? throw new InvalidDataException($"'{path}' has an unreadable budgets array.");
         string run = Path.GetFileName(Path.GetDirectoryName(path) ?? path);
         return
         [
@@ -216,5 +232,18 @@ internal static class BenchCommand
         {
             ConsoleUi.Bullet(note);
         }
+    }
+
+    private static void PrintHelp()
+    {
+        ConsoleUi.Line("icat bench [--output <path>] [--series <series.json>] [--overwrite] [--json] [--no-storage-probe]");
+        ConsoleUi.Line();
+        ConsoleUi.Line("Publishes the performance baseline: this machine against the section 12 reference, every section 12 budget");
+        ConsoleUi.Line("with what measured it, and the per-build validation backlog. Starts no capture and needs no elevation.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  --output            writes the baseline as JSON to <path>, never over a file without --overwrite.");
+        ConsoleUi.Line("  --series            fills in the budgets an IC-009 comparison series measured, from its result file.");
+        ConsoleUi.Line("  --no-storage-probe  skips measuring the volume a session would be written to.");
+        ConsoleUi.Line("  --json              prints the baseline as JSON, and nothing else on stdout.");
     }
 }
