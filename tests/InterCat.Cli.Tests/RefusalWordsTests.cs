@@ -129,7 +129,10 @@ public sealed class RefusalWordsTests : IDisposable
             ["profiles", "explore", "--output", report], ["exchanges", session.Path, "--output", report],
             ["checkpoint", session.Path, "--output", report], ["compact", session.Path, "--output", report],
             ["capabilities", "--output", report], ["export", session.Path, "--output", report],
-            new[] { "operations", session.Path, "--output", report },
+            ["operations", session.Path, "--output", report], ["metric", session.Path, "--metric", "observations", "--output", report],
+            ["processes", session.Path, "--output", report], ["session", session.Path, "--output", report],
+            ["rederive", session.Path, "--check", "--output", report],
+            new[] { "retain", session.Path, "--release-before", "1 s", "--output", report },
         })
         {
             // Refused before anything is read, so nothing is said of what would have been written.
@@ -149,6 +152,29 @@ public sealed class RefusalWordsTests : IDisposable
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Contains($"Profile catalog written to {written}.", said, StringComparison.Ordinal);
         Assert.Equal((await Run("profiles", "--json")).Output.TrimEnd(), File.ReadAllText(written).TrimEnd());
+    }
+
+    public static TheoryData<string[]> JsonRuns => new()
+    {
+        { ["channels", "{session}", "--json"] }, { ["compact", "{session}", "--check", "--json"] }, { ["evidence", "{session}", "--json"] },
+        { ["exchanges", "{session}", "--json"] }, { ["hosts", "{session}", "--json"] },
+        { ["metric", "{session}", "--metric", "observations", "--json"] }, { ["operations", "{session}", "--json"] },
+        { ["overview", "{session}", "--json"] }, { ["patterns", "{session}", "--json"] }, { ["pin", "{session}", "--json"] },
+        { ["processes", "{session}", "--json"] }, { ["programs", "{session}", "--json"] }, { ["session", "{session}", "--json"] },
+        { ["timeline", "{session}", "--interval", "0:1000", "--json"] }, { ["waits", "{session}", "--json"] },
+        { ["checkpoint", "{session}", "--json"] }, { ["capabilities", "--json"] }, { ["profiles", "--json"] },
+        { ["profiles", "explore", "--json"] },
+    };
+
+    [Theory(DisplayName = "R18: a command asked for --json prints one JSON document and nothing else, what it says of its work going to the error stream")]
+    [MemberData(nameof(JsonRuns))]
+    public async Task JsonIsAllAJsonRunPrints(string[] args)
+    {
+        (InterCatExitCode code, string output, string said) = await Run([.. args.Select(arg => arg.Replace("{session}", session.Path, StringComparison.Ordinal))]);
+
+        Assert.True(code is not InterCatExitCode.InvalidInvocation, said);
+        using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(output);
+        Assert.Equal(System.Text.Json.JsonValueKind.Object, document.RootElement.ValueKind);
     }
 
     [Fact(DisplayName = "R18: icat compact and export refuse a folder that holds no session, and icat timeline a process or an end it cannot read, in words")]
