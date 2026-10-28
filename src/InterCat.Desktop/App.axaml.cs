@@ -59,19 +59,11 @@ public sealed partial class App : Avalonia.Application
             window.UseSettings(store, loaded);
             desktop.MainWindow = window;
 
-            // A session folder named on the command line, or dropped on the program, opens once the window is shown, as
-            // "Open saved session" would open it; one that cannot be opened says why and leaves the start page.
-            if (desktop.Args is [string named] && Directory.Exists(named))
+            // What the program was started with - a session folder or an investigation named on its command line, or dropped
+            // on the program - opens once the window is shown, as a drop on the window would; anything else says why there.
+            if (desktop.Args is { Length: > 0 } started)
             {
-                string path = Path.GetFullPath(named);
-                window.Opened += async (_, _) => _ = await window.OpenSessionAsync(path);
-            }
-            else if (desktop.Args is [string investigation] && File.Exists(investigation)
-                && investigation.EndsWith(InterCat.Application.InvestigationWorkspace.Extension, StringComparison.OrdinalIgnoreCase))
-            {
-                // An investigation named on the command line, or dropped on the program, opens in its own window.
-                string path = Path.GetFullPath(investigation);
-                window.Opened += (_, _) => _ = window.ShowInvestigation(path);
+                window.Opened += async (_, _) => await window.OpenStartedWithAsync(started);
             }
 
             // A viewer that crashed while recording loses no evidence; this launch offers to finish its session (§3.1

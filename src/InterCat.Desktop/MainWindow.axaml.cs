@@ -2163,16 +2163,58 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         else
         {
             Say(CaptureStatus, "Nothing was opened", aloud: true);
-            Say(CaptureDetail, NotOpened(items) + " What the window shows is unchanged.", aloud: true);
+            Say(CaptureDetail, NotOpened([.. items.Select(dropped => dropped.Name)], "dropped") + " What the window shows is unchanged.",
+                aloud: true);
         }
     }
 
-    /// <summary>Why a drop opened nothing: several things at once, or one that InterCat does not open.</summary>
-    private static string NotOpened(IStorageItem[] items) => items is [var one]
-        ? $"{one.Name} cannot be opened: InterCat opens a saved session's folder, or an investigation file "
+    /// <summary>
+    /// Opens what the program was started with, named on its command line or dropped on the program, as a drop on the
+    /// window opens it: one saved session's folder, or one investigation file. Anything else opens nothing, and the card
+    /// says why, so a path moved, deleted or mistyped since is never passed over in silence (§3.1).
+    /// </summary>
+    internal async Task OpenStartedWithAsync(IReadOnlyList<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        if (closed || paths.Count == 0) return;
+        string? path = paths is [var named] ? Located(named) : null;
+        if (path is not null && Directory.Exists(path))
+        {
+            _ = await OpenSessionAsync(path);
+        }
+        else if (path is not null && File.Exists(path)
+            && path.EndsWith(InvestigationWorkspace.Extension, StringComparison.OrdinalIgnoreCase))
+        {
+            _ = ShowInvestigation(path);
+        }
+        else
+        {
+            Say(CaptureStatus, "Nothing was opened", aloud: true);
+            Say(CaptureDetail, paths.Count == 1 && path is not null && !File.Exists(path)
+                ? $"Nothing is at {path}: it was moved, renamed or deleted, or the path is mistyped."
+                : NotOpened([.. paths.Select(named => Path.GetFileName(named.TrimEnd(Path.DirectorySeparatorChar)))], "given"), aloud: true);
+        }
+
+        // A path the system cannot read as one names nothing there, as a mistyped one does.
+        static string? Located(string named)
+        {
+            try
+            {
+                return Path.GetFullPath(named);
+            }
+            catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <summary>Why what was dropped or given opened nothing: several things at once, or one that InterCat does not open.</summary>
+    private static string NotOpened(IReadOnlyList<string> names, string how) => names is [var one]
+        ? $"{one} cannot be opened: InterCat opens a saved session's folder, or an investigation file "
             + $"({InvestigationWorkspace.Extension}), on this computer."
-        : $"{items.Length} items were dropped at once; InterCat opens one saved session's folder or investigation file "
-            + "at a time.";
+        : string.Create(CultureInfo.CurrentCulture, $"{names.Count:N0} items were {how} at once; InterCat opens one saved session's folder or ")
+            + "investigation file at a time.";
 
     /// <summary>Opens a folder in the system's file manager, true once it did; a test opens it in its place.</summary>
     internal Func<string, Task<bool>> FolderOpener { get; set; }
