@@ -84,9 +84,7 @@ public static class SessionRawRecordQuery
             if (manifest.SessionId != expectedSessionId || manifest.Generation != expectedGeneration)
                 throw new InvalidOperationException("This raw-record locator names another session or generation. "
                     + "Restart from icat evidence; no row was silently shifted.");
-            SegmentReaderV1 segment = SessionSegments.Open(store, manifest, segmentName);
-            if (segmentRow >= segment.RowCount)
-                throw new ArgumentException("The row coordinate is outside its published segment.", nameof(segmentRow));
+            SegmentReaderV1 segment = RecordLocator.Segment(store, manifest, segmentName, segmentRow);
             ObservationRowV1 row = segment.Row(segmentRow);
             selected = new(row.ObservationIdIn(segment.CaptureId, segment.Derivation),
                 segmentName, segmentRow, row);

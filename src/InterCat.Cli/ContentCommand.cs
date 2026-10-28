@@ -461,8 +461,14 @@ internal static class ContentCommand
 
         if (part.Bytes is not { Length: > 0 } bytes)
         {
-            ConsoleUi.Warn(part.Length == 0 ? "The part holds no bytes, so there is nothing to show or save."
-                : "The part's bytes are not shown: " + part.Statement);
+            // An empty part was recorded whole, so the answer is whole, as an empty message's is.
+            if (part.Length == 0)
+            {
+                ConsoleUi.Note("The part holds no bytes, so there is nothing to show or save.");
+                return InterCatExitCode.Success;
+            }
+
+            ConsoleUi.Warn(PartNotRead(part));
             return InterCatExitCode.PartialResultSuccess;
         }
 
@@ -522,7 +528,7 @@ internal static class ContentCommand
 
         if (!part.BytesRead || ContentBytesView.RecordedBuffers(part) is not { } recorded)
         {
-            ConsoleUi.Warn("The part's bytes are not shown: " + part.Statement);
+            ConsoleUi.Warn(PartNotRead(part));
             return InterCatExitCode.PartialResultSuccess;
         }
 
@@ -552,6 +558,17 @@ internal static class ContentCommand
 
         return InterCatExitCode.PartialResultSuccess;
     }
+
+    /// <summary>
+    /// Why a part's bytes were not read, so it is neither shown nor saved as one: the capture kept them without consent to
+    /// inspect them, or the part keeps more than a part is read up to - whose buffers are each still their own record's.
+    /// </summary>
+    private static string PartNotRead(SessionContentPartDetail part) =>
+        part.Buffers.Any(buffer => buffer.Entry is { Inspectable: false })
+            ? "The capture kept this part's bytes without consent to inspect them, so it is never shown or saved; an original "
+                + "evidence package carries them as evidence."
+            : string.Create(CultureInfo.CurrentCulture,
+                $"This part keeps more than the {SessionContentPartQuery.MaximumPartBytes:N0} bytes a part is read up to, so it is not shown or saved as one: show or save each buffer from its own record, without --part.");
 
     /// <summary>
     /// Searches the session's kept content for a text (`contracts/content-v1.md` §4): the records holding it, each with the

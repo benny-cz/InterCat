@@ -2606,12 +2606,26 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
         Assert.Contains("The part's recorded buffers are 0 to 2; choose buffers within them.", said, StringComparison.Ordinal);
 
-        // It is never written as one file, since nothing may stand in for its missing bytes.
+        // Not asked to be shown, its bytes stay hidden, and the answer is whole: nothing asked for is missing.
+        (code, output, _) = await Run([.. locator, "--part"]);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Contains("Its bytes are hidden. Add --reveal to show the part with each gap in place, bounded and inert.", output,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(Gap, output, StringComparison.Ordinal);
+
+        // It is never written as one file, since nothing may stand in for its missing bytes - shown or not.
+        const string NeverSaved = "The part is not whole, so it is never saved as one file: nothing may stand in for its missing "
+            + "bytes. Save each buffer from its own record, without --part.";
         string target = Path.Combine(Path.GetDirectoryName(http.Path)!, Guid.NewGuid().ToString("N") + ".bin");
         (code, _, said) = await Run([.. locator, "--part", "--save", target]);
         Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
         Assert.False(File.Exists(target));
-        Assert.Contains("never saved as one file", said, StringComparison.Ordinal);
+        Assert.Contains(NeverSaved, said, StringComparison.Ordinal);
+        (code, output, said) = await Run([.. locator, "--part", "--reveal", "--save", target]);
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Contains(Gap, output, StringComparison.Ordinal);
+        Assert.Contains(NeverSaved, said, StringComparison.Ordinal);
+        Assert.False(File.Exists(target));
 
         // Its facts name the gap where it falls, and no byte.
         (code, output, _) = await Run([.. locator, "--json"]);

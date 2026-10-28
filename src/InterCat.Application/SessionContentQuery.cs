@@ -86,12 +86,7 @@ public static class SessionContentQuery
                 + "from icat evidence; no row was silently shifted.");
         }
 
-        SegmentReaderV1 segment = SessionSegments.Open(store, manifest, segmentName);
-        if (segmentRow >= segment.RowCount)
-        {
-            throw new ArgumentException("The row coordinate is outside its published segment.", nameof(segmentRow));
-        }
-
+        SegmentReaderV1 segment = RecordLocator.Segment(store, manifest, segmentName, segmentRow);
         ObservationRowV1 row = segment.Row(segmentRow);
         return Resolve(store, manifest, row.ObservationIdIn(segment.CaptureId, segment.Derivation).RawRecordId, row,
             revealBytes, cancellationToken);

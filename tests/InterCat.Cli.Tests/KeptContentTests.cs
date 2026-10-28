@@ -204,6 +204,114 @@ public sealed class KeptContentTests : IDisposable
             StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "§3.7: icat content says a record's facts and keeps its bytes hidden until --reveal or --save asks for them")]
+    public async Task BytesStayHiddenUntilAsked()
+    {
+        (InterCatExitCode code, string shown, string said) = await Run(Locator(1));
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Kept +All of it: bytes 0 to 10 \(11 bytes\)\r?$", shown);
+        Assert.Contains("Its bytes are hidden. Add --reveal to show them, bounded and inert, or --save <file> to write them as "
+            + "they are.", shown, StringComparison.Ordinal);
+        Assert.DoesNotContain("68 65 6C 6C 6F", shown, StringComparison.Ordinal);
+        Assert.DoesNotContain("hello", shown, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "§3.7: icat content and icat raw refuse a locator naming no segment or row as a mistake in it, and a stale one as stale")]
+    public async Task ABadLocatorIsAMistakeInIt()
+    {
+        SessionEvidenceRecord record = page.Records.Single(record => record.Observation.RawRecordOrdinal == 1);
+        string generation = page.Generation.ToString(CultureInfo.InvariantCulture);
+        foreach (string command in new[] { "content", "raw" })
+        {
+            string[] Asked(string generationText, string segment, string row) =>
+            [
+                command, kept.Path, "--session-id", page.SessionId.ToString(), "--generation", generationText, "--segment",
+                segment, "--row", row,
+            ];
+
+            // A segment the generation does not name is a mistake in the locator, not damage to the session.
+            (InterCatExitCode code, _, string said) = await Run(Asked(generation, "observations-9999.seg", "0"));
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains($"Generation {generation} names no observation segment 'observations-9999.seg'. Take the record's "
+                + "locator from icat evidence.", said, StringComparison.Ordinal);
+
+            // So is a row the segment does not hold, the first past its last, and the rows it does hold are said.
+            (code, _, said) = await Run(Asked(generation, record.SegmentName, "4"));
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains($"Segment '{record.SegmentName}' holds rows 0 to 3; row 4 is not one of them.", said,
+                StringComparison.Ordinal);
+
+            // A generation the session no longer reads is followed to no row.
+            (code, _, said) = await Run(Asked("7", record.SegmentName, "0"));
+            Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+            Assert.Contains("locator names another session or generation. Restart from icat evidence; no row was silently "
+                + "shifted.", said, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact(DisplayName = "P2: icat content says why it shows no byte of a part kept without consent, and that an empty part holds none")]
+    public async Task APartItMayNotShowSaysWhy()
+    {
+        const string Withheld = "The capture kept this part's bytes without consent to inspect them, so it is never shown or "
+            + "saved; an original evidence package carries them as evidence.";
+
+        // Exchange 4's response body whole in two buffers, and in two with the one between them never recorded, each kept
+        // without consent to inspect it.
+        using var whole = new TemporarySession();
+        string[] wholePart = PartLocator(whole, [(0, 1, "head"u8.ToArray()), (1, 2, "tail"u8.ToArray())], ContentInspectionV1.Disabled);
+        using var gapped = new TemporarySession();
+        string[] gappedPart = PartLocator(gapped, [(0, 1, "head"u8.ToArray()), (2, 2, "tail"u8.ToArray())], ContentInspectionV1.Disabled);
+        string target = Path.Combine(root.Path, "withheld-part.bin");
+        foreach (string[] asked in new string[][]
+        {
+            [.. wholePart, "--part", "--reveal"], [.. wholePart, "--part", "--save", target], [.. gappedPart, "--part", "--reveal"],
+        })
+        {
+            (InterCatExitCode code, string output, string said) = await Run(asked);
+            Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+            Assert.Contains(Withheld, said, StringComparison.Ordinal);
+            Assert.DoesNotContain("68 65 61 64", output, StringComparison.Ordinal);
+        }
+
+        Assert.False(File.Exists(target));
+
+        // A part recorded whole that held no bytes has none to show, and nothing asked for is missing.
+        using var empty = new TemporarySession();
+        string[] emptyPart = PartLocator(empty, [(0, 3, [])]);
+        (InterCatExitCode none, string nothing, string why) = await Run([.. emptyPart, "--part", "--reveal"]);
+        Assert.True(none == InterCatExitCode.Success, why);
+        Assert.Contains("The part holds no bytes, so there is nothing to show or save.", nothing, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Publishes exchange 4's response body as <paramref name="buffers"/>, each numbered and flagged as its source would, and
+    /// returns the locator of its first buffer's record.
+    /// </summary>
+    private static string[] PartLocator(TemporarySession http, (long Sequence, long Flags, byte[] Bytes)[] buffers,
+        ContentInspectionV1 inspection = ContentInspectionV1.HexAndText)
+    {
+        ObservationRowV1[] rows = [.. buffers.Select((_, index) => Body(10 + (2 * index), (ulong)(index + 1)))];
+        SourceFieldRowV1[] fields =
+        [
+            .. buffers.SelectMany((buffer, index) => new[]
+            {
+                Field(rows[index], SourceField.HttpExchangeId, 4),
+                Field(rows[index], SourceField.ContentBufferSequence, buffer.Sequence),
+                Field(rows[index], SourceField.ContentBufferFlags, buffer.Flags),
+            }),
+        ];
+        Publish(http.Store, rows, fields: fields, content: (ContentHeader(recordLimit: 8, inspection: inspection),
+            [.. buffers.Select((buffer, index) => Content(rows[index], buffer.Bytes, 8, ContentEncodingV1.Binary))]));
+        SessionEvidencePage parts = SessionEvidenceQuery.Read(http.Store);
+        http.Store.ReleaseSegmentReaders();
+        return
+        [
+            "content", http.Path, "--session-id", parts.SessionId.ToString(), "--generation",
+            parts.Generation.ToString(CultureInfo.InvariantCulture), "--segment", parts.Records[0].SegmentName, "--row",
+            parts.Records[0].SegmentRow.ToString(CultureInfo.InvariantCulture),
+        ];
+    }
+
     private string[] Locator(ulong ordinal)
     {
         SessionEvidenceRecord record = page.Records.Single(record => record.Observation.RawRecordOrdinal == ordinal);

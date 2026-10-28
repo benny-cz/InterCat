@@ -664,6 +664,8 @@ Revision 817 runs the content viewer's facts for what is unusual in a record, an
 
 Revision 818 splits a session at eighteen places and finds each RPC call counted on one side however it ended, and an exchange's request body not recorded whole said to be.
 
+Revision 819 makes `icat content` and `icat raw` refuse a mistaken locator as a mistake rather than as damage, and says why a part's bytes are not shown.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2130,3 +2132,16 @@ counts add up to the whole session's, state by state, that their records add up 
 page lists as many calls as its channel counts there. An exchange whose request body's last buffer was not recorded
 now says its request body is not whole, the one part no test had said so of. Nothing was wrong; nine mutations of the
 counts and the words are now caught.
+
+Revision 819 is a coverage pass (R10) over how `icat content` and `icat raw` answer a record's locator, and over what
+`icat content` says of a part. A `--segment` the generation does not name reached the storage reader, which refuses
+what it cannot read as damage, so the command ended with exit code 4, corrupted input, in the reader's words; both
+commands now check the name against the generation's observation segments first and refuse it as a mistake in the
+locator, exit code 2, saying to take the locator from `icat evidence`. A row past the segment's last says which rows
+the segment holds. `icat content`'s warning that a part's bytes are not shown repeated the part's whole statement
+after a colon, its last sentence saying again that the bytes are not shown; it now says in words of its own why: kept
+without consent to inspect them, an original evidence package carrying them, or longer than a part is read up to, each
+buffer then shown from its own record. A part recorded whole that held no bytes was answered as partial; it is
+answered whole, as an empty message is, since nothing asked for is missing. A record's bytes hidden until asked, a
+part that is not whole hidden until `--reveal` and never saved as one file whether shown or not, and a stale locator
+of either command are now run by tests.
