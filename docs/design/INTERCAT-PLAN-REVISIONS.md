@@ -650,6 +650,8 @@ Revision 810 runs what a coverage pass over the content viewer, the channel list
 
 Revision 811 sweeps the counts the command line and the window print before a noun, and makes the five that read wrongly for one, or none, agree with their counts.
 
+Revision 812 sweeps the verbs that follow a count, and makes the four that read wrongly for one agree with their counts.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2053,3 +2055,11 @@ Every other count the sweep found is said by `CountText` or `Spoken`, or cannot 
 on the graph folds two processes at least, a toggle offers more than its list names, and an outlier baseline holds 19
 windows at least (`outliers-v1` §2). The import's spill and the recording's publications, which only a real trace or a
 Windows capture make, are said by small functions their tests reach.
+
+Revision 812 sweeps the verbs that follow a count for those a count of one reads wrongly, as revision 811 swept the
+nouns. It found four: the graph's hover card said "1 contributing observations are on relationships with no byte
+total" (§6.3); a record the record limit cut said "the other 1 were cut by the 4-byte record limit" (§3.7); a buffer
+whose one byte was not kept said "none of its 1 byte were kept; nothing stands in for them" (P2); and `icat measure`
+said "1 admitted records were not decoded because the run budget of 500000 was reached" (§18.3). Each now agrees with
+its count. The measurement's sentence, which its TCP, pipe and RPC runs each said in a copy of their own, is said
+once, its budget written with its group separators.

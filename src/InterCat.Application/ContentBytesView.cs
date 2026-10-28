@@ -311,13 +311,16 @@ public static class ContentBytesView
             case ContentPartPieceKind.NotKept:
             {
                 ContentPartBuffer buffer = piece.Buffer!;
-                string bytes = piece.Length is { } length
-                    ? string.Create(culture, $"none of its {length:N0} {(length == 1 ? "byte" : "bytes")} were kept")
-                    : "none of its bytes were kept";
+                (string bytes, string them) = piece.Length switch
+                {
+                    1 => ("its 1 byte was not kept", "it"),
+                    { } length => (string.Create(culture, $"none of its {length:N0} bytes were kept"), "them"),
+                    null => ("none of its bytes were kept", "them"),
+                };
                 string why = buffer.Entry?.Fragment.Disposition == ContentDispositionV1.OmittedBySessionLimit
                     ? ", as the capture had reached its content limit"
                     : string.Empty;
-                return string.Create(culture, $"Buffer {buffer.Sequence:N0}{Ends(buffer.Flags)}: {bytes}{why}; nothing stands in for them");
+                return string.Create(culture, $"Buffer {buffer.Sequence:N0}{Ends(buffer.Flags)}: {bytes}{why}; nothing stands in for {them}");
             }
 
             default:

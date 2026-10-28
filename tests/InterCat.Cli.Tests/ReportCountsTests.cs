@@ -21,4 +21,10 @@ public sealed class ReportCountsTests
     [InlineData(2, 4_096L, "2 runs, 4,096 bytes")]
     public void AnImportSaysWhatItSpilled(int runs, long bytes, string said) =>
         Assert.Equal(said, ImportCommand.Spilled(new ImportSpillDocument { RunsWritten = runs, BytesSpilled = bytes }));
+
+    [Theory(DisplayName = "§18.3: icat measure says how many admitted records its run left undecoded past its budget, in words that agree with them")]
+    [InlineData(1, "1 admitted record was not decoded because the run budget of 500,000 was reached.")]
+    [InlineData(2, "2 admitted records were not decoded because the run budget of 500,000 was reached.")]
+    public void AMeasurementSaysWhatItLeftUndecoded(long overBudget, string said) =>
+        Assert.Equal(said, MeasureCommand.NotDecoded(overBudget));
 }

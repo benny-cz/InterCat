@@ -92,6 +92,11 @@ internal static partial class MeasureCommand
 {
     private const int ObservationBudget = 500_000;
 
+    /// <summary>The admitted records a run left undecoded once it reached its budget, in words that agree with their count.</summary>
+    internal static string NotDecoded(long overBudget) =>
+        CountText.Of(overBudget, "admitted record") + " " + CountText.Agree(overBudget, "was", "were")
+        + string.Create(CultureInfo.CurrentCulture, $" not decoded because the run budget of {ObservationBudget:N0} was reached.");
+
     public static async Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken)
     {
         if (command.TryTakeFlag("--help") || command.TryTakeFlag("-h"))
@@ -311,7 +316,7 @@ internal static partial class MeasureCommand
         };
         if (overBudget > 0)
         {
-            notes.Add($"{overBudget} admitted records were not decoded because the run budget of {ObservationBudget} was reached.");
+            notes.Add(NotDecoded(overBudget));
         }
 
         if (!environment.IsSupportedBuild)

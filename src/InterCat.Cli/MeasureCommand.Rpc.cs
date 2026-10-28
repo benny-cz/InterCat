@@ -215,7 +215,7 @@ internal static partial class MeasureCommand
         };
         if (overBudget > 0)
         {
-            notes.Add($"{overBudget} admitted records were not decoded because the run budget of {ObservationBudget} was reached.");
+            notes.Add(NotDecoded(overBudget));
         }
 
         if (!environment.IsSupportedBuild)

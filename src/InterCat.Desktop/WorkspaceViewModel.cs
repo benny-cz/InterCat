@@ -4617,17 +4617,23 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             return observations == 0
                 ? "Bytes: unknown · 0 contributing observations in this scope"
-                : string.Create(CultureInfo.CurrentCulture,
-                    $"Bytes: unknown · {unknownObservations:N0} contributing observations are on relationships with no byte total");
+                : "Bytes: unknown · " + OnRelationships(unknownObservations) + " no byte total";
         }
 
         // DescribeBytes already says "known"; the prefix names the quantity only.
         string measured = "Bytes: " + WorkspaceRowBuilder.DescribeBytes(known.Sum(edge => edge.KnownBytes!.Value));
         return unknownObservations == 0
             ? measured + " · no contributing observation is on a relationship with an unknown byte total"
-            : measured + string.Create(CultureInfo.CurrentCulture,
-                $" · {unknownObservations:N0} contributing observations are on relationships with an unknown byte total");
+            : measured + " · " + OnRelationships(unknownObservations) + " an unknown byte total";
     }
+
+    /// <summary>
+    /// Contributing observations on relationships, in words that agree with their count: "1 contributing observation is on
+    /// a relationship with", "3 contributing observations are on relationships with".
+    /// </summary>
+    private static string OnRelationships(long observations) => observations == 1
+        ? "1 contributing observation is on a relationship with"
+        : string.Create(CultureInfo.CurrentCulture, $"{observations:N0} contributing observations are on relationships with");
 
     /// <summary>
     /// The hover card for a timeline bucket as drawn (§6.2's hover contract). It states the bucket's exact half-open

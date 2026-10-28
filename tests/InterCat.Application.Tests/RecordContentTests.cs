@@ -45,6 +45,18 @@ public sealed class RecordContentTests
             StringComparison.Ordinal);
     }
 
+    [Theory(DisplayName = "§3.7: a record whose content the record limit cut says how many bytes were cut, in words that agree with them")]
+    [InlineData("pong!", "; the other 1 was cut by the 4-byte record limit.")]
+    [InlineData("pong-pong", "; the other 5 were cut by the 4-byte record limit.")]
+    public void ACutRecordSaysHowManyBytesWereCut(string message, string cut)
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1 row = Transfer(10, ObservationKind.Receive, AccountingSide.ReceiveSide, message.Length, 100, 1).Between(ClientEnd, ServerEnd);
+        Publish(session.Store, [row], content: (ContentHeader(recordLimit: 4), [Content(row, System.Text.Encoding.UTF8.GetBytes(message), 4)]));
+        SessionEvidenceRecord record = Assert.Single(SessionEvidenceQuery.Read(session.Store).Records);
+        Assert.EndsWith(cut, RecordContent.Of(record.Observation, kept: record.Content).Describe(), StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "§3.7: an original record's view says what the record holds of its message, apart from the event's body")]
     public void TheOriginalRecordSaysWhatItHoldsOfItsMessage()
     {

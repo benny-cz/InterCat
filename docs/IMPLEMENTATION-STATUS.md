@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 811 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 812 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 812 — verbs that agree with their counts:**
+  - Revision 811 swept the nouns after a count; this sweeps the verbs, and found four said wrongly of one. A graph
+    card said "1 contributing observations are on relationships with no byte total"; a record the record limit cut
+    said "the other 1 were cut"; a buffer whose one byte was not kept said "none of its 1 byte were kept; nothing
+    stands in for them"; and `icat measure` said "1 admitted records were not decoded". Each now agrees with its
+    count. The measurement's sentence, which its TCP, pipe and RPC runs each said, is said once, its budget written
+    with its group separators.
+  - Debug and Release each ran 3,330 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index indexes none of the 4 new tests, each of a plan section; two are theories of 2 cases. All 6
+    mutations were caught: one contributing observation said in the plural, or with an unknown total where there is
+    none; one cut byte said in the plural; one unkept byte said as them, or in the plural; and one undecoded record
+    said in the plural.
 
 - **Revision 811 — counts said in words that agree with them:**
   - A sweep of the counts the command line and the window print before a noun found five that a count of one, or of

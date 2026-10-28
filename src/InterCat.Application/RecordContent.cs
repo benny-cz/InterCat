@@ -122,7 +122,7 @@ public sealed record RecordContent(RecordContentState State, string Reason, stri
                 string.Create(culture,
                     $"Kept in part: the first {fragment.Kept:N0} of {fragment.OriginalLength:N0} bytes of {what}{from}, {encoding}; ")
                 + string.Create(culture,
-                    $"the other {fragment.Missing:N0} were cut by the {kept.Header.RecordLimit:N0}-byte record limit.")
+                    $"the other {fragment.Missing:N0} {(fragment.Missing == 1 ? "was" : "were")} cut by the {kept.Header.RecordLimit:N0}-byte record limit.")
                 + hidden,
                 null),
             ContentDispositionV1.OmittedBySessionLimit => new(RecordContentState.Omitted,

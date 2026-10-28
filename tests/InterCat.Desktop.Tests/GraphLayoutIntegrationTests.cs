@@ -495,6 +495,25 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Equal("No relationships", second.SelectionTitle);
     });
 
+    [Fact(DisplayName = "§6.3: a graph hover card says one contributing observation of unknown bytes as one, with or beside a known total")]
+    public void OneObservationOfUnknownBytesIsSaidAsOne() => SingleThreadedContext.Run(async () =>
+    {
+        // Process 1 sends to process 2 once, of a size not known; then it also exchanges a known 100 bytes with process 3.
+        ProcessGroup group = new("pair", "pair.exe", LaneGrouping.Executable, @"C:\Tools\pair.exe");
+        ProcessNode[] processes = [Process(1, group.Key), Process(2, group.Key), Process(3, group.Key)];
+        CommunicationEdge once = Edge("once", processes[0], processes[1]) with { ObservationCount = 1 };
+        using var unknown = new WorkspaceViewModel(Snapshot([group], processes, [once]), "session:test:generation:1");
+        await unknown.LayoutReady;
+        Assert.Contains("Bytes: unknown · 1 contributing observation is on a relationship with no byte total",
+            unknown.DescribeGraphHover(processes[1].Id.ToString())!.Lines);
+
+        CommunicationEdge measured = Edge("measured", processes[0], processes[2]) with { ObservationCount = 4, KnownBytes = 100 };
+        using var both = new WorkspaceViewModel(Snapshot([group], processes, [once, measured]), "session:test:generation:2");
+        await both.LayoutReady;
+        Assert.Contains(both.DescribeGraphHover(processes[0].Id.ToString())!.Lines, line => line.StartsWith("Bytes: ", StringComparison.Ordinal)
+            && line.EndsWith(" · 1 contributing observation is on a relationship with an unknown byte total", StringComparison.Ordinal));
+    });
+
     [Fact(DisplayName = "§6.3: a graph hover card states half-open scope, semantics, value, unknowns, coverage and scale")]
     public void HoverCardsStateTheContract() => SingleThreadedContext.Run(async () =>
     {

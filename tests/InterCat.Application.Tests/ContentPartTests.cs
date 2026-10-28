@@ -254,6 +254,35 @@ public sealed class ContentPartTests
         Assert.Equal(("buffer 3", "buffers 0 to 4"), (new ContentBufferRange(3, 3).Describe(Invariant), new ContentBufferRange(0, 4).Describe(Invariant)));
     }
 
+    [Fact(DisplayName = "§3.7: a buffer whose one byte was not kept is said as one, and so is what nothing stands in for")]
+    public void ABufferOfOneByteNotKeptIsSaidAsOne()
+    {
+        // Exchange 8's response body in three buffers, the second's one byte recorded after the capture reached its content limit.
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = [Http(10, 2004, 1), Http(12, 2004, 2), Http(13, 2004, 3)];
+        (long Exchange, long Sequence, long Flags)[] places = [(8, 0, 1), (8, 1, 0), (8, 2, 2)];
+        SourceFieldRowV1[] fields =
+        [
+            .. places.SelectMany((place, index) => new[]
+            {
+                Field(rows[index], SourceField.HttpExchangeId, place.Exchange),
+                Field(rows[index], SourceField.ContentBufferSequence, place.Sequence),
+                Field(rows[index], SourceField.ContentBufferFlags, place.Flags),
+            }),
+        ];
+        (ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes) omitted = Content(rows[1], "x"u8.ToArray(), 8, ContentEncodingV1.Binary);
+        Publish(session.Store, rows, fields: fields, content: (ContentHeader(recordLimit: 8),
+        [
+            Content(rows[0], "head"u8.ToArray(), 8, ContentEncodingV1.Binary),
+            (omitted.Fragment with { Disposition = ContentDispositionV1.OmittedBySessionLimit, Kept = 0 }, ReadOnlyMemory<byte>.Empty),
+            Content(rows[2], "tail"u8.ToArray(), 8, ContentEncodingV1.Binary),
+        ]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+        SessionContentPartDetail part = SessionContentPartQuery.Read(session.Store, page.SessionId, page.Records[0].Observation, true);
+        Assert.Contains("-- Buffer 1: its 1 byte was not kept, as the capture had reached its content limit; nothing stands in for it",
+            ContentBytesView.PartLines(part, new(0, 2), Invariant).Lines.Select(line => line.Line));
+    }
+
     [Fact(DisplayName = "P2: a view of a part with gaps stops at the bytes it shows at once, at a buffer's start, and says so")]
     public void AGappedPartsViewStopsAtItsBound()
     {
