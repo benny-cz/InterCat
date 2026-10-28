@@ -9,4 +9,5 @@ Console.CancelKeyPress += (_, eventArgs) =>
     cancellation.Cancel();
 };
 
-return (int)await Icat.RunAsync(args, cancellation.Token).ConfigureAwait(false);
+// An error nothing in icat mapped ends with a sentence and exit code 70, never an unexplained crash (§20.6 Internal).
+return (int)await Icat.RunContainedAsync(() => Icat.RunAsync(args, cancellation.Token)).ConfigureAwait(false);

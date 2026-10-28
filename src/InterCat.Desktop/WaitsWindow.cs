@@ -212,7 +212,7 @@ internal sealed class WaitsWindow : Window, IDisposable
         only.IsChecked = process is not null;
         loading = true;
         ShowSelected();
-        Opened += (_, _) => _ = ReadAsync();
+        Opened += (_, _) => ReadAsync().Watched();
         Closed += (_, _) => Dispose();
     }
 

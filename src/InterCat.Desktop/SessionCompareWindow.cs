@@ -228,7 +228,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
             if (Chosen is { ChoosesCapture: true })
             {
                 typed.IsVisible = false;
-                _ = ChooseCaptureAsync();
+                ChooseCaptureAsync().Watched();
                 return;
             }
 
@@ -237,10 +237,10 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
             OfferRows();
 
             // Put back after another capture was declined or refused, the comparison shown is still this baseline's.
-            if (!reverting) _ = CompareAsync();
+            if (!reverting) CompareAsync().Watched();
         };
-        metric.SelectionChanged += (_, _) => _ = CompareAsync();
-        rowsOf.SelectionChanged += (_, _) => _ = CompareAsync();
+        metric.SelectionChanged += (_, _) => CompareAsync().Watched();
+        rowsOf.SelectionChanged += (_, _) => CompareAsync().Watched();
 
         // Drawn, the comparison is read again with its columns, which the chart draws for the chosen row; no longer drawn,
         // the chart goes and the comparison shown stays.
@@ -248,16 +248,16 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         timelineDrawn.IsCheckedChanged += (_, _) =>
         {
             charted.IsVisible = timelineDrawn.IsChecked == true;
-            if (charted.IsVisible && timeline is null) _ = CompareAsync();
+            if (charted.IsVisible && timeline is null) CompareAsync().Watched();
             else ShowChart();
         };
         chart.CursorMoved += (_, _) => chartSaid.Text = ChartSaid();
-        compare.Click += (_, _) => _ = CompareAsync();
+        compare.Click += (_, _) => CompareAsync().Watched();
         show.Click += (_, _) => ChooseSelected();
         onGraph.Click += (_, _) => ShowOnGraph();
-        share.Click += (_, _) => _ = ShareAsync();
-        save.Click += (_, _) => _ = SaveInInvestigationAsync();
-        write.Click += (_, _) => _ = NoteAsync();
+        share.Click += (_, _) => ShareAsync().Watched();
+        save.Click += (_, _) => SaveInInvestigationAsync().Watched();
+        write.Click += (_, _) => NoteAsync().Watched();
         close.Click += (_, _) => Close();
         rows.SelectionChanged += (_, _) =>
         {
@@ -279,7 +279,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
             {
                 if (key.Key == Key.Enter)
                 {
-                    _ = CompareAsync();
+                    CompareAsync().Watched();
                     key.Handled = true;
                 }
             };
@@ -371,7 +371,7 @@ internal sealed class SessionCompareWindow : Window, IDisposable, IChoosingWindo
         Opened += (_, _) =>
         {
             baseline.Focus();
-            _ = CompareAsync();
+            CompareAsync().Watched();
         };
         Closed += (_, _) => Dispose();
     }

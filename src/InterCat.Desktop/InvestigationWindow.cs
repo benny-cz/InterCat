@@ -22,7 +22,7 @@ namespace InterCat.Desktop;
 /// investigation's time - the candidate joins between its captures (ADR-041), and a package of it with its sessions to share
 /// (§8.4). Showing it opens each session as a viewer does and writes to none; only the investigation's own file is written.
 /// </summary>
-internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
+internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow, IStatesUnexpected
 {
     private readonly string path;
 
@@ -167,6 +167,15 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     {
         if (!closed) status.Text = why + " Nothing was added, relinked or written.";
     }
+
+    /// <summary>An error no action expected (§20.6 Internal): said where the window says what an action did.</summary>
+    bool IStatesUnexpected.SayUnexpected(Exception exception)
+    {
+        if (closed) return false;
+        status.Text = UnexpectedErrors.Sentence(exception);
+        return true;
+    }
+
     private bool disposed;
 
     /// <summary>Whether the investigation has been read once, which gives its selected session the keyboard.</summary>
@@ -318,62 +327,62 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         {
             if (!restating) ShowSelected();
         };
-        members.DoubleTapped += (_, _) => _ = OpenSelectedAsync();
+        members.DoubleTapped += (_, _) => OpenSelectedAsync().Watched();
         members.KeyDown += (_, key) =>
         {
             if (key.Key != Key.Enter) return;
-            _ = OpenSelectedAsync();
+            OpenSelectedAsync().Watched();
             key.Handled = true;
         };
-        open.Click += (_, _) => _ = OpenSelectedAsync();
-        relink.Click += (_, _) => _ = PickRelinkAsync();
-        alignButton.Click += (_, _) => _ = AlignSelectedAsync();
-        withdraw.Click += (_, _) => _ = WithdrawSelectedAsync();
-        oneHost.Click += (_, _) => _ = OneHostSelectedAsync();
-        add.Click += (_, _) => _ = PickAddAsync();
-        refresh.Click += (_, _) => _ = RefreshAsync();
-        find.Click += (_, _) => _ = FindCandidatesAsync();
-        translations.Click += (_, _) => _ = TranslationsAsync();
-        refreshTimeline.Click += (_, _) => _ = ShowTimelineAsync();
-        compareInstants.Click += (_, _) => _ = CompareInstantsAsync();
+        open.Click += (_, _) => OpenSelectedAsync().Watched();
+        relink.Click += (_, _) => PickRelinkAsync().Watched();
+        alignButton.Click += (_, _) => AlignSelectedAsync().Watched();
+        withdraw.Click += (_, _) => WithdrawSelectedAsync().Watched();
+        oneHost.Click += (_, _) => OneHostSelectedAsync().Watched();
+        add.Click += (_, _) => PickAddAsync().Watched();
+        refresh.Click += (_, _) => RefreshAsync().Watched();
+        find.Click += (_, _) => FindCandidatesAsync().Watched();
+        translations.Click += (_, _) => TranslationsAsync().Watched();
+        refreshTimeline.Click += (_, _) => ShowTimelineAsync().Watched();
+        compareInstants.Click += (_, _) => CompareInstantsAsync().Watched();
         zoomIn.Click += (_, _) => ZoomBy(0.5m);
         zoomOut.Click += (_, _) => ZoomBy(2m);
-        zoomWhole.Click += (_, _) => _ = ZoomToAsync(null);
-        savedViews.Click += (_, _) => _ = SavedViewsAsync();
-        savedComparisons.Click += (_, _) => _ = SavedComparisonsAsync();
+        zoomWhole.Click += (_, _) => ZoomToAsync(null).Watched();
+        savedViews.Click += (_, _) => SavedViewsAsync().Watched();
+        savedComparisons.Click += (_, _) => SavedComparisonsAsync().Watched();
         openColumn.Click += (_, _) =>
         {
-            if (timelineChart.ChosenColumn is { } chosen) _ = OpenColumnAsync(chosen);
+            if (timelineChart.ChosenColumn is { } chosen) OpenColumnAsync(chosen).Watched();
         };
-        timelineChart.ZoomRequested += (_, range) => _ = ZoomToAsync(range);
-        timelineChart.ColumnChosen += (_, chosen) => _ = OpenColumnAsync(chosen);
+        timelineChart.ZoomRequested += (_, range) => ZoomToAsync(range).Watched();
+        timelineChart.ColumnChosen += (_, chosen) => OpenColumnAsync(chosen).Watched();
         timelineChart.CursorMoved += (_, _) =>
         {
             columnReadout.Text = timelineChart.Describe() ?? string.Empty;
             Offer(openColumn, timelineChart.ChosenColumn is null ? ChooseAColumn : openSessionAt is null ? NoInterCat : null);
         };
-        acceptJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Accepted);
-        rejectJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Rejected);
-        withdrawJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
-        package.Click += (_, _) => _ = PackageAsync();
-        keysButton.Click += (_, _) => _ = ShowKeysAsync();
+        acceptJoin.Click += (_, _) => DecideSelectedAsync(WorkspaceJoinDecision.Accepted).Watched();
+        rejectJoin.Click += (_, _) => DecideSelectedAsync(WorkspaceJoinDecision.Rejected).Watched();
+        withdrawJoin.Click += (_, _) => DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn).Watched();
+        package.Click += (_, _) => PackageAsync().Watched();
+        keysButton.Click += (_, _) => ShowKeysAsync().Watched();
         notesList.SelectionChanged += (_, _) =>
         {
             if (!restating) ShowSelectedNote();
         };
 
         // Enter or a double click on a note shows it on the timeline, as Show on the timeline does for a pinned one.
-        notesList.DoubleTapped += (_, _) => _ = ShowSelectedNoteAsync();
+        notesList.DoubleTapped += (_, _) => ShowSelectedNoteAsync().Watched();
         notesList.KeyDown += (_, key) =>
         {
             if (key.Key != Key.Enter) return;
-            _ = ShowSelectedNoteAsync();
+            ShowSelectedNoteAsync().Watched();
             key.Handled = true;
         };
-        addNote.Click += (_, _) => _ = WriteNoteAsync(reword: false);
-        rewordNote.Click += (_, _) => _ = WriteNoteAsync(reword: true);
-        removeNote.Click += (_, _) => _ = RemoveSelectedNoteAsync();
-        showNote.Click += (_, _) => _ = ShowSelectedNoteAsync();
+        addNote.Click += (_, _) => WriteNoteAsync(reword: false).Watched();
+        rewordNote.Click += (_, _) => WriteNoteAsync(reword: true).Watched();
+        removeNote.Click += (_, _) => RemoveSelectedNoteAsync().Watched();
+        showNote.Click += (_, _) => ShowSelectedNoteAsync().Watched();
         candidates.SelectionChanged += (_, _) =>
         {
             if (!restating) ShowSelectedCandidate();
@@ -525,7 +534,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         };
         tabs.SelectionChanged += (_, _) =>
         {
-            if (tabs.SelectedIndex == 2 && !timelineLoaded) _ = ShowTimelineAsync();
+            if (tabs.SelectedIndex == 2 && !timelineLoaded) ShowTimelineAsync().Watched();
         };
         AutomationProperties.SetName(tabs, "Sessions, candidate joins, timeline and notes");
 
@@ -553,7 +562,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         Offer(compareInstants, NotRead);
         Offer(openColumn, ChooseAColumn);
         foreach (Button zooming in new[] { zoomIn, zoomOut, zoomWhole }) Offer(zooming, "The timeline is being drawn.");
-        Opened += (_, _) => _ = RefreshAsync(opening);
+        Opened += (_, _) => RefreshAsync(opening).Watched();
 
         // A control that loses the keyboard to nothing - a button disabled by what it did, a row its list's new rows replace -
         // gives it to the page's place, and so does the window come back to with the keyboard on nothing of it, or read
@@ -725,7 +734,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         long around = timelineChart.ChosenColumn is { } chosen && Timeline.Lanes[chosen.Lane].Buckets is { Count: > 0 } buckets
             ? buckets[chosen.Column].Interval.StartTicks + ((buckets[chosen.Column].Interval.EndTicks - buckets[chosen.Column].Interval.StartTicks) / 2)
             : shown.StartTicks + ((shown.EndTicks - shown.StartTicks) / 2);
-        _ = ZoomToAsync(InvestigationTimelineControl.Zoomed(shown, around, factor));
+        ZoomToAsync(InvestigationTimelineControl.Zoomed(shown, around, factor)).Watched();
     }
 
     /// <summary>The dialog of the investigation's saved views, with the interval shown now to save; a test uses it.</summary>
@@ -1694,7 +1703,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         if (e.Key == Key.F1 && e.KeyModifiers == KeyModifiers.None)
         {
             e.Handled = true;
-            _ = ShowKeysAsync();
+            ShowKeysAsync().Watched();
             return;
         }
 

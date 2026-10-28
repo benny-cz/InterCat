@@ -686,6 +686,8 @@ Revision 828 has `icat workspace` say once that an investigation is missing or u
 
 Revision 829 names every option a command reads in its own help, and holds every command's help to that by a test.
 
+Revision 830 says an error nothing in InterCat mapped, in `icat` and in the window, where it was a crash or a click that did nothing.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2264,3 +2266,22 @@ pipe` and `measure rpc`, and rpc's `--calls` and `--service`, were named in no h
 `icat import --help` never named `--retain-content`, which the command reads only to refuse. Both now do. `icat
 import`'s refusals of a missing ETL path end as every other command's do: "An ETL path is required: icat import
 <source.etl>." and "No ETL file at" the path, where it said "ETL evidence not found".
+
+Revision 830 builds §20.6's `Internal` category, which said to fail loudly in debug and to contain and report in
+release, naming the rule; nothing did either. An exception no command mapped ended `icat` with .NET's stack trace and
+the runtime's exit code. One an event handler of the window met reached the dispatcher, which ended the program with
+every window it had open. And one in an action the window started without waiting for it, as 108 of its buttons, menu
+items and dialogs' first reads do, was lost with its task, so the person saw a button do nothing. The category now
+reads as it is built. An invariant is checked in every build, and no test contains what it throws, so the test that
+meets a defect fails in Debug and Release alike. Only where the process runs is a defect contained, in every build, so
+the program a developer runs behaves as the one that ships. `icat` runs each invocation inside a guard that says it
+stopped on an error InterCat did not expect, a defect in InterCat rather than in what was asked, names the error by
+its kind and in its own words, writes it whole for whoever fixes it, and exits 70, the broker's code for the same
+thing since revision 85, now `InternalError` beside the six documented codes and listed in `icat --help`. The
+application contains what reaches the window's dispatcher: the window nearest the person, the active one or the one
+owning an active dialog, says it where it says what its actions did, the main window on its card and read out, an
+investigation in its status, and goes on running. Each action started without waiting is now watched, so its error
+reaches the dispatcher as an event handler's does; every window suite still passed, so none of those the tests run had
+been failing unseen. Running out of memory is never contained, and nor is an error no open window can say, so none is
+passed over unsaid. The window says the error's kind and words but not where it was thrown, which `icat` writes; a
+person reporting one from the window has those and what they did.

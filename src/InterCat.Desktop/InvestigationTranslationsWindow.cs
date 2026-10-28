@@ -73,8 +73,8 @@ internal sealed class InvestigationTranslationsWindow : Window
         Offering.Offer(state, null, States);
         AutomationProperties.SetName(withdraw, "Withdraw the selected translation");
         known.SelectionChanged += (_, _) => OfferWithdraw();
-        state.Click += (_, _) => _ = StateAsync();
-        withdraw.Click += (_, _) => _ = WithdrawSelectedAsync();
+        state.Click += (_, _) => StateAsync().Watched();
+        withdraw.Click += (_, _) => WithdrawSelectedAsync().Watched();
         var close = new Button { Content = "Close" };
         AutomationProperties.SetName(close, "Close the translations");
         close.Click += (_, _) => Close(Changed);
@@ -88,7 +88,7 @@ internal sealed class InvestigationTranslationsWindow : Window
             else if (key.Key == Key.Enter && (seen.IsKeyboardFocusWithin || actual.IsKeyboardFocusWithin || note.IsKeyboardFocusWithin))
             {
                 // Enter in a field states the translation entered, as State translation does.
-                _ = StateAsync();
+                StateAsync().Watched();
                 key.Handled = true;
             }
         };

@@ -20,6 +20,9 @@ public sealed partial class App : Avalonia.Application
     /// <summary>The theme the user chose in the application's settings, or null to follow the operating system.</summary>
     internal static ThemeMode? ChosenMode { get; private set; }
 
+    /// <summary>What contains the errors no action expected, for as long as the application runs (§20.6 Internal).</summary>
+    private static IDisposable? containment;
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -41,6 +44,12 @@ public sealed partial class App : Avalonia.Application
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            // An error no action expected is said in the window nearest the person, which keeps running, rather than
+            // ending the program with every window it had open (§20.6 Internal). Only the application contains them; a
+            // test never does, so a defect fails the test that meets it.
+            containment ??= UnexpectedErrors.Contain(Dispatcher.UIThread,
+                exception => UnexpectedErrors.SayIn(desktop.Windows, window => window.IsActive, exception));
+
             // Only the application reads the user's own settings and session folder, never a test (§26.3).
             ApplicationSettingsStore? store = null;
             ApplicationSettings loaded = ApplicationSettings.Default;
@@ -70,7 +79,7 @@ public sealed partial class App : Avalonia.Application
             // step 6), and lists the sessions saved before.
             try
             {
-                _ = window.UseSessionRootAsync(DesktopCaptureRunner.DefaultSessionRoot());
+                window.UseSessionRootAsync(DesktopCaptureRunner.DefaultSessionRoot()).Watched();
             }
             catch (InvalidOperationException)
             {

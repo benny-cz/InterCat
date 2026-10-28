@@ -1,4 +1,5 @@
 using System.Text.Json;
+using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -21,6 +22,27 @@ internal static class Icat
         {
             // A report's last fields are written when its command ends, as every other group is when something follows it.
             ConsoleUi.Flush();
+        }
+    }
+
+    /// <summary>
+    /// Runs an invocation as the process does: an exception nothing in icat mapped is a defect in InterCat (§20.6 Internal),
+    /// so it ends the invocation with a sentence saying so, what went wrong written whole for whoever fixes it, and exit code
+    /// 70, as the broker's does, never as an unexplained crash. Running out of memory is left to end the process. A test
+    /// runs <see cref="RunAsync"/>, which lets such an exception through, so a defect fails the test that meets it.
+    /// </summary>
+    public static async Task<InterCatExitCode> RunContainedAsync(Func<Task<InterCatExitCode>> invocation)
+    {
+        ArgumentNullException.ThrowIfNull(invocation);
+        try
+        {
+            return await invocation().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            ConsoleUi.Failure(InternalErrorText.Stopped("icat", exception) + " What went wrong follows, for whoever fixes it.");
+            await Console.Error.WriteLineAsync(exception.ToString()).ConfigureAwait(false);
+            return InterCatExitCode.InternalError;
         }
     }
 
@@ -424,7 +446,8 @@ internal static class Icat
         ConsoleUi.Line("      name or path, and lists what it holds before it is written.");
         ConsoleUi.Line();
         ConsoleUi.Line("  Exit codes: 0 success, 1 partial result, 2 invalid invocation,");
-        ConsoleUi.Line("              3 permission or capability failure, 4 corrupted input, 5 cancelled.");
+        ConsoleUi.Line("              3 permission or capability failure, 4 corrupted input, 5 cancelled,");
+        ConsoleUi.Line("              70 an error InterCat did not expect, a defect in InterCat itself.");
         ConsoleUi.Line();
         ConsoleUi.Line("  Options may come before or after a command's directory. An operand that starts with a dash,");
         ConsoleUi.Line("  such as a note, follows --; a negative number needs no --.");

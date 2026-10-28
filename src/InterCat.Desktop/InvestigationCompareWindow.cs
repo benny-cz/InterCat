@@ -56,7 +56,7 @@ internal sealed class InvestigationCompareWindow : Window
         AutomationProperties.SetLiveSetting(statement, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(placements, "Where each instant falls in the investigation's time");
         AutomationProperties.SetName(compare, "Compare the two instants");
-        compare.Click += (_, _) => _ = CompareAsync();
+        compare.Click += (_, _) => CompareAsync().Watched();
         var close = new Button { Content = "Close" };
         AutomationProperties.SetName(close, "Close the comparison");
         close.Click += (_, _) => Close();
@@ -70,7 +70,7 @@ internal sealed class InvestigationCompareWindow : Window
             }
             else if (key.Key == Key.Enter)
             {
-                _ = CompareAsync();
+                CompareAsync().Watched();
                 key.Handled = true;
             }
         };

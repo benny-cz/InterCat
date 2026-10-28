@@ -100,7 +100,7 @@ internal sealed class InvestigationAlignWindow : Window
         byInstant.IsCheckedChanged += (_, _) => ShowFields();
         ShowFields();
 
-        align.Click += (_, _) => _ = AlignAsync();
+        align.Click += (_, _) => AlignAsync().Watched();
         var cancel = new Button { Content = "Cancel" };
         AutomationProperties.SetName(cancel, "Cancel the alignment");
         cancel.Click += (_, _) => Close(false);
@@ -115,7 +115,7 @@ internal sealed class InvestigationAlignWindow : Window
             {
                 // Enter in a field aligns, as Align does; a button or a choice the keyboard is on, and an open list of
                 // sessions, take their own Enter first.
-                _ = AlignAsync();
+                AlignAsync().Watched();
                 key.Handled = true;
             }
         };

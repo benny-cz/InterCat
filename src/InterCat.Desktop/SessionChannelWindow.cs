@@ -98,7 +98,7 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         };
         next.Click += (_, _) =>
         {
-            if (nextCursor is { } cursor) _ = LoadPageAsync(cursor);
+            if (nextCursor is { } cursor) LoadPageAsync(cursor).Watched();
         };
         inspect.Click += (_, _) => ChooseSelected();
         rows.DoubleTapped += (_, _) => ChooseSelected();
@@ -138,7 +138,7 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         Offering.Offer(inspect, Reading);
         Offering.Offer(next, Reading);
 
-        Opened += (_, _) => _ = LoadPageAsync(null);
+        Opened += (_, _) => LoadPageAsync(null).Watched();
         Closed += (_, _) => Dispose();
     }
 

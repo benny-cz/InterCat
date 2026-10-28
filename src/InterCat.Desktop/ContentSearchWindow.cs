@@ -142,25 +142,25 @@ internal sealed class ContentSearchWindow : Window, IDisposable
         AccessibleItems.Name(results);
         AutomationProperties.SetName(results, "Records holding the text, in reading order. Enter inspects the chosen one's content.");
         results.SelectionChanged += (_, _) => Offer();
-        results.DoubleTapped += (_, _) => _ = InspectAsync();
+        results.DoubleTapped += (_, _) => InspectAsync().Watched();
         results.KeyDown += (_, key) =>
         {
             if (key.Key != Key.Enter) return;
-            _ = InspectAsync();
+            InspectAsync().Watched();
             key.Handled = true;
         };
         text.KeyDown += (_, key) =>
         {
             if (key.Key != Key.Enter) return;
-            _ = FindAsync();
+            FindAsync().Watched();
             key.Handled = true;
         };
         text.TextChanged += (_, _) => Offer();
-        find.Click += (_, _) => _ = FindAsync();
+        find.Click += (_, _) => FindAsync().Watched();
         stop.Click += (_, _) => stopping?.Cancel();
-        searchOn.Click += (_, _) => _ = SearchOnAsync();
-        inspect.Click += (_, _) => _ = InspectAsync();
-        export.Click += (_, _) => _ = ExportAsync();
+        searchOn.Click += (_, _) => SearchOnAsync().Watched();
+        inspect.Click += (_, _) => InspectAsync().Watched();
+        export.Click += (_, _) => ExportAsync().Watched();
         close.Click += (_, _) => Close();
 
         // Escape closes the window, as it cancels InterCat's prompts and every Windows dialog.

@@ -74,7 +74,7 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         AutomationProperties.SetName(detail, "The original journal record, field by field");
         AutomationProperties.SetName(status, "Original record status");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
-        reveal.Click += (_, _) => _ = LoadAsync(revealBytes: true);
+        reveal.Click += (_, _) => LoadAsync(revealBytes: true).Watched();
         Offering.Offer(reveal, Reading);
         close.Click += (_, _) => Close();
         // Escape closes the window, as it cancels InterCat's prompts and every Windows dialog.
@@ -107,7 +107,7 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         Content = grid;
         if (synthetic) PresentAsSynthetic();
 
-        Opened += (_, _) => _ = LoadAsync(revealBytes: false);
+        Opened += (_, _) => LoadAsync(revealBytes: false).Watched();
         Closed += (_, _) => Dispose();
     }
 

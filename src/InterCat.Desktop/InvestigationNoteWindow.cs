@@ -103,7 +103,7 @@ internal sealed class InvestigationNoteWindow : Window
                 "Note the row chosen in the comparison, by what it compares");
         }
 
-        save.Click += (_, _) => _ = SaveAsync();
+        save.Click += (_, _) => SaveAsync().Watched();
         var cancel = new Button { Content = "Cancel" };
         AutomationProperties.SetName(cancel, "Cancel: nothing is written");
         cancel.Click += (_, _) => Close(false);
@@ -119,7 +119,7 @@ internal sealed class InvestigationNoteWindow : Window
         AddHandler(KeyDownEvent, (_, key) =>
         {
             if (key.Key != Key.Enter || key.KeyModifiers != KeyModifiers.Control) return;
-            _ = SaveAsync();
+            SaveAsync().Watched();
             key.Handled = true;
         }, RoutingStrategies.Tunnel);
 

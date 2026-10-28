@@ -204,7 +204,7 @@ internal sealed class PatternsWindow : Window, IDisposable
         // Until the session is read, its actions wait for it, saying so.
         loading = true;
         ShowSelected();
-        Opened += (_, _) => _ = ReadAsync();
+        Opened += (_, _) => ReadAsync().Watched();
         Closed += (_, _) => Dispose();
     }
 

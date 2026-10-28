@@ -22,7 +22,7 @@ using InterCat.Storage;
 
 namespace InterCat.Desktop;
 
-public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
+public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, IStatesUnexpected
 {
     private WorkspaceViewModel workspace;
     private CancellationTokenSource? captureStop;
@@ -442,7 +442,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         ThemeResources.ModeChanged += OnThemeModeChanged;
         healthClock.Tick += (_, _) => UpdateHealthStrip();
         healthClock.Start();
-        offerRecheck.Tick += (_, _) => _ = RefreshInterruptedOfferAsync();
+        offerRecheck.Tick += (_, _) => RefreshInterruptedOfferAsync().Watched();
         Closing += OnClosing;
         Closed += (_, _) =>
         {
@@ -532,7 +532,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (e.Key == Key.F1 && e.KeyModifiers == KeyModifiers.None)
         {
             e.Handled = true;
-            _ = ShowKeysAsync();
+            ShowKeysAsync().Watched();
             return;
         }
 
@@ -540,7 +540,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         // (content-v1 §4); Ctrl+F alone searches what the window draws.
         if (e.Key == Key.F && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
         {
-            if (FindContentButton.IsEnabled) _ = FindContentAsync();
+            if (FindContentButton.IsEnabled) FindContentAsync().Watched();
             e.Handled = true;
             return;
         }
@@ -623,7 +623,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (RecentSessionsList.IsKeyboardFocusWithin && e.Key == Key.Enter)
         {
             e.Handled = true;
-            _ = OpenSelectedRecentSessionAsync();
+            OpenSelectedRecentSessionAsync().Watched();
             return;
         }
 
@@ -756,7 +756,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             }
             case Key.B when e.KeyModifiers == KeyModifiers.Control && viewModel.CanCompareIntervals:
                 // The time scope compared with another interval, as Compare with… does.
-                _ = CompareIntervalsAsync();
+                CompareIntervalsAsync().Watched();
                 e.Handled = true;
                 break;
             case Key.C when e.KeyModifiers == KeyModifiers.None && viewModel.HasSelectedContent:
@@ -774,7 +774,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 if (e.Handled) FocusRail();
                 break;
             case Key.M when viewModel.CanLoadMore:
-                _ = viewModel.LoadMoreAsync();
+                viewModel.LoadMoreAsync().Watched();
                 e.Handled = true;
                 break;
             case Key.F when e.KeyModifiers == KeyModifiers.None:
@@ -854,7 +854,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// <summary>The keys sheet while it is open; a test reads it.</summary>
     internal KeysWindow? KeysSheet { get; private set; }
 
-    private void ShowKeys(object? sender, RoutedEventArgs eventArgs) => _ = ShowKeysAsync();
+    private void ShowKeys(object? sender, RoutedEventArgs eventArgs) => ShowKeysAsync().Watched();
 
     /// <summary>
     /// Lists every key the window takes, by where it acts (§6.7, R15), as F1 and the strip's Keys button do. The sheet is
@@ -1447,7 +1447,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         return true;
     }
 
-    private void LoadMoreRecords(object? sender, RoutedEventArgs eventArgs) => _ = workspace.LoadMoreAsync();
+    private void LoadMoreRecords(object? sender, RoutedEventArgs eventArgs) => workspace.LoadMoreAsync().Watched();
 
     /// <summary>The pointer equivalent of P: pins the selected graph node where it is drawn, or releases its pin.</summary>
     private void TogglePinNode(object? sender, RoutedEventArgs eventArgs) => _ = workspace.TogglePinSelectedGraphNode();
@@ -1782,7 +1782,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         return prompt;
     }
 
-    private void ExploreDemo(object? sender, RoutedEventArgs eventArgs) => _ = ExploreDemoAsync();
+    private void ExploreDemo(object? sender, RoutedEventArgs eventArgs) => ExploreDemoAsync().Watched();
 
     /// <summary>
     /// Opens InterCat's generated demo investigation (§14 M5) beside this window, making it the first time in a folder of
@@ -2034,7 +2034,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
     }
 
-    private void FindContent(object? sender, RoutedEventArgs eventArgs) => _ = FindContentAsync();
+    private void FindContent(object? sender, RoutedEventArgs eventArgs) => FindContentAsync().Watched();
 
     /// <summary>
     /// Finds a text in the content the session kept with consent to inspect it (`contracts/content-v1.md` §4), the selected
@@ -2314,7 +2314,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (investigations.FirstOrDefault(shown => string.Equals(shown.WorkspacePath, full,
             OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) is { } open)
         {
-            if (opening is not null) _ = open.RefreshAsync(opening);
+            if (opening is not null) open.RefreshAsync(opening).Watched();
             Forward(open);
             return open;
         }
@@ -2364,7 +2364,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (refused is null && !closed)
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(
-                () => _ = CompareIntervalsAsync(new SavedComparisonOpening(saved, baseline, investigation)));
+                () => CompareIntervalsAsync(new SavedComparisonOpening(saved, baseline, investigation)).Watched());
         }
 
         return refused;
@@ -2469,7 +2469,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         Task<WorkspaceLayout?> written = WriteToInvestigation(() => InvestigationWorkspace.SetLayout(home.Workspace, home.Session,
             layout, DateTimeOffset.UtcNow, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane,
             pinnedLanes, settings.Grouping, settings.CollectorsAside, settings.WallClock, settings.HostsOpened));
-        _ = SayWhatIsKeptAsync(written, home);
+        SayWhatIsKeptAsync(written, home).Watched();
     }
 
     /// <summary>
@@ -2519,7 +2519,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         keptPanes = keeping;
         Task<WorkspacePanes?> written = WriteToInvestigation(() => InvestigationWorkspace.SetPanes(home.Workspace,
             keeping.GraphShare, keeping.Expanded, DateTimeOffset.UtcNow, keeping.RailWidth, keeping.InspectorWidth));
-        _ = SayPanesKeptAsync(written, home.Workspace);
+        SayPanesKeptAsync(written, home.Workspace).Watched();
     }
 
     private async Task SayPanesKeptAsync(Task<WorkspacePanes?> written, string investigation)
@@ -3018,7 +3018,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 UpdateHeldBanner();
                 UpdateHealthStrip();
                 UpdateEvidenceAction();
-                _ = RefreshInterruptedOfferAsync();
+                RefreshInterruptedOfferAsync().Watched();
                 return;
             }
         }
@@ -3296,7 +3296,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     private bool BeforeSession => workspace.IsEmptyWorkspace
         && phase is not (CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing);
 
-    private void OpenRecentSession(object? sender, TappedEventArgs eventArgs) => _ = OpenSelectedRecentSessionAsync();
+    private void OpenRecentSession(object? sender, TappedEventArgs eventArgs) => OpenSelectedRecentSessionAsync().Watched();
 
     private void FindListedHost(object? sender, TappedEventArgs eventArgs)
     {
@@ -3664,9 +3664,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         else offerRecheck.Stop();
     }
 
-    private void FinishInterruptedCapture(object? sender, RoutedEventArgs eventArgs) => _ = ActOnInterruptedCaptureAsync();
+    private void FinishInterruptedCapture(object? sender, RoutedEventArgs eventArgs) => ActOnInterruptedCaptureAsync().Watched();
 
-    private void ForgetInterruptedCapture(object? sender, RoutedEventArgs eventArgs) => _ = ForgetInterruptedCaptureAsync();
+    private void ForgetInterruptedCapture(object? sender, RoutedEventArgs eventArgs) => ForgetInterruptedCaptureAsync().Watched();
 
     /// <summary>
     /// The card's action: finish the session from the evidence the broker kept, or open what was saved when the evidence
@@ -4614,6 +4614,18 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         UpdateSessionGrowth();
     }
 
+    /// <summary>
+    /// An error no action expected (§20.6 Internal): said on the card, where every action says what it did, and read out,
+    /// as a refusal is.
+    /// </summary>
+    bool IStatesUnexpected.SayUnexpected(Exception exception)
+    {
+        if (closed) return false;
+        Say(CaptureStatus, "Stopped on an error InterCat did not expect", aloud: true);
+        Say(CaptureDetail, UnexpectedErrors.Sentence(exception), aloud: true);
+        return true;
+    }
+
     /// <summary>A picker the system could not show chose nothing: said where the card says what an action did.</summary>
     void IChoosingWindow.PickerFailed(string why)
     {
@@ -4691,7 +4703,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 // A capture that ends has saved a session: the next time none is open, it is listed.
                 if (update.Phase == CaptureUiPhase.Complete)
                 {
-                    _ = RefreshRecentSessionsAsync();
+                    RefreshRecentSessionsAsync().Watched();
                 }
             }
         });
@@ -4891,7 +4903,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     }
 
     private void CountCandidates(object? sender, RoutedEventArgs eventArgs) =>
-        _ = ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCandidates);
+        ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCandidates).Watched();
 
     private void GraphExpandChanged(object? sender, RoutedEventArgs eventArgs)
     {
@@ -5024,9 +5036,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     }
 
     private void CountCorrelatedOnly(object? sender, RoutedEventArgs eventArgs) =>
-        _ = ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCorrelated);
+        ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCorrelated).Watched();
 
-    private void RestoreDefaultView(object? sender, RoutedEventArgs eventArgs) => _ = RestoreDefaultViewAsync();
+    private void RestoreDefaultView(object? sender, RoutedEventArgs eventArgs) => RestoreDefaultViewAsync().Watched();
 
     private void ToggleCollectorsAside(object? sender, RoutedEventArgs eventArgs) => ChooseCollectorsAside(!collectorsAside);
 

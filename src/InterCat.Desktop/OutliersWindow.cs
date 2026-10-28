@@ -143,8 +143,8 @@ internal sealed class OutliersWindow : Window, IDisposable
             ChooseSelected();
             key.Handled = true;
         };
-        baseline.SelectionChanged += (_, _) => _ = JudgeAsync();
-        rowsOf.SelectionChanged += (_, _) => _ = JudgeAsync();
+        baseline.SelectionChanged += (_, _) => JudgeAsync().Watched();
+        rowsOf.SelectionChanged += (_, _) => JudgeAsync().Watched();
         chart.CursorMoved += (_, _) => chartSaid.Text = chart.Describe() ?? string.Empty;
         show.Click += (_, _) => ChooseSelected();
         close.Click += (_, _) => Close();
@@ -211,7 +211,7 @@ internal sealed class OutliersWindow : Window, IDisposable
         // Until the rows are judged, the window's actions wait for them, saying so.
         loading = true;
         ShowSelected();
-        Opened += (_, _) => _ = JudgeAsync();
+        Opened += (_, _) => JudgeAsync().Watched();
         Closed += (_, _) => Dispose();
     }
 

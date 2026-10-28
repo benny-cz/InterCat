@@ -219,7 +219,7 @@ internal sealed class LinksWindow : Window, IDisposable
         Content = grid;
 
         Show(null);
-        Opened += (_, _) => _ = ReadAsync();
+        Opened += (_, _) => ReadAsync().Watched();
         Closed += (_, _) => Dispose();
     }
 

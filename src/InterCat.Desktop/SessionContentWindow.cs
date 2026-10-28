@@ -230,7 +230,7 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
         decodedTab.Content = decodedView;
         views.Items.Add(decodedTab);
 
-        reveal.Click += (_, _) => _ = LoadAsync(revealBytes: true);
+        reveal.Click += (_, _) => LoadAsync(revealBytes: true).Watched();
         showRange.Click += (_, _) => ApplyTypedRange();
         showAll.Click += (_, _) =>
         {
@@ -240,10 +240,10 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
         first.KeyDown += ApplyOnEnter;
         last.KeyDown += ApplyOnEnter;
         partToggle.Click += (_, _) => TogglePart();
-        copy.Click += (_, _) => _ = CopyAsync();
-        save.Click += (_, _) => _ = SaveAsync();
-        decode.Click += (_, _) => _ = DecodeAsync();
-        conversation.Click += (_, _) => _ = OpenConversationAsync();
+        copy.Click += (_, _) => CopyAsync().Watched();
+        save.Click += (_, _) => SaveAsync().Watched();
+        decode.Click += (_, _) => DecodeAsync().Watched();
+        conversation.Click += (_, _) => OpenConversationAsync().Watched();
         close.Click += (_, _) => Close();
 
         // A buffer of an HTTP exchange - WinINet's events 2001 to 2004 - leads to its exchange's conversation, read from the
@@ -304,7 +304,7 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
         Content = grid;
         OfferBytes(ReadingContent);
 
-        Opened += (_, _) => _ = LoadAsync(revealBytes: false);
+        Opened += (_, _) => LoadAsync(revealBytes: false).Watched();
         Closed += (_, _) => Dispose();
         views.SizeChanged += (_, _) => FitFacts();
     }

@@ -98,7 +98,7 @@ internal sealed class SessionConversationWindow : Window, IDisposable
         AutomationProperties.SetName(decode, "Decode its heads");
         AutomationProperties.SetName(buffers, "Show its buffers");
         buffers.IsVisible = offersBuffers;
-        decode.Click += (_, _) => _ = DecodeAsync();
+        decode.Click += (_, _) => DecodeAsync().Watched();
         buffers.Click += (_, _) => ShowBuffers();
         close.Click += (_, _) => Close();
 
@@ -137,7 +137,7 @@ internal sealed class SessionConversationWindow : Window, IDisposable
         Content = grid;
         Offer();
 
-        Opened += (_, _) => _ = ReadAsync(decodeHeads: false);
+        Opened += (_, _) => ReadAsync(decodeHeads: false).Watched();
         Closed += (_, _) => Dispose();
     }
 

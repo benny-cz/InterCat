@@ -85,7 +85,7 @@ internal sealed class InvestigationComparisonsWindow : Window
         comparisons.SelectionChanged += (_, _) => ShowChoice();
         comparisons.DoubleTapped += (_, _) => OpenSelected();
         open.Click += (_, _) => OpenSelected();
-        remove.Click += (_, _) => _ = RemoveSelectedAsync();
+        remove.Click += (_, _) => RemoveSelectedAsync().Watched();
         var close = new Button { Content = "Close" };
         AutomationProperties.SetName(close, "Close the saved comparisons");
         close.Click += (_, _) => Close(null);

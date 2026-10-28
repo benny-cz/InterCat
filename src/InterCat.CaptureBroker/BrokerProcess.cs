@@ -51,7 +51,7 @@ public static class BrokerProcess
     public static readonly TimeSpan PredecessorWait = TimeSpan.FromSeconds(15);
 
     /// <summary>The broker stopped on an error nothing mapped; its next start recovers what it left.</summary>
-    public const int ExitUnexpected = 70;
+    public const int ExitUnexpected = (int)InterCatExitCode.InternalError;
 
     private const int ErrorSharingViolation = 32;
 

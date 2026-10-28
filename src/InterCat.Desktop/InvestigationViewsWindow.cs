@@ -72,8 +72,8 @@ internal sealed class InvestigationViewsWindow : Window
         views.SelectionChanged += (_, _) => ShowChoice();
         views.DoubleTapped += (_, _) => ShowSelected();
         show.Click += (_, _) => ShowSelected();
-        remove.Click += (_, _) => _ = RemoveSelectedAsync();
-        save.Click += (_, _) => _ = SaveAsync();
+        remove.Click += (_, _) => RemoveSelectedAsync().Watched();
+        save.Click += (_, _) => SaveAsync().Watched();
         var close = new Button { Content = "Close" };
         AutomationProperties.SetName(close, "Close the saved views");
         close.Click += (_, _) => Close(null);
@@ -94,7 +94,7 @@ internal sealed class InvestigationViewsWindow : Window
             else if (key.Key == Key.Enter && name.IsKeyboardFocusWithin && save.IsEnabled)
             {
                 // Enter in the name saves the view shown under it, as the button beside it does.
-                _ = SaveAsync();
+                SaveAsync().Watched();
                 key.Handled = true;
             }
         };

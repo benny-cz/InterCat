@@ -49,8 +49,8 @@ internal sealed class InvestigationHostWindow : Window
         AutomationProperties.SetName(status, "One host status");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         other.SelectionChanged += (_, _) => ShowChoice();
-        confirm.Click += (_, _) => _ = DecideAsync(WorkspaceHostDecision.Confirmed);
-        withdraw.Click += (_, _) => _ = DecideAsync(WorkspaceHostDecision.Withdrawn);
+        confirm.Click += (_, _) => DecideAsync(WorkspaceHostDecision.Confirmed).Watched();
+        withdraw.Click += (_, _) => DecideAsync(WorkspaceHostDecision.Withdrawn).Watched();
         var cancel = new Button { Content = "Cancel" };
         AutomationProperties.SetName(cancel, "Cancel: nothing is recorded");
         cancel.Click += (_, _) => Close(false);

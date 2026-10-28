@@ -337,7 +337,20 @@ public enum CaptureProfileKind
 }
 
 public enum CaptureLifecycle { Idle = 1, Probing = 2, Starting = 3, Recording = 4, Stopping = 5, Finalizing = 6, Closed = 7 }
-public enum InterCatExitCode { Success = 0, PartialResultSuccess = 1, InvalidInvocation = 2, PermissionOrCapabilityFailure = 3, CorruptedInput = 4, Cancelled = 5 }
+/// <summary>
+/// What an icat invocation exits with, one meaning each in every command (§20.4). <see cref="InternalError"/> is an error
+/// nothing in InterCat mapped: a defect in InterCat rather than in what was asked (§20.6 Internal), 70 as the broker's is.
+/// </summary>
+public enum InterCatExitCode
+{
+    Success = 0,
+    PartialResultSuccess = 1,
+    InvalidInvocation = 2,
+    PermissionOrCapabilityFailure = 3,
+    CorruptedInput = 4,
+    Cancelled = 5,
+    InternalError = 70,
+}
 
 public enum MeasurementUnit
 {
