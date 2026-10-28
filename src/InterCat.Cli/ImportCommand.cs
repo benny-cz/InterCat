@@ -161,7 +161,7 @@ internal static partial class ImportCommand
 
         if (sourcePath is null)
         {
-            ConsoleUi.Failure("An ETL path is required: icat import <source.etl>");
+            ConsoleUi.Failure("An ETL path is required: icat import <source.etl>.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -173,7 +173,7 @@ internal static partial class ImportCommand
             ConsoleUi.Failure(Directory.Exists(full)
                 ? $"{full} is a folder; icat import reads one ETL trace file. A session's folder is opened by the other "
                     + "commands as it is."
-                : $"ETL evidence not found: {full}");
+                : $"No ETL file at {full}.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -823,6 +823,7 @@ internal static partial class ImportCommand
             ConsoleUi.Line("      folder of your own for it. --overwrite replaces only a report file.");
         }
 
-        ConsoleUi.Line("      Needs no elevation.");
+        ConsoleUi.Line("      Needs no elevation. --retain-content is refused: an import keeps metadata only,");
+        ConsoleUi.Line("      since no content source is validated for a file.");
     }
 }

@@ -669,10 +669,16 @@ internal static partial class MeasureCommand
         ConsoleUi.Line("                 [--bytes <n>] [--grace <seconds>] [--workload <path>] [--ipv6] [--overwrite] [--json]");
         ConsoleUi.Line("icat measure udp [--output <dir>] [--seed <n>] [--sockets <n>] [--messages <n>]");
         ConsoleUi.Line("                 [--bytes <n>] [--grace <seconds>] [--workload <path>] [--ipv6] [--overwrite] [--json]");
+        ConsoleUi.Line("icat measure pipe [--output <dir>] [--seed <n>] [--messages <n>] [--bytes <n>] [--grace <seconds>]");
+        ConsoleUi.Line("                  [--workload <path>] [--overwrite] [--json]");
+        ConsoleUi.Line("icat measure rpc [--output <dir>] [--service <name>] [--calls <n>] [--grace <seconds>]");
+        ConsoleUi.Line("                 [--workload <path>] [--overwrite] [--json]");
         ConsoleUi.Line();
         ConsoleUi.Line("  Starts one uniquely named ETW session, runs FX-TCP-001 or FX-UDP-001 - or, with --ipv6, the same");
         ConsoleUi.Line("  exchange over IPv6 loopback as FX-TCP-002 or FX-UDP-002 - stops the session it");
         ConsoleUi.Line("  created, and measures the section 14.2 thresholds against the workload's independent truth log.");
+        ConsoleUi.Line("  pipe runs FX-PIPE-001's named-pipe exchange; rpc makes --calls calls (12 unless given) to the");
+        ConsoleUi.Line("  Windows service --service names (Schedule unless given), FX-RPC-001's workload.");
         ConsoleUi.Line("  Other ETW sessions on the machine are never stopped or adopted.");
     }
 }

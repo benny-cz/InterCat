@@ -1238,6 +1238,33 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "R18: every option a command reads is named in its own help")]
+    public async Task EveryOptionIsNamedInItsHelp()
+    {
+        DirectoryInfo root = new(AppContext.BaseDirectory);
+        while (!File.Exists(Path.Combine(root.FullName, "InterCat.slnx")))
+        {
+            root = root.Parent!;
+        }
+
+        string cli = Path.Combine(root.FullName, "src", "InterCat.Cli");
+        foreach (string command in Commands)
+        {
+            string type = char.ToUpperInvariant(command[0]) + command[1..] + "Command";
+            string source = string.Concat(Directory.EnumerateFiles(cli, type + "*.cs").Select(File.ReadAllText));
+            Assert.False(source.Length == 0, $"No source names icat {command}'s options as {type}.");
+            string help = (await Run(command, "--help")).Output;
+            string[] unnamed =
+            [
+                .. Regex.Matches(source, @"(?:TakeOption|TryTakeFlag|TakeIntegerOption)\(""(--[a-z0-9-]+)""\)")
+                    .Select(match => match.Groups[1].Value)
+                    .Distinct()
+                    .Where(option => option != "--help" && !help.Contains(option, StringComparison.Ordinal)),
+            ];
+            Assert.True(unnamed.Length == 0, $"icat {command} reads {string.Join(", ", unnamed)}, which its help never names.");
+        }
+    }
+
     [Fact(DisplayName = "R18: an empty argument, as an unset variable leaves one, is refused by what it follows and never read as a path")]
     public async Task AnEmptyArgumentIsRefusedByWhatItFollows()
     {

@@ -54,6 +54,8 @@ public sealed class RefusalWordsTests : IDisposable
         { ["processes"], "A session directory is required: icat processes <directory>." },
         { ["session"], "A session directory is required: icat session <directory>." },
         { ["record"], "A new session directory is required: icat record <directory>." },
+        { ["import"], "An ETL path is required: icat import <source.etl>." },
+        { ["import", "{nowhere}"], "No ETL file at {nowhere}." },
         { ["bench", "--bogus"], "Unknown or incomplete option: --bogus" },
         { ["measure", "tcp", "--seed", "abc"], "--seed expects a whole number; 'abc' is not one." },
         { ["measure", "udp", "--sockets", "two"], "--sockets expects a whole number; 'two' is not one." },
