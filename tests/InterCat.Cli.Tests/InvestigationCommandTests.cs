@@ -285,6 +285,31 @@ public sealed class InvestigationCommandTests : IDisposable
         Assert.Contains("A session is relinked only to itself.", itself, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "§8.4: icat workspace says once that an investigation is missing or unreadable, and refuses to make one beneath a file")]
+    public async Task AnInvestigationItCannotReadIsSaidOnce()
+    {
+        // Each operand would have said it, and the summary after them once more, ending with the summary's exit code.
+        string missing = Path.Combine(folder, "missing.icat-workspace");
+        (InterCatExitCode code, string output, string said) = await Run("workspace", "add", missing, folder, folder);
+        Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, output));
+        Assert.Equal($"x No investigation is at {missing}; icat workspace new makes one.", said.TrimEnd());
+
+        string unreadable = Path.Combine(folder, "notes.icat-workspace");
+        File.WriteAllText(unreadable, "not an investigation");
+        (code, output, said) = await Run("workspace", "add", unreadable, folder, folder);
+        Assert.Equal((InterCatExitCode.CorruptedInput, string.Empty), (code, output));
+        Assert.StartsWith($"x {unreadable} is not a readable investigation: ", said, StringComparison.Ordinal);
+        Assert.Single(said.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+
+        // One cannot be made where a file stands in place of its folder, and the file is named.
+        string file = Path.Combine(folder, "a-file");
+        File.WriteAllText(file, "not a folder");
+        string beneath = Path.Combine(file, "case.icat-workspace");
+        (code, output, said) = await Run("workspace", "new", beneath);
+        Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, output));
+        Assert.Equal($"x {beneath} cannot be written: {file} is a file, not a folder.", said.TrimEnd());
+    }
+
     [Fact(DisplayName = "§8.4: icat workspace package measures, writes and verifies an investigation with its sessions, saying what its file carries")]
     public async Task AnInvestigationIsPackaged()
     {

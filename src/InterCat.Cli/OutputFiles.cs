@@ -15,7 +15,11 @@ internal static class OutputFiles
         path is null ? null
         : Directory.Exists(path) ? $"{path} is a folder; {option} names the file to write, never a folder."
         : File.Exists(path) && !overwrite ? $"{path} exists. Pass --overwrite to replace {replaced}."
-        : FileInTheWay(Path.GetDirectoryName(path)) is { } file ? $"{path} cannot be written: {file} is a file, not a folder."
+        : Beneath(path);
+
+    /// <summary>Why no file can be written at <paramref name="path"/> for a file standing where a folder above it must be; null when none does.</summary>
+    public static string? Beneath(string path) => FileInTheWay(Path.GetDirectoryName(path)) is { } file
+        ? $"{path} cannot be written: {file} is a file, not a folder."
         : null;
 
     /// <summary>

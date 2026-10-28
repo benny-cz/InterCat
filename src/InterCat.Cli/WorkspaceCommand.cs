@@ -428,6 +428,19 @@ internal static partial class WorkspaceCommand
         string path = verb == "new" ? InvestigationWorkspace.PathFor(workspace) : Path.GetFullPath(workspace);
         try
         {
+            // The investigation is read once before any verb: one missing or unreadable is said once, as the reason no verb
+            // ran, where each operand would say it again and the summary after them once more. One to be made is refused
+            // here when a file stands where its folder must be.
+            if (verb != "new")
+            {
+                _ = InvestigationWorkspace.Read(path);
+            }
+            else if (OutputFiles.Beneath(path) is { } blocked)
+            {
+                ConsoleUi.Failure(blocked);
+                return InterCatExitCode.InvalidInvocation;
+            }
+
             if (verb == "compare")
             {
                 return Compare(path, operands[0], operands[1], json);
