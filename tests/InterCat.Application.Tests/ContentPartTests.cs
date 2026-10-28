@@ -251,6 +251,10 @@ public sealed class ContentPartTests
         Assert.Equal("The first buffer comes after the last.", problem);
         Assert.False(ContentBytesView.TryParseBuffers("9", "4", new(0, 4), out _, out problem));
         Assert.Equal("The part's recorded buffers are 0 to 4; choose buffers within them.", problem);
+        Assert.False(ContentBytesView.TryParseBuffers("first", "4", new(0, 4), out _, out problem));
+        Assert.Equal("Enter the first buffer as its number, like 0.", problem);
+        Assert.False(ContentBytesView.TryParseBuffers("2", " ", new(0, 4), out _, out problem));
+        Assert.Equal("Enter the last buffer as its number, like 4.", problem);
         Assert.Equal(("buffer 3", "buffers 0 to 4"), (new ContentBufferRange(3, 3).Describe(Invariant), new ContentBufferRange(0, 4).Describe(Invariant)));
     }
 
@@ -281,6 +285,27 @@ public sealed class ContentPartTests
         SessionContentPartDetail part = SessionContentPartQuery.Read(session.Store, page.SessionId, page.Records[0].Observation, true);
         Assert.Contains("-- Buffer 1: its 1 byte was not kept, as the capture had reached its content limit; nothing stands in for it",
             ContentBytesView.PartLines(part, new(0, 2), Invariant).Lines.Select(line => line.Line));
+    }
+
+    [Fact(DisplayName = "P2: a part of one buffer, its first and last, that the record limit cut says so of the buffer, and that the rest was cut")]
+    public void APartOfOneCutBufferSaysItIsItsFirstAndLast()
+    {
+        // Exchange 8's request head in one buffer flagged its part's first and last, 12 bytes of which 8 were kept.
+        using var session = new TemporarySession();
+        ObservationRowV1 row = Http(10, 2001, 1);
+        Publish(session.Store, [row],
+            fields: [Field(row, SourceField.HttpExchangeId, 8), Field(row, SourceField.ContentBufferSequence, 0), Field(row, SourceField.ContentBufferFlags, 3)],
+            content: (ContentHeader(recordLimit: 8), [Content(row, "0123456789AB"u8.ToArray(), 8, ContentEncodingV1.Binary)]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+        SessionContentPartDetail part = SessionContentPartQuery.Read(session.Store, page.SessionId, page.Records[0].Observation, true);
+
+        Assert.False(part.Complete);
+        Assert.Equal(
+        [
+            "-- Buffer 0, the part's first and last: its first 8 bytes kept; bytes 0 to 7 of the part",
+            ContentBytesView.Rows("01234567"u8, 0).Single().Line,
+            "-- The rest of buffer 0, 4 bytes, was cut by the 8-byte record limit; nothing stands in for it",
+        ], ContentBytesView.PartLines(part, new(0, 0), Invariant).Lines.Select(line => line.Line));
     }
 
     [Fact(DisplayName = "P2: a view of a part with gaps stops at the bytes it shows at once, at a buffer's start, and says so")]

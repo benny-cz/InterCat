@@ -115,6 +115,29 @@ public sealed class ContentViewTests
         Assert.Null(ContentBytesView.Kept(records[2].Content!.Fragment));
     }
 
+    [Fact(DisplayName = "§3.7: the viewer says what encrypted content, UTF-16 text, a record of no stated direction and a fragment past its message's start each are")]
+    public void TheFactsSayWhatIsUnusual()
+    {
+        // A record whose source states no direction keeps 8 bytes of encrypted UTF-16 content from byte 4 of a message whose
+        // length it does not state.
+        using var session = new TemporarySession();
+        ObservationRowV1 row = Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 12, 100, 1).Between(ClientEnd, ServerEnd)
+            with { Direction = Direction.UnknownDirection };
+        (ContentFragmentV1 fragment, ReadOnlyMemory<byte> bytes) = Content(row, new byte[8], 8, ContentEncodingV1.Utf16LittleEndian);
+        Publish(session.Store, [row], content: (ContentHeader(recordLimit: 8),
+            [(fragment with { Classification = ContentClassificationV1.EncryptedContent, Offset = 4, OriginalLength = null }, bytes)]));
+        SessionEvidenceRecord record = Assert.Single(SessionEvidenceQuery.Read(session.Store).Records);
+        Dictionary<string, string> facts = ContentBytesView.Facts(record.Content!, record.Observation, 1, CultureInfo.InvariantCulture)
+            .ToDictionary(fact => fact.Label, fact => fact.Value);
+
+        Assert.EndsWith("; its source does not say which way it went", facts["What it is"], StringComparison.Ordinal);
+        Assert.Equal("UTF-16 text (little-endian), as its source declares", facts["Encoding"]);
+        Assert.Equal("Encrypted as recorded: shown as the bytes it is, never decrypted", facts["Encryption"]);
+        Assert.Equal("Its length is not stated by its source", facts["Message"]);
+        Assert.Equal("Bytes 0 to 3 (4 bytes), before this fragment. They were never recorded, and nothing stands in for them", facts["Missing"]);
+        Assert.Equal("One fragment, from byte 4 of its message; it is not joined with any other record's content", facts["Reassembly"]);
+    }
+
     [Fact(DisplayName = "ADR-036: a record's bytes are read only when asked, only with consent, and only while its session keeps them")]
     public void BytesAreReadOnlyWhenAskedAndAllowed()
     {

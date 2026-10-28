@@ -1362,6 +1362,7 @@
         "P2: a head decoded to the empty line that ends it says so, and a head not decoded declares nothing of its body",
         "P2: a head decoding reads at most what a view shows at once, within its time budget, and says where it stopped",
         "P2: a head is decoded only as its whole part, from bytes kept with consent to inspect them, and a body by no decoder",
+        "P2: a part of one buffer, its first and last, that the record limit cut says so of the buffer, and that the rest was cut",
         "P2: a part that is not whole is shown with each gap in place, and no byte stands in for what is missing",
         "P2: a process's exchanges export with what their heads say only once the window has said the table is content, each exchange of the scope a line",
         "P2: a process's exchanges read as a table are the ones its rung lists, each with what its heads say, within a scope and a limit, and refused for another session",

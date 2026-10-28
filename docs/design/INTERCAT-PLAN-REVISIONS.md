@@ -660,6 +660,8 @@ Revision 815 gives every command one wording for a report that exists and one fo
 
 Revision 816 holds two promises every command makes by tests across them: `--json` prints JSON alone, and a report that exists is refused before anything is done.
 
+Revision 817 runs the content viewer's facts for what is unusual in a record, and the words of a buffer range it refuses.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2106,3 +2108,12 @@ error stream, so another tool can read its output whole; a theory runs 19 comman
 report file that exists is refused before anything is read or printed; the test that says so, which named seven
 commands after revision 815, names twelve, `icat metric`, `processes`, `session`, `rederive` and `retain` among them.
 Neither found a command that broke its promise; both guard the commands they name from now on.
+
+Revision 817 is a coverage pass (R10) over the content viewer's facts and its buffer ranges, 27 of whose 399 lines the
+last coverage run found never ran. A record of encrypted UTF-16 content, its direction and its message's length
+unstated, that starts four bytes into its message now has each of those facts said and checked: shown as the bytes it
+is and never decrypted; UTF-16 text as its source declares; its source not saying which way it went; its message's
+length not stated; bytes 0 to 3 never recorded, nothing standing in for them; and one fragment, from byte 4 of its
+message. A part of one buffer, flagged its part's first and last, that the record limit cut says so of the buffer and
+how much of it was cut, and a buffer range whose first or last is not a number names the number to enter. Nothing was
+wrong; ten mutations of these words and branches are now caught.
