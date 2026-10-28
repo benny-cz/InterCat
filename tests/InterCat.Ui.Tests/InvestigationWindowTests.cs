@@ -1131,10 +1131,34 @@ public sealed class InvestigationWindowTests
             Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 1;
             InvestigationAlignWindow dialog = window.AlignDialogForSelected()!;
             dialog.Show(window);
+            TextBlock status = Named<TextBlock>(dialog, "Alignment status");
+
+            // With no session to align to, or by the wall clocks with an agreement that is no duration or a drift that is no
+            // rate, nothing is aligned, and the dialog says what to write.
+            ComboBox reference = Named<ComboBox>(dialog, "Session to align to");
+            object? chosen = reference.SelectedItem;
+            reference.SelectedItem = null;
+            Assert.False(await dialog.AlignAsync());
+            Assert.Equal("Choose the session to align to.", status.Text);
+            reference.SelectedItem = chosen;
+            dialog.Choose(WorkspaceAlignmentMode.WallClock);
+            Field(dialog, "The wall clocks agreed within").Text = "closely";
+            Assert.False(await dialog.AlignAsync());
+            Assert.Equal("Write how closely the wall clocks agreed as a duration with its unit, such as 10 ms.", status.Text);
+            Field(dialog, "The wall clocks agreed within").Text = "10 ms";
+            Field(dialog, "The clocks drift at most (ppm)").Text = "a little";
+            Assert.False(await dialog.AlignAsync());
+            Assert.Equal("Write how fast the clocks drift apart at most, in parts per million, such as 50.", status.Text);
+            Assert.Empty(InvestigationWorkspace.Read(workspace).Alignments);
+
             dialog.Choose(WorkspaceAlignmentMode.Manual);
             CultureInfo culture = CultureInfo.CurrentCulture;
             Field(dialog, "Its instant (").Text = "1";
             Field(dialog, "is the reference's instant, in seconds").Text = "3";
+            Field(dialog, "within").Text = "soon";
+            Assert.False(await dialog.AlignAsync());
+            Assert.Equal("Write how sure the instant is as a duration with its unit, such as 1 ms.", status.Text);
+            Field(dialog, "within").Text = "1 ms";
             Field(dialog, "A second instant of it, in seconds").Text = "11";
 
             // Half of a second instant is refused, in words; both measure the clocks' rate, and the drift bounds its wander.
@@ -1142,6 +1166,10 @@ public sealed class InvestigationWindowTests
             Assert.Equal("Write both second instants in seconds of their own session's time, or leave both empty.",
                 Named<TextBlock>(dialog, "Alignment status").Text);
             Field(dialog, "is the reference's second, in seconds").Text = 13.0001m.ToString(culture);
+            Field(dialog, "The clocks drift at most (ppm)").Text = "some";
+            Assert.False(await dialog.AlignAsync());
+            Assert.Equal("Write the drift in parts per million, such as 50, or leave it empty.", status.Text);
+            Assert.Empty(InvestigationWorkspace.Read(workspace).Alignments);
             Field(dialog, "The clocks drift at most (ppm)").Text = 0.5m.ToString(culture);
             Save(dialog, "investigation-align-two.png");
             Assert.True(await dialog.AlignAsync());

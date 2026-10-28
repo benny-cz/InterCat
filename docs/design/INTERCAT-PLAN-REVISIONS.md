@@ -640,6 +640,8 @@ Revision 805 runs what a coverage pass over `icat processes` and `icat pin` foun
 
 Revision 806 runs what a coverage pass over `icat retain`, `icat session` and `icat package` found no test ran; its paragraph below says the later moment past a pin it found offered.
 
+Revision 807 runs what a coverage pass over the window's wheel zoom, minimap, settings and alignment dialog found no test ran; it found nothing to change.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -1984,3 +1986,18 @@ but the newest as though no pin stood (ADR-046), so with a pin from 2 s `icat re
 s, which the pin forbids and which would have given up nothing more. It now stops before the earliest pin, whether the
 release asked for reaches the pin or not, as its documentation says a later boundary releases no more; `icat retain
 --json`'s `mostReleasingNanoseconds` is it.
+
+Revision 807 runs what a coverage pass over the window's timeline view, minimap, settings file and alignment dialog
+found no test ran (R10): 123 of the 2,587 lines of the first a test can reach, 17 of the 250 of the second, 14 of the
+149 of the third and 15 of the 256 of the fourth, among them the vertical wheel's zoom at the pointer, in and out, and
+a wheel that does not turn leaving the view where it is (§6.7); the minimap's left edge dragged, keeping its right
+edge (§6.2); the two high-contrast themes written and read by their names, and a settings file past its 1 MiB bound
+left unread with the reason said (§26.3); and the alignment dialog's refusals of a session unchosen, an agreement that
+is no duration, a wall-clock drift that is no rate, an instant's bound that is no duration and an instant's drift that
+is no rate, none of which a test had made. Running them found nothing to change. What stays unrun of the timeline view
+is mostly what it only draws on its canvas, which a test reads only as pixels, or a guard for a lane, a bucket or a
+pointer that is not there; of the minimap, its cursors and a double click fitting the whole session; of the settings,
+the folder Windows names and a file that cannot be read. The graph view's 60 unrun lines of 1,455 are left to a later
+pass. Three wrapped lines that began with a dash, which Markdown reads as a list item of its own, are reworded, in the
+status's note of revision 761, in `coverage-v2`'s interval release paragraph and in `workspace-v23`'s order of two
+instants; the words are unchanged but for the dashes.

@@ -44,6 +44,34 @@ public sealed class ApplicationSettingsTests : IDisposable
         Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
     }
 
+    [Theory(DisplayName = "§26.3: every theme is written by its name and read back as itself")]
+    [InlineData(null, "system")]
+    [InlineData(ThemeMode.Dark, "dark")]
+    [InlineData(ThemeMode.Light, "light")]
+    [InlineData(ThemeMode.HighContrastDark, "high-contrast-dark")]
+    [InlineData(ThemeMode.HighContrastLight, "high-contrast-light")]
+    public void EveryThemeIsWrittenAndReadByItsName(ThemeMode? theme, string name)
+    {
+        Assert.Equal(theme, new ApplicationSettingsStore(SettingsPath).SaveTheme(theme).Theme);
+        Assert.Equal(name, (string?)JsonNode.Parse(File.ReadAllText(SettingsPath))!["themeMode"]);
+        ApplicationSettings loaded = new ApplicationSettingsStore(SettingsPath).Load();
+        Assert.Equal(theme, loaded.Theme);
+        Assert.Empty(loaded.Notices);
+    }
+
+    [Fact(DisplayName = "§26.3: a settings file larger than its bound is not read, the defaults stand, and it is said why")]
+    public void ASettingsFilePastItsBoundIsNotRead()
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(SettingsPath, "{ \"contract\": \"app-settings-v1\", \"themeMode\": \"dark\", \"padding\": \""
+            + new string(' ', 1024 * 1024) + "\" }");
+
+        ApplicationSettings loaded = new ApplicationSettingsStore(SettingsPath).Load();
+        Assert.Null(loaded.Theme);
+        Assert.Contains(loaded.Notices, notice => notice == string.Create(System.Globalization.CultureInfo.CurrentCulture,
+            $"The settings file is larger than {1024:N0} KiB, so it is not read."));
+    }
+
     [Fact(DisplayName = "§26.3: an unknown key is kept as written and reported, and a value not understood is reported and left")]
     public void UnknownKeysAreKeptAndReported()
     {

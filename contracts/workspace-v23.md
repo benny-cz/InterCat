@@ -209,9 +209,9 @@ session time - written `<session>@<seconds>` on the command line - and `compare`
 `DriftUnknown`) and distance from its nearer anchor; the `order`; the difference; the pair's half-width; and a
 statement. Two instants of one member are ordered exactly, on one clock. Otherwise the pair's uncertainty is
 `sqrt(rA^2 + rB^2) + sA + sB` over each side's random part `r` and bound part `s`, and the order is `Before` or `After`
-only when the instants are further apart than it, `Ambiguous` when they are not, and `Unknown` - its difference withheld
-- when either instant has no workspace time or an unknown uncertainty (§8.2, R3, R21). A stated bound is written rounded
-up at the precision written, so it never reads smaller than it is.
+only when the instants are further apart than it, `Ambiguous` when they are not, and `Unknown`, its difference
+withheld, when either instant has no workspace time or an unknown uncertainty (§8.2, R3, R21). A stated bound is
+written rounded up at the precision written, so it never reads smaller than it is.
 
 A file's time contradicts itself when a `workspace-v1` file holds any; its reference is no member; a revision is not a
 unique positive number; a manual revision names no member, aligns a member to itself or to no member, or lacks its

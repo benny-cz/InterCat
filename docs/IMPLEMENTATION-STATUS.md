@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 806 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 807 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,28 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 807 — a coverage pass over the window's wheel zoom, minimap, settings and alignment dialog:**
+  - Of the lines a test can reach, 123 of the timeline view's 2,587 ran in none, 17 of the minimap's 250, 14 of the
+    settings file's 149 and 15 of the alignment dialog's 256: the wheel's zoom at the pointer, in and out, and a wheel
+    that does not turn; the minimap's left edge dragged; the two high-contrast themes written and read by their names;
+    a settings file past its 1 MiB bound; and every refusal of the alignment dialog that no test made, of a session
+    unchosen, an agreement or an instant's bound that is no duration, and a drift that is no rate. Tests run them now;
+    running them found nothing to change.
+  - What stays unrun of the timeline view is mostly what it only draws, such as a selection's outline, the words of a
+    lane with nothing to plot and the machine row's label, or a guard for a lane, a bucket or a pointer that is not
+    there; of the minimap, its cursors and a double click fitting the whole session; of the settings, the folder
+    Windows names and a file that cannot be read. The graph view's 60 of 1,455 are left to a later pass. Three wrapped
+    lines that began with a dash, which Markdown reads as a list item of its own, are reworded: in revision 761's note
+    here, in `coverage-v2` and in `workspace-v23`.
+  - Debug and Release each ran 3,309 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index indexes neither of the 2 new tests, each of a plan section; one is a theory of 5 cases. All 14
+    mutations were caught: the wheel's zoom turned the other way, and a wheel that does not turn zooming; the
+    minimap's left edge moving its right edge or the whole brush; the high-contrast light theme written or read as
+    the dark one, and the system theme written unnamed; a settings file past its bound read, and its bound said in
+    bytes as kibibytes; in the alignment dialog, an unchosen session's refusal reworded, the refusals of an
+    agreement, a wall-clock drift and an instant's bound each said in another's words, and a drift that is no rate
+    taken.
 
 - **Revision 806 — a coverage pass over `icat retain`, `icat session` and `icat package`:**
   - Of the lines of their commands a test can reach, 81 of `icat retain`'s 798 ran in none, 65 of `icat session`'s 947
@@ -1037,7 +1059,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 - **Revision 761 — M12: the Compare window draws the chosen row's difference timeline:**
   - Timeline, a check box among the Compare window's choices, reads the comparison again with its difference timeline
-    - 20 columns of each interval, or as many as a tick allows, the listed rows' columns kept - and draws the chosen
+    (20 columns of each interval, or as many as a tick allows, the listed rows' columns kept) and draws the chosen
     row's beneath the rows: a slot per column pair, the baseline's bar beside the compared interval's on one rate
     scale, every column pair that cannot be compared hatched as the timeline hatches what the capture did not cover.
   - Left, Right, Home and End, or a click, move a column cursor, whose column the line beneath states in `icat

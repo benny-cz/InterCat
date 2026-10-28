@@ -304,6 +304,17 @@ public sealed class EvidenceRungWindowTests
         Assert.Equal(moved.StartTicks, timeline.Viewport.StartTicks);
         Assert.True(timeline.Viewport.EndTicks > moved.EndTicks);
 
+        // Dragging its left edge resizes it from that edge alone, the other way.
+        TimeRange widened = timeline.Viewport;
+        (start, end) = minimap.Brush();
+        Point left = minimap.TranslatePoint(new(start, middle), window)!.Value;
+        window.MouseDown(left, MouseButton.Left);
+        window.MouseMove(left + new Vector(-40, 0));
+        window.MouseUp(left + new Vector(-40, 0), MouseButton.Left);
+        Dispatch();
+        Assert.Equal(widened.EndTicks, timeline.Viewport.EndTicks);
+        Assert.True(timeline.Viewport.StartTicks < widened.StartTicks);
+
         // A press beside the brush centres the viewport there.
         TimeRange before = timeline.Viewport;
         Point beside = minimap.TranslatePoint(new(minimap.Bounds.Width - 20, middle), window)!.Value;
@@ -1336,6 +1347,20 @@ public sealed class EvidenceRungWindowTests
         window.MouseWheel(onPlot, new Vector(0, -1), RawInputModifiers.Shift);
         Assert.Equal(before.SpanTicks, timeline.Viewport.SpanTicks);
         Assert.Equal(before.StartTicks + (before.SpanTicks / 10), timeline.Viewport.StartTicks);
+
+        // A plain wheel zooms at the pointer, keeping the instant under it where it is: turned up it zooms in, turned down out;
+        // one that turns neither way changes nothing.
+        before = timeline.Viewport;
+        window.MouseWheel(onPlot, new Vector(0, 1));
+        Assert.Equal(ViewportMath.ZoomAtPixel(before, plot / 2, plot, 1.25m, extent, 100_000), timeline.Viewport);
+        Assert.True(timeline.Viewport.SpanTicks < before.SpanTicks);
+        before = timeline.Viewport;
+        window.MouseWheel(onPlot, new Vector(0, -1));
+        Assert.Equal(ViewportMath.ZoomAtPixel(before, plot / 2, plot, 0.8m, extent, 100_000), timeline.Viewport);
+        Assert.True(timeline.Viewport.SpanTicks > before.SpanTicks);
+        before = timeline.Viewport;
+        window.MouseWheel(onPlot, new Vector(0, 0));
+        Assert.Equal(before, timeline.Viewport);
         window.Close();
     }
 
