@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 817 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 818 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 818 — every RPC call counted once wherever two intervals split a session (R10):**
+  - A process's RPC channels counted within an interval had been tested for calls that completed, failed or stayed
+    open; a call whose start the capture did not hold, a record that carries no activity id and the records of an
+    activity id reused before its stop were counted within an interval by no test. A test now splits a session holding
+    calls that ended every way at eighteen places, before a call, inside one and on a record, and checks that each
+    call is counted on one side only, by the record that counts it, that each record is counted by its own reading,
+    and that each side's page lists the calls its channel counts there.
+  - An HTTP exchange whose request body's last buffer was not recorded says its request body is not whole, the one
+    part no test had said so of.
+  - Nothing was wrong; each is now held by a test.
+  - Debug and Release each ran 3,375 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the new R22 test. All 9 mutations were caught: a call whose start was not held, a record
+    with no activity id and an ambiguous record each counted as another state; an unpaired start and an open call
+    counted nowhere; stops left out of the records counted; every call counted as started; a request body named as a
+    head; and a request body never said to be missing.
 
 - **Revision 817 — a coverage pass over the content viewer's facts and buffer ranges (R10):**
   - The facts the content viewer gives a record were run for what is unusual in one: content recorded encrypted, shown

@@ -662,6 +662,8 @@ Revision 816 holds two promises every command makes by tests across them: `--jso
 
 Revision 817 runs the content viewer's facts for what is unusual in a record, and the words of a buffer range it refuses.
 
+Revision 818 splits a session at eighteen places and finds each RPC call counted on one side however it ended, and an exchange's request body not recorded whole said to be.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2117,3 +2119,14 @@ length not stated; bytes 0 to 3 never recorded, nothing standing in for them; an
 message. A part of one buffer, flagged its part's first and last, that the record limit cut says so of the buffer and
 how much of it was cut, and a buffer range whose first or last is not a number names the number to enter. Nothing was
 wrong; ten mutations of these words and branches are now caught.
+
+Revision 818 is a coverage pass (R10) over the counts of a process's RPC channels within an interval, and over the
+words for an HTTP exchange's parts. The interval counts had been tested for calls that completed, failed or stayed
+open at the capture's end; a call whose start the capture did not hold, a record that carries no activity id and the
+four records of an activity id reused before its stop were counted within an interval by no test, though each is
+counted, as `metrics-v1` §8a has it, by the record that puts it in scope. A test now splits a session holding calls
+that ended every way at eighteen places, before a call, inside one and on a record, and checks that the two sides'
+counts add up to the whole session's, state by state, that their records add up to every record, and that each side's
+page lists as many calls as its channel counts there. An exchange whose request body's last buffer was not recorded
+now says its request body is not whole, the one part no test had said so of. Nothing was wrong; nine mutations of the
+counts and the words are now caught.

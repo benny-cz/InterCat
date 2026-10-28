@@ -91,6 +91,27 @@ public sealed class SessionHttpExchangesTests
         Assert.Throws<ArgumentException>(() => SessionEvidenceQuery.Read(session.Store, channelKey: "tcp:x", operationKey: channel));
     }
 
+    [Fact(DisplayName = "R22: an exchange whose request body's last buffer was not recorded says that body is not whole")]
+    public void ARequestBodyNotRecordedWholeIsSaid()
+    {
+        // Exchange 1's request body ended in the buffer read at 31; the capture without it holds the body's first alone.
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = HttpExchangeRows();
+        ObservationRowV1 lost = rows.Single(row => row.NativeTicks == 31);
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. rows.Where(row => row != lost)],
+            fields: [.. fields.Where(field => field.RawRecordOrdinal != lost.RawRecordOrdinal)]);
+        HttpExchangePage page = SessionHttpExchanges.Exchanges(session.Store, HttpExchangeKeys.Channel(Client(session.Store)));
+
+        HttpExchangeRow first = page.Exchanges[0];
+        Assert.Equal((1L, 1, false), (first.Exchange.Number, first.Exchange.RequestBody.Buffers, first.Exchange.Complete));
+        Assert.Equal([HttpPart.RequestBody], first.NotRecordedWhole());
+        Assert.Equal("request 181 B + 64 B · response 115 B + 1,000 B · not recorded whole: request body",
+            first.Parts(CultureInfo.InvariantCulture));
+
+        // Its response still ended, so how long it took is known all the same.
+        Assert.Equal(2_000L, first.Exchange.DurationNanoseconds);
+    }
+
     [Fact(DisplayName = "R21: the timeline counts an exchange's buffers apart, the same records its evidence reads")]
     public void TheTimelineCountsAnExchangeApart()
     {

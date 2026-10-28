@@ -326,6 +326,70 @@ public sealed class SessionRpcCallsTests
         }
     }
 
+    /// <summary>
+    /// A client, PID 400, whose calls end every way a call can: one completed, one failed, one whose start the capture did
+    /// not hold, two records that carry no activity id, an activity id reused before its stop - four records no one can
+    /// pair - and one call still open at the capture's end.
+    /// </summary>
+    [Fact(DisplayName = "§6.4: two intervals that split a session count each of its calls in one of them, however the call ended")]
+    public void TwoIntervalsThatSplitASessionCountEachCallOnce()
+    {
+        Guid reused = Activity(7);
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(10, ObservationKind.Create, 400, 1),
+            RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 400, 2, Activity(1), ServiceControl),
+            RpcCall(120, ObservationKind.RequestEnd, Direction.Outbound, 400, 3, Activity(1), status: 0),
+            RpcCall(200, ObservationKind.RequestStart, Direction.Outbound, 400, 4, Activity(2), ServiceControl),
+            RpcCall(240, ObservationKind.RequestEnd, Direction.Outbound, 400, 5, Activity(2), status: 5),
+            RpcCall(300, ObservationKind.RequestEnd, Direction.Outbound, 400, 6, Activity(3), status: 0),
+            RpcCall(400, ObservationKind.RequestStart, Direction.Outbound, 400, 7, activity: null, ServiceControl),
+            RpcCall(410, ObservationKind.RequestEnd, Direction.Outbound, 400, 8, activity: null, status: 0),
+            RpcCall(500, ObservationKind.RequestStart, Direction.Outbound, 400, 9, reused, ServiceControl),
+            RpcCall(510, ObservationKind.RequestStart, Direction.Outbound, 400, 10, reused, ServiceControl),
+            RpcCall(520, ObservationKind.RequestEnd, Direction.Outbound, 400, 11, reused, status: 0),
+            RpcCall(530, ObservationKind.RequestEnd, Direction.Outbound, 400, 12, reused, status: 0),
+            RpcCall(600, ObservationKind.RequestStart, Direction.Outbound, 400, 13, Activity(4), ServiceControl),
+        ]);
+        ProcessInstanceId client = SessionOverviewProjector.Project(session.Store).Nodes.Single(node => node.ProcessId == 400).Id;
+        IReadOnlyList<RpcChannelSummary> channels = SessionRpcCalls.Channels(session.Store, client).Channels;
+        RpcCallCounts whole = Sum(channels);
+        Assert.Equal(
+            new RpcCallCounts
+            {
+                Calls = 10, Started = 6, Completed = 2, Failed = 1, OpenAtCaptureEnd = 1, StartNotObserved = 1, NoActivityId = 2,
+                Ambiguous = 4,
+            },
+            whole);
+        Assert.Equal(12, channels.Sum(channel => channel.Records));
+        Assert.Equal(channels, SessionRpcCalls.Channels(session.Store, client, new TimeRange(0, 10_000)).Channels);
+
+        // Wherever the session is split - before a call, inside one, on a record - each call counts on one side, by the
+        // record that counts it, and each record by its own reading.
+        foreach (long split in new long[] { 1, 100, 110, 120, 121, 240, 300, 301, 400, 405, 410, 500, 515, 520, 530, 531, 600, 601 })
+        {
+            IReadOnlyList<RpcChannelSummary> before = SessionRpcCalls.Channels(session.Store, client, new TimeRange(0, split)).Channels;
+            IReadOnlyList<RpcChannelSummary> after = SessionRpcCalls.Channels(session.Store, client, new TimeRange(split, 10_000)).Channels;
+            Assert.Equal(whole, Add(Sum(before), Sum(after)));
+            Assert.Equal(12, before.Sum(channel => channel.Records) + after.Sum(channel => channel.Records));
+
+            // And each side's page lists the calls its channel counts there.
+            foreach ((RpcChannelSummary channel, TimeRange side) in before.Select(channel => (channel, new TimeRange(0, split)))
+                .Concat(after.Select(channel => (channel, new TimeRange(split, 10_000)))))
+            {
+                Assert.Equal(channel.Counts.Calls, SessionRpcCalls.Calls(session.Store, channel.Key, interval: side).Calls.Count);
+            }
+        }
+
+        // A record that pairs with nothing counts where it was read: [410, 531) holds the stop without an activity id and
+        // the reused id's four records, and [521, end) the last of those four and the call still open.
+        RpcCallCounts late = Sum(SessionRpcCalls.Channels(session.Store, client, new TimeRange(410, 531)).Channels);
+        Assert.Equal((1L, 4L, 0L, 0L), (late.NoActivityId, late.Ambiguous, late.Completed, late.OpenAtCaptureEnd));
+        RpcCallCounts last = Sum(SessionRpcCalls.Channels(session.Store, client, new TimeRange(521, 10_000)).Channels);
+        Assert.Equal((0L, 1L, 1L), (last.NoActivityId, last.Ambiguous, last.OpenAtCaptureEnd));
+    }
+
     [Fact(DisplayName = "§7.4: a channel names who served its calls, and a call its other end and the key of the call there")]
     public void ChannelsAndCallsNameTheirOtherEnd()
     {
@@ -409,4 +473,25 @@ public sealed class SessionRpcCallsTests
     }
 
     private static Guid Activity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
+
+    private static RpcCallCounts Sum(IEnumerable<RpcChannelSummary> channels) => channels.Select(channel => channel.Counts)
+        .Aggregate(
+            new RpcCallCounts
+            {
+                Calls = 0, Started = 0, Completed = 0, Failed = 0, OpenAtCaptureEnd = 0, StartNotObserved = 0, NoActivityId = 0,
+                Ambiguous = 0,
+            },
+            Add);
+
+    private static RpcCallCounts Add(RpcCallCounts one, RpcCallCounts other) => new()
+    {
+        Calls = one.Calls + other.Calls,
+        Started = one.Started + other.Started,
+        Completed = one.Completed + other.Completed,
+        Failed = one.Failed + other.Failed,
+        OpenAtCaptureEnd = one.OpenAtCaptureEnd + other.OpenAtCaptureEnd,
+        StartNotObserved = one.StartNotObserved + other.StartNotObserved,
+        NoActivityId = one.NoActivityId + other.NoActivityId,
+        Ambiguous = one.Ambiguous + other.Ambiguous,
+    };
 }
