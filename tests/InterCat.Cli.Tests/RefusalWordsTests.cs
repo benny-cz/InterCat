@@ -89,6 +89,24 @@ public sealed class RefusalWordsTests : IDisposable
         { ["profiles", "content", "--channel", "a", "--channel", "a"], "--channel a is given more than once; give it once." },
         { ["profiles", "explore", "--mechanism", "tcp"], "Mechanism, process and content-scope options apply only to focused-transport or content." },
         { ["profiles", "--retention", "stop-at-limit"], "Profile options require one profile name. List profiles without additional options." },
+        { ["profiles", "content", "--channel", "a\tb"], "Each --channel selector must contain 1 to 256 printable characters." },
+        { ["profiles", "focused-transport", .. Enumerable.Range(1, 65).SelectMany(pid => new[] { "--pid", pid.ToString(System.Globalization.CultureInfo.InvariantCulture) })],
+            "A profile preview accepts at most 64 --pid values." },
+        { ["profiles", "content", .. Enumerable.Range(1, 65).SelectMany(index => new[] { "--channel", "c" + index.ToString(System.Globalization.CultureInfo.InvariantCulture) })],
+            "A content preview accepts at most 64 --channel values." },
+        { ["profiles", "content", "--max-record-bytes", "x"], "--max-record-bytes requires a positive decimal integer." },
+        { ["profiles", "content", "--max-session-bytes", "0"], "--max-session-bytes requires a positive decimal integer." },
+        { ["profiles", "focused-transport", "--retention", "stop-at-limit"], "Content source, channel, budget, retention and inspection options apply only to content." },
+        { ["profiles", "focused-transport"], "focused-transport requires --mechanism tcp." },
+        { ["profiles", "focused-transport", "--mechanism", "tcp", "--allow-broader-capture"],
+            "--allow-broader-capture is meaningful only with at least one --pid selection." },
+        { ["profiles", "content", "--allow-broader-capture"], "Content scope never accepts --allow-broader-capture; an unenforceable content scope is refused." },
+        { ["profiles", "content", "--mechanism", "udp", "--inspection", "disabled"],
+            "content requires --source, --mechanism, at least one --pid and --channel, both byte limits, --retention, and --inspection." },
+        { ["profiles", "explore", "--mechanism", "rpc"], "Mechanism, process and content-scope options apply only to focused-transport or content." },
+        { ["profiles", "content", "--source", "etw/manifest/Nope", "--mechanism", "http", "--pid", "4242", "--channel", "example.com",
+            "--max-record-bytes", "4096", "--max-session-bytes", "65536", "--retention", "stop-at-limit", "--inspection", "hex-text"],
+            "The requested content source is not in the adapter catalog." },
     };
 
     [Theory(DisplayName = "R18: icat pin, channels, exchanges, checkpoint and profiles refuse what they cannot read, naming what they expect")]
@@ -118,6 +136,16 @@ public sealed class RefusalWordsTests : IDisposable
         }
 
         Assert.Equal("{}", File.ReadAllText(report));
+    }
+
+    [Fact(DisplayName = "R18: icat profiles writes its catalog to --output as --json prints it, into a folder it makes, and says it wrote the catalog there")]
+    public async Task TheProfileCatalogIsWrittenWhereAsked()
+    {
+        string written = Path.Combine(root.Path, "profiles", "catalog.json");
+        (InterCatExitCode code, _, string said) = await Run("profiles", "--output", written);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains($"Profile catalog written to {written}.", said, StringComparison.Ordinal);
+        Assert.Equal((await Run("profiles", "--json")).Output.TrimEnd(), File.ReadAllText(written).TrimEnd());
     }
 
     [Fact(DisplayName = "R18: icat checkpoint says what came of it in its report alone, and that it publishes one only when the generation names none")]

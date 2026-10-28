@@ -654,6 +654,8 @@ Revision 812 sweeps the verbs that follow a count, and makes the four that read 
 
 Revision 813 makes a clock descriptor refuse a kind, encoding or rounding the contract does not define, and a journal's clock frame that declares one.
 
+Revision 814 runs what a coverage pass over `icat profiles` found no test ran; it found the catalog it writes said as a preview.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2074,3 +2076,12 @@ rounding the contract does not define, and `journal-v1`'s reader and the probe's
 evidence that says what it refused; `journal-v1` states it beside the frame's layout. The pass also runs the two
 quarantines `SourceClockMath.ConvertToSession` makes that no test ran: a reading in another encoding than its clock's,
 and one past what a session instant holds.
+
+Revision 814 runs what a coverage pass over `icat profiles` found no test ran (R10): 94 of the 550 lines of its
+command a test can reach, most of them refusals, each now a row of the refusals theory that says what it expects
+(R18): a channel selector holding a control character, more than 64 process IDs or channel selectors, a byte limit
+that is no positive integer, content options given to focused transport, focused transport without its mechanism,
+`--allow-broader-capture` without a process or with content, an incomplete content request, and one whose source the
+adapter catalog does not hold. Running them found the profile catalog written with `--output` said as "Profile preview
+written to …"; it is said as the catalog now, and a preview as a preview. What stays unrun is a plan that can start
+and its scope table, which only Windows' trace metadata compiles.

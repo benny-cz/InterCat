@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 813 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 814 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 814 — a coverage pass over `icat profiles`' refusals; its catalog said to be its catalog:**
+  - Of the 550 lines of `icat profiles`' command a test can reach, 94 ran in none, most of them refusals: a channel
+    selector holding a control character, more than 64 process IDs or channel selectors, a byte limit that is no
+    positive integer, content options given to focused transport, focused transport without its mechanism,
+    `--allow-broader-capture` without a process or with content, an incomplete content request, and one whose source
+    the adapter catalog does not hold. Tests run them now, and the catalog written with `--output`.
+  - Running them found the catalog written with `--output` said as "Profile preview written to …"; it is said as the
+    profile catalog now, and a preview as a preview. What stays unrun is a plan that can start and its scope table,
+    which only Windows' trace metadata compiles.
+  - Debug and Release each ran 3,350 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the new R18 test; the 12 new refusals are rows of an R18 theory. All 11 mutations were
+    caught: a control character in a selector, a 65th process ID or channel, a byte limit's words, content options
+    taken by focused transport, focused transport taken without its mechanism, --allow-broader-capture taken without
+    a process or with content, the content request's own refusal unsaid; and the catalog said as a preview, or
+    written cut short.
 
 - **Revision 813 — a clock descriptor refuses what the contract does not define:**
   - A coverage pass over the domain found that a source clock descriptor refused a kind or encoding of 0 but took any

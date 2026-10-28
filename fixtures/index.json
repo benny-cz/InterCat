@@ -2389,6 +2389,7 @@
         "R18: icat processes --pid heads an instance's other hosts by those that connected to it only where it accepted every connection with them",
         "R18: icat processes --pid lists the other hosts an instance's connections ran to, by address, the most bytes first, its own connections alone",
         "R18: icat processes --pid says a process's RPC call records, which no transport record holds, and where its calls are listed with their other ends",
+        "R18: icat profiles writes its catalog to --output as --json prints it, into a folder it makes, and says it wrote the catalog there",
         "R18: icat programs --program lists the pairs one program is in, named as listed, by its executable's file name with or without its extension, or by its path",
         "R18: icat programs lists every pair of programs the session's relationships join, the busiest first, as many as asked",
         "R18: icat programs names no port where the capture saw none of a pair's connections open",

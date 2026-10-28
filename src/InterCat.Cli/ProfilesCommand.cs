@@ -162,7 +162,7 @@ internal static class ProfilesCommand
                 RenderCatalog(profiles);
             }
 
-            await WriteAsync(fullPath, catalogPayload, cancellationToken).ConfigureAwait(false);
+            await WriteAsync(fullPath, catalogPayload, "Profile catalog", cancellationToken).ConfigureAwait(false);
             return InterCatExitCode.Success;
         }
 
@@ -273,7 +273,7 @@ internal static class ProfilesCommand
             Render(plan);
         }
 
-        await WriteAsync(fullPath, payload, cancellationToken).ConfigureAwait(false);
+        await WriteAsync(fullPath, payload, "Profile preview", cancellationToken).ConfigureAwait(false);
         if (!plan.CanStart)
         {
             ConsoleUi.Warn("The requested profile cannot start with these exact settings; no fallback was applied.");
@@ -471,7 +471,8 @@ internal static class ProfilesCommand
             + $"{CountText.Of(plan.Providers.Count, "provider request")}.");
     }
 
-    private static async Task WriteAsync(string? fullPath, string payload, CancellationToken cancellationToken)
+    /// <summary>Writes <paramref name="payload"/> to <paramref name="fullPath"/> when one was asked for, saying what was written where.</summary>
+    private static async Task WriteAsync(string? fullPath, string payload, string written, CancellationToken cancellationToken)
     {
         if (fullPath is null)
         {
@@ -485,10 +486,9 @@ internal static class ProfilesCommand
         }
 
         await File.WriteAllTextAsync(fullPath, payload, cancellationToken).ConfigureAwait(false);
-        ConsoleUi.Success($"Profile preview written to {fullPath}");
+        ConsoleUi.Success($"{written} written to {fullPath}.");
     }
 
-    /// <summary>The profile's own measured cost, when it has one; otherwise only its sources' costs are known.</summary>
     /// <summary>How far a source's collection reaches, in words, as a source decision's row states it.</summary>
     internal static string ScopeText(ProviderProcessScope scope) => scope switch
     {
