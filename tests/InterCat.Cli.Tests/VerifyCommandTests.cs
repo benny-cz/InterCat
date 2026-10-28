@@ -96,7 +96,7 @@ public sealed class VerifyCommandTests : IDisposable
         string missing = Path.Combine(root.Path, "missing");
         (code, _, said) = await Run("verify", "tcp", "--run", missing, "--output", output);
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
-        Assert.Contains($"Run directory not found: {missing}", said, StringComparison.Ordinal);
+        Assert.Contains($"No run directory at {missing}.", said, StringComparison.Ordinal);
 
         // A UDP run is verified as UDP, the mechanism it measured.
         (code, _, said) = await Run("verify", "tcp", "--run", Rebuild("FX-UDP-001"), "--output", output);
@@ -116,6 +116,25 @@ public sealed class VerifyCommandTests : IDisposable
         (code, _, said) = await Run("verify", "tcp", "--run", headless, "--output", output);
         Assert.Equal(InterCatExitCode.CorruptedInput, code);
         Assert.Contains("The run must contain measurement.json and observations.jsonl.", said, StringComparison.Ordinal);
+
+        // A file a measurement did not write is named, with the line it could not read, and never ends with a stack trace.
+        string garbled = Rebuild("FX-TCP-001", "garbled");
+        File.WriteAllText(Path.Combine(garbled, "measurement.json"), "not json");
+        (code, _, said) = await Run("verify", "tcp", "--run", garbled, "--output", output);
+        Assert.Equal(InterCatExitCode.CorruptedInput, code);
+        Assert.StartsWith("x measurement.json is not the run header a measurement writes: ", said, StringComparison.Ordinal);
+        foreach (string file in new[] { "truth-run.jsonl", "observations.jsonl" })
+        {
+            string broken = Rebuild("FX-TCP-001", "broken-" + file);
+            File.AppendAllText(Path.Combine(broken, file), "{ not a record\n");
+            int lines = File.ReadAllLines(Path.Combine(broken, file)).Length;
+            (code, _, said) = await Run("verify", "tcp", "--run", broken, "--output", output);
+            Assert.Equal(InterCatExitCode.CorruptedInput, code);
+            Assert.StartsWith($"x Line {lines} of {file} is not a record a measurement writes: ", said, StringComparison.Ordinal);
+            Assert.DoesNotContain("   at ", said, StringComparison.Ordinal);
+        }
+
+        Assert.False(Directory.Exists(output));
 
         // Curated output is written over only with --overwrite; a script reads the verification, naming its contract.
         Assert.Equal(InterCatExitCode.Success, (await Run("verify", "tcp", "--run", run, "--output", output)).Code);

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -105,6 +106,13 @@ internal static class Icat
             // IOException, so without this a damaged session would end the process with a stack trace instead of
             // the documented exit code and the reader's own explanation (§20.4, §20.6 Storage).
             ConsoleUi.Failure(exception.Message);
+            return InterCatExitCode.CorruptedInput;
+        }
+        catch (JsonException exception)
+        {
+            // JSON a command reads and cannot is refused as any unreadable input is, in the reader's words: a reader that
+            // knows which file it was says so itself, and none ends the process with a stack trace.
+            ConsoleUi.Failure("A JSON file this command reads could not be read: " + exception.Message);
             return InterCatExitCode.CorruptedInput;
         }
     }

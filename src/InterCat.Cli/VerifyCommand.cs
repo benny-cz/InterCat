@@ -92,7 +92,7 @@ internal static class VerifyCommand
         string outputDirectory = Path.GetFullPath(outputOption);
         if (!Directory.Exists(runDirectory))
         {
-            ConsoleUi.Failure($"Run directory not found: {runDirectory}");
+            ConsoleUi.Failure($"No run directory at {runDirectory}.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -112,10 +112,18 @@ internal static class VerifyCommand
 
         EnsureBounded(measurementPath);
         EnsureBounded(observationsPath);
-        CapturedRunHeader header = JsonSerializer.Deserialize<CapturedRunHeader>(
-            await File.ReadAllTextAsync(measurementPath, cancellationToken).ConfigureAwait(false),
-            JsonContracts.Compact)
-            ?? throw new InvalidDataException("measurement.json has no run header.");
+        CapturedRunHeader header;
+        try
+        {
+            header = JsonSerializer.Deserialize<CapturedRunHeader>(
+                await File.ReadAllTextAsync(measurementPath, cancellationToken).ConfigureAwait(false),
+                JsonContracts.Compact)
+                ?? throw new InvalidDataException("measurement.json has no run header.");
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException($"measurement.json is not the run header a measurement writes: {exception.Message}", exception);
+        }
         // The run's own fixture says which family its loopback flows are in.
         TransportScenario? scenario = TransportScenario.All.FirstOrDefault(
             candidate => string.Equals(candidate.FixtureId, header.FixtureId, StringComparison.Ordinal));
@@ -239,8 +247,10 @@ internal static class VerifyCommand
     {
         var records = new List<T>();
         using var reader = new StreamReader(path);
+        long number = 0;
         while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
         {
+            number++;
             if (string.IsNullOrWhiteSpace(line))
             {
                 continue;
@@ -251,7 +261,18 @@ internal static class VerifyCommand
                 throw new InvalidDataException($"{Path.GetFileName(path)} exceeds the {MaximumRecords}-record verification limit.");
             }
 
-            T? record = JsonSerializer.Deserialize<T>(line, JsonContracts.Compact);
+            T? record;
+            try
+            {
+                record = JsonSerializer.Deserialize<T>(line, JsonContracts.Compact);
+            }
+            catch (JsonException exception)
+            {
+                // A line a measurement did not write is named where it is, never answered with a stack trace.
+                throw new InvalidDataException(string.Create(CultureInfo.InvariantCulture,
+                    $"Line {number} of {Path.GetFileName(path)} is not a record a measurement writes: {exception.Message}"), exception);
+            }
+
             if (record is null)
             {
                 throw new InvalidDataException($"{Path.GetFileName(path)} contains a null JSON record.");

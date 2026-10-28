@@ -670,6 +670,8 @@ Revision 820 has every command read `--evidence-policy` by name and never by num
 
 Revision 821 has `icat bench` give its help, refuse what it cannot read or write before it measures and never crash on a series, and `icat capture --help` answer away from Windows.
 
+Revision 822 has `icat verify` name a run file it cannot read, and no command end with a stack trace on JSON it cannot read.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2170,3 +2172,13 @@ printed, in words of its own; it is now refused first, in the words revision 815
 Windows, `icat capture --help` refused to run rather than giving its help; the help moved beside the requests it
 describes, which read the same on any system, and now ends by saying the command runs on Windows alone. A test asks
 every command for its help and finds its synopsis on stdout and nothing on stderr.
+
+Revision 822 finishes what revision 821 found in `icat bench` (R18): `System.Text.Json` refuses what it cannot read
+with a `JsonException`, which is neither an `IOException` nor an `InvalidDataException`, so the command line's
+handlers let it end the process with a stack trace. `icat verify`, which reads a measurement's run from a folder a
+person names, did so on a `measurement.json`, truth log or observations line that is not the JSON a measurement
+writes; it now refuses the run, exit code 4, naming the file and, in a log, the line. The command line answers any
+`JsonException` a command lets through as unreadable input, exit code 4, in the reader's words; no test reaches that
+guard, since every reader a person can point at a file now names the file itself, but a reader added later that does
+not will be answered in words rather than with a stack trace. A missing run folder is said as a missing session folder
+is: "No run directory at" the path.

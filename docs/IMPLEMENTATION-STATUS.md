@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 821 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 822 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 822 — `icat verify` names a run file it cannot read, and no command crashes on JSON (R18):**
+  - A run whose `measurement.json`, truth log or observations held something other than the JSON a measurement writes
+    ended `icat verify` with an unhandled exception and its stack trace. It now refuses the run as one it cannot read,
+    exit code 4, naming the file and, in a log, the line.
+  - The command line answers any JSON a command cannot read as unreadable input, exit code 4, in the reader's words,
+    so no command ends the process with a stack trace on it; the commands that read JSON a person names say which file
+    themselves. A missing run folder is said as a missing session folder is.
+  - Debug and Release each ran 3,400 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    4 mutations were caught: a run header and a log line icat verify cannot read each left to the command line's
+    guard, in words that name no file; a log's lines miscounted; and a missing run folder said as before.
 
 - **Revision 821 — `icat bench` answers as every command does, and `icat capture --help` anywhere (R18):**
   - `icat bench` refused `--help` as an unknown option and named an unknown option in words of its own; it now gives
