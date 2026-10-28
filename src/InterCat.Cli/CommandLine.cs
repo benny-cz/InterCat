@@ -68,6 +68,11 @@ internal sealed class CommandLine
         return null;
     }
 
+    /// <summary>
+    /// The whole number after <paramref name="name"/>; null when the option is absent. A value that is not a whole number is
+    /// never read as absent, which would run with the default in its place: it is kept, as its refusal, in
+    /// <see cref="Malformed"/>.
+    /// </summary>
     public int? TakeIntegerOption(string name)
     {
         string? raw = TakeOption(name);
@@ -76,8 +81,17 @@ internal sealed class CommandLine
             return null;
         }
 
-        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? value : null;
+        if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
+        {
+            return value;
+        }
+
+        Malformed ??= $"{name} expects a whole number; '{raw}' is not one.";
+        return null;
     }
+
+    /// <summary>The refusal of the first value <see cref="TakeIntegerOption"/> could not read; null when it read every one.</summary>
+    public string? Malformed { get; private set; }
 
     public bool TryTakeFlag(string name)
     {

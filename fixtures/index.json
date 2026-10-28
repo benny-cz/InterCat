@@ -2331,6 +2331,7 @@
         "R18: an option keeps its value wherever it is written, and an operand may start with a dash",
         "R18: an option written before the session directory keeps its value, and a view may start before the epoch",
         "R18: an outlier is said in one set of words, the command line's and the window's, each describing what was counted and never why",
+        "R18: away from Windows, icat record and every icat measure say they need Windows, never an elevated shell",
         "R18: between(A,B) is written one way per meaning, and its sets and direction are part of the query",
         "R18: each column's bytes are what the byte measure answers over the column's own interval",
         "R18: each process's RPC call and serve times are what the duration metric grouped by process answers, whole or in an interval",

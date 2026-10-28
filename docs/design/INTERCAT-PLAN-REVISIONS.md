@@ -674,6 +674,8 @@ Revision 822 has `icat verify` name a run file it cannot read, and no command en
 
 Revision 823 refuses an empty argument, as an unset variable leaves one, by what it follows, where some two dozen commands ended with a stack trace.
 
+Revision 824 has `icat record` and `icat measure` say they need Windows away from it, and `icat measure` refuse a whole number it cannot read rather than measure with its default.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2195,3 +2197,15 @@ follows, "The argument after --output is empty, as an unset variable leaves it",
 runs every command with an empty operand. `icat pin` was missing from the list of commands the command line's tests
 hold each command to, though the dispatcher and the overview name it; it is in the list, and a test now holds the list
 to the commands the overview names.
+
+Revision 824 holds the commands that start an ETW session of their own to what they say of why they cannot (R18).
+`icat record` and `icat measure` checked only whether the shell was elevated, which a process away from Windows never
+is, so on Linux even a root shell was told that starting an ETW session requires elevation and to run from an elevated
+shell; the reason is that ETW is Windows' alone, as `icat capture` already said of itself. The three wordings of that
+refusal, one naming a command in backticks, are one: away from Windows, the command needs Windows, and a session
+recorded there can be opened here, or a run measured there verified; on Windows without elevation, it needs an
+elevated shell, and `icat capture` records without one, or `icat capabilities` says what the machine can record. `icat
+measure` read `--seed`, `--messages`, `--calls` and its other whole numbers through a reader that took a value it
+could not parse for an option not given, so `--seed abc` measured with the default seed and said nothing of it; the
+reader now keeps the value's refusal, and `icat measure` gives it, naming the option and the value, before it starts
+anything.

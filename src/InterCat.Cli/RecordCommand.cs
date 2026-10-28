@@ -178,11 +178,12 @@ internal static class RecordCommand
 
         var host = new TraceEventSessionHost();
         ProbeEnvironment environment = CapabilityInventoryProbe.DescribeEnvironment(host.IsElevated);
-        if (!environment.IsElevated)
+        if (EtwSessions.Refusal("record", environment.IsElevated,
+                "icat capture records without one, through the capture broker, and icat profiles previews what either would "
+                + "collect.",
+                "Here, a session recorded on Windows can be opened, measured, exported and packaged.") is { } refused)
         {
-            ConsoleUi.Failure(
-                "Starting an ETW session requires elevation. Run icat record from an elevated shell; icat profiles "
-                + "previews what it would collect without it.");
+            ConsoleUi.Failure(refused);
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 

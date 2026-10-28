@@ -3899,8 +3899,33 @@ public sealed class CommandLineTests : IDisposable
         (InterCatExitCode code, string output, string said) =
             await Run("record", directory, "--profile", "content-fixture", "--evidence-only");
         Assert.Equal((InterCatExitCode.PermissionOrCapabilityFailure, string.Empty), (code, output));
-        Assert.StartsWith("x Starting an ETW session requires elevation", said, StringComparison.Ordinal);
+        Assert.StartsWith("x icat record needs Windows: it starts an ETW session, which Windows alone has.", said, StringComparison.Ordinal);
         Assert.False(Directory.Exists(directory));
+    }
+
+    [Fact(DisplayName = "R18: away from Windows, icat record and every icat measure say they need Windows, never an elevated shell")]
+    public async Task RecordingAwayFromWindowsSaysWhy()
+    {
+        // Only where no session can start: on Windows an elevated test run would record or measure.
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        string directory = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N"));
+        (InterCatExitCode code, string output, string said) = await Run("record", directory);
+        Assert.Equal((InterCatExitCode.PermissionOrCapabilityFailure, string.Empty), (code, output));
+        Assert.StartsWith("x icat record needs Windows: it starts an ETW session, which Windows alone has. Here, a session recorded "
+            + "on Windows can be opened, measured, exported and packaged.", said, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(directory));
+        foreach (string mechanism in new[] { "tcp", "udp", "pipe", "rpc" })
+        {
+            (code, output, said) = await Run("measure", mechanism);
+            Assert.Equal((InterCatExitCode.PermissionOrCapabilityFailure, string.Empty), (code, output));
+            Assert.StartsWith("x icat measure needs Windows: it starts an ETW session, which Windows alone has. Here, icat verify "
+                + "re-evaluates a TCP or UDP run measured on Windows.", said, StringComparison.Ordinal);
+            Assert.DoesNotContain("elevat", said, StringComparison.Ordinal);
+        }
     }
 
     [Fact(DisplayName = "ADR-036: icat retain releases kept content only when told why, and icat session and icat content say so")]

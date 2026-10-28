@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 823 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 824 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 824 — away from Windows, `icat record` and `icat measure` say they need it (R18):**
+  - Away from Windows, `icat record` and every `icat measure` said that starting an ETW session requires elevation,
+    even to a root shell, in three wordings; the reason is that ETW is Windows' alone. One refusal now says which
+    stands in the way: away from Windows, that the command needs Windows and what works here; on Windows without
+    elevation, that it needs an elevated shell and what works without one.
+  - `icat measure` read a whole number it could not parse, `--seed abc` or `--calls 1.5`, as if the option were
+    absent, and measured with its default; it now refuses it, naming the option and the value.
+  - Debug and Release each ran 3,406 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the new R18 test. All 7 mutations were caught, three on a second run after a pattern the
+    compiler refuses: Windows taken for elevation; what works here unsaid for record and for measure; a malformed
+    number's words changed; and icat measure tcp, pipe and rpc each measuring with the default in place of a number
+    they could not read.
 
 - **Revision 823 — an empty argument is refused by what it follows, never read as a path (R18):**
   - An empty argument, which an unset variable leaves in a script (`icat session "$DIR"`), ended some two dozen

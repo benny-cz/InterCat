@@ -142,20 +142,19 @@ internal static partial class MeasureCommand
         int graceSeconds = command.TakeIntegerOption("--grace") ?? 2;
         bool json = command.TryTakeFlag("--json");
         bool overwrite = command.TryTakeFlag("--overwrite");
-        if (command.TryReportUnknown(out string? unknown))
+        if (command.TryReportUnknown(out string? unknown) || command.Malformed is not null)
         {
-            ConsoleUi.Failure(command.Refusal(unknown!));
+            ConsoleUi.Failure(command.Malformed ?? command.Refusal(unknown!));
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 
         var host = new TraceEventSessionHost();
         ProbeEnvironment environment = CapabilityInventoryProbe.DescribeEnvironment(host.IsElevated);
-        if (!environment.IsElevated)
+        if (EtwSessions.Refusal("measure", environment.IsElevated, EtwSessions.MeasureUnelevated, EtwSessions.MeasureElsewhere)
+            is { } refused)
         {
-            ConsoleUi.Failure(
-                "Starting an ETW session requires elevation. Run this command from an elevated shell; "
-                + "`icat capabilities` still works without it.");
+            ConsoleUi.Failure(refused);
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
