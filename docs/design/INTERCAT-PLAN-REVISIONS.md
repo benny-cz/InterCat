@@ -672,6 +672,8 @@ Revision 821 has `icat bench` give its help, refuse what it cannot read or write
 
 Revision 822 has `icat verify` name a run file it cannot read, and no command end with a stack trace on JSON it cannot read.
 
+Revision 823 refuses an empty argument, as an unset variable leaves one, by what it follows, where some two dozen commands ended with a stack trace.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2182,3 +2184,14 @@ writes; it now refuses the run, exit code 4, naming the file and, in a log, the 
 guard, since every reader a person can point at a file now names the file itself, but a reader added later that does
 not will be answered in words rather than with a stack trace. A missing run folder is said as a missing session folder
 is: "No run directory at" the path.
+
+Revision 823 is the third crash of the kind revisions 821 and 822 found (R18). An empty argument, the one `icat
+session "$DIR"` passes when `DIR` is unset, reached `Path.GetFullPath`, which throws an `ArgumentException` no handler
+of the command line catches, so some two dozen commands ended the process with that exception and its stack trace;
+`--output ""` and `--run ""` did the same. No command reads an empty argument: as a path it names nothing, and as an
+option's value it reads as nothing given. The command line now refuses one before any command reads it, saying what it
+follows, "The argument after --output is empty, as an unset variable leaves it", and an empty command as the command;
+`icat content --find ""`, which had words of its own for the same thing, now says it as every command does. A test
+runs every command with an empty operand. `icat pin` was missing from the list of commands the command line's tests
+hold each command to, though the dispatcher and the overview name it; it is in the list, and a test now holds the list
+to the commands the overview names.

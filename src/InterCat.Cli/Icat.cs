@@ -32,6 +32,18 @@ internal static class Icat
             return InterCatExitCode.Success;
         }
 
+        // An empty argument is one someone meant to give - an unset variable leaves one - and no command reads it: as a path
+        // it names nothing, and as an option's value it reads as nothing given. It is refused by what it follows.
+        int empty = Array.IndexOf(args, string.Empty);
+        if (empty >= 0)
+        {
+            ConsoleUi.Failure(empty == 0
+                ? "The command is empty, as an unset variable leaves it: give one; icat --help lists them."
+                : $"The argument after {(empty == 1 ? "icat " + args[0] : args[empty - 1])} is empty, as an unset variable "
+                    + "leaves it: give the value it stands for.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         var command = new CommandLine(args[1..]);
         try
         {

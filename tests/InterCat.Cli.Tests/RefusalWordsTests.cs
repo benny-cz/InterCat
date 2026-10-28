@@ -61,7 +61,7 @@ public sealed class RefusalWordsTests : IDisposable
             "--find searches the session's kept content, not one record: leave out the record's locator and --reveal, --save, --decode, --part, --from and --to." },
         { ["content", "{session}", "--find", "x", "--pid", "y"], "--pid expects a process id; 'y' is not one." },
         { ["content", "{session}", "--find", "x", "--limit", "0"], "--limit expects a number of records from 1 to 10,000; '0' is not one." },
-        { ["content", "{session}", "--find", ""], "--find needs the text to look for." },
+        { ["content", "{session}", "--find", ""], "The argument after --find is empty, as an unset variable leaves it: give the value it stands for." },
         { ["content", "{session}", "--previews"],
             "--pid, --process, --evidence-policy, --limit, --max-mib, --max-seconds, --ignore-case, --previews and --output apply only to --find." },
         { ["content", "{session}", "--max-mib", "5"],

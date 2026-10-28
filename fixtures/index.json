@@ -2321,6 +2321,7 @@
         "R18: a wait's server, its share and what no time is said for are said in one set of words, the command line's and the window's",
         "R18: an --interval takes each bound as ticks or as a time with its unit, as the window states an interval, taken outward to whole ticks",
         "R18: an RPC channel's and HTTP exchanges' rung export every call and exchange of the scope, as icat export does",
+        "R18: an empty argument, as an unset variable leaves one, is refused by what it follows and never read as a path",
         "R18: an enumeration's value is cited as a person types it, each word after the first behind a hyphen",
         "R18: an evidence export reads its whole scope in one pass, and one that stops at its limit says so",
         "R18: an export ranked by bytes names its ranking, and each row carries the value it was ranked by",

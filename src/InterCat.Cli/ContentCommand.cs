@@ -74,7 +74,6 @@ internal static class ContentCommand
             bool policyRead = EvidencePolicyOption.TryParse(policyText, out EvidencePolicy policy, out string? policyRefusal);
             string? refused = directory is null ? "A session directory is required: icat content <directory> --find <text>."
                 : hasUnknown ? command.Refusal(unknown!)
-                : find.Length == 0 ? "--find needs the text to look for."
                 : json ? "--find lists the records holding the text for a person, never into JSON: leave out --json."
                 : names || reveal || wholePart || decode || saveOption is not null || fromText is not null || toText is not null
                     ? "--find searches the session's kept content, not one record: leave out the record's locator and "

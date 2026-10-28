@@ -27,7 +27,7 @@ public sealed class CommandLineTests : IDisposable
     [
         "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
         "hosts", "programs", "ports", "patterns", "links", "waits", "outliers", "evidence", "timeline", "compare", "export", "package", "raw", "content", "recover", "staging",
-        "retain", "compact", "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench",
+        "retain", "pin", "compact", "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench",
         "support", "demo",
     ];
 
@@ -85,6 +85,8 @@ public sealed class CommandLineTests : IDisposable
             }
         }
 
+        // Every command the overview names is one these tests run, so none is left out of what every command is held to.
+        Assert.Empty(entries.Keys.Except(Commands));
         foreach (string command in Commands)
         {
             Assert.True(entries.ContainsKey(command), $"The overview has no entry for icat {command}.");
@@ -1234,6 +1236,28 @@ public sealed class CommandLineTests : IDisposable
             Assert.True(output.Contains("icat " + command, StringComparison.Ordinal), $"icat {command} --help names no synopsis:\n{output}");
             Assert.True(error.Length == 0, $"icat {command} --help said on stderr:\n{error}");
         }
+    }
+
+    [Fact(DisplayName = "R18: an empty argument, as an unset variable leaves one, is refused by what it follows and never read as a path")]
+    public async Task AnEmptyArgumentIsRefusedByWhatItFollows()
+    {
+        foreach (string command in Commands)
+        {
+            (InterCatExitCode code, string output, string error) = await Run(command, "");
+            Assert.True(code == InterCatExitCode.InvalidInvocation, $"icat {command} \"\" exited {code}: {error}");
+            Assert.Equal(string.Empty, output);
+            Assert.Equal($"x The argument after icat {command} is empty, as an unset variable leaves it: give the value it stands "
+                + "for.", error.TrimEnd());
+        }
+
+        (InterCatExitCode written, _, string said) = await Run("session", session.Path, "--output", "");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, written);
+        Assert.Contains("The argument after --output is empty, as an unset variable leaves it: give the value it stands for.", said,
+            StringComparison.Ordinal);
+        (written, _, said) = await Run("");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, written);
+        Assert.Contains("The command is empty, as an unset variable leaves it: give one; icat --help lists them.", said,
+            StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "R18: a refused invocation says why on stderr, and leaves stdout to the answer it did not give")]
