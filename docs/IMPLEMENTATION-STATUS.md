@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 808 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 809 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,26 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 809 — a coverage pass over the investigation's words; the pairs not proposed said as many as they are:**
+  - Of the lines a test can reach, 11 of the investigation rows' 245 ran in none and 8 of the instant-compare dialog's
+    130: a session that published a newer generation since it was added, read as advanced to it, and one an earlier
+    copy was put in place of, read as replaced by it; a join a person rejected; a session aligned by one boot's
+    counter; an instant placed with no known certainty; and the dialog's Enter and its refusal of an instant with no
+    session. Tests run them now.
+  - Running them found the mirrored pairs a correlation sets aside said as "Not proposed: 0 mirrored pairs whose
+    lifetimes lie apart beyond their uncertainty, and 1 loopback pairs of two hosts.", in the window and in `icat
+    workspace correlate` alike: a kind there was none of counted, and one pair said in the plural. One wording,
+    `WorkspaceCorrelation.NotProposed`, now says each kind there is, as many as it is, for both. And the dialog's
+    refusal of an instant with no session kept saying where the instants compared before fall; it clears them now, as
+    its other refusals do.
+  - Debug and Release each ran 3,315 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the 3 new tests; one is a theory of 4 cases. All 16 mutations were caught: a count of one
+    said in the plural, a kind there is none of said, nothing said as none, the kinds joined without their and, and
+    the command line's or the window's words changed; a member's newer or older generation left unnumbered; a
+    rejected join said to be accepted; one boot's alignment said as a person's; an instant of unknown certainty said
+    without it; Enter comparing nothing; and a refusal keeping the placements, or either refusal the comparison,
+    before it.
 
 - **Revision 808 — a coverage pass over the graph view, the minimap and the investigation window:**
   - Of the lines a test can reach, 60 of the graph view's 1,455 ran in none, 17 of the minimap's 250 and 51 of the

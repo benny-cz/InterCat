@@ -238,10 +238,9 @@ public static class InvestigationRows
                 + ".");
         }
 
-        if (result.DisjointMirrors > 0 || result.LoopbackAcrossHosts > 0)
+        if (WorkspaceCorrelation.NotProposed(result.DisjointMirrors, result.LoopbackAcrossHosts, culture) is { } notProposed)
         {
-            notes.Add(string.Create(culture, $"Not proposed: {result.DisjointMirrors:N0} mirrored pairs whose lifetimes lie apart "
-                + $"beyond their uncertainty, and {result.LoopbackAcrossHosts:N0} loopback pairs of two hosts."));
+            notes.Add(notProposed);
         }
 
         notes.AddRange(result.Unread.Select(unread => $"Not compared: session {Short(unread.SessionId)}, because {unread.Reason}"));

@@ -906,10 +906,9 @@ internal static partial class WorkspaceCommand
         }
 
         ConsoleUi.Line();
-        if (result.DisjointMirrors > 0 || result.LoopbackAcrossHosts > 0)
+        if (WorkspaceCorrelation.NotProposed(result.DisjointMirrors, result.LoopbackAcrossHosts, culture) is { } notProposed)
         {
-            ConsoleUi.Note(string.Create(culture, $"Not proposed: {result.DisjointMirrors:N0} mirrored pairs whose lifetimes lie apart "
-                + $"beyond their uncertainty, and {result.LoopbackAcrossHosts:N0} loopback pairs of two hosts."));
+            ConsoleUi.Note(notProposed);
         }
 
         foreach (UnreadMember unread in result.Unread)

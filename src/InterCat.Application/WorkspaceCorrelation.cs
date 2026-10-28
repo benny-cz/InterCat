@@ -273,6 +273,28 @@ public static class WorkspaceCorrelation
         "No connection one session holds one end of has its mirrored end in another"
             + (coverageShort ? ", but a compared capture's coverage falls short, so that is no proof there was none." : ".");
 
+    /// <summary>
+    /// The mirrored pairs not proposed, in the words the window and <c>icat workspace correlate</c> both say them in: each
+    /// kind there is, counted in words that agree with its count; null when none was set aside.
+    /// </summary>
+    public static string? NotProposed(int disjointMirrors, int loopbackAcrossHosts, CultureInfo culture)
+    {
+        ArgumentNullException.ThrowIfNull(culture);
+        List<string> kinds = [];
+        if (disjointMirrors > 0)
+        {
+            kinds.Add(string.Create(culture, $"{disjointMirrors:N0} mirrored {(disjointMirrors == 1 ? "pair" : "pairs")} whose ")
+                + "lifetimes lie apart beyond their uncertainty");
+        }
+
+        if (loopbackAcrossHosts > 0)
+        {
+            kinds.Add(string.Create(culture, $"{loopbackAcrossHosts:N0} loopback {(loopbackAcrossHosts == 1 ? "pair" : "pairs")} of two hosts"));
+        }
+
+        return kinds.Count == 0 ? null : "Not proposed: " + string.Join(", and ", kinds) + ".";
+    }
+
     /// <summary>One shortfall of the captures it is true of, in a sentence that agrees with how many they are.</summary>
     private static string Shortfall(Guid[] sessions, Mechanism[] mechanisms, CoverageState state, string reason)
     {

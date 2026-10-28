@@ -644,6 +644,8 @@ Revision 807 runs what a coverage pass over the window's wheel zoom, minimap, se
 
 Revision 808 runs what a coverage pass over the graph view, the minimap and the investigation window found no test ran; it found nothing to change.
 
+Revision 809 runs what a coverage pass over the investigation's words found no test ran; its paragraph below says the pairs not proposed it found miscounted in words.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2014,3 +2016,15 @@ investigation whose file no longer reads, or is gone, saying what they could not
 nothing to change. What stays unrun of the graph view is mostly what it only draws on its canvas, or a guard for a
 node or a frame that is not there; of the investigation window, what follows a dialog only its modal showing answers,
 the panes the main window keeps while the investigation is read, and the control focus goes back to on each tab.
+
+Revision 809 runs what a coverage pass over the investigation's words found no test ran (R10): 11 of the 245 lines of
+the window's investigation rows a test can reach and 8 of the 130 of its instant-compare dialog, among them a session
+that published a newer generation since it was added, read as advanced to it, and one an earlier copy was put in place
+of, read as replaced by it (R22); a join a person rejected; a session aligned by one boot's counter (R21); an instant
+placed with no known certainty; and the dialog's Enter and its refusal of an instant with no session. Running them
+found the mirrored pairs a correlation sets aside said as "Not proposed: 0 mirrored pairs whose lifetimes lie apart
+beyond their uncertainty, and 1 loopback pairs of two hosts.", in the window and in `icat workspace correlate` alike,
+a kind there was none of counted and one pair said in the plural. One wording, `WorkspaceCorrelation.NotProposed`, now
+says each kind there is, as many as it is, for both, and nothing when none was set aside, as `NoCandidate` is one
+wording for both. The dialog's refusal of an instant with no session also kept saying where the instants compared
+before fall; it clears them, and the comparison it holds, as its other refusals do.

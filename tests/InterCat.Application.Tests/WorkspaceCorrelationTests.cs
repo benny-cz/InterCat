@@ -32,6 +32,14 @@ public sealed class WorkspaceCorrelationTests : IDisposable
         }
     }
 
+    [Theory(DisplayName = "R21: the mirrored pairs not proposed are said by each kind there is, in words that agree with its count, and not at all when none was")]
+    [InlineData(0, 0, null)]
+    [InlineData(1, 0, "Not proposed: 1 mirrored pair whose lifetimes lie apart beyond their uncertainty.")]
+    [InlineData(0, 1, "Not proposed: 1 loopback pair of two hosts.")]
+    [InlineData(2, 3, "Not proposed: 2 mirrored pairs whose lifetimes lie apart beyond their uncertainty, and 3 loopback pairs of two hosts.")]
+    public void ThePairsNotProposedAreCountedInWords(int disjoint, int loopback, string? said) =>
+        Assert.Equal(said, WorkspaceCorrelation.NotProposed(disjoint, loopback, CultureInfo.InvariantCulture));
+
     [Fact(DisplayName = "R21: a one-sided connection is a candidate join with its mirror in another capture, never where their lifetimes lie apart")]
     public void AMirroredConnectionIsACandidate()
     {

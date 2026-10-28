@@ -97,6 +97,86 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R22: a session that published a newer generation reads as advanced, and one an earlier copy was put in place of as replaced, each saying what to do")]
+    public async Task AMembersOtherGenerationIsSaid()
+    {
+        using var root = new TemporaryDirectory();
+        string alpha = Directory.CreateDirectory(Path.Combine(root.Path, "alpha")).FullName;
+        CaptureId capture = CaptureId.New();
+        SourceClockDescriptor clock = ClockFor(ClockId.New(), "lab-alpha");
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(alpha), Guid.NewGuid(), "investigation-window-tests");
+        ObservationRowV1 created = Lifecycle(100, ObservationKind.Create, 400, 1) with { SessionRelativeTicks = 100 };
+        _ = Publish(store, [created], capture: capture, clock: clock);
+        store.ReleaseSegmentReaders();
+        string earlier = Directory.CreateDirectory(Path.Combine(root.Path, "alpha-earlier")).FullName;
+        foreach (string file in Directory.EnumerateFiles(alpha))
+        {
+            File.Copy(file, Path.Combine(earlier, Path.GetFileName(file)));
+        }
+
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, alpha, Committed).SessionId;
+        _ = Publish(store, [created, Lifecycle(200, ObservationKind.Create, 500, 2) with { SessionRelativeTicks = 200 }], capture: capture, clock: clock);
+        store.ReleaseSegmentReaders();
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            // Published again since it was added, the session reads as advanced to its new generation, not yet selected.
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            InvestigationMemberRow row = Assert.Single(window.View!.Members);
+            Assert.Equal($"Session {Short(a)}, advanced to generation 2", row.Title);
+            Assert.Equal("The session has published generation 2 since generation 1 was selected. Relink the session to its own path "
+                + "to select it.", row.Reason);
+
+            // Relinked, generation 2 is selected; an earlier copy put in its place then reads as replaced by generation 1.
+            await window.RelinkAsync(a, alpha);
+            WaitFor(() => window.View!.Members[0].State == WorkspaceMemberState.Present);
+            Directory.Move(alpha, Path.Combine(root.Path, "alpha-newer"));
+            Directory.Move(earlier, alpha);
+            await window.RefreshAsync();
+            row = Assert.Single(window.View!.Members);
+            Assert.Equal($"Session {Short(a)}, replaced by generation 1", row.Title);
+            Assert.Equal("The path holds generation 1 of this session, older than the selected generation 2: an earlier copy was put "
+                + "in its place. Relink the session to its own path to select what is there.", row.Reason);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R21: a session aligned to another of its boot reads as aligned by one boot's counter, exactly")]
+    public void ASessionOfOneBootReadsAsAlignedExactly()
+    {
+        using var root = new TemporaryDirectory();
+        Guid boot = Guid.NewGuid();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, BootSession(root.Path, "first", 1_000_000, boot), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, BootSession(root.Path, "second", 51_000_000, boot), Committed).SessionId;
+        _ = InvestigationWorkspace.AlignSameBoot(workspace, b, a, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            // The second's epoch is 5 s of the boot's counter after the first's: its instant 0 is the first's 5 s, exactly.
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            CultureInfo culture = CultureInfo.CurrentCulture;
+            Assert.Equal($"Aligned by one boot's counter: its {0m.ToString("0.000######", culture)} s is the reference's "
+                + $"{5m.ToString("0.000######", culture)} s, exactly", window.View!.Members.Single(row => row.SessionId == b).Time);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§8.3: a session opened from its investigation names its hosts' candidate other ends in Other hosts' list, read again under another evidence policy; opened on its own, it names none")]
     public async Task ASessionOpenedFromItsInvestigationNamesItsHostsCandidateOtherEnds()
     {
@@ -1423,7 +1503,9 @@ public sealed class InvestigationWindowTests
         Guid a = InvestigationWorkspace.Add(workspace, Session(root.Path, "alpha"), Committed).SessionId;
         Guid b = InvestigationWorkspace.Add(workspace, Session(root.Path, "beta"), Committed).SessionId;
         Guid c = InvestigationWorkspace.Add(workspace, Session(root.Path, "gamma"), Committed).SessionId;
+        Guid d = InvestigationWorkspace.Add(workspace, Session(root.Path, "delta"), Committed).SessionId;
         InvestigationWorkspace.Align(workspace, b, 2_000_000_000, a, 5_500_000_000, 500_000, 50, null, Committed);
+        InvestigationWorkspace.Align(workspace, d, 1_000_000_000, a, 2_000_000_000, 500_000, null, null, Committed);
         var main = new MainWindow { Width = 1080, Height = 700 };
         main.Show();
         try
@@ -1460,6 +1542,24 @@ public sealed class InvestigationWindowTests
             dialog.Enter(a, "soon", b, "2");
             Assert.Null(await dialog.CompareAsync());
             Assert.Equal("Write both instants in seconds of their own session's time, such as 12.5.", dialog.Said);
+            Assert.Null(dialog.Comparison);
+
+            // A session aligned with no drift stated places an instant away from its anchor, but how surely is unknown.
+            dialog.Enter(a, "6", d, "4");
+            Assert.Equal(TimeOrder.Unknown, (await dialog.CompareAsync())!.Result.Order);
+            Assert.Contains($"The second instant, session {Short(d)}'s {4m.ToString("0.000", culture)} s, falls at "
+                + $"{5m.ToString("0.000", culture)} s of the investigation's time, but how surely is unknown: ", dialog.Said, StringComparison.Ordinal);
+
+            // Enter compares as Compare does.
+            dialog.Enter(a, "6", b, "2");
+            dialog.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            WaitFor(() => dialog.Comparison?.Result.Order == TimeOrder.After);
+
+            // With an instant's session unchosen nothing is compared, and nothing said of the instants before stays.
+            dialog.Enter(Guid.Empty, "6", b, "2");
+            Assert.Null(await dialog.CompareAsync());
+            Assert.Equal("Choose each instant's session.", dialog.Said);
+            Assert.Null(dialog.Comparison);
             dialog.Close();
             window.Close();
         }
@@ -2442,8 +2542,8 @@ public sealed class InvestigationWindowTests
         using var root = new TemporaryDirectory();
         string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
         InvestigationWorkspace.Create(workspace, Committed);
-        InvestigationWorkspace.Add(workspace, Session(root.Path, "client", ["10.0.0.1:50000", "10.0.0.2:443"], 100), Committed);
-        InvestigationWorkspace.Add(workspace, Session(root.Path, "server", ["10.0.0.2:443", "10.0.0.1:50000"], 200), Committed);
+        Guid client = InvestigationWorkspace.Add(workspace, Session(root.Path, "client", ["10.0.0.1:50000", "10.0.0.2:443"], 100), Committed).SessionId;
+        Guid server = InvestigationWorkspace.Add(workspace, Session(root.Path, "server", ["10.0.0.2:443", "10.0.0.1:50000"], 200), Committed).SessionId;
         var main = new MainWindow { Width = 1080, Height = 700 };
         main.Show();
         try
@@ -2492,6 +2592,19 @@ public sealed class InvestigationWindowTests
             await window.DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
             Assert.Null(window.Candidates!.Rows[0].Decision);
             Assert.Equal(2, InvestigationWorkspace.Read(workspace).Joins.Count);
+
+            // Rejected as your decision, it says so too.
+            window.SelectCandidate(0);
+            await window.DecideSelectedAsync(WorkspaceJoinDecision.Rejected);
+            Assert.EndsWith("· rejected by a person", window.Candidates!.Rows[0].Title, StringComparison.Ordinal);
+            Assert.Equal("1 candidate join, none established by evidence; 0 accepted and 1 rejected by a person; 0 not the only match of a connection.",
+                window.Candidates.Summary);
+
+            // Aligned so the two ends' lifetimes lie ten seconds apart, the pair is proposed no more, and is counted as one.
+            InvestigationWorkspace.Align(workspace, server, 0, client, 10_000_000_000, 1_000, 10, null, Committed);
+            await window.FindCandidatesAsync();
+            Assert.Empty(window.Candidates!.Rows);
+            Assert.Contains("Not proposed: 1 mirrored pair whose lifetimes lie apart beyond their uncertainty.", window.Candidates.Notes);
             window.Close();
         }
         finally
@@ -3253,6 +3366,36 @@ public sealed class InvestigationWindowTests
             capture: CaptureId.New(),
             clock: ClockFor(ClockId.New(), "lab-" + name),
             coverage: coverage);
+        store.ReleaseSegmentReaders();
+        return directory;
+    }
+
+    /// <summary>
+    /// A published session whose capture recorded a clock calibration in <paramref name="boot"/>: a clock of 10 MHz whose
+    /// epoch is <paramref name="epoch"/> of that boot's counter.
+    /// </summary>
+    private static string BootSession(string root, string name, long epoch, Guid boot)
+    {
+        string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
+        CaptureId capture = CaptureId.New();
+        var clock = new SourceClockDescriptor(ClockId.New(), HostId.Derive("lab-boot"), SourceClockKind.Monotonic, TimestampEncoding.Qpc,
+            10_000_000, epoch, TimestampRounding.NearestEven, SourceClockMath.SessionTicksPerSecond * 60);
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "investigation-window-tests");
+        _ = Publish(
+            store,
+            [Transfer(epoch + 1_000, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 100_000 }],
+            capture: capture,
+            clock: clock,
+            calibration: new ClockCalibrationV1
+            {
+                Contract = ClockCalibrationV1.ContractName,
+                CaptureId = capture.Value,
+                ClockId = clock.Id.Value,
+                BootToken = boot,
+                BootCount = 7,
+                WallClock = "test-wall-clock",
+                Samples = [new() { NativeTicks = epoch, Utc = Committed, AcquisitionUncertaintyNanoseconds = 200 }],
+            });
         store.ReleaseSegmentReaders();
         return directory;
     }

@@ -1469,6 +1469,7 @@ public sealed class CommandLineTests : IDisposable
                 Transfer(1_000, ObservationKind.Send, AccountingSide.SendSide, null, 100, 1).Between(Client, Server) with { SessionRelativeTicks = 100_000 },
                 Transfer(1_001, ObservationKind.Receive, AccountingSide.ReceiveSide, 200, 100, 2).Between(Client, Server) with { SessionRelativeTicks = 100_100 },
                 Transfer(1_002, ObservationKind.Receive, AccountingSide.ReceiveSide, 50, 100, 3).Between(Client, Server) with { SessionRelativeTicks = 100_200 },
+                Transfer(1_003, ObservationKind.Send, AccountingSide.SendSide, 10, 100, 4).Between("127.0.0.1:50001", "127.0.0.1:8080") with { SessionRelativeTicks = 100_300 },
             ]);
             ObservationRowV1[] served =
             [
@@ -1477,7 +1478,10 @@ public sealed class CommandLineTests : IDisposable
                 Transfer(1_002, ObservationKind.Send, AccountingSide.SendSide, 50, 200, 3).Between(Server, Client) with { SessionRelativeTicks = 100_200 },
             ];
             Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "new", workspace)).Code);
-            foreach (string member in new[] { client, Held(folder, "server", "lab-2", served), Held(folder, "replica", "lab-3", served) })
+            // The server's host also holds the mirror of a loopback connection the client's does, which is never one connection.
+            ObservationRowV1[] looped = [.. served, Transfer(1_003, ObservationKind.Receive, AccountingSide.ReceiveSide, 10, 200, 4)
+                .Between("127.0.0.1:8080", "127.0.0.1:50001") with { SessionRelativeTicks = 100_300 }];
+            foreach (string member in new[] { client, Held(folder, "server", "lab-2", looped), Held(folder, "replica", "lab-3", served) })
             {
                 Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "add", workspace, member)).Code);
             }
@@ -1488,6 +1492,7 @@ public sealed class CommandLineTests : IDisposable
             Assert.Contains("(PID 200): 250 B sent, 1 receive unmeasured; open before the capture and after it", text, StringComparison.Ordinal);
             Assert.Contains(" · lifetimes not comparable · not the only match: 1 other candidate" + Environment.NewLine, text, StringComparison.Ordinal);
             Assert.DoesNotContain(": 0 B sent", text, StringComparison.Ordinal);
+            Assert.Contains("Not proposed: 1 loopback pair of two hosts." + Environment.NewLine, text, StringComparison.Ordinal);
 
             // Its document counts each direction's transfers and those of no size, and leaves out a sum none measured.
             using JsonDocument answer = JsonDocument.Parse((await Run("workspace", "correlate", workspace, "--json")).Output);

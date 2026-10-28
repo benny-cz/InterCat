@@ -102,7 +102,7 @@ internal sealed class InvestigationCompareWindow : Window
         };
     }
 
-    /// <summary>The comparison as last made; null before one was, or when the input was not two instants.</summary>
+    /// <summary>The comparison the dialog says; null before one was made, or since one was refused or failed.</summary>
     internal WorkspaceComparison? Comparison { get; private set; }
 
     /// <summary>What the dialog says: the order, then where each instant falls.</summary>
@@ -123,12 +123,15 @@ internal sealed class InvestigationCompareWindow : Window
         if (comparing) return null;
         if (firstSession.SelectedItem is not CompareSession first || secondSession.SelectedItem is not CompareSession second)
         {
+            Comparison = null;
             statement.Text = "Choose each instant's session.";
+            placements.Text = string.Empty;
             return null;
         }
 
         if (InvestigationInput.Seconds(firstAt.Text) is not { } a || InvestigationInput.Seconds(secondAt.Text) is not { } b)
         {
+            Comparison = null;
             statement.Text = "Write both instants in seconds of their own session's time, such as 12.5.";
             placements.Text = string.Empty;
             return null;
@@ -150,6 +153,7 @@ internal sealed class InvestigationCompareWindow : Window
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)
         {
+            Comparison = null;
             statement.Text = "They could not be compared: " + InvestigationTrouble.Why(path, exception);
             placements.Text = string.Empty;
             return null;
