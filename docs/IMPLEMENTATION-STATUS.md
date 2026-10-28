@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 807 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 808 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,24 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 808 — a coverage pass over the graph view, the minimap and the investigation window:**
+  - Of the lines a test can reach, 60 of the graph view's 1,455 ran in none, 17 of the minimap's 250 and 51 of the
+    investigation window's 1,368: a node's drag the system cancels, as another window or a dialog taking the pointer
+    does, carried back with nothing pinned; the hover card following the pointer across the node it describes; a
+    double click on the minimap fitting the timeline; the saved package's dialog saying why each session not copied
+    stays a reference; and the host dialog, the timeline and the candidate joins of an investigation whose file no
+    longer reads, or is gone, saying why. Tests run them now; running them found nothing to change.
+  - What stays unrun of the graph view is mostly what it only draws, such as a focused node's outline, a stack's
+    hatching and the words that say its layout is unavailable, or a guard for a node or a frame that is not there; of
+    the investigation window, what follows a dialog only its modal showing answers, panes kept while the investigation
+    is read, and where focus goes back to on each tab.
+  - Debug and Release each ran 3,309 tests with revision 473's 93 failures and 4 skips, and failed nothing else. No
+    test is new, so the fixture index is as it was; six tests grew. All 10 mutations were caught: a drag the system
+    cancels unnoticed, its node not carried back, or the drag still held after it; the hover card left behind as the
+    pointer crosses its node; a double click on the minimap not fitting the timeline; a package's sessions left out
+    unsaid, or said without naming the session; and why the host dialog, the timeline and the candidate joins could
+    not read an investigation unsaid.
 
 - **Revision 807 — a coverage pass over the window's wheel zoom, minimap, settings and alignment dialog:**
   - Of the lines a test can reach, 123 of the timeline view's 2,587 ran in none, 17 of the minimap's 250, 14 of the

@@ -74,6 +74,15 @@ public sealed class GraphHoverTests
         Assert.Same(selected, viewModel.SelectedProcess);
         Save(window, "graph-hover-node.png");
 
+        // Moved across the node it describes, the card follows the pointer and still describes the node.
+        Point across = graph.PointOf(node.Key)!.Value + new Vector(2, 1);
+        window.MouseMove(At(graph, window, across));
+        Dispatch();
+        Assert.Equal(node.Key, graph.HoveredKey);
+        Assert.Equal(across.X, graph.HoverPoint.X, 6);
+        Assert.Equal(across.Y, graph.HoverPoint.Y, 6);
+        Assert.Equal(nodeCard.Title, graph.HoverCard?.Title);
+
         GraphDisplayEdge edge = viewModel.GraphDisplay.Edges.OrderByDescending(candidate => candidate.ObservationCount).First();
         Point source = graph.PointOf(edge.SourceKey)!.Value;
         Point target = graph.PointOf(edge.TargetKey)!.Value;

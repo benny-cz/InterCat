@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.CaptureBroker;
@@ -256,6 +257,23 @@ public sealed class MotionWindowTests
             Assert.InRange(back, Distance(pinned, away) * 0.12, Distance(pinned, away) * 0.13);
             clock.Advance(ThemePalette.Motion.LevelChange / 2);
             Assert.Equal(pinned, graph.PointOf(node.Key));
+            window.MouseUp(At(graph, window, away), MouseButton.Left);
+            Dispatch();
+            Assert.Equal(pinned, graph.PointOf(node.Key));
+
+            // A drag the system takes the pointer from, as another window or a dialog does, is cancelled alike: the node is
+            // carried back from where the pointer left it and nothing is pinned, and the release that follows ends nothing.
+            IPointer? pressed = null;
+            graph.AddHandler(InputElement.PointerPressedEvent, (_, e) => pressed = e.Pointer, RoutingStrategies.Bubble,
+                handledEventsToo: true);
+            window.MouseDown(At(graph, window, pinned), MouseButton.Left);
+            window.MouseMove(At(graph, window, new((pinned.X + away.X) / 2, (pinned.Y + away.Y) / 2)));
+            window.MouseMove(At(graph, window, away));
+            pressed!.Capture(null);
+            Assert.True(Distance(away, graph.PointOf(node.Key)!.Value) < 1);
+            clock.Advance(ThemePalette.Motion.LevelChange);
+            Assert.Equal(pinned, graph.PointOf(node.Key));
+            Assert.False(graph.CancelDrag());
             window.MouseUp(At(graph, window, away), MouseButton.Left);
             Dispatch();
             Assert.Equal(pinned, graph.PointOf(node.Key));

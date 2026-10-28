@@ -642,6 +642,8 @@ Revision 806 runs what a coverage pass over `icat retain`, `icat session` and `i
 
 Revision 807 runs what a coverage pass over the window's wheel zoom, minimap, settings and alignment dialog found no test ran; it found nothing to change.
 
+Revision 808 runs what a coverage pass over the graph view, the minimap and the investigation window found no test ran; it found nothing to change.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2001,3 +2003,14 @@ the folder Windows names and a file that cannot be read. The graph view's 60 unr
 pass. Three wrapped lines that began with a dash, which Markdown reads as a list item of its own, are reworded, in the
 status's note of revision 761, in `coverage-v2`'s interval release paragraph and in `workspace-v23`'s order of two
 instants; the words are unchanged but for the dashes.
+
+Revision 808 runs what a coverage pass over the window's graph view, minimap and investigation window found no test
+ran (R10): 60 of the 1,455 lines of the first a test can reach, 17 of the 250 of the second and 51 of the 1,368 of the
+third, among them a node's drag the system cancels by taking the pointer, which carries the node back from where the
+pointer left it and pins nothing, as Esc does (§6.7, §6.8); the hover card following the pointer across the node it
+describes (§6.2); a double click on the minimap fitting the timeline; the dialog of a saved package saying why each
+session not copied stays a reference (§8.4); and the host dialog, the timeline and the candidate joins of an
+investigation whose file no longer reads, or is gone, saying what they could not do and why. Running them found
+nothing to change. What stays unrun of the graph view is mostly what it only draws on its canvas, or a guard for a
+node or a frame that is not there; of the investigation window, what follows a dialog only its modal showing answers,
+the panes the main window keeps while the investigation is read, and the control focus goes back to on each tab.

@@ -331,6 +331,19 @@ public sealed class EvidenceRungWindowTests
         Dispatch();
         Assert.True(timeline.IsFit);
         Assert.Equal((fitStart, fitEnd), minimap.Brush());
+
+        // A double click on the minimap fits the timeline again, as 0 does.
+        for (int step = 0; step < 3; step++) window.KeyPressQwerty(PhysicalKey.Equal, RawInputModifiers.None);
+        Dispatch();
+        Assert.False(timeline.IsFit);
+        Point twice = minimap.TranslatePoint(new(minimap.Bounds.Width / 3, middle), window)!.Value;
+        window.MouseDown(twice, MouseButton.Left);
+        window.MouseUp(twice, MouseButton.Left);
+        window.MouseDown(twice, MouseButton.Left);
+        window.MouseUp(twice, MouseButton.Left);
+        Dispatch();
+        Assert.True(timeline.IsFit);
+        Assert.Equal((fitStart, fitEnd), minimap.Brush());
         window.Close();
     }
 

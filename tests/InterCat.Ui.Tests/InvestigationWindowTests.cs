@@ -1400,6 +1400,12 @@ public sealed class InvestigationWindowTests
             Assert.Equal("No other host of this investigation is listed.", Offers.WhyNot(Named<Button>(alone, "They are one host")));
             Assert.Equal("No other host of this investigation is listed.", Offers.WhyNot(Named<Button>(alone, "They are not one host")));
             alone.Close();
+
+            // With the investigation's file gone, who is one host with whom cannot be read, and the window says why.
+            File.Delete(workspace);
+            Assert.Null(window.HostDialogForSelected());
+            Assert.Equal($"This investigation could not be read: No file is at {workspace} any more; it was moved, renamed or "
+                + "deleted.", Named<TextBlock>(window, "Investigation status").Text);
             window.Close();
         }
         finally
@@ -2756,6 +2762,14 @@ public sealed class InvestigationWindowTests
             TextBlock status = Named<TextBlock>(window, "Investigation status");
             Assert.Equal(InvestigationWindow.Saved(result), status.Text);
             Assert.Contains("2 sessions were not copied and stay references to relink.", status.Text, StringComparison.Ordinal);
+
+            // The dialog that says the package is saved says why each session not copied stays a reference.
+            string[] said = [.. ((StackPanel)InvestigationWindow.PackageResultPrompt(result, offersOpen: true).Content!).Children
+                .OfType<TextBlock>().Select(paragraph => paragraph.Text ?? string.Empty)];
+            Assert.Contains($"Session {Short(a)}: Not selected, so kept as a reference to where it is on this computer.", said);
+            Assert.Contains($"Session {Short(c)}: Not copied, and kept as a reference: it is missing. Nothing is at this path: "
+                + "the session was moved or removed. Relink the session where it is now.", said);
+            Assert.DoesNotContain(said, paragraph => paragraph.StartsWith($"Session {Short(b)}:", StringComparison.Ordinal));
             Assert.Equal(("Package…", true), (package.Content, package.IsEnabled));
 
             // Opened, it is the same investigation: the copy is found beside its file, the others where they were.
@@ -2987,6 +3001,13 @@ public sealed class InvestigationWindowTests
             Assert.Equal("The join was not rejected: " + unreadable, joins.Text);
             await window.DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
             Assert.Equal("Your decision was not withdrawn: " + unreadable, joins.Text);
+            await window.FindCandidatesAsync();
+            Assert.Equal("Candidate joins could not be found: " + unreadable, joins.Text);
+            window.ShowTab(2);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            await window.ShowTimelineAsync();
+            Assert.Equal("The timeline could not be drawn: " + unreadable,
+                Named<TextBlock>(window, "The investigation's timeline, each session in words").Text);
 
             // A session that could not be added says so, and the investigation is not read again only to say it cannot be.
             await window.AddAsync([Session(root.Path, "third")]);
