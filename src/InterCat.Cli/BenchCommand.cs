@@ -106,7 +106,7 @@ internal static class BenchCommand
                 path,
                 JsonSerializer.Serialize(report, JsonContracts.Indented),
                 cancellationToken).ConfigureAwait(false);
-            ConsoleUi.Success($"Baseline written to {path}");
+            ConsoleUi.Success($"Baseline written to {path}.");
         }
 
         return report.BudgetsMissed > 0

@@ -161,7 +161,7 @@ internal static class CompareCommand
         string? destination = output is null ? null : Path.GetFullPath(output);
         if (destination is not null && File.Exists(destination) && !overwrite)
         {
-            ConsoleUi.Failure($"{destination} already exists. Pass --overwrite to replace it.");
+            ConsoleUi.Failure($"{destination} exists. Pass --overwrite to replace it.");
             return InterCatExitCode.InvalidInvocation;
         }
 

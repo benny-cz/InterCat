@@ -291,7 +291,7 @@ internal static partial class MeasureCommand
             RenderPipe(run);
         }
 
-        ConsoleUi.Success($"Run artifacts written to {outputDirectory}");
+        ConsoleUi.Success($"Run artifacts written to {outputDirectory}.");
         return stop.Health.IsLossFree && coverage.Assessment.Gaps.Count == 0
             ? InterCatExitCode.Success
             : InterCatExitCode.PartialResultSuccess;

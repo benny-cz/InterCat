@@ -127,11 +127,14 @@ public sealed class RefusalWordsTests : IDisposable
         foreach (string[] args in new[]
         {
             ["profiles", "explore", "--output", report], ["exchanges", session.Path, "--output", report],
-            new[] { "checkpoint", session.Path, "--output", report },
+            ["checkpoint", session.Path, "--output", report], ["compact", session.Path, "--output", report],
+            ["capabilities", "--output", report], ["export", session.Path, "--output", report],
+            new[] { "operations", session.Path, "--output", report },
         })
         {
-            (InterCatExitCode code, _, string said) = await Run(args);
-            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            // Refused before anything is read, so nothing is said of what would have been written.
+            (InterCatExitCode code, string output, string said) = await Run(args);
+            Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, output));
             Assert.Contains($"{report} exists. Pass --overwrite to replace", said, StringComparison.Ordinal);
         }
 
@@ -146,6 +149,54 @@ public sealed class RefusalWordsTests : IDisposable
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Contains($"Profile catalog written to {written}.", said, StringComparison.Ordinal);
         Assert.Equal((await Run("profiles", "--json")).Output.TrimEnd(), File.ReadAllText(written).TrimEnd());
+    }
+
+    [Fact(DisplayName = "R18: icat compact and export refuse a folder that holds no session, and icat timeline a process or an end it cannot read, in words")]
+    public async Task AMissingFolderOrAnUnreadOptionIsRefused()
+    {
+        string missing = Path.Combine(root.Path, "no-session");
+        foreach ((string[] args, string expected) in new (string[], string)[]
+        {
+            (["compact"], "A published session directory is required: icat compact <directory>."),
+            (["compact", missing], $"No session directory at {missing}."),
+            (["export", missing, "--output", Path.Combine(root.Path, "export.json")], $"No session directory at {missing}."),
+            (["timeline", session.Path, "--interval", "0:1000", "--process", "100"],
+                "--process requires a process instance id, as icat processes prints it; '100' is not one. A PID is not an instance identity."),
+            (["timeline", session.Path, "--interval", "0:1000", "--end", "2"], "--end is 0 or 1, the channel's first or second end; '2' is neither."),
+        })
+        {
+            (InterCatExitCode code, string output, string said) = await Run(args);
+            Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, output));
+            Assert.Contains(expected, said, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact(DisplayName = "R18: icat capabilities, compact and operations write their reports to --output as --json prints them, into a folder they make, and say so")]
+    public async Task ReportsAreWrittenWhereAsked()
+    {
+        foreach ((string[] args, string written) in new (string[], string)[]
+        {
+            (["capabilities"], "Capability report written to"),
+            (["compact", session.Path, "--check"], "Compaction report written to"),
+            (["operations", session.Path], "RPC calls written to"),
+        })
+        {
+            string report = Path.Combine(root.Path, "written", args[0] + ".json");
+            (InterCatExitCode code, _, string said) = await Run([.. args, "--output", report]);
+            Assert.True(code is InterCatExitCode.Success or InterCatExitCode.PartialResultSuccess, said);
+            Assert.Contains($"{written} {report}.", said, StringComparison.Ordinal);
+
+            // The same document --json prints, but for the moment a capability probe was made.
+            static System.Text.Json.Nodes.JsonNode? Unprobed(string json)
+            {
+                System.Text.Json.Nodes.JsonNode? document = System.Text.Json.Nodes.JsonNode.Parse(json);
+                _ = (document as System.Text.Json.Nodes.JsonObject)?.Remove("probedAtUtc");
+                return document;
+            }
+
+            Assert.True(System.Text.Json.Nodes.JsonNode.DeepEquals(Unprobed((await Run([.. args, "--json"])).Output), Unprobed(File.ReadAllText(report))),
+                args[0]);
+        }
     }
 
     [Fact(DisplayName = "R18: icat checkpoint says what came of it in its report alone, and that it publishes one only when the generation names none")]

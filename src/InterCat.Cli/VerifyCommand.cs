@@ -216,7 +216,7 @@ internal static class VerifyCommand
                 ConsoleUi.Note(note);
             }
 
-            ConsoleUi.Success($"Curated fixture written to {outputDirectory}");
+            ConsoleUi.Success($"Curated fixture written to {outputDirectory}.");
         }
 
         return coverage.Assessment.Gaps.Count == 0

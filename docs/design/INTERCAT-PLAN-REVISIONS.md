@@ -656,6 +656,8 @@ Revision 813 makes a clock descriptor refuse a kind, encoding or rounding the co
 
 Revision 814 runs what a coverage pass over `icat profiles` found no test ran; it found the catalog it writes said as a preview.
 
+Revision 815 gives every command one wording for a report that exists and one for a report written, and makes `icat capabilities` refuse an existing report before it probes.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2085,3 +2087,13 @@ that is no positive integer, content options given to focused transport, focused
 adapter catalog does not hold. Running them found the profile catalog written with `--output` said as "Profile preview
 written to …"; it is said as the catalog now, and a preview as a preview. What stays unrun is a plan that can start
 and its scope table, which only Windows' trace metadata compiles.
+
+Revision 815 follows a coverage pass over `icat compact`, `capabilities`, `timeline`, `export` and `operations` (R10).
+A report file that exists was refused in two wordings, "exists" by most commands and "already exists" by `icat
+capabilities`, `compare`, `export` and `support`, and six commands said where they wrote without ending the sentence;
+every command now says "<path> exists. Pass --overwrite to replace it.", as the test of a report not replaced says
+every command does, and ends the sentence that says where it wrote (R18). `icat capabilities` also probed and printed
+its whole report before refusing a report file that exists; it refuses first now, with nothing printed, as every other
+command does. Tests run the rest the pass found: a folder that holds no session, a `--process` or `--end` the timeline
+cannot read, and the reports `icat capabilities`, `compact` and `operations` write with `--output`, each the document
+`--json` prints, the capability report but for the moment it was probed.

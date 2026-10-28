@@ -712,7 +712,7 @@ public sealed class CompareCommandTests
             // A file there is replaced only when asked, and then with as many rows as --limit asks.
             (code, text, said) = await Run([.. compare, "--output", report, "--share-redacted"]);
             Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, text));
-            Assert.StartsWith($"x {report} already exists. Pass --overwrite to replace it.", said, Ordinal);
+            Assert.StartsWith($"x {report} exists. Pass --overwrite to replace it.", said, Ordinal);
             Assert.Equal(written, File.ReadAllText(report));
             (code, text, _) = await Run([.. compare, "--output", report, "--share-redacted", "--overwrite", "--limit", "1"]);
             Assert.Equal(InterCatExitCode.Success, code);

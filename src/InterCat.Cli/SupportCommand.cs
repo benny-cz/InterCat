@@ -52,7 +52,7 @@ internal static class SupportCommand
         string? target = output is null ? null : Path.GetFullPath(output);
         if (target is not null && File.Exists(target) && !overwrite)
         {
-            ConsoleUi.Failure($"{target} already exists. Pass --overwrite to replace it.");
+            ConsoleUi.Failure($"{target} exists. Pass --overwrite to replace it.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -105,7 +105,7 @@ internal static class SupportCommand
             }
 
             await File.WriteAllTextAsync(target, payload, cancellationToken).ConfigureAwait(false);
-            ConsoleUi.Success($"Support bundle written to {target}");
+            ConsoleUi.Success($"Support bundle written to {target}.");
         }
 
         return document.Sessions.Any(session => session.Problem is not null)

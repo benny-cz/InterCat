@@ -29,6 +29,14 @@ internal static class CapabilitiesCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        // A report that exists is refused before anything is read, as every command refuses it.
+        string? fullPath = outputPath is null ? null : Path.GetFullPath(outputPath);
+        if (fullPath is not null && File.Exists(fullPath) && !overwrite)
+        {
+            ConsoleUi.Failure($"{fullPath} exists. Pass --overwrite to replace it.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         ConsoleUi.Progress("Reading provider registration and schema metadata. No capture is started.");
         CapabilityReport report = Probe();
         cancellationToken.ThrowIfCancellationRequested();
@@ -43,15 +51,8 @@ internal static class CapabilitiesCommand
             Render(report);
         }
 
-        if (outputPath is not null)
+        if (fullPath is not null)
         {
-            string fullPath = Path.GetFullPath(outputPath);
-            if (File.Exists(fullPath) && !overwrite)
-            {
-                ConsoleUi.Failure($"{fullPath} already exists. Pass --overwrite to replace it.");
-                return InterCatExitCode.InvalidInvocation;
-            }
-
             string? directory = Path.GetDirectoryName(fullPath);
             if (!string.IsNullOrEmpty(directory))
             {
@@ -59,7 +60,7 @@ internal static class CapabilitiesCommand
             }
 
             await File.WriteAllTextAsync(fullPath, payload, cancellationToken).ConfigureAwait(false);
-            ConsoleUi.Success($"Capability report written to {fullPath}");
+            ConsoleUi.Success($"Capability report written to {fullPath}.");
         }
 
         return report.Diagnostics.Count == 0 ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;

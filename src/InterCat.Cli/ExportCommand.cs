@@ -103,7 +103,7 @@ internal static class ExportCommand
 
         if (File.Exists(destination) && !overwrite)
         {
-            ConsoleUi.Failure($"{destination} already exists. Pass --overwrite to replace it.");
+            ConsoleUi.Failure($"{destination} exists. Pass --overwrite to replace it.");
             return InterCatExitCode.InvalidInvocation;
         }
 
