@@ -640,9 +640,11 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
             text.Text = read.Text;
             var notes = new List<string>(3);
             if (read.Escaped > 0)
-                notes.Add(string.Create(culture, $"{read.Escaped:N0} control or invisible characters are shown as marks, like ␀ or ⟨U+202E⟩"));
+                notes.Add(read.Escaped == 1
+                    ? "1 control or invisible character is shown as a mark, like ␀ or ⟨U+202E⟩"
+                    : string.Create(culture, $"{read.Escaped:N0} control or invisible characters are shown as marks, like ␀ or ⟨U+202E⟩"));
             if (read.Replaced > 0)
-                notes.Add(string.Create(culture, $"{read.Replaced:N0} show as �, where the bytes are not this encoding - as a range cut mid-character is not"));
+                notes.Add(string.Create(culture, $"{read.Replaced:N0} {(read.Replaced == 1 ? "shows" : "show")} as �, where the bytes are not this encoding - as a range cut mid-character is not"));
             if (read.Cut)
                 notes.Add(string.Create(culture, $"the text stops after {ContentBytesView.MaximumTextCharacters:N0} characters"));
             textNote.Text = notes.Count == 0

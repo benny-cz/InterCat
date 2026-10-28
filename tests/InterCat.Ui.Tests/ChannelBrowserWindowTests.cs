@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
@@ -296,6 +297,55 @@ public sealed class ChannelBrowserWindowTests
         Assert.Equal(NoPage, Offers.WhyNot(Labelled(older, ShowChannel)));
         Assert.Equal(NoPage, Offers.WhyNot(Labelled(older, NextPage)));
         older.Close();
+        Assert.Null(await closed);
+        owner.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§7.1: a session that publishes a newer generation between two pages starts its list again from the first page, and says why")]
+    public async Task ANewerGenerationStartsTheListAgain()
+    {
+        // As many channels as fill a page and more, each between its own two ports.
+        static ObservationRowV1[] Channels(int count) =>
+        [
+            .. Enumerable.Range(0, count).SelectMany(index => new[]
+            {
+                Transfer(10 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 64, 100, (ulong)(1 + (2 * index)))
+                    .Between($"127.0.0.1:{40_000 + index}", $"127.0.0.1:{10_000 + index}"),
+                Transfer(11 + (2 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, (ulong)(2 + (2 * index)))
+                    .Between($"127.0.0.1:{10_000 + index}", $"127.0.0.1:{40_000 + index}"),
+            }),
+        ];
+        using var session = new TemporarySession();
+        Publish(session.Store, Channels(SessionChannelQuery.DefaultPageSize + 1));
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        using var browser = new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation, null, null);
+        Task<Channel?> closed = browser.ShowDialog<Channel?>(owner);
+        Button next = Labelled(browser, NextPage);
+        for (int wait = 0; wait < 250 && !next.IsEnabled; wait++)
+        {
+            Dispatch();
+            await Task.Delay(20);
+        }
+
+        // A live capture publishes between the two pages: Next reads the newer generation's first page, never a shifted one.
+        Publish(session.Store, Channels(SessionChannelQuery.DefaultPageSize + 2));
+        session.Store.ReleaseSegmentReaders();
+        TextBlock status = browser.GetVisualDescendants().OfType<TextBlock>().Single(block => AutomationProperties.GetName(block) == "Channels status");
+        const string Restarted = " · the list restarted because the session published a newer generation";
+        next.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        for (int wait = 0; wait < 250 && status.Text?.EndsWith(Restarted, StringComparison.Ordinal) != true; wait++)
+        {
+            Dispatch();
+            await Task.Delay(20);
+        }
+
+        Dispatch();
+        Assert.Equal($"Generation {overview.Generation + 1:N0} · {SessionChannelQuery.DefaultPageSize + 2:N0} channels in scope "
+            + $"· {SessionChannelQuery.DefaultPageSize:N0} on this page · more pages available" + Restarted, status.Text);
+        Assert.Equal(SessionChannelQuery.DefaultPageSize, browser.GetVisualDescendants().OfType<ListBox>().Single().ItemCount);
+        browser.Close();
         Assert.Null(await closed);
         owner.Close();
     }

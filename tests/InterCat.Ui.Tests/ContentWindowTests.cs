@@ -130,6 +130,49 @@ public sealed class ContentWindowTests
         Assert.True(closed);
     }
 
+    [AvaloniaFact(DisplayName = "§3.7: the text view says what it shows otherwise than the bytes hold it - marks, replacement characters and where it stops - in words that agree with each count")]
+    public void TheTextSaysWhatItShowsOtherwise()
+    {
+        using var session = new TemporarySession();
+
+        // One control character, one byte no UTF-8 reads and more text than the view shows; then two of each; then plain text.
+        byte[][] messages =
+        [
+            [0x00, 0xFF, .. Enumerable.Repeat((byte)'a', ContentBytesView.MaximumTextCharacters)],
+            [0x01, 0x02, 0xFE, 0xFF, (byte)'b'],
+            "plain"u8.ToArray(),
+        ];
+        ObservationRowV1[] rows = [.. messages.Select((message, index) =>
+            Transfer(10 + (index * 10), ObservationKind.Send, AccountingSide.SendSide, message.Length, 100, (ulong)(index + 1))
+                .Between("127.0.0.1:50000", "127.0.0.1:8080"))];
+        int limit = messages[0].Length;
+        Publish(session.Store, rows, content: (ContentHeader(recordLimit: limit), [.. rows.Select((row, index) => Content(row, messages[index], limit))]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+
+        // What the viewer says of a record's text, its bytes shown and its Text tab chosen.
+        List<string> Said(int record)
+        {
+            using var window = new SessionContentWindow(session.Path, page.SessionId, page.Records[record]);
+            window.Show();
+            WaitFor(() => Texts(window).Any(text => text.StartsWith("Checked content-", StringComparison.Ordinal)));
+            Named<Button>(window, "Show the kept bytes").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => window.GetVisualDescendants().OfType<ListBox>().Any(list =>
+                AutomationProperties.GetName(list) == "Hex view of the chosen bytes" && list.ItemsSource is IEnumerable<ContentLine>));
+            window.GetVisualDescendants().OfType<TabControl>().Single().SelectedIndex = 1;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            List<string> said = Texts(window);
+            window.Close();
+            return said;
+        }
+
+        string stops = string.Create(System.Globalization.CultureInfo.CurrentCulture, $"{ContentBytesView.MaximumTextCharacters:N0}");
+        Assert.Contains("1 control or invisible character is shown as a mark, like ␀ or ⟨U+202E⟩; 1 shows as �, where the bytes are not "
+            + $"this encoding - as a range cut mid-character is not; the text stops after {stops} characters.", Said(0));
+        Assert.Contains("2 control or invisible characters are shown as marks, like ␀ or ⟨U+202E⟩; 2 show as �, where the bytes are not "
+            + "this encoding - as a range cut mid-character is not.", Said(1));
+        Assert.Contains("The text exactly as the bytes hold it.", Said(2));
+    }
+
     [AvaloniaFact(DisplayName = "§3.7: Save bytes writes exactly the chosen bytes to the file chosen, nothing when none is, and says why it could not")]
     public async Task SavingWritesTheChosenBytes()
     {

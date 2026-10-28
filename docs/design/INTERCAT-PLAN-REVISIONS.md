@@ -646,6 +646,8 @@ Revision 808 runs what a coverage pass over the graph view, the minimap and the 
 
 Revision 809 runs what a coverage pass over the investigation's words found no test ran; its paragraph below says the pairs not proposed it found miscounted in words.
 
+Revision 810 runs what a coverage pass over the content viewer, the channel list and pin removal found no test ran; its paragraph below says the text notes it found in the plural for one.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2028,3 +2030,13 @@ a kind there was none of counted and one pair said in the plural. One wording, `
 says each kind there is, as many as it is, for both, and nothing when none was set aside, as `NoCandidate` is one
 wording for both. The dialog's refusal of an instant with no session also kept saying where the instants compared
 before fall; it clears them, and the comparison it holds, as its other refusals do.
+
+Revision 810 runs what a coverage pass over the window's content viewer, channel list and pins found no test ran
+(R10): 21 of the 670 lines of the first a test can reach, 8 of the 187 of the second and 15 of the 232 of the third,
+among them the text view's notes of control characters shown as marks, bytes its encoding does not read and text past
+its bound (§3.7); a session that publishes a newer generation between two pages of channels, whose list starts again
+from its first page rather than shift, and says why (§7.1); and a pin that cannot be removed because its folder now
+holds another session, said with the store's reason (I18). Running them found the text view saying "1 control or
+invisible characters are shown as marks" and "1 show as �" of a single character; each note now agrees with its count.
+What stays unrun of the viewer is a part it does not read, kept without consent in another chunk or past the 64 MiB a
+part is read up to, and a decoding asked for where no decoder reads the record, which its button already refuses.

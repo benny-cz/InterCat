@@ -111,6 +111,15 @@ public sealed class RetentionPinWindowTests
             Assert.Empty(session.Store.Pins());
             Assert.Null(await window.RemovePinAsync(placed));
             Assert.Equal("That pin was already removed", status.Text);
+
+            // Once the folder holds another session, no pin of this one is removed from it, which is said, and why.
+            Directory.Delete(session.Path, recursive: true);
+            Directory.CreateDirectory(session.Path);
+            SessionStore other = SessionStore.Open(LocalOwnedDirectory.Open(session.Path), Guid.NewGuid(), "retention-pin-window-tests");
+            Publish(other, [Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080")]);
+            other.ReleaseSegmentReaders();
+            Assert.Null(await window.RemovePinAsync(placed));
+            Assert.Equal(("No pin was removed", SessionStore.AnotherSession), (status.Text, detail.Text));
         }
         finally
         {

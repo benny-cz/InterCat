@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-28 · Plan revision: 809 · Branch: `main`
+Updated: 2026-10-28 · Plan revision: 810 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 810 — a coverage pass over the content viewer, channel list and pin removal; one character said as one:**
+  - Of the lines a test can reach, 21 of the content viewer's 670 ran in none, 8 of the channel list's 187 and 15 of
+    the window's pins' 232: the text view's notes of control characters shown as marks, bytes its encoding does not
+    read and text past its bound; a session that publishes a newer generation between two pages of channels, whose
+    list starts again from its first page and says why; and a pin that cannot be removed, its folder now holding
+    another session. Tests run them now.
+  - Running them found the text view saying "1 control or invisible characters are shown as marks" and "1 show as �"
+    of a single character; each note now agrees with its count. What stays unrun of the viewer is a part it does not
+    read, kept without consent in another chunk or past the 64 MiB a part is read up to, and a decoding asked for
+    where no decoder reads the record, which its button already refuses.
+  - Debug and Release each ran 3,317 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index indexes neither of the 2 new tests, each of a plan section. All 9 mutations were caught: one
+    control character or one replaced byte said in the plural, one replaced byte unsaid, the text's bound unsaid and
+    the plain text's note changed; a restarted list unsaid, or the empty page that asks for the restart shown; and a
+    pin removal that failed said without why, or said done.
 
 - **Revision 809 — a coverage pass over the investigation's words; the pairs not proposed said as many as they are:**
   - Of the lines a test can reach, 11 of the investigation rows' 245 ran in none and 8 of the instant-compare dialog's
