@@ -29,26 +29,27 @@ Windows build is in [the per-build coverage](docs/PER-BUILD-COVERAGE.md).
 **The graph** relates processes by TCP connections and UDP flows whose two ends both belong to processes of the capture,
 and by RPC calls linked to the calls that served them in an RPC peers capture. Each pair's relationships run side by
 side, a mechanism's hue each, with an arrowhead at the process connected to where the capture saw their connections
-open. Connections whose other end no record holds - most of a real machine's, to other hosts - are drawn to one
-**Other hosts** node, with an arrowhead at it where a process connected out and at the process where it accepted; it
-names the busiest addresses they ran to, lists them all with the ports reached at each and the connections a process
-accepted from each, and, opened, draws them on their own; a host chosen, drawn or listed, highlights the records of
-every connection to it for E to list. Processes that only reach other hosts are drawn beside it by program, several of
-one program as one node: the busiest programs each on its own, the rest counted in **Other hosts only**; processes with
-no relationship are counted in **No relationships**, and large executable groups collapse; chosen, Other hosts only or
-No relationships lists the processes it counts, E lists the records of the one chosen there, and Enter opens it, Esc
-coming back to it. When it draws no relationship, the graph says why. A search marks the processes it finds, by name,
-PID, an address they reached or a port they accepted connections at, and rings the one chosen among its hits; a number
-typed alone offers its port as well. The relationship table (T) lists each relationship it draws and each edge to other
-hosts, the busiest first, with who connected and the bytes that crossed it, for a keyboard or a screen reader. A chosen
-process's inspector lists its relationships, the busiest five or every one on request, each marked with who connected to
-whom, as a chosen program's lists the programs its processes talked with; Enter on one chooses the process or program at
-its other end, so a chain of connections is walked a key at a time, and Esc walks it back. A chosen process's or
-program's inspector lists the other hosts it reached as well, by address, and Enter on one finds every process that
-reached it. With nothing chosen, the inspector lists the ports the machine's processes accepted connections at, the
-busiest first, each with who connected, as icat ports does, and a chosen program's inspector its processes'; Enter on
-one chooses the process that accepted them, and Esc comes back to the port. Opened, a program keeps its description:
-with nothing chosen on its level, the inspector names it and lists its pairs, hosts and ports as choosing it did.
+open. Connections whose other end no record holds - most of a real machine's, to other hosts - are drawn to one **Other
+hosts** node, with an arrowhead at it where a process connected out and at the process where it accepted; it names the
+busiest addresses they ran to, lists them all with the ports reached at each and the connections a process accepted from
+each, and, opened, draws them on their own; a host chosen, drawn or listed, highlights the records of every connection
+to it for E to list. Processes that only reach other hosts are drawn beside it by program, several of one program as one
+node: the busiest programs each on its own, the rest counted in **Other hosts only**; processes with no relationship are
+counted in **No relationships**, and large executable groups collapse; chosen, Other hosts only or No relationships
+lists the processes it counts, E lists the records of the one chosen there, and Enter opens it, Esc coming back to it.
+When it draws no relationship, the graph says why. A search marks the processes it finds, by name, PID, an address they
+reached or a port they accepted connections at, and rings the one chosen among its hits; a number typed alone offers its
+port as well, and words that find nothing the program they were a letter or two from. The relationship table (T) lists
+each relationship it draws and each edge to other hosts, the busiest first, with who connected and the bytes that
+crossed it, for a keyboard or a screen reader. A chosen process's inspector lists its relationships, the busiest five or
+every one on request, each marked with who connected to whom, as a chosen program's lists the programs its processes
+talked with; Enter on one chooses the process or program at its other end, so a chain of connections is walked a key at
+a time, and Esc walks it back. A chosen process's or program's inspector lists the other hosts it reached as well, by
+address, and Enter on one finds every process that reached it. With nothing chosen, the inspector lists the ports the
+machine's processes accepted connections at, the busiest first, each with who connected, as icat ports does, and a
+chosen program's inspector its processes'; Enter on one chooses the process that accepted them, and Esc comes back to
+the port. Opened, a program keeps its description: with nothing chosen on its level, the inspector names it and lists
+its pairs, hosts and ports as choosing it did.
 
 **The timeline** counts every observed record by mechanism, process, source direction and channel end. Brush an interval
 to rank within it, zoom into it, or read it on the capture machine's wall clock.
@@ -56,7 +57,8 @@ to rank within it, zoom into it, or read it on the capture machine's wall clock.
 **The ranked table and the ladder** go from the machine to an executable group, a process instance, its channels, its
 RPC calls or HTTP exchanges, and their source records (E), ranked by records, bytes, RPC calls, errors, durations, peers
 or the connections a process made or accepted, per second if you like. Counts say what they count and over which scope,
-and a chosen record opens its original journal entry.
+and a chosen record opens its original journal entry. Enter goes down a level; Esc, Alt+Left or the mouse's Back
+button goes back to exactly where you were, and Alt+Right or its Forward button down again.
 
 **Messages.** A message your processes sent or received through WinINet opens in the content viewer, its bytes shown
 only when you ask; `icat content` shows the same from an evidence row, and `--part` the whole HTTP head or body its
@@ -140,7 +142,8 @@ dotnet run --project src/InterCat.Desktop
 dotnet run --project src/InterCat.Cli -- --help
 ```
 
-`icat` below is `dotnet run --project src/InterCat.Cli --`.
+`icat` below is `dotnet run --project src/InterCat.Cli --`. A command, option, value or name it does not know, a letter
+or two from one it does, is answered with that one: `icat proceses` with `did you mean icat processes?`.
 
 ```powershell
 # A tour with no capture: the demo's two hosts and the investigation that aligns them.
@@ -151,6 +154,7 @@ icat ports <new-folder>/demo-server --investigation <new-folder>/demo.icat-works
 icat channels <new-folder>/demo-server
 icat compare <new-folder>/demo-client --baseline 0:20s --interval 20s:60s
 icat workspace show <new-folder>/demo.icat-workspace
+icat workspace compare <new-folder>/demo.icat-workspace demo-client@1 demo-server@1
 
 # Capture through the broker (Windows asks for approval), for a minute, or with RPC peers.
 icat capture <new-session-folder> --duration 60

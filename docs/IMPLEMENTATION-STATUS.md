@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-30 · Plan revision: 841 · Branch: `main`
+Updated: 2026-10-30 · Plan revision: 842 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 842 — the README says how to go back and forward and what a near miss is answered with:**
+  - The README, which a person reads before the plan, said none of what revisions 836 to 841 changed for them. It now
+    says how the ladder goes back and forward, the mouse's Back and Forward buttons among them; that a search finding
+    nothing offers the program it was near; that `icat` answers a command, option, value or name a letter or two off
+    with the one meant; and its demo tour orders the two hosts' instants by naming their sessions by their folders.
+  - Only the README changed, beside the plan's header, the status and the log. The architecture tests, which read
+    the docs, passed in Debug and Release, and the tour's new command, run on a demo, ordered the two hosts'
+    instants by the investigation's time.
 
 - **Revision 841 — a session of an investigation is named by its folder as icat workspace show lists it (R22):**
   - `icat workspace show` lists each session by its short identity and its folder, but `align`, `relink`, `compare`,

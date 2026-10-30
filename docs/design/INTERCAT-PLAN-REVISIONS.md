@@ -710,6 +710,8 @@ Revision 840 lets the mouse's Back button go back as Esc does, and its Forward b
 
 Revision 841 names a session of an investigation by its folder as `icat workspace show` lists it.
 
+Revision 842 brings the README up to what revisions 836 to 841 changed for a person.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2459,3 +2461,10 @@ and are another's folder, `abcd` for a session in a folder named so beside one w
 rather than read as either. Words that name no session are answered with the folders a letter or two from them. Naming
 is a person's reference to a session the investigation already holds by its identity; it makes no two sessions one,
 which P6 forbids a name to do.
+
+Revision 842 changes the README alone, beside this log, the status and the plan's header. Revisions 836 to 841 changed
+what a person meets first, and the README, which a person reads before the plan, said none of it: the ladder's
+paragraph now says how it goes back and forward, with Esc, Alt and an arrow, or the mouse's Back and Forward buttons;
+the graph's says a search that finds nothing offers the program it was near; the command line's says a mistyped
+command, option, value or name is answered with the one meant; and the demo tour orders the two hosts' instants with
+`icat workspace compare`, naming the sessions by their folders.
