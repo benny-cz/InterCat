@@ -753,7 +753,7 @@ internal static class RetainCommand
                 MostReleasingNanoseconds = preview.MostReleasingNanoseconds,
                 ReplacedFiles = preview.ReplacedFiles,
                 ReleasesAnything = preview.ReleasesAnything,
-                Obstacle = Kebab(preview.Obstacle.ToString()),
+                Obstacle = CommandLine.Kebab(preview.Obstacle.ToString()),
                 Finished = finished,
             },
             Result = released is null ? null : new()
@@ -875,10 +875,6 @@ internal static class RetainCommand
         manifest.Dependencies.Any(dependency => dependency.Kind is StoreDependencyKind.CaptureFinalization or StoreDependencyKind.RedactionPolicy)
         || (SessionSegments.CoverageLedger(store.Root, manifest) is { Epochs.Count: > 0 } ledger
             && ledger.Epochs.All(epoch => epoch.Acquisition == CoverageAcquisition.EtlImport));
-
-    /// <summary>An enumeration's name as a person types it: "NothingBefore" as "nothing-before".</summary>
-    private static string Kebab(string name) => string.Concat(name.Select((character, index) =>
-        char.IsUpper(character) && index > 0 ? "-" + char.ToLowerInvariant(character) : char.ToLowerInvariant(character).ToString()));
 
     /// <summary>
     /// Measures, and with a reason performs, the release of every content chunk the session keeps (content-v1 §2). The

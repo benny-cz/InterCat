@@ -542,8 +542,8 @@ public sealed class HostsCommandTests
         // A ranking hosts hold nothing of, and one beside --address, which lists processes, are refused.
         (code, _, said) = await Run("hosts", session.Path, "--rank-by", "rpc-calls-made");
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
-        Assert.Contains("--rank-by ranks the hosts by records, bytes-sent, bytes-received or bytes-sent-and-received; "
-            + "'rpc-calls-made' is none of them.", said, Ordinal);
+        Assert.Contains("--rank-by expects records, bytes-sent, bytes-received or bytes-sent-and-received; "
+            + "'rpc-calls-made' is not one.", said, Ordinal);
         (code, _, said) = await Run("hosts", session.Path, "--rank-by", "bytes-sent", "--address", "142.250");
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
         Assert.Contains("--rank-by ranks the hosts; --address lists the processes that reached one", said, Ordinal);

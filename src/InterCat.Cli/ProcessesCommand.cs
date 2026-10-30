@@ -343,8 +343,8 @@ internal static class ProcessesCommand
         if (rankBy is null || (rankOption is not null && pid is not null))
         {
             ConsoleUi.Failure(rankBy is null
-                ? "--rank-by ranks the instances by records, bytes-sent, bytes-received, bytes-sent-and-received, "
-                    + $"connections-made or connections-accepted; '{rankOption}' is none of them."
+                ? CommandLine.Expects("--rank-by", rankOption,
+                    ["records", "bytes-sent", "bytes-received", "bytes-sent-and-received", "connections-made", "connections-accepted"])
                 : "--rank-by ranks the list of instances; --pid shows each instance of one PID in full.");
             return InterCatExitCode.InvalidInvocation;
         }

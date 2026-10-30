@@ -108,8 +108,8 @@ public sealed class WaitsCommandTests
         {
             (["--limit", "0"], "--limit expects a number of rows of 1 or more; '0' is not one."),
             (["--process", "999"], "--process 999 names no process: no process of the session held PID 999."),
-            (["--evidence-policy", "2"], "--evidence-policy expects one of: DirectOnly, IncludeCorrelated, IncludeCandidates, "
-                + "AllIncludingConflicting. '2' is not one."),
+            (["--evidence-policy", "2"], "--evidence-policy expects direct-only, include-correlated, include-candidates "
+                + "or all-including-conflicting; '2' is not one."),
             (["--interval", "500:150"], "--interval expects start:end, each bound a count of 100-nanosecond session "
                 + "ticks or a time with its unit, such as 1.5s, 250ms or 40us, with its end after its start; '500:150' is not one."),
         })

@@ -24,7 +24,7 @@ internal static class EvidencePolicyOption
         }
 
         policy = EvidencePolicy.IncludeCorrelated;
-        refusal = $"--evidence-policy expects one of: {string.Join(", ", Enum.GetNames<EvidencePolicy>())}. '{text}' is not one.";
+        refusal = CommandLine.Expects("--evidence-policy", text, CommandLine.Kebabs<EvidencePolicy>());
         return false;
     }
 }

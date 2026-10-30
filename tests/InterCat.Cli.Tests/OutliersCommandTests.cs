@@ -163,10 +163,10 @@ public sealed class OutliersCommandTests
             (["--baseline", "0:1000"], "--interval is required: start:end"),
             (["--interval", "1050:1000"], "--interval expects start:end"),
             (["--interval", "1000:1050", "--baseline", "10:5"], "--baseline expects start:end"),
-            (["--interval", "1000:1050", "--group-by", "host"], "--group-by judges process or executable rows; 'host' is neither."),
+            (["--interval", "1000:1050", "--group-by", "host"], "--group-by expects process or executable; 'host' is not one."),
             (["--interval", "1000:1050", "--limit", "0"], "--limit expects a number of rows of 1 or more; '0' is not one."),
-            (["--interval", "1000:1050", "--evidence-policy", "2"], "--evidence-policy expects one of: DirectOnly, IncludeCorrelated, "
-                + "IncludeCandidates, AllIncludingConflicting. '2' is not one."),
+            (["--interval", "1000:1050", "--evidence-policy", "2"], "--evidence-policy expects direct-only, include-correlated, "
+                + "include-candidates or all-including-conflicting; '2' is not one."),
         })
         {
             (InterCatExitCode refused, string output, string why) = await Run(["outliers", session.Path, .. args]);

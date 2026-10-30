@@ -245,7 +245,7 @@ public sealed class CommandLineTests : IDisposable
             Assert.Contains("is a folder; icat verify names a mechanism", verifySaid, StringComparison.Ordinal);
             Assert.Contains("A session is verified whenever it is opened", verifySaid, StringComparison.Ordinal);
             Assert.DoesNotContain("is a folder", (await Run("verify", "tpc")).Error, StringComparison.Ordinal);
-            Assert.Contains("icat measure runs the tcp, udp, pipe or rpc fixture; 'tpc' is none of them.",
+            Assert.Contains("icat measure expects tcp, udp, pipe or rpc; 'tpc' is not one; did you mean tcp or rpc?",
                 (await Run("measure", "tpc")).Error, StringComparison.Ordinal);
         }
         finally
@@ -504,7 +504,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"(?m)^  HTTP key +http", listedExchanges);
         (InterCatExitCode refused, _, string why) = await Run("evidence", machine.Path, "--evidence-policy", "everything");
         Assert.Equal(InterCatExitCode.InvalidInvocation, refused);
-        Assert.Contains("--evidence-policy expects one of: DirectOnly, IncludeCorrelated, IncludeCandidates, AllIncludingConflicting.",
+        Assert.Contains("--evidence-policy expects direct-only, include-correlated, include-candidates or all-including-conflicting;",
             why, StringComparison.Ordinal);
 
         // An export of a rung's records names the same query, in JSON and as a CSV's last column.
@@ -1069,8 +1069,8 @@ public sealed class CommandLineTests : IDisposable
         // A ranking it does not know, and a ranking of one PID's detail, are refused.
         (code, _, said) = await Run("processes", session.Path, "--rank-by", "busiest");
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
-        Assert.Contains("--rank-by ranks the instances by records, bytes-sent, bytes-received, bytes-sent-and-received, "
-            + "connections-made or connections-accepted; 'busiest' is none of them.", said, StringComparison.Ordinal);
+        Assert.Contains("--rank-by expects records, bytes-sent, bytes-received, bytes-sent-and-received, "
+            + "connections-made or connections-accepted; 'busiest' is not one.", said, StringComparison.Ordinal);
         (code, _, said) = await Run("processes", session.Path, "--rank-by", "records", "--pid", "100");
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
         Assert.Contains("--pid shows each instance of one PID in full", said, StringComparison.Ordinal);
@@ -4168,7 +4168,7 @@ public sealed class CommandLineTests : IDisposable
         // A name that is none, an end without a channel and a third end are refused, saying what is expected.
         (code, _, string refused) = await Run("evidence", session.Path, "--mechanism", "pigeon");
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
-        Assert.Contains("--mechanism expects one of:", refused, StringComparison.Ordinal);
+        Assert.Contains("--mechanism expects process-lifecycle, thread-lifecycle, tcp, udp,", refused, StringComparison.Ordinal);
         (code, _, refused) = await Run("evidence", session.Path, "--end", "0");
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
         Assert.Contains("name the channel by its key", refused, StringComparison.Ordinal);

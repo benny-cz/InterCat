@@ -219,10 +219,10 @@ internal static class EvidenceCommand
                 + (channel is null ? string.Empty : $" --channel {channel}")
                 + string.Concat(page.OwnerProcesses.Select(owner => $" --owner-process {owner}"))
                 + (interval is { } scope ? $" --interval {scope.StartTicks}:{scope.EndTicks}" : string.Empty)
-                + (page.Mechanism is { } named ? $" --mechanism {Kebab(named.ToString())}" : string.Empty)
-                + (page.Direction is { } marked ? $" --direction {Kebab(marked.ToString())}" : string.Empty)
+                + (page.Mechanism is { } named ? $" --mechanism {CommandLine.Kebab(named.ToString())}" : string.Empty)
+                + (page.Direction is { } marked ? $" --direction {CommandLine.Kebab(marked.ToString())}" : string.Empty)
                 + (page.End is { } narrowed ? string.Create(CultureInfo.InvariantCulture, $" --end {narrowed}") : string.Empty)
-                + (policy == EvidencePolicy.IncludeCorrelated ? string.Empty : " --evidence-policy " + Kebab(policy.ToString())));
+                + (policy == EvidencePolicy.IncludeCorrelated ? string.Empty : " --evidence-policy " + CommandLine.Kebab(policy.ToString())));
         return InterCatExitCode.Success;
     }
 
@@ -268,10 +268,6 @@ internal static class EvidenceCommand
         interval = new TimeRange(start, end);
         return true;
     }
-
-    /// <summary>An enumeration's name as a person types it: "ProcessLifecycle" as "process-lifecycle".</summary>
-    private static string Kebab(string name) => string.Concat(name.Select((character, index) =>
-        char.IsUpper(character) && index > 0 ? "-" + char.ToLowerInvariant(character) : char.ToLowerInvariant(character).ToString()));
 
     /// <summary>
     /// Whether --host's text can be an address another host's connections ran to: IPv4 dotted, or IPv6 with its colons,

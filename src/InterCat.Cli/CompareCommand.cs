@@ -93,8 +93,8 @@ internal static class CompareCommand
             : baseline is null ? baselineTooWide?.Replace("--interval", "--baseline", StringComparison.Ordinal)
                 ?? CommandLine.Expects("--baseline", baselineText, TickInterval.Takes)
             : compared is null ? comparedTooWide ?? CommandLine.Expects("--interval", intervalText, TickInterval.Takes)
-            : metric is null ? $"--rank-by compares records or bytes-sent; '{rankByText}' is neither."
-            : grouping is null ? $"--group-by compares process or executable rows; '{groupByText}' is neither."
+            : metric is null ? CommandLine.Expects("--rank-by", rankByText, ["records", "bytes-sent"])
+            : grouping is null ? CommandLine.Expects("--group-by", groupByText, ["process", "executable"])
             : baselineSessionText is not null && grouping == ComparisonGrouping.Process
                 ? "--baseline-session compares two captures by executable: a process of one capture is never another's."
             : null;
@@ -110,7 +110,7 @@ internal static class CompareCommand
                     + "--share-redacted."
             : output is null && fileOnly is not null ? $"{fileOnly} shapes a file written with --output <path>, which was not given."
             : output is not null && json ? "--json prints the comparison and --output writes it to a file; pass one of them."
-            : format is null ? $"--format writes json or csv; '{formatText}' is neither."
+            : format is null ? CommandLine.Expects("--format", formatText, ["json", "csv"])
             : format == ExportFormat.Csv && !redacted
                 ? "Only a redacted report is written as CSV: pass --share-redacted with it, or write the comparison as JSON."
             : null;

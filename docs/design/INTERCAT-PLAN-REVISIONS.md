@@ -700,6 +700,8 @@ Revision 835 lays out the solution in the plan as it is, and holds the layout to
 
 Revision 836 ends every refusal `icat` writes as a sentence, and answers a mistyped command or option with the one it was meant as.
 
+Revision 837 refuses a value from a set of names with the names as they are typed, and answers a near miss with the name meant.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2388,3 +2390,17 @@ added, changed or swapped with the next, and no more than one for every three gi
 at random; an operand is never answered with an option. Revision 834's correction needs one of its own: `icat retain
 --release-content` waited for a session's capture to finish as `--release-before` did, so the one release revision 833
 newly refuses beneath a running follow is of a journal prefix, which a running capture did not stop.
+
+Revision 837 carries revision 836's answer from options to their values. A value that must be one of a set of names
+was refused in three wordings besides the one revision 832 made shared. The enumerations `icat metric`, `evidence` and
+`timeline` read, and every command's `--evidence-policy`, were listed by the names the code declares, `BytesSent` and
+`IncludeCorrelated`, after a colon and before the value in a sentence of its own, though each is read as `bytes-sent`
+too and the commands print that form in what they suggest. `icat compare`, `outliers`, `verify` and a saved comparison
+said a value was neither of two, and `icat processes`, `hosts`, `measure` and `workspace` that it was none of them.
+Each is now refused in the shared form, what the option expects and the value given, with its names as a person types
+them, and a value a letter or two from a name is answered with it, as revision 836 answers an option: the names are
+compared in lower case without their dashes, so `BytsSent` and `byts-sent` are both answered with `bytes-sent`, and
+`BytesSentAndReceived`, which `icat processes --rank-by` does not read, with `bytes-sent-and-received`, whose three
+dashes alone would have put it past two letters. A name longer or shorter than the value by more than the letters
+allowed is never measured, so an argument of any length costs no more than the names near it in length. The two copies
+of the name-to-kebab conversion `icat retain` and `icat evidence` kept are one now, beside the refusal that uses it.

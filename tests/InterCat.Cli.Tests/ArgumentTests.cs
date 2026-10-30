@@ -1,3 +1,4 @@
+using InterCat.Domain;
 using Xunit;
 
 namespace InterCat.Cli.Tests;
@@ -95,6 +96,30 @@ public sealed class ArgumentTests
         // An operand is never answered with an option, however near: it was not written as one.
         Assert.Equal("Unexpected argument 'output': the command takes no more.", reader.Refusal("output"));
         Assert.Throws<ArgumentNullException>(() => reader.Refusal(null!));
+    }
+
+    [Fact(DisplayName = "R18: a value that must be one of a set of names is refused with them as typed, a near one answered with the name meant")]
+    public void AValueFromASetIsAnsweredWithTheNameMeant()
+    {
+        // An enumeration's names as a person types them, in the order of their values.
+        Assert.Equal("nothing-before", CommandLine.Kebab("NothingBefore"));
+        Assert.Equal("requested-io-bytes", CommandLine.Kebab("RequestedIoBytes"));
+        Assert.Equal("tcp", CommandLine.Kebab("Tcp"));
+        Assert.Equal(["direct-only", "include-correlated", "include-candidates", "all-including-conflicting"],
+            CommandLine.Kebabs<EvidencePolicy>());
+        Assert.Throws<ArgumentNullException>(() => CommandLine.Kebab(null!));
+
+        // A value far from every name is refused with them all, in the one form; one a letter or two from a name, whatever
+        // its case or its dashes, is answered with that name as it is typed; one not given is said to be required.
+        string[] names = ["records", "bytes-sent", "bytes-sent-and-received"];
+        const string Expected = "--rank-by expects records, bytes-sent or bytes-sent-and-received; ";
+        Assert.Equal(Expected + "'busiest' is not one.", CommandLine.Expects("--rank-by", "busiest", names));
+        Assert.Equal(Expected + "'byts-sent' is not one; did you mean bytes-sent?", CommandLine.Expects("--rank-by", "byts-sent", names));
+        Assert.Equal(Expected + "'BytesSnet' is not one; did you mean bytes-sent?", CommandLine.Expects("--rank-by", "BytesSnet", names));
+        Assert.Equal(Expected + "'BytesSentAndReceived' is not one; did you mean bytes-sent-and-received?",
+            CommandLine.Expects("--rank-by", "BytesSentAndReceived", names));
+        Assert.Equal("--rank-by is required: records, bytes-sent or bytes-sent-and-received.", CommandLine.Expects("--rank-by", null, names));
+        Assert.Throws<ArgumentNullException>(() => CommandLine.Expects("--rank-by", "x", (IReadOnlyList<string>)null!));
     }
 
     [Fact(DisplayName = "R18: a name is answered with those a letter or two from it, no more than one for every three letters given")]

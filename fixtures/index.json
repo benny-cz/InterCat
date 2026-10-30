@@ -2321,6 +2321,7 @@
         "R18: a refused invocation says why on stderr, and leaves stdout to the answer it did not give",
         "R18: a report file that exists is never replaced without --overwrite, as icat profiles says it as every command does",
         "R18: a session's disclosure, ALPC's, a redacted package's and the demo's say what the evidence holds, never a key of the window",
+        "R18: a value that must be one of a set of names is refused with them as typed, a near one answered with the name meant",
         "R18: a verb is read first, and no option is read after an operand",
         "R18: a wait's server, its share and what no time is said for are said in one set of words, the command line's and the window's",
         "R18: an --interval takes each bound as ticks or as a time with its unit, as the window states an interval, taken outward to whole ticks",

@@ -66,6 +66,14 @@ public sealed class RefusalWordsTests : IDisposable
         { ["bench", "--bogus"], "Unknown option '--bogus'." },
         { ["proceses"], "Unknown command 'proceses'; did you mean icat processes?" },
         { ["PROCESES"], "Unknown command 'PROCESES'; did you mean icat processes?" },
+        { ["processes", "{session}", "--rank-by", "conections-made"], "--rank-by expects records, bytes-sent, bytes-received, "
+            + "bytes-sent-and-received, connections-made or connections-accepted; 'conections-made' is not one; did you mean connections-made?" },
+        { ["processes", "{session}", "--evidence-policy", "includecorelated"], "--evidence-policy expects direct-only, include-correlated, "
+            + "include-candidates or all-including-conflicting; 'includecorelated' is not one; did you mean include-correlated?" },
+        { ["metric", "{session}", "--metric", "BytsSent"], "'BytsSent' is not one; did you mean bytes-sent?" },
+        { ["export", "{session}", "--output", "rows.csv", "--format", "jsno"], "--format expects json or csv; 'jsno' is not one; did you mean json?" },
+        { ["workspace", "algin", "{nowhere}"], "icat workspace expects new, add, show, relink, alias, align, compare, correlate, timeline, "
+            + "join, same-host, translate, note, view, comparison or package; 'algin' is not one; did you mean align?" },
         { ["ixport", "x.etl"], "Unknown command 'ixport'; did you mean icat import or icat export?" },
         { ["frobnicate"], "Unknown command 'frobnicate'." },
         { ["pin", "{session}", "--resaon", "keep"], "Unknown option '--resaon'; did you mean --reason?" },
@@ -102,7 +110,7 @@ public sealed class RefusalWordsTests : IDisposable
         { ["content", "{session}", "--find", "x", "--evidence-policy", "direct-only"],
             "--evidence-policy chooses which records bind to the process --process names: give --process with it." },
         { ["content", "{session}", "--find", "x", "--process", "100", "--evidence-policy", "2"],
-            "--evidence-policy expects one of: DirectOnly, IncludeCorrelated, IncludeCandidates, AllIncludingConflicting. '2' is not one." },
+            "--evidence-policy expects direct-only, include-correlated, include-candidates or all-including-conflicting; '2' is not one." },
         { ["content", "{session}", "--find", "x", "--process", "999"], "--process 999 names no process: no process of the session held PID 999." },
         { ["content", "--find", "x"], "A session directory is required: icat content <directory> --find <text>." },
         { ["content", "{session}", "--session-id", "00000000-0000-0000-0000-000000000001", "--generation", "1", "--segment", "s",
@@ -202,7 +210,7 @@ public sealed class RefusalWordsTests : IDisposable
         // A number is what the durable format stores, not what a person types.
         (InterCatExitCode code, string output, string said) = await Run(With("2"));
         Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (code, output));
-        Assert.Contains("--evidence-policy expects one of: DirectOnly, IncludeCorrelated, IncludeCandidates, AllIncludingConflicting. "
+        Assert.Contains("--evidence-policy expects direct-only, include-correlated, include-candidates or all-including-conflicting; "
             + "'2' is not one.", said, StringComparison.Ordinal);
         foreach (string named in new[] { "direct-only", "DirectOnly" })
         {

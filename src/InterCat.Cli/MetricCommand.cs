@@ -1555,7 +1555,7 @@ internal static class MetricCommand
 
         if (!TryParse(value, LaneGrouping.InstanceOnly, "--group-by", out LaneGrouping parsed, out problem))
         {
-            problem = $"--group-by expects process, executable, session, mechanism or peer, or one of: {string.Join(", ", Enum.GetNames<LaneGrouping>())}. '{value}' is not one.";
+            problem = CommandLine.Expects("--group-by", value, [.. SaidGroupings.Union(CommandLine.Kebabs<LaneGrouping>())]);
             return false;
         }
 
@@ -1665,6 +1665,9 @@ internal static class MetricCommand
         ConsoleUi.Note("A permitted metric this session cannot derive is reported as unavailable, with what it needs.");
     }
 
+    /// <summary>The groupings --group-by takes by the names a person says them with, listed before the rest by their own.</summary>
+    private static readonly string[] SaidGroupings = ["process", "executable", "session", "mechanism", "peer"];
+
     private static bool TryParse<T>(string? value, T fallback, string name, out T parsed, out string? problem)
         where T : struct, Enum
     {
@@ -1683,7 +1686,7 @@ internal static class MetricCommand
             || !Enum.TryParse(compact, ignoreCase: true, out parsed)
             || !Enum.IsDefined(parsed))
         {
-            problem = $"{name} expects one of: {string.Join(", ", Enum.GetNames<T>())}. '{value}' is not one.";
+            problem = CommandLine.Expects(name, value, CommandLine.Kebabs<T>());
             return false;
         }
 

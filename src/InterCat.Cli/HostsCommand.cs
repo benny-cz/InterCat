@@ -69,7 +69,7 @@ internal static class HostsCommand
         if (rankBy is null || (address is not null && (rankText is not null || investigationText is not null)))
         {
             ConsoleUi.Failure(rankBy is null
-                ? $"--rank-by ranks the hosts by records, bytes-sent, bytes-received or bytes-sent-and-received; '{rankText}' is none of them."
+                ? CommandLine.Expects("--rank-by", rankText, ["records", "bytes-sent", "bytes-received", "bytes-sent-and-received"])
                 : rankText is not null
                 ? "--rank-by ranks the hosts; --address lists the processes that reached one, the busiest by records first."
                 : "--investigation names the hosts' candidate other ends; --address lists the processes that reached one.");

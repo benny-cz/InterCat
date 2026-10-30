@@ -218,7 +218,7 @@ public sealed class InvestigationCommandTests : IDisposable
         (InterCatExitCode ungrouped, _, string grouping) = await Run("workspace", "comparison", workspace, "saved", "--session", client,
             "--interval", "0:10000000", "--baseline", "10000000:20000000", "--group-by", "thread");
         Assert.Equal(InterCatExitCode.InvalidInvocation, ungrouped);
-        Assert.Contains("--group-by compares process or executable rows; 'thread' is neither.", grouping, StringComparison.Ordinal);
+        Assert.Contains("--group-by expects process or executable; 'thread' is not one.", grouping, StringComparison.Ordinal);
         Assert.Empty(InvestigationWorkspace.Read(workspace).Comparisons);
 
         // Rejected, the candidate is said not to be one connection; as JSON, a decision is written as the file records it.

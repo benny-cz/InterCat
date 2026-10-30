@@ -106,22 +106,22 @@ internal static class ProfilesCommand
         ContentRetentionMode? retention = ParseContentRetention(retentionText);
         if (retentionText is not null && retention is null)
         {
-            ConsoleUi.Failure($"--retention expects stop-at-limit; '{retentionText}' is not one.");
+            ConsoleUi.Failure(CommandLine.Expects("--retention", retentionText, ["stop-at-limit"]));
             return InterCatExitCode.InvalidInvocation;
         }
 
         ContentInspectionMode? inspection = ParseContentInspection(inspectionText);
         if (inspectionText is not null && inspection is null)
         {
-            ConsoleUi.Failure($"--inspection expects disabled or hex-text; '{inspectionText}' is not one.");
+            ConsoleUi.Failure(CommandLine.Expects("--inspection", inspectionText, ["disabled", "hex-text"]));
             return InterCatExitCode.InvalidInvocation;
         }
 
         Mechanism? mechanism = ParseMechanism(mechanismText);
         if (mechanismText is not null && mechanism is null)
         {
-            ConsoleUi.Failure($"--mechanism expects tcp, udp, rpc or http; '{mechanismText}' is not one. Which of them a "
-                + "profile can capture is checked per profile.");
+            ConsoleUi.Failure(CommandLine.Expects("--mechanism", mechanismText, ["tcp", "udp", "rpc", "http"])
+                + " Which of them a profile can capture is checked per profile.");
             return InterCatExitCode.InvalidInvocation;
         }
 

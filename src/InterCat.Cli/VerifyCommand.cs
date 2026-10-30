@@ -67,7 +67,8 @@ internal static class VerifyCommand
                     + "the run icat measure recorded for it: icat verify <tcp|udp> --run <raw-run-dir> --output "
                     + "<curated-dir>. A session is verified whenever it is opened; icat session <directory> reports what "
                     + "that found."
-                : $"icat verify re-evaluates a tcp or udp run that icat measure recorded; '{mechanism}' is neither.");
+                : CommandLine.Expects("icat verify", mechanism, ["tcp", "udp"]) + " It re-evaluates the run icat measure recorded "
+                    + "for one.");
             return InterCatExitCode.InvalidInvocation;
         }
 

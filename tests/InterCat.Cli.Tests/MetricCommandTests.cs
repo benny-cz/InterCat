@@ -257,7 +257,7 @@ public sealed class MetricCommandTests : IDisposable
         // Every option it cannot read is refused, saying what it expects.
         foreach ((string[] args, string why) in new (string[], string)[]
         {
-            (["--metric", "observations", "--group-by", "bogus"], "--group-by expects process, executable, session, mechanism or peer"),
+            (["--metric", "observations", "--group-by", "bogus"], "--group-by expects process, executable, session, mechanism, peer, instance-only,"),
             (["--metric", "observations", "--top", "0"], "--top expects a number of ranked rows from 1 to 100,000; '0' is not one."),
             (["--metric", "observations", "--evidence", "x"], "--evidence expects a whole number of records up to 1,000; 'x' is not one."),
             (["--metric", "observations", "--interval", "5:5"], "--interval's end must be after its start; '5:5' names an empty or reversed interval."),

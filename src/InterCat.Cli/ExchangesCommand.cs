@@ -220,7 +220,7 @@ internal static class ExchangesCommand
         };
         if (chosen is not { } format)
         {
-            ConsoleUi.Failure($"--format expects json or csv; '{formatOption}' is not one.");
+            ConsoleUi.Failure(CommandLine.Expects("--format", formatOption, ["json", "csv"]));
             return InterCatExitCode.InvalidInvocation;
         }
 

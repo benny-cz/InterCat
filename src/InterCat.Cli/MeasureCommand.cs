@@ -124,7 +124,7 @@ internal static partial class MeasureCommand
         };
         if (scenario is null)
         {
-            ConsoleUi.Failure($"icat measure runs the tcp, udp, pipe or rpc fixture; '{mechanism}' is none of them.");
+            ConsoleUi.Failure(CommandLine.Expects("icat measure", mechanism, ["tcp", "udp", "pipe", "rpc"]));
             return InterCatExitCode.InvalidInvocation;
         }
 

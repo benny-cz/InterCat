@@ -115,6 +115,33 @@ internal sealed class CommandLine
     public static string Expects(string option, string? given, string expects) =>
         given is null ? $"{option} is required: {expects}." : $"{option} expects {expects}; '{given}' is not one.";
 
+    /// <summary>
+    /// The refusal of a value that must be one of <paramref name="names"/>, in the form <see cref="Expects(string, string?,
+    /// string)"/> says one in, its names as a person types them; one a letter or two from a name is answered with it,
+    /// whatever its case or dashes, as `BytsSent` is with bytes-sent.
+    /// </summary>
+    public static string Expects(string option, string? given, IReadOnlyList<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        string[] meant = given is null ? []
+            : [.. Nearest(Compact(given), names.Select(Compact)).Select(near => names.First(name => Compact(name) == near))];
+        return meant.Length == 0
+            ? Expects(option, given, Either(names))
+            : $"{option} expects {Either(names)}; '{given}' is not one; did you mean {Either(meant)}?";
+    }
+
+    /// <summary>A name as a person types it: an enumeration's "NothingBefore" as "nothing-before".</summary>
+    public static string Kebab(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        return string.Concat(name.Select((character, index) =>
+            char.IsUpper(character) && index > 0 ? "-" + char.ToLowerInvariant(character) : char.ToLowerInvariant(character).ToString()));
+    }
+
+    /// <summary>Every name <typeparamref name="T"/> declares, as a person types it, in the order of their values.</summary>
+    public static string[] Kebabs<T>()
+        where T : struct, Enum => [.. Enum.GetNames<T>().Select(Kebab)];
+
     public bool TryTakeFlag(string name)
     {
         Ask(name);
@@ -221,8 +248,16 @@ internal sealed class CommandLine
         ArgumentNullException.ThrowIfNull(given);
         ArgumentNullException.ThrowIfNull(names);
         int most = Math.Min(2, given.Length / 3);
+
+        // A name longer or shorter than what was given by more than that is farther from it, so it is never measured: a
+        // long argument costs no more than a short one.
         (string Name, int Edits)[] near =
-            [.. names.Distinct(StringComparer.Ordinal).Select(name => (name, Edits(given, name))).Where(name => name.Item2 <= most)];
+        [
+            .. names.Distinct(StringComparer.Ordinal)
+                .Where(name => Math.Abs(name.Length - given.Length) <= most)
+                .Select(name => (name, Edits(given, name)))
+                .Where(name => name.Item2 <= most),
+        ];
         return near.Length == 0 ? [] : [.. near.Where(name => name.Edits == near.Min(other => other.Edits)).Select(name => name.Name)];
     }
 
@@ -271,6 +306,9 @@ internal sealed class CommandLine
 
         return distance[from.Length, to.Length];
     }
+
+    /// <summary>A name as two spellings of it compare: its letters in lower case, without dashes.</summary>
+    private static string Compact(string name) => name.Replace("-", string.Empty, StringComparison.Ordinal).ToLowerInvariant();
 
     /// <summary>Notes that the command looked for <paramref name="name"/>, once, in the order it looked.</summary>
     private void Ask(string name)

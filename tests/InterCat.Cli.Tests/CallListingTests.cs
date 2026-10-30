@@ -111,7 +111,7 @@ public sealed class CallListingTests : IDisposable
     [InlineData("--calls", "lots", "--calls expects a number of calls per group up to 10,000; 'lots' is not one.")]
     [InlineData("--top", "-1", "--top expects a number of groups up to 100,000, or 0 for all; '-1' is not one.")]
     [InlineData("--evidence-policy", "strict",
-        "--evidence-policy expects one of: DirectOnly, IncludeCorrelated, IncludeCandidates, AllIncludingConflicting. 'strict' is not one.")]
+        "--evidence-policy expects direct-only, include-correlated, include-candidates or all-including-conflicting; 'strict' is not one.")]
     public async Task AnOptionItCannotReadIsRefused(string option, string value, string expected)
     {
         (InterCatExitCode code, string output, string said) = await Run("operations", session.Path, option, value);

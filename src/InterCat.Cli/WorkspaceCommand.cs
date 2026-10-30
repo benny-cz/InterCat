@@ -308,6 +308,13 @@ internal static partial class WorkspaceCommand
     /// <summary>The columns the investigation window's timeline draws, which the command line draws unless asked otherwise.</summary>
     public const int TimelineColumns = 160;
 
+    /// <summary>What icat workspace does, each by the verb that asks for it.</summary>
+    private static readonly string[] Verbs =
+    [
+        "new", "add", "show", "relink", "alias", "align", "compare", "correlate", "timeline", "join", "same-host", "translate",
+        "note", "view", "comparison", "package",
+    ];
+
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
         Task.FromResult(Run(command, cancellationToken));
 
@@ -417,9 +424,7 @@ internal static partial class WorkspaceCommand
         if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || (manual && operands.Count == 3) || misplaced)
         {
             ConsoleUi.Failure(least < 0
-                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, timeline, join, same-host, translate, note, view, "
-                    + "comparison or package"
-                    + (verb is null ? "." : $"; '{verb}' is none of them.")
+                ? verb is null ? $"icat workspace expects {CommandLine.Either(Verbs)}." : CommandLine.Expects("icat workspace", verb, Verbs)
                 : $"Use {form}.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
@@ -759,14 +764,14 @@ internal static partial class WorkspaceCommand
         {
             null or "records" => ComparisonMetric.Records,
             "bytes-sent" => ComparisonMetric.BytesSent,
-            _ => throw new InvalidOperationException($"--rank-by compares records or bytes-sent; '{rankByText}' is neither."),
+            _ => throw new InvalidOperationException(CommandLine.Expects("--rank-by", rankByText, ["records", "bytes-sent"])),
         };
         ComparisonGrouping grouping = groupByText switch
         {
             null => baselineMember.SessionId == compared.SessionId ? ComparisonGrouping.Process : ComparisonGrouping.Executable,
             "process" => ComparisonGrouping.Process,
             "executable" => ComparisonGrouping.Executable,
-            _ => throw new InvalidOperationException($"--group-by compares process or executable rows; '{groupByText}' is neither."),
+            _ => throw new InvalidOperationException(CommandLine.Expects("--group-by", groupByText, ["process", "executable"])),
         };
         SavedComparison saved = InvestigationWorkspace.SaveComparison(path, name,
             new SavedComparisonInterval { SessionId = baselineMember.SessionId, StartTicks = baseline.StartTicks, EndTicks = baseline.EndTicks },

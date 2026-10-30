@@ -193,8 +193,8 @@ public sealed class PatternsCommandTests
             (["--pattern", "2", "--interval", "500:2000"], "--pattern 2 names no pattern: the interval holds 1 recurring pattern."),
             (["--pattern", "1", "--limit", "2"], "--limit lists patterns and --pattern shows one; pass one of them."),
             (["--limit", "0"], "--limit expects a number of patterns of 1 or more; '0' is not one."),
-            (["--evidence-policy", "2"], "--evidence-policy expects one of: DirectOnly, IncludeCorrelated, IncludeCandidates, "
-                + "AllIncludingConflicting. '2' is not one."),
+            (["--evidence-policy", "2"], "--evidence-policy expects direct-only, include-correlated, include-candidates "
+                + "or all-including-conflicting; '2' is not one."),
             (["--interval", "2000:500"], "--interval expects start:end, each bound a count of 100-nanosecond session "
                 + "ticks or a time with its unit, such as 1.5s, 250ms or 40us, with its end after its start; '2000:500' is not one."),
         })

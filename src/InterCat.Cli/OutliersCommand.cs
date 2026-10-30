@@ -58,7 +58,7 @@ internal static class OutliersCommand
             : baselineText is not null && named is null
                 ? baselineTooWide?.Replace("--interval", "--baseline", StringComparison.Ordinal)
                     ?? CommandLine.Expects("--baseline", baselineText, TickInterval.Takes)
-            : grouping is null ? $"--group-by judges process or executable rows; '{groupByText}' is neither."
+            : grouping is null ? CommandLine.Expects("--group-by", groupByText, ["process", "executable"])
             : invalidLimit ? $"--limit expects a number of rows of 1 or more; '{limitText}' is not one."
             : null;
         if (problem is not null)
