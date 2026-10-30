@@ -690,6 +690,8 @@ Revision 830 says an error nothing in InterCat mapped, in `icat` and in the wind
 
 Revision 831 counts the errors the window contained in its support bundle, by kind and the methods each was thrown from, never what one said.
 
+Revision 832 refuses a value a command cannot read by naming it with what the option expects, and never says a value given is missing.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2302,3 +2304,23 @@ support` counts none: an invocation ends on its first such error and writes it w
 than an empty count, which would read as none met. Tests showed a count from a second call site in one method is a
 kind of its own, because its frames differ by the lambda that made it; that is the place the tally keys on, and the
 tests count again from one place.
+
+Revision 832 gives the command line one form for refusing an option's value (R18). A value it cannot read is refused
+with what the option expects and the value given, as in `--rank-by expects records, ..., connections-made or
+connections-accepted; 'bytes' is not one.`, and an option a command requires and was not given is said to be required,
+with what it takes. That was already the form of a whole number a command could not read and of most other refusals,
+but 29 refusals in 12 commands did not use it. They said a value "must be" something, or that an interval "names no
+interval", without the value given, so a person who had mistyped one value of several had to find which. Worse, `icat
+timeline`, `compare` and `outliers` read an interval they could not parse as one not given, and told a person who had
+just typed `--interval 10:5` that `--interval is required`. Every one now goes through one helper beside the command
+line's refusal of a whole number, which takes the value given and says it is required only when there is none. The
+coverage run that found them also found the readers' refusal of a folder that is not there tested for the M12 and M8
+readers alone, and most of `icat export`'s rankings run by no test. A test now runs every reader at a missing folder
+and at a file in its place, each refused in one sentence naming it, with nothing made; and `icat export` at every
+ranking it takes, where an RPC ranking over a capture that collected TCP and no RPC ranks by records and says why, as
+the window's does. A session that names no coverage leaves RPC unknown rather than not collected, and an RPC ranking
+then ranks by its calls with that said, which is why the test's session states what it collected. The Release suite
+also failed, once, a window test that empties a session's folder and moves another session in while a reader may still
+be at work: a reader that finds the evidence guard gone while the pointer is still there makes the guard again, as one
+of a session older than the guard does, so the other session's guard found a file in its place. The test now moves
+over it, which is what replacing the folder means; no product code was at fault.

@@ -91,8 +91,8 @@ internal static class CompareCommand
             : directory is null ? "A session directory is required: icat compare <directory>."
             : hasUnknown ? command.Refusal(unknown!)
             : baseline is null ? baselineTooWide?.Replace("--interval", "--baseline", StringComparison.Ordinal)
-                ?? "--baseline is required: " + TickInterval.Takes + "."
-            : compared is null ? comparedTooWide ?? "--interval is required: " + TickInterval.Takes + "."
+                ?? CommandLine.Expects("--baseline", baselineText, TickInterval.Takes)
+            : compared is null ? comparedTooWide ?? CommandLine.Expects("--interval", intervalText, TickInterval.Takes)
             : metric is null ? $"--rank-by compares records or bytes-sent; '{rankByText}' is neither."
             : grouping is null ? $"--group-by compares process or executable rows; '{groupByText}' is neither."
             : baselineSessionText is not null && grouping == ComparisonGrouping.Process

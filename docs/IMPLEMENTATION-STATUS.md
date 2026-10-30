@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-30 · Plan revision: 831 · Branch: `main`
+Updated: 2026-10-30 · Plan revision: 832 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,28 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 832 — a value a command cannot read is named, and a missing one said required (R18):**
+  - 29 refusals in 12 commands said a value "must be" something, or "names no interval", without the value given, and
+    `icat timeline`, `compare` and `outliers` said an `--interval` or `--baseline` given the wrong way round "is
+    required", as if none had been given. Each now says what the option expects and the value given that is not one,
+    or that it is required when none was, in the form the rest of the command line uses: the record locator of `raw`
+    and `content`; `evidence`'s page size, owner and interval; `export`'s format, interval, limit, ranking and
+    grouping; `package`'s interval; the columns of both timelines; and the intervals of `patterns`, `waits`, `links`,
+    `outliers`, `compare` and a saved comparison.
+  - Tests now run every reader at a folder that is not there and at a file in its place, each refused in one sentence
+    naming it with nothing made, and `icat export` at every ranking it takes: an RPC ranking over a capture that
+    collected no RPC ranks by records and says why.
+  - The Release suite once failed a window test that replaces a session's folder under a reader: a reader that found
+    the evidence guard gone while the session's pointer was still there made the guard again, as a reader of a session
+    older than the guard does, and moving the other session's guard in then failed. The test now moves over what a
+    reader made meanwhile.
+  - Debug ran 3,436 tests with revision 473's 93 failures and 4 skips, and failed nothing else. Release failed one
+    more, a window test that replaces a session's folder under a reader, through a race in the test it now allows
+    for, and the Desktop tests then passed in both. The fixture index names the new R18 test. All 22 mutations were
+    caught: the shared form leaving out the value given, or calling every value required; and each of 20 refusals
+    given no value to name, the intervals of timeline, compare and outliers among them, which then said a value
+    given was required.
 
 - **Revision 831 — the window's support bundle counts the errors it contained, by kind and where thrown (§20.6):**
   - §20.6 gives each error category its own counter, and revision 830 had the window say an error nothing mapped

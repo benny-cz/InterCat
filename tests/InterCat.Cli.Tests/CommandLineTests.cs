@@ -122,22 +122,47 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
-    [Fact(DisplayName = "§20.4: a folder that is not there is refused by every reader of M12 and M8 in one sentence, naming it")]
+    [Fact(DisplayName = "§20.4: a folder that is not there, or a file in its place, is refused by every reader in one sentence, naming it")]
     public async Task AFolderNotThereIsNamed()
     {
-        string nowhere = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N"));
-        foreach (string[] args in new string[][]
+        string parent = Path.GetDirectoryName(session.Path)!;
+        string nowhere = Path.Combine(parent, Guid.NewGuid().ToString("N"));
+        string file = Path.Combine(parent, Guid.NewGuid().ToString("N") + ".txt");
+        string written = Path.Combine(parent, Guid.NewGuid().ToString("N"));
+        string[] record = ["--session-id", Guid.NewGuid().ToString(), "--generation", "1", "--segment", "s", "--row", "0"];
+        File.WriteAllText(file, "not a session");
+        try
         {
-            ["patterns", nowhere], ["links", nowhere, "--process", "100"], ["waits", nowhere],
-            ["outliers", nowhere, "--interval", "100:110"], ["compare", nowhere, "--baseline", "0:10", "--interval", "10:20"],
-            ["timeline", nowhere, "--interval", "0:10"], ["content", nowhere, "--find", "x"],
-        })
+            foreach (string named in new[] { nowhere, file })
+            {
+                foreach (string[] args in new string[][]
+                {
+                    ["overview", named], ["channels", named], ["hosts", named], ["programs", named], ["ports", named],
+                    ["patterns", named], ["links", named, "--process", "100"], ["waits", named],
+                    ["outliers", named, "--interval", "100:110"], ["compare", named, "--baseline", "0:10", "--interval", "10:20"],
+                    ["evidence", named], ["timeline", named, "--interval", "0:10"],
+                    ["export", named, "--output", Path.Combine(written, "rows.csv")], ["processes", named], ["operations", named],
+                    ["exchanges", named], ["metric", named, "--metric", "observations"], ["raw", named, .. record],
+                    ["content", named, .. record], ["content", named, "--find", "x"],
+                    ["package", named, "--redacted", "--output", written], ["retain", named, "--release-content"],
+                    ["rederive", named], ["compact", named], ["checkpoint", named], ["recover", named], ["pin", named],
+                    ["staging", named], ["session", named],
+                })
+                {
+                    // Naming what is not a session's folder is a mistake in what was asked, whatever is there instead, and
+                    // nothing is made or changed for it.
+                    (InterCatExitCode code, string output, string said) = await Run(args);
+                    string invocation = "icat " + string.Join(' ', args);
+                    Assert.True(code == InterCatExitCode.InvalidInvocation && output.Length == 0, $"{invocation} exited {code}: {output}");
+                    Assert.True(said.Contains($"No session directory at {named}.", StringComparison.Ordinal), $"{invocation} said: {said}");
+                    Assert.False(Directory.Exists(nowhere) || Directory.Exists(written), $"{invocation} made a folder.");
+                    Assert.Equal("not a session", File.ReadAllText(file));
+                }
+            }
+        }
+        finally
         {
-            (InterCatExitCode code, string output, string said) = await Run(args);
-            string invocation = "icat " + string.Join(' ', args);
-            Assert.True(code == InterCatExitCode.InvalidInvocation && output.Length == 0, $"{invocation} exited {code}: {output}");
-            Assert.True(said.Contains($"No session directory at {nowhere}.", StringComparison.Ordinal), $"{invocation} said: {said}");
-            Assert.False(Directory.Exists(nowhere), $"{invocation} made {nowhere}.");
+            File.Delete(file);
         }
     }
 
@@ -520,7 +545,7 @@ public sealed class CommandLineTests : IDisposable
             (InterCatExitCode unknown, _, string notOffered) = await Run("export", named.Path, "--output", output, "--overwrite",
                 "--group-by", "host");
             Assert.Equal(InterCatExitCode.InvalidInvocation, unknown);
-            Assert.Contains("--group-by must be executable or session.", notOffered, StringComparison.Ordinal);
+            Assert.Contains("--group-by expects executable or session; 'host' is not one.", notOffered, StringComparison.Ordinal);
             (InterCatExitCode never, _, string guessed) = await Run("export", unnamed.Path, "--output", output, "--overwrite",
                 "--group-by", "session");
             Assert.Equal(InterCatExitCode.InvalidInvocation, never);
@@ -1712,7 +1737,7 @@ public sealed class CommandLineTests : IDisposable
             Assert.Equal((20, 1_000L, 2_000L, 20), (narrow.RootElement.GetProperty("columns").GetInt32(), narrow.RootElement.GetProperty("startTicks").GetInt64(),
                 narrow.RootElement.GetProperty("endTicks").GetInt64(), narrow.RootElement.GetProperty("lanes")[0].GetProperty("buckets").GetArrayLength()));
             (InterCatExitCode refused, _, string why) = await Run("workspace", "timeline", workspace, "--columns", "0");
-            Assert.Equal((InterCatExitCode.InvalidInvocation, true), (refused, why.Contains("--columns must be an integer from 1 to 2,000.", StringComparison.Ordinal)));
+            Assert.Equal((InterCatExitCode.InvalidInvocation, true), (refused, why.Contains("--columns expects a number of columns from 1 to 2,000; '0' is not one.", StringComparison.Ordinal)));
             (refused, _, why) = await Run("workspace", "timeline", workspace, "--interval", "5:1");
             Assert.Equal((InterCatExitCode.InvalidInvocation, true), (refused, why.Contains("--interval 5:1 names no interval", StringComparison.Ordinal)));
             (refused, _, why) = await Run("workspace", "show", workspace, "--columns", "5");
@@ -4230,8 +4255,8 @@ public sealed class CommandLineTests : IDisposable
         {
             (code, _, said) = await Run("evidence", gapped.Path, "--interval", refused);
             Assert.Equal(InterCatExitCode.InvalidInvocation, code);
-            Assert.Contains("--interval must be start:end, each bound a count of 100-nanosecond session ticks or a time with its "
-                + "unit, such as 1.5s, 250ms or 40us, with its end after its start.", said, StringComparison.Ordinal);
+            Assert.Contains("--interval expects start:end, each bound a count of 100-nanosecond session ticks or a time with its "
+                + $"unit, such as 1.5s, 250ms or 40us, with its end after its start; '{refused}' is not one.", said, StringComparison.Ordinal);
         }
 
         static string[] Buckets(string answer) =>
@@ -4506,7 +4531,8 @@ public sealed class CommandLineTests : IDisposable
             (InterCatExitCode reversed, _, string backwards) = await Run("package", held, "--redacted", "--interval", "6000:4000",
                 "--output", Path.Combine(folder, "reversed"));
             Assert.Equal(InterCatExitCode.InvalidInvocation, reversed);
-            Assert.Contains("--interval must be start:end", backwards, StringComparison.Ordinal);
+            Assert.Contains("--interval expects start:end", backwards, StringComparison.Ordinal);
+            Assert.Contains("with its end after its start; '6000:4000' is not one.", backwards, StringComparison.Ordinal);
         }
         finally
         {

@@ -135,10 +135,10 @@ internal static class ContentCommand
         bool validRow = int.TryParse(rowText, NumberStyles.None, CultureInfo.InvariantCulture, out int row);
         string? problem = directory is null ? "A session directory is required: icat content <directory>."
             : hasUnknown ? command.Refusal(unknown!)
-            : !validSession ? "--session-id must be the nonempty GUID printed by icat evidence."
-            : !validGeneration ? "--generation must be the positive number printed by icat evidence."
-            : string.IsNullOrWhiteSpace(segment) ? "--segment must name an evidence-page segment."
-            : !validRow ? "--row must be a nonnegative evidence-page segment row."
+            : !validSession ? CommandLine.Expects("--session-id", sessionText, "the nonempty GUID icat evidence prints")
+            : !validGeneration ? CommandLine.Expects("--generation", generationText, "the positive number icat evidence prints")
+            : string.IsNullOrWhiteSpace(segment) ? CommandLine.Expects("--segment", segment, "the name of a segment icat evidence prints")
+            : !validRow ? CommandLine.Expects("--row", rowText, "the row of its segment icat evidence prints, from 0")
             // Bytes go to a person or to a file they name, never into a document programs read (ADR-036).
             : json && (reveal || saveOption is not null || decode) ? "--json states a record's content facts only; its bytes "
                 + "are shown with --reveal, saved with --save or decoded with --decode, never written into JSON."

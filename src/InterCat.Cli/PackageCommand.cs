@@ -133,7 +133,7 @@ internal static class PackageCommand
             : intervalText is not null && !redacted
                 ? "--interval scopes a redacted package; an original package copies the session's whole generation."
             : intervalText is not null && interval is null
-                ? tooWide ?? "--interval must be " + TickInterval.Takes + "."
+                ? tooWide ?? CommandLine.Expects("--interval", intervalText, TickInterval.Takes)
             : !check && outputOption is null
                 ? "--output <new-directory> is required; a package is written only where it is asked to be."
             : null;

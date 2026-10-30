@@ -45,7 +45,51 @@ public sealed class ExportConnectionRankingTests
             (InterCatExitCode refused, _, string why) = await Run("export", session.Path, "--output", Path.Combine(folder, "x.json"),
                 "--rank-by", "connections");
             Assert.Equal(InterCatExitCode.InvalidInvocation, refused);
-            Assert.Contains("active-peers, connections-made or connections-accepted.", why, Ordinal);
+            Assert.Contains("active-peers, connections-made or connections-accepted; 'connections' is not one.", why, Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact(DisplayName = "R18: icat export ranks by every name --rank-by takes, and where the capture collected no RPC call says so and ranks by records")]
+    public async Task IcatExportRanksByEveryName()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" },
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\service.exe" },
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 12).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 13).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+        ], coverage: TransportLedger(tcp: true, udp: false));
+        session.Store.ReleaseSegmentReaders();
+        string folder = Path.Combine(Path.GetTempPath(), "InterCat.Cli.Tests.Export", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            // Each transport ranking ranks by itself, and says so in its file.
+            foreach (string name in new[] { "records", "bytes-sent", "bytes-received", "bytes-sent-and-received", "active-peers" })
+            {
+                string output = Path.Combine(folder, name + ".json");
+                (InterCatExitCode code, string text, string said) = await Run("export", session.Path, "--output", output, "--rank-by", name);
+                Assert.True(code == InterCatExitCode.Success, said);
+                Assert.Contains($"\"rankedBy\": \"{name}\"", await File.ReadAllTextAsync(output), Ordinal);
+                Assert.DoesNotContain("RPC calls were asked to rank the rows", text, Ordinal);
+            }
+
+            // A capture that collected TCP and no RPC ranks by records instead, and says why rather than ranking by nothing.
+            foreach (string name in new[] { "rpc-calls-made", "rpc-calls-served", "rpc-errors", "rpc-call-time-median", "rpc-serve-time-median" })
+            {
+                string output = Path.Combine(folder, name + ".json");
+                (InterCatExitCode code, string text, string said) = await Run("export", session.Path, "--output", output, "--rank-by", name);
+                Assert.True(code == InterCatExitCode.Success, said);
+                string content = await File.ReadAllTextAsync(output);
+                Assert.Contains("\"rankedBy\": \"records\"", content, Ordinal);
+                Assert.Contains("RPC calls were asked to rank the rows, but ", text, Ordinal);
+                Assert.Contains("; the rows rank by records.", content, Ordinal);
+            }
         }
         finally
         {

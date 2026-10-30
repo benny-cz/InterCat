@@ -54,10 +54,10 @@ internal static class OutliersCommand
             && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit) || limit < 1);
         string? problem = directory is null ? "A session directory is required: icat outliers <directory>."
             : hasUnknown ? command.Refusal(unknown!)
-            : compared is null ? comparedTooWide ?? "--interval is required: " + TickInterval.Takes + "."
+            : compared is null ? comparedTooWide ?? CommandLine.Expects("--interval", intervalText, TickInterval.Takes)
             : baselineText is not null && named is null
                 ? baselineTooWide?.Replace("--interval", "--baseline", StringComparison.Ordinal)
-                    ?? "--baseline names no interval: " + TickInterval.Takes + "."
+                    ?? CommandLine.Expects("--baseline", baselineText, TickInterval.Takes)
             : grouping is null ? $"--group-by judges process or executable rows; '{groupByText}' is neither."
             : invalidLimit ? $"--limit expects a number of rows of 1 or more; '{limitText}' is not one."
             : null;

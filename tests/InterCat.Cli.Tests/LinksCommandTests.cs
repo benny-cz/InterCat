@@ -221,8 +221,9 @@ public sealed class LinksCommandTests
             (["--process", "400", "--to", "400"], "--to names the process --process names: a chain leads from one process to another."),
             (["--process", "400", "--evidence-policy", "2"], "--evidence-policy expects one of: DirectOnly, IncludeCorrelated, "
                 + "IncludeCandidates, AllIncludingConflicting. '2' is not one."),
-            (["--process", "400", "--interval", "1250:50"], "--interval names no interval: start:end, each bound a count of "
-                + "100-nanosecond session ticks or a time with its unit, such as 1.5s, 250ms or 40us, with its end after its start."),
+            (["--process", "400", "--interval", "1250:50"], "--interval expects start:end, each bound a count of "
+                + "100-nanosecond session ticks or a time with its unit, such as 1.5s, 250ms or 40us, with its end after its start; "
+                + "'1250:50' is not one."),
         })
         {
             (InterCatExitCode code, _, string said) = await Run(["links", session.Path, .. args]);

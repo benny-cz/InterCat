@@ -195,8 +195,8 @@ public sealed class PatternsCommandTests
             (["--limit", "0"], "--limit expects a number of patterns of 1 or more; '0' is not one."),
             (["--evidence-policy", "2"], "--evidence-policy expects one of: DirectOnly, IncludeCorrelated, IncludeCandidates, "
                 + "AllIncludingConflicting. '2' is not one."),
-            (["--interval", "2000:500"], "--interval names no interval: start:end, each bound a count of 100-nanosecond session "
-                + "ticks or a time with its unit, such as 1.5s, 250ms or 40us, with its end after its start."),
+            (["--interval", "2000:500"], "--interval expects start:end, each bound a count of 100-nanosecond session "
+                + "ticks or a time with its unit, such as 1.5s, 250ms or 40us, with its end after its start; '2000:500' is not one."),
         })
         {
             (InterCatExitCode code, _, string said) = await Run(["patterns", session.Path, .. args]);

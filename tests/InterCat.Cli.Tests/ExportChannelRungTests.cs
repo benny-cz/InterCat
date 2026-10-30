@@ -50,8 +50,8 @@ public sealed class ExportChannelRungTests
             // A limit it cannot use is refused with what it bounds.
             (code, _, said) = await Run(["export", session.Path, "--output", Path.Combine(folder, "x.json"), .. at, "--limit", "0"]);
             Assert.Equal(InterCatExitCode.InvalidInvocation, code);
-            Assert.Contains("--limit must be an integer from 1 to 1,000,000: the records an --evidence export holds, or the calls "
-                + "or exchanges of an RPC channel's or HTTP exchanges' rung.", said, Ordinal);
+            Assert.Contains("--limit expects a number from 1 to 1,000,000: the records an --evidence export holds, or the calls "
+                + "or exchanges of an RPC channel's or HTTP exchanges' rung; '0' is not one.", said, Ordinal);
         }
         finally
         {

@@ -91,7 +91,11 @@ public sealed class ReplacedSessionTests
         }
     }
 
-    /// <summary>Empties <paramref name="to"/> and moves what <paramref name="from"/> holds into it.</summary>
+    /// <summary>
+    /// Empties <paramref name="to"/> and moves what <paramref name="from"/> holds into it, over any file a reader made there
+    /// meanwhile: one that finds the evidence guard gone while the pointer is still there makes the guard again, as a
+    /// reader of a session older than the guard does, and the guard moved in takes its place.
+    /// </summary>
     private static void Move(string from, string to)
     {
         foreach (string file in Directory.EnumerateFiles(to))
@@ -101,7 +105,7 @@ public sealed class ReplacedSessionTests
 
         foreach (string file in Directory.EnumerateFiles(from))
         {
-            File.Move(file, Path.Combine(to, Path.GetFileName(file)));
+            File.Move(file, Path.Combine(to, Path.GetFileName(file)), overwrite: true);
         }
     }
 }

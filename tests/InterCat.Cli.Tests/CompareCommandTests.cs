@@ -449,9 +449,9 @@ public sealed class CompareCommandTests
                 (["workspace", "comparison", workspace, "Again", "--session", a, "--interval", "0:1", "--baseline", "0:1",
                     "--rank-by", "calls"], "x --rank-by compares records or bytes-sent; 'calls' is neither."),
                 (["workspace", "comparison", workspace, "Again", "--session", a, "--interval", "2:1", "--baseline", "0:1"],
-                    "x --interval is start:end, "),
+                    "x --interval expects start:end, "),
                 (["workspace", "comparison", workspace, "Again", "--session", a, "--interval", "0:1", "--baseline", "2:1"],
-                    "x --baseline is start:end, "),
+                    "x --baseline expects start:end, "),
             ];
             foreach ((string[] args, string expected) in refused)
             {
@@ -792,7 +792,8 @@ public sealed class CompareCommandTests
             (["compare", "--baseline", "0:1", "--interval", "1:2"], "x A session directory is required: icat compare <directory>."),
             (["compare", session.Path, "--interval", "1:2"], "x --baseline is required: start:end, "),
             (["compare", session.Path, "--baseline", "0:1"], "x --interval is required: start:end, "),
-            (["compare", session.Path, "--baseline", "2:1", "--interval", "1:2"], "x --baseline is required: "),
+            (["compare", session.Path, "--baseline", "2:1", "--interval", "1:2"], "x --baseline expects start:end, "),
+            (["compare", session.Path, "--baseline", "0:1", "--interval", "2:1"], "x --interval expects start:end, "),
             (["compare", session.Path, "--baseline", "-9223372036854775808:0", "--interval", "1:2"], "x --baseline -9223372036854775808:0 ends "),
             (["compare", session.Path, "--baseline", "0:1", "--interval", "1:2", "--rank-by", "calls"],
                 "x --rank-by compares records or bytes-sent; 'calls' is neither."),

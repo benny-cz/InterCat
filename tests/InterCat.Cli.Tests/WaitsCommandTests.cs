@@ -110,8 +110,8 @@ public sealed class WaitsCommandTests
             (["--process", "999"], "--process 999 names no process: no process of the session held PID 999."),
             (["--evidence-policy", "2"], "--evidence-policy expects one of: DirectOnly, IncludeCorrelated, IncludeCandidates, "
                 + "AllIncludingConflicting. '2' is not one."),
-            (["--interval", "500:150"], "--interval names no interval: start:end, each bound a count of 100-nanosecond session "
-                + "ticks or a time with its unit, such as 1.5s, 250ms or 40us, with its end after its start."),
+            (["--interval", "500:150"], "--interval expects start:end, each bound a count of 100-nanosecond session "
+                + "ticks or a time with its unit, such as 1.5s, 250ms or 40us, with its end after its start; '500:150' is not one."),
         })
         {
             (InterCatExitCode refused, _, string why) = await Run(["waits", session.Path, .. args]);

@@ -74,7 +74,7 @@ internal static class WaitsCommand
             interval = TickInterval.Read(intervalText, out string? tooWide);
             if (interval is null)
             {
-                ConsoleUi.Failure(tooWide ?? "--interval names no interval: " + TickInterval.Takes + ".");
+                ConsoleUi.Failure(tooWide ?? CommandLine.Expects("--interval", intervalText, TickInterval.Takes));
                 return InterCatExitCode.InvalidInvocation;
             }
         }

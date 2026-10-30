@@ -735,10 +735,10 @@ internal static partial class WorkspaceCommand
         WorkspaceMember compared = InvestigationWorkspace.MemberNamed(workspace, sessionText!);
         WorkspaceMember baselineMember = baselineSessionText is null ? compared : InvestigationWorkspace.MemberNamed(workspace, baselineSessionText);
         TimeRange interval = TickInterval.Read(intervalText, out string? tooWide)
-            ?? throw new InvalidOperationException(tooWide ?? "--interval is " + TickInterval.Takes + ".");
+            ?? throw new InvalidOperationException(tooWide ?? CommandLine.Expects("--interval", intervalText, TickInterval.Takes));
         TimeRange baseline = TickInterval.Read(baselineText, out string? baselineTooWide)
             ?? throw new InvalidOperationException(baselineTooWide?.Replace("--interval", "--baseline", StringComparison.Ordinal)
-                ?? "--baseline is " + TickInterval.Takes + ".");
+                ?? CommandLine.Expects("--baseline", baselineText, TickInterval.Takes));
         ComparisonMetric metric = rankByText switch
         {
             null or "records" => ComparisonMetric.Records,
@@ -955,7 +955,8 @@ internal static partial class WorkspaceCommand
         if (columnsText is not null && (!int.TryParse(columnsText, NumberStyles.None, CultureInfo.InvariantCulture, out columns)
             || columns is < 1 or > SessionTimelineQuery.MaximumColumns))
         {
-            ConsoleUi.Failure(string.Create(CultureInfo.CurrentCulture, $"--columns must be an integer from 1 to {SessionTimelineQuery.MaximumColumns:N0}."));
+            ConsoleUi.Failure(CommandLine.Expects("--columns", columnsText, string.Create(CultureInfo.CurrentCulture,
+                $"a number of columns from 1 to {SessionTimelineQuery.MaximumColumns:N0}")));
             return InterCatExitCode.InvalidInvocation;
         }
 

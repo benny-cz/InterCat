@@ -74,17 +74,19 @@ internal static class ExportCommand
         string? problem = directory is null ? "A session directory is required: icat export <directory> --output <path>."
             : hasUnknown ? command.Refusal(unknown!)
             : output is null ? "--output <path> is required; an export is written only where it is asked to be."
-            : format is null ? "--format must be json or csv."
+            : format is null ? CommandLine.Expects("--format", formatText, "json or csv")
             : intervalText is not null && interval is null
-                ? tooWide ?? "--interval must be " + TickInterval.Takes + "."
-            : invalidLimit ? $"--limit must be an integer from 1 to {SessionExport.MaximumEvidenceLimit:N0}: the records an --evidence export holds, or the calls or exchanges of an RPC channel's or HTTP exchanges' rung."
+                ? tooWide ?? CommandLine.Expects("--interval", intervalText, TickInterval.Takes)
+            : invalidLimit ? CommandLine.Expects("--limit", limitText, "a number from 1 to "
+                + SessionExport.MaximumEvidenceLimit.ToString("N0", CultureInfo.CurrentCulture) + ": the records an --evidence "
+                + "export holds, or the calls or exchanges of an RPC channel's or HTTP exchanges' rung")
             : rankBy is null
-                ? "--rank-by must be records, bytes-sent, bytes-received, bytes-sent-and-received, rpc-calls-made, rpc-calls-served, "
-                    + "rpc-errors, rpc-call-time-median, rpc-serve-time-median, active-peers, connections-made or "
-                    + "connections-accepted."
+                ? CommandLine.Expects("--rank-by", rankText, "records, bytes-sent, bytes-received, bytes-sent-and-received, "
+                    + "rpc-calls-made, rpc-calls-served, rpc-errors, rpc-call-time-median, rpc-serve-time-median, active-peers, "
+                    + "connections-made or connections-accepted")
             : evidence && rankBy != RankingMetric.Records
                 ? "--rank-by ranks rows; an --evidence export lists its records in reading order."
-            : groupBy is null ? "--group-by must be executable or session."
+            : groupBy is null ? CommandLine.Expects("--group-by", groupText, "executable or session")
             : null;
         if (problem is not null)
         {

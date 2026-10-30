@@ -37,10 +37,10 @@ internal static class RawCommand
         {
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat raw <directory>."
                 : hasUnknown ? command.Refusal(unknown!)
-                : !validSession ? "--session-id must be the nonempty GUID printed by icat evidence."
-                : !validGeneration ? "--generation must be the positive number printed by icat evidence."
-                : string.IsNullOrWhiteSpace(segment) ? "--segment must name an evidence-page segment."
-                : "--row must be a nonnegative evidence-page segment row.");
+                : !validSession ? CommandLine.Expects("--session-id", sessionText, "the nonempty GUID icat evidence prints")
+                : !validGeneration ? CommandLine.Expects("--generation", generationText, "the positive number icat evidence prints")
+                : string.IsNullOrWhiteSpace(segment) ? CommandLine.Expects("--segment", segment, "the name of a segment icat evidence prints")
+                : CommandLine.Expects("--row", rowText, "the row of its segment icat evidence prints, from 0"));
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }

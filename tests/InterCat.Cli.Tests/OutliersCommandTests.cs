@@ -161,7 +161,8 @@ public sealed class OutliersCommandTests
                 + "and at least 19 are needed"),
             (["--interval", "0:50"], "Nothing the session keeps is before --interval, so it has no baseline unless --baseline names one."),
             (["--baseline", "0:1000"], "--interval is required: start:end"),
-            (["--interval", "1000:1050", "--baseline", "10:5"], "--baseline names no interval: start:end"),
+            (["--interval", "1050:1000"], "--interval expects start:end"),
+            (["--interval", "1000:1050", "--baseline", "10:5"], "--baseline expects start:end"),
             (["--interval", "1000:1050", "--group-by", "host"], "--group-by judges process or executable rows; 'host' is neither."),
             (["--interval", "1000:1050", "--limit", "0"], "--limit expects a number of rows of 1 or more; '0' is not one."),
             (["--interval", "1000:1050", "--evidence-policy", "2"], "--evidence-policy expects one of: DirectOnly, IncludeCorrelated, "

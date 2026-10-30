@@ -29,6 +29,13 @@ public sealed class RefusalWordsTests : IDisposable
         root.Dispose();
     }
 
+    /// <summary>A record's locator a session never names, as one copied from another session's evidence would be.</summary>
+    private const string Locator = "00000000-0000-0000-0000-000000000001";
+
+    /// <summary>What an --interval takes, as every command says it.</summary>
+    private const string Takes = "start:end, each bound a count of 100-nanosecond session ticks or a time with its unit, such as "
+        + "1.5s, 250ms or 40us, with its end after its start";
+
     public static TheoryData<string[], string> Refusals => new()
     {
         { ["pin", "{session}", "--from", "0 s", "--reason", "keep", "--allow-mib", "lots"],
@@ -93,6 +100,28 @@ public sealed class RefusalWordsTests : IDisposable
         { ["content", "{session}", "--session-id", "00000000-0000-0000-0000-000000000001", "--generation", "1", "--segment", "s",
             "--row", "0", "--reveal", "--json"],
             "--json states a record's content facts only; its bytes are shown with --reveal, saved with --save or decoded with --decode, never written into JSON." },
+        { ["raw", "{session}", "--generation", "1", "--segment", "s", "--row", "0"],
+            "--session-id is required: the nonempty GUID icat evidence prints." },
+        { ["raw", "{session}", "--session-id", "x", "--generation", "1", "--segment", "s", "--row", "0"],
+            "--session-id expects the nonempty GUID icat evidence prints; 'x' is not one." },
+        { ["content", "{session}", "--session-id", Locator, "--generation", "zero", "--segment", "s", "--row", "0"],
+            "--generation expects the positive number icat evidence prints; 'zero' is not one." },
+        { ["content", "{session}", "--session-id", Locator, "--generation", "1", "--segment", " ", "--row", "0"],
+            "--segment expects the name of a segment icat evidence prints; ' ' is not one." },
+        { ["raw", "{session}", "--session-id", Locator, "--generation", "1", "--segment", "s"],
+            "--row is required: the row of its segment icat evidence prints, from 0." },
+        { ["content", "{session}", "--session-id", Locator, "--generation", "1", "--segment", "s", "--row", "first"],
+            "--row expects the row of its segment icat evidence prints, from 0; 'first' is not one." },
+        { ["evidence", "{session}", "--page-size", "0"], "--page-size expects a number of records from 1 to 200; '0' is not one." },
+        { ["evidence", "{session}", "--owner-process", "abc"],
+            "--owner-process expects a process instance's GUID, as the overview gives it; 'abc' is not one." },
+        { ["evidence", "{session}", "--interval", "9:3"], "--interval expects " + Takes + "; '9:3' is not one." },
+        { ["timeline", "{session}", "--interval", "10:5"], "--interval expects " + Takes + "; '10:5' is not one." },
+        { ["timeline", "{session}"], "--interval is required: " + Takes + "." },
+        { ["timeline", "{session}", "--interval", "0:10", "--columns", "0"],
+            "--columns expects a number of columns from 1 to 2,000; '0' is not one." },
+        { ["export", "{session}", "--output", "rows.xml", "--format", "xml"], "--format expects json or csv; 'xml' is not one." },
+        { ["export", "{session}", "--output", "rows.json", "--interval", "5:1"], "--interval expects " + Takes + "; '5:1' is not one." },
         { ["profiles", "nonsense"], "'nonsense' is no capture profile; icat profiles lists every one." },
         { ["profiles", "focused-transport", "--pid", "x"], "--pid expects a process id; 'x' is not one." },
         { ["profiles", "focused-transport", "--pid", "5", "--pid", "5"], "--pid 5 is given more than once; give it once." },

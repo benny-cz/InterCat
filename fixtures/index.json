@@ -2365,6 +2365,7 @@
         "R18: icat export --at an RPC channel's key exports its calls, up to --limit, and says when the limit left some out",
         "R18: icat export --group-by session reaches a session's rung by its key, as the window groups it, and never guesses a session",
         "R18: icat export --rank-by connections-made and connections-accepted rank the rows by each process's connections, and name the ranking",
+        "R18: icat export ranks by every name --rank-by takes, and where the capture collected no RPC call says so and ranks by records",
         "R18: icat follow refuses a follow it cannot run, saying why, and stops waiting for a recording that never published",
         "R18: icat hosts --address lists the processes that reached an address, whole or begun up to a dot or colon, at a port or any address at a port, as the window's search finds them",
         "R18: icat hosts --investigation names each host's candidate other ends in the investigation's other captures, and refuses an investigation it cannot use",

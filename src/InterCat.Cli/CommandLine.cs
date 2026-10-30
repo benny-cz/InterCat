@@ -93,6 +93,13 @@ internal sealed class CommandLine
     /// <summary>The refusal of the first value <see cref="TakeIntegerOption"/> could not read; null when it read every one.</summary>
     public string? Malformed { get; private set; }
 
+    /// <summary>
+    /// The refusal of an option's value, in the one form the command line says one in (R18): what <paramref name="option"/>
+    /// expects and the value given that is not one, or, when none was given, that it is required and what it takes.
+    /// </summary>
+    public static string Expects(string option, string? given, string expects) =>
+        given is null ? $"{option} is required: {expects}." : $"{option} expects {expects}; '{given}' is not one.";
+
     public bool TryTakeFlag(string name)
     {
         int index = arguments.IndexOf(name);

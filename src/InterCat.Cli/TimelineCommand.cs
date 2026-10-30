@@ -52,8 +52,9 @@ internal static class TimelineCommand
         {
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat timeline <directory>."
                 : hasUnknown ? command.Refusal(unknown!)
-                : invalidColumns ? $"--columns must be an integer from 1 to {SessionTimelineQuery.MaximumColumns:N0}."
-                : interval is null ? tooWide ?? "--interval is required: " + TickInterval.Takes + "."
+                : invalidColumns ? CommandLine.Expects("--columns", columnsText, string.Create(CultureInfo.CurrentCulture,
+                    $"a number of columns from 1 to {SessionTimelineQuery.MaximumColumns:N0}"))
+                : interval is null ? tooWide ?? CommandLine.Expects("--interval", intervalText, TickInterval.Takes)
                 : scopeProblem!);
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;

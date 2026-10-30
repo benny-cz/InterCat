@@ -45,7 +45,7 @@ internal static class EvidenceCommand
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
         TimeRange? interval = TickInterval.Read(intervalText, out string? tooWide);
         bool invalidInterval = intervalText is not null && interval is null;
-        bool invalidOwner = ownerTexts.Any(text => !Guid.TryParse(text, out Guid ownerId) || ownerId == Guid.Empty);
+        string? invalidOwner = ownerTexts.FirstOrDefault(text => !Guid.TryParse(text, out Guid ownerId) || ownerId == Guid.Empty);
 
         // A timeline lane's records, as the window's E lists a chosen cell's (§6.4): one mechanism's, one source
         // direction's, or those made at one end of a paired channel.
@@ -65,14 +65,16 @@ internal static class EvidenceCommand
             : channel is not null ? "--host and --channel each name the records to read; name one."
             : !NamesHostAddress(host) ? $"--host takes an address its processes' connections ran to, 142.250.1.1 or 2001:db8::1; '{host}' is not one."
             : null;
-        if (directory is null || hasUnknown || invalidSize || invalidInterval || invalidOwner || invalidNarrowing || hostProblem is not null)
+        if (directory is null || hasUnknown || invalidSize || invalidInterval || invalidOwner is not null || invalidNarrowing
+            || hostProblem is not null)
         {
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat evidence <directory>."
                 : hasUnknown ? command.Refusal(unknown!)
-                : invalidSize ? "--page-size must be an integer from 1 to 200."
-                : invalidOwner ? "--owner-process must be a process-instance GUID from the overview."
+                : invalidSize ? CommandLine.Expects("--page-size", size, string.Create(CultureInfo.CurrentCulture,
+                    $"a number of records from 1 to {SessionEvidenceQuery.MaximumPageSize:N0}"))
+                : invalidOwner is not null ? CommandLine.Expects("--owner-process", invalidOwner, "a process instance's GUID, as the overview gives it")
                 : invalidNarrowing ? narrowingProblem!
-                : hostProblem ?? tooWide ?? "--interval must be " + TickInterval.Takes + ".");
+                : hostProblem ?? tooWide ?? CommandLine.Expects("--interval", intervalText, TickInterval.Takes));
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
