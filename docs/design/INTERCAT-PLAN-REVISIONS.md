@@ -692,6 +692,8 @@ Revision 831 counts the errors the window contained in its support bundle, by ki
 
 Revision 832 refuses a value a command cannot read by naming it with what the option expects, and never says a value given is missing.
 
+Revision 833 refuses to publish beneath a running follow whatever a person asks for, where only a checkpoint was refused.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2324,3 +2326,17 @@ also failed, once, a window test that empties a session's folder and moves anoth
 be at work: a reader that finds the evidence guard gone while the pointer is still there makes the guard again, as one
 of a session older than the guard does, so the other session's guard found a file in its place. The test now moves
 over it, which is what replacing the folder means; no product code was at fault.
+
+Revision 833 keeps a running follow the only writer of the session it follows. ADR-044 says why: a generation
+published beside the follow makes the follow's next publication fail, since a store refuses to publish over a
+generation it did not open, and the follow ends there. `icat checkpoint` refused a session whose follow held its
+ticket, but `icat compact`, `rederive` and `retain --confirm` did not, so a person freeing room with `icat retain`
+during a long capture, as a long capture invites, ended the capture: the window reads its follow's failure as an
+interrupted capture and stops it, keeping what it had published, and `icat follow` ends with the store's refusal. The
+check checkpoint made is now one each of them makes before it publishes, refusing in the same words with what to do
+instead: compact once the capture has finished, since a follow compacts as it goes; re-derive then; and keep what
+matters with a pin, which publishes no generation and which every release keeps to. What only measures, `--check` and
+a release without `--confirm`, publishes nothing and goes ahead. The check is a seam a test can set, because only
+Windows enforces a ticket's hold between two handles in one process; a test there holds one, and here one released
+without completing it is shown to be an interrupted follow's, whose session is finished rather than refused
+(`live-follow-v1` §6).

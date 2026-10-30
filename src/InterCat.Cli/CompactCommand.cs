@@ -75,6 +75,14 @@ internal static class CompactCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        // A follow compacts what it publishes as it goes; measuring publishes nothing, so it goes ahead.
+        if (!check && FollowedSessions.Refusal(full, "Its follow compacts what it publishes as it goes: compact the session once "
+            + "its capture has finished, or measure what compacting would do now with --check.") is { } followed)
+        {
+            ConsoleUi.Failure(followed);
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+
         ConsoleUi.Progress($"Opening {full} and verifying the published generation and every dependency.");
         SessionStore inspected = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         if (inspected.Current is not { } current)

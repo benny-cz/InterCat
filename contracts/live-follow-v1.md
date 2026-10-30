@@ -95,3 +95,12 @@ Either leaves one when it ends early, and either kind is finished the same way:
 
 A follower that cannot write its ticket still records and follows. It loses only this shortcut: `icat capture` then
 names the evidence directory, so the session can still be finished with `icat follow <evidence> <session>`.
+
+## 6. What else may publish into a followed session
+
+While a follow holds a session's ticket, the follow alone publishes into the session: a generation published beside it
+makes the follow's next publication fail, which ends the follow (ADR-044). So `icat checkpoint`, `compact`, `rederive`
+and `retain --confirm` refuse such a session before they publish, saying what to do instead (revision 833). What only
+measures goes ahead: `compact --check`, `rederive --check`, and `retain` without `--confirm`. So does `icat pin`,
+which publishes no generation and which every release keeps to. A ticket no follow holds is an interrupted follow's,
+and its session is finished (§4) rather than refused.

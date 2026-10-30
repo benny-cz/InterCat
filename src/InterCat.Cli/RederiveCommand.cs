@@ -98,6 +98,14 @@ internal static class RederiveCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        // A check replays and publishes nothing, so it goes ahead.
+        if (!check && FollowedSessions.Refusal(full, "Re-derive the session once its capture has finished, or see what a "
+            + "re-derivation would change now with --check.") is { } followed)
+        {
+            ConsoleUi.Failure(followed);
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+
         ConsoleUi.Progress($"Opening {full} and verifying the published generation and every dependency.");
         SessionStore inspected = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         if (inspected.Current is not { } current)

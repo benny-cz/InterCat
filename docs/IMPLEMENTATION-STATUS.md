@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-30 · Plan revision: 832 · Branch: `main`
+Updated: 2026-10-30 · Plan revision: 833 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 833 — nothing a person asks for is published beneath a running follow (ADR-044):**
+  - A generation published beside a running follow makes the follow's next publication fail, which ends it, and only
+    `icat checkpoint` refused a session a capture was being followed into. `icat compact`, `rederive` and `retain
+    --confirm` published regardless, so freeing room with `icat retain` during a long capture in the window ended the
+    capture: the window reads its follow's failure as an interrupted capture, and stops it. Each now refuses while a
+    follow holds the session's ticket, in checkpoint's words, saying what to do instead; measuring goes ahead, and so
+    does a pin, which every release keeps to (`live-follow-v1` §6). Since only Windows enforces a ticket's hold within
+    one process, the tests say which session is followed through the check itself.
+  - Debug and Release each ran 3,438 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    10 mutations were caught: icat checkpoint, compact, rederive and retain each publishing into a followed session;
+    compact's and rederive's checks and retain's measurement each refused; a ticket a follow let go read as a
+    follow; the refusal without what to do instead; and compact's given another exit code.
 
 - **Revision 832 — a value a command cannot read is named, and a missing one said required (R18):**
   - 29 refusals in 12 commands said a value "must be" something, or "names no interval", without the value given, and

@@ -283,6 +283,16 @@ internal static class RetainCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        // A release is the follow's to publish, between two of its mirrors (ADR-044); measuring one publishes nothing, so
+        // it goes ahead, and a pin keeps records from every release the follow publishes.
+        if (confirm && FollowedSessions.Refusal(full, "Keep what matters with icat pin, which every release keeps to; release "
+            + "from the session once its capture has finished, or see what a release would give up now without --confirm.")
+            is { } followed)
+        {
+            ConsoleUi.Failure(followed);
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+
         long before = 0;
         if (beforeOption is not null
             && !long.TryParse(beforeOption, NumberStyles.None, CultureInfo.InvariantCulture, out before))

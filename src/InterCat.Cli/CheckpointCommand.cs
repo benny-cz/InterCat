@@ -1,6 +1,5 @@
 using System.Text.Json;
 using InterCat.Application;
-using InterCat.Capture.Journal;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -67,12 +66,10 @@ internal static class CheckpointCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        // A follow writing this session holds its ticket (live-follow-v1). A generation published beside it would make the
-        // follow's next commit stale, and the follow publishes a checkpoint of its own when it finishes.
-        if (File.Exists(LiveFollowTicket.PathFor(full)) && LiveFollowTicket.FindInterruptedFor(full) is null)
+        // The follow publishes a checkpoint of its own when it finishes.
+        if (FollowedSessions.Refusal(full, "Its follow publishes the checkpoint when it finishes.") is { } followed)
         {
-            ConsoleUi.Failure(
-                $"A capture is being followed into {full} right now. Its follow publishes the checkpoint when it finishes.");
+            ConsoleUi.Failure(followed);
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
