@@ -439,8 +439,22 @@ public static partial class InvestigationWorkspace
         IReadOnlyList<WorkspaceHost> hosts = Hosts(workspace);
         return hosts.FirstOrDefault(host => string.Equals(host.Alias, text.Trim(), StringComparison.OrdinalIgnoreCase))?.HostId
             ?? Named(hosts, host => host.HostId, text, "host")?.HostId
-            ?? throw new InvalidOperationException($"No session of this investigation was recorded on a host named '{text}'.");
+            ?? throw new InvalidOperationException($"No session of this investigation was recorded on a host named '{text}'"
+                + (NameText.Nearest(text.Trim(), hosts.Select(host => host.Alias).OfType<string>()) is { Length: > 0 } meant
+                    ? $"; did you mean {Quoted(meant)}?"
+                    : "."));
     }
+
+    /// <summary>
+    /// That no <paramref name="kind"/> of this investigation is named <paramref name="name"/>, answered with those a letter
+    /// or two from it (R18).
+    /// </summary>
+    internal static string NoneNamed(string kind, string name, IEnumerable<string> names) =>
+        $"No {kind} of this investigation is named '{name}'"
+            + (NameText.Nearest(name, names) is { Length: > 0 } meant ? $"; did you mean {Quoted(meant)}?" : ".");
+
+    /// <summary>Names a person gave, each in quotes as a refusal names them: 'Before', or 'Before' or 'After'.</summary>
+    private static string Quoted(string[] names) => NameText.Either([.. names.Select(name => $"'{name}'")]);
 
     /// <summary>Resolves every member against its path (`contracts/workspace-v23.md` §3), in the workspace's order.</summary>
     public static IReadOnlyList<WorkspaceMemberResolution> Resolve(

@@ -1716,8 +1716,8 @@ internal static class MetricCommand
 
         IReadOnlyList<string> values = rejection.Accepted;
         return values.Count == 0 ? $"  Leave out {option}."
-            : named ? $"  {option} takes {CommandLine.Either(values)} here."
-            : $"  Name it with {option}: {CommandLine.Either(values)}.";
+            : named ? $"  {option} takes {NameText.Either(values)} here."
+            : $"  Name it with {option}: {NameText.Either(values)}.";
     }
 
     /// <summary>A cohort as a person says it: completed or started, beside §23's full names.</summary>

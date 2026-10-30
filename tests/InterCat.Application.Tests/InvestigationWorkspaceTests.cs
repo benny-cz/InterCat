@@ -256,6 +256,12 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal(lab1, InvestigationWorkspace.HostNamed(read, "Build Server"));
         Assert.Equal(lab2, InvestigationWorkspace.HostNamed(read, lab2.ToString("N")[..8]));
 
+        // A name a letter or two from a host's is answered with it; one far from every name only says none is so named.
+        Assert.Equal("No session of this investigation was recorded on a host named 'Bild Server'; did you mean 'build server'?",
+            Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.HostNamed(read, "Bild Server")).Message);
+        Assert.Equal("No session of this investigation was recorded on a host named 'lab-9000'.",
+            Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.HostNamed(read, "lab-9000")).Message);
+
         // One name for two identities would read as one host; a host no member was recorded on is no one's.
         Assert.Contains("already called", Assert.Throws<InvalidOperationException>(() =>
             InvestigationWorkspace.Alias(workspace, lab2, "BUILD SERVER", Now)).Message, StringComparison.Ordinal);
@@ -624,9 +630,13 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             StringComparison.Ordinal);
         File.WriteAllText(workspace, valid);
 
-        // A view is named; none is removed that is not there; an earlier version's file holds none.
+        // A view is named; none is removed that is not there, and a name a letter or two from one's is answered with it; an
+        // earlier version's file holds none.
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.SaveView(workspace, "  ", new TimeRange(0, 10), Now));
-        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.RemoveView(workspace, "Handshake", Now));
+        Assert.Equal("No view of this investigation is named 'Handshake'.",
+            Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.RemoveView(workspace, "Handshake", Now)).Message);
+        Assert.Equal("No view of this investigation is named 'uplaod'; did you mean 'upload'?",
+            Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.RemoveView(workspace, " uplaod ", Now)).Message);
         File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"",
             $"\"{InvestigationWorkspace.NinthContract}\"", StringComparison.Ordinal));
         Assert.Contains("holds no saved view", Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
@@ -675,6 +685,8 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal("before the UPDATE", Assert.Single(InvestigationWorkspace.ComparisonsInForce(read)).Name);
         Assert.Equal("No comparison of this investigation is named 'Yesterday'.", Assert.Throws<InvalidOperationException>(() =>
             InvestigationWorkspace.RemoveComparison(workspace, "Yesterday", Now)).Message);
+        Assert.Equal("No comparison of this investigation is named 'before the updat'; did you mean 'before the UPDATE'?",
+            Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.RemoveComparison(workspace, "before the updat", Now)).Message);
         Assert.Throws<ArgumentException>(() => ComparisonText.Saved(removal, CultureInfo.InvariantCulture));
 
         // Refused: no name or too long a name, a session of no member, an interval that ends where it starts, two captures

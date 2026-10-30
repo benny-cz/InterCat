@@ -171,7 +171,7 @@ public static partial class InvestigationWorkspace
         ArgumentNullException.ThrowIfNull(workspace);
         string trimmed = name?.Trim() ?? string.Empty;
         return ComparisonsInForce(workspace).FirstOrDefault(comparison => string.Equals(comparison.Name, trimmed, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException($"No comparison of this investigation is named '{trimmed}'.");
+            ?? throw new InvalidOperationException(NoneNamed("comparison", trimmed, ComparisonsInForce(workspace).Select(comparison => comparison.Name)));
     }
 
     private static string ComparisonName(string name)

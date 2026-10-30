@@ -108,7 +108,7 @@ internal static class ProgramsCommand
         {
             1 => null,
             0 when NameText.NearestPrograms(asked, Witnessed(groups)) is { Length: > 0 } meant
-                => $"No program of this session is named {asked}; did you mean {CommandLine.Either(meant)}?",
+                => $"No program of this session is named {asked}; did you mean {NameText.Either(meant)}?",
             0 => $"No program of this session is named {asked}: a program is named by its executable's file name, as icat "
                 + "programs lists it, or by the executable's path.",
             _ => $"--program {asked} names {named.Length} programs - "

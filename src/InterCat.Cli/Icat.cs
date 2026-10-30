@@ -190,9 +190,9 @@ internal static class Icat
 
     private static InterCatExitCode UnknownCommand(string name)
     {
-        string[] meant = NameText.Nearest(name.ToLowerInvariant(), Commands);
+        string[] meant = NameText.Nearest(name, Commands);
         ConsoleUi.Failure(meant.Length > 0
-            ? $"Unknown command '{name}'; did you mean {CommandLine.Either([.. meant.Select(command => "icat " + command)])}?"
+            ? $"Unknown command '{name}'; did you mean {NameText.Either([.. meant.Select(command => "icat " + command)])}?"
             : $"Unknown command '{name}'.");
         ConsoleUi.Explain(PrintHelp);
         return InterCatExitCode.InvalidInvocation;

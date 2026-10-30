@@ -143,6 +143,10 @@ public sealed class RefusalWordsTests : IDisposable
         { ["retain", "{session}", "--release-journal-before-record", "x"],
             "--release-journal-before-record expects a non-negative whole number; 'x' is not one." },
         { ["profiles", "nonsense"], "'nonsense' is no capture profile; icat profiles lists every one." },
+        { ["profiles", "CONTNET"], "'CONTNET' is no capture profile; did you mean content?" },
+        { ["record", "{nowhere}", "--profile", "explor"], "--profile expects explore, focused-transport, rpc-peers, content or "
+            + "content-fixture; 'explor' is not one; did you mean explore? icat profiles lists every intent and what it would collect." },
+        { ["pin", "{session}", "--JSON"], "Unknown option '--JSON'; did you mean --json?" },
         { ["profiles", "focused-transport", "--pid", "x"], "--pid expects a process id; 'x' is not one." },
         { ["profiles", "focused-transport", "--pid", "5", "--pid", "5"], "--pid 5 is given more than once; give it once." },
         { ["profiles", "focused-transport", "--mechanism", "smtp"],

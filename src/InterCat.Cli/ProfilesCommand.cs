@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using InterCat.Application;
 using InterCat.Capture.Windows;
 using InterCat.Domain;
 
@@ -169,7 +170,9 @@ internal static class ProfilesCommand
         CaptureProfileDescriptor? selected = CaptureProfileCatalog.Find(profileId);
         if (selected is null)
         {
-            ConsoleUi.Failure($"'{profileId}' is no capture profile; icat profiles lists every one.");
+            ConsoleUi.Failure(NameText.Nearest(profileId.Trim(), CaptureProfileCatalog.All.Select(profile => profile.Id)) is { Length: > 0 } meant
+                ? $"'{profileId}' is no capture profile; did you mean {NameText.Either(meant)}?"
+                : $"'{profileId}' is no capture profile; icat profiles lists every one.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }

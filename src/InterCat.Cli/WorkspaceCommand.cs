@@ -424,7 +424,7 @@ internal static partial class WorkspaceCommand
         if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || (manual && operands.Count == 3) || misplaced)
         {
             ConsoleUi.Failure(least < 0
-                ? verb is null ? $"icat workspace expects {CommandLine.Either(Verbs)}." : CommandLine.Expects("icat workspace", verb, Verbs)
+                ? verb is null ? $"icat workspace expects {NameText.Either(Verbs)}." : CommandLine.Expects("icat workspace", verb, Verbs)
                 : $"Use {form}.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;

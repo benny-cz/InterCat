@@ -127,8 +127,8 @@ internal sealed class CommandLine
         string[] meant = given is null ? []
             : [.. NameText.Nearest(Compact(given), names.Select(Compact)).Select(near => names.First(name => Compact(name) == near))];
         return meant.Length == 0
-            ? Expects(option, given, Either(names))
-            : $"{option} expects {Either(names)}; '{given}' is not one; did you mean {Either(meant)}?";
+            ? Expects(option, given, NameText.Either(names))
+            : $"{option} expects {NameText.Either(names)}; '{given}' is not one; did you mean {NameText.Either(meant)}?";
     }
 
     /// <summary>A name as a person types it: an enumeration's "NothingBefore" as "nothing-before".</summary>
@@ -236,14 +236,7 @@ internal sealed class CommandLine
         }
 
         string[] meant = argument.StartsWith('-') ? NameText.Nearest(argument, asked) : [];
-        return meant.Length > 0 ? $"Unknown option '{argument}'; did you mean {Either(meant)}?" : Unknown(argument);
-    }
-
-    /// <summary>Choices as a sentence names them: "A", "A or B", "A, B or C".</summary>
-    public static string Either(IReadOnlyList<string> choices)
-    {
-        ArgumentNullException.ThrowIfNull(choices);
-        return choices.Count == 1 ? choices[0] : $"{string.Join(", ", choices.Take(choices.Count - 1))} or {choices[^1]}";
+        return meant.Length > 0 ? $"Unknown option '{argument}'; did you mean {NameText.Either(meant)}?" : Unknown(argument);
     }
 
     public bool TryReportUnknown(out string? unknown)
@@ -252,8 +245,8 @@ internal sealed class CommandLine
         return unknown is not null;
     }
 
-    /// <summary>A name as two spellings of it compare: its letters in lower case, without dashes.</summary>
-    private static string Compact(string name) => name.Replace("-", string.Empty, StringComparison.Ordinal).ToLowerInvariant();
+    /// <summary>A name as two spellings of it compare: its letters without dashes.</summary>
+    private static string Compact(string name) => name.Replace("-", string.Empty, StringComparison.Ordinal);
 
     /// <summary>Notes that the command looked for <paramref name="name"/>, once, in the order it looked.</summary>
     private void Ask(string name)

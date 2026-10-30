@@ -8,8 +8,9 @@ public static class NameText
 {
     /// <summary>
     /// The names among <paramref name="names"/> nearest <paramref name="given"/> that are near enough to be what it was
-    /// meant as: a letter or two left out, added, changed or swapped with the next, and no more than one for every three
-    /// letters given, so a short name is answered only with one a letter from it. None when no name is that near.
+    /// meant as: a letter or two left out, added, changed or swapped with the next, whatever their case, and no more than
+    /// one for every three letters given, so a short name is answered only with one a letter from it. None when no name
+    /// is that near.
     /// </summary>
     public static string[] Nearest(string given, IEnumerable<string> names)
     {
@@ -32,8 +33,8 @@ public static class NameText
     /// <summary>
     /// The programs among <paramref name="programs"/> - each named as InterCat lists it, by its executable's file name, with
     /// its folders after it in parentheses where two share one - that <paramref name="given"/> is a letter or two from, as
-    /// <see cref="Nearest"/> measures it: ignoring case, and by the file name with or without its extension, as a search or
-    /// --program names a program, so "chrme" is a letter from chrome.exe. Each once, in the order given.
+    /// <see cref="Nearest"/> measures it, by the file name with or without its extension, as a search or --program names a
+    /// program: "chrme" is a letter from chrome.exe. Each once, in the order given.
     /// </summary>
     public static string[] NearestPrograms(string given, IEnumerable<string> programs)
     {
@@ -41,17 +42,23 @@ public static class NameText
         ArgumentNullException.ThrowIfNull(programs);
         (string Program, string[] Spellings)[] spelled =
             [.. programs.Distinct(StringComparer.Ordinal).Select(program => (program, Spellings(program)))];
-        HashSet<string> near = [.. Nearest(given.Trim().ToLowerInvariant(), spelled.SelectMany(program => program.Spellings))];
+        HashSet<string> near = [.. Nearest(given.Trim(), spelled.SelectMany(program => program.Spellings))];
         return [.. spelled.Where(program => program.Spellings.Any(near.Contains)).Select(program => program.Program)];
     }
 
-    /// <summary>A program's name as it is compared: whole, its file name alone, and that but for its extension, in lower case.</summary>
+    /// <summary>Choices as a sentence names them: "A", "A or B", "A, B or C".</summary>
+    public static string Either(IReadOnlyList<string> choices)
+    {
+        ArgumentNullException.ThrowIfNull(choices);
+        return choices.Count == 1 ? choices[0] : $"{string.Join(", ", choices.Take(choices.Count - 1))} or {choices[^1]}";
+    }
+
+    /// <summary>A program's name as it is compared: whole, its file name alone, and that but for its extension.</summary>
     private static string[] Spellings(string program)
     {
-        string name = program.ToLowerInvariant();
-        int folders = name.IndexOf(" (", StringComparison.Ordinal);
-        string file = folders < 0 ? name : name[..folders];
-        return [.. new[] { name, file, file.LastIndexOf('.') is > 0 and int dot ? file[..dot] : file }.Distinct(StringComparer.Ordinal)];
+        int folders = program.IndexOf(" (", StringComparison.Ordinal);
+        string file = folders < 0 ? program : program[..folders];
+        return [.. new[] { program, file, file.LastIndexOf('.') is > 0 and int dot ? file[..dot] : file }.Distinct(StringComparer.Ordinal)];
     }
 
     /// <summary>
@@ -75,9 +82,9 @@ public static class NameText
         {
             for (int j = 1; j <= to.Length; j++)
             {
-                int changed = from[i - 1] == to[j - 1] ? 0 : 1;
+                int changed = Same(from[i - 1], to[j - 1]) ? 0 : 1;
                 distance[i, j] = Math.Min(Math.Min(distance[i - 1, j] + 1, distance[i, j - 1] + 1), distance[i - 1, j - 1] + changed);
-                if (i > 1 && j > 1 && from[i - 1] == to[j - 2] && from[i - 2] == to[j - 1])
+                if (i > 1 && j > 1 && Same(from[i - 1], to[j - 2]) && Same(from[i - 2], to[j - 1]))
                 {
                     distance[i, j] = Math.Min(distance[i, j], distance[i - 2, j - 2] + 1);
                 }
@@ -86,4 +93,7 @@ public static class NameText
 
         return distance[from.Length, to.Length];
     }
+
+    /// <summary>Whether two letters are one, whatever their case: a capital is no letter of its own.</summary>
+    private static bool Same(char one, char other) => char.ToLowerInvariant(one) == char.ToLowerInvariant(other);
 }

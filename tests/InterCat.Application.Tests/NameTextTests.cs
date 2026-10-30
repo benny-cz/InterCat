@@ -8,6 +8,22 @@ namespace InterCat.Application.Tests;
 /// </summary>
 public sealed class NameTextTests
 {
+    [Fact(DisplayName = "R18: a name is meant by one a letter or two from it whatever their case, and several are named as a sentence names them")]
+    public void CaseIsNoLetter()
+    {
+        // A capital is no letter of its own, in a letter changed or in two swapped.
+        Assert.Equal(["--json"], NameText.Nearest("--JSON", ["--output", "--json"]));
+        Assert.Equal(["pin"], NameText.Nearest("PNI", ["pin", "raw"]));
+        Assert.Equal(["Before the update"], NameText.Nearest("BEFORE THE UPDTE", ["After", "Before the update"]));
+        Assert.Empty(NameText.Nearest("XX", ["--json"]));
+
+        // Choices are named as a sentence names them.
+        Assert.Equal("a", NameText.Either(["a"]));
+        Assert.Equal("a or b", NameText.Either(["a", "b"]));
+        Assert.Equal("a, b or c", NameText.Either(["a", "b", "c"]));
+        Assert.Throws<ArgumentNullException>(() => NameText.Either(null!));
+    }
+
     [Fact(DisplayName = "R18: a program is meant by a name a letter or two from it, whatever its case, with its extension or without, and as listed with its folders")]
     public void AProgramIsMeantByANameNearIt()
     {

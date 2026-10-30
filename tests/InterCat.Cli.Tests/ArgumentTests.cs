@@ -142,11 +142,11 @@ public sealed class ArgumentTests
         Assert.Equal(["import", "export"], NameText.Nearest("ixport", Icat.Commands));
         Assert.Equal(["--pid"], NameText.Nearest("--pidd", ["--pi", "--pid"]));
         Assert.Equal(["--pid", "--pin"], NameText.Nearest("--pi", ["--pid", "--pin", "--pid", "--pi-x"]));
-        Assert.Equal("--pid or --pin", CommandLine.Either(["--pid", "--pin"]));
-        Assert.Equal("a, b or c", CommandLine.Either(["a", "b", "c"]));
+        Assert.Equal("--pid or --pin", NameText.Either(["--pid", "--pin"]));
+        Assert.Equal("a, b or c", NameText.Either(["a", "b", "c"]));
         Assert.Throws<ArgumentNullException>(() => NameText.Nearest(null!, []));
         Assert.Throws<ArgumentNullException>(() => NameText.Nearest("x", null!));
-        Assert.Throws<ArgumentNullException>(() => CommandLine.Either(null!));
+        Assert.Throws<ArgumentNullException>(() => NameText.Either(null!));
     }
 
     [Fact(DisplayName = "R18: a verb is read first, and no option is read after an operand")]

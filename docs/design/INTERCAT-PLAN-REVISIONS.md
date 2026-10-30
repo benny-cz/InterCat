@@ -704,6 +704,8 @@ Revision 837 refuses a value from a set of names with the names as they are type
 
 Revision 838 answers a search, or a `--program`, a letter or two from a program of the session with that program.
 
+Revision 839 measures a name whatever its case, and answers a saved comparison, view, host or capture profile a letter or two off with the name meant.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2419,3 +2421,14 @@ name; each program as near as the nearest is offered, the busiest first, and a p
 named, which is named by its PID, never is. `--program`, which `icat hosts`, `ports`, `processes` and `programs` take,
 answers a name the session has no program of the same way, naming each program as near. The nearness revision 836
 measured within the command line is the application layer's now, so the window and `icat` measure a name alike.
+
+Revision 839 finishes what revisions 836 to 838 began. Their nearness measured a name letter for letter, so each
+caller lowered the case first, and where none did, `--JSON` was an option no command knew rather than one a capital
+away from `--json`. The measure itself counts a capital as no letter of its own now, in a letter changed and in two
+swapped, and the callers' own lowering is gone. The names a person gives in an investigation are answered as the
+command line's are: a saved comparison or a view it does not name is said to be none with the names a letter or two
+from it, each in quotes as the refusal names it, and so is a host it was not recorded on, among the names the hosts
+were given. `icat profiles` answers a profile the catalog does not hold with the near one, and `icat record
+--profile`, which listed its profiles in a wording of its own, refuses in the shared form and answers alike. The list
+of choices a refusal names, `A, B or C`, is the application layer's now beside the measure, where an investigation's
+refusals can use it.

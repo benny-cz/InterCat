@@ -67,7 +67,7 @@ public static partial class InvestigationWorkspace
         string full = System.IO.Path.GetFullPath(workspacePath);
         (InvestigationWorkspaceFile workspace, string file) = Load(full);
         WorkspaceView current = ViewsInForce(workspace).FirstOrDefault(view => string.Equals(view.Name, name.Trim(), StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException($"No view of this investigation is named '{name.Trim()}'.");
+            ?? throw new InvalidOperationException(NoneNamed("view", name.Trim(), ViewsInForce(workspace).Select(view => view.Name)));
         var removal = new WorkspaceView { Revision = NextViewRevision(workspace), Name = current.Name, RecordedUtc = now };
         Save(full, workspace with { Views = [.. workspace.Views, removal], UpdatedUtc = now }, file);
         return removal;

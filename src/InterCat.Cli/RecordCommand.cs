@@ -99,8 +99,8 @@ internal static class RecordCommand
         if (profile is null)
         {
             ConsoleUi.Failure(
-                $"--profile records explore, focused-transport, rpc-peers, content or content-fixture; '{profileOption}' is not "
-                + "one. icat profiles lists every intent and what it would collect.");
+                CommandLine.Expects("--profile", profileOption, ["explore", "focused-transport", "rpc-peers", "content", "content-fixture"])
+                + " icat profiles lists every intent and what it would collect.");
             return InterCatExitCode.InvalidInvocation;
         }
 
