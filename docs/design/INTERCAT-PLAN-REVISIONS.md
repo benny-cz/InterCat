@@ -706,6 +706,8 @@ Revision 838 answers a search, or a `--program`, a letter or two from a program 
 
 Revision 839 measures a name whatever its case, and answers a saved comparison, view, host or capture profile a letter or two off with the name meant.
 
+Revision 840 lets the mouse's Back button go back as Esc does, and its Forward button forward.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2432,3 +2434,13 @@ were given. `icat profiles` answers a profile the catalog does not hold with the
 --profile`, which listed its profiles in a wording of its own, refuses in the shared form and answers alike. The list
 of choices a refusal names, `A, B or C`, is the application layer's now beside the measure, where an investigation's
 refusals can use it.
+
+Revision 840 is asked for: Esc goes back in the window, and a mouse's Back button should too, and its Forward button
+forward. The ladder already went back with `Esc`, `Alt`+`Left` and the back crumb, and forward with `Alt`+`Right` and
+the Forward button beside it (§3.2, §6.7), but the mouse's side buttons did nothing. Back now goes back as `Esc` does,
+by the one method `Esc` uses: a drag in progress is cancelled, else the latest hop to a relationship's other end, a
+listening port's process or a pair of programs' other end is taken back, else the ladder climbs a rung to exactly
+where the user was. Forward re-enters the rung Back left, as `Alt`+`Right` does. Both are taken as they tunnel down,
+wherever the pointer is, so a list or a surface under it never acts on them. While a search lists its hits, Back
+leaves the search first, as `Esc` does in the search box: going back beneath the hits would change a rung the person
+cannot see. The keys sheet lists both buttons among what acts anywhere.

@@ -318,6 +318,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
         AddHandler(KeyDownEvent, OnShortcutKey, RoutingStrategies.Tunnel);
         AddHandler(KeyUpEvent, RequestContextMenuOnShiftF10, RoutingStrategies.Bubble);
 
+        // The mouse's Back and Forward buttons go back and forward from wherever the pointer is, so they are taken as they
+        // tunnel down, before a list or a surface under the pointer could take them (§6.7).
+        AddHandler(PointerPressedEvent, OnSideButton, RoutingStrategies.Tunnel);
+
         // A saved session's folder or an investigation file dragged onto the window opens where it is let go, as Open
         // saved session and the Investigation menu open them (§3.1).
         DragDrop.SetAllowDrop(this, true);
@@ -790,56 +794,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
                 e.Handled = viewModel.RelayoutGraph();
                 break;
             case Key.Escape:
-                // A drag in progress is cancelled where it began (§6.7); with none, Esc comes back along the latest hop to a
-                // relationship's other end, a listening port's process or a pair of programs' other end, the keyboard on the
-                // row left by, and else ascends as the ladder's back does. A port's process can be chosen from a program
-                // reached along a walk of programs, so its way back is taken before theirs.
-                if (!(TimelineSurface.CancelDrag() || MinimapSurface.CancelDrag() || GraphSurface.CancelDrag()))
-                {
-                    if (viewModel.ComeBackFromPeer() is { } left)
-                    {
-                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                        {
-                            if (!closed)
-                            {
-                                _ = FocusRow(PeersList, PeersList.Items.OfType<PeerRow>().FirstOrDefault(row => row.PeerId == left));
-                            }
-                        });
-                    }
-                    else if (viewModel.ComeBackFromListener() is { } leftPort)
-                    {
-                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                        {
-                            if (!closed)
-                            {
-                                _ = FocusRow(ListenersList, ListenersList.Items.OfType<ListenerRow>()
-                                    .FirstOrDefault(row => row.Port == leftPort.Port && row.Process == leftPort.Process));
-                            }
-                        });
-                    }
-                    else if (viewModel.ComeBackFromProgram() is { } leftProgram)
-                    {
-                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                        {
-                            if (!closed)
-                            {
-                                _ = FocusRow(ProgramsList, ProgramsList.Items.OfType<ProgramPairRow>()
-                                    .FirstOrDefault(row => string.Equals(row.OtherKey, leftProgram, StringComparison.Ordinal)));
-                            }
-                        });
-                    }
-                    else
-                    {
-                        // On the machine rung the ranked row goes with the rest of the choice; the keyboard stays on it.
-                        rowLetGo = viewModel.SelectedRung?.Key;
-                        _ = viewModel.Ascend();
-
-                        // A choice let go takes the inspector's lists of what it held, and the row the keyboard was on goes
-                        // with them, with no focus event to say so: the keyboard is given back to what the window offers.
-                        KeepKeyboard();
-                    }
-                }
-
+                GoBack(viewModel);
                 e.Handled = true;
                 break;
             case Key.Delete:
@@ -849,6 +804,93 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
                 break;
         }
 
+    }
+
+    /// <summary>
+    /// Goes back, as Esc does and the mouse's Back button (§6.7): a drag in progress is cancelled where it began; with
+    /// none, back along the latest hop to a relationship's other end, a listening port's process or a pair of programs'
+    /// other end, the keyboard on the row left by, and else up a rung as the ladder's back does. A port's process can be
+    /// chosen from a program reached along a walk of programs, so its way back is taken before theirs.
+    /// </summary>
+    private void GoBack(WorkspaceViewModel viewModel)
+    {
+        if (!(TimelineSurface.CancelDrag() || MinimapSurface.CancelDrag() || GraphSurface.CancelDrag()))
+        {
+            if (viewModel.ComeBackFromPeer() is { } left)
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (!closed)
+                    {
+                        _ = FocusRow(PeersList, PeersList.Items.OfType<PeerRow>().FirstOrDefault(row => row.PeerId == left));
+                    }
+                });
+            }
+            else if (viewModel.ComeBackFromListener() is { } leftPort)
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (!closed)
+                    {
+                        _ = FocusRow(ListenersList, ListenersList.Items.OfType<ListenerRow>()
+                            .FirstOrDefault(row => row.Port == leftPort.Port && row.Process == leftPort.Process));
+                    }
+                });
+            }
+            else if (viewModel.ComeBackFromProgram() is { } leftProgram)
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (!closed)
+                    {
+                        _ = FocusRow(ProgramsList, ProgramsList.Items.OfType<ProgramPairRow>()
+                            .FirstOrDefault(row => string.Equals(row.OtherKey, leftProgram, StringComparison.Ordinal)));
+                    }
+                });
+            }
+            else
+            {
+                // On the machine rung the ranked row goes with the rest of the choice; the keyboard stays on it.
+                rowLetGo = viewModel.SelectedRung?.Key;
+                _ = viewModel.Ascend();
+
+                // A choice let go takes the inspector's lists of what it held, and the row the keyboard was on goes
+                // with them, with no focus event to say so: the keyboard is given back to what the window offers.
+                KeepKeyboard();
+            }
+        }
+    }
+
+    /// <summary>
+    /// The mouse's Back and Forward buttons (§6.7), wherever the pointer is: Back goes back as Esc does, leaving a search
+    /// first, whose hits would otherwise stand over the rung it went back to, and Forward goes forward as Alt+Right does.
+    /// Neither reaches what lies under the pointer, which a side button does nothing to.
+    /// </summary>
+    private void OnSideButton(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is not WorkspaceViewModel viewModel)
+        {
+            return;
+        }
+
+        switch (e.GetCurrentPoint(this).Properties.PointerUpdateKind)
+        {
+            case PointerUpdateKind.XButton1Pressed when viewModel.IsSearching:
+                viewModel.SearchText = string.Empty;
+                FocusRail();
+                e.Handled = true;
+                break;
+            case PointerUpdateKind.XButton1Pressed:
+                GoBack(viewModel);
+                e.Handled = true;
+                break;
+            case PointerUpdateKind.XButton2Pressed:
+                _ = viewModel.GoForward();
+                e.Handled = true;
+                break;
+            default:
+                break;
+        }
     }
 
     /// <summary>The keys sheet while it is open; a test reads it.</summary>

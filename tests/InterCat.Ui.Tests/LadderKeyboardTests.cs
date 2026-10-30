@@ -437,6 +437,56 @@ public sealed class LadderKeyboardTests
         Assert.Equal("L0 · MACHINE", viewModel.LevelBadge);
     }
 
+    [AvaloniaFact(DisplayName = "§6.7: the mouse's Back button goes back as Esc does, leaving a search first, and its Forward button forward again")]
+    public void TheMouseSideButtonsGoBackAndForward()
+    {
+        (Window window, WorkspaceViewModel viewModel) = Open();
+        FocusRankedTable(window);
+        viewModel.SelectedRung = viewModel.RungRows[0];
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        string group = viewModel.LevelBadge;
+        Settle(window);
+        ListBox ranked = window.GetControl<ListBox>("RungList");
+        Point over = ranked.TranslatePoint(new Point(ranked.Bounds.Width / 2, 12), window)!.Value;
+        void Click(MouseButton button)
+        {
+            window.MouseDown(over, button);
+            window.MouseUp(over, button);
+            Settle(window);
+        }
+
+        // Back, with the pointer over the ranked table, goes back to where the way down began, as Esc does; Forward goes
+        // down again to the rung Back left.
+        Click(MouseButton.XButton1);
+        Assert.Equal("L0 · MACHINE", viewModel.LevelBadge);
+        Assert.True(viewModel.CanGoForward);
+        Click(MouseButton.XButton2);
+        Assert.Equal(group, viewModel.LevelBadge);
+        Assert.False(viewModel.CanGoForward);
+
+        // With a search listing its hits, Back leaves the search first, on the rung it was typed on, and Back again goes back.
+        viewModel.SearchText = "cache";
+        Settle(window);
+        Assert.True(viewModel.IsSearching);
+        Click(MouseButton.XButton1);
+        Assert.False(viewModel.IsSearching);
+        Assert.Equal(group, viewModel.LevelBadge);
+        Click(MouseButton.XButton1);
+        Assert.Equal("L0 · MACHINE", viewModel.LevelBadge);
+
+        // Forward goes down again; with nowhere further to go it, and a middle click, go nowhere.
+        Click(MouseButton.XButton2);
+        Assert.Equal(group, viewModel.LevelBadge);
+        Click(MouseButton.XButton2);
+        Assert.Equal(group, viewModel.LevelBadge);
+        Click(MouseButton.Middle);
+        Assert.Equal(group, viewModel.LevelBadge);
+
+        // The keys sheet says so, among what acts anywhere.
+        Assert.Contains(WindowKeys.All, key => key.Where == "Anywhere" && key.Keys == "Mouse Back or Forward"
+            && key.Does == "go back as Esc does, leaving a search first, or forward as Alt+Right does");
+    }
+
     [AvaloniaFact(DisplayName = "§6.7: Alt and Right go forward to the rung Alt and Left left, and a button left of Back says where")]
     public void AltRightGoesForward()
     {

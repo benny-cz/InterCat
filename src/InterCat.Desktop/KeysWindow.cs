@@ -54,6 +54,7 @@ internal static class WindowKeys
         new("Anywhere", "Esc", "go back a level to where you were, and at the top clear the selection; during a drag, "
             + "cancel it"),
         new("Anywhere", "Alt+Left or Alt+Right", "go back or forward through the levels visited"),
+        new("Anywhere", "Mouse Back or Forward", "go back as Esc does, leaving a search first, or forward as Alt+Right does"),
         new("Anywhere", "T", "show or hide the relationship and interval tables"),
         new("Anywhere", "F11", "let the graph or the timeline, whichever has the keyboard, fill the column, or give the "
             + "column back"),
