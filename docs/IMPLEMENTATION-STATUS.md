@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-30 · Plan revision: 840 · Branch: `main`
+Updated: 2026-10-30 · Plan revision: 841 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 841 — a session of an investigation is named by its folder as icat workspace show lists it (R22):**
+  - `icat workspace show` lists each session by its short identity and its folder, but `align`, `relink`, `compare`,
+    `note --at`, `comparison --session` and `package --only` took only the identity: `b9899155@1`, never
+    `demo-client@1`. A session is now named by its folder too: its path as the investigation keeps it, with either
+    separator, or the folder's own name where no other session's folder has it.
+  - A folder's name two sessions share is refused naming both paths, and words that begin one session's identity and
+    are another's folder are refused rather than read as either. A folder a letter or two from the words is answered
+    with it. The help and `workspace-v23` say so.
+  - Debug and Release each ran 3,469 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the two new R22 tests. All 9 mutations were caught: the folder not read, a session named by
+    both its identity and another's folder taken as either, the other separator, spaces or a separator after the
+    path counted against it, the path not read, a folder's name two sessions share taken as the first's, the near
+    folder not offered, and a folder named by its whole path alone.
 
 - **Revision 840 — the mouse's Back button goes back as Esc does, and its Forward button forward (§3.2, §6.7):**
   - Asked for: the window went back with Esc, Alt+Left or the back crumb and forward with Alt+Right or the Forward

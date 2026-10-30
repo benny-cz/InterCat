@@ -97,7 +97,7 @@ a `Missing` member's and a `Different` member's end by saying to relink the memb
 A session keeps no older generation to read, so an `Advanced` or `Replaced` member is said to be one, and its generation
 is selected only by a relink. `relink` points a member at a path only when the session there has the member's
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
-there. A member is named by its `sessionId` or a unique leading part of it.
+there. A member is named by its `sessionId`, a unique leading part of it, or its folder as `show` lists it: its `path`, with either separator, or the folder's own name where no other member's folder has it. Words that begin one member's `sessionId` and are another's folder name neither, and are refused (revision 841).
 
 `icat workspace show --json` prints `workspace-resolution-v25`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
@@ -478,7 +478,7 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or
   cancelled leaves nothing.
 
-`--only <session>`, repeated, copies only the members named, each by its identity or a unique leading part; naming one
+`--only <session>`, repeated, copies only the members named, each as a member is named; naming one
 that cannot be copied is refused. `--check` measures the package and writes nothing. `--json` prints
 `workspace-package-v1`: `performed`, `source`, `directory` and `workspace` (null for a check), each member's
 `sessionId`, `fullPath`, `copied`, `packagedPath`, `generation`, `rows`, `files`, `bytes`, `redacted`, `state` (in the

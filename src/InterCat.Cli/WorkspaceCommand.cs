@@ -1580,7 +1580,8 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("           was published), replaced (an older or separately derived one is there), missing,");
         ConsoleUi.Line("           different or unreadable, and why. Exits 1 when any session is not present.");
         ConsoleUi.Line("  relink   points a session at a new path, or at its own to select what is there, only when the");
-        ConsoleUi.Line("           session there is that one. <session> is its identity or a unique leading part.");
+        ConsoleUi.Line("           session there is that one. <session> is its identity, a unique leading part, or its");
+        ConsoleUi.Line("           folder as show lists it: its path, or the folder's name where no other has it.");
         ConsoleUi.Line("  alias    names a session's host for people; one name never names two host identities.");
         ConsoleUi.Line("           <host> is its identity, a unique leading part, or its current name.");
         ConsoleUi.Line("  align    states that an instant of one session is an instant of another, within a bound: the");

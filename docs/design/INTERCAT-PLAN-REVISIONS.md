@@ -708,6 +708,8 @@ Revision 839 measures a name whatever its case, and answers a saved comparison, 
 
 Revision 840 lets the mouse's Back button go back as Esc does, and its Forward button forward.
 
+Revision 841 names a session of an investigation by its folder as `icat workspace show` lists it.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2444,3 +2446,16 @@ where the user was. Forward re-enters the rung Back left, as `Alt`+`Right` does.
 wherever the pointer is, so a list or a surface under it never acts on them. While a search lists its hits, Back
 leaves the search first, as `Esc` does in the search box: going back beneath the hits would change a rung the person
 cannot see. The keys sheet lists both buttons among what acts anywhere.
+
+Revision 841 lets a person name an investigation's session by what they see of it. `icat workspace show` lists each
+session by the first eight digits of its identity and by its folder, and every command that names a session, `align`,
+`relink`, `compare`, `note --at`, `comparison --session` and `package --only`, took only the identity or a leading
+part of it, so the demo's sessions were `b9899155@1` and `9ad3f385@1.75` where a person reads `demo-client` and
+`demo-server`. A session is now named by its folder too: by its path as the investigation keeps it, with either
+separator and with one after it or without, or by the folder's own name where no other session's folder has it,
+compared as the file system compares names. The identity is read first, as before, and a folder's name is never a
+guess: one that two sessions' folders have is refused naming both paths, and words that begin one session's identity
+and are another's folder, `abcd` for a session in a folder named so beside one whose identity begins abcd, are refused
+rather than read as either. Words that name no session are answered with the folders a letter or two from them. Naming
+is a person's reference to a session the investigation already holds by its identity; it makes no two sessions one,
+which P6 forbids a name to do.

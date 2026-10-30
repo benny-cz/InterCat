@@ -422,13 +422,62 @@ public static partial class InvestigationWorkspace
         })];
     }
 
-    /// <summary>The member a person named by its session identity or a unique leading part of it.</summary>
+    /// <summary>
+    /// The member a person named: by its session identity or a unique leading part of it, or by its folder as icat workspace
+    /// show lists it - its path, or that folder's own name where no other member's folder has it. Words that begin one
+    /// member's identity and are another's folder name neither, and are refused.
+    /// </summary>
     public static WorkspaceMember MemberNamed(InvestigationWorkspaceFile workspace, string text)
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(text);
-        return Named(workspace.Members, member => member.SessionId, text, "session")
-            ?? throw new InvalidOperationException($"No session of this investigation is '{text}' or begins with it.");
+        WorkspaceMember? byIdentity = Named(workspace.Members, member => member.SessionId, text, "session");
+        WorkspaceMember? byFolder = InFolder(workspace.Members, text);
+        if (byIdentity is not null && byFolder is not null && byIdentity.SessionId != byFolder.SessionId)
+        {
+            throw new InvalidOperationException($"'{text}' begins the identity of session {Short(byIdentity.SessionId)} and is "
+                + $"the folder of session {Short(byFolder.SessionId)}; give more of the identity, or the folder's path.");
+        }
+
+        return byIdentity ?? byFolder ?? throw new InvalidOperationException(
+            $"No session of this investigation is '{text}', begins with it, or is in a folder of that name"
+                + (NameText.Nearest(text.Trim(), workspace.Members.Select(member => FolderName(member.Path))) is { Length: > 0 } meant
+                    ? $"; did you mean {Quoted(meant)}?"
+                    : "."));
+    }
+
+    /// <summary>
+    /// The member whose folder <paramref name="text"/> names: by its path as the investigation keeps it, with either
+    /// separator, or by the folder's own name, as a file system compares names here; refused where two members' folders
+    /// have that name, naming them both.
+    /// </summary>
+    private static WorkspaceMember? InFolder(IReadOnlyList<WorkspaceMember> members, string text)
+    {
+        StringComparison paths = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        string asked = text.Trim().Replace('\\', '/').TrimEnd('/');
+        if (asked.Length == 0)
+        {
+            return null;
+        }
+
+        WorkspaceMember? atPath = members.FirstOrDefault(member => string.Equals(member.Path.TrimEnd('/'), asked, paths));
+        if (atPath is not null)
+        {
+            return atPath;
+        }
+
+        WorkspaceMember[] named = [.. members.Where(member => string.Equals(FolderName(member.Path), asked, paths))];
+        return named.Length > 1
+            ? throw new InvalidOperationException($"'{text}' is the folder of {named.Length} sessions of this investigation - "
+                + WorkspaceLayout.Series([.. named.Select(member => member.Path)]) + " - so name one by its path or its identity.")
+            : named.FirstOrDefault();
+    }
+
+    /// <summary>The name of the folder a member's path ends with.</summary>
+    private static string FolderName(string path)
+    {
+        string trimmed = path.TrimEnd('/');
+        return trimmed[(trimmed.LastIndexOf('/') + 1)..];
     }
 
     /// <summary>The host a person named by its name, its identity or a unique leading part of it.</summary>

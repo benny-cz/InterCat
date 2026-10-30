@@ -276,6 +276,45 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.MemberNamed(read, "ffff"));
     }
 
+    [Fact(DisplayName = "R22: a session is named by its identity, a unique leading part of it, or its folder as show lists it, never by a name two share")]
+    public void AMemberIsNamedByItsFolder()
+    {
+        string workspace = NewWorkspace();
+        Guid upload = Guid.Parse("abcdabcd-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        Guid other = Guid.Parse("12341234-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+        Guid night = Guid.Parse("56785678-cccc-4ccc-8ccc-cccccccccccc");
+        Guid nightAgain = Guid.Parse("9abc9abc-dddd-4ddd-8ddd-dddddddddddd");
+        InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "upload"), "lab-1", upload, CaptureId.New()).Root.Path, Now);
+        InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "abcd"), "lab-1", other, CaptureId.New()).Root.Path, Now);
+        InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "x", "night"), "lab-2", night, CaptureId.New()).Root.Path, Now);
+        InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "y", "night"), "lab-2", nightAgain, CaptureId.New()).Root.Path,
+            Now);
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+
+        // By its folder's name, by its path as the investigation keeps it - with either separator, and one after it - or by
+        // its identity as before.
+        Assert.Equal(upload, InvestigationWorkspace.MemberNamed(read, " upload ").SessionId);
+        Assert.Equal(night, InvestigationWorkspace.MemberNamed(read, "x/night").SessionId);
+        Assert.Equal(nightAgain, InvestigationWorkspace.MemberNamed(read, @"y\night\").SessionId);
+        Assert.Equal(other, InvestigationWorkspace.MemberNamed(read, "1234").SessionId);
+
+        // A folder's name two members' folders have names neither, and words that begin one member's identity and are
+        // another's folder name neither: each is refused, saying what names one.
+        Assert.Equal("'night' is the folder of 2 sessions of this investigation - x/night and y/night - so name one by its path "
+            + "or its identity.", Said<InvalidOperationException>(() => InvestigationWorkspace.MemberNamed(read, "night")));
+        Assert.Equal("'abcd' begins the identity of session abcdabcd and is the folder of session 12341234; give more of the "
+            + "identity, or the folder's path.", Said<InvalidOperationException>(() => InvestigationWorkspace.MemberNamed(read, "abcd")));
+
+        // Words that name none are refused, a folder's name a letter or two from them offered.
+        Assert.Equal("No session of this investigation is 'uplaod', begins with it, or is in a folder of that name; did you mean "
+            + "'upload'?", Said<InvalidOperationException>(() => InvestigationWorkspace.MemberNamed(read, "uplaod")));
+        Assert.Equal("No session of this investigation is 'zzzz', begins with it, or is in a folder of that name.",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.MemberNamed(read, "zzzz")));
+
+        static string Said<T>(Func<WorkspaceMember> refused)
+            where T : Exception => Assert.Throws<T>(() => refused()).Message;
+    }
+
     [Fact(DisplayName = "I9: a workspace file that holds anything else is refused whole, and a change made meanwhile is never written over")]
     public void AWorkspaceFileIsReadWholeOrRefused()
     {

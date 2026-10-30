@@ -395,6 +395,27 @@ public sealed class InvestigationCommandTests : IDisposable
         Assert.Contains($"Not copied: {server} (demo-server), missing.", short_, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R22: icat workspace names a session by its folder as show lists it, as by its identity, and answers a near one")]
+    public async Task ASessionIsNamedByItsFolder()
+    {
+        (string workspace, string client, string server) = await TwoHosts();
+
+        // The folders the investigation lists name its sessions as their identities do: by the folder's own name, or by
+        // its path as kept.
+        (InterCatExitCode aligned, _, string said) = await Run("workspace", "align", workspace, "demo-server", "demo/demo-client",
+            "--wall-clock", "--sync", "5ms", "--drift-ppm", "50");
+        Assert.True(aligned == InterCatExitCode.Success, said);
+        Assert.Contains($"Session {server} at 0.000 s is session {client} at 0.750 s", said, StringComparison.Ordinal);
+
+        // A folder a letter or two from one is answered with it, and the investigation is left as it was.
+        (InterCatExitCode refused, string output, string why) = await Run("workspace", "align", workspace, "demo-sever", client,
+            "--wall-clock", "--sync", "5ms", "--drift-ppm", "50");
+        Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (refused, output));
+        Assert.Contains("No session of this investigation is 'demo-sever', begins with it, or is in a folder of that name; did you "
+            + "mean 'demo-server'?", why, StringComparison.Ordinal);
+        Assert.Single(InvestigationWorkspace.Read(workspace).Alignments);
+    }
+
     /// <summary>The demo's two sessions, one per host, in an investigation of their own; the client's short identity first.</summary>
     private async Task<(string Workspace, string Client, string Server)> TwoHosts()
     {
