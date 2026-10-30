@@ -26,18 +26,21 @@ internal static class UnexpectedErrors
         InternalErrorText.Stopped("What was being done", exception) + " The window keeps running.";
 
     /// <summary>
-    /// Contains every exception that reaches <paramref name="dispatcher"/> that <paramref name="said"/> says, from now until
-    /// what this returns is disposed: whatever it cannot say, and running out of memory, go on as if it were not there.
+    /// Contains every exception that reaches <paramref name="dispatcher"/> that <paramref name="said"/> says, counting each
+    /// in <paramref name="counted"/> for the window's support bundle, from now until what this returns is disposed: whatever
+    /// it cannot say, and running out of memory, go on as if it were not there.
     /// </summary>
-    public static IDisposable Contain(Dispatcher dispatcher, Func<Exception, bool> said)
+    public static IDisposable Contain(Dispatcher dispatcher, Func<Exception, bool> said, InternalErrorTally counted)
     {
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentNullException.ThrowIfNull(said);
+        ArgumentNullException.ThrowIfNull(counted);
         void Contained(object? sender, DispatcherUnhandledExceptionEventArgs e)
         {
-            if (!e.Handled && e.Exception is not OutOfMemoryException)
+            if (!e.Handled && e.Exception is not OutOfMemoryException && said(e.Exception))
             {
-                e.Handled = said(e.Exception);
+                e.Handled = true;
+                counted.Count(e.Exception);
             }
         }
 

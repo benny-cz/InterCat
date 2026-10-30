@@ -64,7 +64,7 @@ internal static class SupportCommand
 
         // Its contents are listed before anything is read or written (§20.6); with --json, where the bundle is the output,
         // the listing goes beside it.
-        IReadOnlyList<string> holds = SupportBundle.Holds(sessions.Count, capabilities: true);
+        IReadOnlyList<string> holds = SupportBundle.Holds(sessions.Count, capabilities: true, unexpectedErrors: false);
         Action<string> say = json ? ConsoleUi.Progress : ConsoleUi.Note;
         if (!json)
         {
@@ -79,7 +79,9 @@ internal static class SupportCommand
         }
 
         ConsoleUi.Progress("Reading this machine's capability report and each session. No capture is started.");
-        SupportBundleV1 document = SupportBundle.Make(sessions, CapabilitiesCommand.Probe(), cancellationToken);
+        // An invocation counts no error it did not expect: it ends on its first, and writes it whole (§20.6 Internal).
+        SupportBundleV1 document =
+            SupportBundle.Make(sessions, CapabilitiesCommand.Probe(), unexpectedErrors: null, cancellationToken);
         string payload = SupportBundle.Serialize(document);
         if (json)
         {

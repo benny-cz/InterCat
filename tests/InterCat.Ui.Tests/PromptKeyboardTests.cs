@@ -29,7 +29,7 @@ public sealed class PromptKeyboardTests
 
     [AvaloniaFact(DisplayName = "§6.8: the support bundle's question chooses no file on Escape, as its focused Cancel does")]
     public async Task TheSupportBundlesQuestionCancelsOnEscape() =>
-        await AssertEscapeGivesTheSafeAnswer(MainWindow.SupportBundlePrompt(1), "Cancel");
+        await AssertEscapeGivesTheSafeAnswer(MainWindow.SupportBundlePrompt(1, unexpectedErrors: true), "Cancel");
 
     private static async Task AssertEscapeGivesTheSafeAnswer(Window prompt, string safe)
     {

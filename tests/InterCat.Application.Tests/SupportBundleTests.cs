@@ -55,18 +55,25 @@ public sealed class SupportBundleTests
         Assert.Equal($"The session directory '{Path.GetFileName(gone)}' does not exist.", missing.Problem);
     }
 
-    [Fact(DisplayName = "§20.6: a support bundle's listing says what it holds for none, one or several sessions, and what every bundle leaves out")]
+    [Fact(DisplayName = "§20.6: a support bundle's listing says what it holds for none, one or several sessions and the window's errors, and what every bundle leaves out")]
     public void ASupportBundlesListingSaysWhatItHolds()
     {
         Assert.Equal(
             ["InterCat's version, and this machine's operating system, architecture, runtime and processor count"],
-            SupportBundle.Holds(0, capabilities: false));
-        IReadOnlyList<string> one = SupportBundle.Holds(1, capabilities: true);
+            SupportBundle.Holds(0, capabilities: false, unexpectedErrors: false));
+        IReadOnlyList<string> one = SupportBundle.Holds(1, capabilities: true, unexpectedErrors: false);
         Assert.Equal(3, one.Count);
         Assert.Equal("this machine's capability report: which sources it could capture, and why not", one[1]);
         Assert.StartsWith("1 session: its folder's name, generation and files", one[2], StringComparison.Ordinal);
-        Assert.StartsWith("2 sessions: each one's folder name, generation and files", SupportBundle.Holds(2, capabilities: true)[2],
+        Assert.StartsWith("2 sessions: each one's folder name, generation and files", SupportBundle.Holds(2, capabilities: true, unexpectedErrors: false)[2],
             StringComparison.Ordinal);
+        Assert.Equal(
+            [
+                "InterCat's version, and this machine's operating system, architecture, runtime and processor count",
+                "the errors this window did not expect since it started: how many, and each kind's count and the methods of "
+                    + "InterCat it was thrown from, never what it said",
+            ],
+            SupportBundle.Holds(0, capabilities: false, unexpectedErrors: true));
         Assert.Contains("endpoint addresses and ports", SupportBundle.LeftOut);
         Assert.Contains("command lines", SupportBundle.LeftOut);
         Assert.False(string.IsNullOrWhiteSpace(SupportBundle.ProductVersion));

@@ -96,6 +96,19 @@ public sealed record SupportSession
     public long ContentBytes { get; init; }
 }
 
+/// <summary>
+/// One kind of error nothing mapped, as a support bundle counts it (§20.6 Internal): the exception's type, how many times it
+/// was contained, and the methods it was thrown from, innermost first; never what it said, which may hold what a record
+/// holds (P16).
+/// </summary>
+public sealed record SupportError(string Kind, long Count, IReadOnlyList<string> ThrownFrom);
+
+/// <summary>
+/// The errors nothing mapped that a window contained since it started: how many in all, and up to
+/// <see cref="InternalErrorTally.MostListed"/> kinds of them.
+/// </summary>
+public sealed record SupportErrors(long Contained, IReadOnlyList<SupportError> Errors);
+
 /// <summary>A support bundle as it is written (`contracts/support-bundle-v1.md`), by `icat support` or the window.</summary>
 public sealed record SupportBundleV1
 {
@@ -114,6 +127,12 @@ public sealed record SupportBundleV1
     public required CapabilityReport? Capabilities { get; init; }
 
     public required IReadOnlyList<SupportSession> Sessions { get; init; }
+
+    /// <summary>
+    /// The errors nothing mapped that the window which made the bundle contained since it started (§20.6 Internal); null
+    /// when nothing counted them, as when `icat support` made it: an invocation ends on its first, which it writes whole.
+    /// </summary>
+    public required SupportErrors? UnexpectedErrors { get; init; }
 
     /// <summary>What the bundle holds and what it leaves out, as its listing said before it was written.</summary>
     public required IReadOnlyList<string> Holds { get; init; }
@@ -148,11 +167,11 @@ public static class SupportBundle
     private static readonly JsonSerializerOptions Json = CreateJson();
 
     /// <summary>
-    /// The bundle of <paramref name="sessions"/>, with <paramref name="capabilities"/> when the maker ran the probe: what
-    /// <see cref="Holds"/> listed, made now.
+    /// The bundle of <paramref name="sessions"/>, with <paramref name="capabilities"/> when the maker ran the probe and the
+    /// <paramref name="unexpectedErrors"/> it contained when it counted them: what <see cref="Holds"/> listed, made now.
     /// </summary>
     public static SupportBundleV1 Make(IReadOnlyList<string> sessions, CapabilityReport? capabilities,
-        CancellationToken cancellationToken = default)
+        SupportErrors? unexpectedErrors, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sessions);
         return new()
@@ -163,7 +182,8 @@ public static class SupportBundle
             Runtime = Runtime(),
             Capabilities = capabilities,
             Sessions = [.. sessions.Select(session => DescribeSession(session, cancellationToken))],
-            Holds = Holds(sessions.Count, capabilities is not null),
+            UnexpectedErrors = unexpectedErrors,
+            Holds = Holds(sessions.Count, capabilities is not null, unexpectedErrors is not null),
             LeftOut = LeftOut,
         };
     }
@@ -204,9 +224,11 @@ public static class SupportBundle
         Environment.ProcessorCount);
 
     /// <summary>
-    /// What a bundle of <paramref name="sessions"/> holds, in the words its listing says them, before it is written.
+    /// What a bundle of <paramref name="sessions"/> holds, in the words its listing says them, before it is written: with
+    /// the machine's capability report when <paramref name="capabilities"/>, and the errors its maker did not expect when
+    /// it counted them, as the window does.
     /// </summary>
-    public static IReadOnlyList<string> Holds(int sessions, bool capabilities) =>
+    public static IReadOnlyList<string> Holds(int sessions, bool capabilities, bool unexpectedErrors) =>
     [
         "InterCat's version, and this machine's operating system, architecture, runtime and processor count",
         .. capabilities ? new[] { "this machine's capability report: which sources it could capture, and why not" } : [],
@@ -216,6 +238,13 @@ public static class SupportBundle
                 + (sessions == 1 ? "its folder's name, generation and files" : "each one's folder name, generation and files")
                 + " with their sizes, rows by mechanism and coverage, coverage ledger and loss counters, clock and recording",
         },
+        .. unexpectedErrors
+            ? new[]
+            {
+                "the errors this window did not expect since it started: how many, and each kind's count and the methods "
+                    + "of InterCat it was thrown from, never what it said",
+            }
+            : [],
     ];
 
     /// <summary>

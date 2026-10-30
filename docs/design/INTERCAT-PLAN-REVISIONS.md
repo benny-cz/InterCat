@@ -688,6 +688,8 @@ Revision 829 names every option a command reads in its own help, and holds every
 
 Revision 830 says an error nothing in InterCat mapped, in `icat` and in the window, where it was a crash or a click that did nothing.
 
+Revision 831 counts the errors the window contained in its support bundle, by kind and the methods each was thrown from, never what one said.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2285,3 +2287,18 @@ reaches the dispatcher as an event handler's does; every window suite still pass
 been failing unseen. Running out of memory is never contained, and nor is an error no open window can say, so none is
 passed over unsaid. The window says the error's kind and words but not where it was thrown, which `icat` writes; a
 person reporting one from the window has those and what they did.
+
+Revision 831 gives §20.6's `Internal` category the counter every category is owed. Revision 830 had the window say an
+error nothing mapped where it happened and keep running, but kept nothing of it, so a person who met one had only its
+words to report, and the words of an error are exactly what a support bundle must not hold: they may name a path, an
+endpoint or what a record holds (P16). The window now counts each error it contains, and its support bundle holds the
+count (`support-bundle-v1`, `unexpectedErrors`): how many in all, and the first 16 kinds, each by its type, its count
+and the methods of the code it was thrown from, innermost first and at most 32. The methods are read from the
+exception's own stack, without files or lines, so nothing but InterCat's and .NET's code is named; a method the
+compiler rewrote, an async method's state machine or a lambda, is named as it was written. Errors thrown from
+different places are different kinds, as a defect in two places is two defects, and the 16 listed are the first met,
+which is where a cascade of them starts. The bundle's listing says it holds them before a file is chosen. `icat
+support` counts none: an invocation ends on its first such error and writes it whole, so its bundle says null rather
+than an empty count, which would read as none met. Tests showed a count from a second call site in one method is a
+kind of its own, because its frames differ by the lambda that made it; that is the place the tally keys on, and the
+tests count again from one place.

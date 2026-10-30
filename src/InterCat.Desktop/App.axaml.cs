@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using InterCat.Application;
 using InterCat.Desktop.Presentation;
 using InterCat.Desktop.Settings;
 using InterCat.Desktop.Theme;
@@ -22,6 +23,9 @@ public sealed partial class App : Avalonia.Application
 
     /// <summary>What contains the errors no action expected, for as long as the application runs (§20.6 Internal).</summary>
     private static IDisposable? containment;
+
+    /// <summary>The errors no action expected that the application contained, which its support bundle counts.</summary>
+    private static readonly InternalErrorTally Contained = new();
 
     public override void Initialize()
     {
@@ -48,7 +52,7 @@ public sealed partial class App : Avalonia.Application
             // ending the program with every window it had open (§20.6 Internal). Only the application contains them; a
             // test never does, so a defect fails the test that meets it.
             containment ??= UnexpectedErrors.Contain(Dispatcher.UIThread,
-                exception => UnexpectedErrors.SayIn(desktop.Windows, window => window.IsActive, exception));
+                exception => UnexpectedErrors.SayIn(desktop.Windows, window => window.IsActive, exception), Contained);
 
             // Only the application reads the user's own settings and session folder, never a test (§26.3).
             ApplicationSettingsStore? store = null;
@@ -64,7 +68,7 @@ public sealed partial class App : Avalonia.Application
                 // Windows gave no per-user settings folder: the defaults stand, and a choice lasts until InterCat closes.
             }
 
-            var window = new MainWindow();
+            var window = new MainWindow { ContainedErrors = Contained };
             window.UseSettings(store, loaded);
             desktop.MainWindow = window;
 

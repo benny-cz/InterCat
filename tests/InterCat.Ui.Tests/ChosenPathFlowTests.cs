@@ -105,13 +105,19 @@ public sealed class ChosenPathFlowTests : IDisposable
     [AvaloniaFact(DisplayName = "§20.6: a support bundle says what it holds, then saves to the file chosen, or nothing when none is")]
     public async Task ASupportBundleSavesToTheFileChosen()
     {
-        (MainWindow window, AnsweredChoices choices) = await Opened();
+        // The application counts the errors it contains, one so far, which the window's bundle holds and says it does.
+        var contained = new InternalErrorTally();
+        contained.Count(new InvalidCastException("A row was read as the wrong kind"));
+        (MainWindow window, AnsweredChoices choices) = await Opened(contained);
         TextBlock detail = window.GetControl<TextBlock>("CaptureDetail");
         string before = detail.Text!;
 
         choices.Answer(null);
         Click(window, "SupportBundleButton");
-        Press(await Prompt(window), "Choose bundle file");
+        Window asked = await Prompt(window);
+        Assert.Contains(asked.GetVisualDescendants().OfType<TextBlock>(), block => block.Text
+            == "Holds: " + string.Join("; ", SupportBundle.Holds(1, capabilities: false, unexpectedErrors: true)) + ".");
+        Press(asked, "Choose bundle file");
         await Until(() => choices.Asked == 1);
         Assert.Equal(("Save support bundle", SupportBundle.SuggestedName), (choices.Saves[0].Title, choices.Saves[0].SuggestedFileName));
         Dispatcher.UIThread.RunJobs();
@@ -123,6 +129,13 @@ public sealed class ChosenPathFlowTests : IDisposable
         Press(await Prompt(window), "Choose bundle file");
         await Until(() => File.Exists(bundle));
         await Until(() => detail.Text == $"Support bundle saved to {bundle}. It holds no name, address or content; review it before sending it.");
+        using (JsonDocument saved = JsonDocument.Parse(File.ReadAllText(bundle)))
+        {
+            JsonElement errors = saved.RootElement.GetProperty("unexpectedErrors");
+            Assert.Equal((1L, "System.InvalidCastException"), (errors.GetProperty("contained").GetInt64(),
+                errors.GetProperty("errors").EnumerateArray().Single().GetProperty("kind").GetString()));
+            Assert.DoesNotContain("wrong kind", saved.RootElement.GetRawText(), StringComparison.Ordinal);
+        }
 
         // A file it cannot write - in a folder that is a file - is said, and the bundle can be asked for again.
         choices.Answer(Path.Combine(bundle, "support.json"));
@@ -409,10 +422,10 @@ public sealed class ChosenPathFlowTests : IDisposable
     }
 
     /// <summary>A window showing the demo's client session, its choices answered by the test.</summary>
-    private async Task<(MainWindow Window, AnsweredChoices Choices)> Opened()
+    private async Task<(MainWindow Window, AnsweredChoices Choices)> Opened(InternalErrorTally? contained = null)
     {
         DemoInvestigationResult demo = DemoInvestigation.Create(Path.Combine(folder, "demo"));
-        var window = new MainWindow { Width = 1_280, Height = 800 };
+        var window = new MainWindow { Width = 1_280, Height = 800, ContainedErrors = contained };
         var choices = new AnsweredChoices(window);
         window.Choices = choices;
         window.Show();

@@ -1,6 +1,6 @@
 # Support bundle contract, version 1
 
-Status: M5, revisions 391 and 392 (§20.6, P16)
+Status: M5, revisions 391, 392 and 831 (§20.6, P16)
 Owner: `InterCat.Application` (`SupportBundle`), with the capability report from `InterCat.Capture.Windows`
 Produced by: `icat support [<session> ...] (--output <path> [--overwrite] | --json | --check)`, and the window's
 "Save support bundle…" for the session it shows
@@ -17,7 +17,7 @@ pipe, resource, machine, host or user, and no full path. Its contents are listed
 Before it reads a session or writes a byte, `icat support` says what the bundle holds and what it leaves out, in the words
 the bundle then records in `holds` and `leftOut`. With `--check` it says so and does nothing else. With `--json`, where
 the bundle is the answer on stdout, the listing goes to stderr beside it. The window says the same words in a question
-before a file is chosen, and adds that a bundle made there holds no capability report, which `icat support` adds.
+before a file is chosen, and adds that a bundle made there holds no capability report, which `icat support` adds. Made there, it also holds the errors the window did not expect since it started, which its listing says (§2).
 
 It always leaves out: message content and payload bytes; endpoint addresses and ports; command lines; raw records and
 their source fields; process, executable, pipe and resource names; machine, host and user names; full paths, which each
@@ -33,6 +33,7 @@ session's folder name stands for; and the identity of the source a session was m
 | `runtime` | `operatingSystem`, `operatingSystemArchitecture`, `processArchitecture`, `framework` and `processors`: the machine as support needs it, with no machine or user name |
 | `capabilities` | The machine's capability report, as `icat capabilities --json` writes it (`capability-report-v1`): each candidate source's state and why it is not available. It names the operating system and its build, never the machine. Null when the window made the bundle: it runs no probe, and its `holds` then lists no report |
 | `sessions` | One entry per session named, in the order named (§3) |
+| `unexpectedErrors` | The errors nothing mapped that the window which made the bundle contained since it started (§20.6 `Internal`), counted rather than logged (revision 831): `contained`, how many in all, and `errors`, the first 16 kinds, each its `kind`, the exception's type, its `count`, and `thrownFrom`, the methods of the code it was thrown from, innermost first and at most 32, each by its type's name and its own. Never what an error said, which may hold what a record holds: the window said that where it happened. Null when nothing counted them, as when `icat support` made the bundle: an invocation ends on its first such error, which it writes whole |
 | `holds`, `leftOut` | What the listing said the bundle holds and leaves out |
 
 ## 3. A session
@@ -60,4 +61,4 @@ session's folder name stands for; and the identity of the source a session was m
 
 - Timings of a live capture's publication, which no session records once its capture has ended.
 - Diagnostic logs: InterCat keeps counters rather than logs on its capture, decode, aggregate and paint paths (§20.6, R11),
-  and those counters are in each session's ledger.
+  and those counters are in each session's ledger. The errors a window contained are counted too (§2), never logged.

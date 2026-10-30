@@ -1700,7 +1700,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
         try
         {
             string[] sessions = currentSessionPath is { } shown ? [shown] : [];
-            if (!await SupportBundlePrompt(sessions.Length).ShowDialog<bool>(this) || closed)
+            if (!await SupportBundlePrompt(sessions.Length, ContainedErrors is not null).ShowDialog<bool>(this) || closed)
             {
                 return;
             }
@@ -1717,7 +1717,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
                 return;
             }
 
-            await WriteSupportBundleAsync(path, sessions);
+            await WriteSupportBundleAsync(path, sessions, ContainedErrors?.Counted());
             if (!closed)
             {
                 CaptureDetail.Text = $"Support bundle saved to {path}. It holds no name, address or content; review it before "
@@ -1734,12 +1734,25 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
         }
     }
 
-    /// <summary>Writes the support bundle of <paramref name="sessions"/> to <paramref name="path"/>, off the UI thread.</summary>
-    internal static Task WriteSupportBundleAsync(string path, IReadOnlyList<string> sessions) => Task.Run(() =>
-        File.WriteAllText(path, SupportBundle.Serialize(SupportBundle.Make(sessions, capabilities: null))));
+    /// <summary>
+    /// The errors no action expected that the application contains and counts (§20.6 Internal), which the window's support
+    /// bundle holds; null where nothing contains them, as in a test, and the bundle then holds none.
+    /// </summary>
+    internal InternalErrorTally? ContainedErrors { get; init; }
 
-    /// <summary>What a support bundle holds and leaves out, said before its file is chosen; true to choose it.</summary>
-    internal static Window SupportBundlePrompt(int sessions)
+    /// <summary>
+    /// Writes the support bundle of <paramref name="sessions"/> to <paramref name="path"/>, with the <paramref name="unexpected"/>
+    /// errors the application contained when it counted them, off the UI thread.
+    /// </summary>
+    internal static Task WriteSupportBundleAsync(string path, IReadOnlyList<string> sessions, SupportErrors? unexpected) =>
+        Task.Run(() => File.WriteAllText(path,
+            SupportBundle.Serialize(SupportBundle.Make(sessions, capabilities: null, unexpectedErrors: unexpected))));
+
+    /// <summary>
+    /// What a support bundle holds and leaves out, said before its file is chosen, its <paramref name="unexpectedErrors"/>
+    /// among them when the application counts them; true to choose it.
+    /// </summary>
+    internal static Window SupportBundlePrompt(int sessions, bool unexpectedErrors)
     {
         var prompt = new Window
         {
@@ -1769,8 +1782,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
                 new TextBlock { Text = "A support bundle helps someone see why a capture or a view went wrong.",
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                 // In the words icat support lists them in (R18).
-                new TextBlock { Text = "Holds: " + string.Join("; ", SupportBundle.Holds(sessions, capabilities: false)) + ".",
-                    TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new TextBlock
+                {
+                    Text = "Holds: " + string.Join("; ", SupportBundle.Holds(sessions, capabilities: false, unexpectedErrors)) + ".",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                },
                 new TextBlock { Text = "Leaves out: " + string.Join("; ", SupportBundle.LeftOut) + ".",
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                 new TextBlock { Text = "Made here, it holds no capability report: icat support adds this machine's.",

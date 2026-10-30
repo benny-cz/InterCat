@@ -74,7 +74,7 @@ public sealed class DialogKeyboardTests
             ("stop finishing", CloseQuestion.For([CloseStop.Finish(PackagePath)])),
             ("stop all", CloseQuestion.For([CloseStop.Recording, CloseStop.Package(PackagePath, copy: true),
                 CloseStop.Finish(PackagePath), CloseStop.InvestigationPackage("case.icat-workspace", PackagePath)])),
-            ("support bundle", MainWindow.SupportBundlePrompt(1)),
+            ("support bundle", MainWindow.SupportBundlePrompt(1, unexpectedErrors: true)),
             ("pin", MainWindow.PinPrompt(offer)),
             ("investigation package saved", InvestigationWindow.PackageResultPrompt(investigation, offersOpen: true)),
             ("keys", new KeysWindow()),

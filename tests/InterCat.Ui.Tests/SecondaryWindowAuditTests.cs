@@ -185,7 +185,7 @@ public sealed class SecondaryWindowAuditTests
             ("stop finishing", CloseQuestion.For([CloseStop.Finish(PackagePath)])),
             ("stop all", CloseQuestion.For([CloseStop.Recording, CloseStop.Package(PackagePath, copy: true),
                 CloseStop.Finish(PackagePath), CloseStop.InvestigationPackage("case.icat-workspace", PackagePath)])),
-            ("support bundle", MainWindow.SupportBundlePrompt(1)),
+            ("support bundle", MainWindow.SupportBundlePrompt(1, unexpectedErrors: true)),
             ("investigation package saved", InvestigationWindow.PackageResultPrompt(investigation, offersOpen: true)),
         })
         {

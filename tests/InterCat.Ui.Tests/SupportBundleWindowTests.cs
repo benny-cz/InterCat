@@ -46,26 +46,39 @@ public sealed class SupportBundleWindowTests
         Assert.True(offered.IsEffectivelyEnabled);
         Assert.Contains("with no names, addresses or content", AutomationProperties.GetHelpText(offered), StringComparison.Ordinal);
 
-        // The question says what it holds and leaves out, in icat support's words, before a file is chosen.
-        Window prompt = MainWindow.SupportBundlePrompt(1);
+        // The question says what it holds and leaves out, in icat support's words, before a file is chosen: the errors the
+        // window did not expect among them, where the application counts them.
+        Window prompt = MainWindow.SupportBundlePrompt(1, unexpectedErrors: true);
         string[] said = [.. ((StackPanel)prompt.Content!).Children.OfType<TextBlock>().Select(block => block.Text!)];
-        Assert.Contains("Holds: " + string.Join("; ", SupportBundle.Holds(1, capabilities: false)) + ".", said);
+        Assert.Contains("Holds: " + string.Join("; ", SupportBundle.Holds(1, capabilities: false, unexpectedErrors: true)) + ".", said);
         Assert.Contains("Leaves out: " + string.Join("; ", SupportBundle.LeftOut) + ".", said);
         Assert.Contains("Made here, it holds no capability report: icat support adds this machine's.", said);
 
-        // Saved, it holds the session by its folder's name, no capability report, and none of the names or endpoints.
+        // An error the window did not expect, whose words name what a record holds, as an error's may.
+        var counted = new InternalErrorTally();
+        counted.Count(Thrown(@"Row 4242 of C:\Users\alice\Secret Tools\leaky-tool.exe sent to 10.99.98.97:50505"));
+
+        // Saved, it holds the session by its folder's name, no capability report, the error by its kind and the method it
+        // was thrown from, and none of the names, endpoints or words.
         string bundle = Path.Combine(Path.GetTempPath(), "intercat-support-" + Guid.NewGuid().ToString("N") + ".json");
         try
         {
-            await MainWindow.WriteSupportBundleAsync(bundle, [session.Path]);
+            await MainWindow.WriteSupportBundleAsync(bundle, [session.Path], counted.Counted());
             string written = File.ReadAllText(bundle);
             using JsonDocument document = JsonDocument.Parse(written);
             JsonElement root = document.RootElement;
             Assert.Equal(SupportBundle.Contract, root.GetProperty("contract").GetString());
             Assert.Equal(JsonValueKind.Null, root.GetProperty("capabilities").ValueKind);
-            Assert.Equal(SupportBundle.Holds(1, capabilities: false), root.GetProperty("holds").EnumerateArray().Select(hold => hold.GetString()));
+            Assert.Equal(SupportBundle.Holds(1, capabilities: false, unexpectedErrors: true),
+                root.GetProperty("holds").EnumerateArray().Select(hold => hold.GetString()));
             JsonElement shown = root.GetProperty("sessions").EnumerateArray().Single();
             Assert.Equal((Path.GetFileName(session.Path), 2L), (shown.GetProperty("folder").GetString(), shown.GetProperty("rows").GetInt64()));
+            JsonElement errors = root.GetProperty("unexpectedErrors");
+            JsonElement error = errors.GetProperty("errors").EnumerateArray().Single();
+            Assert.Equal((1L, "System.InvalidCastException", 1L), (errors.GetProperty("contained").GetInt64(),
+                error.GetProperty("kind").GetString(), error.GetProperty("count").GetInt64()));
+            Assert.Equal("InterCat.Ui.Tests.SupportBundleWindowTests.Thrown",
+                error.GetProperty("thrownFrom").EnumerateArray().First().GetString());
             foreach (string needle in new[] { "alice", "leaky-tool", "Secret Tools", "10.11.12.13", "10.99.98.97",
                 Path.GetDirectoryName(session.Path)! })
             {
@@ -87,6 +100,33 @@ public sealed class SupportBundleWindowTests
         {
             File.Delete(bundle);
             window.Close();
+        }
+
+        // Without a tally, as where nothing contains the window's errors, the bundle says none was counted.
+        await MainWindow.WriteSupportBundleAsync(bundle, [], unexpected: null);
+        try
+        {
+            using JsonDocument uncounted = JsonDocument.Parse(File.ReadAllText(bundle));
+            Assert.Equal(JsonValueKind.Null, uncounted.RootElement.GetProperty("unexpectedErrors").ValueKind);
+            Assert.Equal(SupportBundle.Holds(0, capabilities: false, unexpectedErrors: false),
+                uncounted.RootElement.GetProperty("holds").EnumerateArray().Select(hold => hold.GetString()));
+        }
+        finally
+        {
+            File.Delete(bundle);
+        }
+    }
+
+    /// <summary>An exception as one a defect throws: thrown, and caught to be counted.</summary>
+    private static InvalidCastException Thrown(string words)
+    {
+        try
+        {
+            throw new InvalidCastException(words);
+        }
+        catch (InvalidCastException thrown)
+        {
+            return thrown;
         }
     }
 }

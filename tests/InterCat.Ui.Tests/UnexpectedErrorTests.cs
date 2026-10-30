@@ -36,18 +36,20 @@ public sealed class UnexpectedErrorTests : IDisposable
         TextBlock detail = window.GetControl<TextBlock>("CaptureDetail");
         try
         {
-            // An error another handler has already taken is its to say, and is not said again.
+            // An error another handler has already taken is its to say and count, and is neither said nor counted again.
             int takenElsewhere = 0;
-            using (UnexpectedErrors.Contain(Dispatcher.UIThread, _ => ++takenElsewhere > 0))
-            using (UnexpectedErrors.Contain(Dispatcher.UIThread, exception => UnexpectedErrors.SayIn([window], _ => true, exception)))
+            var counted = new InternalErrorTally();
+            using (UnexpectedErrors.Contain(Dispatcher.UIThread, _ => ++takenElsewhere > 0, new InternalErrorTally()))
+            using (UnexpectedErrors.Contain(Dispatcher.UIThread, exception => UnexpectedErrors.SayIn([window], _ => true, exception), counted))
             {
                 Dispatcher.UIThread.Post(() => throw new InvalidCastException("taken elsewhere"));
                 Dispatcher.UIThread.RunJobs();
                 Assert.Equal(1, takenElsewhere);
                 Assert.NotEqual(Headline, status.Text);
+                Assert.Equal(0, counted.Counted().Contained);
             }
 
-            using (UnexpectedErrors.Contain(Dispatcher.UIThread, exception => UnexpectedErrors.SayIn([window], _ => true, exception)))
+            using (UnexpectedErrors.Contain(Dispatcher.UIThread, exception => UnexpectedErrors.SayIn([window], _ => true, exception), counted))
             {
                 // An event handler's error, as one that has awaited something ends with it.
                 Dispatcher.UIThread.Post(FailingHandler);
@@ -79,6 +81,15 @@ public sealed class UnexpectedErrorTests : IDisposable
                     Dispatcher.UIThread.RunJobs();
                 }));
             }
+
+            // Each error said was counted for the support bundle, by its kind and where it was thrown, the handler by the
+            // method it was written as; what was not contained, or was cancelled, was not.
+            SupportErrors errors = counted.Counted();
+            Assert.Equal(3, errors.Contained);
+            Assert.Equal(["System.InvalidCastException", "System.FormatException", "System.AggregateException"],
+                errors.Errors.Select(error => error.Kind));
+            Assert.All(errors.Errors, error => Assert.Equal(1, error.Count));
+            Assert.Equal("InterCat.Ui.Tests.UnexpectedErrorTests.FailingHandler", errors.Errors[0].ThrownFrom[0]);
 
             // Without the application's containment, as in every other test, the same errors fail what meets them.
             Assert.IsType<FormatException>(Record.Exception(() =>
@@ -113,8 +124,9 @@ public sealed class UnexpectedErrorTests : IDisposable
         Task shown = dialog.ShowDialog(investigation);
         Dispatcher.UIThread.RunJobs();
         Window? active = investigation;
+        var counted = new InternalErrorTally();
         using IDisposable containment = UnexpectedErrors.Contain(Dispatcher.UIThread,
-            exception => UnexpectedErrors.SayIn([window, investigation, dialog], candidate => candidate == active, exception));
+            exception => UnexpectedErrors.SayIn([window, investigation, dialog], candidate => candidate == active, exception), counted);
         try
         {
             // The active window says it, not the one listed first.
@@ -142,7 +154,7 @@ public sealed class UnexpectedErrorTests : IDisposable
             Dispatcher.UIThread.RunJobs();
             Assert.Equal((Headline, Stopped + "InvalidCastException: after it closed. The window keeps running."), (status.Text, detail.Text));
 
-            // Once no window can say it, it is not contained: it is never passed over unsaid.
+            // Once no window can say it, it is not contained: it is never passed over unsaid, nor counted as said.
             window.Close();
             Dispatcher.UIThread.RunJobs();
             Assert.IsType<InvalidCastException>(Record.Exception(() =>
@@ -150,6 +162,7 @@ public sealed class UnexpectedErrorTests : IDisposable
                 Dispatcher.UIThread.Post(() => throw new InvalidCastException("with no window open"));
                 Dispatcher.UIThread.RunJobs();
             }));
+            Assert.Equal(3, counted.Counted().Contained);
         }
         finally
         {

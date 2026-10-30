@@ -2122,6 +2122,11 @@ public sealed class CommandLineTests : IDisposable
             Assert.Equal("2", root.GetProperty("capabilities").GetProperty("reportVersion").GetString());
             Assert.Equal(SupportBundle.LeftOut, root.GetProperty("leftOut").EnumerateArray().Select(entry => entry.GetString()));
 
+            // An invocation counts no error it did not expect, ending on its first and writing it whole, so it lists none.
+            Assert.Equal(JsonValueKind.Null, root.GetProperty("unexpectedErrors").ValueKind);
+            Assert.Equal(SupportBundle.Holds(1, capabilities: true, unexpectedErrors: false),
+                root.GetProperty("holds").EnumerateArray().Select(entry => entry.GetString()));
+
             // The session by its folder's name: its rows by mechanism, with what the capture covered of each, its ledger's
             // loss, its clock and its files.
             JsonElement session = root.GetProperty("sessions").EnumerateArray().Single();
