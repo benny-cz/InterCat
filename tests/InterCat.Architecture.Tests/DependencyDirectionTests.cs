@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Xunit;
 
@@ -78,6 +79,37 @@ public sealed class DependencyDirectionTests
                 }
             }
         }
+    }
+
+    [Fact(DisplayName = "R19: the plan's solution layout names every project the solution holds, each where it is, and none it does not")]
+    public void TheLayoutNamesEveryProject()
+    {
+        string root = FindRepositoryRoot();
+        string plan = File.ReadAllText(Path.Combine(root, "docs", "design", "INTERCAT-IMPLEMENTATION-PLAN.md"));
+        int section = plan.IndexOf("### 26.1 Suggested solution layout", StringComparison.Ordinal);
+        Assert.True(section >= 0, "§26.1 no longer lays out the solution.");
+        int start = plan.IndexOf("```text", section, StringComparison.Ordinal) + "```text".Length;
+        int end = plan.IndexOf("```", start, StringComparison.Ordinal);
+
+        // A folder of the repository on a line of its own, then its projects, each indented two spaces; a line that goes on
+        // describing one is indented further.
+        var laidOut = new List<string>();
+        string? folder = null;
+        foreach (string line in plan[start..end].Split('\n'))
+        {
+            if (Regex.Match(line, @"^(src|tools|tests)/\s*$") is { Success: true } top)
+            {
+                folder = top.Groups[1].Value;
+            }
+            else if (Regex.Match(line, @"^  (InterCat\.[A-Za-z.]+)/") is { Success: true } project)
+            {
+                laidOut.Add($"{folder}/{project.Groups[1].Value}");
+            }
+        }
+
+        string[] solution = [.. XDocument.Load(Path.Combine(root, "InterCat.slnx")).Descendants("Project")
+            .Select(project => Path.GetDirectoryName(project.Attribute("Path")!.Value)!.Replace('\\', '/'))];
+        Assert.Equal(solution.Order(StringComparer.Ordinal), laidOut.Order(StringComparer.Ordinal));
     }
 
     private static string FindRepositoryRoot()

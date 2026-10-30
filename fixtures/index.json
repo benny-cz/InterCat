@@ -1797,7 +1797,8 @@
       "R19": [
         "R19: platform packages stay in their owning adapters",
         "R19: portable core source has no Windows or UI imports",
-        "R19: project references follow the inward dependency map"
+        "R19: project references follow the inward dependency map",
+        "R19: the plan's solution layout names every project the solution holds, each where it is, and none it does not"
       ],
       "R2": [
         "R2: a byte metric names its accounting, and a canonical owner is a request rather than a guess",

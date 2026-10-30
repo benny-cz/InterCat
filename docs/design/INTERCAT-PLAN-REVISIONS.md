@@ -696,6 +696,8 @@ Revision 833 refuses to publish beneath a running follow whatever a person asks 
 
 Revision 834 lists every command in the plan by what it is for, and adds a folder named twice once.
 
+Revision 835 lays out the solution in the plan as it is, and holds the layout to the solution by a test.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2356,3 +2358,14 @@ the folder, then refused it as a member. A folder named twice is now added once 
 833's account needs one correction: `icat retain --release-before` already declined to release while a session's
 capture had not finished, so the releases it newly refuses beneath a running follow are of kept content and of a
 journal prefix, which checked nothing.
+
+Revision 835 corrects §26.1, the solution layout, as revision 834 corrected the command line's account. The layout was
+written before most of the solution was, and only its sentence that project names may change while §9's dependency
+direction may not had held. It named `InterCat.FixtureGen` and `InterCat.SchemaProbe`, which were never built, and
+none of the six tools that were: the ALPC and WinINet probes behind ADR-004 and ADR-036, the journal probe, the
+capture comparison behind IC-010a, the broker's qualification and the theme report. It put the benchmarks in `bench/`,
+which holds only their results, and left out `InterCat.CaptureBroker.Protocol`, which revision 84 split from the
+broker so the window could speak to it, and three test projects, `icat`'s own among them. The layout now names all 33
+projects where they are, each with what it holds and, where they mean something, its folders. The dependency map of §9
+was already held by a test of every project's references; an architecture test now holds the layout to the solution
+file's projects too, so a project added, moved or removed without the plan saying so fails.

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-30 · Plan revision: 834 · Branch: `main`
+Updated: 2026-10-30 · Plan revision: 835 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 835 — the plan lays out the solution as it is, held to it by a test (§26.1, R19):**
+  - §26.1's layout named two tools that never existed and none of the six that do, put the benchmarks in a `bench/`
+    folder that holds only their results, and left out the broker's protocol project and three test projects, `icat`'s
+    own among them. It now lays out all 33 projects where they are, each with what it holds, and an architecture test
+    holds the layout to the solution's projects, so one added, moved or removed without it fails.
+  - Debug and Release each ran 3,441 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the new R19 test. Both mutations were caught: a test project dropped from the layout, and a
+    project named as the solution does not name it.
 
 - **Revision 834 — the plan lists every command, and a folder named twice is added once (§20.4, §8.3):**
   - §20.4 still showed revision 106's twenty commands under a sentence saying `icat help` lists every command, and
