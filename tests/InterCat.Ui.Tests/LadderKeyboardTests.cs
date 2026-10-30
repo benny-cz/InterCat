@@ -483,8 +483,42 @@ public sealed class LadderKeyboardTests
         Assert.Equal(group, viewModel.LevelBadge);
 
         // The keys sheet says so, among what acts anywhere.
-        Assert.Contains(WindowKeys.All, key => key.Where == "Anywhere" && key.Keys == "Mouse Back or Forward"
+        Assert.Contains(WindowKeys.All, key => key.Where == "Anywhere" && key.Keys == "Back or Forward, on a mouse or a keyboard"
             && key.Does == "go back as Esc does, leaving a search first, or forward as Alt+Right does");
+    }
+
+    [AvaloniaFact(DisplayName = "§6.7: a keyboard's Browser Back and Forward keys, which a mouse's driver may send for its side buttons, go back and forward as they do")]
+    public void TheBrowserKeysGoBackAndForward()
+    {
+        (Window window, WorkspaceViewModel viewModel) = Open();
+        FocusRankedTable(window);
+        viewModel.SelectedRung = viewModel.RungRows[0];
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        string group = viewModel.LevelBadge;
+        Settle(window);
+        void Press(Key key, PhysicalKey physical)
+        {
+            window.KeyPress(key, RawInputModifiers.None, physical, null);
+            window.KeyRelease(key, RawInputModifiers.None, physical, null);
+            Settle(window);
+        }
+
+        // Back goes back as Esc does, and Forward forward again to the rung Back left.
+        Press(Key.BrowserBack, PhysicalKey.BrowserBack);
+        Assert.Equal("L0 · MACHINE", viewModel.LevelBadge);
+        Press(Key.BrowserForward, PhysicalKey.BrowserForward);
+        Assert.Equal(group, viewModel.LevelBadge);
+
+        // From the search box, with a search listing its hits, Back leaves the search first, and types nothing there.
+        TextBox search = window.GetControl<TextBox>("SearchBox");
+        search.Focus();
+        viewModel.SearchText = "cache";
+        Settle(window);
+        Press(Key.BrowserBack, PhysicalKey.BrowserBack);
+        Assert.False(viewModel.IsSearching);
+        Assert.Equal(group, viewModel.LevelBadge);
+        Press(Key.BrowserBack, PhysicalKey.BrowserBack);
+        Assert.Equal("L0 · MACHINE", viewModel.LevelBadge);
     }
 
     [AvaloniaFact(DisplayName = "§6.7: Alt and Right go forward to the rung Alt and Left left, and a button left of Back says where")]

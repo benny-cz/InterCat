@@ -875,14 +875,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
 
         switch (e.GetCurrentPoint(this).Properties.PointerUpdateKind)
         {
-            case PointerUpdateKind.XButton1Pressed when viewModel.IsSearching:
-                viewModel.SearchText = string.Empty;
-                FocusRail();
-                e.Handled = true;
-                break;
             case PointerUpdateKind.XButton1Pressed:
-                GoBack(viewModel);
-                e.Handled = true;
+                e.Handled = GoBackLeavingSearch(viewModel);
                 break;
             case PointerUpdateKind.XButton2Pressed:
                 _ = viewModel.GoForward();
@@ -891,6 +885,25 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
             default:
                 break;
         }
+    }
+
+    /// <summary>
+    /// Back, as a mouse's Back button and the Browser Back key ask for it: a search listing its hits is left first, as Esc
+    /// leaves it in the search box, and else back as Esc goes. Always taken.
+    /// </summary>
+    private bool GoBackLeavingSearch(WorkspaceViewModel viewModel)
+    {
+        if (viewModel.IsSearching)
+        {
+            viewModel.SearchText = string.Empty;
+            FocusRail();
+        }
+        else
+        {
+            GoBack(viewModel);
+        }
+
+        return true;
     }
 
     /// <summary>The keys sheet while it is open; a test reads it.</summary>
@@ -4693,8 +4706,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
     }
 
     /// <summary>
-    /// Acts on a key that acts anywhere and types nothing - Ctrl+R, Ctrl+E, Ctrl+O, F5, Alt+Left, Alt+Right - as its
-    /// action does: whether the key was taken, or null for any other key.
+    /// Acts on a key that acts anywhere and types nothing - Ctrl+R, Ctrl+E, Ctrl+O, F5, Alt+Left, Alt+Right, and the
+    /// Browser Back and Forward keys a keyboard has, or a mouse's driver sends for its side buttons - as its action does:
+    /// whether the key was taken, or null for any other key.
     /// </summary>
     private bool? AnywhereKey(WorkspaceViewModel viewModel, KeyEventArgs e)
     {
@@ -4723,6 +4737,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
             Key.F5 => ApplyHeldUpdate(),
             Key.Left when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => viewModel.Ascend(),
             Key.Right when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => viewModel.GoForward(),
+            Key.BrowserBack => GoBackLeavingSearch(viewModel),
+            Key.BrowserForward => viewModel.GoForward(),
             _ => null,
         };
     }

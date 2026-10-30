@@ -57,8 +57,8 @@ to rank within it, zoom into it, or read it on the capture machine's wall clock.
 **The ranked table and the ladder** go from the machine to an executable group, a process instance, its channels, its
 RPC calls or HTTP exchanges, and their source records (E), ranked by records, bytes, RPC calls, errors, durations, peers
 or the connections a process made or accepted, per second if you like. Counts say what they count and over which scope,
-and a chosen record opens its original journal entry. Enter goes down a level; Esc, Alt+Left or the mouse's Back
-button goes back to exactly where you were, and Alt+Right or its Forward button down again.
+and a chosen record opens its original journal entry. Enter goes down a level; Esc, Alt+Left or a Back button, on
+a mouse or a keyboard, goes back to exactly where you were, and Alt+Right or Forward down again.
 
 **Messages.** A message your processes sent or received through WinINet opens in the content viewer, its bytes shown
 only when you ask; `icat content` shows the same from an evidence row, and `--part` the whole HTTP head or body its
