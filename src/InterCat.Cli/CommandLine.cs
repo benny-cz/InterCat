@@ -25,6 +25,18 @@ internal sealed class CommandLine
     /// <summary>Every option the command read, so one given again is named as given twice rather than as unknown.</summary>
     private readonly HashSet<string> taken = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Every option the command looked for, given or not, in the order it looked: what one it does not know was meant as,
+    /// when it is a letter or two from one of them.
+    /// </summary>
+    private readonly List<string> asked = [];
+
+    /// <summary>The options the command looked for that take a value, so one written with it after '=' is said how to give it.</summary>
+    private readonly HashSet<string> valued = new(StringComparer.Ordinal);
+
+    /// <summary>The options the command looked for that end the line, so each is said to be given without its value.</summary>
+    private readonly HashSet<string> unvalued = new(StringComparer.Ordinal);
+
     public CommandLine(IEnumerable<string> arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
@@ -47,6 +59,8 @@ internal sealed class CommandLine
                 $"{name} is read after a positional argument, which may have been its value: read every option first.");
         }
 
+        Ask(name);
+        valued.Add(name);
         for (int index = 0; index < arguments.Count; index++)
         {
             if (!string.Equals(arguments[index], name, StringComparison.Ordinal))
@@ -56,6 +70,7 @@ internal sealed class CommandLine
 
             if (index + 1 >= arguments.Count)
             {
+                unvalued.Add(name);
                 return null;
             }
 
@@ -102,6 +117,7 @@ internal sealed class CommandLine
 
     public bool TryTakeFlag(string name)
     {
+        Ask(name);
         int index = arguments.IndexOf(name);
         if (index < 0)
         {
@@ -147,31 +163,122 @@ internal sealed class CommandLine
     }
 
     /// <summary>
-    /// How a refusal names an argument no part of the command took: an option it does not know or that is missing its value,
-    /// an operand that starts with a dash and so was read as one, which follows <c>--</c> instead, or an operand past the
-    /// last the command takes.
+    /// How a refusal names an argument no part of the command took, quoted as given so the sentence's full stop is never
+    /// read as part of it: an option it does not know, an operand that starts with a dash and so was read as one, which
+    /// follows <c>--</c> instead, or an operand past the last the command takes.
     /// </summary>
     public static string Unknown(string argument)
     {
         ArgumentNullException.ThrowIfNull(argument);
-        return !argument.StartsWith('-') ? $"Unexpected argument: {argument}"
-            : NamesAnOption(argument) ? $"Unknown or incomplete option: {argument}"
-            : $"Unknown or incomplete option: {argument} - an operand that starts with a dash follows --, as in -- \"{argument}\"";
+        return !argument.StartsWith('-') ? $"Unexpected argument '{argument}': the command takes no more."
+            : NamesAnOption(argument) ? $"Unknown option '{argument}'."
+            : $"Unknown option '{argument}': an operand that starts with a dash follows --, as in -- \"{argument}\".";
     }
 
     /// <summary>
-    /// How a refusal names what <see cref="TryReportUnknown"/> found in this command line: an option the command took once
-    /// and that is given again is named as given twice - `--generation 1 --generation 7` - since it is not unknown; anything
-    /// else as <see cref="Unknown"/> names it.
+    /// How a refusal names what <see cref="TryReportUnknown"/> found in this command line, as the command read it. An
+    /// option it took once and that is given again is named as given twice - `--generation 1 --generation 7` - and one it
+    /// looked for that ends the line as given without its value, since neither is unknown; one it reads written with its
+    /// value after '=', as other tools take it, is said how to give it; an argument with a dash it does not know, a letter
+    /// or two from options it reads, is answered with them; anything else is named as <see cref="Unknown"/> names it.
     /// </summary>
-    public string Refusal(string argument) => taken.Contains(argument)
-        ? $"{argument} is given more than once; give it once."
-        : Unknown(argument);
+    public string Refusal(string argument)
+    {
+        ArgumentNullException.ThrowIfNull(argument);
+        if (taken.Contains(argument))
+        {
+            return $"{argument} is given more than once; give it once.";
+        }
+
+        if (unvalued.Contains(argument))
+        {
+            return $"{argument} is given without its value; give one after it.";
+        }
+
+        int equals = argument.IndexOf('=', StringComparison.Ordinal);
+        if (equals > 0 && asked.Contains(argument[..equals]))
+        {
+            string name = argument[..equals];
+            string value = argument[(equals + 1)..];
+            string example = value.Length == 0 ? string.Empty
+                : $", as in {name} {(value.Contains(' ', StringComparison.Ordinal) ? $"\"{value}\"" : value)}";
+            return valued.Contains(name)
+                ? $"{name} takes its value as the argument after it{example}, not after '='."
+                : $"{name} takes no value; give it alone.";
+        }
+
+        string[] meant = argument.StartsWith('-') ? Nearest(argument, asked) : [];
+        return meant.Length > 0 ? $"Unknown option '{argument}'; did you mean {Either(meant)}?" : Unknown(argument);
+    }
+
+    /// <summary>
+    /// The names among <paramref name="names"/> nearest <paramref name="given"/> that are near enough to be what it was
+    /// meant as: a letter or two left out, added, changed or swapped with the next, and no more than one for every three
+    /// letters given, so a short name is answered only with one a letter from it. None when no name is that near.
+    /// </summary>
+    public static string[] Nearest(string given, IEnumerable<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(given);
+        ArgumentNullException.ThrowIfNull(names);
+        int most = Math.Min(2, given.Length / 3);
+        (string Name, int Edits)[] near =
+            [.. names.Distinct(StringComparer.Ordinal).Select(name => (name, Edits(given, name))).Where(name => name.Item2 <= most)];
+        return near.Length == 0 ? [] : [.. near.Where(name => name.Edits == near.Min(other => other.Edits)).Select(name => name.Name)];
+    }
+
+    /// <summary>Choices as a sentence names them: "A", "A or B", "A, B or C".</summary>
+    public static string Either(IReadOnlyList<string> choices)
+    {
+        ArgumentNullException.ThrowIfNull(choices);
+        return choices.Count == 1 ? choices[0] : $"{string.Join(", ", choices.Take(choices.Count - 1))} or {choices[^1]}";
+    }
 
     public bool TryReportUnknown(out string? unknown)
     {
         unknown = arguments.Count > 0 ? arguments[0] : operands.TryPeek(out string? operand) ? operand : null;
         return unknown is not null;
+    }
+
+    /// <summary>
+    /// How many letters must be left out, added, changed, or swapped with the next to make <paramref name="from"/> into
+    /// <paramref name="to"/>: the optimal string alignment distance.
+    /// </summary>
+    private static int Edits(string from, string to)
+    {
+        int[,] distance = new int[from.Length + 1, to.Length + 1];
+        for (int i = 0; i <= from.Length; i++)
+        {
+            distance[i, 0] = i;
+        }
+
+        for (int j = 0; j <= to.Length; j++)
+        {
+            distance[0, j] = j;
+        }
+
+        for (int i = 1; i <= from.Length; i++)
+        {
+            for (int j = 1; j <= to.Length; j++)
+            {
+                int changed = from[i - 1] == to[j - 1] ? 0 : 1;
+                distance[i, j] = Math.Min(Math.Min(distance[i - 1, j] + 1, distance[i, j - 1] + 1), distance[i - 1, j - 1] + changed);
+                if (i > 1 && j > 1 && from[i - 1] == to[j - 2] && from[i - 2] == to[j - 1])
+                {
+                    distance[i, j] = Math.Min(distance[i, j], distance[i - 2, j - 2] + 1);
+                }
+            }
+        }
+
+        return distance[from.Length, to.Length];
+    }
+
+    /// <summary>Notes that the command looked for <paramref name="name"/>, once, in the order it looked.</summary>
+    private void Ask(string name)
+    {
+        if (!asked.Contains(name))
+        {
+            asked.Add(name);
+        }
     }
 
     /// <summary>Whether an argument is written as an option is: a dash or two, then a letter, then letters, digits and dashes.</summary>

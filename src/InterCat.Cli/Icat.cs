@@ -46,6 +46,15 @@ internal static class Icat
         }
     }
 
+    /// <summary>Every command icat runs, as it dispatches them: what a command it does not know was meant as.</summary>
+    internal static IReadOnlyList<string> Commands { get; } =
+    [
+        "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
+        "hosts", "programs", "ports", "patterns", "links", "waits", "outliers", "evidence", "timeline", "compare", "export",
+        "package", "raw", "content", "recover", "staging", "retain", "pin", "compact", "checkpoint", "follow", "metric",
+        "processes", "operations", "exchanges", "workspace", "verify", "support", "demo", "bench",
+    ];
+
     private static async Task<InterCatExitCode> DispatchAsync(string[] args, CancellationToken cancellationToken)
     {
         if (args.Length == 0 || args[0] is "help" or "--help" or "-h")
@@ -181,7 +190,10 @@ internal static class Icat
 
     private static InterCatExitCode UnknownCommand(string name)
     {
-        ConsoleUi.Failure($"Unknown command: {name}");
+        string[] meant = CommandLine.Nearest(name.ToLowerInvariant(), Commands);
+        ConsoleUi.Failure(meant.Length > 0
+            ? $"Unknown command '{name}'; did you mean {CommandLine.Either([.. meant.Select(command => "icat " + command)])}?"
+            : $"Unknown command '{name}'.");
         ConsoleUi.Explain(PrintHelp);
         return InterCatExitCode.InvalidInvocation;
     }

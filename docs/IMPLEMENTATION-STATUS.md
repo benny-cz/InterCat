@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-30 · Plan revision: 835 · Branch: `main`
+Updated: 2026-10-30 · Plan revision: 836 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 836 — every refusal ends as a sentence; a mistyped command or option is answered (§20.4, R18):**
+  - Some of `icat`'s refusals ended without a full stop: an unknown command or argument, `icat retain` given nothing
+    to release, and those that end on a capture's reason or an exception's message. Every refusal, warning and outcome
+    now ends as a sentence, held where each such line is written: one without a full stop, a question or an
+    exclamation is given a full stop, and one that ends on a colon introduces what follows it.
+  - An argument a command could not take was named after a colon, where a full stop would read as part of it; it is
+    quoted now, and refused as the command read it. An option the command looked for that ends the line is said to be
+    given without its value, one written with its value after `=` is told to give it as the next argument, and a
+    command or option a letter or two from one `icat` runs or the command reads is answered with it, as in `did you
+    mean icat processes?`.
+  - Revision 834's note needs a correction of its own: `icat retain --release-content` also waited for a session's
+    capture to finish, so the one release newly refused beneath a running follow is of a journal prefix, which a
+    running capture did not stop.
+  - Debug and Release each ran 3,454 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the three new R18 tests. Of the first 25 mutations, 24 were caught, among them an option's
+    missing value, its value after `=`, a near name, and a command in capitals compared as given; the one missed
+    showed the check for a full stop, a question or an exclamation to repeat the one through a closing quotation,
+    which now decides alone, and all 6 mutations of the simplified check were caught.
 
 - **Revision 835 — the plan lays out the solution as it is, held to it by a test (§26.1, R19):**
   - §26.1's layout named two tools that never existed and none of the six that do, put the benchmarks in a `bench/`

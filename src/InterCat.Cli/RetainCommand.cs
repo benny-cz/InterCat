@@ -248,7 +248,7 @@ internal static class RetainCommand
         {
             ConsoleUi.Failure(
                 "A session directory and what to release are required: icat retain <directory> --release-before <moment>, "
-                + "--release-journal-before-record <n>, or --release-content");
+                + "--release-journal-before-record <n>, or --release-content.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }

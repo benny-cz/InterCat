@@ -698,6 +698,8 @@ Revision 834 lists every command in the plan by what it is for, and adds a folde
 
 Revision 835 lays out the solution in the plan as it is, and holds the layout to the solution by a test.
 
+Revision 836 ends every refusal `icat` writes as a sentence, and answers a mistyped command or option with the one it was meant as.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2369,3 +2371,20 @@ broker so the window could speak to it, and three test projects, `icat`'s own am
 projects where they are, each with what it holds and, where they mean something, its folders. The dependency map of §9
 was already held by a test of every project's references; an architecture test now holds the layout to the solution
 file's projects too, so a project added, moved or removed without the plan saying so fails.
+
+Revision 836 holds what `icat` says of its work to one form, a sentence. A scan of the refusals, warnings and outcomes
+the command line writes found some that ended without a full stop: an unknown command, an argument no part of a
+command took, `icat retain` given nothing to release, and those that end on words another part said, a capture's
+refusal reason, the broker's code for a start that failed, or an exception's message, whose stop was theirs to give.
+Where every such line is written, one that ends without a full stop, a question or an exclamation is now given a full
+stop, and one that ends on a colon introduces what follows it, as a capture that cannot start introduces the sources
+that kept it. An argument a command could not take was named after a colon, `Unknown or incomplete option: --bogus`,
+where a full stop would have read as part of it; it is quoted now, and refused as the command read it. An option the
+command looked for that ends the line is said to be given without its value rather than unknown; one written with its
+value after `=`, as other tools take it, is said to take its value as the next argument, or to take none; and a
+command or option a letter or two from one `icat` runs or the command reads is answered with it, as `Unknown command
+'proceses'; did you mean icat processes?`. A name is near enough when no more than two letters must be left out,
+added, changed or swapped with the next, and no more than one for every three given, so a short name is never answered
+at random; an operand is never answered with an option. Revision 834's correction needs one of its own: `icat retain
+--release-content` waited for a session's capture to finish as `--release-before` did, so the one release revision 833
+newly refuses beneath a running follow is of a journal prefix, which a running capture did not stop.

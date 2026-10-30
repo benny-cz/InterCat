@@ -74,6 +74,34 @@ public sealed class ConsoleUiTests
         Assert.Equal(("  Answer                on stdout", "  Explained             on stderr"), (output.Trim('\n', '\r'), error.Trim('\n', '\r')));
     }
 
+    [Fact(DisplayName = "R18: what icat says of its work - a refusal, a warning, an outcome - ends as a sentence, whatever ends it")]
+    public void WhatIcatSaysEndsAsASentence()
+    {
+        // Words that end on a path, a value or another part's words without a stop are given one, past any trailing space.
+        Assert.Equal("No session directory at /a/b.", ConsoleUi.Sentence("No session directory at /a/b"));
+        Assert.Equal("The capture did not start: AccessDenied.", ConsoleUi.Sentence("The capture did not start: AccessDenied  "));
+        Assert.Equal("Give it as -- \"-> retry\".", ConsoleUi.Sentence("Give it as -- \"-> retry\""));
+        Assert.Equal("It is 'x'.", ConsoleUi.Sentence("It is 'x'"));
+        Assert.Equal("(Shown as it was).", ConsoleUi.Sentence("(Shown as it was)"));
+
+        // What ends as a sentence already, introduces what follows with a colon, or quotes one is written as it is.
+        foreach (string ended in new[] { "Done.", "Really?", "Stop!", "Nothing was recorded:", "He said \"stop.\"", "(As it was!)", "'x?'", "" })
+        {
+            Assert.Same(ended, ConsoleUi.Sentence(ended));
+        }
+
+        Assert.Throws<ArgumentNullException>(() => ConsoleUi.Sentence(null!));
+
+        // Every line that says what came of the work is written so.
+        (string written, _) = Written(() =>
+        {
+            ConsoleUi.Failure("Refused at /a");
+            ConsoleUi.Warn("Warned of /b");
+            ConsoleUi.Success("Wrote /c");
+        }, oneWriter: true);
+        Assert.Equal(["x Refused at /a.", "! Warned of /b.", "+ Wrote /c."], written.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+    }
+
     /// <summary>What <paramref name="write"/> writes to stdout and stderr, every field included.</summary>
     private static (string Output, string Error) Written(Action write, bool oneWriter)
     {

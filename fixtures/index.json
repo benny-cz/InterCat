@@ -2311,6 +2311,7 @@
         "R18: a group's lanes measured together hold what the byte measure answers for each process and every record",
         "R18: a headless export descends by row key and names its rung, interval and scope",
         "R18: a link, its evidence, what is near and what links to nothing are said in one set of words, the command line's and the window's",
+        "R18: a name is answered with those a letter or two from it, no more than one for every three letters given",
         "R18: a pattern's occurrences, who took each role and why a session holds none are said in one set of words, the command line's and the window's",
         "R18: a person's export states the coverage the inspector states for its scope, and icat export writes the same file",
         "R18: a process's direction rows measured together hold what the byte measure answers for each direction and every record",
@@ -2432,7 +2433,9 @@
         "R18: the patterns window lists what recurs in icat patterns's words, says every end of the chosen pattern, and returns its processes on Enter",
         "R18: the request a ranking names is the one icat metric is asked, its policy written out where not the default",
         "R18: the waits window lists the time inside calls in icat waits's words, says who served the chosen wait and how long, and returns its caller and server on Enter",
-        "R18: two spellings of one request, and a policy that changes nothing, are one identity"
+        "R18: two spellings of one request, and a policy that changes nothing, are one identity",
+        "R18: what a command could not take is refused as it read it: an option without its value, one written with it after '=', one mistyped",
+        "R18: what icat says of its work - a refusal, a warning, an outcome - ends as a sentence, whatever ends it"
       ],
       "S6": [
         "S6: a release before a boundary keeps the lifecycle and first records later records rest on, so each binds as before",

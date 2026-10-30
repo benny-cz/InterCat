@@ -85,8 +85,10 @@ public sealed class CommandLineTests : IDisposable
             }
         }
 
-        // Every command the overview names is one these tests run, so none is left out of what every command is held to.
+        // Every command the overview names is one these tests run, so none is left out of what every command is held to; a
+        // mistyped one is answered with the nearest that icat names, which are these.
         Assert.Empty(entries.Keys.Except(Commands));
+        Assert.Equal(Commands.Order(StringComparer.Ordinal), Icat.Commands.Order(StringComparer.Ordinal));
         foreach (string command in Commands)
         {
             Assert.True(entries.ContainsKey(command), $"The overview has no entry for icat {command}.");

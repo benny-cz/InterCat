@@ -83,13 +83,13 @@ internal static class ConsoleUi
     public static void Warn(string text)
     {
         Flush();
-        Console.Error.WriteLine(Paint($"! {text}", "33"));
+        Console.Error.WriteLine(Paint($"! {Sentence(text)}", "33"));
     }
 
     public static void Failure(string text)
     {
         Flush();
-        Console.Error.WriteLine(Paint($"x {text}", "31"));
+        Console.Error.WriteLine(Paint($"x {Sentence(text)}", "31"));
     }
 
     /// <summary>A reader's refusal of a value, in its own words (<see cref="Reason"/>).</summary>
@@ -131,7 +131,21 @@ internal static class ConsoleUi
     public static void Success(string text)
     {
         Flush();
-        Console.Error.WriteLine(Paint($"+ {text}", "32"));
+        Console.Error.WriteLine(Paint($"+ {Sentence(text)}", "32"));
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> as icat says what came of its work - a refusal, a warning, an outcome - in a sentence of its
+    /// own (R18): one that ends on a path, a value, or words a part of InterCat or .NET said without a full stop is given
+    /// one, as every other is written with one. One that ends on a colon introduces what follows it, and one that ends on a
+    /// quotation keeps the stop the quotation ends with.
+    /// </summary>
+    public static string Sentence(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ReadOnlySpan<char> said = text.AsSpan().TrimEnd();
+        bool ended = said.IsEmpty || said[^1] == ':' || said.TrimEnd("\"')") is [.., '.' or '!' or '?'];
+        return ended ? text : string.Concat(said, ".");
     }
 
     /// <summary>Renders a fixed-width table. Columns are padded from the widest cell, never truncated.</summary>

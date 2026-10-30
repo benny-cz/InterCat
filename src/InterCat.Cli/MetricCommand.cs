@@ -1713,14 +1713,9 @@ internal static class MetricCommand
 
         IReadOnlyList<string> values = rejection.Accepted;
         return values.Count == 0 ? $"  Leave out {option}."
-            : named ? $"  {option} takes {Either(values)} here."
-            : $"  Name it with {option}: {Either(values)}.";
+            : named ? $"  {option} takes {CommandLine.Either(values)} here."
+            : $"  Name it with {option}: {CommandLine.Either(values)}.";
     }
-
-    /// <summary>Choices as a sentence names them: "A", "A or B", "A, B or C".</summary>
-    private static string Either(IReadOnlyList<string> choices) => choices.Count == 1
-        ? choices[0]
-        : $"{string.Join(", ", choices.Take(choices.Count - 1))} or {choices[^1]}";
 
     /// <summary>A cohort as a person says it: completed or started, beside §23's full names.</summary>
     private static string? CohortAlias(string? value) => value?.ToLowerInvariant() switch
