@@ -16,6 +16,12 @@ public enum SearchHitKind
 
     /// <summary>The port a bare number names, which going to searches as a port, ":5353", in the number's place (§6.7).</summary>
     Port = 5,
+
+    /// <summary>
+    /// A program a search that found nothing was a letter or two from, "chrome.exe" for "chrme", which going to searches in
+    /// the search's place (R18).
+    /// </summary>
+    NearProgram = 6,
 }
 
 /// <summary>
@@ -209,6 +215,21 @@ public static class WorkspaceSearch
     /// </summary>
     private static int ListeningRankOf(ProcessNode process, string text) =>
         HostQueryOf(text) is { Address: null, Port: { } port } && process.AcceptedPorts.Contains(port) ? 1 : -1;
+
+    /// <summary>
+    /// The programs the words of a search that found nothing were a letter or two from (R18): the names of the session's
+    /// processes whose executable a record named, as <see cref="NameText.NearestPrograms"/> measures them, the busiest
+    /// first; none where the search found something.
+    /// </summary>
+    public static string[] NearPrograms(WorkspaceSnapshot snapshot, SearchResult result)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(result);
+        return result.Matched > 0 ? [] : NameText.NearestPrograms(result.Query, snapshot.Processes
+            .Where(process => process.GroupKey != ProcessGroup.UnwitnessedExecutableKey)
+            .OrderByDescending(process => process.Records)
+            .Select(process => process.Name));
+    }
 
     /// <summary>A query that is a number is also a PID.</summary>
     private static int? PidIn(string text) =>

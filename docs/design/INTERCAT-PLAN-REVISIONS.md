@@ -702,6 +702,8 @@ Revision 836 ends every refusal `icat` writes as a sentence, and answers a misty
 
 Revision 837 refuses a value from a set of names with the names as they are typed, and answers a near miss with the name meant.
 
+Revision 838 answers a search, or a `--program`, a letter or two from a program of the session with that program.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2404,3 +2406,16 @@ compared in lower case without their dashes, so `BytsSent` and `byts-sent` are b
 dashes alone would have put it past two letters. A name longer or shorter than the value by more than the letters
 allowed is never measured, so an argument of any length costs no more than the names near it in length. The two copies
 of the name-to-kebab conversion `icat retain` and `icat evidence` kept are one now, beside the refusal that uses it.
+
+Revision 838 carries the command line's answer to a mistyped name into the window, where the motivating question,
+which process talked to whom, is asked by typing a program's name. A search for words that found nothing said No
+matches and what a search reads, though on a busy machine such words are most often a program's name mistyped. Words a
+letter or two from a program of the session now offer it among the search's hits, as revision 608's bare number offers
+its port: the row names the program and how many hits searching it finds, the summary says that Enter searches it, and
+going to it searches the program in the words' place, opening no rung. A program is compared by its name as the
+session lists it, by its executable's file name and by that file name without its extension, in lower case, so `chrme`
+is a letter from chrome.exe and a program listed with its folders, where two share a file name, is reached by the file
+name; each program as near as the nearest is offered, the busiest first, and a process whose executable no record
+named, which is named by its PID, never is. `--program`, which `icat hosts`, `ports`, `processes` and `programs` take,
+answers a name the session has no program of the same way, naming each program as near. The nearness revision 836
+measured within the command line is the application layer's now, so the window and `icat` measure a name alike.

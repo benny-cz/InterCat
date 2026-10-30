@@ -113,7 +113,15 @@ public sealed class ProgramsCommandTests
         (refused, output, error) = await Run("programs", session.Path, "--program", "nothing.exe");
         Assert.Equal(InterCatExitCode.InvalidInvocation, refused);
         Assert.Empty(output);
-        Assert.Contains("No program of this session is named nothing.exe", error, Ordinal);
+        Assert.Contains("No program of this session is named nothing.exe: a program is named by its executable's file name", error, Ordinal);
+
+        // One a letter or two from a program's name, with its extension or without, is answered with it, and with each
+        // program as near where two are.
+        (refused, output, error) = await Run("programs", session.Path, "--program", "brwoser");
+        Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (refused, output));
+        Assert.Contains("No program of this session is named brwoser; did you mean browser.exe?", error, Ordinal);
+        (_, _, error) = await Run("programs", session.Path, "--program", "gti.exe");
+        Assert.Contains("No program of this session is named gti.exe; did you mean git.exe (bin) or git.exe (cmd)?", error, Ordinal);
         (refused, _, error) = await Run("programs", session.Path, "--program", " ");
         Assert.Equal(InterCatExitCode.InvalidInvocation, refused);
         Assert.Contains("--program takes a program's name", error, Ordinal);

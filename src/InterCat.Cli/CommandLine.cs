@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Globalization;
+using InterCat.Application;
 
 namespace InterCat.Cli;
 
@@ -124,7 +125,7 @@ internal sealed class CommandLine
     {
         ArgumentNullException.ThrowIfNull(names);
         string[] meant = given is null ? []
-            : [.. Nearest(Compact(given), names.Select(Compact)).Select(near => names.First(name => Compact(name) == near))];
+            : [.. NameText.Nearest(Compact(given), names.Select(Compact)).Select(near => names.First(name => Compact(name) == near))];
         return meant.Length == 0
             ? Expects(option, given, Either(names))
             : $"{option} expects {Either(names)}; '{given}' is not one; did you mean {Either(meant)}?";
@@ -234,31 +235,8 @@ internal sealed class CommandLine
                 : $"{name} takes no value; give it alone.";
         }
 
-        string[] meant = argument.StartsWith('-') ? Nearest(argument, asked) : [];
+        string[] meant = argument.StartsWith('-') ? NameText.Nearest(argument, asked) : [];
         return meant.Length > 0 ? $"Unknown option '{argument}'; did you mean {Either(meant)}?" : Unknown(argument);
-    }
-
-    /// <summary>
-    /// The names among <paramref name="names"/> nearest <paramref name="given"/> that are near enough to be what it was
-    /// meant as: a letter or two left out, added, changed or swapped with the next, and no more than one for every three
-    /// letters given, so a short name is answered only with one a letter from it. None when no name is that near.
-    /// </summary>
-    public static string[] Nearest(string given, IEnumerable<string> names)
-    {
-        ArgumentNullException.ThrowIfNull(given);
-        ArgumentNullException.ThrowIfNull(names);
-        int most = Math.Min(2, given.Length / 3);
-
-        // A name longer or shorter than what was given by more than that is farther from it, so it is never measured: a
-        // long argument costs no more than a short one.
-        (string Name, int Edits)[] near =
-        [
-            .. names.Distinct(StringComparer.Ordinal)
-                .Where(name => Math.Abs(name.Length - given.Length) <= most)
-                .Select(name => (name, Edits(given, name)))
-                .Where(name => name.Item2 <= most),
-        ];
-        return near.Length == 0 ? [] : [.. near.Where(name => name.Edits == near.Min(other => other.Edits)).Select(name => name.Name)];
     }
 
     /// <summary>Choices as a sentence names them: "A", "A or B", "A, B or C".</summary>
@@ -272,39 +250,6 @@ internal sealed class CommandLine
     {
         unknown = arguments.Count > 0 ? arguments[0] : operands.TryPeek(out string? operand) ? operand : null;
         return unknown is not null;
-    }
-
-    /// <summary>
-    /// How many letters must be left out, added, changed, or swapped with the next to make <paramref name="from"/> into
-    /// <paramref name="to"/>: the optimal string alignment distance.
-    /// </summary>
-    private static int Edits(string from, string to)
-    {
-        int[,] distance = new int[from.Length + 1, to.Length + 1];
-        for (int i = 0; i <= from.Length; i++)
-        {
-            distance[i, 0] = i;
-        }
-
-        for (int j = 0; j <= to.Length; j++)
-        {
-            distance[0, j] = j;
-        }
-
-        for (int i = 1; i <= from.Length; i++)
-        {
-            for (int j = 1; j <= to.Length; j++)
-            {
-                int changed = from[i - 1] == to[j - 1] ? 0 : 1;
-                distance[i, j] = Math.Min(Math.Min(distance[i - 1, j] + 1, distance[i, j - 1] + 1), distance[i - 1, j - 1] + changed);
-                if (i > 1 && j > 1 && from[i - 1] == to[j - 2] && from[i - 2] == to[j - 1])
-                {
-                    distance[i, j] = Math.Min(distance[i, j], distance[i - 2, j - 2] + 1);
-                }
-            }
-        }
-
-        return distance[from.Length, to.Length];
     }
 
     /// <summary>A name as two spellings of it compare: its letters in lower case, without dashes.</summary>

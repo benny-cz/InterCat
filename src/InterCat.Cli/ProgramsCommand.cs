@@ -107,6 +107,8 @@ internal static class ProgramsCommand
         refusal = named.Length switch
         {
             1 => null,
+            0 when NameText.NearestPrograms(asked, Witnessed(groups)) is { Length: > 0 } meant
+                => $"No program of this session is named {asked}; did you mean {CommandLine.Either(meant)}?",
             0 => $"No program of this session is named {asked}: a program is named by its executable's file name, as icat "
                 + "programs lists it, or by the executable's path.",
             _ => $"--program {asked} names {named.Length} programs - "
@@ -141,6 +143,10 @@ internal static class ProgramsCommand
             ? byStem
             : [.. groups.Where(group => string.Equals(group.Detail, asked, StringComparison.OrdinalIgnoreCase))];
     }
+
+    /// <summary>The names of the programs whose executable a record named, as icat programs lists them.</summary>
+    private static IEnumerable<string> Witnessed(IReadOnlyList<ProcessGroup> groups) =>
+        groups.Where(group => group.Key != ProcessGroup.UnwitnessedExecutableKey).Select(group => group.Name);
 
     /// <summary>The file name a witnessed Windows or POSIX path ends with.</summary>
     private static string FileName(string path) => path[(path.LastIndexOfAny(['\\', '/']) + 1)..];

@@ -1,3 +1,4 @@
+using InterCat.Application;
 using InterCat.Domain;
 using Xunit;
 
@@ -126,25 +127,25 @@ public sealed class ArgumentTests
     public void ANameIsAnsweredWithTheNearest()
     {
         // A letter left out, added, changed or swapped with the next is one.
-        Assert.Equal(["processes"], CommandLine.Nearest("proceses", Icat.Commands));
-        Assert.Equal(["export"], CommandLine.Nearest("expotr", Icat.Commands));
-        Assert.Equal(["pin"], CommandLine.Nearest("pni", Icat.Commands));
-        Assert.Equal(["pin"], CommandLine.Nearest("pins", Icat.Commands));
-        Assert.Equal(["session"], CommandLine.Nearest("sesions", Icat.Commands));
+        Assert.Equal(["processes"], NameText.Nearest("proceses", Icat.Commands));
+        Assert.Equal(["export"], NameText.Nearest("expotr", Icat.Commands));
+        Assert.Equal(["pin"], NameText.Nearest("pni", Icat.Commands));
+        Assert.Equal(["pin"], NameText.Nearest("pins", Icat.Commands));
+        Assert.Equal(["session"], NameText.Nearest("sesions", Icat.Commands));
 
         // Never more than two, nor more than one for every three letters given, so a short name is never answered at random.
-        Assert.Empty(CommandLine.Nearest("procxxxes", Icat.Commands));
-        Assert.Empty(CommandLine.Nearest("pinss", Icat.Commands));
-        Assert.Empty(CommandLine.Nearest("xx", Icat.Commands));
+        Assert.Empty(NameText.Nearest("procxxxes", Icat.Commands));
+        Assert.Empty(NameText.Nearest("pinss", Icat.Commands));
+        Assert.Empty(NameText.Nearest("xx", Icat.Commands));
 
         // Every one as near as the nearest is named, once, in the order given, and none farther.
-        Assert.Equal(["import", "export"], CommandLine.Nearest("ixport", Icat.Commands));
-        Assert.Equal(["--pid"], CommandLine.Nearest("--pidd", ["--pi", "--pid"]));
-        Assert.Equal(["--pid", "--pin"], CommandLine.Nearest("--pi", ["--pid", "--pin", "--pid", "--pi-x"]));
+        Assert.Equal(["import", "export"], NameText.Nearest("ixport", Icat.Commands));
+        Assert.Equal(["--pid"], NameText.Nearest("--pidd", ["--pi", "--pid"]));
+        Assert.Equal(["--pid", "--pin"], NameText.Nearest("--pi", ["--pid", "--pin", "--pid", "--pi-x"]));
         Assert.Equal("--pid or --pin", CommandLine.Either(["--pid", "--pin"]));
         Assert.Equal("a, b or c", CommandLine.Either(["a", "b", "c"]));
-        Assert.Throws<ArgumentNullException>(() => CommandLine.Nearest(null!, []));
-        Assert.Throws<ArgumentNullException>(() => CommandLine.Nearest("x", null!));
+        Assert.Throws<ArgumentNullException>(() => NameText.Nearest(null!, []));
+        Assert.Throws<ArgumentNullException>(() => NameText.Nearest("x", null!));
         Assert.Throws<ArgumentNullException>(() => CommandLine.Either(null!));
     }
 

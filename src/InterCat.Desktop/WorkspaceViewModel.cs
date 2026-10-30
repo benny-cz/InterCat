@@ -2565,10 +2565,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             searchText = value;
             searchResult = WorkspaceSearch.Find(wholeSnapshot, value);
 
-            // A moment typed comes first: going to it chooses the cell holding it (§6.2, §6.7). A bare number offers its port.
+            // A moment typed comes first: going to it chooses the cell holding it (§6.2, §6.7). A bare number offers its port,
+            // and words that find nothing the programs they were a letter or two from.
             ReadSearchedMoment(value);
             searchRows = [.. SearchedMomentRow() is { } moment ? [moment] : Array.Empty<SearchRow>(),
-                .. WithPortRow(searchResult)];
+                .. WithPortRow(searchResult), .. NearProgramRows(searchResult)];
             selectedSearchResult = searchRows.Count > 0 ? searchRows[0] : null;
             FindSearchedLanes();
             if (said != SearchedLanesNote)
@@ -2637,6 +2638,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ? searchResult.Matched == 0 ? problem : problem + " " + MatchesSummary
         : searchedMoment is not null && searchResult.Matched == 0 ? "A moment of this session · Enter goes there, Esc clears"
         : searchResult.Matched == 0 && OfferedPort is { } port ? $"No PID or name matches · Enter searches {port} as a port, Esc clears"
+        : searchResult.Matched == 0 && OfferedProgram is { } program ? $"No matches · Enter searches {program}, Esc clears"
         : MatchesSummary;
 
     private string MatchesSummary => searchResult.Matched == 0
@@ -2695,8 +2697,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return gone;
         }
 
-        // Nor is a port a number offers: going to it searches the port in the number's place.
-        if (row.Hit.Kind == SearchHitKind.Port)
+        // Nor is a port a number offers, nor a program a search that found nothing offers: going to either searches it in
+        // the search's place.
+        if (row.Hit.Kind is SearchHitKind.Port or SearchHitKind.NearProgram)
         {
             SearchText = row.Hit.Label;
             return true;
