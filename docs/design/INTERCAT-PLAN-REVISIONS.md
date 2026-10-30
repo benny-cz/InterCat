@@ -694,6 +694,8 @@ Revision 832 refuses a value a command cannot read by naming it with what the op
 
 Revision 833 refuses to publish beneath a running follow whatever a person asks for, where only a checkpoint was refused.
 
+Revision 834 lists every command in the plan by what it is for, and adds a folder named twice once.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2340,3 +2342,17 @@ a release without `--confirm`, publishes nothing and goes ahead. The check is a 
 Windows enforces a ticket's hold between two handles in one process; a test there holds one, and here one released
 without completing it is shown to be an interrupted follow's, whose session is finished rather than refused
 (`live-follow-v1` §6).
+
+Revision 834 corrects §20.4's account of the command line, which had not changed since revision 106 while the command
+line grew to 40 commands. Its listing showed 20 of them under the sentence that `icat help` lists every command, which
+a reader would take for the list. It now lists every command by what it is for, and a test reads the listing from the
+plan and holds it to the commands `icat` dispatches, so a command added without it fails. The paragraph after it
+called `icat workspace create` a proposal to be frozen with M4. An investigation over several sessions shipped as
+`icat workspace`, with `new` in its place and `package` to copy one with its sessions, while `icat query` over the
+full analysis specification and a workspace-level export of an analysis remain proposals. Appendix B's example queried
+`capture.icat`, the single-file form the directory store of §20.1 superseded; it queries a session's folder now. A
+probe of every command found `icat workspace add` answering 1, a partial result, when given one folder twice: it added
+the folder, then refused it as a member. A folder named twice is now added once and said to be named twice. Revision
+833's account needs one correction: `icat retain --release-before` already declined to release while a session's
+capture had not finished, so the releases it newly refuses beneath a running follow are of kept content and of a
+journal prefix, which checked nothing.

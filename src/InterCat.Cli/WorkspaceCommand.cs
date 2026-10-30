@@ -516,8 +516,24 @@ internal static partial class WorkspaceCommand
 
     private static InterCatExitCode Add(string path, List<string> directories)
     {
-        int added = 0;
+        // A folder named twice is added once, as asked, and said to be named twice rather than refused as a member the
+        // second time, which would answer a whole request done as one done in part.
+        StringComparison paths = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var named = new List<string>();
         foreach (string directory in directories)
+        {
+            string full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+            if (named.Any(earlier => string.Equals(earlier, full, paths)))
+            {
+                ConsoleUi.Warn($"{full} is given more than once; it is added once.");
+                continue;
+            }
+
+            named.Add(full);
+        }
+
+        int added = 0;
+        foreach (string directory in named)
         {
             try
             {
@@ -533,7 +549,7 @@ internal static partial class WorkspaceCommand
             }
         }
 
-        return added == directories.Count ? InterCatExitCode.Success
+        return added == named.Count ? InterCatExitCode.Success
             : added > 0 ? InterCatExitCode.PartialResultSuccess
             : InterCatExitCode.InvalidInvocation;
     }

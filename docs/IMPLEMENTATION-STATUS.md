@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-30 · Plan revision: 833 · Branch: `main`
+Updated: 2026-10-30 · Plan revision: 834 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 834 — the plan lists every command, and a folder named twice is added once (§20.4, §8.3):**
+  - §20.4 still showed revision 106's twenty commands under a sentence saying `icat help` lists every command, and
+    still called `icat workspace create` a proposal; Appendix B queried the superseded `capture.icat` file. The plan
+    now lists all 40 commands by what each is for, a test holding the listing to the commands `icat` dispatches, says
+    which of its proposals shipped, and queries a session's folder.
+  - `icat workspace add` given one folder twice added it, refused it as a member the second time, and answered 1, a
+    partial result, though everything asked was done. A folder named twice, with a separator after it or without, is
+    now added once and said to be named twice.
+  - Revision 833's note overstated one thing: `icat retain --release-before` already waited for a session's capture to
+    finish, so the releases it newly refuses beneath a running follow are of kept content and of a journal prefix.
+  - Debug and Release each ran 3,440 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    5 mutations were caught: a folder named twice tried again, or told apart by a separator after it; named twice
+    and not said to be; the exit code counting the operands as given; and a command dropped from the plan's listing.
 
 - **Revision 833 — nothing a person asks for is published beneath a running follow (ADR-044):**
   - A generation published beside a running follow makes the follow's next publication fail, which ends it, and only

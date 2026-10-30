@@ -122,6 +122,28 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "§20.4: the plan lists every command icat dispatches by what each is for, and no command it does not")]
+    public void ThePlanListsEveryCommand()
+    {
+        DirectoryInfo root = new(AppContext.BaseDirectory);
+        while (!File.Exists(Path.Combine(root.FullName, "InterCat.slnx")))
+        {
+            root = root.Parent!;
+        }
+
+        string plan = File.ReadAllText(Path.Combine(root.FullName, "docs", "design", "INTERCAT-IMPLEMENTATION-PLAN.md"));
+        int lead = plan.IndexOf("by what each is for, they are:", StringComparison.Ordinal);
+        Assert.True(lead >= 0, "§20.4 no longer lists the commands by what each is for.");
+        int start = plan.IndexOf("```text", lead, StringComparison.Ordinal) + "```text".Length;
+        int end = plan.IndexOf("```", start, StringComparison.Ordinal);
+
+        // A line names what its commands are for, then the commands, two spaces apart; one that goes on from the line
+        // before starts with spaces instead.
+        string[] listed = [.. plan[start..end].Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .SelectMany(line => Regex.Split(line.TrimEnd(), @"\s{2,}").Skip(1))];
+        Assert.Equal(Commands.Order(StringComparer.Ordinal), listed.Order(StringComparer.Ordinal));
+    }
+
     [Fact(DisplayName = "§20.4: a folder that is not there, or a file in its place, is refused by every reader in one sentence, naming it")]
     public async Task AFolderNotThereIsNamed()
     {

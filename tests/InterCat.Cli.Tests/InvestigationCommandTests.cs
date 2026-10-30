@@ -310,6 +310,25 @@ public sealed class InvestigationCommandTests : IDisposable
         Assert.Equal($"x {beneath} cannot be written: {file} is a file, not a folder.", said.TrimEnd());
     }
 
+    [Fact(DisplayName = "§8.3: a session folder named twice in one icat workspace add is added once, and said to be named twice")]
+    public async Task AFolderNamedTwiceIsAddedOnce()
+    {
+        DemoInvestigationResult demo = DemoInvestigation.Create(Path.Combine(folder, "demo"));
+        string workspace = Path.Combine(folder, "twice" + InvestigationWorkspace.Extension);
+        Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "new", workspace)).Code);
+
+        // Named again, with a separator after it as a shell's completion leaves one, it is the same folder: added once, and
+        // the whole request answered as done rather than refused as a member the second time.
+        string client = Path.GetFullPath(demo.ClientSession);
+        (InterCatExitCode code, _, string said) = await Run("workspace", "add", workspace, demo.ClientSession,
+            demo.ServerSession, client + Path.DirectorySeparatorChar);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains($"{client} is given more than once; it is added once.", said, StringComparison.Ordinal);
+        Assert.Equal(2, said.Split('\n').Count(line => line.Contains("Added session ", StringComparison.Ordinal)));
+        Assert.DoesNotContain("was not added", said, StringComparison.Ordinal);
+        Assert.Equal(2, InvestigationWorkspace.Read(workspace).Members.Count);
+    }
+
     [Fact(DisplayName = "§8.4: icat workspace package measures, writes and verifies an investigation with its sessions, saying what its file carries")]
     public async Task AnInvestigationIsPackaged()
     {
