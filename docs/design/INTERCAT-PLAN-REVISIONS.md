@@ -724,6 +724,8 @@ Revision 847 tests that an investigation file with a malformed address translati
 
 Revision 848 writes a content search's continuation as a token that holds no byte kept.
 
+Revision 849 lets `icat content --find` read a search on from where it ended, given its token.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2536,3 +2538,13 @@ anyone without the session. Read back, it reads those bytes again, and it is ref
 the search or the bytes are not as they were. Reading on from a token is shown equal to reading on from the
 continuation in memory, page by page, over parts a text splits across many buffers, over records each in a segment of
 its own, and over a buffer longer than a part's end keeps. The command line reads on with it next.
+
+Revision 849 gives the command line what the window's Search on has given since revision 793
+(`contracts/content-v1.md` §4). A search that ends before reading every record it could prints a token, written as
+revision 848 writes it and holding none of the bytes kept, and the search asked again with `--after` and the token
+reads on from where it ended, the bytes at the ends of its open HTTP parts read again from where they are kept, so a
+match a seam splits across the pages is found. A token no search printed, or one of another session or search, is
+refused as a mistake in what was given; a session whose segments or bytes are no longer as they were, as one that
+cannot read on. Its test pages a search of two requests, each naming a host across three buffers, a record at a time:
+the first page lists the first request's record and prints a token holding none of the bytes, and the second, asked
+with previews, lists the second request's, the bytes before its match read again.

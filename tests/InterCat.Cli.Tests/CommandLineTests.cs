@@ -3496,6 +3496,85 @@ public sealed class CommandLineTests : IDisposable
             };
     }
 
+    [Fact(DisplayName = "P16: icat content --find prints a token where it ends early, holding no byte kept, and --after reads on from it")]
+    public async Task KeptContentIsSearchedOnFromAToken()
+    {
+        // Exchanges 7 and 8, each a request naming the host across three buffers.
+        string[] buffers = ["GET / HTTP/1.1\r\nHost: ex", "am", "ple.com\r\n\r\n"];
+        ObservationRowV1[] rows = [.. Enumerable.Range(0, 6).Select(index => Wininet(10 + index, (ulong)index + 1))];
+        using var kept = new TemporarySession();
+        Publish(kept.Store, rows,
+            fields:
+            [
+                .. rows.SelectMany((row, index) => new[]
+                {
+                    Field(row, SourceField.HttpExchangeId, 7 + (index / 3)),
+                    Field(row, SourceField.ContentBufferSequence, index % 3),
+                    Field(row, SourceField.ContentBufferFlags, index % 3 == 0 ? 1 : index % 3 == 2 ? 2 : 0),
+                }),
+            ],
+            content: (ContentHeader(64), [.. rows.Select((row, index) => Content(row,
+                System.Text.Encoding.ASCII.GetBytes(buffers[index % 3]), 64, ContentEncodingV1.Binary))]));
+        kept.Store.ReleaseSegmentReaders();
+
+        // Listing one record, the search finds one more, and prints a token to read on with that holds no byte kept.
+        (InterCatExitCode code, string output, string said) = await Run("content", kept.Path, "--find", "example.com", "--limit", "1");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Searched +the kept bytes of 6 records, 74 B\r?$", output);
+        Assert.Matches(@"(?m)^  Found +more than 1 record; the first 1 listed\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +4242 +HTTP +2001 +1 +4 B before +\S+ +2\r?$", output);
+        string token = Regex.Match(output, @"(?m)^  Read on with +--after ([A-Za-z0-9_-]+)\r?$").Groups[1].Value;
+        Assert.NotEmpty(token);
+        Assert.Contains(ContentCommand.ReadOn, Regex.Replace(output, @"\s+", " "), StringComparison.Ordinal);
+        byte[] held = System.Buffers.Text.Base64Url.DecodeFromChars(token);
+        foreach (string buffer in new[] { "Host: ex", "ple.com", "example.com" })
+        {
+            Assert.True(held.AsSpan().IndexOf(System.Text.Encoding.ASCII.GetBytes(buffer)) < 0, $"The token holds \"{buffer}\".");
+        }
+
+        // Asked again with it, and with previews, the search reads on: the second request's host, begun 4 bytes before its
+        // last buffer, the bytes before it read again from where they are kept; the record the search before counted is
+        // not counted again, and it ends there, with no token.
+        (code, output, said) = await Run("content", kept.Path, "--find", "example.com", "--after", token, "--previews");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Read on +from where the search that printed the token ended\r?$", output);
+        Assert.Matches(@"(?m)^  Searched +the kept bytes of 0 more records, 0 B\r?$", output);
+        Assert.Matches(@"(?m)^  Found +1 record\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +4242 +HTTP +2001 +1 +4 B before +\S+ +5\r?$", output);
+        Assert.Contains(" row 5: HTTP/1.1\\x0D\\x0AHost: ⟦example.com⟧\\x0D\\x0A\\x0D\\x0A", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Read on with", output, StringComparison.Ordinal);
+        Assert.DoesNotContain(ContentCommand.ReadOn[..40], output, StringComparison.Ordinal);
+
+        // Asked otherwise, given a token no search printed, or one of another session, it refuses, saying which.
+        using var other = new TemporarySession(Guid.NewGuid());
+        Publish(other.Store, rows);
+        other.Store.ReleaseSegmentReaders();
+        foreach ((string[] args, string refusal) in new (string[], string)[]
+        {
+            (["content", kept.Path, "--find", "example.org", "--after", token], ContentSearchToken.AnotherSearch),
+            (["content", kept.Path, "--find", "example.com", "--ignore-case", "--after", token], ContentSearchToken.AnotherSearch),
+            (["content", kept.Path, "--find", "example.com", "--after", token[..^2]], ContentSearchToken.Malformed),
+            (["content", other.Path, "--find", "example.com", "--after", token], ContentSearchToken.AnotherSessions),
+        })
+        {
+            (code, output, said) = await Run(args);
+            Assert.True((code, output) == (InterCatExitCode.InvalidInvocation, string.Empty), $"{code}: {said}");
+            Assert.Contains(refusal, Regex.Replace(said, @"\s+", " "), StringComparison.Ordinal);
+        }
+
+        static ObservationRowV1 Wininet(long ticks, ulong ordinal) =>
+            Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 1, null, ordinal) with
+            {
+                Mechanism = Mechanism.Http,
+                Layer = ObservationLayer.Application,
+                EventId = 2001,
+                HeaderProcessId = 4_242,
+                Direction = Direction.Outbound,
+                ByteDomain = ByteDomain.ApplicationPayload,
+                SessionRelativeTicks = ticks * 1_000,
+            };
+    }
+
     [Fact(DisplayName = "P6: icat content --find --process keeps to one process's records, never those of another process given its PID again")]
     public async Task KeptContentIsSearchedForOneProcess()
     {

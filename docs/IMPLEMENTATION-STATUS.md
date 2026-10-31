@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-31 · Plan revision: 848 · Branch: `main`
+Updated: 2026-10-31 · Plan revision: 849 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 849 — `icat content --find` reads a search on from where it ended, given its token (P16):**
+  - A search the command line ended before reading every record it could, at a budget or finding more records than it
+    lists, could only be begun again; the window alone read on. It now prints the token revision 848 writes, `Read on
+    with --after <token>`, and says how to read on: the search asked again as it was, its text, case and process
+    alike, with `--after` and the token reads on from where it ended as the window's Search on does, its budgets,
+    `--limit` and `--previews` as wished, the bytes at the ends of its open HTTP parts read again so a match a seam
+    splits across the pages is found. A page read on says so, and counts only the records it read past those the
+    search before it read.
+  - A token no search printed, one of another session and one of another search are refused as a mistake in what was
+    given, saying which; a session that no longer holds the segments the search read, or no longer keeps the bytes at
+    its open parts' ends, as one that cannot read on. `--after` without `--find` is refused with the other options
+    that apply only to a search. The help, the README and `contracts/content-v1.md` §4 say so.
+  - Debug and Release each ran 3,478 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the new test. All 7 mutations were caught: --after taken without --find, the token not
+    passed on, a refused token exiting as a failure of capability rather than a mistake, a page read on not saying
+    so, the token or how to read on with it not printed, and a page read on counting its records as a first page
+    does; one of them, first written against a property the command line cannot see, did not build until written
+    against one it can.
 
 - **Revision 848 — a content search's continuation written as a token that holds no byte kept (P16):**
   - A search that ends early answers with a `ContentSearchContinuation`, which the window holds to read on from. The

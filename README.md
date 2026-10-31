@@ -69,7 +69,8 @@ what each of a process's requests asked for, of which host, and what its respons
 hold the length its head declared, as C on an exchange in the window does in its conversation, the request and
 response side by side, which the content viewer opens from any of its buffers; `icat content --find <text>` lists the
 records whose kept bytes hold a text, showing none of them unless `--previews` asks, as the window's *Find in kept
-content…* (Ctrl+Shift+F) does, and `icat content --decoders` lists what can be decoded. `icat exchanges --pid <id>
+content…* (Ctrl+Shift+F) does, and where it ends before reading every record prints a token, holding none of the
+bytes, that `--after` reads on from; `icat content --decoders` lists what can be decoded. `icat exchanges --pid <id>
 --decode --output heads.csv` writes what the listed exchanges' heads say as a table, or as JSON, to be shared only as
 the content it was read from would be, as *Export with their heads…* does at a process's exchanges in the window.
 

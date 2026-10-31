@@ -219,7 +219,16 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   a seam splits found across the pages too, and at least one record read each time, so no record longer than a budget
   holds it in place. What the window then lists and says is the whole search's so far, each record's bytes counted
   once. It reads on in the session's current generation only where that still holds every segment the search had read,
-  in its place; otherwise it is refused, and the search is begun again.
+  in its place; otherwise it is refused, and the search is begun again. Since revision 849 `icat content --find` reads
+  on too: a search that ends before reading every record it could prints a token, and the search asked again as it was
+  (its text, case and process alike; its budgets, `--limit` and `--previews` as wished) with `--after` and the token
+  reads on from where it ended, saying so, a page read on counting only the records it read past those the search
+  before it read. The token holds no byte kept and does not say the text looked for (revision 848): it names the
+  session by its id, the segments read and the search asked by digests, the second keyed by the first, and the bytes
+  at the ends of the HTTP parts the search had open by where they are kept, which reading on reads again. It is
+  refused as a mistake in what was given where no search printed it, or it names another session or another search,
+  and, as the window's reading on is, where the session no longer holds the segments read in their place or no longer
+  keeps those bytes.
 - **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
   kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
 - **Nothing else.** The window's search, rankings, metrics, the share report (`intercat-share-report-v1`), the

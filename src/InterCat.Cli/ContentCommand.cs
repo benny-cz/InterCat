@@ -53,6 +53,7 @@ internal static class ContentCommand
         string? outputText = command.TakeOption("--output");
         string? maxMibText = command.TakeOption("--max-mib");
         string? maxSecondsText = command.TakeOption("--max-seconds");
+        string? after = command.TakeOption("--after");
         string? directory = command.TakePositional();
         bool reveal = command.TryTakeFlag("--reveal");
         bool wholePart = command.TryTakeFlag("--part");
@@ -107,7 +108,7 @@ internal static class ContentCommand
                 return InterCatExitCode.InvalidInvocation;
             }
 
-            return await FindAsync(directory!, processText, outputText, overwrite, new ContentSearchRequest
+            return await FindAsync(directory!, processText, outputText, overwrite, after, new ContentSearchRequest
             {
                 Text = find,
                 IgnoreCase = ignoreCase,
@@ -121,10 +122,10 @@ internal static class ContentCommand
         }
 
         if (pidText is not null || processText is not null || policyText is not null || limitText is not null || ignoreCase
-            || previews || outputText is not null || maxMibText is not null || maxSecondsText is not null)
+            || previews || outputText is not null || maxMibText is not null || maxSecondsText is not null || after is not null)
         {
-            ConsoleUi.Failure("--pid, --process, --evidence-policy, --limit, --max-mib, --max-seconds, --ignore-case, --previews "
-                + "and --output apply only to --find.");
+            ConsoleUi.Failure("--pid, --process, --evidence-policy, --limit, --max-mib, --max-seconds, --ignore-case, --previews, "
+                + "--output and --after apply only to --find.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -576,7 +577,7 @@ internal static class ContentCommand
     /// every other command names it, and <paramref name="outputText"/> writes the records listed to a table.
     /// </summary>
     private static async Task<InterCatExitCode> FindAsync(string directory, string? processText, string? outputText, bool overwrite,
-        ContentSearchRequest request, CancellationToken cancellationToken)
+        string? after, ContentSearchRequest request, CancellationToken cancellationToken)
     {
         string path = Path.GetFullPath(directory);
         if (!Directory.Exists(path))
@@ -619,8 +620,29 @@ internal static class ContentCommand
                 request = request with { ProcessInstance = named };
             }
 
-            ConsoleUi.Progress("Searching the content kept with consent to inspect it, each record's bytes on their own.");
-            result = ContentSearch.Find(store, store.SessionId, request, cancellationToken);
+            if (after is null)
+            {
+                ConsoleUi.Progress("Searching the content kept with consent to inspect it, each record's bytes on their own.");
+                result = ContentSearch.Find(store, store.SessionId, request, cancellationToken);
+            }
+            else
+            {
+                // A token names where the bytes at the ends of the parts its search had open are kept, never the bytes,
+                // and the search only by a digest, so it reads on only the search asked as it was (P16).
+                ContentSearchContinuation from;
+                try
+                {
+                    from = ContentSearchToken.Read(store, store.SessionId, request, after, cancellationToken);
+                }
+                catch (ArgumentException refused)
+                {
+                    ConsoleUi.Failure(refused.Message);
+                    return InterCatExitCode.InvalidInvocation;
+                }
+
+                ConsoleUi.Progress("Reading the search on from where it ended, the bytes at the ends of its open parts read again.");
+                result = ContentSearch.Continue(store, store.SessionId, from, cancellationToken);
+            }
         }
         catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
@@ -636,6 +658,7 @@ internal static class ContentCommand
         ConsoleUi.Field("Text", $"\"{request.Text}\"");
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(result.Generation));
+        if (after is not null) ConsoleUi.Field("Read on", "from where the search that printed the token ended");
         if (request.ProcessId is { } pid) ConsoleUi.Field("Records of", string.Create(culture, $"PID {pid}, whichever process held it"));
         if (process is not null)
         {
@@ -650,7 +673,9 @@ internal static class ContentCommand
                 + CountText.Of((long)request.Budget.TotalSeconds, "second"));
         }
 
-        ConsoleUi.Field("Searched", "the kept bytes of " + CountText.Of(result.RecordsRead, "record")
+        // A page read on counts the records it read past those the search before it read, which counted the one that
+        // showed there were more.
+        ConsoleUi.Field("Searched", "the kept bytes of " + CountText.Of(result.RecordsRead, after is null ? "record" : "more record")
             + string.Create(culture, $", {result.BytesRead:N0} B"));
         if (result.WithoutConsent > 0)
         {
@@ -673,6 +698,7 @@ internal static class ContentCommand
         ConsoleUi.Field("Found", result.Hits.Count == 0 ? "no record holding it"
             : result.More ? "more than " + CountText.Of(result.Hits.Count, "record") + string.Create(culture, $"; the first {result.Hits.Count:N0} listed")
             : CountText.Of(result.Hits.Count, "record"));
+        if (result.Continuation is { } next) ConsoleUi.Field("Read on with", "--after " + ContentSearchToken.Write(next));
         if (result.NoneKept is { } none) ConsoleUi.Note(none);
         if (result.Unreadable is { } unreadable) ConsoleUi.Warn(unreadable);
         if (result.Stopped is { } stopped)
@@ -719,6 +745,11 @@ internal static class ContentCommand
                 + "--segment <segment> --row <row> --reveal shows a record's kept bytes.");
         }
 
+        if (result.Continuation is not null)
+        {
+            ConsoleUi.Note(ReadOn);
+        }
+
         // The records listed go to a table only when asked; the bytes around their matches only with --previews, which
         // makes the table content.
         if (outputPath is not null)
@@ -747,6 +778,11 @@ internal static class ContentCommand
     /// <summary>The most seconds --max-seconds lets a search read for.</summary>
     private const int MaximumSeconds = 3_600;
 
+    /// <summary>How a search that ended before reading every record it could is read on, said beside its token.</summary>
+    internal const string ReadOn = "The search ended before reading every record it could: ask it again as it was asked - "
+        + "its text, case and process alike - with --after and the token above to read on from where it ended. Its budgets, "
+        + "--limit and --previews may differ, and the token holds none of the bytes kept.";
+
     /// <summary>What a table of records found with previews holds, said beside the file written: content.</summary>
     internal const string PreviewsContent = "It holds the bytes around each match, read from content the session kept with "
         + "consent to inspect it: it is content, to be shared only as that content would be.";
@@ -757,7 +793,7 @@ internal static class ContentCommand
         ConsoleUi.Line("             [--part] [--reveal] [--decode] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
         ConsoleUi.Line("icat content <session-directory> --find <text> [--ignore-case] [--process <pid | instance>");
         ConsoleUi.Line("             [--evidence-policy <policy>] | --pid <id>] [--limit <n>] [--previews]");
-        ConsoleUi.Line("             [--max-mib <n>] [--max-seconds <n>] [--output <file.csv> [--overwrite]]");
+        ConsoleUi.Line("             [--max-mib <n>] [--max-seconds <n>] [--output <file.csv> [--overwrite]] [--after <token>]");
         ConsoleUi.Line("icat content --decoders");
         ConsoleUi.Line("  One record's kept content, from an icat evidence page's exact row locator (ADR-036): what the");
         ConsoleUi.Line("  bytes are, how many of the message were kept and which are missing, and what they were kept");
@@ -783,6 +819,8 @@ internal static class ContentCommand
         ConsoleUi.Line("  instance id as icat processes prints it, each record bound to it as the evidence policy admits");
         ConsoleUi.Line("  (include-correlated); --pid keeps to the records that carry a PID, whichever process held it.");
         ConsoleUi.Line("  --output writes the records listed to a CSV table, with the bytes around each first match only");
-        ConsoleUi.Line("  with --previews, which makes the table content.");
+        ConsoleUi.Line("  with --previews, which makes the table content. A search that ends before reading every record it");
+        ConsoleUi.Line("  could prints a token, which holds none of the bytes kept: --after and the token, given with the");
+        ConsoleUi.Line("  search asked as it was, read on from where it ended.");
     }
 }
