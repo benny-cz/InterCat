@@ -758,7 +758,8 @@ internal static class ProcessesCommand
         ConsoleUi.Heading("Process instances");
         ConsoleUi.Field("Session", document.Path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(document.Generation));
-        ConsoleUi.Field("Binding rule", $"{document.BindingRule}, evidence policy {document.EvidencePolicy}");
+        ConsoleUi.Field("Binding rule", $"{document.BindingRule}, evidence policy "
+            + EvidencePolicyOption.Typed(document.EvidencePolicy));
         ConsoleUi.Field(
             "Instances",
             string.Create(

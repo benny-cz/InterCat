@@ -27,4 +27,11 @@ internal static class EvidencePolicyOption
         refusal = CommandLine.Expects("--evidence-policy", text, CommandLine.Kebabs<EvidencePolicy>());
         return false;
     }
+
+    /// <summary>
+    /// A policy a document names as the durable format stores it, <c>IncludeCorrelated</c>, as a person types it,
+    /// <c>include-correlated</c>, which is how every sentence of icat names one; a name no policy has as it is.
+    /// </summary>
+    public static string Typed(string named) =>
+        Enum.TryParse(named, out EvidencePolicy policy) && Enum.IsDefined(policy) ? CommandArgument.Typed(policy) : named;
 }

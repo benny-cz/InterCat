@@ -400,6 +400,32 @@ public sealed class MetricCommandTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "R18: icat processes, operations, exchanges and metric name the evidence policy as it is typed, and their JSON as the format stores it")]
+    public async Task ThePolicyIsNamedAsTyped()
+    {
+        // Each command names the policy its answer bound records under as --evidence-policy takes it, the default or the
+        // one asked for, and its JSON names it as the durable format stores it.
+        foreach ((string[] args, string said, string stored) in new (string[], string, string)[]
+        {
+            (["processes", session.Path], @"(?m)^  Binding rule +\S+, evidence policy include-correlated\r?$", "IncludeCorrelated"),
+            (["operations", session.Path, "--evidence-policy", "direct-only"],
+                @"(?m)^  Rules +\S+ over \S+, evidence policy direct-only\r?$", "DirectOnly"),
+            (["exchanges", session.Path, "--evidence-policy", "AllIncludingConflicting"],
+                @"(?m)^  Rules +\S+ over \S+, evidence policy all-including-conflicting\r?$", "AllIncludingConflicting"),
+            (["metric", session.Path, "--metric", "observations", "--group-by", "process", "--evidence-policy", "include-candidates"],
+                @"(?m)^  By process instance \(\S+, evidence policy include-candidates\):\r?$", "IncludeCandidates"),
+        })
+        {
+            (InterCatExitCode code, string text, string why) = await Run(args);
+            Assert.True(code == InterCatExitCode.Success, $"{string.Join(' ', args)}: {why}");
+            Assert.Matches(said, text);
+            Assert.DoesNotContain(stored, text, Ordinal);
+            (code, text, why) = await Run([.. args, "--json"]);
+            Assert.True(code == InterCatExitCode.Success, $"{string.Join(' ', args)} --json: {why}");
+            Assert.Contains($"\"{stored}\"", text, Ordinal);
+        }
+    }
+
     private async Task<string> Answered(params string[] args)
     {
         (InterCatExitCode code, string text, string said) = await Run(["metric", session.Path, .. args]);

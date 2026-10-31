@@ -445,7 +445,8 @@ internal static class ExchangesCommand
         ConsoleUi.Heading("HTTP exchanges");
         ConsoleUi.Field("Session", document.Path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(document.Generation));
-        ConsoleUi.Field("Rules", $"{document.GroupingRule} over {document.BindingRule}, evidence policy {document.EvidencePolicy}");
+        ConsoleUi.Field("Rules", $"{document.GroupingRule} over {document.BindingRule}, evidence policy "
+            + EvidencePolicyOption.Typed(document.EvidencePolicy));
         if (document.RecordsWithoutExchange > 0)
         {
             ConsoleUi.Field("Unnumbered", document.RecordsWithoutExchange == 1

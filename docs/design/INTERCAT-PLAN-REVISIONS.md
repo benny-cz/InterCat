@@ -732,6 +732,8 @@ Revision 851 tests that a content search read on after a compaction is refused a
 
 Revision 852 holds every token given back, whatever it is, to being read on or refused in words.
 
+Revision 853 has `icat` name the evidence policy as it is typed in its words.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2577,3 +2579,9 @@ no search wrote is made at random from a fixed seed; each is either refused with
 read on from to the search's end. Three guards of the reader, each taken away in turn - the bytes after a part's last
 match within those it keeps, a range within the bytes a record kept, and a session's identity too short to be one -
 fail it.
+
+Revision 853 comes from running the demo's sessions through the commands a person reaches first. `icat processes`,
+`icat operations`, `icat exchanges` and a grouped `icat metric` named the evidence policy in their words as the
+durable format stores it, `IncludeCorrelated`, where every other sentence of icat's names it as a person types it,
+`include-correlated`, as every refusal since revision 837 lists the policies. Their words now name it so, and their
+JSON, which programs read, as before.

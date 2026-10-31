@@ -927,14 +927,15 @@ internal static class MetricCommand
         string rules = result.RelationRule is { } relationRule
             ? $"{grouping.BindingRule} and {relationRule}"
             : grouping.BindingRule ?? string.Empty;
+        string policy = EvidencePolicyOption.Typed(grouping.EvidencePolicy);
         ConsoleUi.Line();
         ConsoleUi.Line(result.Request.Grouping switch
         {
-            LaneGrouping.Executable => $"  By witnessed executable path ({rules}, evidence policy {grouping.EvidencePolicy}):",
-            LaneGrouping.UserSession => $"  By terminal session ({rules}, evidence policy {grouping.EvidencePolicy}):",
+            LaneGrouping.Executable => $"  By witnessed executable path ({rules}, evidence policy {policy}):",
+            LaneGrouping.UserSession => $"  By terminal session ({rules}, evidence policy {policy}):",
             LaneGrouping.Peer when result.Request.Focus is { } focus =>
-                $"  By the process at the other end from {Role(focus.Role)} {focus.Instance} ({rules}, evidence policy {grouping.EvidencePolicy}):",
-            LaneGrouping.InstanceOnly => $"  By process instance ({rules}, evidence policy {grouping.EvidencePolicy}):",
+                $"  By the process at the other end from {Role(focus.Role)} {focus.Instance} ({rules}, evidence policy {policy}):",
+            LaneGrouping.InstanceOnly => $"  By process instance ({rules}, evidence policy {policy}):",
             _ => "  By mechanism:",
         });
         var rows = new List<string[]>();

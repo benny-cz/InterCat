@@ -393,7 +393,8 @@ internal static class OperationsCommand
         ConsoleUi.Heading("RPC calls");
         ConsoleUi.Field("Session", document.Path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(document.Generation));
-        ConsoleUi.Field("Rules", $"{document.OperationRule} over {document.BindingRule}, evidence policy {document.EvidencePolicy}");
+        ConsoleUi.Field("Rules", $"{document.OperationRule} over {document.BindingRule}, evidence policy "
+            + EvidencePolicyOption.Typed(document.EvidencePolicy));
         MechanismCoverage rpc = document.Coverage[0];
         MechanismCoverage alpc = document.Coverage[1];
         ConsoleUi.Field(
