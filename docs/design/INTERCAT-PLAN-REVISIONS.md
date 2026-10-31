@@ -728,6 +728,8 @@ Revision 849 lets `icat content --find` read a search on from where it ended, gi
 
 Revision 850 has `icat metric` say when its `--interval` holds no reading, and what bare numbers name elsewhere.
 
+Revision 851 tests that a content search read on after a compaction is refused as one that cannot read on.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2559,3 +2561,10 @@ reading, and the answer was nought with no word of why. Rather than change what 
 query's identity rests on, an interval that holds none of the generation's readings is said to, with where they lie;
 and bare numbers that as session ticks would hold readings are answered with that interval written with units, which
 every command reads alike.
+
+Revision 851 is a coverage pass over revisions 848 and 849. Every line of the token ran, and of `icat content --find
+--after` all but the refusal of a session that no longer holds the segments the search had read, which exits as a
+search that cannot read on, where a token no search printed exits as a mistake in what was given. A compaction is the
+ordinary way a session comes to hold its records in other segments, so the test compacts a session of two small
+publications between the first page and the second: the token is refused, and the search begun again finds what the
+two pages would have.

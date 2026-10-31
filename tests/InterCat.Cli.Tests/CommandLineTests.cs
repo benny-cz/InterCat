@@ -3575,6 +3575,61 @@ public sealed class CommandLineTests : IDisposable
             };
     }
 
+    [Fact(DisplayName = "P16: icat content --find --after refuses a token whose session was compacted since, as a search that cannot read on")]
+    public async Task AContentSearchIsNotReadOnAcrossACompaction()
+    {
+        // Exchanges 7 and 8, each a request naming the host across three buffers, each published on its own, so the
+        // session holds two small publications a compaction coalesces.
+        string[] buffers = ["GET / HTTP/1.1\r\nHost: ex", "am", "ple.com\r\n\r\n"];
+        using var kept = new TemporarySession();
+        foreach (int exchange in new[] { 7, 8 })
+        {
+            ObservationRowV1[] rows = [.. Enumerable.Range(0, 3).Select(index => Transfer(10 + (3 * (exchange - 7)) + index,
+                ObservationKind.Send, AccountingSide.SendSide, 1, null, (ulong)((3 * (exchange - 7)) + index + 1)) with
+            {
+                Mechanism = Mechanism.Http,
+                Layer = ObservationLayer.Application,
+                EventId = 2001,
+                HeaderProcessId = 4_242,
+                Direction = Direction.Outbound,
+                ByteDomain = ByteDomain.ApplicationPayload,
+                SessionRelativeTicks = (10 + (3 * (exchange - 7)) + index) * 1_000,
+            })];
+            Publish(kept.Store, rows,
+                fields:
+                [
+                    .. rows.SelectMany((row, index) => new[]
+                    {
+                        Field(row, SourceField.HttpExchangeId, exchange),
+                        Field(row, SourceField.ContentBufferSequence, index),
+                        Field(row, SourceField.ContentBufferFlags, index == 0 ? 1 : index == 2 ? 2 : 0),
+                    }),
+                ],
+                content: (ContentHeader(64), [.. rows.Select((row, index) => Content(row,
+                    System.Text.Encoding.ASCII.GetBytes(buffers[index]), 64, ContentEncodingV1.Binary))]));
+        }
+
+        kept.Store.ReleaseSegmentReaders();
+
+        // Listing one record, the search stops in the second publication's segment and prints a token.
+        (InterCatExitCode code, string output, string said) = await Run("content", kept.Path, "--find", "example.com", "--limit", "1");
+        Assert.True(code == InterCatExitCode.Success, said);
+        string token = Regex.Match(output, @"(?m)^  Read on with +--after ([A-Za-z0-9_-]+)\r?$").Groups[1].Value;
+        Assert.NotEmpty(token);
+
+        // Compacted, the session holds the same records in a segment of its own, not the segments the search read, so the
+        // search cannot read on and is begun again, which finds both.
+        (code, _, said) = await Run("compact", kept.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        (code, output, said) = await Run("content", kept.Path, "--find", "example.com", "--after", token);
+        Assert.True((code, output) == (InterCatExitCode.PermissionOrCapabilityFailure, string.Empty), $"{code}: {said}");
+        Assert.Contains("The session no longer holds every segment this search had read, so it cannot read on from where it "
+            + "stopped; search again from its start.", Regex.Replace(said, @"\s+", " "), StringComparison.Ordinal);
+        (code, output, said) = await Run("content", kept.Path, "--find", "example.com");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Found +2 records\r?$", output);
+    }
+
     [Fact(DisplayName = "P6: icat content --find --process keeps to one process's records, never those of another process given its PID again")]
     public async Task KeptContentIsSearchedForOneProcess()
     {
