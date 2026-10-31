@@ -1317,6 +1317,7 @@
       "P16": [
         "P16: a search reads on from its token as from where it stopped, and the token holds no byte kept nor the text looked for",
         "P16: a support bundle says a session it cannot read by its folder, in its reader's words, and a ledger it lacks as unknown",
+        "P16: a token changed at any byte, cut short, or written by no search is read on or refused in words, never failing otherwise",
         "P16: committed transport fixture evidence holds only the loopback flows its truth names",
         "P16: every source file that reads kept content has its row in the content-export review, and every row's file still does",
         "P16: icat content --find --after refuses a token whose session was compacted since, as a search that cannot read on",

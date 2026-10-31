@@ -674,6 +674,79 @@ public sealed class ContentSearchTests
         }
     }
 
+    [Fact(DisplayName = "P16: a token changed at any byte, cut short, or written by no search is read on or refused in words, never failing otherwise")]
+    public void AnyTokenIsReadOnOrRefused()
+    {
+        (long Exchange, long Sequence, long Flags, string Text)[] buffers =
+            [(9, 0, 1, "Host: ex"), (12, 0, 1, "GET /search?q=example.com&page=2"), (9, 1, 0, "ampl"), (9, 2, 2, "e.com")];
+        using var session = HttpSession(buffers);
+        SessionStore store = session.Store;
+        Guid id = store.SessionId;
+        var request = new ContentSearchRequest { Text = "example.com", MaximumBytes = 1, Previews = true };
+        var tokens = new List<byte[]>();
+        for (ContentSearchResult page = ContentSearch.Find(store, id, request); page.Continuation is { } next && tokens.Count < 10;)
+        {
+            tokens.Add(Base64Url.DecodeFromChars(ContentSearchToken.Write(next)));
+            page = ContentSearch.Continue(store, id, next);
+        }
+
+        // Every byte of every token a search wrote changed in its lowest bit, its highest, all its bits or to nought;
+        // every token cut short or run on; and text no search wrote, of its alphabet or not.
+        var random = new Random(851);
+        var given = new List<string>();
+        foreach (byte[] token in tokens)
+        {
+            for (int at = 0; at < token.Length; at++)
+            {
+                foreach (Func<byte, byte> change in new Func<byte, byte>[] { b => (byte)(b ^ 1), b => (byte)(b ^ 0x80), b => (byte)~b, _ => 0 })
+                {
+                    byte[] changed = (byte[])token.Clone();
+                    changed[at] = change(changed[at]);
+                    given.Add(Base64Url.EncodeToString(changed));
+                }
+
+                given.Add(Base64Url.EncodeToString(token.AsSpan(0, at)));
+            }
+
+            given.Add(Base64Url.EncodeToString([.. token, (byte)random.Next(256)]));
+        }
+
+        const string Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        for (int index = 0; index < 400; index++)
+        {
+            int length = random.Next(0, 160);
+            given.Add(index % 4 == 0
+                ? new string([.. Enumerable.Range(0, length).Select(_ => (char)random.Next(32, 0x3000))])
+                : new string([.. Enumerable.Range(0, length).Select(_ => Alphabet[random.Next(Alphabet.Length)])]));
+        }
+
+        string[] refusals =
+        [
+            ContentSearchToken.Malformed, ContentSearchToken.AnotherSessions, ContentSearchToken.AnotherSearch,
+            ContentSearchToken.BytesGone, ContentSearch.SegmentsChanged,
+        ];
+        int read = 0;
+        foreach (string token in given)
+        {
+            ContentSearchContinuation continuation;
+            try
+            {
+                continuation = ContentSearchToken.Read(store, id, request, token);
+            }
+            catch (Exception refused) when (refused is ArgumentException or InvalidOperationException)
+            {
+                Assert.True(refusals.Contains(refused.Message, StringComparer.Ordinal), $"{token}: {refused}");
+                continue;
+            }
+
+            // A token read on is a continuation the search can read on from, whatever it names.
+            read++;
+            Assert.NotNull(ContentSearch.Continue(store, id, continuation));
+        }
+
+        Assert.True(read > tokens.Count, $"{read} tokens read on");
+    }
+
     /// <summary>
     /// A token's bytes laid out as a search writes them - a session of its own, digests of nothing, and one open part of
     /// one source - with each field as given, so each one alone may be made what no search writes.
