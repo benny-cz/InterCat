@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-31 · Plan revision: 857 · Branch: `main`
+Updated: 2026-10-31 · Plan revision: 858 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 858 — a redacted package's leak search finds a source value in every form, wherever it lies (P17):**
+  - Before a redacted package is published, every file is searched byte for byte for its source's identities, names
+    and digests: the last line of defence behind the checks of every value its formats hold. No package the tests
+    build leaks one, so the search's refusal never ran, and the scanner was tested with a UTF-16 name either side of
+    the end of its first read and one identity's bytes in the middle of a file. A property now plants every form a
+    file could carry each value in, an identity's bytes either way round and its text in either case, a name in UTF-8
+    and UTF-16, a digest's hexadecimal in either case, at a file's start, its end, at random and about the end of the
+    first read, in text of the package's own alphabet, over three seeds: each is found, the text alone never meets
+    one, and a plain lowercase name in UTF-8 is left to the structural checks as the scanner's remarks say.
+  - Debug and Release each ran 3,492 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the new test. All 8 mutations of the scanner were caught by the property: no overlap kept
+    between reads, nothing carried into the next read, the last read stopping short of a file's end, an identity's
+    little-endian bytes, its text in capitals, a name's UTF-16, a digest in capitals, and which text is distinctive.
+    Run against the package's other tests, 3 of the 8 went unnoticed: the last read, the little-endian bytes and the
+    text in capitals.
 
 - **Revision 857 — `icat links` without `--process` says where the session's processes are listed:**
   - A process's links start from a process, so `icat links <session>` is refused without `--process`, which said what

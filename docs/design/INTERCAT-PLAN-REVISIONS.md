@@ -742,6 +742,8 @@ Revision 856 names the mechanisms a reader of a few could not see.
 
 Revision 857 has `icat links` without `--process` say where the processes are listed.
 
+Revision 858 shows a redacted package's leak search finds a source value in every form, wherever a file holds it.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2616,3 +2618,10 @@ Revision 857 closes the demo run, which from revision 853 took the demo's sessio
 reaches first: the evidence policy named as typed, a count option answered with the one a command reads, the whole
 session's timeline, the mechanisms a reader could not see, and now `icat links` refused without a process pointing to
 the command that lists them. The run read the other commands' words too, and changed none of them.
+
+Revision 858 tests the redacted package's last line of defence (P17). Its search for source values in every published
+file runs on every package, and every line of it ran, but on packages that never leak, so what showed it would find
+one was a test of one name and one identity. A seed-driven property now plants every form of each value at the places
+a chunked search can miss, and catches all eight mutations of the scanner run against it; run against the package's
+other tests, three of the eight went unnoticed: a value at a file's very end, an identity's little-endian bytes and
+its text in capitals.
