@@ -331,6 +331,75 @@ public sealed class MetricCommandTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "R18: icat metric says when its --interval holds no reading, where its readings lie, and what bare numbers name elsewhere")]
+    public async Task AnIntervalHoldingNoReadingIsSaid()
+    {
+        // Three UDP sends 1, 2 and 3 ms into a capture whose clock read 1,000,000,000 at its epoch, so its native ticks
+        // are not the session ticks every other command reads a bare number as.
+        var clock = new SourceClockDescriptor(TestSessions.Clock, HostId.Derive("cli-interval-missed"), SourceClockKind.Monotonic,
+            TimestampEncoding.Qpc, 10_000_000, 1_000_000_000, TimestampRounding.NearestEven, SourceClockMath.SessionTicksPerSecond * 60);
+        using var sent = new TemporarySession();
+        Publish(sent.Store,
+        [
+            .. Enumerable.Range(1, 3).Select(index => Transfer(1_000_000_000L + (index * 10_000), ObservationKind.Send,
+                AccountingSide.SendSide, 10, 100, (ulong)index).Between("192.168.1.5:61000", "8.8.8.8:53") with
+            {
+                Mechanism = Mechanism.Udp,
+                SessionRelativeTicks = index * 10_000L,
+            }),
+        ], clock: clock);
+        sent.Store.ReleaseSegmentReaders();
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        string readings = $"its readings run from {Seconds(10_000, culture)} to {Seconds(30_000, culture)} after capture start "
+            + string.Create(culture, $"(native ticks {1_000_010_000:N0} to {1_000_030_000:N0}).");
+        const string Bare = " A bare number here is a native tick of the session's clock, where every other command reads one as "
+            + "100-nanosecond session ticks";
+
+        // Bare numbers before every reading, which as session ticks would name the first 5 ms, are answered with how to
+        // write those; written so, the interval holds the three sends, and nothing more is said. An interval holding the
+        // first reading or the last at its edge holds a reading, and one ending at the first, or beginning past the last,
+        // holds none.
+        foreach ((string interval, string? missed, int held) in new (string, string?, int)[]
+        {
+            ("0:50000", "No reading of this session lies within --interval 0:50000: " + readings + Bare
+                + ": to measure 0s to 0.005s after capture start, write --interval 0s:0.005s.", 0),
+            ("0s:0.005s", null, 3),
+            ("1000010000:1000010001", null, 1),
+            ("1000030000:1000040000", null, 1),
+            ("1000000000:1000010000", "No reading of this session lies within --interval 1000000000:1000010000: " + readings
+                + Bare + ".", 0),
+            ("30000:40000", "No reading of this session lies within --interval 30000:40000: " + readings + Bare
+                + ": to measure 0.003s to 0.004s after capture start, write --interval 0.003s:0.004s.", 0),
+
+            // Times past every reading are answered with where the readings lie, as is a time after a bare number; bare
+            // numbers that as session ticks name no reading either, or before capture start, or no session time at all,
+            // with what a bare number is here.
+            ("1s:2s", "No reading of this session lies within --interval 1s:2s: " + readings, 0),
+            ("1000040000:1s", "No reading of this session lies within --interval 1000040000:1s: " + readings, 0),
+            ("0:10000", "No reading of this session lies within --interval 0:10000: " + readings + Bare + ".", 0),
+            ("900000:950000", "No reading of this session lies within --interval 900000:950000: " + readings + Bare + ".", 0),
+            ("-5:50000", "No reading of this session lies within --interval -5:50000: " + readings + Bare + ".", 0),
+            ("184467440737095517:184467440737115517", "No reading of this session lies within --interval "
+                + "184467440737095517:184467440737115517: " + readings + Bare + ".", 0),
+        })
+        {
+            (InterCatExitCode code, string text, string said) = await Run(["metric", sent.Path, "--metric", "observations", "--interval", interval]);
+            Assert.True(code == InterCatExitCode.Success, $"{interval}: {said}");
+            string flowed = Regex.Replace(said, @"\s+", " ");
+            if (missed is null)
+            {
+                Assert.DoesNotContain("No reading", flowed, Ordinal);
+                Assert.Matches($@"(?m)^  Value +{held} ", text);
+            }
+            else
+            {
+                Assert.Contains(missed, flowed, Ordinal);
+                Assert.Equal(missed.Contains(Bare, Ordinal), flowed.Contains(Bare, Ordinal));
+                Assert.Equal(missed.Contains("to measure", Ordinal), flowed.Contains("to measure", Ordinal));
+            }
+        }
+    }
+
     private async Task<string> Answered(params string[] args)
     {
         (InterCatExitCode code, string text, string said) = await Run(["metric", session.Path, .. args]);

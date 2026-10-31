@@ -207,15 +207,19 @@ each transfer measured once at its sender. The binding rule, and the relation ru
 in every filtered result, grouped or not.
 
 An interval is half-open (I3) and is expressed in native ticks of the session's clock. A caller that accepts a
-session-relative time converts each bound to the **first native reading at or after it** under exactly the
-conversion that produced every stored session instant, so that the native interval holds precisely the
-readings whose session instant lies inside the requested one. A bound beyond every instant the clock can read lies
-after every reading, or before every one (plan revision 296), so an interval reaching past the clock's range holds
-the readings within it rather than failing to convert. An interval's end is at most 2^63 - 1 ticks after its start
-(plan revision 297): a wider one written in ticks is refused, and one whose converted bounds lie further apart than
-that is held as the widest interval centred on the capture's epoch, which holds every reading a session admits, its
-clock's plausible distance from the epoch being days. An interval in native ticks names one clock: a generation whose
-segments are on more than one clock refuses an interval-scoped request.
+session-relative time converts each bound to the **first native reading at or after it** under exactly the conversion
+that produced every stored session instant, so that the native interval holds precisely the readings whose session
+instant lies inside the requested one. A bound beyond every instant the clock can read lies after every reading, or
+before every one (plan revision 296), so an interval reaching past the clock's range holds the readings within it
+rather than failing to convert. An interval's end is at most 2^63 - 1 ticks after its start (plan revision 297): a
+wider one written in ticks is refused, and one whose converted bounds lie further apart than that is held as the
+widest interval centred on the capture's epoch, which holds every reading a session admits, its clock's plausible
+distance from the epoch being days. An interval in native ticks names one clock: a generation whose segments are on
+more than one clock refuses an interval-scoped request. Since revision 850 `icat metric` says when an `--interval`
+holds none of the generation's readings, and where they lie, in seconds after capture start and in native ticks; and
+since every other command reads a bare number as 100-nanosecond session ticks, where `icat metric` reads a native
+tick, an interval written in bare numbers that holds none is answered with the interval those numbers would name as
+session ticks, written with units, where that one holds readings.
 
 ## 6. Grouping
 

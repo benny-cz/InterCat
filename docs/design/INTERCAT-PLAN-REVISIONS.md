@@ -726,6 +726,8 @@ Revision 848 writes a content search's continuation as a token that holds no byt
 
 Revision 849 lets `icat content --find` read a search on from where it ended, given its token.
 
+Revision 850 has `icat metric` say when its `--interval` holds no reading, and what bare numbers name elsewhere.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2548,3 +2550,12 @@ refused as a mistake in what was given; a session whose segments or bytes are no
 cannot read on. Its test pages a search of two requests, each naming a host across three buffers, a record at a time:
 the first page lists the first request's record and prints a token holding none of the bytes, and the second, asked
 with previews, lists the second request's, the bytes before its match read again.
+
+Revision 850 answers an interval that holds nothing (`contracts/metrics-v1.md` §5). `icat metric` reads a bare number
+as a native tick of the session's clock, as its contract measures in native ticks, while every other command reads one
+as 100-nanosecond session ticks; the two agree only on a clock that ticks every 100 nanoseconds from nought, as the
+tests' did, so numbers carried from `icat timeline --json` into `icat metric` measured an interval far from every
+reading, and the answer was nought with no word of why. Rather than change what a bare number is, which a metric
+query's identity rests on, an interval that holds none of the generation's readings is said to, with where they lie;
+and bare numbers that as session ticks would hold readings are answered with that interval written with units, which
+every command reads alike.

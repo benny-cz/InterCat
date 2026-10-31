@@ -554,10 +554,11 @@ internal static class MetricCommand
         }
 
         bool wholeRecording = false;
+        bool bareTicks = false;
         if (intervalOption is not null)
         {
             SourceClockDescriptor? clock = SessionSegments.SourceClock(store.Root, manifest);
-            if (!TryParseInterval(intervalOption, clock, out TimeRange? interval, out problem))
+            if (!TryParseInterval(intervalOption, clock, out TimeRange? interval, out bareTicks, out problem))
             {
                 ConsoleUi.Failure(problem!);
                 return InterCatExitCode.InvalidInvocation;
@@ -609,6 +610,11 @@ internal static class MetricCommand
         else
         {
             Render(document, result);
+        }
+
+        if (intervalOption is not null && Missed(result, intervalOption, bareTicks) is { } missed)
+        {
+            ConsoleUi.Warn(missed);
         }
 
         if (outputPath is not null)
@@ -1781,19 +1787,74 @@ internal static class MetricCommand
     }
 
     /// <summary>
+    /// What an --interval that holds none of the session's readings is told: where they lie, in the terms its bounds were
+    /// written in, and for bounds written as bare numbers, which this command reads as native ticks where every other
+    /// command reads 100-nanosecond session ticks, the interval those would name, written with units, where it holds
+    /// readings. Null where the interval holds one, or the session holds none.
+    /// </summary>
+    private static string? Missed(MetricResult result, string written, bool bareTicks)
+    {
+        if (result.Request.Interval is not { } asked || result.FirstNativeTicks is not { } first
+            || result.LastNativeTicks is not { } last || (asked.EndTicks > first && asked.StartTicks <= last))
+        {
+            return null;
+        }
+
+        SourceClockDescriptor? clock = result.Clock;
+        string native = string.Create(CultureInfo.CurrentCulture, $"native ticks {first:N0} to {last:N0}");
+        string said = $"No reading of this session lies within --interval {written}: its readings run from "
+            + (clock is null ? native : $"{Seconds(clock, first)} s to {Seconds(clock, last)} s after capture start ({native})")
+            + ".";
+        if (!bareTicks)
+        {
+            return said;
+        }
+
+        said += " A bare number here is a native tick of the session's clock, where every other command reads one as "
+            + "100-nanosecond session ticks";
+        string[] bounds = written.Split(':');
+        long start = long.Parse(bounds[0].Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        long end = long.Parse(bounds[1].Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+        return clock is { } described && Native(described, start) is { } from && Native(described, end) is { } to
+            && to > first && from <= last
+            ? said + $": to measure {Time(start)} to {Time(end)} after capture start, write --interval {Time(start)}:{Time(end)}."
+            : said + ".";
+
+        // A count of session ticks as the first native reading at or after it, as a bound written with a unit is read;
+        // null for one before capture start or beyond what a session time holds.
+        static long? Native(SourceClockDescriptor clock, long ticks)
+        {
+            try
+            {
+                return ticks < 0 ? null : SourceClockMath.FirstNativeAtOrAfter(clock, new SessionTimestamp(checked(ticks * 100)));
+            }
+            catch (OverflowException)
+            {
+                return null;
+            }
+        }
+
+        static string Time(long ticks) => string.Create(CultureInfo.InvariantCulture, $"{ticks / 10_000_000m:0.#######}s");
+    }
+
+    /// <summary>
     /// Reads <c>start:end</c>, half-open. A bare integer is a native tick of the session's own clock; a number with
     /// a unit - <c>s</c>, <c>ms</c>, <c>us</c> or <c>ns</c> - is time after the capture epoch, converted to the first
-    /// native tick at or after it, which needs the clock the session's journal describes.
+    /// native tick at or after it, which needs the clock the session's journal describes. Whether both bounds were bare
+    /// integers is said, since every other command reads those as 100-nanosecond session ticks.
     /// </summary>
     private static bool TryParseInterval(
         string value,
         SourceClockDescriptor? clock,
         out TimeRange? interval,
+        out bool bareTicks,
         out string? problem)
     {
         interval = null;
         problem = null;
         string[] parts = value.Split(':');
+        bareTicks = parts.Length == 2 && parts.All(part =>
+            long.TryParse(part.Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out _));
         if (parts.Length != 2
             || !TryParseBound(parts[0], clock, end: false, out long start, out bool startBeyond, out problem)
             || !TryParseBound(parts[1], clock, end: true, out long end, out bool endBeyond, out problem))
@@ -1955,7 +2016,8 @@ internal static class MetricCommand
         ConsoleUi.Line("      section 5.3's matrix first. A metric outside its basis is rejected with the");
         ConsoleUi.Line("      compatible ones named; one the matrix permits that this session cannot derive");
         ConsoleUi.Line("      is reported as unavailable with what it needs. --matrix prints the matrix.");
-        ConsoleUi.Line("      --interval bounds are native ticks, or times after capture start such as 1.5s.");
+        ConsoleUi.Line("      --interval bounds are native ticks, or times after capture start such as 1.5s;");
+        ConsoleUi.Line("      every other command reads a bare number as 100-nanosecond session ticks.");
         ConsoleUi.Line("      A rate without one divides by the whole recording, from capture start to the stop");
         ConsoleUi.Line("      its clock calibration records; a session that recorded no stop needs --interval.");
         ConsoleUi.Line("      --evidence lists the first records the answer counted.");

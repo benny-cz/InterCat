@@ -2394,6 +2394,7 @@
         "R18: icat metric ranks by mechanism, executable, the other end and per second in words, a remainder past --top, and a ranking with no row said",
         "R18: icat metric ranks bytes by mechanism and per second by process, beside how much of each was measured",
         "R18: icat metric says RPC calls started, completed, failed and timed in words, with what each call's records establish",
+        "R18: icat metric says when its --interval holds no reading, where its readings lie, and what bare numbers name elsewhere",
         "R18: icat operations lists a process's calls, each with its other end named as its group's is",
         "R18: icat operations needs a session's folder, and says so of none and of one that is not there",
         "R18: icat operations refuses an option it cannot read, saying what it expects",

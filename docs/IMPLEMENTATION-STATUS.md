@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-31 · Plan revision: 849 · Branch: `main`
+Updated: 2026-10-31 · Plan revision: 850 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,24 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 850 — `icat metric` says when its `--interval` holds no reading, and what bare numbers name elsewhere:**
+  - `icat metric` reads a bare number in `--interval` as a native tick of the session's clock, where every other
+    command reads it as 100-nanosecond session ticks, and `icat timeline --json` states session ticks; numbers copied
+    from one into the other named an interval holding nothing, and the answer, nought, said nothing of why. An
+    interval that holds none of the generation's readings is now said to, with where its readings lie, in seconds
+    after capture start and in native ticks.
+  - Bounds written as bare numbers are said to be native ticks here, and where the same numbers read as session ticks
+    would hold readings, the answer says how to measure that, the interval written with units: `--interval 0s:0.005s`
+    for `0:50000`. Numbers before capture start, or beyond any session time, are no such interval, and an interval
+    holding a reading at either edge is not said to hold none. The help says what a bare number is to every other
+    command, and `contracts/metrics-v1.md` §5 says so.
+  - Debug and Release each ran 3,479 tests with revision 473's 93 failures and 4 skips, and failed nothing else. The
+    fixture index names the new test. All 10 mutations were caught: the warning not given; an interval ending at the
+    first reading read as holding it, or one beginning at the last as holding none; the bare-number sentence given
+    the wrong way round; a time after a bare number read as bare; the same numbers as session ticks taken to hold a
+    reading they end at, or not one they begin at; a bound before capture start, or beyond any session time, read as
+    a session time; and the suggested times written in the wrong unit.
 
 - **Revision 849 — `icat content --find` reads a search on from where it ended, given its token (P16):**
   - A search the command line ended before reading every record it could, at a budget or finding more records than it
