@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-30 · Plan revision: 843 · Branch: `main`
+Updated: 2026-10-31 · Plan revision: 844 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 844 — icat as a process: its text whole, its exit code returned, a follow cancelled as one (R10):**
+  - A coverage pass found `icat`'s entry point run by no test: the program every person and script starts, which
+    writes a pipe or a file as UTF-8 and turns Ctrl+C into a cancellation. Tests now start `icat` as a process of its
+    own: what it writes reaches a pipe as UTF-8 with no byte-order mark, its ellipses whole; the code a command
+    returns is the process's exit code; and, where a signal can be aimed at one process, Ctrl+C stops a follow waiting
+    for a recording's first publication as a cancellation, saying so.
+  - That found the follow exiting 1, the partial-result code, though it had kept nothing. It exits 5 now, as a command
+    cancelled before a result does, and still 1 when stopped having derived part of a recording.
+  - Debug and Release each ran 3,472 tests with revision 473's 93 failures and 4 skips, and failed nothing else. All
+    4 mutations were caught: the wait's cancellation said to be a partial result, the command's code not returned as
+    the process's, Ctrl+C left to end the process, and the cancellation unsaid. On Linux, whose console is UTF-8
+    already, the encoding test holds what a pipe receives, not the code page it guards against.
 
 - **Revision 843 — a keyboard's Browser Back and Forward keys go back and forward as the mouse's buttons do (§6.7):**
   - A mouse's driver can send its side buttons as the keyboard's Browser Back and Forward keys rather than as buttons,

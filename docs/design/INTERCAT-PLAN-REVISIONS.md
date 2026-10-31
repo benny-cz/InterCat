@@ -714,6 +714,8 @@ Revision 842 brings the README up to what revisions 836 to 841 changed for a per
 
 Revision 843 lets a keyboard's Browser Back and Forward keys go back and forward as the mouse's buttons do.
 
+Revision 844 tests `icat` as the process a person starts, and has a follow stopped before anything was published exit cancelled.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2478,3 +2480,16 @@ doing nothing. The window takes the keys as it takes the keys that act anywhere,
 search box included, where they type nothing: Back leaves a search first and else goes back as `Esc` does, and Forward
 goes forward as `Alt`+`Right` does. The buttons and the keys go back by one method, and the keys sheet names them
 together.
+
+Revision 844 is a coverage pass, and its finding is the program itself. Every test ran `icat`'s commands in the test's
+own process, so the entry point a person or a script starts was run by none: the part that writes a pipe or a file as
+UTF-8, where a Windows console's legacy code page would turn an ellipsis or a middle dot into a question mark, the
+part that turns Ctrl+C into a cancellation, and the return of a command's code as the process's exit code. Tests now
+start `icat` as a process of its own, as built beside them: the demo's ellipsis reaches a pipe as UTF-8 with no
+byte-order mark, an unknown command exits 2 with its refusal on stderr and nothing on stdout, and, where a signal can
+be aimed at one process, SIGINT, which is Ctrl+C, stops a follow waiting for a recording's first publication. On
+Linux, whose console is UTF-8 already, the first holds what a pipe receives rather than the code page it guards
+against, which only Windows has. The last found the follow exiting 1, the partial-result code, though it had kept
+nothing and made no folder; §20.4 documents 5 for a cancellation, which is what `icat` returns for any other command
+cancelled before a result, so the follow returns it now, and 1 still when it is stopped having derived part of a
+recording.

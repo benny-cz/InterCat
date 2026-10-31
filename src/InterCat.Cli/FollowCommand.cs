@@ -135,8 +135,9 @@ internal static class FollowCommand
             }
             catch (OperationCanceledException)
             {
+                // Nothing was derived or kept, so the follow ends as a cancelled command does, not with a partial result.
                 ConsoleUi.Warn("Stopped before the recording published anything.");
-                return InterCatExitCode.PartialResultSuccess;
+                return InterCatExitCode.Cancelled;
             }
         }
 

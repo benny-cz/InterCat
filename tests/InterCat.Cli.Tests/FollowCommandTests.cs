@@ -191,7 +191,7 @@ public sealed class FollowCommandTests : IDisposable
         Assert.False(Directory.Exists(session));
 
         // A recording that has published nothing has nothing to derive at once, and a follow waiting for it stops when
-        // asked, keeping nothing; neither makes the session's folder.
+        // asked, keeping nothing, as a cancelled command does; neither makes the session's folder.
         string unpublished = Path.Combine(root.Path, "unpublished");
         Directory.CreateDirectory(unpublished);
         (code, output, said) = await Run("follow", unpublished, session, "--once");
@@ -199,7 +199,7 @@ public sealed class FollowCommandTests : IDisposable
         Assert.Contains("The recording has published nothing yet, so there is nothing to derive.", said, StringComparison.Ordinal);
         using var soon = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
         (code, output, said) = await Run(soon.Token, "follow", unpublished, session);
-        Assert.Equal((InterCatExitCode.PartialResultSuccess, string.Empty), (code, output));
+        Assert.Equal((InterCatExitCode.Cancelled, string.Empty), (code, output));
         Assert.Contains("Waiting for the recording's first publication. Ctrl+C stops.", said, StringComparison.Ordinal);
         Assert.Contains("Stopped before the recording published anything.", said, StringComparison.Ordinal);
         Assert.False(Directory.Exists(session));
