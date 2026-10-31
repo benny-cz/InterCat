@@ -216,6 +216,62 @@ public sealed class LadderProperties
         Assert.True(seed > 0);
     }
 
+    [Fact(DisplayName = "§3.2: a descent up or across, one naming nothing, a return past either end and a rung focused elsewhere are refused, the ladder as it was")]
+    public void WhatTheLadderCannotDoIsRefused()
+    {
+        WorkspaceSnapshot snapshot = SyntheticWorkspace.Create();
+        NavigationState root = SyntheticWorkspace.Root(snapshot);
+
+        // A rung is focused at its own level, or it is no rung.
+        Assert.Equal("A rung's focus must be at the rung's own level. (Parameter 'root')",
+            Assert.Throws<ArgumentException>(() => new DetailLadder(root with { Focus = new(DetailLevel.Group, "group", "a group") })).Message);
+
+        // One rung down, then a descent that goes nowhere lower, up or across, is refused as an ascent's to make.
+        var ladder = new DetailLadder(root);
+        LadderRow group = LadderProjection.Project(snapshot, ladder.Current).Rows[0];
+        Assert.True(ladder.TryDescend(LadderProjection.DescentFor(group, ladder.Current, snapshot.Extent), out _));
+        NavigationState onGroup = ladder.Current;
+        foreach ((DetailLevel level, string said) in new[]
+        {
+            (DetailLevel.Group, "Group is not below Group; use ascent instead."),
+            (DetailLevel.Machine, "Machine is not below Group; use ascent instead."),
+        })
+        {
+            Assert.False(ladder.TryDescend(Descent(level, "elsewhere"), out string? refusal));
+            Assert.Equal(said, refusal);
+            Assert.Same(onGroup, ladder.Current);
+        }
+
+        // A descent names what was chosen, or it is refused.
+        Assert.False(ladder.TryDescend(Descent(DetailLevel.ProcessInstance, " "), out string? unnamed));
+        Assert.Equal("A descent needs the key of the thing that was selected.", unnamed);
+        Assert.Same(onGroup, ladder.Current);
+
+        // There is no rung above the machine's nor below the current one to return to.
+        foreach (int depth in new[] { -1, ladder.Depth + 1 })
+        {
+            Assert.False(ladder.TryReturnTo(depth, out NavigationState stayed));
+            Assert.Same(onGroup, stayed);
+            Assert.Equal(1, ladder.Depth);
+        }
+
+        // A filter not set is not removed, and forward history, once cleared, has nothing to re-enter.
+        Assert.False(ladder.TryRemoveFilter("not-a-filter"));
+        Assert.True(ladder.TryAscend(out _));
+        Assert.True(ladder.CanGoForward);
+        ladder.ClearForward();
+        Assert.False(ladder.CanGoForward);
+        Assert.Throws<ArgumentOutOfRangeException>(() => NavigationState.Name((DetailLevel)99));
+
+        LadderDescent Descent(DetailLevel level, string key) => new()
+        {
+            Target = new(level, key, "chosen"),
+            Viewport = snapshot.Extent,
+            Lanes = LaneGrouping.InstanceOnly,
+            GraphFocusKey = null,
+        };
+    }
+
     [Theory(DisplayName = "§3.2: returning to a named rung keeps every rung above it and drops the rest")]
     [MemberData(nameof(Seeds))]
     public void ReturningToACrumbTruncatesTheLadder(int seed)

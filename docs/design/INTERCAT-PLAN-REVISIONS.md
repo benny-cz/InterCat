@@ -716,6 +716,8 @@ Revision 843 lets a keyboard's Browser Back and Forward keys go back and forward
 
 Revision 844 tests `icat` as the process a person starts, and has a follow stopped before anything was published exit cancelled.
 
+Revision 845 tests what the ladder refuses.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2493,3 +2495,13 @@ against, which only Windows has. The last found the follow exiting 1, the partia
 nothing and made no folder; §20.4 documents 5 for a cancellation, which is what `icat` returns for any other command
 cancelled before a result, so the follow returns it now, and 1 still when it is stopped having derived part of a
 recording.
+
+Revision 845 is a coverage pass over the ladder of §3.2, which revisions 840 and 843 gave two more ways back and
+forward. Its properties are generated over random descents and ascents, every one of them valid, so what it refuses
+was run by no test: a descent to a rung no lower than the current one, which is an ascent's to make; a descent naming
+nothing chosen; a return above the machine's rung or below the current one; a rung whose focus is at another level;
+and the removal of a filter the rung does not hold. A test now asks each, and each is refused in its own words, the
+ladder left as it was, and forward history once cleared has nothing to re-enter. The window's check that the rung
+Forward would re-enter is still among the rows of the rung above stays unrun and is kept as a guard: a newer
+generation keeps forward history only while each rung is still a way down, the ladder keeps it a way down from the
+current rung, and a rung's rows depend on the generation alone, so nothing the window does can reach it.
