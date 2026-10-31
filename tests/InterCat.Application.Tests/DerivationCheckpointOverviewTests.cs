@@ -134,6 +134,32 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Null(DerivationCheckpoint.NamedBy(session.Store.Current!));
     }
 
+    [Fact(DisplayName = "I14: a generation with no records gives a checkpoint nothing to derive, and a damaged segment refuses one, saying why")]
+    public void NoRecordsOrADamagedSegmentPublishNoCheckpoint()
+    {
+        SessionDerivationCache.Clear();
+
+        // A generation that names no observation segment has nothing to derive a checkpoint of.
+        using var empty = new TemporarySession();
+        Publish(empty.Store, []);
+        long published = empty.Store.Current!.Generation;
+        CheckpointPublication nothing = SessionCheckpoints.Publish(empty.Store, Committed);
+        Assert.Equal((CheckpointOutcome.NothingToDerive, published, (long?)null), (nothing.Outcome, nothing.SourceGeneration, nothing.PublishedGeneration));
+        Assert.Equal("The generation names no observation segment, so there is nothing to derive.", nothing.Reason);
+        Assert.Equal(published, empty.Store.Current!.Generation);
+
+        // A segment that no longer reads as it was published refuses a checkpoint, which says why and publishes nothing.
+        using var damaged = new TemporarySession();
+        Publish(damaged.Store, IncrementalOverviewTests.LiveChunks()[0]);
+        damaged.Store.ReleaseSegmentReaders();
+        StoreDependency segment = damaged.Store.Current!.Dependencies.First(dependency => dependency.Kind == StoreDependencyKind.Segment);
+        string file = Path.Combine(damaged.Path, segment.Name);
+        File.WriteAllBytes(file, File.ReadAllBytes(file)[..^1]);
+        CheckpointPublication refused = SessionCheckpoints.Publish(damaged.Store, Committed);
+        Assert.Equal((CheckpointOutcome.Refused, (long?)null), (refused.Outcome, refused.PublishedGeneration));
+        Assert.Contains(segment.Name, refused.Reason, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "I14: an overview that cannot be read is counted around from the segments, and the overview says why")]
     public void AnUnreadableOverviewIsCountedAround()
     {

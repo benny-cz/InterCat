@@ -900,6 +900,7 @@
         "I14: a finished session keeps each overview column's bytes per mechanism, and a reopen's lanes under a byte ranking open no segment",
         "I14: a finished session keeps each process's and channel end's bytes, and a reopen's whole-session byte ranking opens no segment and measures as a read does under every policy",
         "I14: a generation published before tile indexes is counted from its segments, and gains one when its checkpoint is published",
+        "I14: a generation with no records gives a checkpoint nothing to derive, and a damaged segment refuses one, saying why",
         "I14: a level spanning a section of a segment the generation does not name is not counted: each query counts the segments' own sections",
         "I14: a minor 3 to 6 tile index, which keeps no byte tallies by direction, before minor 6 no byte tallies, before minor 5 no byte sums and at minor 3 no level spanning its segments, is counted from as before, what it does not keep read from the segments, and a checkpoint publishes it again with all of them",
         "I14: a released session's persisted overview begins where every record is kept, and one counted from before the boundary is counted again",

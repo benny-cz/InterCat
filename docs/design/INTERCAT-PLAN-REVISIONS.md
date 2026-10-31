@@ -718,6 +718,8 @@ Revision 844 tests `icat` as the process a person starts, and has a follow stopp
 
 Revision 845 tests what the ladder refuses.
 
+Revision 846 tests a checkpoint of a generation with no records and of one over a damaged segment.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2505,3 +2507,12 @@ ladder left as it was, and forward history once cleared has nothing to re-enter.
 Forward would re-enter is still among the rows of the rung above stays unrun and is kept as a guard: a newer
 generation keeps forward history only while each rung is still a way down, the ladder keeps it a way down from the
 current rung, and a rung's rows depend on the generation alone, so nothing the window does can reach it.
+
+Revision 846 is a coverage pass over the derivation checkpoint (I14). Its test of what is published for a session with
+no generation or no records tried only the first: a generation published with no records, which names no observation
+segment, now gives a checkpoint nothing to derive, said in its words, and nothing is published. A segment damaged
+after it was published, a byte short, refuses a checkpoint whose reason names the segment, and nothing is published;
+`icat checkpoint` refuses such a session already as it opens and verifies it, as corrupted input with exit code 4, so
+the checkpoint's own refusal is met by what holds the store open first, as a follow's checkpoint step does. Its answer
+for a generation that names no source clock stays unrun: every writer since the clock descriptor stages one, so only a
+session written before it could reach that answer, and none can be made now.
