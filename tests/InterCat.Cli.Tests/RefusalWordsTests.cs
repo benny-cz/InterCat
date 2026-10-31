@@ -143,7 +143,6 @@ public sealed class RefusalWordsTests : IDisposable
             "--owner-process expects a process instance's GUID, as the overview gives it; 'abc' is not one." },
         { ["evidence", "{session}", "--interval", "9:3"], "--interval expects " + Takes + "; '9:3' is not one." },
         { ["timeline", "{session}", "--interval", "10:5"], "--interval expects " + Takes + "; '10:5' is not one." },
-        { ["timeline", "{session}"], "--interval is required: " + Takes + "." },
         { ["timeline", "{session}", "--interval", "0:10", "--columns", "0"],
             "--columns expects a number of columns from 1 to 2,000; '0' is not one." },
         { ["export", "{session}", "--output", "rows.xml", "--format", "xml"], "--format expects json or csv; 'xml' is not one." },

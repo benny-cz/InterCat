@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-31 · Plan revision: 854 · Branch: `main`
+Updated: 2026-10-31 · Plan revision: 855 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 855 — `icat timeline` without `--interval` counts the whole session, as the window first draws it:**
+  - Running the demo's sessions through the commands a person reaches first found `icat timeline <session>` refused
+    for want of `--interval`, where the window opens on the whole session's timeline. Without one it now counts the
+    whole session's, from its first record's session time to its last's, in the columns asked or 64, said to be the
+    whole session's, and its JSON names that interval as one given would. A session no record of which has a session
+    time has no whole timeline, and says so, with how to count an interval of it. The help and the README say so.
+  - Debug and Release each ran 3,489 tests with revision 473's 93 failures and 4 skips, and failed nothing else,
+    once two tests the first run failed were brought to the new behaviour: one listed icat timeline with no interval
+    among refused invocations, now one with no columns, and one held the help's sentence as it was before it said
+    what no interval gives. The new test's name begins with a section, which the fixture index does not list. Of 4
+    mutations, 2 were caught at once; the other 2, each taking away a check that the interval is there, did not
+    build, the compiler's nullable analysis refusing them, and written so they build, an extent never taken and the
+    refusal exiting as success, both were caught.
 
 - **Revision 854 — a count option a command does not read is answered with the one it does:**
   - Running the demo's sessions through the commands a person reaches first found `icat evidence --limit 5` refused

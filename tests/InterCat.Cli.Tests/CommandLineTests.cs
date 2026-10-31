@@ -1353,7 +1353,7 @@ public sealed class CommandLineTests : IDisposable
         [
             ["frobnicate"],
             ["timeline", "--bogus"],
-            ["timeline", session.Path],
+            ["timeline", session.Path, "--columns", "0"],
             ["evidence", session.Path, "--page-size", "0", "--json"],
             ["export", session.Path],
             ["processes"],
@@ -2461,6 +2461,40 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
         Assert.Contains("--from takes a moment: ", why, StringComparison.Ordinal);
         Assert.Contains("'client.exe' is neither.", why, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "§6.2: icat timeline without --interval counts the whole session, as the window first draws it")]
+    public async Task ATimelineWithoutAnIntervalIsTheWholeSessions()
+    {
+        // The whole session's timeline is the interval from its first record's session time to its last's, counted as
+        // that interval given would be, and said to be the whole session's.
+        (InterCatExitCode code, string whole, string said) = await Run("timeline", session.Path, "--columns", "4", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement interval;
+        using (JsonDocument document = JsonDocument.Parse(whole))
+        {
+            interval = document.RootElement.GetProperty("detail").GetProperty("interval").Clone();
+        }
+
+        string range = string.Create(CultureInfo.InvariantCulture,
+            $"{interval.GetProperty("startTicks").GetInt64()}:{interval.GetProperty("endTicks").GetInt64()}");
+        (code, string asked, said) = await Run("timeline", session.Path, "--columns", "4", "--json", "--interval", range);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(asked, whole);
+        (code, string text, said) = await Run("timeline", session.Path, "--columns", "4");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Interval +.+, the whole session's\r?$", text);
+        (_, text, _) = await Run("timeline", session.Path, "--columns", "4", "--interval", range);
+        Assert.DoesNotContain("the whole session's", text, StringComparison.Ordinal);
+
+        // A session no record of which has a session time has no whole timeline, and says how to count an interval of it.
+        using var untimed = new TemporarySession();
+        Publish(untimed.Store, [Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 5, 100, 1) with { SessionRelativeTicks = null }]);
+        untimed.Store.ReleaseSegmentReaders();
+        (code, text, said) = await Run("timeline", untimed.Path);
+        Assert.True((code, text) == (InterCatExitCode.InvalidInvocation, string.Empty), $"{code}: {said}");
+        Assert.Contains("This session holds no record with a session time, so it has no whole timeline: give --interval "
+            + "<start:end> to count an interval of it.", Regex.Replace(said, @"\s+", " "), StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "§6.2: icat timeline states the time base its intervals count in, as the window's axis does")]
@@ -4459,7 +4493,8 @@ public sealed class CommandLineTests : IDisposable
 
         // Its own help says its columns partition the interval; icat's help says what an empty interval's coverage is.
         string own = (await Run("timeline", "--help")).Output;
-        Assert.Contains("Its columns partition the interval exactly, as the Desktop's zoomed timeline draws them.", own,
+        Assert.Contains("Its columns partition the interval exactly, as the Desktop's zoomed timeline draws them; without "
+            + "--interval, the whole session's timeline, as the Desktop first draws it.", Regex.Replace(own, @"\s+", " "),
             StringComparison.Ordinal);
         Assert.DoesNotContain("bucket", own, StringComparison.OrdinalIgnoreCase);
         string all = (await Run("--help")).Output;

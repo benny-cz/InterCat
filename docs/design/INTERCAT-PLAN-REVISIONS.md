@@ -736,6 +736,8 @@ Revision 853 has `icat` name the evidence policy as it is typed in its words.
 
 Revision 854 answers a count option a command does not read with the one it does.
 
+Revision 855 has `icat timeline` count the whole session when no interval is given.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2594,3 +2596,9 @@ none of the four is a letter or two from another, so no near miss reached it. Th
 only where no option was a letter or two from what was typed, so `--top` given to `icat content --find` was answered
 with `--to` alone; a mutation naming the count there too survived for want of a test of it, which showed the answer
 should name both, as it now does, the count first.
+
+Revision 855 is the last finding of the demo run. `icat timeline` required an interval, where the window opens on the
+whole session; the interval a person would have to type is one they cannot know before seeing the session. Without
+`--interval` it now takes the whole session's extent, as the window's overview does, and counts it exactly as that
+interval given would be. Two of its mutations, each taking away a check that the interval is there, did not build: the
+compiler's nullable analysis holds those paths; written so they build, they were caught.

@@ -171,6 +171,7 @@ icat ports <session>
 icat ports <session> --program svchost.exe
 icat channels <session>
 icat evidence <session> --channel <key from icat channels>
+icat timeline <session>
 icat timeline <session> --interval 0:10s
 icat hosts <session> --rank-by bytes-sent
 icat hosts <session> --address 10.0.0

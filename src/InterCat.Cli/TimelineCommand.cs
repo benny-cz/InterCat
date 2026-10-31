@@ -45,10 +45,13 @@ internal static class TimelineCommand
         bool invalidColumns = columnsText is not null
             && (!int.TryParse(columnsText, NumberStyles.None, CultureInfo.InvariantCulture, out columns)
                 || columns is < 1 or > SessionTimelineQuery.MaximumColumns);
-        TimeRange? interval = TickInterval.Read(intervalText, out string? tooWide);
+        // Without --interval the timeline is the whole session's, as the window first draws it.
+        string? tooWide = null;
+        TimeRange? interval = intervalText is null ? null : TickInterval.Read(intervalText, out tooWide);
         string? scopeProblem = TryParseScope(mechanismText, processText, directionText, channelText, hostText, endText,
             out IntervalByteScope scope);
-        if (directory is null || hasUnknown || invalidColumns || interval is null || scopeProblem is not null)
+        if (directory is null || hasUnknown || invalidColumns || (intervalText is not null && interval is null)
+            || scopeProblem is not null)
         {
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat timeline <directory>."
                 : hasUnknown ? command.Refusal(unknown!)
@@ -76,6 +79,17 @@ internal static class TimelineCommand
         try
         {
             SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
+            if (interval is null)
+            {
+                interval = SessionOverviewProjector.Project(store, followRpcCalls: false, cancellationToken: cancellationToken).Extent;
+                if (interval is null)
+                {
+                    ConsoleUi.Failure("This session holds no record with a session time, so it has no whole timeline: give "
+                        + "--interval <start:end> to count an interval of it.");
+                    return InterCatExitCode.InvalidInvocation;
+                }
+            }
+
             if (wallClock)
             {
                 // The wall clock its capture's machine read, as the window's Wall clock reads it (§6.2, R18); never guessed
@@ -118,7 +132,8 @@ internal static class TimelineCommand
         ConsoleUi.Heading("Session timeline");
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(generation));
-        ConsoleUi.Field("Interval", clock.Range(interval.Value, CultureInfo.CurrentCulture));
+        ConsoleUi.Field("Interval", clock.Range(interval.Value, CultureInfo.CurrentCulture)
+            + (intervalText is null ? ", the whole session's" : string.Empty));
         ConsoleUi.Field("Time base", clock.Base(interval.Value, began, CultureInfo.CurrentCulture));
         if (clock.IsWallClock)
         {
@@ -268,13 +283,14 @@ internal static class TimelineCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat timeline <session-directory> --interval <start:end> [--columns <1-2000>]");
+        ConsoleUi.Line("icat timeline <session-directory> [--interval <start:end>] [--columns <1-2000>]");
         ConsoleUi.Line("    [--mechanism <name> | --process <instance-id> [--direction <name>] | --channel <key> [--end <0|1>]");
         ConsoleUi.Line("     | --host <address>]");
         ConsoleUi.Line("    [--bytes] [--wall-clock] [--json]");
         ConsoleUi.Line("  Read-only, leased timeline over [start,end), each bound in 100-nanosecond session ticks or a time");
         ConsoleUi.Line("  with its unit (1.5s, 250ms, 40us), taken outward to whole ticks.");
-        ConsoleUi.Line("  Its columns partition the interval exactly, as the Desktop's zoomed timeline draws them.");
+        ConsoleUi.Line("  Its columns partition the interval exactly, as the Desktop's zoomed timeline draws them; without");
+        ConsoleUi.Line("  --interval, the whole session's timeline, as the Desktop first draws it.");
         ConsoleUi.Line("  A scope lists the records one lane of the Desktop's interval table lists; --bytes adds what");
         ConsoleUi.Line("  each interval's records sent and received, unmeasured sizes counted apart. --wall-clock states");
         ConsoleUi.Line("  the intervals on the wall clock its capture's machine read, in this computer's zone, as the");
