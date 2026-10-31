@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-31 · Plan revision: 855 · Branch: `main`
+Updated: 2026-10-31 · Plan revision: 856 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 856 — a reader of a few mechanisms that collected none of them names them (R21):**
+  - Running the demo's sessions through the commands a person reaches first found `icat waits` saying "no mechanism
+    was collected here" of a session that collected process lifecycle and TCP: waits read RPC calls and their ALPC
+    messages, neither of which it collected, so the sentence was true of the two it judged and read as false of the
+    session. A reader that judges the coverage of a few mechanisms, up to four, now names those it could not see, "RPC
+    and ALPC were not collected here", as `icat waits` and `icat links` and the windows that list waits, links and
+    patterns say it; one judging every mechanism still says none was collected.
+  - Debug and Release each ran 3,489 tests with revision 473's 93 failures and 4 skips, and failed nothing else; the
+    sentences were added to an existing test, so the fixture index names nothing new. All 4 mutations were caught:
+    four mechanisms said as none, a judgement of every mechanism naming them all, the verb not agreeing with one
+    mechanism, and no scope named at all.
 
 - **Revision 855 — `icat timeline` without `--interval` counts the whole session, as the window first draws it:**
   - Running the demo's sessions through the commands a person reaches first found `icat timeline <session>` refused

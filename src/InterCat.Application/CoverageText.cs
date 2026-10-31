@@ -34,6 +34,9 @@ public static class CoverageText
     /// known of any mechanism for one reason - no ledger, or a scope outside every reading the capture delivered - that
     /// reason is said once, with what it means for a count of none. Empty when nothing was judged.
     /// </summary>
+    /// <summary>The most mechanisms a scope names when it collected none of them; past them, it says no mechanism.</summary>
+    public const int MostNamedUncollected = 4;
+
     public static string Describe(IReadOnlyList<MechanismCoverage> mechanisms)
     {
         ArgumentNullException.ThrowIfNull(mechanisms);
@@ -51,7 +54,12 @@ public static class CoverageText
         MechanismCoverage[] collected = [.. mechanisms.Where(entry => entry.State != CoverageState.NotCollected)];
         if (collected.Length == 0)
         {
-            return "Coverage: no mechanism was collected here, so a count of none here is not proof of inactivity";
+            // A reader of a few mechanisms names those it could not see; one of every mechanism is said to have seen none.
+            return mechanisms.Count <= MostNamedUncollected
+                ? $"Coverage: {List([.. mechanisms.Select(entry => MechanismText.InSentence(entry.Mechanism))])} "
+                    + $"{CountText.Agree(mechanisms.Count, "was", "were")} not collected here, so a count of none here is not "
+                    + "proof of inactivity"
+                : "Coverage: no mechanism was collected here, so a count of none here is not proof of inactivity";
         }
 
         // Mechanisms that share a state, and the fact behind it, are named together; a covered one needs no fact.

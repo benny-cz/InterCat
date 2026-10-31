@@ -65,9 +65,24 @@ public sealed class CoverageTextTests
         Assert.Equal("Coverage: covered for TCP and UDP", CoverageText.Describe(covered));
         Assert.False(CoverageText.IsShort(covered));
         MechanismCoverage[] none = [new(Mechanism.Tcp, CoverageState.NotCollected, "no admitted descriptor records it")];
-        Assert.Equal("Coverage: no mechanism was collected here, so a count of none here is not proof of inactivity",
+        Assert.Equal("Coverage: TCP was not collected here, so a count of none here is not proof of inactivity",
             CoverageText.Describe(none));
         Assert.True(CoverageText.IsShort(none));
+
+        // A reader of a few mechanisms that collected none of them names them, up to four; one of every mechanism, none.
+        MechanismCoverage[] calls = [new(Mechanism.Rpc, CoverageState.NotCollected, "x"), new(Mechanism.Alpc, CoverageState.NotCollected, "x")];
+        Assert.Equal("Coverage: RPC and ALPC were not collected here, so a count of none here is not proof of inactivity",
+            CoverageText.Describe(calls));
+        MechanismCoverage[] four = [.. new[] { Mechanism.ProcessLifecycle, Mechanism.Tcp, Mechanism.Rpc, Mechanism.Alpc }
+            .Select(mechanism => new MechanismCoverage(mechanism, CoverageState.NotCollected, "x"))];
+        Assert.Equal("Coverage: process lifecycle, TCP, RPC and ALPC were not collected here, so a count of none here is not "
+            + "proof of inactivity", CoverageText.Describe(four));
+        MechanismCoverage[] every = [.. Enum.GetValues<Mechanism>().Select(mechanism => new MechanismCoverage(mechanism,
+            CoverageState.NotCollected, "x"))];
+        Assert.Equal("Coverage: no mechanism was collected here, so a count of none here is not proof of inactivity",
+            CoverageText.Describe(every));
+        Assert.Equal("RPC and ALPC were not collected here, so a count of none here is not proof of inactivity",
+            CoverageText.Unlabelled(calls));
         Assert.Equal(string.Empty, CoverageText.Describe([]));
         Assert.False(CoverageText.IsShort([]));
     }
