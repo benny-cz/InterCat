@@ -236,8 +236,22 @@ internal sealed class CommandLine
         }
 
         string[] meant = argument.StartsWith('-') ? NameText.Nearest(argument, asked) : [];
+
+        // A count of what is listed has four names across the commands, none a letter or two from another: one given to
+        // a command that counts with another of them is answered with the one it reads first, then with any option a
+        // letter or two from what was typed, as --top is from --to.
+        string named = equals > 0 ? argument[..equals] : argument;
+        if (Counts.Contains(named, StringComparer.OrdinalIgnoreCase)
+            && asked.FirstOrDefault(option => Counts.Contains(option, StringComparer.Ordinal)) is { } counted)
+        {
+            meant = [counted, .. meant.Where(option => option != counted)];
+        }
+
         return meant.Length > 0 ? $"Unknown option '{argument}'; did you mean {NameText.Either(meant)}?" : Unknown(argument);
     }
+
+    /// <summary>The names the commands give a count of what they list.</summary>
+    private static readonly string[] Counts = ["--limit", "--top", "--page-size", "--rows"];
 
     public bool TryReportUnknown(out string? unknown)
     {

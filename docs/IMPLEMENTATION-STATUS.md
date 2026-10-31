@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-31 · Plan revision: 853 · Branch: `main`
+Updated: 2026-10-31 · Plan revision: 854 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 854 — a count option a command does not read is answered with the one it does:**
+  - Running the demo's sessions through the commands a person reaches first found `icat evidence --limit 5` refused
+    with no more than "Unknown option '--limit'". The commands count what they list under four names, `--limit`,
+    `--top`, `--page-size` and `--rows`, none a letter or two from another, so the near misses revisions 836 to 839
+    answer could not find the one meant. One given to a command that counts with another of them is now answered with
+    that one, whatever its case or with its value after '=', and after it with any option a letter or two from what
+    was typed: `icat content --find x --top 5` is answered with `--limit` or `--to`. A command that counts with none
+    of them refuses it as before.
+  - Debug and Release each ran 3,489 tests with revision 473's 93 failures and 4 skips, and failed nothing else; the
+    7 tests added are rows of the refusal theory, so the fixture index names nothing new. Of the first 5 mutations,
+    4 were caught; the fifth, naming the count even where an option was a letter or two from what was typed, was
+    missed for want of a test of it, and the answer now names both, the count first. All 6 mutations of that form
+    were caught: the value after '=' kept in the name, case made a difference, the near options dropped or put
+    first, no count found among the options the command reads, and --rows left out of the counts.
 
 - **Revision 853 — `icat` names the evidence policy as it is typed, and its JSON as the format stores it:**
   - Running the demo's sessions through the commands a person reaches first found `icat processes` heading its answer

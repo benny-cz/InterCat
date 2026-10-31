@@ -64,6 +64,13 @@ public sealed class RefusalWordsTests : IDisposable
         { ["import"], "An ETL path is required: icat import <source.etl>." },
         { ["import", "{nowhere}"], "No ETL file at {nowhere}." },
         { ["bench", "--bogus"], "Unknown option '--bogus'." },
+        { ["evidence", "{session}", "--limit", "5"], "Unknown option '--limit'; did you mean --page-size?" },
+        { ["evidence", "{session}", "--LIMIT", "5"], "Unknown option '--LIMIT'; did you mean --page-size?" },
+        { ["processes", "{session}", "--limit=5"], "Unknown option '--limit=5'; did you mean --top?" },
+        { ["hosts", "{session}", "--top", "3"], "Unknown option '--top'; did you mean --limit?" },
+        { ["session", "{session}", "--page-size", "3"], "Unknown option '--page-size'; did you mean --rows?" },
+        { ["content", "{session}", "--find", "x", "--top", "5"], "Unknown option '--top'; did you mean --limit or --to?" },
+        { ["timeline", "{session}", "--interval", "0:10", "--limit", "5"], "Unknown option '--limit'." },
         { ["proceses"], "Unknown command 'proceses'; did you mean icat processes?" },
         { ["PROCESES"], "Unknown command 'PROCESES'; did you mean icat processes?" },
         { ["processes", "{session}", "--rank-by", "conections-made"], "--rank-by expects records, bytes-sent, bytes-received, "
