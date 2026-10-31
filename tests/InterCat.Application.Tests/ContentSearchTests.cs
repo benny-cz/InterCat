@@ -1,3 +1,4 @@
+using System.Buffers.Text;
 using System.Globalization;
 using System.Text;
 using InterCat.Analysis.Tests;
@@ -196,7 +197,7 @@ public sealed class ContentSearchTests
         other.Store.ReleaseSegmentReaders();
         Assert.Equal(SessionStore.AnotherSession, Assert.Throws<InvalidOperationException>(() =>
             ContentSearch.Continue(other.Store, other.Store.SessionId, first.Continuation!)).Message);
-        var released = new ContentSearchContinuation(id, first.Continuation!.Request, ["segment-released-since"], 0, false,
+        var released = new ContentSearchContinuation(id, first.Continuation!.Request, ["segment-released-since"], [], 0, false,
             new Dictionary<(long Exchange, ushort Event, int Process, Mechanism Mechanism), ContentSearch.Seam>());
         Assert.Equal("The session no longer holds every segment this search had read, so it cannot read on from where it stopped; "
             + "search again from its start.", Assert.Throws<InvalidOperationException>(() =>
@@ -447,7 +448,8 @@ public sealed class ContentSearchTests
 
         // Each record holds the matches that end in it as one search of its part's bytes from the start finds them, none
         // overlapping another, its first begun where that search began it; read on a record at a time, or a match at a
-        // time, the search finds the same.
+        // time, the search finds the same, and read on from its token as from where it stopped: the ends of the parts it
+        // had open read again from where they are kept, whole, the bytes before each match shown alike.
         foreach (ContentSearchRequest request in new ContentSearchRequest[] { new() { Text = "abcab" }, new() { Text = "ABCAB", IgnoreCase = true } })
         {
             var expected = new List<(ulong Ordinal, int Matches, int FirstAt)>();
@@ -483,13 +485,20 @@ public sealed class ContentSearchTests
             }
 
             Assert.Contains(expected, hit => hit.FirstAt < 0 && -hit.FirstAt > buffers[(int)hit.Ordinal - 2].Bytes.Length);
-            foreach (ContentSearchRequest asked in new[] { request, request with { MaximumBytes = 1 }, request with { Limit = 1 } })
+            foreach (ContentSearchRequest asked in new[]
+            {
+                request, request with { MaximumBytes = 1 }, request with { Limit = 1 }, request with { MaximumBytes = 1, Previews = true },
+            })
             {
                 ContentSearchResult page = ContentSearch.Find(session.Store, id, asked);
                 List<ContentSearchHit> listed = [.. page.Hits];
                 for (int pages = 1; page.Continuation is { } next && pages < 500; pages++)
                 {
-                    page = ContentSearch.Continue(session.Store, id, next);
+                    ContentSearchResult onward = ContentSearch.Continue(session.Store, id, next);
+                    ContentSearchContinuation read = ContentSearchToken.Read(session.Store, id, asked, ContentSearchToken.Write(next));
+                    Assert.Equal(Ends(next), Ends(read));
+                    page = ContentSearch.Continue(session.Store, id, read);
+                    Assert.Equal(onward.Hits.Select(Listed), page.Hits.Select(Listed));
                     listed.AddRange(page.Hits);
                 }
 
@@ -508,6 +517,234 @@ public sealed class ContentSearchTests
 
         static byte[] Encoded(string text, bool wide) => wide ? Encoding.Unicode.GetBytes(text) : Encoding.ASCII.GetBytes(text);
         static string Lower(string text) => new([.. text.Select(letter => letter is >= 'A' and <= 'Z' ? (char)(letter + 32) : letter)]);
+        static (ulong, int, int, ContentPreview?) Listed(ContentSearchHit hit) =>
+            (hit.Observation.RawRecordOrdinal, hit.Matches, hit.FirstAt, hit.Preview);
+    }
+
+    [Fact(DisplayName = "P16: a search reads on from its token as from where it stopped, and the token holds no byte kept nor the text looked for")]
+    public void ASearchReadsOnFromItsToken()
+    {
+        // Exchange 9's request names the host across three buffers, each record in a segment of its own; exchange 12's,
+        // a part left open, names it whole in a buffer longer than the end a seam keeps.
+        (long Exchange, long Sequence, long Flags, string Text)[] buffers =
+            [(9, 0, 1, "Host: ex"), (12, 0, 1, "GET /search?q=example.com&page=2"), (9, 1, 0, "ampl"), (9, 2, 2, "e.com")];
+        using var session = HttpSession(buffers);
+        SessionStore store = session.Store;
+        Guid id = store.SessionId;
+
+        // A byte at a time, the search reads on from a token after each record, holding the ends of its open parts as it
+        // held them, and finds the name the seams split as one search does, the bytes before it read again from the
+        // segments that keep them.
+        var request = new ContentSearchRequest { Text = "example.com", MaximumBytes = 1, Previews = true };
+        ContentSearchResult page = ContentSearch.Find(store, id, request);
+        List<ContentSearchHit> listed = [.. page.Hits];
+        var tokens = new List<string>();
+        while (page.Continuation is { } next && tokens.Count < 10)
+        {
+            tokens.Add(ContentSearchToken.Write(next));
+            ContentSearchContinuation read = ContentSearchToken.Read(store, id, request, tokens[^1]);
+            Assert.Equal(Ends(next), Ends(read));
+            page = ContentSearch.Continue(store, id, read);
+            listed.AddRange(page.Hits);
+        }
+
+        Assert.Equal([(2UL, 1, 14), (4UL, 1, -6)], listed.Select(hit => (hit.Observation.RawRecordOrdinal, hit.Matches, hit.FirstAt)));
+        Assert.Equal(new ContentPreview("Host: ", "example.com", string.Empty), listed[1].Preview);
+        Assert.Equal(4, tokens.Count);
+        ContentSearchContinuation last = ContentSearchToken.Read(store, id, request, tokens[^1]);
+        Assert.Equal("Host: exampl", Encoding.ASCII.GetString(last.Seams[(9, 2004, 4_242, Mechanism.Http)].Tail));
+        Assert.Equal("search?q=example.com&page=2", Encoding.ASCII.GetString(last.Seams[(12, 2004, 4_242, Mechanism.Http)].Tail));
+
+        // No token holds a byte that was kept, nor the text looked for.
+        foreach (string token in tokens)
+        {
+            byte[] held = Base64Url.DecodeFromChars(token);
+            foreach (string kept in new[] { "Host: ex", "GET /", "search", "page=2", "ampl", "e.com", "example.com" })
+            {
+                Assert.True(held.AsSpan().IndexOf(Encoding.ASCII.GetBytes(kept)) < 0, $"A token holds \"{kept}\".");
+            }
+        }
+
+        // The search reads on within budgets, a limit and previews of its own, and an evidence policy binds no record
+        // where no process instance is asked for; reading on from a token reads at least the record it stopped before.
+        ContentSearchResult limited = ContentSearch.Continue(store, id, ContentSearchToken.Read(store, id, request with
+        {
+            Limit = 1, MaximumBytes = ContentSearch.DefaultMaximumBytes, Budget = TimeSpan.FromMinutes(1), Previews = false,
+            Policy = EvidencePolicy.DirectOnly,
+        }, tokens[1]));
+        Assert.Equal([2UL], limited.Hits.Select(hit => hit.Observation.RawRecordOrdinal));
+        Assert.True(limited.More);
+        Assert.Null(limited.Hits[0].Preview);
+
+        // A search asked otherwise is refused another's token, and a token of another session or no token at all is
+        // refused, saying so.
+        var instance = new ProcessInstanceId(Guid.NewGuid());
+        foreach (ContentSearchRequest other in new[]
+        {
+            request with { Text = "example.org" }, request with { IgnoreCase = true }, request with { ProcessId = 4_242 },
+            request with { ProcessInstance = instance },
+        })
+        {
+            Assert.Equal(ContentSearchToken.AnotherSearch,
+                Assert.Throws<ArgumentException>(() => ContentSearchToken.Read(store, id, other, tokens[^1])).Message);
+        }
+
+        var bound = new ContentSearchContinuation(id, request with { ProcessInstance = instance }, last.Segments, last.SegmentsDigest,
+            0, false, new Dictionary<(long Exchange, ushort Event, int Process, Mechanism Mechanism), ContentSearch.Seam>());
+        Assert.Equal(EvidencePolicy.IncludeCorrelated, ContentSearchToken.Read(store, id, bound.Request, ContentSearchToken.Write(bound))
+            .Request.Policy);
+        foreach (ContentSearchRequest other in new[]
+        {
+            bound.Request with { Policy = EvidencePolicy.DirectOnly }, bound.Request with { ProcessInstance = new(Guid.NewGuid()) },
+        })
+        {
+            Assert.Equal(ContentSearchToken.AnotherSearch,
+                Assert.Throws<ArgumentException>(() => ContentSearchToken.Read(store, id, other, ContentSearchToken.Write(bound))).Message);
+        }
+
+        // A copy of the session reads on from it, holding the same segments; another session refuses it.
+        using var copy = HttpSession(buffers);
+        Assert.Equal(Ends(last), Ends(ContentSearchToken.Read(copy.Store, id, request, tokens[^1])));
+        using var another = HttpSession(buffers, Guid.NewGuid());
+        Assert.Equal(ContentSearchToken.AnotherSessions, Assert.Throws<ArgumentException>(() =>
+            ContentSearchToken.Read(another.Store, another.Store.SessionId, request, tokens[^1])).Message);
+        Assert.Equal(SessionStore.AnotherSession, Assert.Throws<InvalidOperationException>(() =>
+            ContentSearchToken.Read(store, Guid.NewGuid(), request, tokens[^1])).Message);
+        foreach (string malformed in new[]
+        {
+            string.Empty, "*", Base64Url.EncodeToString([1, 0, 0, 0]), Token(version: 2), Token(segments: 0, exchanges: []), Token(row: -1),
+            Token(counted: 2), Token(count: -1, exchanges: []), Token(eventId: -1), Token(eventId: ushort.MaxValue + 1),
+            Token(sources: 0, free: 0), Token(exchanges: [9, 9]), Token(segment: -1), Token(segment: 1), Token(sourceRow: -1),
+            Token(from: -1), Token(length: 0, free: 0), Token(free: -1), Token(free: 2), Token(trailing: true), Token(cut: true),
+        })
+        {
+            Assert.Equal(ContentSearchToken.Malformed,
+                Assert.Throws<ArgumentException>(() => ContentSearchToken.Read(store, id, request, malformed)).Message);
+        }
+
+        // As a search writes it, with every field at its edge, it is a token - of another session.
+        Assert.Equal(ContentSearchToken.AnotherSessions,
+            Assert.Throws<ArgumentException>(() => ContentSearchToken.Read(store, id, request, Token())).Message);
+
+        // Bytes at a part's end the session keeps no more, or never kept to inspect, are refused, as are segments it no
+        // longer holds as the search read them.
+        foreach (ContentSearch.SeamSource gone in new ContentSearch.SeamSource[] { new(0, 1, 0, 1), new(0, 0, 8, 1), new(0, 0, 0, 9) })
+        {
+            Assert.Equal(ContentSearchToken.BytesGone, Assert.Throws<InvalidOperationException>(() =>
+                ContentSearchToken.Read(store, id, request, ContentSearchToken.Write(Crafted(last, store, gone)))).Message);
+        }
+
+        using var hidden = Session(ContentInspectionV1.Disabled);
+        using var none = new TemporarySession();
+        Publish(none.Store, [Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 5, 4_242, 1)]);
+        none.Store.ReleaseSegmentReaders();
+        foreach (SessionStore keeping in new[] { hidden.Store, none.Store })
+        {
+            Assert.Equal(ContentSearchToken.BytesGone, Assert.Throws<InvalidOperationException>(() => ContentSearchToken.Read(keeping,
+                keeping.SessionId, request, ContentSearchToken.Write(Crafted(last, keeping, new(0, 0, 0, 1))))).Message);
+        }
+
+        foreach (ContentSearchContinuation moved in new[]
+        {
+            new ContentSearchContinuation(id, request, [.. last.Segments, "seg-released"], last.SegmentsDigest, 0, false, last.Seams),
+            new ContentSearchContinuation(id, request, last.Segments, new byte[32], 0, false, last.Seams),
+        })
+        {
+            Assert.Equal(ContentSearch.SegmentsChanged, Assert.Throws<InvalidOperationException>(() =>
+                ContentSearchToken.Read(store, id, request, ContentSearchToken.Write(moved))).Message);
+        }
+
+        // A generation published since that keeps the segments the search read in their place and adds more, as a capture
+        // being followed does, reads on from the token.
+        Publish(store, [Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 5, 4_242, 100)]);
+        store.ReleaseSegmentReaders();
+        Assert.Equal([(4UL, -6)], ContentSearch.Continue(store, id, ContentSearchToken.Read(store, id, request, tokens[^1])).Hits
+            .Select(hit => (hit.Observation.RawRecordOrdinal, hit.FirstAt)));
+
+        // A continuation whose one open part ends in the bytes named, of the session given, as a search of it would hold.
+        static ContentSearchContinuation Crafted(ContentSearchContinuation from, SessionStore store, ContentSearch.SeamSource source)
+        {
+            using EvidenceLease lease = store.AcquireLease();
+            string[] names = [.. SessionSegments.Names(lease.Manifest).Take(1)];
+            return new(lease.Manifest.SessionId, from.Request, names, ContentSearchToken.SegmentsDigest(lease.Manifest, names), 0,
+                false, new Dictionary<(long Exchange, ushort Event, int Process, Mechanism Mechanism), ContentSearch.Seam>
+                {
+                    [(9, 2004, 4_242, Mechanism.Http)] = from.Seams[(9, 2004, 4_242, Mechanism.Http)] with { Free = 0, Sources = [source] },
+                });
+        }
+    }
+
+    /// <summary>
+    /// A token's bytes laid out as a search writes them - a session of its own, digests of nothing, and one open part of
+    /// one source - with each field as given, so each one alone may be made what no search writes.
+    /// </summary>
+    private static string Token(byte version = 1, int segments = 1, int row = 0, byte counted = 1, int? count = null,
+        int[]? exchanges = null, int eventId = ushort.MaxValue, int sources = 1, int segment = 0, int sourceRow = 0, int from = 0,
+        int length = 1, int free = 1, bool trailing = false, bool cut = false)
+    {
+        exchanges ??= [9];
+        using var written = new MemoryStream();
+        using (var writer = new BinaryWriter(written, Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write(version);
+            writer.Write(Guid.NewGuid().ToByteArray());
+            writer.Write7BitEncodedInt(segments);
+            writer.Write(new byte[16]);
+            writer.Write7BitEncodedInt(row);
+            writer.Write(counted);
+            writer.Write7BitEncodedInt(count ?? exchanges.Length);
+            foreach (int exchange in exchanges)
+            {
+                writer.Write7BitEncodedInt64(exchange);
+                writer.Write7BitEncodedInt(eventId);
+                writer.Write7BitEncodedInt(4_242);
+                writer.Write7BitEncodedInt((int)Mechanism.Http);
+                writer.Write7BitEncodedInt64(0);
+                writer.Write7BitEncodedInt(free);
+                writer.Write7BitEncodedInt(sources);
+                for (int index = 0; index < sources; index++)
+                {
+                    writer.Write7BitEncodedInt(segment);
+                    writer.Write7BitEncodedInt(sourceRow);
+                    writer.Write7BitEncodedInt(from);
+                    writer.Write7BitEncodedInt(length);
+                }
+            }
+
+            if (trailing) writer.Write((byte)0);
+        }
+
+        byte[] bytes = written.ToArray();
+        return Base64Url.EncodeToString(cut ? bytes[..^1] : bytes);
+    }
+
+    /// <summary>The ends of the parts a continuation holds, and where it reads on, as text that compares whole.</summary>
+    private static string Ends(ContentSearchContinuation continuation) =>
+        string.Join("; ", continuation.Seams.OrderBy(seam => seam.Key).Select(seam => string.Create(CultureInfo.InvariantCulture,
+            $"{seam.Key} {seam.Value.Sequence} {seam.Value.Whole} {seam.Value.Wide} {seam.Value.Kept} {seam.Value.Free} "
+            + $"{Convert.ToHexString(seam.Value.Tail)} {string.Join(",", seam.Value.Sources)}")))
+        + string.Create(CultureInfo.InvariantCulture,
+            $" | {continuation.Request} {string.Join(",", continuation.Segments)} {continuation.Row} {continuation.Counted}");
+
+    /// <summary>Process 4242's HTTP request buffers, each record in a segment of its own, its bytes kept with consent to inspect them.</summary>
+    private static TemporarySession HttpSession((long Exchange, long Sequence, long Flags, string Text)[] buffers, Guid? id = null)
+    {
+        ObservationRowV1[] rows = [.. buffers.Select((_, index) => Http(10 + index, 2004, (ulong)index + 1))];
+        var session = new TemporarySession(id);
+        Publish(session.Store, rows, rowsPerSegment: 1,
+            fields:
+            [
+                .. buffers.SelectMany((buffer, index) => new[]
+                {
+                    Field(rows[index], SourceField.HttpExchangeId, buffer.Exchange),
+                    Field(rows[index], SourceField.ContentBufferSequence, buffer.Sequence),
+                    Field(rows[index], SourceField.ContentBufferFlags, buffer.Flags),
+                }),
+            ],
+            content: (ContentHeader(64), [.. buffers.Select((buffer, index) => Content(rows[index], Encoding.ASCII.GetBytes(buffer.Text),
+                64, ContentEncodingV1.Binary))]));
+        session.Store.ReleaseSegmentReaders();
+        return session;
     }
 
     private static ObservationRowV1 Http(long ticks, ushort eventId, ulong ordinal) =>

@@ -722,6 +722,8 @@ Revision 846 tests a checkpoint of a generation with no records and of one over 
 
 Revision 847 tests that an investigation file with a malformed address translation is refused whole.
 
+Revision 848 writes a content search's continuation as a token that holds no byte kept.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2524,3 +2526,13 @@ read whole or refused (I9), and its test tried a version it does not read, a fie
 name and two members of one capture, but none of what a translation must be. A translation listed empty, one whose
 revision is nought, and two of one revision each refuse the file whole now, the refusal saying which, the file written
 as a person editing it by hand would leave it: a translation stated through the application, then its list changed.
+
+Revision 848 makes a content search's continuation something the command line can print and be given back
+(`contracts/content-v1.md` §4). The continuation holds the end of each HTTP part the search had open, the bytes a
+match across the seam with the part's next buffer needs, so printing it would print content (P16). Each end now also
+says where those bytes are kept, and the token names those places alone: the session by its id, and the segments read
+and the search asked by digests, the second keyed by the first, so a token tells nothing of the text looked for to
+anyone without the session. Read back, it reads those bytes again, and it is refused where the session, its segments,
+the search or the bytes are not as they were. Reading on from a token is shown equal to reading on from the
+continuation in memory, page by page, over parts a text splits across many buffers, over records each in a segment of
+its own, and over a buffer longer than a part's end keeps. The command line reads on with it next.

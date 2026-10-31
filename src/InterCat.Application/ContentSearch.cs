@@ -160,12 +160,14 @@ public sealed record ContentSearchResult
 /// </summary>
 public sealed class ContentSearchContinuation
 {
-    internal ContentSearchContinuation(Guid sessionId, ContentSearchRequest request, IReadOnlyList<string> segments, int row,
-        bool counted, IReadOnlyDictionary<(long Exchange, ushort Event, int Process, Mechanism Mechanism), ContentSearch.Seam> seams)
+    internal ContentSearchContinuation(Guid sessionId, ContentSearchRequest request, IReadOnlyList<string> segments,
+        byte[] segmentsDigest, int row, bool counted,
+        IReadOnlyDictionary<(long Exchange, ushort Event, int Process, Mechanism Mechanism), ContentSearch.Seam> seams)
     {
         SessionId = sessionId;
         Request = request;
         Segments = segments;
+        SegmentsDigest = segmentsDigest;
         Row = row;
         Counted = counted;
         Seams = seams;
@@ -179,6 +181,9 @@ public sealed class ContentSearchContinuation
 
     /// <summary>The segments the search read, in their order, the last the one it stopped in.</summary>
     internal IReadOnlyList<string> Segments { get; }
+
+    /// <summary>The SHA-256 of those segments' names and digests, which a token names them by (ContentSearchToken).</summary>
+    internal byte[] SegmentsDigest { get; }
 
     /// <summary>The row of the last segment the search stopped before.</summary>
     internal int Row { get; }
@@ -208,6 +213,10 @@ public static class ContentSearch
 
     /// <summary>How many kept bytes a preview shows before and after a match.</summary>
     public const int PreviewBytes = 16;
+
+    /// <summary>Why a search cannot read on where the session no longer holds every segment it had read, in their place.</summary>
+    internal const string SegmentsChanged = "The session no longer holds every segment this search had read, so it cannot "
+        + "read on from where it stopped; search again from its start.";
 
     /// <summary>The sentence every search's answer carries about what it can and cannot find.</summary>
     public const string Exactness = "Each record's kept bytes are searched on their own, and a buffer of an HTTP part with the "
@@ -288,8 +297,7 @@ public static class ContentSearch
         string[] names = [.. SessionSegments.Names(manifest)];
         if (from is not null && !names.Take(from.Segments.Count).SequenceEqual(from.Segments, StringComparer.Ordinal))
         {
-            throw new InvalidOperationException("The session no longer holds every segment this search had read, so it cannot "
-                + "read on from where it stopped; search again from its start.");
+            throw new InvalidOperationException(SegmentsChanged);
         }
 
         SessionContentIndex content = manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content)
@@ -457,8 +465,9 @@ public static class ContentSearch
                         // A part ends at the buffer flagged its last, so only the parts still open keep an end. A buffer
                         // that follows the end kept adds to it, so a text too long for it may still end in a buffer after it.
                         if ((here.Flags & 2) != 0) seams.Remove(here.Part);
-                        else seams[here.Part] = Seam.After(before, here.Sequence, entry.Fragment.Disposition == ContentDispositionV1.Whole,
-                            wide, bytes, across > 0 || matches > 0 ? end : null, pattern.Length + PreviewBytes);
+                        else seams[here.Part] = Seam.After(before, new(segmentAt, index, 0, bytes.Length), here.Sequence,
+                            entry.Fragment.Disposition == ContentDispositionV1.Whole, wide, bytes,
+                            across > 0 || matches > 0 ? end : null, pattern.Length + PreviewBytes);
                     }
 
                     if (across > 0)
@@ -508,7 +517,8 @@ public static class ContentSearch
             Unreadable = unreadable,
             NoneKept = noneKept,
             Continuation = resume is { } point
-                ? new(manifest.SessionId, request, names[..(point.Segment + 1)], point.Row, point.Counted,
+                ? new(manifest.SessionId, request, names[..(point.Segment + 1)],
+                    ContentSearchToken.SegmentsDigest(manifest, names[..(point.Segment + 1)]), point.Row, point.Counted,
                     new Dictionary<(long Exchange, ushort Event, int Process, Mechanism Mechanism), Seam>(seams))
                 : null,
         };
@@ -596,24 +606,28 @@ public static class ContentSearch
     /// <summary>
     /// The end of an open HTTP part the search read: its latest buffer's place, whether that one was kept whole, its
     /// encoding and length; how many of the last bytes of the buffers read in a row up to it come after the last match
-    /// counted in them; and their last bytes, enough for a match across the seam with the next buffer and the bytes before
-    /// that match. A part's buffer flagged its last keeps none.
+    /// counted in them; their last bytes, enough for a match across the seam with the next buffer and the bytes before
+    /// that match; and where the session keeps those bytes, which a token names in their place (P16). A part's buffer
+    /// flagged its last keeps none.
     /// </summary>
-    internal sealed record Seam(long Sequence, bool Whole, bool Wide, int Kept, int Free, byte[] Tail)
+    internal sealed record Seam(long Sequence, bool Whole, bool Wide, int Kept, int Free, byte[] Tail, IReadOnlyList<SeamSource> Sources)
     {
         /// <summary>
-        /// The end of a part once <paramref name="bytes"/> are read after <paramref name="before"/>, the end of the buffers
-        /// right before them, or after none where they begin a run: how many of the run's last bytes come after its last
-        /// match, the one ending at <paramref name="matchEnd"/> in these bytes where one does, and at most
-        /// <paramref name="keep"/> of its last bytes.
+        /// The end of a part once <paramref name="bytes"/>, kept at <paramref name="kept"/>, are read after
+        /// <paramref name="before"/>, the end of the buffers right before them, or after none where they begin a run: how
+        /// many of the run's last bytes come after its last match, the one ending at <paramref name="matchEnd"/> in these
+        /// bytes where one does, and at most <paramref name="keep"/> of its last bytes.
         /// </summary>
-        public static Seam After(Seam? before, long sequence, bool whole, bool wide, byte[] bytes, int? matchEnd, int keep)
+        public static Seam After(Seam? before, SeamSource kept, long sequence, bool whole, bool wide, byte[] bytes, int? matchEnd,
+            int keep)
         {
             int free = matchEnd is { } ended ? bytes.Length - ended : (before?.Free ?? 0) + bytes.Length;
             byte[] tail = before is null || bytes.Length >= keep
                 ? bytes[^Math.Min(bytes.Length, keep)..]
                 : [.. before.Tail[^Math.Min(before.Tail.Length, keep - bytes.Length)..], .. bytes];
-            return new(sequence, whole, wide, bytes.Length, Math.Min(free, tail.Length), tail);
+            int own = Math.Min(bytes.Length, tail.Length);
+            return new(sequence, whole, wide, bytes.Length, Math.Min(free, tail.Length), tail,
+                [.. SeamSource.Last(before?.Sources ?? [], tail.Length - own), kept with { From = bytes.Length - own, Length = own }]);
         }
 
         /// <summary>
@@ -623,6 +637,27 @@ public static class ContentSearch
         /// </summary>
         public bool Precedes(PartPlace next, bool wide) =>
             next.Sequence == Sequence + 1 && (next.Flags & 1) == 0 && Whole && Wide == wide && (!wide || Kept % 2 == 0);
+    }
+
+    /// <summary>
+    /// Where some of a seam's last bytes are kept: <paramref name="Length"/> bytes from byte <paramref name="From"/> of
+    /// the bytes kept of row <paramref name="Row"/> of the search's segment <paramref name="Segment"/>.
+    /// </summary>
+    internal readonly record struct SeamSource(int Segment, int Row, int From, int Length)
+    {
+        /// <summary>Where the last <paramref name="count"/> of the bytes <paramref name="sources"/> name are kept, in order.</summary>
+        public static SeamSource[] Last(IReadOnlyList<SeamSource> sources, int count)
+        {
+            var last = new Stack<SeamSource>();
+            for (int index = sources.Count - 1; index >= 0 && count > 0; index--)
+            {
+                int taken = Math.Min(sources[index].Length, count);
+                last.Push(sources[index] with { From = sources[index].From + sources[index].Length - taken, Length = taken });
+                count -= taken;
+            }
+
+            return [.. last];
+        }
     }
 
     /// <summary>The bytes with every letter A to Z made a to z, where case is ignored: in UTF-16, a code unit's whole value.</summary>

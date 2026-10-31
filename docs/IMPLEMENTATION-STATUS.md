@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-31 · Plan revision: 847 · Branch: `main`
+Updated: 2026-10-31 · Plan revision: 848 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,37 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 848 — a content search's continuation written as a token that holds no byte kept (P16):**
+  - A search that ends early answers with a `ContentSearchContinuation`, which the window holds to read on from. The
+    end of each HTTP part it had open holds the bytes a match across the seam with the part's next buffer needs, so
+    the continuation could not be printed for the command line to read on from without printing content. Each end now
+    also says where those bytes are kept - a range of a row's kept bytes, in a segment the search read - and
+    `ContentSearchToken.Write` writes the continuation as unpadded base64url holding those places and no byte: the
+    session's id, how many segments were read with a digest of their names and recorded digests, a digest of what was
+    asked - its text, case, process and, with a process instance, evidence policy - keyed by the segments' digest, so
+    the token tells nothing of the text to anyone without the session, the record to read on from, and each open
+    part's buffer sequence and how many of its last bytes follow its last match.
+  - `ContentSearchToken.Read` makes the continuation again for the search asked, which may set other budgets, limit
+    and previews: each part's last bytes read again from where they are kept, and the latest buffer's encoding, length
+    and whether it was kept whole taken from its own record. It refuses, saying which, a token no search wrote,
+    checked field by field with nothing left over, one of another session and one of another search; and, as reading
+    on in the window is, a session that no longer holds the segments read in their place, or no longer keeps those
+    bytes to inspect. A generation published since that keeps the segments read and adds more, as a capture being
+    followed does, reads on from it, and so does a copy of the session. The content-export review lists it as a path
+    that names where kept bytes are, and reads them again for the search alone.
+  - Debug and Release each ran 3,475 tests with revision 473's 93 failures and 4 skips, and one more: the
+    content-export review had no row for the token's file, which reads kept bytes; with its row added, the
+    architecture tests pass in both. The fixture index names the new test. Of 44 mutations, 43 were caught at once:
+    a part's end naming one byte more from the buffers before it, or its latest buffer's bytes from their start
+    rather than their end, a carried range kept from its start or the ranges carried not counted down, a
+    continuation's segments digested beyond those read, the session expected or the token's not compared, the
+    segments' count or digest, the search's digest or its text, case or PID left out of it, the evidence policy
+    weighed only without a process instance, a row past its segment's, bytes not inspectable or past those kept (two
+    ways), the latest buffer's being kept whole, its encoding or its length, and each of the 22 checks of a token no
+    search wrote. The 44th, the process instance left out of the search's digest, was missed because the other
+    instance the test asked for also brought the policy into it; a token written for one instance and read for
+    another under the same policy is now refused, and the rerun caught it.
 
 - **Revision 847 — an investigation file with an empty or misnumbered address translation is refused (I9, R10):**
   - An investigation file is read whole or refused (I9), and the test of it tried its version, an unknown field, its
