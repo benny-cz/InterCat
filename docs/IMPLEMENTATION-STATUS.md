@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-31 · Plan revision: 856 · Branch: `main`
+Updated: 2026-10-31 · Plan revision: 857 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 857 — `icat links` without `--process` says where the session's processes are listed:**
+  - A process's links start from a process, so `icat links <session>` is refused without `--process`, which said what
+    it takes, a PID or an instance id, and not where a person who has neither yet finds them. The refusal now ends
+    `icat processes "<session>" lists the session's processes by both.`, the session's own path in it, as `icat pin`
+    points to the pins it lists. This was the demo run's last finding.
+  - Debug and Release each ran 3,489 tests with revision 473's 93 failures and 4 skips, and failed nothing else; the
+    refusal's test was changed, not added, so the fixture index names nothing new. Both mutations were caught: the
+    pointer dropped, and the session's path written as a placeholder.
 
 - **Revision 856 — a reader of a few mechanisms that collected none of them names them (R21):**
   - Running the demo's sessions through the commands a person reaches first found `icat waits` saying "no mechanism

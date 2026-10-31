@@ -740,6 +740,8 @@ Revision 855 has `icat timeline` count the whole session when no interval is giv
 
 Revision 856 names the mechanisms a reader of a few could not see.
 
+Revision 857 has `icat links` without `--process` say where the processes are listed.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2609,3 +2611,8 @@ Revision 856 is another finding of the demo run (R21). A coverage sentence judge
 said "no mechanism was collected here" when it collected none of them, which is true of those and reads as a claim
 about the whole session. Up to four, the most any reader judges, they are named now; a judgement over every mechanism,
 which only a session that collected nothing can fail entirely, keeps the sentence it had.
+
+Revision 857 closes the demo run, which from revision 853 took the demo's sessions through the commands a person
+reaches first: the evidence policy named as typed, a count option answered with the one a command reads, the whole
+session's timeline, the mechanisms a reader could not see, and now `icat links` refused without a process pointing to
+the command that lists them. The run read the other commands' words too, and changed none of them.

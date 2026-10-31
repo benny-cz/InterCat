@@ -39,7 +39,8 @@ internal static class LinksCommand
         {
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat links <directory> --process <pid | instance>."
                 : hasUnknown ? command.Refusal(unknown!)
-                : "--process names the process whose links to list: its PID, or its instance id where the PID was reused.");
+                : "--process names the process whose links to list: its PID, or its instance id where the PID was reused. "
+                    + $"icat processes \"{directory}\" lists the session's processes by both.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }

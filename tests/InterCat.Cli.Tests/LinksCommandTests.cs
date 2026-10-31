@@ -210,7 +210,8 @@ public sealed class LinksCommandTests
         string unknown = Guid.NewGuid().ToString("N");
         foreach ((string[] args, string refusal) in new (string[], string)[]
         {
-            ([], "--process names the process whose links to list: its PID, or its instance id where the PID was reused."),
+            ([], "--process names the process whose links to list: its PID, or its instance id where the PID was reused. "
+                + $"icat processes \"{session.Path}\" lists the session's processes by both."),
             (["--process", "999"], "--process 999 names no process: no process of the session held PID 999."),
             (["--process", "77"], $"--process 77 names 2 processes, since the PID was reused: {Instance(77, 1)} (old.exe · PID 77 #1), "
                 + $"{Instance(77, 2)} (new.exe · PID 77 #2). Name one by its instance id: --process <instance>."),
