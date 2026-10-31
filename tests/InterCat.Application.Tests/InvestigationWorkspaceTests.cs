@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text.Json.Nodes;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -353,6 +354,27 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         InvestigationWorkspace.Save(workspace, read with { Members = [member, member with { SessionId = Guid.NewGuid() }] }, readText: File.ReadAllText(workspace));
         Assert.Contains("count its records twice", Assert.Throws<InvalidDataException>(() =>
             InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+
+        // An address translation listed empty, or whose revision is not a unique positive number, is refused whole, saying
+        // which.
+        File.WriteAllText(workspace, text);
+        _ = InvestigationWorkspace.StateTranslation(workspace, "203.0.113.7:8443", "10.0.0.2:443", null, Now);
+        JsonObject translated = JsonNode.Parse(File.ReadAllText(workspace))!.AsObject();
+        JsonNode stated = translated["addressTranslations"]![0]!;
+        JsonNode renumbered = stated.DeepClone();
+        renumbered["revision"] = 0;
+        foreach ((JsonArray listed, string said) in new (JsonArray, string)[]
+        {
+            (new JsonArray((JsonNode?)null), "it lists an empty address translation"),
+            (new JsonArray(renumbered), "address translation revision 0 is not a unique positive number"),
+            (new JsonArray(stated.DeepClone(), stated.DeepClone()), "address translation revision 1 is not a unique positive number"),
+        })
+        {
+            translated["addressTranslations"] = listed;
+            File.WriteAllText(workspace, translated.ToJsonString());
+            Assert.Contains(said, Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+                StringComparison.Ordinal);
+        }
 
         // A write over text that changed since it was read is refused, and leaves the file as it was.
         File.WriteAllText(workspace, text);
