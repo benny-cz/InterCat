@@ -104,3 +104,9 @@ and `retain --confirm` refuse such a session before they publish, saying what to
 measures goes ahead: `compact --check`, `rederive --check`, and `retain` without `--confirm`. So does `icat pin`,
 which publishes no generation and which every release keeps to. A ticket no follow holds is an interrupted follow's,
 and its session is finished (§4) rather than refused.
+
+`icat record` publishes into its own session as a follow does, every few seconds, and is refused beside alike (revision
+862): from before its first publication to after its derivation checkpoint it holds `<session directory>.recording`,
+beside its session as a ticket is, a file it alone writes, opened to be deleted once let go - so on Windows none is left
+by a recording that crashed - and the same commands refuse the session while another holds that file, naming the
+recording. A recording leaves no ticket, since what it recorded is its session already and there is nothing to finish.

@@ -67,7 +67,7 @@ internal static class CheckpointCommand
         }
 
         // The follow publishes a checkpoint of its own when it finishes.
-        if (FollowedSessions.Refusal(full, "Its follow publishes the checkpoint when it finishes.") is { } followed)
+        if (FollowedSessions.Refusal(full, "The capture publishes the checkpoint when it finishes.") is { } followed)
         {
             ConsoleUi.Failure(followed);
             return InterCatExitCode.PermissionOrCapabilityFailure;

@@ -76,8 +76,8 @@ internal static class CompactCommand
         }
 
         // A follow compacts what it publishes as it goes; measuring publishes nothing, so it goes ahead.
-        if (!check && FollowedSessions.Refusal(full, "Its follow compacts what it publishes as it goes: compact the session once "
-            + "its capture has finished, or measure what compacting would do now with --check.") is { } followed)
+        if (!check && FollowedSessions.Refusal(full, "The capture compacts what it publishes as it goes: compact the session once "
+            + "it has finished, or measure what compacting would do now with --check.") is { } followed)
         {
             ConsoleUi.Failure(followed);
             return InterCatExitCode.PermissionOrCapabilityFailure;

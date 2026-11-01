@@ -8,8 +8,8 @@ using static InterCat.Analysis.Tests.TestSessions;
 namespace InterCat.Cli.Tests;
 
 /// <summary>
-/// A session a capture is being followed into is its follow's alone to publish into: a generation published beside the
-/// follow makes the follow's next publication fail, which ends it (ADR-044). So icat checkpoint, compact, rederive and
+/// A session a capture is being followed or recorded into is that capture's alone to publish into: a generation published
+/// beside it makes the capture's next publication fail, which ends it (ADR-044). So icat checkpoint, compact, rederive and
 /// retain refuse to publish there, saying what can be done instead, and what only measures goes ahead.
 /// </summary>
 public sealed class FollowedSessionTests : IDisposable
@@ -42,17 +42,7 @@ public sealed class FollowedSessionTests : IDisposable
         long published = Generation();
         try
         {
-            foreach ((string[] args, string instead) in new (string[], string)[]
-            {
-                (["checkpoint", session.Path], "Its follow publishes the checkpoint when it finishes."),
-                (["compact", session.Path], "Its follow compacts what it publishes as it goes: compact the session once its "
-                    + "capture has finished, or measure what compacting would do now with --check."),
-                (["rederive", session.Path], "Re-derive the session once its capture has finished, or see what a re-derivation "
-                    + "would change now with --check."),
-                (["retain", session.Path, "--release-before", "2s", "--confirm", "--reason", "room for the rest"],
-                    "Keep what matters with icat pin, which every release keeps to; release from the session once its capture "
-                    + "has finished, or see what a release would give up now without --confirm."),
-            })
+            foreach ((string[] args, string instead) in Publishers)
             {
                 (InterCatExitCode code, string output, string said) = await Run(args);
                 string invocation = "icat " + string.Join(' ', args);
@@ -85,6 +75,71 @@ public sealed class FollowedSessionTests : IDisposable
             FollowedSessions.IsFollowed = detected;
         }
     }
+
+    /// <summary>
+    /// icat record publishes into the session it records into as a follow does, every few seconds, so a generation published
+    /// beside it ends it too: the commands that would publish into the session refuse while it records, in its words.
+    /// </summary>
+    [Fact(DisplayName = "§20.2: a session icat record records into is refused to every command that would publish into it")]
+    public async Task ARecordedSessionIsItsRecordingsToPublishInto()
+    {
+        Func<string, bool> detected = FollowedSessions.IsRecorded;
+        FollowedSessions.IsRecorded = path => string.Equals(path, session.Path, StringComparison.Ordinal);
+        long published = Generation();
+        try
+        {
+            foreach ((string[] args, string instead) in Publishers)
+            {
+                (InterCatExitCode code, string output, string said) = await Run(args);
+                string invocation = "icat " + string.Join(' ', args);
+                Assert.True(code == InterCatExitCode.PermissionOrCapabilityFailure && output.Length == 0, $"{invocation} exited {code}: {said}");
+                Assert.Contains($"A capture is being recorded into {session.Path} right now, and only its recording publishes into "
+                    + $"it: anything published beside it would end the recording. {instead}", said, StringComparison.Ordinal);
+                Assert.Equal(published, Generation());
+            }
+
+            FollowedSessions.IsRecorded = _ => false;
+            (InterCatExitCode checkpointed, _, string why) = await Run("checkpoint", session.Path);
+            Assert.True(checkpointed == InterCatExitCode.Success, why);
+            Assert.True(Generation() > published);
+        }
+        finally
+        {
+            FollowedSessions.IsRecorded = detected;
+        }
+    }
+
+    [Fact(DisplayName = "§20.2: a session is recorded into while icat record holds the file beside it, which letting go leaves none of")]
+    public void ASessionIsRecordedWhileItsHoldIsHeld()
+    {
+        Assert.False(FollowedSessions.IsRecorded(session.Path));
+        using (RecordingHold.Take(session.Path))
+        {
+            Assert.True(File.Exists(RecordingHold.PathFor(session.Path)));
+
+            // Only Windows enforces the hold between two handles in one process, so elsewhere it cannot be told here.
+            if (OperatingSystem.IsWindows())
+            {
+                Assert.True(FollowedSessions.IsRecorded(session.Path));
+            }
+        }
+
+        Assert.False(File.Exists(RecordingHold.PathFor(session.Path)));
+        Assert.False(FollowedSessions.IsRecorded(session.Path));
+    }
+
+    // Every command that would publish into a session, with what it says can be done instead while a capture publishes there.
+    private (string[] Args, string Instead)[] Publishers =>
+    [
+        (["checkpoint", session.Path], "The capture publishes the checkpoint when it finishes."),
+        (["compact", session.Path], "The capture compacts what it publishes as it goes: compact the session once it has "
+            + "finished, or measure what compacting would do now with --check."),
+        (["rederive", session.Path], "Re-derive the session once its capture has finished, or see what a re-derivation "
+            + "would change now with --check."),
+        (["retain", session.Path, "--release-before", "2s", "--confirm", "--reason", "room for the rest"],
+            "Keep what matters with icat pin, which every release keeps to; release from the session once its capture "
+            + "has finished, or see what a release would give up now without --confirm."),
+    ];
 
     [Fact(DisplayName = "§20.2: a session is followed while its follow holds its ticket, and not without one, nor once the follow let it go")]
     public void ASessionIsFollowedWhileItsTicketIsHeld()

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-11-01 · Plan revision: 861 · Branch: `main`
+Updated: 2026-11-01 · Plan revision: 862 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 862 — `icat record` holds its session as a follow does, so nothing published beside it ends it:**
+  - The container's work named it and could not test it: `icat record` publishes every few seconds but held nothing,
+    so `icat compact`, `checkpoint`, `rederive` or `retain --confirm` beside it published a generation its next
+    publication failed on, which ended the recording; only Windows holds a file between two processes.
+  - The recording now holds `<session>.recording` beside its session, from before its first publication to after its
+    checkpoint, opened to be deleted once let go, so a crash leaves none on Windows; the four commands refuse while
+    another holds it, naming the recording, as they refuse a followed session, and what only measures goes ahead
+    (`live-follow-v1` §6). It is no follow ticket: a recording's session is what it recorded, with nothing to finish.
+  - Run here, `icat compact` and `icat checkpoint` beside a real 14-second recording refused in its words and changed
+    nothing; the recording finished whole, its checkpoint published, and its hold was gone.
+  - Debug and Release each ran 3,502 tests, and failed only the fixture index check of this workstation's ignored
+    folder, which a clean checkout passes.
 
 - **Revision 861 — the window is laid out for Segoe UI, the font Windows draws it in:**
   - The window names Segoe UI, which the container that tuned its layouts does not have; its fallback font's lines are

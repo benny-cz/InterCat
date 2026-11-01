@@ -750,6 +750,8 @@ Revision 860 runs the suite on Windows as it runs in a container: every test ass
 
 Revision 861 lays the window out for Segoe UI, the font Windows draws it in, which the container that tuned it does not have.
 
+Revision 862 has `icat record` hold its session as a follow does, so a command that would publish beside the recording refuses rather than end it.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2680,3 +2682,14 @@ program's first name took the room crowded names nearer their nodes stood in, so
 of its nineteen programs unnamed in Segoe UI, from three, where the bug before programs were ranked left eight. The
 rest were the tests': two equal panes of an odd height are a pixel apart, and a path that fits the inspector on one
 line in Segoe UI cannot show how one that does not is parted, so the test names its own, longer.
+
+Revision 862 closes a gap the container's work named and could not test: `icat record` publishes into its session every
+few seconds as a follow does, but held nothing that said so, so `icat compact`, `checkpoint`, `rederive` or `retain
+--confirm` run beside it published a generation the recording's next publication then failed on, which ended it. Only
+Windows holds a file between two processes, so only Windows could show it. The recording now holds a file beside its
+session, from before its first publication to after its checkpoint, opened to be deleted once let go, so a crashed
+recording leaves none on Windows; the four commands refuse while another holds it, as they refuse a followed session,
+naming the recording, and what only measures goes ahead. It is no follow ticket, which names evidence a finish can be
+derived from: a recording's session is what it recorded, and nothing is left to finish. Run on this workstation, `icat
+compact` and `icat checkpoint` beside a real recording refused in its words and changed nothing, the recording finished
+whole, and its hold was gone once it had.

@@ -248,7 +248,10 @@ internal static class RecordCommand
             MaximumDuration = TimeSpan.FromSeconds(seconds) + TimeSpan.FromMinutes(1),
         };
 
+        // Held from before the first publication to after the checkpoint, so a command that would publish into the session
+        // beside the recording - a compaction, a release - refuses rather than end it (§20.2).
         Directory.CreateDirectory(full);
+        using RecordingHold hold = RecordingHold.Take(full);
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(full), identity.CaptureId.Value, $"live-capture:{identity.CaptureId}");
         ConsoleUi.Progress(
             $"Recording {effective.EffectiveProfileId} into {full} for {seconds:N0} s under owned session "
@@ -445,6 +448,8 @@ internal static class RecordCommand
         ConsoleUi.Line($"  --publish-every (default {DefaultPublishSeconds} s) publishes what was recorded so far as a new generation, one");
         ConsoleUi.Line("  journal chunk each, so session, processes and metric can read the capture while it records; 0");
         ConsoleUi.Line("  publishes once, when it stops. Its coverage ledger is published with the last generation.");
+        ConsoleUi.Line("  While it records, compact, checkpoint, rederive and retain refuse to publish into its session,");
+        ConsoleUi.Line("  which would end the recording.");
         ConsoleUi.Line("  --evidence-only publishes the admitted evidence alone - journal chunks with the content kept of");
         ConsoleUi.Line("  their records, plan and ledger - and derives nothing in the elevated process; icat follow");
         ConsoleUi.Line("  derives the session from it, mirroring the content with its chunks (ADR-027).");
