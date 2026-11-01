@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -974,6 +976,91 @@ public sealed class SessionStoreTests
         }
     }
 
+    [Theory(DisplayName = "§20.1: a publication rides out a reader holding its pointer for a moment, and names its generation")]
+    [InlineData("access denied")]
+    [InlineData("sharing violation")]
+    [InlineData("the broker's rename")]
+    public void APublicationRidesOutAReaderHoldingItsPointer(string refusal)
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, "segment-0001.icats");
+
+        // A reader holds the pointer as the next generation replaces it, and lets go after three tries.
+        var held = new HeldWriteDirectory(LocalOwnedDirectory.Open(session.Path), SessionPointerV1.FileName, 3, Refusal(refusal));
+        Publish(SessionStore.Open(held, Session, "test-source"), "segment-0002.icats");
+
+        Assert.Equal(4, held.Writes);
+        Assert.Equal(2, session.Reopen().Current!.Generation);
+    }
+
+    [Fact(DisplayName = "§20.1: a publication rides out a reader holding the last-known-good pointer it rewrites")]
+    public void APublicationRidesOutAReaderHoldingTheLastKnownGoodPointer()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, "segment-0001.icats");
+
+        var held = new HeldWriteDirectory(
+            LocalOwnedDirectory.Open(session.Path), SessionPointerV1.PreviousFileName, 2, Refusal("sharing violation"));
+        Publish(SessionStore.Open(held, Session, "test-source"), "segment-0002.icats");
+
+        Assert.Equal(3, held.Writes);
+        Assert.Equal(2, session.Reopen().Current!.Generation);
+    }
+
+    [Fact(DisplayName = "§20.1: a hold that outlasts a publication's pauses fails it, and a failure that is no hold is not tried again")]
+    public void AHoldThatOutlastsThePausesFailsThePublication()
+    {
+        using (var session = new TemporarySession())
+        {
+            Publish(session.Store, "segment-0001.icats");
+            var held = new HeldWriteDirectory(
+                LocalOwnedDirectory.Open(session.Path), SessionPointerV1.FileName, int.MaxValue, Refusal("access denied"));
+            long started = Stopwatch.GetTimestamp();
+            _ = Assert.Throws<UnauthorizedAccessException>(() =>
+                Publish(SessionStore.Open(held, Session, "test-source"), "segment-0002.icats"));
+
+            // Seven pauses, 1.88 s in all, and the generation before stays the one named.
+            Assert.True(Stopwatch.GetElapsedTime(started) >= TimeSpan.FromSeconds(1.8), "The publication pauses before each try.");
+            Assert.Equal(8, held.Writes);
+            Assert.Equal(1, session.Reopen().Current!.Generation);
+        }
+
+        // A writer stopped mid-publication is no other handle's hold, and is not waited out.
+        using (var session = new TemporarySession())
+        {
+            Publish(session.Store, "segment-0001.icats");
+            var stopped = new HeldWriteDirectory(LocalOwnedDirectory.Open(session.Path), SessionPointerV1.FileName,
+                int.MaxValue, () => new IOException("Simulated: the publication was interrupted."));
+            _ = Assert.Throws<IOException>(() => Publish(SessionStore.Open(stopped, Session, "test-source"), "segment-0002.icats"));
+            Assert.Equal(1, stopped.Writes);
+        }
+    }
+
+    [Fact(DisplayName = "§20.1: on Windows a publication waits out a reader that has its pointer open, and names its generation once it lets go")]
+    public async Task APublicationWaitsOutARealReaderOfItsPointer()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var session = new TemporarySession();
+        Publish(session.Store, "segment-0001.icats");
+        using StoreStagingFile second = Stage(session.Store, "segment-0002.icats", "second");
+        _ = second.Complete();
+
+        // A reader opens the pointer as the store's own readers do, sharing it only for reading: Windows replaces no file
+        // a handle like that has open.
+        var reading = new FileStream(
+            System.IO.Path.Combine(session.Path, SessionPointerV1.FileName), FileMode.Open, FileAccess.Read, FileShare.Read);
+        Task publishing = Task.Run(() => session.Store.Commit([second], CommittedBoundary.None, Committed));
+        await Task.Delay(TimeSpan.FromMilliseconds(150));
+        Assert.False(publishing.IsCompleted, "The publication ended while a reader had its pointer open.");
+        await reading.DisposeAsync();
+        await publishing.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(2, session.Reopen().Current!.Generation);
+    }
+
     [Fact(DisplayName = "I15: staging cleanup leaves unmarked legacy files for manual review")]
     public void StagingCleanupSkipsUnmarkedLegacyFile()
     {
@@ -1382,6 +1469,61 @@ public sealed class SessionStoreTests
         public bool RemoveOwnedFile(string file) => inner.RemoveOwnedFile(file);
 
         public IReadOnlyDictionary<string, OwnedFileFacts>? DescribeOwnedFiles() => inner.DescribeOwnedFiles();
+    }
+
+    /// <summary>Publishes one generation of one staged file.</summary>
+    private static void Publish(SessionStore store, string name)
+    {
+        using StoreStagingFile staged = Stage(store, name, name);
+        _ = staged.Complete();
+        _ = store.Commit([staged], CommittedBoundary.None, Committed);
+    }
+
+    /// <summary>What a replace of a file a reader holds is told, as each writer beneath the store is told it.</summary>
+    private static Func<Exception> Refusal(string kind) => kind switch
+    {
+        "access denied" => () => new UnauthorizedAccessException("Simulated: access to the path is denied."),
+        "sharing violation" => () => new IOException(
+            "Simulated: the process cannot access the file because another process is using it.", unchecked((int)0x80070020)),
+        "the broker's rename" => () => new IOException(
+            "Simulated: the broker could not replace the pointer.",
+            new Win32Exception(5, "SetFileInformationByHandle(FileRenameInfo) failed.")),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
+    /// <summary>
+    /// Refuses writing one file - replacing it, or opening it to write - as a reader's hold would, the given number of
+    /// times; everything else is real.
+    /// </summary>
+    private sealed class HeldWriteDirectory(IOwnedDirectory inner, string name, int holds, Func<Exception> refusal)
+        : IOwnedDirectory
+    {
+        /// <summary>The writes of the file tried, refused or not.</summary>
+        public int Writes { get; private set; }
+
+        public string Path => inner.Path;
+
+        public FileStream OpenOwnedFile(string file, FileMode mode, FileAccess access, FileShare share, FileOptions options)
+        {
+            if (file == name && access.HasFlag(FileAccess.Write) && ++Writes <= holds)
+            {
+                throw refusal();
+            }
+
+            return inner.OpenOwnedFile(file, mode, access, share, options);
+        }
+
+        public void ReplaceOwnedFile(string sourceName, string destinationName)
+        {
+            if (destinationName == name && ++Writes <= holds)
+            {
+                throw refusal();
+            }
+
+            inner.ReplaceOwnedFile(sourceName, destinationName);
+        }
+
+        public bool RemoveOwnedFile(string file) => inner.RemoveOwnedFile(file);
     }
 
     /// <summary>Fails the current-pointer rename the way a killed writer would stop there; everything else is real.</summary>

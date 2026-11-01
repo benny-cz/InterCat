@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
 
 namespace InterCat.CaptureBroker.Tests;
@@ -328,6 +329,30 @@ public sealed class WindowsBrokerRootTests
             Directory.GetFiles(temporary.Root.Path));
     }
 
+    [Fact(DisplayName = "§20.1: the broker's evidence store waits out a viewer reading its pointer, and publishes once it lets go")]
+    public async Task TheEvidenceStoreWaitsOutAViewerReadingItsPointer()
+    {
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        using WindowsBrokerRoot capture = temporary.Root.OpenCaptureDirectory(CaptureId.New());
+        SessionStore evidence = SessionStore.Open(capture, Guid.NewGuid(), "evidence-tests");
+        using (StoreStagingFile first = Staged(evidence, "segment-0001.icats"))
+        {
+            _ = evidence.Commit([first], CommittedBoundary.None, DateTimeOffset.UtcNow);
+        }
+
+        // A viewer reads the pointer as the store's readers do, sharing it only for reading, and the broker's own rename
+        // beneath its root is refused while it does, as a follow's read refused revision 864's last publication.
+        using StoreStagingFile second = Staged(evidence, "segment-0002.icats");
+        var reading = new FileStream(
+            Path.Combine(capture.Path, SessionPointerV1.FileName), FileMode.Open, FileAccess.Read, FileShare.Read);
+        Task publishing = Task.Run(() => evidence.Commit([second], CommittedBoundary.None, DateTimeOffset.UtcNow));
+        await Task.Delay(TimeSpan.FromMilliseconds(150));
+        Assert.False(publishing.IsCompleted, "The broker's publication ended while a viewer read its pointer.");
+        await reading.DisposeAsync();
+        await publishing.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(2, SessionStore.OpenExisting(capture).Current!.Generation);
+    }
+
     [Fact(DisplayName = "R16: replacing a destination that is not there publishes the source anyway")]
     public void ReplacingAnAbsentDestinationPublishesTheSource()
     {
@@ -483,6 +508,15 @@ public sealed class WindowsBrokerRootTests
         {
             Directory.Delete(parent, recursive: true);
         }
+    }
+
+    /// <summary>A completed staged segment holding its own name, ready to commit.</summary>
+    private static StoreStagingFile Staged(SessionStore store, string name)
+    {
+        StoreStagingFile staged = store.Stage(name, StoreDependencyKind.Segment);
+        staged.Content.Write(System.Text.Encoding.UTF8.GetBytes(name));
+        _ = staged.Complete();
+        return staged;
     }
 
     private static void Write(WindowsBrokerRoot root, string name, byte[] payload)

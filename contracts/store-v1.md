@@ -96,7 +96,14 @@ declares no boundary is distinct from one that declares zero.
 4. The manifest is built, and **every dependency is read back and re-measured before it is named**. A
    generation that cannot verify a dependency is not published at all.
 5. The manifest is written through a staging name and a replacing rename. The existing pointer is copied
-   to `previous-generation.json`, and the new pointer is written the same way.
+   to `previous-generation.json`, and the new pointer is written the same way. A replace, or a rewrite of
+   `previous-generation.json`, that another handle's hold on the file refuses is tried again after pauses of 10,
+   20, 50, 100, 200, 500 and 1,000 ms, 1.88 s in all: Windows replaces no file a handle has open unless that
+   handle shares deletion, and a reader holds a pointer for the moment it reads it, as a follow does several
+   times a second. Only such a refusal is waited out - access denied, or a sharing or lock violation, from the
+   rename or from the broker's own rename beneath its root - and one that outlasts the pauses fails the
+   publication as any failure does (revision 865). Before, a follow that read the broker's pointer as its last
+   publication replaced it ended the capture unfinalized.
 
 **What re-measuring does (ADR-025).**
 

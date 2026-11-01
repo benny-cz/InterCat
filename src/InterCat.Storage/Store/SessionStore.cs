@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
@@ -321,6 +322,21 @@ public sealed partial class SessionStore
     /// removes files no reader can reach, for milliseconds; a reader waits that out rather than failing its lease.
     /// </summary>
     private static readonly TimeSpan EvidenceGuardWait = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// The pauses before each try of a replace another handle's hold refused, 1.88 s in all. Windows replaces no file
+    /// another handle has open, and a reader holds a pointer for the moment it reads it, as a follow does several times
+    /// a second: a publication waits that out rather than ending the recording that publishes it (revision 865).
+    /// </summary>
+    private static readonly TimeSpan[] ReplacePauses =
+    [
+        TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(50),
+        TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(1),
+    ];
+
+    private const int SharingViolation = unchecked((int)0x80070020);
+
+    private const int LockViolation = unchecked((int)0x80070021);
 
     /// <summary>
     /// An upper bound on the metadata one publication writes besides its staged files: the generation's manifest
@@ -2954,12 +2970,12 @@ public sealed partial class SessionStore
             FileAccess.Read,
             FileShare.Read,
             FileOptions.SequentialScan);
-        using FileStream destination = directory.OpenOwnedFile(
+        using FileStream destination = RidingOutHolds(() => directory.OpenOwnedFile(
             SessionPointerV1.PreviousFileName,
             FileMode.Create,
             FileAccess.Write,
             FileShare.None,
-            FileOptions.WriteThrough);
+            FileOptions.WriteThrough));
         source.CopyTo(destination);
         destination.Flush(flushToDisk: true);
     }
@@ -2991,7 +3007,7 @@ public sealed partial class SessionStore
                 stream.Flush(flushToDisk: true);
             }
 
-            directory.ReplaceOwnedFile(stagingName, name);
+            ReplaceRidingOutHolds(directory, stagingName, name);
         }
 
         try
@@ -3003,6 +3019,46 @@ public sealed partial class SessionStore
             // The document is published. A marker left behind is marker-only staging, which cleanup removes.
         }
     }
+
+    /// <summary>Replaces a published name with its staging file, riding out another handle's hold on the file it replaces.</summary>
+    private static void ReplaceRidingOutHolds(IOwnedDirectory directory, string stagingName, string name) =>
+        _ = RidingOutHolds(() =>
+        {
+            directory.ReplaceOwnedFile(stagingName, name);
+            return true;
+        });
+
+    /// <summary>
+    /// Does what another handle's hold on its file can refuse - replacing a pointer, rewriting the last-known-good one -
+    /// riding out a moment of such a hold (<see cref="ReplacePauses"/>). Any other failure, and a hold that outlasts the
+    /// pauses, is thrown as it was.
+    /// </summary>
+    private static T RidingOutHolds<T>(Func<T> operation)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return operation();
+            }
+            catch (Exception exception) when (attempt < ReplacePauses.Length && HeldByAnother(exception))
+            {
+                Thread.Sleep(ReplacePauses[attempt]);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether a replace was refused because another handle has the file open: access denied, as a local rename is told
+    /// of a reader, a sharing or lock violation, or either told to the broker's own rename beneath its root.
+    /// </summary>
+    private static bool HeldByAnother(Exception exception) => exception switch
+    {
+        UnauthorizedAccessException => true,
+        IOException { HResult: SharingViolation or LockViolation } => true,
+        IOException { InnerException: Win32Exception { NativeErrorCode: 5 or 32 or 33 } } => true,
+        _ => false,
+    };
 
     private static T? Read<T>(IOwnedDirectory directory, string name)
         where T : class => Read<T>(directory, name, out _);

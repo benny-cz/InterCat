@@ -756,6 +756,8 @@ Revision 863 qualifies the broker again with real ETW on Windows, the first time
 
 Revision 864 has Stop and Ctrl+C keep a live capture's session wherever in its follow's pass they land, and qualifies `icat capture`'s Ctrl+C on real ETW.
 
+Revision 865 has a store's publication wait out a reader holding its pointer, which on Windows refuses the replace, rather than end the recording.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2727,3 +2729,17 @@ saved whole twice and met every budget, and once ended partial: the broker's fin
 evidence's pointer, which InterCat's readers open without letting it be replaced, and the recorder tries no publication
 again - the next slice's. The viewer's managed heap grew with what it derived, to 921 MiB at 769,844 records, from
 75 MiB at 127,409 in September; a run under a heap limit will say how much of it is live.
+
+Revision 865 is that slice. Windows replaces no file a handle has open unless that handle shares deletion, and then
+only by a POSIX rename - measured here, a reader sharing only reading refused the classic rename, `File.Move` and the
+POSIX rename alike. InterCat's readers share a pointer only for reading, for the moment they read it, and both writers
+replace it classically, so a publication that met a read failed: mid-capture that ends the recording, and at its end it
+left the capture unfinalized, as revision 864's run showed. Rather than change how every reader opens a pointer and
+how each writer renames, the publication waits the read out: a replace, or a rewrite of the last-known-good pointer,
+that another handle's hold refused is tried again after pauses of 10 ms to 1 s, 1.88 s in all, which outlasts any
+reader of InterCat's own and a scanner's brief hold of a file just written. Only such a refusal is waited out; one that
+outlasts the pauses fails the publication as before (store-v1 §5). A test beneath a real broker root reproduced the
+run's failure at once on revision 864's code - the broker's rename refused while a viewer had the evidence pointer
+open - and publishes once the viewer lets go on this revision's. On real ETW the broker qualification passed, and the
+bounded 10-minute capture saved whole in all three runs and met every budget, at 683,831-871,098 records a run
+(`bench/results/first-feedback-20261101T205603Z-10min-bounded`).
