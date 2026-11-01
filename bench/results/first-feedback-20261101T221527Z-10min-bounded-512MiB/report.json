@@ -1,0 +1,46 @@
+{
+  "Schema": "intercat.first-feedback.v5",
+  "StartedUtc": "2026-11-01T22:15:27.3107007+00:00",
+  "FinishedUtc": "2026-11-01T22:25:30.6980213+00:00",
+  "Environment": {
+    "OperatingSystem": "Microsoft Windows 10.0.26220",
+    "BuildId": "10.0.26220.0-x64",
+    "Architecture": "X64",
+    "IsSupportedBuild": true,
+    "IsElevated": true,
+    "MachineScope": "local machine",
+    "Support": {
+      "Tier": 1,
+      "ReleaseName": "Windows 11 25H2 x64",
+      "IsPrerelease": true,
+      "IsSupported": true
+    }
+  },
+  "QpcFrequency": 10000000,
+  "RecordingSeconds": 600,
+  "Bounded": true,
+  "Budgets": {
+    "firstUsefulOverviewAfterFirstDeliveredMs": 3000,
+    "eventToVisibleP95Ms": 1500,
+    "eventToVisibleP99Ms": 3000,
+    "derivationP95Ms": 500,
+    "projectionP95Ms": 250
+  },
+  "Passed": false,
+  "MeetsBudgets": false,
+  "Runs": [],
+  "LeakedSessions": [],
+  "Failure": "System.OutOfMemoryException: Exception of type \u0027System.OutOfMemoryException\u0027 was thrown.\r\n   at System.Collections.Generic.List\u00601.set_Capacity(Int32 value)\r\n   at System.Collections.Generic.List\u00601.Grow(Int32 capacity)\r\n   at System.Collections.Generic.List\u00601.AddWithResize(T item)\r\n   at InterCat.Analysis.RpcCallIndex.Walk(ReadOnlySpan\u00601 records, Int32[] order, CancellationToken cancellationToken, List\u00601 groups, Int32 boundary, Dictionary\u00602 tails) in E:\\InterCat\\src\\InterCat.Analysis\\Rpc\\RpcCalls.cs:line 1621\r\n   at InterCat.Analysis.RpcCallIndex.Derive(IReadOnlyList\u00601 segments, IReadOnlyList\u00601 fieldSegments, ProcessInstanceIndex processes, SourceClockDescriptor clock, CancellationToken cancellationToken) in E:\\InterCat\\src\\InterCat.Analysis\\Rpc\\RpcCalls.cs:line 566\r\n   at InterCat.Application.SessionDerivation.RpcCalls(IOwnedDirectory directory, IReadOnlyList\u00601 segments, SourceClockDescriptor clock, IReadOnlyList\u00601 fields, CancellationToken cancellationToken) in E:\\InterCat\\src\\InterCat.Application\\SessionDerivationCache.cs:line 342\r\n   at InterCat.Application.SessionDerivation.RpcPeers(IOwnedDirectory directory, IReadOnlyList\u00601 segments, SourceClockDescriptor clock, IReadOnlyList\u00601 fields, CancellationToken cancellationToken) in E:\\InterCat\\src\\InterCat.Application\\SessionDerivationCache.cs:line 454\r\n   at InterCat.Application.SessionCheckpoints.Publish(SessionStore store, DateTimeOffset committedUtc, CancellationToken cancellationToken) in E:\\InterCat\\src\\InterCat.Application\\SessionCheckpoints.cs:line 125\r\n   at InterCat.Desktop.LiveDerivation.Step(CancellationToken cancellationToken) in E:\\InterCat\\src\\InterCat.Desktop\\LiveDerivation.cs:line 156\r\n   at InterCat.Desktop.LiveDerivation.\u003C\u003Ec__DisplayClass25_0.\u003CStepAsync\u003Eb__0() in E:\\InterCat\\src\\InterCat.Desktop\\LiveDerivation.cs:line 89\r\n   at System.Threading.Tasks.Task\u00601.InnerInvoke()\r\n   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)\r\n--- End of stack trace from previous location ---\r\n   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)\r\n   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task\u0026 currentTaskSlot, Thread threadPoolThread)\r\n--- End of stack trace from previous location ---\r\n   at InterCat.Desktop.DesktopCaptureRunner.RunAsync(Action\u00601 report, CancellationToken stop, CaptureRunOptions options) in E:\\InterCat\\src\\InterCat.Desktop\\DesktopCaptureRunner.cs:line 443\r\n   at InterCat.Desktop.DesktopCaptureRunner.RunAsync(Action\u00601 report, CancellationToken stop, CaptureRunOptions options) in E:\\InterCat\\src\\InterCat.Desktop\\DesktopCaptureRunner.cs:line 577\r\n   at InterCat.Desktop.DesktopCaptureRunner.RunAsync(Action\u00601 report, CancellationToken stop, CaptureRunOptions options) in E:\\InterCat\\src\\InterCat.Desktop\\DesktopCaptureRunner.cs:line 650\r\n   at Qualification.FirstFeedbackRunAsync(String output, Int32 run, Int32 seconds, Boolean bounded, CancellationToken cancellationToken) in E:\\InterCat\\tools\\InterCat.BrokerQualification\\FirstFeedback.cs:line 195\r\n   at Qualification.FirstFeedbackAsync(String[] args, CancellationToken cancellationToken) in E:\\InterCat\\tools\\InterCat.BrokerQualification\\FirstFeedback.cs:line 120",
+  "Notes": [
+    "The Desktop\u0027s DesktopCaptureRunner runs unchanged except for three options: this tool as its broker (the production composition over a qualification root, never the production root), a session root in the output directory, and the capture\u0027s duration quota.",
+    "Bounded: the quota is the recording time, and nothing here stops the capture. The broker ends it at its quota, as it ends the default 600-second Explore capture, and the viewer follows it to the end.",
+    "Exact means the overview was projected and handed to the window; drawing it is not included. A record\u0027s exact delay is the QPC reading at hand-off of the first overview whose derived records include it, minus the record\u0027s own QPC reading.",
+    "Previewed means a live preview (broker-v1 \u00A75.9) holding the record was handed to the window: its capture-wide journal index lies in [journaled - counted, journaled) of that preview. Visible is whichever came first, preview or exact, and is what the event-to-visible budget is judged on (plan \u00A712, \u00A719.3\u0027s labelled preview). Schema v2 added the preview; v1\u0027s event-to-visible is v2\u0027s event-to-exact.",
+    "Schema v5 adds what the viewer publishes once the follow finishes, a derivation checkpoint and a persisted overview (derivation-checkpoint-v1, overview-index-v1), and what a fresh store opening the saved session reads before its first overview. It is measured in this process, whose derivations of the session are already made.",
+    "Schema v4 adds the manifests the derived session and the broker\u0027s evidence hold at the end, and their bytes: a writer removes superseded manifests (store-v1 \u00A79), so a long capture keeps a few, not one per publication.",
+    "Schema v3 adds bounded runs, memory samples every 10 s and 60-second trend windows: overviews by their hand-off time, records by their own acquisition time, both from the first recording update.",
+    "Memory: the viewer is this process, which runs the Desktop\u0027s capture runner (follower, derived session and overview projection) and keeps only compact measurements of each update, never an overview. It excludes the window, its workspace and drawing. The broker is this tool\u0027s serve mode, a separate process. The managed heap is its size after the most recent collection.",
+    "The harness is elevated, so the broker launch shows no approval prompt; the approval step of the ordinary-integrity first run is not measured here.",
+    "Traffic is one paced loopback TCP stream (1 KiB every 20 ms) plus a new connection each second, on top of whatever else the machine did during the run."
+  ]
+}

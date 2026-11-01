@@ -149,9 +149,12 @@ public sealed class SegmentReaderV1
 
     /// <summary>
     /// Values derived from each row under something outside the segment, such as a derivation's bindings, one per kind,
-    /// with the source they were derived under (<see cref="DerivedRows{T}"/>).
+    /// with the source they were derived under (<see cref="DerivedRows{T}"/>). The source is held weakly: a reader the
+    /// cache keeps across a live capture's generations would otherwise keep each superseded derivation it was asked under,
+    /// which the cache's budget does not count (revision 866).
     /// </summary>
-    private readonly Dictionary<string, (object Source, Array Rows, long Bytes)> derived = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (WeakReference<object> Source, Array Rows, long Bytes)> derived =
+        new(StringComparer.Ordinal);
 
     private readonly Lock derivedGate = new();
 
@@ -1272,8 +1275,8 @@ public sealed class SegmentReaderV1
         ArgumentNullException.ThrowIfNull(derive);
         lock (derivedGate)
         {
-            if (derived.TryGetValue(kind, out (object Source, Array Rows, long Bytes) known)
-                && ReferenceEquals(known.Source, source) && known.Rows is T[] kept)
+            if (derived.TryGetValue(kind, out (WeakReference<object> Source, Array Rows, long Bytes) known)
+                && IsSource(known.Source, source) && known.Rows is T[] kept)
             {
                 return kept;
             }
@@ -1288,17 +1291,21 @@ public sealed class SegmentReaderV1
         long bytes = (long)rows.Length * System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
         lock (derivedGate)
         {
-            if (derived.TryGetValue(kind, out (object Source, Array Rows, long Bytes) raced)
-                && ReferenceEquals(raced.Source, source) && raced.Rows is T[] first)
+            if (derived.TryGetValue(kind, out (WeakReference<object> Source, Array Rows, long Bytes) raced)
+                && IsSource(raced.Source, source) && raced.Rows is T[] first)
             {
                 return first;
             }
 
             _ = Interlocked.Add(ref derivedBytes, bytes - (derived.TryGetValue(kind, out var replaced) ? replaced.Bytes : 0));
-            derived[kind] = (source, rows, bytes);
+            derived[kind] = (new(source), rows, bytes);
             return rows;
         }
     }
+
+    /// <summary>Whether values kept under <paramref name="kept"/> were derived under <paramref name="source"/>, still alive.</summary>
+    private static bool IsSource(WeakReference<object> kept, object source) =>
+        kept.TryGetTarget(out object? held) && ReferenceEquals(held, source);
 
     /// <summary>Gives back every value derived from this reader's rows, and returns how many bytes that released.</summary>
     internal long ReleaseDerived()

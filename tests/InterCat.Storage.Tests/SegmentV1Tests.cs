@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using InterCat.Domain;
 using Xunit;
 
@@ -1095,6 +1096,37 @@ public sealed partial class SegmentV1Tests
         Assert.InRange(emptied, 1, readers.Length - 1);
         Assert.All(readers, reader => Assert.True(
             reader.ResidentBytes == Kept(reader) || reader.ResidentBytes == Kept(reader) + (2 * Derived(reader))));
+    }
+
+    [Fact(DisplayName = "S2: a segment reader keeps the values derived from its rows, never the derivation they were derived under")]
+    public void ASegmentReaderKeepsNotTheDerivationItsValuesCameFrom()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult published = Publish(session.Store, [Row(100, bytes: 1), Row(110, bytes: 4)]);
+        using EvidenceLease lease = session.Store.AcquireLease();
+        SegmentReaderV1 reader = SessionSegments.Open(session.Store, lease.Manifest, SessionSegments.Names(published.Manifest)[0]);
+
+        // A live capture supersedes its derivation each publication, and the cache keeps the reader across them: a reader
+        // that kept each derivation it was asked under kept a session's worth of them the cache's budget never counted.
+        WeakReference superseded = DeriveUnderADerivationThatGoes(reader);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.False(superseded.IsAlive, "The reader kept the derivation its values were derived under.");
+
+        // A derivation still in use is still served what was kept under it.
+        var current = new object();
+        long[] kept = reader.DerivedRows("test-rows", current, source => new long[source.RowCount]);
+        Assert.Same(kept, reader.DerivedRows<long>("test-rows", current, _ => throw new InvalidOperationException("derived twice")));
+        GC.KeepAlive(current);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference DeriveUnderADerivationThatGoes(SegmentReaderV1 reader)
+    {
+        var derivation = new object();
+        _ = reader.DerivedRows("test-rows", derivation, source => new long[source.RowCount]);
+        return new WeakReference(derivation);
     }
 
     [Fact(DisplayName = "A reopened store starts with an empty segment reader cache")]

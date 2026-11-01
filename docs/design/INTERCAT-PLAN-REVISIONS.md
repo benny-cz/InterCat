@@ -758,6 +758,8 @@ Revision 864 has Stop and Ctrl+C keep a live capture's session wherever in its f
 
 Revision 865 has a store's publication wait out a reader holding its pointer, which on Windows refuses the replace, rather than end the recording.
 
+Revision 866 has a cached segment reader hold the derivation its derived values came from only weakly, so a live capture's readers no longer keep every superseded process index.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2743,3 +2745,15 @@ run's failure at once on revision 864's code - the broker's rename refused while
 open - and publishes once the viewer lets go on this revision's. On real ETW the broker qualification passed, and the
 bounded 10-minute capture saved whole in all three runs and met every budget, at 683,831-871,098 records a run
 (`bench/results/first-feedback-20261101T205603Z-10min-bounded`).
+
+Revision 866 looked at the viewer's memory, which revisions 864 and 865 had measured at 0.6-1.5 GiB of managed heap at
+the end of a 10-minute capture. Heap dumps of the viewer during one found most of it dead - at 560 s, 231 MiB of a
+577 MB heap was reachable, 124 MiB of that the segment reader cache within its budget - and one thing that should not
+have been there: fifteen process-instance indexes where the derivation cache keeps four. A cached reader keeps the
+values it derived from its rows with the derivation they were derived under, to tell whether they still serve, and held
+that derivation strongly, so readers kept across a live capture's publications kept each superseded index, uncounted by
+the cache's budget. It now holds it weakly, and at 560 s of a capture of 837,411 records four indexes were left and what
+is not the reader cache fell from 107 to 61 MiB. Under a 512 MiB heap limit, though, the viewer recorded the whole ten
+minutes and then ran out of memory publishing the session's derivation checkpoint, which pairs every RPC call of the
+session in full because the live follow paired none; under a 1 GiB limit the same capture saved whole and met every
+budget. That is the next slice's.

@@ -28,8 +28,10 @@ event-to-visible to p95 0.73–1.19 s and meets §12's steady-state budget, meas
 default 10-minute Explore capture runs to its bound on real ETW: in revision 864 at 663,583–770,639 records a run, six
 times September's, with event-to-visible p95 0.80–0.82 s and exact p95 2.8–2.9 s. Two of three runs saved whole and
 met every §12 budget; the third ended partial when the broker's final publication could not replace a pointer a reader
-held, which since revision 865 a publication waits out, and the viewer's managed heap grew with what it derived, to
-921 MiB at 770,000 records. A crashed viewer's capture is stopped and finalized by its lease without a leaked trace, and the next launch
+held, which since revision 865 a publication waits out. The viewer's managed heap reached 921 MiB at 770,000 records,
+most of it dead; since revision 866 what is live at 837,000 records is 205 MiB, 144 MiB of it the segment reader cache
+within its budget, but the checkpoint a finished capture publishes pairs every RPC call in full and does not fit §12's
+512 MiB analysis budget at that volume. A crashed viewer's capture is stopped and finalized by its lease without a leaked trace, and the next launch
 offers to finish its session from the evidence the broker kept, including what the broker recorded after the crash.
 Since revision 157, a live generation's derivation
 extends the previous one's, and since revision 158 the overview and minimap come from each segment's in-memory tiles,
@@ -131,6 +133,36 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 866 — a cached segment reader no longer keeps each derivation it was asked under:**
+  - Revisions 864 and 865 measured the viewer's managed heap at 0.6-1.5 GiB at the end of a 10-minute Explore capture.
+    Heap dumps of the viewer during one, on revision 865's code, found most of it dead: at 560 s the heap held 577 MB,
+    of which 231 MiB was reachable, and 124 MiB of that the segment reader cache's payload, within its 256 MiB budget.
+    The collector of this 64 GB machine is lazy, as revision 217 found. What should not have been there: fifteen
+    process-instance indexes where the derivation cache keeps four. Each reader the cache keeps holds the values it
+    derived from its rows - each row's binding - with the derivation they were derived under, to tell whether they still
+    serve; it held that derivation strongly, so a live capture's readers, kept across its publications, each kept the
+    process index of the generation they last bound under, which the cache's budget never counted.
+  - A reader now holds that derivation weakly: one that was collected can never be the one asked under, so it is
+    derived again as before, and nothing else changes (plan §20.1).
+  - Measured again at 560 s of a 10-minute capture: four process indexes, the derivation cache's own; 205 MiB
+    reachable, 144 MiB of it the reader cache, at 837,411 records against 722,502 - what is not the reader cache fell
+    from 107 to 61 MiB - and the heap at the end 471 MiB, its peak private bytes 542 MiB from 849
+    (`bench/results/first-feedback-20261101T215040Z-10min-bounded` before,
+    `bench/results/first-feedback-20261101T220510Z-10min-bounded` after, each with two heap dumps that paused it).
+  - Under a 512 MiB heap limit, §12's analysis budget, the viewer recorded the whole 10 minutes and then ran out of
+    memory publishing the session's derivation checkpoint: the checkpoint pairs every RPC call of the session in full,
+    since the live follow pairs none and leaves no earlier generation's calls to extend, and at some 800,000 records,
+    mostly RPC, that pass - every call record, its order and the calls it drafts, beside a reader cache by then near
+    150 MiB - needs more than the budget leaves (`bench/results/first-feedback-20261101T221527Z-10min-bounded-512MiB`).
+    The report's memory samples stop when recording does, so none had shown it. Under a 1 GiB limit the same capture,
+    at 708,203 records, saved whole and met every budget, its heap peaking at 415 MiB while it recorded and its
+    checkpoint published (`bench/results/first-feedback-20261101T224533Z-10min-bounded-1GiB`): the end of a capture
+    needs between the two. That is the next slice's.
+  - Tests: a reader whose values were derived under a derivation that goes no longer keeps it, and a derivation still
+    in use is served what was kept; on revision 865's reader the first fails.
+  - Debug and Release each ran 3,512 tests, and failed only the fixture index check of this workstation's ignored
+    folder, which a clean checkout passes.
 
 - **Revision 865 — a publication waits out a reader holding its pointer, rather than end the recording:**
   - Revision 864's 10-minute qualification lost one capture's last publication: the broker could not replace its
