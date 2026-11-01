@@ -54,6 +54,41 @@ public sealed class LiveDerivationTests
         Assert.Null(derivation.Last);
     });
 
+    [Fact(DisplayName = "§12: a step the stop request cancels while it runs ends cancelled, and the next step shows what it followed")]
+    public void AStepCancelledWhileItRunsEndsCancelled() => SingleThreadedContext.Run(async () =>
+    {
+        // A capture still recording, as far as it published: its generations' views are counted, and the count stops.
+        using var evidence = new TemporaryDirectory();
+        using var user = new TemporarySession();
+        _ = await EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6, 7, 8], bursts: [1, 2, 4, 6]);
+        _ = EvidenceRecordings.RewindToUnfinalized(evidence.Path);
+
+        // Stop is pressed while the step projects what it followed. The runner skips a step that ended cancelled and
+        // derives on under its finishing token; a step that ended any other way says the capture was interrupted.
+        using var stop = new CancellationTokenSource();
+        bool pressed = false;
+        using var derivation = new LiveDerivation(evidence.Path, Path.Combine(user.Path, "explore"), Stopwatch.StartNew(),
+            new SessionStoreRegistry(capacity: 4), () =>
+            {
+                if (!pressed)
+                {
+                    pressed = true;
+                    stop.Cancel();
+                }
+
+                return EvidencePolicy.IncludeCorrelated;
+            });
+        Task<LiveDerivationStep> stopped = derivation.StepAsync(stop.Token);
+        _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => stopped);
+        Assert.True(stopped.IsCanceled, $"A step the stop request cancelled ended {stopped.Status}.");
+
+        // What it followed stays, and the next step shows the generation whose view the stop cut short.
+        long followed = derivation.Store!.Current!.Generation;
+        LiveDerivationStep next = await derivation.StepAsync(CancellationToken.None);
+        Assert.Equal(followed, next.Generation);
+        Assert.NotNull(next.Overview);
+    });
+
     [Fact(DisplayName = "§20.1: the store a capture derives into is its session's shared store, so the window reads through it")]
     public void TheDerivedStoreIsTheSessionsSharedStore() => SingleThreadedContext.Run(async () =>
     {

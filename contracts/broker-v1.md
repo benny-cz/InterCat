@@ -470,6 +470,12 @@ exits first, its exit code maps to the sentence in the table above. It connects 
 `LaunchFailed`, `BrokerExited`, `NotListening`, `ServerNotTheBroker`. Disposing the connection closes
 the pipe only; it never stops a capture.
 
+A caller of `WindowsBrokerPipeClient.SendAsync` whose token is cancelled stops waiting, and its request still
+crosses the pipe whole: the request frame is written in full and its answer read in full, and the client's next
+request is written only once that answer has been read (revision 864). A stop request that follows a status read the
+stop cancelled therefore reads its own answer, never the read's, and no frame is ever cut short on either side.
+Waiting for an answer still owed can itself be given up, and a request given up before it was written is not written.
+
 ### 5.7 Evidence location and ordinary-integrity follow
 
 `GetStatus` returns the capture's evidence directory (field 13, optional UTF-8 string of at most

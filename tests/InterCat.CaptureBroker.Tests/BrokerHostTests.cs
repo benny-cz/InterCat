@@ -316,6 +316,54 @@ public sealed class BrokerHostTests
         Assert.Equal(0, await squatter.ReadAsync(buffer).AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
+    [Fact(DisplayName = "IC-014: a request its caller stops waiting for is answered before the next is sent, so each request reads its own answer")]
+    public async Task ARequestItsCallerStopsWaitingForIsAnsweredBeforeTheNextIsSent()
+    {
+        // This process plays the broker, so the production client accepts the pipe.
+        string pipeName = $"InterCat.Broker.v1.{Guid.NewGuid():N}";
+        await using var broker = new NamedPipeServerStream(
+            pipeName,
+            PipeDirection.InOut,
+            1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous);
+        Task accepted = broker.WaitForConnectionAsync();
+        await using WindowsBrokerPipeClient client = await WindowsBrokerPipeClient.ConnectAsync(
+            pipeName, Environment.ProcessId, TimeSpan.FromSeconds(10));
+        await accepted;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var capture = new CaptureId(Guid.NewGuid());
+
+        // A status read that a stop request cancels once it was sent, as Stop pressed mid-read does.
+        using var stop = new CancellationTokenSource();
+        Task<BrokerWireResponse> status = client.SendAsync(new BrokerGetStatusRequest(capture), stop.Token);
+        BrokerWireFrame read = Assert.IsType<BrokerWireFrame>(await BrokerWireFrameCodec.ReadAsync(broker, timeout.Token));
+        await stop.CancelAsync();
+        _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => status);
+
+        // A renewal given up while that read's answer is still owed is never sent.
+        using var renewing = new CancellationTokenSource();
+        Task<BrokerWireResponse> renewal = client.SendAsync(new BrokerRenewOwnerLeaseRequest(capture, null), renewing.Token);
+        await renewing.CancelAsync();
+        _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => renewal);
+
+        // The stop request asked for next waits for the read's answer, which the broker gives only now that its caller has
+        // gone. Then the stop request is the next the broker reads, and it reads its own answer, not the one left for the read.
+        Task<BrokerWireResponse> stopping = client.SendAsync(new BrokerStopCaptureRequest(capture, Guid.NewGuid()), timeout.Token);
+        Task<BrokerWireFrame?> next = BrokerWireFrameCodec.ReadAsync(broker, timeout.Token).AsTask();
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+        Assert.False(next.IsCompleted, "A request was sent while the read's answer was still owed.");
+        await BrokerWireFrameCodec.WriteAsync(broker, BrokerWireResponseCodec.Encode(
+            new BrokerErrorResponse(BrokerErrorCode.InternalFailure, "the status read's answer", false), read.CorrelationId),
+            timeout.Token);
+        BrokerWireFrame sent = Assert.IsType<BrokerWireFrame>(await next);
+        _ = Assert.IsType<BrokerStopCaptureRequest>(BrokerWireRequestCodec.Decode(sent));
+        await BrokerWireFrameCodec.WriteAsync(broker, BrokerWireResponseCodec.Encode(
+            new BrokerErrorResponse(BrokerErrorCode.CaptureUnavailable, "the stop request's answer", false), sent.CorrelationId),
+            timeout.Token);
+        Assert.Equal("the stop request's answer", Assert.IsType<BrokerErrorResponse>(await stopping).UserMessage);
+    }
+
     private static BrokerHostSettings Settings(BrokerOwnerIdentity owner, TimeSpan idle) => new()
     {
         Owner = owner,

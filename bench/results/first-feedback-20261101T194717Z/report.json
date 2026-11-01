@@ -1,0 +1,941 @@
+{
+  "Schema": "intercat.first-feedback.v5",
+  "StartedUtc": "2026-11-01T19:47:17.2799254+00:00",
+  "FinishedUtc": "2026-11-01T19:49:59.1652118+00:00",
+  "Environment": {
+    "OperatingSystem": "Microsoft Windows 10.0.26220",
+    "BuildId": "10.0.26220.0-x64",
+    "Architecture": "X64",
+    "IsSupportedBuild": true,
+    "IsElevated": true,
+    "MachineScope": "local machine",
+    "Support": {
+      "Tier": 1,
+      "ReleaseName": "Windows 11 25H2 x64",
+      "IsPrerelease": true,
+      "IsSupported": true
+    }
+  },
+  "QpcFrequency": 10000000,
+  "RecordingSeconds": 15,
+  "Bounded": false,
+  "Budgets": {
+    "firstUsefulOverviewAfterFirstDeliveredMs": 3000,
+    "eventToVisibleP95Ms": 1500,
+    "eventToVisibleP99Ms": 3000,
+    "derivationP95Ms": 500,
+    "projectionP95Ms": 250
+  },
+  "Passed": true,
+  "MeetsBudgets": false,
+  "Runs": [
+    {
+      "Run": 1,
+      "Valid": true,
+      "MeetsBudgets": false,
+      "FinalHeadline": "Session saved",
+      "FinalDetail": "The capture is closed. All published evidence was followed.",
+      "FailureReason": null,
+      "BoundOverrun": false,
+      "BrokerReadyMs": 372,
+      "PreparedMs": 836,
+      "StartedMs": 1205,
+      "FirstGenerationMs": 2520,
+      "FirstOverviewMs": 2838,
+      "PublicationIntervalMs": 2000,
+      "FirstOverviewAfterFirstDeliveredMs": 1809,
+      "OverviewsHandedOff": 9,
+      "ChunksFollowed": 9,
+      "LiveCounterReadings": 15,
+      "LastLiveCounters": {
+        "AdmittedRecords": 12517,
+        "ObservedRecords": 12517,
+        "ApplicationDrops": 0,
+        "ProviderReportedLoss": 0,
+        "ConsumerBufferLoss": 0,
+        "QueueDepth": 0,
+        "QueueCapacity": 65536
+      },
+      "Records": 12946,
+      "SessionBytes": 7472224,
+      "SessionManifests": 2,
+      "SessionManifestBytes": 11695,
+      "CheckpointBytes": 336506,
+      "OverviewBytes": 21050,
+      "ReopenProjectionMs": 31,
+      "ReopenSegmentsOpened": 0,
+      "EvidenceManifests": 2,
+      "EvidenceManifestBytes": 6575,
+      "RecordsWithoutJournalIndex": 0,
+      "RecordsFirstVisibleAfterStop": 0,
+      "RecordsWithNegativeDelay": 0,
+      "PreviewsHandedOff": 55,
+      "LargestUnbinnedPreviewRecords": 0,
+      "RecordsNeverPreviewed": 366,
+      "EventToVisible": {
+        "Count": 12946,
+        "P50Ms": 635,
+        "P95Ms": 885,
+        "P99Ms": 1182,
+        "MaxMs": 1682
+      },
+      "EventToPreview": {
+        "Count": 12580,
+        "P50Ms": 630,
+        "P95Ms": 879,
+        "P99Ms": 898,
+        "MaxMs": 1102
+      },
+      "EventToExact": {
+        "Count": 12946,
+        "P50Ms": 1834,
+        "P95Ms": 2648,
+        "P99Ms": 2812,
+        "MaxMs": 3138
+      },
+      "Derivation": {
+        "Count": 9,
+        "P50Ms": 111,
+        "P95Ms": 389,
+        "P99Ms": 389,
+        "MaxMs": 389
+      },
+      "Projection": {
+        "Count": 9,
+        "P50Ms": 50,
+        "P95Ms": 318,
+        "P99Ms": 318,
+        "MaxMs": 318
+      },
+      "LastOverviewDerivedRecords": 12946,
+      "LastOverviewDerivationMs": 339,
+      "LastOverviewProjectionMs": 63,
+      "Memory": [
+        {
+          "ElapsedSeconds": 10,
+          "Phase": "Recording",
+          "DerivedRecords": 6504,
+          "JournaledRecords": 7266,
+          "ViewerWorkingSetBytes": 121135104,
+          "ViewerPrivateBytes": 57241600,
+          "ViewerManagedHeapBytes": 18037944,
+          "BrokerWorkingSetBytes": 91344896,
+          "BrokerPrivateBytes": 38486016
+        }
+      ],
+      "MemoryAtEnd": {
+        "ElapsedSeconds": 10,
+        "Phase": "Recording",
+        "DerivedRecords": 6504,
+        "JournaledRecords": 7266,
+        "ViewerWorkingSetBytes": 121135104,
+        "ViewerPrivateBytes": 57241600,
+        "ViewerManagedHeapBytes": 18037944,
+        "BrokerWorkingSetBytes": 91344896,
+        "BrokerPrivateBytes": 38486016
+      },
+      "Trend": [
+        {
+          "FromSecond": 0,
+          "Overviews": 9,
+          "DerivedRecordsAtEnd": 12946,
+          "Derivation": {
+            "Count": 9,
+            "P50Ms": 111,
+            "P95Ms": 389,
+            "P99Ms": 389,
+            "MaxMs": 389
+          },
+          "Projection": {
+            "Count": 9,
+            "P50Ms": 50,
+            "P95Ms": 318,
+            "P99Ms": 318,
+            "MaxMs": 318
+          },
+          "Records": 12946,
+          "EventToVisible": {
+            "Count": 12946,
+            "P50Ms": 635,
+            "P95Ms": 885,
+            "P99Ms": 1182,
+            "MaxMs": 1682
+          },
+          "EventToPreview": {
+            "Count": 12580,
+            "P50Ms": 630,
+            "P95Ms": 879,
+            "P99Ms": 898,
+            "MaxMs": 1102
+          },
+          "EventToExact": {
+            "Count": 12946,
+            "P50Ms": 1834,
+            "P95Ms": 2648,
+            "P99Ms": 2812,
+            "MaxMs": 3138
+          }
+        }
+      ]
+    },
+    {
+      "Run": 2,
+      "Valid": true,
+      "MeetsBudgets": true,
+      "FinalHeadline": "Session saved",
+      "FinalDetail": "The capture is closed. All published evidence was followed.",
+      "FailureReason": null,
+      "BoundOverrun": false,
+      "BrokerReadyMs": 318,
+      "PreparedMs": 671,
+      "StartedMs": 1009,
+      "FirstGenerationMs": 1874,
+      "FirstOverviewMs": 1883,
+      "PublicationIntervalMs": 2000,
+      "FirstOverviewAfterFirstDeliveredMs": 1081,
+      "OverviewsHandedOff": 9,
+      "ChunksFollowed": 9,
+      "LiveCounterReadings": 15,
+      "LastLiveCounters": {
+        "AdmittedRecords": 15562,
+        "ObservedRecords": 15562,
+        "ApplicationDrops": 0,
+        "ProviderReportedLoss": 0,
+        "ConsumerBufferLoss": 0,
+        "QueueDepth": 0,
+        "QueueCapacity": 65536
+      },
+      "Records": 16163,
+      "SessionBytes": 9266741,
+      "SessionManifests": 2,
+      "SessionManifestBytes": 11772,
+      "CheckpointBytes": 419249,
+      "OverviewBytes": 20674,
+      "ReopenProjectionMs": 30,
+      "ReopenSegmentsOpened": 0,
+      "EvidenceManifests": 2,
+      "EvidenceManifestBytes": 6576,
+      "RecordsWithoutJournalIndex": 0,
+      "RecordsFirstVisibleAfterStop": 0,
+      "RecordsWithNegativeDelay": 0,
+      "PreviewsHandedOff": 55,
+      "LargestUnbinnedPreviewRecords": 0,
+      "RecordsNeverPreviewed": 397,
+      "EventToVisible": {
+        "Count": 16163,
+        "P50Ms": 541,
+        "P95Ms": 1194,
+        "P99Ms": 1206,
+        "MaxMs": 1209
+      },
+      "EventToPreview": {
+        "Count": 15766,
+        "P50Ms": 538,
+        "P95Ms": 1194,
+        "P99Ms": 1206,
+        "MaxMs": 1209
+      },
+      "EventToExact": {
+        "Count": 16163,
+        "P50Ms": 1878,
+        "P95Ms": 2912,
+        "P99Ms": 2925,
+        "MaxMs": 3012
+      },
+      "Derivation": {
+        "Count": 9,
+        "P50Ms": 108,
+        "P95Ms": 217,
+        "P99Ms": 217,
+        "MaxMs": 217
+      },
+      "Projection": {
+        "Count": 9,
+        "P50Ms": 26,
+        "P95Ms": 38,
+        "P99Ms": 38,
+        "MaxMs": 38
+      },
+      "LastOverviewDerivedRecords": 16163,
+      "LastOverviewDerivationMs": 217,
+      "LastOverviewProjectionMs": 32,
+      "Memory": [
+        {
+          "ElapsedSeconds": 10,
+          "Phase": "Recording",
+          "DerivedRecords": 6726,
+          "JournaledRecords": 7559,
+          "ViewerWorkingSetBytes": 147640320,
+          "ViewerPrivateBytes": 76607488,
+          "ViewerManagedHeapBytes": 29146896,
+          "BrokerWorkingSetBytes": 103587840,
+          "BrokerPrivateBytes": 51355648
+        }
+      ],
+      "MemoryAtEnd": {
+        "ElapsedSeconds": 10,
+        "Phase": "Recording",
+        "DerivedRecords": 6726,
+        "JournaledRecords": 7559,
+        "ViewerWorkingSetBytes": 147640320,
+        "ViewerPrivateBytes": 76607488,
+        "ViewerManagedHeapBytes": 29146896,
+        "BrokerWorkingSetBytes": 103587840,
+        "BrokerPrivateBytes": 51355648
+      },
+      "Trend": [
+        {
+          "FromSecond": 0,
+          "Overviews": 9,
+          "DerivedRecordsAtEnd": 16163,
+          "Derivation": {
+            "Count": 9,
+            "P50Ms": 108,
+            "P95Ms": 217,
+            "P99Ms": 217,
+            "MaxMs": 217
+          },
+          "Projection": {
+            "Count": 9,
+            "P50Ms": 26,
+            "P95Ms": 38,
+            "P99Ms": 38,
+            "MaxMs": 38
+          },
+          "Records": 16163,
+          "EventToVisible": {
+            "Count": 16163,
+            "P50Ms": 541,
+            "P95Ms": 1194,
+            "P99Ms": 1206,
+            "MaxMs": 1209
+          },
+          "EventToPreview": {
+            "Count": 15766,
+            "P50Ms": 538,
+            "P95Ms": 1194,
+            "P99Ms": 1206,
+            "MaxMs": 1209
+          },
+          "EventToExact": {
+            "Count": 16163,
+            "P50Ms": 1878,
+            "P95Ms": 2912,
+            "P99Ms": 2925,
+            "MaxMs": 3012
+          }
+        }
+      ]
+    },
+    {
+      "Run": 3,
+      "Valid": true,
+      "MeetsBudgets": true,
+      "FinalHeadline": "Session saved",
+      "FinalDetail": "The capture is closed. All published evidence was followed.",
+      "FailureReason": null,
+      "BoundOverrun": false,
+      "BrokerReadyMs": 339,
+      "PreparedMs": 813,
+      "StartedMs": 1141,
+      "FirstGenerationMs": 1990,
+      "FirstOverviewMs": 1998,
+      "PublicationIntervalMs": 2000,
+      "FirstOverviewAfterFirstDeliveredMs": 1083,
+      "OverviewsHandedOff": 8,
+      "ChunksFollowed": 9,
+      "LiveCounterReadings": 15,
+      "LastLiveCounters": {
+        "AdmittedRecords": 34034,
+        "ObservedRecords": 34034,
+        "ApplicationDrops": 0,
+        "ProviderReportedLoss": 0,
+        "ConsumerBufferLoss": 0,
+        "QueueDepth": 0,
+        "QueueCapacity": 65536
+      },
+      "Records": 34725,
+      "SessionBytes": 18460454,
+      "SessionManifests": 2,
+      "SessionManifestBytes": 11777,
+      "CheckpointBytes": 382078,
+      "OverviewBytes": 24459,
+      "ReopenProjectionMs": 30,
+      "ReopenSegmentsOpened": 0,
+      "EvidenceManifests": 2,
+      "EvidenceManifestBytes": 6580,
+      "RecordsWithoutJournalIndex": 0,
+      "RecordsFirstVisibleAfterStop": 0,
+      "RecordsWithNegativeDelay": 0,
+      "PreviewsHandedOff": 57,
+      "LargestUnbinnedPreviewRecords": 0,
+      "RecordsNeverPreviewed": 331,
+      "EventToVisible": {
+        "Count": 34725,
+        "P50Ms": 566,
+        "P95Ms": 775,
+        "P99Ms": 884,
+        "MaxMs": 1285
+      },
+      "EventToPreview": {
+        "Count": 34394,
+        "P50Ms": 565,
+        "P95Ms": 757,
+        "P99Ms": 870,
+        "MaxMs": 948
+      },
+      "EventToExact": {
+        "Count": 34725,
+        "P50Ms": 1737,
+        "P95Ms": 2634,
+        "P99Ms": 2939,
+        "MaxMs": 3333
+      },
+      "Derivation": {
+        "Count": 8,
+        "P50Ms": 102,
+        "P95Ms": 415,
+        "P99Ms": 415,
+        "MaxMs": 415
+      },
+      "Projection": {
+        "Count": 8,
+        "P50Ms": 22,
+        "P95Ms": 33,
+        "P99Ms": 33,
+        "MaxMs": 33
+      },
+      "LastOverviewDerivedRecords": 34725,
+      "LastOverviewDerivationMs": 415,
+      "LastOverviewProjectionMs": 33,
+      "Memory": [
+        {
+          "ElapsedSeconds": 10,
+          "Phase": "Recording",
+          "DerivedRecords": 16657,
+          "JournaledRecords": 24743,
+          "ViewerWorkingSetBytes": 178909184,
+          "ViewerPrivateBytes": 109064192,
+          "ViewerManagedHeapBytes": 62712608,
+          "BrokerWorkingSetBytes": 106254336,
+          "BrokerPrivateBytes": 53510144
+        }
+      ],
+      "MemoryAtEnd": {
+        "ElapsedSeconds": 10,
+        "Phase": "Recording",
+        "DerivedRecords": 16657,
+        "JournaledRecords": 24743,
+        "ViewerWorkingSetBytes": 178909184,
+        "ViewerPrivateBytes": 109064192,
+        "ViewerManagedHeapBytes": 62712608,
+        "BrokerWorkingSetBytes": 106254336,
+        "BrokerPrivateBytes": 53510144
+      },
+      "Trend": [
+        {
+          "FromSecond": 0,
+          "Overviews": 8,
+          "DerivedRecordsAtEnd": 34725,
+          "Derivation": {
+            "Count": 8,
+            "P50Ms": 102,
+            "P95Ms": 415,
+            "P99Ms": 415,
+            "MaxMs": 415
+          },
+          "Projection": {
+            "Count": 8,
+            "P50Ms": 22,
+            "P95Ms": 33,
+            "P99Ms": 33,
+            "MaxMs": 33
+          },
+          "Records": 34725,
+          "EventToVisible": {
+            "Count": 34725,
+            "P50Ms": 566,
+            "P95Ms": 775,
+            "P99Ms": 884,
+            "MaxMs": 1285
+          },
+          "EventToPreview": {
+            "Count": 34394,
+            "P50Ms": 565,
+            "P95Ms": 757,
+            "P99Ms": 870,
+            "MaxMs": 948
+          },
+          "EventToExact": {
+            "Count": 34725,
+            "P50Ms": 1737,
+            "P95Ms": 2634,
+            "P99Ms": 2939,
+            "MaxMs": 3333
+          }
+        }
+      ]
+    },
+    {
+      "Run": 4,
+      "Valid": true,
+      "MeetsBudgets": false,
+      "FinalHeadline": "Session saved",
+      "FinalDetail": "The capture is closed. All published evidence was followed.",
+      "FailureReason": null,
+      "BoundOverrun": false,
+      "BrokerReadyMs": 312,
+      "PreparedMs": 754,
+      "StartedMs": 1034,
+      "FirstGenerationMs": 1873,
+      "FirstOverviewMs": 1880,
+      "PublicationIntervalMs": 2000,
+      "FirstOverviewAfterFirstDeliveredMs": 1026,
+      "OverviewsHandedOff": 8,
+      "ChunksFollowed": 9,
+      "LiveCounterReadings": 15,
+      "LastLiveCounters": {
+        "AdmittedRecords": 19723,
+        "ObservedRecords": 19723,
+        "ApplicationDrops": 0,
+        "ProviderReportedLoss": 0,
+        "ConsumerBufferLoss": 0,
+        "QueueDepth": 0,
+        "QueueCapacity": 65536
+      },
+      "Records": 21656,
+      "SessionBytes": 11827628,
+      "SessionManifests": 2,
+      "SessionManifestBytes": 11852,
+      "CheckpointBytes": 373444,
+      "OverviewBytes": 24961,
+      "ReopenProjectionMs": 10,
+      "ReopenSegmentsOpened": 0,
+      "EvidenceManifests": 2,
+      "EvidenceManifestBytes": 6580,
+      "RecordsWithoutJournalIndex": 0,
+      "RecordsFirstVisibleAfterStop": 0,
+      "RecordsWithNegativeDelay": 0,
+      "PreviewsHandedOff": 55,
+      "LargestUnbinnedPreviewRecords": 0,
+      "RecordsNeverPreviewed": 1101,
+      "EventToVisible": {
+        "Count": 21656,
+        "P50Ms": 512,
+        "P95Ms": 1191,
+        "P99Ms": 1295,
+        "MaxMs": 1344
+      },
+      "EventToPreview": {
+        "Count": 20555,
+        "P50Ms": 502,
+        "P95Ms": 739,
+        "P99Ms": 1219,
+        "MaxMs": 1221
+      },
+      "EventToExact": {
+        "Count": 21656,
+        "P50Ms": 2022,
+        "P95Ms": 2843,
+        "P99Ms": 3152,
+        "MaxMs": 3629
+      },
+      "Derivation": {
+        "Count": 8,
+        "P50Ms": 75,
+        "P95Ms": 572,
+        "P99Ms": 572,
+        "MaxMs": 572
+      },
+      "Projection": {
+        "Count": 8,
+        "P50Ms": 17,
+        "P95Ms": 35,
+        "P99Ms": 35,
+        "MaxMs": 35
+      },
+      "LastOverviewDerivedRecords": 21656,
+      "LastOverviewDerivationMs": 572,
+      "LastOverviewProjectionMs": 17,
+      "Memory": [
+        {
+          "ElapsedSeconds": 10,
+          "Phase": "Recording",
+          "DerivedRecords": 9593,
+          "JournaledRecords": 9812,
+          "ViewerWorkingSetBytes": 183652352,
+          "ViewerPrivateBytes": 109903872,
+          "ViewerManagedHeapBytes": 36096048,
+          "BrokerWorkingSetBytes": 101601280,
+          "BrokerPrivateBytes": 48586752
+        }
+      ],
+      "MemoryAtEnd": {
+        "ElapsedSeconds": 10,
+        "Phase": "Recording",
+        "DerivedRecords": 9593,
+        "JournaledRecords": 9812,
+        "ViewerWorkingSetBytes": 183652352,
+        "ViewerPrivateBytes": 109903872,
+        "ViewerManagedHeapBytes": 36096048,
+        "BrokerWorkingSetBytes": 101601280,
+        "BrokerPrivateBytes": 48586752
+      },
+      "Trend": [
+        {
+          "FromSecond": 0,
+          "Overviews": 8,
+          "DerivedRecordsAtEnd": 21656,
+          "Derivation": {
+            "Count": 8,
+            "P50Ms": 75,
+            "P95Ms": 572,
+            "P99Ms": 572,
+            "MaxMs": 572
+          },
+          "Projection": {
+            "Count": 8,
+            "P50Ms": 17,
+            "P95Ms": 35,
+            "P99Ms": 35,
+            "MaxMs": 35
+          },
+          "Records": 21656,
+          "EventToVisible": {
+            "Count": 21656,
+            "P50Ms": 512,
+            "P95Ms": 1191,
+            "P99Ms": 1295,
+            "MaxMs": 1344
+          },
+          "EventToPreview": {
+            "Count": 20555,
+            "P50Ms": 502,
+            "P95Ms": 739,
+            "P99Ms": 1219,
+            "MaxMs": 1221
+          },
+          "EventToExact": {
+            "Count": 21656,
+            "P50Ms": 2022,
+            "P95Ms": 2843,
+            "P99Ms": 3152,
+            "MaxMs": 3629
+          }
+        }
+      ]
+    },
+    {
+      "Run": 5,
+      "Valid": true,
+      "MeetsBudgets": true,
+      "FinalHeadline": "Session saved",
+      "FinalDetail": "The capture is closed. All published evidence was followed.",
+      "FailureReason": null,
+      "BoundOverrun": false,
+      "BrokerReadyMs": 335,
+      "PreparedMs": 747,
+      "StartedMs": 1064,
+      "FirstGenerationMs": 1917,
+      "FirstOverviewMs": 1924,
+      "PublicationIntervalMs": 2000,
+      "FirstOverviewAfterFirstDeliveredMs": 1052,
+      "OverviewsHandedOff": 8,
+      "ChunksFollowed": 9,
+      "LiveCounterReadings": 15,
+      "LastLiveCounters": {
+        "AdmittedRecords": 22999,
+        "ObservedRecords": 22999,
+        "ApplicationDrops": 0,
+        "ProviderReportedLoss": 0,
+        "ConsumerBufferLoss": 0,
+        "QueueDepth": 0,
+        "QueueCapacity": 65536
+      },
+      "Records": 23228,
+      "SessionBytes": 13002477,
+      "SessionManifests": 2,
+      "SessionManifestBytes": 11773,
+      "CheckpointBytes": 438283,
+      "OverviewBytes": 23569,
+      "ReopenProjectionMs": 23,
+      "ReopenSegmentsOpened": 0,
+      "EvidenceManifests": 2,
+      "EvidenceManifestBytes": 6580,
+      "RecordsWithoutJournalIndex": 0,
+      "RecordsFirstVisibleAfterStop": 0,
+      "RecordsWithNegativeDelay": 0,
+      "PreviewsHandedOff": 56,
+      "LargestUnbinnedPreviewRecords": 0,
+      "RecordsNeverPreviewed": 171,
+      "EventToVisible": {
+        "Count": 23228,
+        "P50Ms": 517,
+        "P95Ms": 734,
+        "P99Ms": 988,
+        "MaxMs": 1179
+      },
+      "EventToPreview": {
+        "Count": 23057,
+        "P50Ms": 516,
+        "P95Ms": 733,
+        "P99Ms": 988,
+        "MaxMs": 989
+      },
+      "EventToExact": {
+        "Count": 23228,
+        "P50Ms": 1863,
+        "P95Ms": 2933,
+        "P99Ms": 3216,
+        "MaxMs": 3293
+      },
+      "Derivation": {
+        "Count": 8,
+        "P50Ms": 115,
+        "P95Ms": 379,
+        "P99Ms": 379,
+        "MaxMs": 379
+      },
+      "Projection": {
+        "Count": 8,
+        "P50Ms": 14,
+        "P95Ms": 40,
+        "P99Ms": 40,
+        "MaxMs": 40
+      },
+      "LastOverviewDerivedRecords": 23228,
+      "LastOverviewDerivationMs": 379,
+      "LastOverviewProjectionMs": 14,
+      "Memory": [
+        {
+          "ElapsedSeconds": 10,
+          "Phase": "Recording",
+          "DerivedRecords": 15349,
+          "JournaledRecords": 16833,
+          "ViewerWorkingSetBytes": 195055616,
+          "ViewerPrivateBytes": 122597376,
+          "ViewerManagedHeapBytes": 78251360,
+          "BrokerWorkingSetBytes": 100777984,
+          "BrokerPrivateBytes": 47988736
+        }
+      ],
+      "MemoryAtEnd": {
+        "ElapsedSeconds": 10,
+        "Phase": "Recording",
+        "DerivedRecords": 15349,
+        "JournaledRecords": 16833,
+        "ViewerWorkingSetBytes": 195055616,
+        "ViewerPrivateBytes": 122597376,
+        "ViewerManagedHeapBytes": 78251360,
+        "BrokerWorkingSetBytes": 100777984,
+        "BrokerPrivateBytes": 47988736
+      },
+      "Trend": [
+        {
+          "FromSecond": 0,
+          "Overviews": 8,
+          "DerivedRecordsAtEnd": 23228,
+          "Derivation": {
+            "Count": 8,
+            "P50Ms": 115,
+            "P95Ms": 379,
+            "P99Ms": 379,
+            "MaxMs": 379
+          },
+          "Projection": {
+            "Count": 8,
+            "P50Ms": 14,
+            "P95Ms": 40,
+            "P99Ms": 40,
+            "MaxMs": 40
+          },
+          "Records": 23228,
+          "EventToVisible": {
+            "Count": 23228,
+            "P50Ms": 517,
+            "P95Ms": 734,
+            "P99Ms": 988,
+            "MaxMs": 1179
+          },
+          "EventToPreview": {
+            "Count": 23057,
+            "P50Ms": 516,
+            "P95Ms": 733,
+            "P99Ms": 988,
+            "MaxMs": 989
+          },
+          "EventToExact": {
+            "Count": 23228,
+            "P50Ms": 1863,
+            "P95Ms": 2933,
+            "P99Ms": 3216,
+            "MaxMs": 3293
+          }
+        }
+      ]
+    },
+    {
+      "Run": 6,
+      "Valid": true,
+      "MeetsBudgets": true,
+      "FinalHeadline": "Session saved",
+      "FinalDetail": "The capture is closed. All published evidence was followed.",
+      "FailureReason": null,
+      "BoundOverrun": false,
+      "BrokerReadyMs": 335,
+      "PreparedMs": 729,
+      "StartedMs": 1011,
+      "FirstGenerationMs": 1865,
+      "FirstOverviewMs": 1868,
+      "PublicationIntervalMs": 2000,
+      "FirstOverviewAfterFirstDeliveredMs": 1037,
+      "OverviewsHandedOff": 9,
+      "ChunksFollowed": 9,
+      "LiveCounterReadings": 15,
+      "LastLiveCounters": {
+        "AdmittedRecords": 18855,
+        "ObservedRecords": 18855,
+        "ApplicationDrops": 0,
+        "ProviderReportedLoss": 0,
+        "ConsumerBufferLoss": 0,
+        "QueueDepth": 0,
+        "QueueCapacity": 65536
+      },
+      "Records": 19296,
+      "SessionBytes": 10828943,
+      "SessionManifests": 2,
+      "SessionManifestBytes": 11804,
+      "CheckpointBytes": 364376,
+      "OverviewBytes": 19372,
+      "ReopenProjectionMs": 8,
+      "ReopenSegmentsOpened": 0,
+      "EvidenceManifests": 2,
+      "EvidenceManifestBytes": 6574,
+      "RecordsWithoutJournalIndex": 0,
+      "RecordsFirstVisibleAfterStop": 0,
+      "RecordsWithNegativeDelay": 0,
+      "PreviewsHandedOff": 54,
+      "LargestUnbinnedPreviewRecords": 0,
+      "RecordsNeverPreviewed": 63,
+      "EventToVisible": {
+        "Count": 19296,
+        "P50Ms": 577,
+        "P95Ms": 832,
+        "P99Ms": 981,
+        "MaxMs": 1005
+      },
+      "EventToPreview": {
+        "Count": 19233,
+        "P50Ms": 576,
+        "P95Ms": 832,
+        "P99Ms": 981,
+        "MaxMs": 1005
+      },
+      "EventToExact": {
+        "Count": 19296,
+        "P50Ms": 1500,
+        "P95Ms": 2609,
+        "P99Ms": 3166,
+        "MaxMs": 3167
+      },
+      "Derivation": {
+        "Count": 9,
+        "P50Ms": 79,
+        "P95Ms": 195,
+        "P99Ms": 195,
+        "MaxMs": 195
+      },
+      "Projection": {
+        "Count": 9,
+        "P50Ms": 14,
+        "P95Ms": 48,
+        "P99Ms": 48,
+        "MaxMs": 48
+      },
+      "LastOverviewDerivedRecords": 19296,
+      "LastOverviewDerivationMs": 195,
+      "LastOverviewProjectionMs": 21,
+      "Memory": [
+        {
+          "ElapsedSeconds": 10,
+          "Phase": "Recording",
+          "DerivedRecords": 9440,
+          "JournaledRecords": 9905,
+          "ViewerWorkingSetBytes": 203681792,
+          "ViewerPrivateBytes": 129273856,
+          "ViewerManagedHeapBytes": 79953336,
+          "BrokerWorkingSetBytes": 103641088,
+          "BrokerPrivateBytes": 51032064
+        }
+      ],
+      "MemoryAtEnd": {
+        "ElapsedSeconds": 10,
+        "Phase": "Recording",
+        "DerivedRecords": 9440,
+        "JournaledRecords": 9905,
+        "ViewerWorkingSetBytes": 203681792,
+        "ViewerPrivateBytes": 129273856,
+        "ViewerManagedHeapBytes": 79953336,
+        "BrokerWorkingSetBytes": 103641088,
+        "BrokerPrivateBytes": 51032064
+      },
+      "Trend": [
+        {
+          "FromSecond": 0,
+          "Overviews": 9,
+          "DerivedRecordsAtEnd": 19296,
+          "Derivation": {
+            "Count": 9,
+            "P50Ms": 79,
+            "P95Ms": 195,
+            "P99Ms": 195,
+            "MaxMs": 195
+          },
+          "Projection": {
+            "Count": 9,
+            "P50Ms": 14,
+            "P95Ms": 48,
+            "P99Ms": 48,
+            "MaxMs": 48
+          },
+          "Records": 19296,
+          "EventToVisible": {
+            "Count": 19296,
+            "P50Ms": 577,
+            "P95Ms": 832,
+            "P99Ms": 981,
+            "MaxMs": 1005
+          },
+          "EventToPreview": {
+            "Count": 19233,
+            "P50Ms": 576,
+            "P95Ms": 832,
+            "P99Ms": 981,
+            "MaxMs": 1005
+          },
+          "EventToExact": {
+            "Count": 19296,
+            "P50Ms": 1500,
+            "P95Ms": 2609,
+            "P99Ms": 3166,
+            "MaxMs": 3167
+          }
+        }
+      ]
+    }
+  ],
+  "LeakedSessions": [],
+  "Failure": null,
+  "Notes": [
+    "The Desktop\u0027s DesktopCaptureRunner runs unchanged except for three options: this tool as its broker (the production composition over a qualification root, never the production root), a session root in the output directory, and the capture\u0027s duration quota.",
+    "Stopped: the viewer stops the capture after the recording time, as the Stop button or closing the window does. The quota is 120 s or the recording time plus 60 s, whichever is longer.",
+    "Exact means the overview was projected and handed to the window; drawing it is not included. A record\u0027s exact delay is the QPC reading at hand-off of the first overview whose derived records include it, minus the record\u0027s own QPC reading.",
+    "Previewed means a live preview (broker-v1 \u00A75.9) holding the record was handed to the window: its capture-wide journal index lies in [journaled - counted, journaled) of that preview. Visible is whichever came first, preview or exact, and is what the event-to-visible budget is judged on (plan \u00A712, \u00A719.3\u0027s labelled preview). Schema v2 added the preview; v1\u0027s event-to-visible is v2\u0027s event-to-exact.",
+    "Schema v5 adds what the viewer publishes once the follow finishes, a derivation checkpoint and a persisted overview (derivation-checkpoint-v1, overview-index-v1), and what a fresh store opening the saved session reads before its first overview. It is measured in this process, whose derivations of the session are already made.",
+    "Schema v4 adds the manifests the derived session and the broker\u0027s evidence hold at the end, and their bytes: a writer removes superseded manifests (store-v1 \u00A79), so a long capture keeps a few, not one per publication.",
+    "Schema v3 adds bounded runs, memory samples every 10 s and 60-second trend windows: overviews by their hand-off time, records by their own acquisition time, both from the first recording update.",
+    "Memory: the viewer is this process, which runs the Desktop\u0027s capture runner (follower, derived session and overview projection) and keeps only compact measurements of each update, never an overview. It excludes the window, its workspace and drawing. The broker is this tool\u0027s serve mode, a separate process. The managed heap is its size after the most recent collection.",
+    "The harness is elevated, so the broker launch shows no approval prompt; the approval step of the ordinary-integrity first run is not measured here.",
+    "Traffic is one paced loopback TCP stream (1 KiB every 20 ms) plus a new connection each second, on top of whatever else the machine did during the run."
+  ]
+}

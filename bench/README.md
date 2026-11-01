@@ -167,6 +167,12 @@ dotnet run --project tools/InterCat.BrokerQualification/InterCat.BrokerQualifica
 Only `report.json` is committed, as `bench/results/broker-qualification-<started UTC>/report.json`; the
 qualification root holds machine-wide journals and stays local (P16).
 
+`cli-stop --output <new scratch directory>` presses Ctrl+C in `icat capture`'s own console, as a person at it
+does, at eight moments of a real capture through the tool's broker: four while the capture's follow publishes,
+four at stated times after its first generation. It passes when every press stopped the capture by request and
+finished its session from every chunk published, leaving no follow ticket (revision 864). Build `src/InterCat.Cli`
+first. Only `report.json` is committed, as `bench/results/cli-stop-<started UTC>/report.json`.
+
 `impact --output <new scratch directory> [--triplets <1-15>]` measures the broker's capture impact at its
 compiled cadence: the seeded TCP workload with no capture, a broker `OnStop` capture and a broker `Live`
 capture, rotating order within each triplet. It reports machine CPU and the broker process's own CPU,

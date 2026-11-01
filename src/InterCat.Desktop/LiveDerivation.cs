@@ -76,11 +76,23 @@ internal sealed class LiveDerivation(
     /// <summary>The session's rolling retention: its window, its releases, the pin holding it and why it stopped; null when it keeps every record.</summary>
     public RollingRetention? Rolling => rolling;
 
-    /// <summary>One step on the thread pool, cancelled by <paramref name="cancellationToken"/> or by <see cref="HaltAsync"/>.</summary>
+    /// <summary>
+    /// One step on the thread pool, cancelled by <paramref name="cancellationToken"/> or by <see cref="HaltAsync"/>. A step
+    /// that token cancels ends cancelled wherever it was, as one cancelled before it began does: that is how the runner
+    /// tells a stop request from a failure.
+    /// </summary>
     public Task<LiveDerivationStep> StepAsync(CancellationToken cancellationToken) => Task.Run(() =>
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, halt.Token);
-        return Step(linked.Token);
+        try
+        {
+            return Step(linked.Token);
+        }
+        catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+        {
+            // Thrown for the linked token, it would fault the step: only the token the step was run under cancels it.
+            throw new OperationCanceledException(exception.Message, exception, cancellationToken);
+        }
     }, cancellationToken);
 
     /// <summary>Cancels a step still running and waits for it, so nothing uses the stores once the runner has returned.</summary>
@@ -149,26 +161,30 @@ internal sealed class LiveDerivation(
             return new(step, null, null, null, derivation, TimeSpan.Zero, null, kept);
         }
 
-        shownGeneration = current.Generation;
         TimeSpan generationAt = elapsed.Elapsed;
+        LiveDerivationStep shown;
         try
         {
             long projectionStarted = Stopwatch.GetTimestamp();
             SessionOverviewBundle overview = SessionOverviewProjector.Project(
                 derived, policy?.Invoke() ?? EvidencePolicy.IncludeCorrelated, cancellationToken: cancellationToken);
-            return new(step, current.Generation, generationAt, overview, derivation,
+            shown = new(step, current.Generation, generationAt, overview, derivation,
                 Stopwatch.GetElapsedTime(projectionStarted), null, kept);
         }
         catch (InvalidOperationException exception)
         {
-            return new(step, current.Generation, generationAt, null, derivation, TimeSpan.Zero, exception.Message, kept);
+            shown = new(step, current.Generation, generationAt, null, derivation, TimeSpan.Zero, exception.Message, kept);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
         {
             // The follow published the generation; only its view could not be read just now. The capture goes on, and the
             // last view stays until a later generation's is read.
-            return new(step, current.Generation, generationAt, null, derivation, TimeSpan.Zero, exception.Message, kept,
+            shown = new(step, current.Generation, generationAt, null, derivation, TimeSpan.Zero, exception.Message, kept,
                 OverviewUnread: true);
         }
+
+        // A projection cancelled before it said anything leaves its generation for the next step to show.
+        shownGeneration = current.Generation;
+        return shown;
     }
 }

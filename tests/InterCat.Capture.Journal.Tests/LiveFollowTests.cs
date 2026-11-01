@@ -84,8 +84,13 @@ public sealed class LiveFollowTests
                 "A stop does not wait out the pause.");
         }
 
-        // What was mirrored before it stopped stays.
+        // What was mirrored before it stopped stays, and the same follow goes on from it to the end, as a follow stopped by
+        // the stop request goes on deriving what the capture published.
         Assert.Equal(1, LiveSessionFollower.Progress(derived.Current).Chunks);
+        FollowStep step = follow.CatchUp();
+        Assert.True(step.Finished);
+        Assert.Equal((chunks.Length - 1, chunks.Length, 4L), (step.MirroredChunks, step.DerivedChunks, step.DerivedRecords));
+        Assert.Equal(4, JournalRederivation.Verify(derived).ObservationRows);
     }
 
     [Fact(DisplayName = "§9: a failure that is not about reading or writing a file ends the follow at once, untried again")]

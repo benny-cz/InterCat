@@ -1,0 +1,215 @@
+{
+  "Schema": "intercat.cli-stop.v1",
+  "StartedUtc": "2026-11-01T20:22:16.3743574+00:00",
+  "FinishedUtc": "2026-11-01T20:24:19.8886384+00:00",
+  "Environment": {
+    "OperatingSystem": "Microsoft Windows 10.0.26220",
+    "BuildId": "10.0.26220.0-x64",
+    "Architecture": "X64",
+    "IsSupportedBuild": true,
+    "IsElevated": true,
+    "MachineScope": "local machine",
+    "Support": {
+      "Tier": 1,
+      "ReleaseName": "Windows 11 25H2 x64",
+      "IsPrerelease": true,
+      "IsSupported": true
+    }
+  },
+  "Cli": "E:\\InterCat\\src\\InterCat.Cli\\bin\\Release\\net10.0\\InterCat.Cli.exe",
+  "Notes": [
+    "Each run is \u0060icat capture \u003Csession\u003E --duration 60 --broker \u003Cthis tool\u003E --json\u0060, started with a console of its own and no window, its broker this tool\u0027s serve mode over a qualification root beside the tool, with one paced loopback TCP stream (1 KiB every 20 ms) and a new connection each second while it records.",
+    "Ctrl\u002BC is pressed in that console by a child of this tool, which joins it as the capture starts, ignores the event itself, and presses when asked: icat sees what a person pressing Ctrl\u002BC at it would make it see.",
+    "A run that presses at a publication waits the stated time after the session\u0027s first manifest and presses as soon as the session\u0027s folder holds a staging lease (store-v1 \u00A74), which the follow\u0027s writer holds while it publishes. The other runs press the stated time after the first manifest, in another part of a pass.",
+    "A run passes when icat requested the stop, finished the session from every chunk the capture published, exited 0, and left no follow ticket: nothing for a later launch to finish."
+  ],
+  "Runs": [
+    {
+      "Run": 1,
+      "CtrlCAfterFirstGenerationMs": 0,
+      "AtPublication": true,
+      "PressedDuringPublication": true,
+      "CtrlCPressed": true,
+      "CtrlCToExitMs": 1566,
+      "ExitCode": 0,
+      "StopRequested": true,
+      "State": "Closed",
+      "Finished": true,
+      "EvidenceChunks": 3,
+      "DerivedChunks": 3,
+      "DerivedRecords": 3243,
+      "TicketLeft": false,
+      "Said": [
+        "! Cancelling. Any owned capture session is stopped before exit.",
+        "! Stopping the capture; deriving what it published.",
+        "\u002B Derivation checkpoint of generation 4 published as generation 5: 363,1 KiB, 0,3 s."
+      ],
+      "Passed": true,
+      "FailureReason": null
+    },
+    {
+      "Run": 2,
+      "CtrlCAfterFirstGenerationMs": 500,
+      "AtPublication": true,
+      "PressedDuringPublication": true,
+      "CtrlCPressed": true,
+      "CtrlCToExitMs": 1612,
+      "ExitCode": 0,
+      "StopRequested": true,
+      "State": "Closed",
+      "Finished": true,
+      "EvidenceChunks": 3,
+      "DerivedChunks": 3,
+      "DerivedRecords": 3959,
+      "TicketLeft": false,
+      "Said": [
+        "! Cancelling. Any owned capture session is stopped before exit.",
+        "! Stopping the capture; deriving what it published.",
+        "\u002B Derivation checkpoint of generation 4 published as generation 5: 452,7 KiB, 0,4 s."
+      ],
+      "Passed": true,
+      "FailureReason": null
+    },
+    {
+      "Run": 3,
+      "CtrlCAfterFirstGenerationMs": 1000,
+      "AtPublication": true,
+      "PressedDuringPublication": true,
+      "CtrlCPressed": true,
+      "CtrlCToExitMs": 1543,
+      "ExitCode": 0,
+      "StopRequested": true,
+      "State": "Closed",
+      "Finished": true,
+      "EvidenceChunks": 3,
+      "DerivedChunks": 3,
+      "DerivedRecords": 2836,
+      "TicketLeft": false,
+      "Said": [
+        "! Cancelling. Any owned capture session is stopped before exit.",
+        "! Stopping the capture; deriving what it published.",
+        "\u002B Derivation checkpoint of generation 4 published as generation 5: 403,6 KiB, 0,4 s."
+      ],
+      "Passed": true,
+      "FailureReason": null
+    },
+    {
+      "Run": 4,
+      "CtrlCAfterFirstGenerationMs": 1500,
+      "AtPublication": true,
+      "PressedDuringPublication": true,
+      "CtrlCPressed": true,
+      "CtrlCToExitMs": 1450,
+      "ExitCode": 0,
+      "StopRequested": true,
+      "State": "Closed",
+      "Finished": true,
+      "EvidenceChunks": 3,
+      "DerivedChunks": 3,
+      "DerivedRecords": 3664,
+      "TicketLeft": false,
+      "Said": [
+        "! Cancelling. Any owned capture session is stopped before exit.",
+        "! Stopping the capture; deriving what it published.",
+        "\u002B Derivation checkpoint of generation 4 published as generation 5: 428,6 KiB, 0,3 s."
+      ],
+      "Passed": true,
+      "FailureReason": null
+    },
+    {
+      "Run": 5,
+      "CtrlCAfterFirstGenerationMs": 0,
+      "AtPublication": false,
+      "PressedDuringPublication": false,
+      "CtrlCPressed": true,
+      "CtrlCToExitMs": 1379,
+      "ExitCode": 0,
+      "StopRequested": true,
+      "State": "Closed",
+      "Finished": true,
+      "EvidenceChunks": 2,
+      "DerivedChunks": 2,
+      "DerivedRecords": 2413,
+      "TicketLeft": false,
+      "Said": [
+        "! Cancelling. Any owned capture session is stopped before exit.",
+        "! Stopping the capture; deriving what it published.",
+        "\u002B Derivation checkpoint of generation 3 published as generation 4: 356,6 KiB, 0,4 s."
+      ],
+      "Passed": true,
+      "FailureReason": null
+    },
+    {
+      "Run": 6,
+      "CtrlCAfterFirstGenerationMs": 250,
+      "AtPublication": false,
+      "PressedDuringPublication": false,
+      "CtrlCPressed": true,
+      "CtrlCToExitMs": 1489,
+      "ExitCode": 0,
+      "StopRequested": true,
+      "State": "Closed",
+      "Finished": true,
+      "EvidenceChunks": 2,
+      "DerivedChunks": 2,
+      "DerivedRecords": 3877,
+      "TicketLeft": false,
+      "Said": [
+        "! Cancelling. Any owned capture session is stopped before exit.",
+        "! Stopping the capture; deriving what it published.",
+        "\u002B Derivation checkpoint of generation 3 published as generation 4: 525,1 KiB, 0,4 s."
+      ],
+      "Passed": true,
+      "FailureReason": null
+    },
+    {
+      "Run": 7,
+      "CtrlCAfterFirstGenerationMs": 500,
+      "AtPublication": false,
+      "PressedDuringPublication": false,
+      "CtrlCPressed": true,
+      "CtrlCToExitMs": 1348,
+      "ExitCode": 0,
+      "StopRequested": true,
+      "State": "Closed",
+      "Finished": true,
+      "EvidenceChunks": 2,
+      "DerivedChunks": 2,
+      "DerivedRecords": 2035,
+      "TicketLeft": false,
+      "Said": [
+        "! Cancelling. Any owned capture session is stopped before exit.",
+        "! Stopping the capture; deriving what it published.",
+        "\u002B Derivation checkpoint of generation 3 published as generation 4: 385 KiB, 0,3 s."
+      ],
+      "Passed": true,
+      "FailureReason": null
+    },
+    {
+      "Run": 8,
+      "CtrlCAfterFirstGenerationMs": 1000,
+      "AtPublication": false,
+      "PressedDuringPublication": false,
+      "CtrlCPressed": true,
+      "CtrlCToExitMs": 1461,
+      "ExitCode": 0,
+      "StopRequested": true,
+      "State": "Closed",
+      "Finished": true,
+      "EvidenceChunks": 2,
+      "DerivedChunks": 2,
+      "DerivedRecords": 4955,
+      "TicketLeft": false,
+      "Said": [
+        "! Cancelling. Any owned capture session is stopped before exit.",
+        "! Stopping the capture; deriving what it published.",
+        "\u002B Derivation checkpoint of generation 3 published as generation 4: 498,9 KiB, 0,4 s."
+      ],
+      "Passed": true,
+      "FailureReason": null
+    }
+  ],
+  "LeakedSessions": [],
+  "Passed": true,
+  "Failure": null
+}

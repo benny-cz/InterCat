@@ -372,92 +372,93 @@ internal static class CaptureCommand
                 }
             }
 
-            CancellationToken work = stopRequested ? finishing.Token : cancellationToken;
-            if (follower is null)
+            try
             {
-                SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidencePath));
-                if (evidence.Current is { } source)
+                CancellationToken work = stopRequested ? finishing.Token : cancellationToken;
+                if (follower is null)
                 {
-                    Directory.CreateDirectory(sessionPath);
-                    derived = SessionStore.Open(LocalOwnedDirectory.Open(sessionPath), source.SessionId, source.SourceIdentity);
-                    SessionStore into = derived;
-
-                    // A moment when a file cannot be read or written - another program holding one just written - is
-                    // ridden out rather than ending the capture; each is said, and one that outlasts the follow's pauses
-                    // ends it as before.
-                    follower = new LiveFollow(
-                        token => LiveSessionFollower.Open(evidence, into, indexer: LiveCheckpoints.Instance, cancellationToken: token),
-                        failed: exception => ConsoleUi.Warn("Deriving paused: " + exception.Message + " Trying again."));
-                }
-            }
-
-            if (follower is not null)
-            {
-                FollowStep step = follower.CatchUp(cancellationToken: work);
-                if (step.MirroredChunks > 0 && !json)
-                {
-                    ConsoleUi.Progress(
-                        $"{FollowText.Records(step.DerivedRecords, CultureInfo.CurrentCulture)} derived from "
-                        + $"{FollowText.Chunks(step.DerivedChunks, CultureInfo.CurrentCulture)}, generation "
-                        + $"{ConsoleUi.Count(step.DerivedGeneration ?? 0)}. "
-                        + Growth(derived!, step.DerivedRecords, stopRequested ? null : limits, evidencePath, sessionPath));
-                }
-
-                // Between two mirrors, by the follow's own writer: the only place a release may be published (ADR-044).
-                // A session that outgrew what a pin keeping it past its window allows stops its capture, rather than
-                // release the pinned records or grow on.
-                if (RollingFollow.Step(rolling, derived!, new(step.MirroredChunks), json, work) is { } pinned && !stopRequested)
-                {
-                    stopRequested = true;
-                    finishing.CancelAfter(FinishAfterStop);
-                    ConsoleUi.Warn("Stopping the capture; deriving what it published. " + pinned + " "
-                        + RollingFollow.GoOn(sessionPath));
-                    if (await client.SendAsync(new BrokerStopCaptureRequest(captureId, Guid.NewGuid()), finishing.Token)
-                            .ConfigureAwait(false) is BrokerStopCaptureResponse { FailureReason: { } refused })
+                    SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidencePath));
+                    if (evidence.Current is { } source)
                     {
-                        ConsoleUi.Warn(refused);
+                        Directory.CreateDirectory(sessionPath);
+                        derived = SessionStore.Open(LocalOwnedDirectory.Open(sessionPath), source.SessionId, source.SourceIdentity);
+                        SessionStore into = derived;
+
+                        // A moment when a file cannot be read or written - another program holding one just written - is
+                        // ridden out rather than ending the capture; each is said, and one that outlasts the follow's pauses
+                        // ends it as before.
+                        follower = new LiveFollow(
+                            token => LiveSessionFollower.Open(evidence, into, indexer: LiveCheckpoints.Instance, cancellationToken: token),
+                            failed: exception => ConsoleUi.Warn("Deriving paused: " + exception.Message + " Trying again."));
                     }
                 }
 
-                last = step;
-            }
-
-            BrokerCaptureStatusResponse status = await StatusAsync(client, captureId, work).ConfigureAwait(false);
-            if (status.State == CaptureLifecycle.Closed)
-            {
-                // A closed capture publishes nothing more. One further pass after seeing it closed derives whatever it
-                // published last; an interrupted capture never proves finality, so closure, not the marker, ends this.
-                if (settled)
+                if (follower is not null)
                 {
-                    return (last, status, derived);
+                    FollowStep step = follower.CatchUp(cancellationToken: work);
+                    if (step.MirroredChunks > 0 && !json)
+                    {
+                        ConsoleUi.Progress(
+                            $"{FollowText.Records(step.DerivedRecords, CultureInfo.CurrentCulture)} derived from "
+                            + $"{FollowText.Chunks(step.DerivedChunks, CultureInfo.CurrentCulture)}, generation "
+                            + $"{ConsoleUi.Count(step.DerivedGeneration ?? 0)}. "
+                            + Growth(derived!, step.DerivedRecords, stopRequested ? null : limits, evidencePath, sessionPath));
+                    }
+
+                    // Between two mirrors, by the follow's own writer: the only place a release may be published (ADR-044).
+                    // A session that outgrew what a pin keeping it past its window allows stops its capture, rather than
+                    // release the pinned records or grow on.
+                    if (RollingFollow.Step(rolling, derived!, new(step.MirroredChunks), json, work) is { } pinned && !stopRequested)
+                    {
+                        stopRequested = true;
+                        finishing.CancelAfter(FinishAfterStop);
+                        ConsoleUi.Warn("Stopping the capture; deriving what it published. " + pinned + " "
+                            + RollingFollow.GoOn(sessionPath));
+                        if (await client.SendAsync(new BrokerStopCaptureRequest(captureId, Guid.NewGuid()), finishing.Token)
+                                .ConfigureAwait(false) is BrokerStopCaptureResponse { FailureReason: { } refused })
+                        {
+                            ConsoleUi.Warn(refused);
+                        }
+                    }
+
+                    last = step;
                 }
 
-                settled = true;
-                continue;
-            }
-
-            if (!stopRequested && DateTimeOffset.UtcNow >= nextRenewal)
-            {
-                // The ticket keeps the lease's new expiry, which is how a later finish judges whether the capture can
-                // still be recording.
-                // A capture that keeps a window says what its session gave up, which the broker then releases (ADR-048).
-                long? gaveUp = rolling is null ? null : last?.ReleasedChunks;
-                if (await client.SendAsync(new BrokerRenewOwnerLeaseRequest(captureId, gaveUp), cancellationToken).ConfigureAwait(false)
-                    is BrokerRenewOwnerLeaseResponse { LeaseExpiresAtUtc: { } expires })
+                BrokerCaptureStatusResponse status = await StatusAsync(client, captureId, work).ConfigureAwait(false);
+                if (status.State == CaptureLifecycle.Closed)
                 {
-                    ticket?.Renew(expires);
+                    // A closed capture publishes nothing more. One further pass after seeing it closed derives whatever it
+                    // published last; an interrupted capture never proves finality, so closure, not the marker, ends this.
+                    if (settled)
+                    {
+                        return (last, status, derived);
+                    }
+
+                    settled = true;
+                    continue;
                 }
 
-                nextRenewal = DateTimeOffset.UtcNow + LeaseRenewal;
-            }
+                if (!stopRequested && DateTimeOffset.UtcNow >= nextRenewal)
+                {
+                    // The ticket keeps the lease's new expiry, which is how a later finish judges whether the capture can
+                    // still be recording.
+                    // A capture that keeps a window says what its session gave up, which the broker then releases (ADR-048).
+                    long? gaveUp = rolling is null ? null : last?.ReleasedChunks;
+                    if (await client.SendAsync(new BrokerRenewOwnerLeaseRequest(captureId, gaveUp), cancellationToken).ConfigureAwait(false)
+                        is BrokerRenewOwnerLeaseResponse { LeaseExpiresAtUtc: { } expires })
+                    {
+                        ticket?.Renew(expires);
+                    }
 
-            try
-            {
+                    nextRenewal = DateTimeOffset.UtcNow + LeaseRenewal;
+                }
+
                 await Task.Delay(Poll, work).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (!stopRequested && cancellationToken.IsCancellationRequested)
             {
-                // Ctrl+C: the next pass requests the stop and keeps deriving.
+                // Ctrl+C, wherever in the pass it came - deriving, reading status, renewing the lease or waiting: the
+                // next pass requests the stop and keeps deriving what the capture published.
             }
         }
     }

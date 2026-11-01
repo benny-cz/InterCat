@@ -754,6 +754,8 @@ Revision 862 has `icat record` hold its session as a follow does, so a command t
 
 Revision 863 qualifies the broker again with real ETW on Windows, the first time since the container's revisions changed it.
 
+Revision 864 has Stop and Ctrl+C keep a live capture's session wherever in its follow's pass they land, and qualifies `icat capture`'s Ctrl+C on real ETW.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2702,3 +2704,26 @@ Windows capture beneath it, in a container where none of them could run. All fiv
 code: a clean stop, a broker killed mid-capture whose restart reclaimed its one orphaned session and kept its published
 prefix, the launcher, a capture through `icat capture`, and a client that abandoned its capture; no session was left
 running. Only the report is kept, in `bench/results/broker-qualification-20261101T185750Z`.
+
+Revision 864 fixes what the first-feedback qualification found when it ran again on real ETW, on revision 863's code:
+its first run ended "Capture interrupted" when it pressed Stop as the window's button does, where the session should
+have been saved. Explore now records many times what it did in September, mostly RPC - 41,150 records in that run's
+15 s, where September's held 1,961-2,968 - and a follow step was at work for up to 0.9 s of each 2-s publication; a step the stop cancelled ended faulted, its work stopped through a token
+linked to the stop, and the runner, which skips only a cancelled step and derives on, took it for a failure. A step the
+stop request cancels now ends cancelled wherever it was, and a generation whose view it cut short is the next step's
+to show. `icat capture` had the same gap wider: it took Ctrl+C as a stop request only while it waited between passes,
+so one pressed while it derived, read status or renewed the lease ended it "Cancelled before a result was published",
+the capture left recording to its lease and a ticket for `icat follow`; revision 85, which made the command, had said
+its Ctrl+C path was implemented but not yet exercised by an automated test. And a request a stop cancelled once it was
+written left its answer in the pipe, which the stop request then read as its own and refused, while a cancellation could
+cut a frame short: `WindowsBrokerPipeClient` now lets each request and its answer cross whole, and waits out an answer
+still owed before it writes the next (broker-v1 §5.6). A new qualification, `cli-stop`, presses Ctrl+C in `icat
+capture`'s own console at eight moments of a real capture, four while its follow publishes: revision 863's build lost
+six of the eight presses, all four at a publication, and this revision's kept all eight
+(`bench/results/cli-stop-20261101T202216Z`). Measured again on this revision, six stopped first-feedback runs each saved
+their session at event-to-visible p95 0.73-1.19 s, the crashed viewer's session was finished whole, and the broker
+passed all five scenarios over the changed client. The bounded 10-minute capture, now 663,583-770,639 records a run,
+saved whole twice and met every budget, and once ended partial: the broker's final publication could not replace its
+evidence's pointer, which InterCat's readers open without letting it be replaced, and the recorder tries no publication
+again - the next slice's. The viewer's managed heap grew with what it derived, to 921 MiB at 769,844 records, from
+75 MiB at 127,409 in September; a run under a heap limit will say how much of it is live.
