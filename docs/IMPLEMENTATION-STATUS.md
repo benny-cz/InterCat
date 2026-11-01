@@ -134,6 +134,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 867 — what the checkpoint of a finished 10-minute capture holds when it runs out of memory:**
+  - Revision 866's viewer ran out of memory under a 512 MiB heap limit publishing its session's derivation
+    checkpoint. That session, all its chunks followed and its checkpoint missing, is a reproduction in seconds:
+    `icat checkpoint` on a copy publishes under 512 MiB, peaking at 531 MiB private, and runs out of memory under
+    384 MiB and 256 MiB, in `RpcCallIndex.Walk` growing its call drafts, as the viewer did.
+  - A heap dump the runtime wrote on that failure held 143.5 MiB of the reader cache's columns, 59.4 MiB of call
+    records, 38.2 MiB of call drafts failing to double, 24.8 MiB of the source-field map still held through the walk,
+    and some 20 MiB of orders and bindings. The work it calls for is in Open work, item 1; nothing in InterCat changed.
+
 - **Revision 866 — a cached segment reader no longer keeps each derivation it was asked under:**
   - Revisions 864 and 865 measured the viewer's managed heap at 0.6-1.5 GiB at the end of a 10-minute Explore capture.
     Heap dumps of the viewer during one, on revision 865's code, found most of it dead: at 560 s the heap held 577 MB,
@@ -3368,6 +3377,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
      Decided in revision 152: a viewer no longer hashes a session before its first view (store-v1 §6). It hashes
      afterwards, and falls back and says so when a file changed. The command line and writers still hash at open.
+   - **Next, from revisions 866 and 867:** a finished capture's derivation checkpoint pairs every RPC call of the
+     session in full, since the live follow pairs none, and at today's Explore volume that does not fit §12's 512 MiB
+     analysis budget beside the reader cache. Revision 867 measured it on a saved 10-minute session of some 800,000
+     records, mostly RPC, that ran out of memory before its checkpoint: `icat checkpoint` publishes it under a 512 MiB
+     heap limit and runs out of memory under 384 MiB, where the heap held 143.5 MiB of the reader cache's columns,
+     59.4 MiB of call records (about 96 bytes each), 38.2 MiB of call drafts failing to double, 24.8 MiB of the
+     source-field map still held through the walk, and some 20 MiB of orders and bindings; placing the calls then
+     builds a second whole entries array beside the drafts. Ways to bound it, each to be proven against
+     `RpcCallIndex.Derive`'s identical result (I14) on real sessions: let the field map go before the walk, size the
+     drafts without doubling, place the calls in the drafts' own array, or have the live follow extend the calls as it
+     goes so that the checkpoint pairs only the last chunk's.
 2. Run a real screen reader (Narrator and NVDA) over the Desktop on Windows. Revision 131 audited the automation tree
    headlessly; it cannot hear what a screen reader says. Revision 214's live pass found that Avalonia's menu items
    expose no UI Automation Invoke pattern: the keyboard reaches them, but voice control may not, so check it there. A

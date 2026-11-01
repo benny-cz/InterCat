@@ -760,6 +760,8 @@ Revision 865 has a store's publication wait out a reader holding its pointer, wh
 
 Revision 866 has a cached segment reader hold the derivation its derived values came from only weakly, so a live capture's readers no longer keep every superseded process index.
 
+Revision 867 measures what a finished 10-minute capture's derivation checkpoint holds when it runs out of memory.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2757,3 +2759,14 @@ is not the reader cache fell from 107 to 61 MiB. Under a 512 MiB heap limit, tho
 minutes and then ran out of memory publishing the session's derivation checkpoint, which pairs every RPC call of the
 session in full because the live follow paired none; under a 1 GiB limit the same capture saved whole and met every
 budget. That is the next slice's.
+
+Revision 867 measures it. The session that viewer left - every chunk followed, its checkpoint missing - reproduces the
+failure in seconds: `icat checkpoint` on a copy publishes under a 512 MiB heap limit and runs out of memory under
+384 MiB, in `RpcCallIndex.Walk` growing its call drafts, as the viewer did. A heap dump the runtime wrote on that
+failure held 143.5 MiB of the reader cache's columns, 59.4 MiB of call records at about 96 bytes each, 38.2 MiB of call
+drafts failing to double, 24.8 MiB of the source-field map still held through the walk, and some 20 MiB of orders and
+bindings; placing the calls would then have built a second whole entries array beside the drafts. The pairing's full
+pass therefore needs some 200 MB at 650,000 RPC records on top of whatever the reader cache holds. Letting the field map
+go before the walk, sizing the drafts without doubling and placing the calls in the drafts' own array would each take a
+part of that; having the live follow extend the calls as it goes would leave the checkpoint only the last chunk's to
+pair. Each must give `RpcCallIndex.Derive`'s identical result (I14), which real sessions' digests can prove.
