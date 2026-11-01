@@ -1766,16 +1766,24 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         bool mustShow,
         bool crowding = true)
     {
-        if (FindLabelBox(pane, request.Point, clearance, request.Whole.Width, request.Whole.Height, request.Key, points, radii,
-                avoid, heads, mustShow, crowding) is { } whole)
-        {
-            return (whole, true);
-        }
+        // Other hosts' name and an aggregate's, the compaction's disclosure, are set farther out only where no nearer slot is
+        // left, so a name that had a slot keeps it (§6.3); a process's is not, as one farther out takes the room crowded
+        // names nearer their own nodes would stand in.
+        return Within(LabelRings) ?? (request.Rank <= 1 ? Within(FartherLabelRings) : null);
 
-        return request.Whole == request.Alone
-            ? null
-            : FindLabelBox(pane, request.Point, clearance, request.Alone.Width, request.Alone.Height, request.Key, points, radii,
-                avoid, heads, mustShow, crowding) is { } alone ? (alone, false) : null;
+        (Rect Box, bool Whole)? Within(double[] ladder)
+        {
+            if (FindLabelBox(pane, request.Point, clearance, request.Whole.Width, request.Whole.Height, request.Key, points, radii,
+                    avoid, heads, mustShow, crowding, ladder) is { } whole)
+            {
+                return (whole, true);
+            }
+
+            return request.Whole == request.Alone
+                ? null
+                : FindLabelBox(pane, request.Point, clearance, request.Alone.Width, request.Alone.Height, request.Key, points,
+                    radii, avoid, heads, mustShow, crowding, ladder) is { } alone ? (alone, false) : null;
+        }
     }
 
     private static void Keep(List<LabelPlacement> placed, List<Rect> boxes, LabelPlacement label)
@@ -1973,6 +1981,13 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private static readonly double[] LabelRings = [0, 18, 42];
 
     /// <summary>
+    /// Farther rings an aggregate's or Other hosts' name is set on, a leader tying it to its node, where none of the nearer
+    /// slots is left: their names are the compaction's disclosure (§6.3), which the smallest window, its names wider in
+    /// Segoe UI, had left unsaid for one aggregate of a busy machine.
+    /// </summary>
+    private static readonly double[] FartherLabelRings = [66, 90];
+
+    /// <summary>
     /// Where a label block fits beside its node. The first ring is the familiar below/above/right/left placement; two
     /// wider rings and diagonal positions let a busy hub still be named when every immediate side is occupied by peers.
     /// A clear label never hides another node or label, nor an arrowhead where a slot clear of every head is left, and
@@ -1993,11 +2008,12 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         IReadOnlyList<Rect> placed,
         IReadOnlyList<Rect> heads,
         bool mustShow,
-        bool crowding = true)
+        bool crowding = true,
+        double[]? ladder = null)
     {
         const double Gap = 3;
         const double SideBias = 3;
-        ReadOnlySpan<double> rings = LabelRings;
+        ReadOnlySpan<double> rings = ladder ?? LabelRings;
         Span<Rect> candidates = stackalloc Rect[rings.Length * 8];
         int candidateCount = 0;
         foreach (double ring in rings)
@@ -2309,6 +2325,11 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         refreshHover = RefreshHover;
         AutomationProperties.SetName(this, SpokenName);
         DoubleTapped += OpenGroup;
+
+        // A name's letters are smoothed in grey, as every platform draws them: Windows smooths them a colour channel at a
+        // time, which fringed each letter of a name over its halo with an edge's hues - a name's own pixels read as an
+        // edge running against it - and drew its halo's offset copies fringed in turn (§6.3).
+        RenderOptions.SetTextRenderingMode(this, TextRenderingMode.Antialias);
 
         // A banner or a resized pane moves the graph under a pointer that stays where it is.
         EffectiveViewportChanged += (_, _) => RefreshHover();

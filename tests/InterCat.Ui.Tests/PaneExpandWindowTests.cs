@@ -54,9 +54,10 @@ public sealed class PaneExpandWindowTests
         ToggleButton timelineExpand = window.GetControl<ToggleButton>("TimelineExpandToggle");
 
         // The two share the column, and the person drags the split to give the graph two thirds of it.
+        // Equal to a device pixel: two equal shares of a column of an odd height are rounded to whole pixels apart.
         Render(window);
         Assert.Null(window.ExpandedPane);
-        Assert.Equal(graphPane.Bounds.Height, timelinePane.Bounds.Height, 1);
+        Assert.Equal(graphPane.Bounds.Height, timelinePane.Bounds.Height, tolerance: 1);
         panes.RowDefinitions[0].Height = new GridLength(2, GridUnitType.Star);
         Render(window);
         double left = graphPane.Bounds.Height;

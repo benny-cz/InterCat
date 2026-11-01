@@ -748,6 +748,8 @@ Revision 859 measures WinINet's responses in the gzip content coding, and sets s
 
 Revision 860 runs the suite on Windows as it runs in a container: every test assembly in the invariant culture, each multiline pattern taking Windows' line ends, and what it found on Windows alone fixed.
 
+Revision 861 lays the window out for Segoe UI, the font Windows draws it in, which the container that tuned it does not have.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2662,3 +2664,19 @@ the broker elevated and here could not start it; each now gives the window a run
 capture cannot run. A broker test that slept two seconds for a one-second capture now waits for it to close, and a window
 test's scratch folder is let go as the others' are. Layout tests that measure text in Segoe UI, which the container does
 not have, remain.
+
+Revision 861 lays the window out for the font Windows draws it in. The window names Segoe UI, which a container does
+not have, so every layout tuned there was tuned in a fallback font whose lines are shorter, and on Windows eleven window
+tests failed by a pixel to 24. Four were the window's own: the rail's gaps, kept to what lets the ranked list keep six
+whole rows at its first size and two beside an unscrolled card at its smallest, gave up 14 pixels, the brand's 26 to
+16 and the card's 12 to 8; the investigation window, whose sessions fell 21 pixels short of two whole rows at its
+smallest, is 680 at the least, from 650; and the inspector's account of a selection, muted text beneath its title, is
+13 pixels rather than the theme's 14, so Other hosts' leaves its second host above the fold at the window's first size.
+Two were the graph's: its names were smoothed by colour channel on Windows, whose fringes in an edge's hues lay beside
+their letters over the halo, and are smoothed in grey as every platform does; and at the smallest window one
+aggregate's name found no slot beside its node, and Other hosts' and an aggregate's are now set on two rings farther
+out, tied by a leader, where none is left, which lets every name that had a slot keep it. Set farther out too, a
+program's first name took the room crowded names nearer their nodes stood in, so it is not; a heavy machine leaves four
+of its nineteen programs unnamed in Segoe UI, from three, where the bug before programs were ranked left eight. The
+rest were the tests': two equal panes of an odd height are a pixel apart, and a path that fits the inspector on one
+line in Segoe UI cannot show how one that does not is parted, so the test names its own, longer.

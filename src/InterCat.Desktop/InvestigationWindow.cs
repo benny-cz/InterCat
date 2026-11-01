@@ -208,12 +208,13 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         this.showInvestigation = showInvestigation;
         Title = $"InterCat · Investigation · {Path.GetFileName(this.path)}";
         Width = 940;
-        Height = 660;
+        Height = 700;
         MinWidth = 680;
         // The smallest size at which each page keeps two of its sessions, lanes or notes in view, with overlaps stated and a
         // session missing above them, and beneath its sessions the two lines that say what opening them puts back of the
-        // window's panes. At 640 the sessions fell 3 px short of two whole rows.
-        MinHeight = 650;
+        // window's panes. At 650 the sessions fell 21 px short of two whole rows in Segoe UI, whose lines are taller than
+        // the font a container lays them out in, where they fell 3 px short at 640.
+        MinHeight = 680;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         // The investigation's file in one line: a path too long for it gives up its middle folders, and its tooltip has it whole.
         heading.Text = this.path;

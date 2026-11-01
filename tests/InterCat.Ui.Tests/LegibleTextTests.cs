@@ -91,8 +91,12 @@ public sealed class LegibleTextTests
     [AvaloniaFact(DisplayName = "§6.8: a path the inspector says wraps between its folders, never after its drive's colon alone, and reads as it is")]
     public async Task APathWrapsBetweenItsFolders()
     {
+        // A path too long for the inspector at the smallest window in any font, with no space to break at: Unicode's line
+        // breaking parts it only after "C:", which stood alone on a line. svchost.exe's own path fits on one in Segoe UI.
+        const string path = @"C:\ProgramData\Contoso\Agents\Telemetry\Collectors\Runtime\x64\agent.exe";
         using var session = new TemporarySession();
-        Publish(session.Store, GraphLabelLeaderTests.BusyMachine());
+        Publish(session.Store, [.. GraphLabelLeaderTests.BusyMachine(),
+            Lifecycle(9_000, ObservationKind.Create, 9_000, 9_000) with { ResourceName = path }]);
         var window = new MainWindow { Width = 1080, Height = 700 };
         window.Show();
         try
@@ -102,12 +106,10 @@ public sealed class LegibleTextTests
             var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
             await workspace.LayoutReady;
 
-            // svchost.exe's group is said with its path on a line of its own, too long for the inspector at the smallest
-            // window: Unicode's line breaking parts it only after "C:", which stood alone on a line.
-            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "svchost.exe");
+            // agent.exe's group is said with its path on a line of its own.
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "agent.exe");
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             _ = window.CaptureRenderedFrame();
-            string path = @"C:\Windows\System32\svchost.exe";
             Assert.EndsWith(Environment.NewLine + path, workspace.SelectionSubtitle, StringComparison.Ordinal);
             TextBlock subtitle = window.GetControl<Border>("Inspector").GetVisualDescendants().OfType<TextBlock>()
                 .Single(text => Plain(text.Text) == workspace.SelectionSubtitle);

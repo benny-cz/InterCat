@@ -1862,7 +1862,7 @@ public sealed class InvestigationWindowTests
             Assert.Null(window.Owner);
             Assert.DoesNotContain(window, main.OwnedWindows);
             Assert.Same(window, Assert.Single(main.Investigations));
-            Assert.Equal(new PixelPoint(120 + ((1080 - 940) / 2), 60 + ((700 - 660) / 2)), window.Position);
+            Assert.Equal(new PixelPoint(120 + (int)((1080 - window.Width) / 2), 60 + (int)((700 - window.Height) / 2)), window.Position);
             WaitFor(() => window.View is not null);
 
             // Enter on a session opens it in InterCat's window, which comes in front with the keyboard on its ranked table,

@@ -26,7 +26,9 @@
     <Border x:Name="Rail" Grid.RowSpan="4" Background="{DynamicResource Surface.Panel}"
             BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,0,1,0">
       <Grid x:Name="RailGrid" RowDefinitions="Auto,Auto,*,Auto" Margin="18,20,18,14">
-        <StackPanel Spacing="2" Margin="0,0,0,26">
+        <!-- Segoe UI's lines are taller than the fallback font's the rail was first laid out in, so the rail's gaps are kept
+             to what keeps the ranked list's rows and the card whole together at every window size (§6.1). -->
+        <StackPanel Spacing="2" Margin="0,0,0,16">
           <StackPanel Orientation="Horizontal" Spacing="9">
             <Border Width="27" Height="27" CornerRadius="8" Background="{DynamicResource Action.Fill}">
               <TextBlock Text="I" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Action.Ink}"
@@ -339,7 +341,7 @@
 
         <!-- The rail's actions scroll within the height its list leaves them, so a card never runs past the window and the
              ranked rows or saved sessions above keep a row or two in view (R15). -->
-        <ScrollViewer x:Name="RailActions" Grid.Row="3" Margin="0,12,0,0" HorizontalScrollBarVisibility="Disabled"
+        <ScrollViewer x:Name="RailActions" Grid.Row="3" Margin="0,8,0,0" HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="8">
         <!-- A capture a crashed or interrupted viewer left unfinished: the broker kept its evidence, and the next launch
@@ -814,8 +816,10 @@
             </StackPanel>
             <StackPanel Spacing="4" IsVisible="{Binding !IsEvidenceRung}">
               <TextBlock Text="{Binding SelectionTitle}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <!-- What the selection is, beneath its title and above its facts in size: in Segoe UI, at the window's first
+                   size, Other hosts' account of itself left its second host below the fold at the theme's 14 (§8.3). -->
               <TextBlock Text="{Binding SelectionSubtitle, Converter={x:Static pres:PathBreaks.Instance}}" Classes="muted"
-                         TextWrapping="Wrap" />
+                         FontSize="13" TextWrapping="Wrap" />
               <!-- A chosen channel or call says what its keys do, as its row's spoken name does. -->
               <TextBlock Text="{Binding SelectionActions}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                          IsVisible="{Binding HasSelectionActions}" />

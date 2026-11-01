@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-11-01 · Plan revision: 860 · Branch: `main`
+Updated: 2026-11-01 · Plan revision: 861 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -128,6 +128,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 861 — the window is laid out for Segoe UI, the font Windows draws it in:**
+  - The window names Segoe UI, which the container that tuned its layouts does not have; its fallback font's lines are
+    shorter, and on Windows eleven window tests failed by a pixel to 24. The rail's gaps give up 14 px - the brand's 26
+    to 16, the card's 12 to 8 - so the ranked list keeps six whole rows at the first window and two beside an unscrolled
+    card at the smallest; the investigation window is 680 px at the least, from 650, where its sessions fell 21 px short
+    of two whole rows; and the inspector's account of a selection is 13 px, from the theme's 14, so Other hosts' leaves
+    its second host above the fold at the window's first size.
+  - The graph's names were smoothed by colour channel on Windows, fringing each letter over its halo with an edge's hues;
+    they are smoothed in grey, as every platform does. Where no slot beside its node is left, Other hosts' name and an
+    aggregate's are set on two rings farther out, tied by a leader, so the smallest window names every aggregate and
+    every name that had a slot keeps it; a process's is not, as one set farther out takes the room crowded names stand
+    in, and a heavy machine leaves four of its nineteen programs unnamed in Segoe UI, from three (plan §6.3).
+  - Two tests were the tests': two equal panes of an odd height are a pixel apart, and a path that fits the inspector on
+    one line in Segoe UI cannot show how a longer one is parted, so the test names its own.
+  - Debug and Release each ran 3,500 tests, and the one failure left in either is the fixture index check of this
+    workstation's ignored folder, from 12. The investigation window's centring test counted its old 660 px and now counts
+    its own size; under the whole suite's load Debug once missed the relationship table's arrow step onto an edge to
+    other hosts, which passed in the window tests run whole, alone three times and in Release.
 
 - **Revision 860 — the suite says on Windows what it says in a container, and what only Windows showed is fixed:**
   - The 93 failures every slice note since the container's work carried were its own runs' count; run here, on Windows
