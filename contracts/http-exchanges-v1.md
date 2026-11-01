@@ -160,11 +160,14 @@ Where an exchange's heads are decoded (§5c, §5d), each body is set beside what
 content is read. A response to HEAD, or of status 1xx, 204 or 304, holds no body. A head declaring a transfer coding
 is not compared: WinINet keeps a chunked response's body without its chunk framing (`contracts/content-v1.md` §5.1,
 FX-HTTP-003), so that body's end is its last buffer's, and no other transfer coding, nor a request's, was measured.
-Nor is a head declaring a content coding other than identity, since whether the capture keeps a coded body coded was
-not measured. Otherwise its Content-Length - one length, or a list of the same one (RFC 9110 §8.6) - is compared: a
-body holding all of it agrees; one holding fewer bytes, more, or none disagrees, and so does a body where its head
-declares none; a response's whose request's method was not decoded, holding none, could be a response to HEAD, and is
-not said to disagree. A response declaring no length ran until its connection closed. A head not decoded to the empty
+Otherwise its Content-Length - one length, or a list of the same one (RFC 9110 §8.6) - is compared: a body holding all
+of it agrees; one holding fewer bytes, more, or none disagrees, and so does a body where its head declares none; a
+response's whose request's method was not decoded, holding none, could be a response to HEAD, and is not said to
+disagree. Nor is a body in a content coding other than identity that holds some other length, though recorded (revision
+859): WinINet keeps a body in the gzip coding as its client read it - coded, or decoded where the client had WinINet
+decode it - under a head declaring the coded length either way, and no record says which (FX-HTTP-004), so such a body
+is said to be possibly the decoded one, and a body in any other coding, which was not measured, is said not to be
+compared. A response declaring no length ran until its connection closed. A head not decoded to the empty
 line that ends it declares nothing known of its body. A disagreement is what a body's buffers cannot show: buffers
 whose places and ends make a body whole can hold fewer bytes than its head declared. The window says each body's
 declaration beneath it, a disagreement in the caution colour; `icat exchanges --decode` says each disagreement beneath
@@ -207,4 +210,5 @@ how many heads were not decoded. It writes no JSON: the command line's document 
 - An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
   asked for reads, and only `http-exchange-heads-v1` writes, asked for with them (§5c, §5d, §5f,
   `contracts/decoders-v1.md` §2).
-- HTTP/2, compressed responses and asynchronous WinINet (ADR-037).
+- HTTP/2 and asynchronous WinINet (ADR-037), and how WinINet's capture keeps a body in a content coding other than gzip
+  (§5e).

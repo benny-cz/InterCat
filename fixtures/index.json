@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "description": "Traceability matrix of section 13.5 and ADR-051: fixtures to contracts to tests to milestones. The checks in InterCat.Architecture.Tests keep it honest.",
-  "updatedUtc": "2026-10-23",
+  "updatedUtc": "2026-11-01",
   "fixtures": [
     {
       "id": "FX-TCP-001",
@@ -821,6 +821,52 @@
         "P2: a part that is not whole is shown with each gap in place, and no byte stands in for what is missing",
         "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one"
       ]
+    },
+    {
+      "id": "FX-HTTP-004",
+      "title": "WinINet responses in the gzip content coding, read coded and decoded",
+      "scenario": "Content-coded responses (ADR-037, revision 859): the loopback server codes every response body in gzip, declared by Content-Encoding beside its coded length, and the client, accepting gzip, reads each body as the wire carried it or, with --decode, has WinINet decode it first (INTERNET_OPTION_HTTP_DECODING); WinINet's capture provider is enabled for the workload's process alone.",
+      "milestone": "M3",
+      "mechanism": "Http",
+      "backlog": [
+        "IC-011",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [],
+        "invariants": [],
+        "prohibitions": [
+          "P2"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads http-wininet --gzip, and --gzip --decode",
+        "seed": 20260929,
+        "log": "fixtures/FX-HTTP-004/evidence/coded/truth-http-server.jsonl",
+        "independence": "The loopback server is the witness: it logs every request head and body it received and every response head it sent, and each response body twice - the body before its coding and the coded bytes the wire carried - by length and SHA-256, never the bytes. The client logs what it sent and read. Neither reads InterCat state."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-HTTP-004/evidence/measurement.json",
+        "note": "Where the client read the coded bytes, 64 of 64 response bodies kept were those bytes; where it had WinINet decode them, 64 of 64 were the body before its coding, though the heads, kept as the wire carried them, declare the coded length. The lab probe found the same of 16 exchanges each way, chunked too, whose framing was removed as FX-HTTP-003 measured. No record says which a client did, so a coded body is compared only where it holds the length its head declares."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-01",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record --profile content scoped to the workload's process, twice: 990 and 910 records journaled, 972,135 and 1,204,349 bytes of content kept, nothing lost. Every record bound to the workload, every exchange recorded whole and every head decoded to its end; each body saved by icat content matched the coded bytes where the client read them and the body before its coding where WinINet decoded it, and none was said to disagree with its head. Tier ExperimentalEvidence: HTTP/2 and asynchronous WinINet are unmeasured (ADR-037)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The server's and the client's truth logs and the scenario of each run - ports, lengths and SHA-256 of synthetic requests and responses, never their bytes - and the measurement's counters. The captures themselves are not kept."
+      },
+      "tests": [
+        "P2: a body is set beside the length its head declares, and said to disagree with it only where its recorded bytes do",
+        "P2: FX-HTTP-004's responses, kept coded or as WinINet decoded them, agree with the length their heads declare or are not said to disagree"
+      ]
     }
   ],
   "retired": [
@@ -1346,6 +1392,7 @@
       ],
       "P2": [
         "P2: C on an HTTP exchange opens its conversation, which says what each head said only once asked, and Show its buffers opens them",
+        "P2: FX-HTTP-004's responses, kept coded or as WinINet decoded them, agree with the length their heads declare or are not said to disagree",
         "P2: Find in kept content exports the records listed, asking first where the bytes around each match were shown, since the table is then content",
         "P2: Find in kept content finds a text the buffers of one HTTP part split, saying how far before the last it began",
         "P2: Find in kept content lists the records holding a text without a byte of them unless asked, and a record found opens in the content viewer",

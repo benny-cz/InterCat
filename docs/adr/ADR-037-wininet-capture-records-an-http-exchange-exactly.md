@@ -144,8 +144,11 @@ names, not by time.
   an encrypted exchange's plaintext, and the request that keeps it says so first.
 - Exchanges at once in one process, and chunked responses, are measured (revision 244): each exchange keeps its own
   number, and a chunked body is kept as its client read it.
-- Not measured: asynchronous WinINet; HTTP/2; compressed responses; redirects, proxies and authentication. Each is
-  measured before a profile claims it.
+- Responses in the gzip content coding are measured (revision 859, FX-HTTP-004): a coded body is kept as its client read
+  it, coded where the client read the coded bytes and decoded where it had WinINet decode it, under the head the wire
+  carried, which declares the coded length either way; no record says which the client did.
+- Not measured: asynchronous WinINet; HTTP/2; content codings other than gzip; redirects, proxies and authentication.
+  Each is measured before a profile claims it.
 - The scope is the named processes themselves (revision 245): the provider's filter holds their IDs by number, and the
   capture holds each process open while it runs, so a named process's exit ends its content and no process started
   after it can take its ID.

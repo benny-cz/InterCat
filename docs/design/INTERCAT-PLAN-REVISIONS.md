@@ -744,6 +744,8 @@ Revision 857 has `icat links` without `--process` say where the processes are li
 
 Revision 858 shows a redacted package's leak search finds a source value in every form, wherever a file holds it.
 
+Revision 859 measures WinINet's responses in the gzip content coding, and sets such a body beside the length its head declares.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2625,3 +2627,16 @@ one was a test of one name and one identity. A seed-driven property now plants e
 a chunked search can miss, and catches all eight mutations of the scanner run against it; run against the package's
 other tests, three of the eight went unnoticed: a value at a file's very end, an identity's little-endian bytes and
 its text in capitals.
+
+Revision 859 measures compressed responses through WinINet's capture, one of the semantics ADR-037 left unmeasured
+before any profile claims it (FX-HTTP-004). The truth workload's server codes every response body in gzip, declared by
+Content-Encoding beside the coded length, and logs the body before its coding and the coded bytes apart; its client
+reads each body coded or, asked to, has WinINet decode it first. The capture keeps a coded body as its client read it:
+in the lab probe 16 of 16 bodies each way, chunked responses too, and through `icat record --profile content` 64 of 64
+each way, each saved by `icat content --part` and matched by SHA-256 with the server's truth; the heads are kept as the
+wire carried them, declaring the coded length even where the body kept is the decoded one, and no record says which the
+client did. So revision 778's comparison, which had left every coded body uncompared, now sets one beside its declared
+length: one holding that length agrees, and one holding another, though recorded, is said to be possibly the decoded
+body rather than to disagree; a body in another coding, which was not measured, is compared only where it holds that
+length. Measuring it also found that .NET's gzip stream writes nothing for an empty body, which no gzip decoder reads as
+a member, so the workload writes RFC 1952's empty member itself.

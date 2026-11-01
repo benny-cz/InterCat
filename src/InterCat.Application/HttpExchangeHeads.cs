@@ -69,8 +69,10 @@ public sealed record HttpBodyDeclaration(string Statement, bool Contradicts);
 /// <summary>
 /// A message body's length as RFC 9112 §6.3 has a recipient read it from the head, compared with the bytes WinINet's
 /// buffers of the body measured. WinINet keeps a chunked response's body without its chunk framing (FX-HTTP-003), so a
-/// chunked body's length is its buffers' alone; whether it keeps a coded body coded was not measured, so such a body is
-/// not compared. Nothing of the body's content is read.
+/// chunked body's length is its buffers' alone; and it keeps a body in the gzip content coding as its client read it,
+/// coded, or decoded where the client had WinINet decode it (FX-HTTP-004), which no record says, so such a body agrees
+/// where it holds the coded length its head declares and is not said to disagree where it holds another. A body in any
+/// other coding is compared only where it holds that length. Nothing of the body's content is read.
 /// </summary>
 internal static class HttpBodies
 {
@@ -122,14 +124,10 @@ internal static class HttpBodies
             return new($"Its Content-Length, {string.Join(", ", lengths)}, is not one length, so its body is not compared.", false);
         }
 
-        string length = CountText.Of(declared, "byte");
+        // A coded body's head declares the length of its coded bytes, which is what its buffers hold only where its client
+        // read it coded (FX-HTTP-004).
         string[] coded = [.. Values(head, "Content-Encoding").Where(coding => !coding.Equals("identity", StringComparison.OrdinalIgnoreCase))];
-        if (coded.Length > 0)
-        {
-            return new($"Its head declares {length} in the {string.Join(", ", coded)} content coding, and whether WinINet's "
-                + "capture keeps such a body coded was not measured, so its length is not compared.", false);
-        }
-
+        string length = CountText.Of(declared, "byte") + (coded.Length > 0 ? $" in the {string.Join(", ", coded)} content coding" : string.Empty);
         if (body.Bytes == declared)
         {
             return new(declared == 0
@@ -144,6 +142,18 @@ internal static class HttpBodies
                 ? new($"Its head declares {length}, and no buffer of its body was recorded; its request's method was not "
                     + "decoded, and a response to HEAD holds none.", false)
                 : new($"Its head declares {length}, and no buffer of its body was recorded.", true);
+        }
+
+        if (coded.Length > 0)
+        {
+            string holds = body.Bytes == 0 ? "no byte" : held;
+            return new(coded.All(coding => coding.Equals("gzip", StringComparison.OrdinalIgnoreCase)
+                    || coding.Equals("x-gzip", StringComparison.OrdinalIgnoreCase))
+                ? $"Its head declares {length}, and its recorded buffers hold {holds}: WinINet keeps a coded body as its client "
+                    + "read it, decoded where the client had WinINet decode it (FX-HTTP-004), so a body of another length is not "
+                    + "said to disagree."
+                : $"Its head declares {length}, and its recorded buffers hold {holds}; how WinINet's capture keeps a body in that "
+                    + "coding was not measured, so its length is not compared.", false);
         }
 
         return body.Bytes < declared

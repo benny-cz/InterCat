@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using InterCat.Analysis;
 using InterCat.Analysis.Tests;
@@ -311,7 +312,13 @@ public sealed class HttpHeadDecodingTests
     [InlineData("HTTP/1.1 101 Switching Protocols\r\n\r\n", "GET", 1, 4, true, "As a 101 response, it holds no body, yet its recorded buffers hold 4 bytes.", true)]
     [InlineData("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n", "GET", 3, 900, true, "Its head declares the chunked transfer coding, which WinINet removes before it keeps a body (FX-HTTP-003), so the body's end is its last buffer's, not a length its head declared.", false)]
     [InlineData("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip, chunked\r\n\r\n", "GET", 1, 9, true, "Its head declares the gzip, chunked transfer coding, which WinINet's capture was not measured to keep framed or unframed, so its body's length is not compared.", false)]
-    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: 30\r\n\r\n", "GET", 1, 120, true, "Its head declares 30 bytes in the gzip content coding, and whether WinINet's capture keeps such a body coded was not measured, so its length is not compared.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: 30\r\n\r\n", "GET", 2, 30, true, "Its head declares 30 bytes in the gzip content coding, and its recorded buffers hold them all.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: 30\r\n\r\n", "GET", 1, 120, true, "Its head declares 30 bytes in the gzip content coding, and its recorded buffers hold 120 bytes: WinINet keeps a coded body as its client read it, decoded where the client had WinINet decode it (FX-HTTP-004), so a body of another length is not said to disagree.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: GZip\r\nContent-Length: 30\r\n\r\n", "GET", 1, 12, true, "Its head declares 30 bytes in the GZip content coding, and its recorded buffers hold 12 bytes: WinINet keeps a coded body as its client read it, decoded where the client had WinINet decode it (FX-HTTP-004), so a body of another length is not said to disagree.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: X-GZIP\r\nContent-Length: 20\r\n\r\n", "GET", 1, 0, true, "Its head declares 20 bytes in the X-GZIP content coding, and its recorded buffers hold no byte: WinINet keeps a coded body as its client read it, decoded where the client had WinINet decode it (FX-HTTP-004), so a body of another length is not said to disagree.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: 30\r\n\r\n", "GET", 0, 0, false, "Its head declares 30 bytes in the gzip content coding, and no buffer of its body was recorded.", true)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: br\r\nContent-Length: 30\r\n\r\n", "GET", 1, 120, true, "Its head declares 30 bytes in the br content coding, and its recorded buffers hold 120 bytes; how WinINet's capture keeps a body in that coding was not measured, so its length is not compared.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Encoding: deflate\r\nContent-Length: 30\r\n\r\n", "GET", 1, 12, true, "Its head declares 30 bytes in the gzip, deflate content coding, and its recorded buffers hold 12 bytes; how WinINet's capture keeps a body in that coding was not measured, so its length is not compared.", false)]
     [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: identity\r\ncontent-length: 5, 5\r\n\r\n", "GET", 1, 5, true, "Its head declares 5 bytes, and its recorded buffers hold them all.", false)]
     [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\n", "GET", 1, 5, true, "Its Content-Length, 5, 6, is not one length, so its body is not compared.", false)]
     [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 99999999999999999999\r\n\r\n", "GET", 1, 5, true, "Its Content-Length, 99999999999999999999, is not one length, so its body is not compared.", false)]
@@ -335,6 +342,77 @@ public sealed class HttpHeadDecodingTests
             ? new(Head(head, request: true), null)
             : new(method is null ? null : Head($"{method} /x HTTP/1.1\r\n\r\n", request: true), Head(head, request: false));
         Assert.Equal(new HttpBodyDeclaration(statement, contradicts), request ? heads.RequestBody(body) : heads.ResponseBody(body));
+    }
+
+    /// <summary>
+    /// FX-HTTP-004 measured that WinINet's capture keeps a gzip body as its client read it: the coded bytes where the client
+    /// read them, the body before its coding where it had WinINet decode it, under heads kept as the wire carried them. Each
+    /// of the fixture's responses, its head rebuilt and checked against the server's truth byte for byte, is set beside its
+    /// body as each capture kept it: none is said to disagree, and the decoded bodies would be, but for their coding.
+    /// </summary>
+    [Fact(DisplayName = "P2: FX-HTTP-004's responses, kept coded or as WinINet decoded them, agree with the length their heads declare or are not said to disagree")]
+    public void CodedResponsesAreSetBesideTheirHeadsAsTheirCaptureKeptThem()
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-HTTP-004", "evidence");
+        foreach ((string run, bool decoded) in new[] { ("coded", false), ("decoded", true) })
+        {
+            // The server's truth of each response: its head, the body before its coding and the coded bytes, by length and hash.
+            var sent = new Dictionary<(long Call, string Part), (long Length, string Hash)>();
+            foreach (string line in File.ReadLines(Path.Combine(evidence, run, "truth-http-server.jsonl")))
+            {
+                TruthRecord record = System.Text.Json.JsonSerializer.Deserialize<TruthRecord>(line, TruthJson)!;
+                if (record is { CallId: { } call, Status: { } part, DeclaredBytes: { } length, ResourceName: { } hash })
+                {
+                    sent[(call, part)] = (length, hash);
+                }
+            }
+
+            long[] calls = [.. sent.Keys.Where(key => key.Part == "response-head").Select(key => key.Call).Order()];
+            Assert.Equal(64, calls.Length);
+            int agreed = 0, notSaid = 0;
+            foreach (long call in calls)
+            {
+                (long coded, _) = sent[(call, "response-body-coded")];
+                (long before, _) = sent[(call, "response-body")];
+                byte[] head = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
+                    $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Encoding: gzip\r\nContent-Length: {coded}\r\nX-InterCat-Fixture: FX-HTTP-004\r\n\r\n"));
+                Assert.Equal(sent[(call, "response-head")], (head.LongLength, "sha256:" + Convert.ToHexStringLower(SHA256.HashData(head))));
+
+                var heads = new HttpExchangeHeads(Head(string.Create(CultureInfo.InvariantCulture, $"POST /fx/{call} HTTP/1.1\r\n\r\n"), request: true),
+                    Head(head, request: false));
+                var body = new HttpPartRecord(1, decoded ? before : coded, true);
+                HttpBodyDeclaration declaration = heads.ResponseBody(body)!;
+                Assert.False(declaration.Contradicts, declaration.Statement);
+                agreed += declaration.Statement.EndsWith("and its recorded buffers hold them all.", StringComparison.Ordinal) ? 1 : 0;
+                notSaid += declaration.Statement.EndsWith("so a body of another length is not said to disagree.", StringComparison.Ordinal) ? 1 : 0;
+
+                // The same head without its coding declares a length the decoded body contradicts: the coding is what stays it.
+                if (decoded)
+                {
+                    var identity = new HttpExchangeHeads(heads.Request,
+                        Head(Encoding.ASCII.GetString(head).Replace("Content-Encoding: gzip\r\n", string.Empty, StringComparison.Ordinal), request: false));
+                    Assert.True(identity.ResponseBody(body)!.Contradicts);
+                }
+            }
+
+            Assert.Equal(decoded ? (0, 64) : (64, 0), (agreed, notSaid));
+        }
+    }
+
+    private static readonly System.Text.Json.JsonSerializerOptions TruthJson = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    private static string RepositoryRoot()
+    {
+        DirectoryInfo? current = new(AppContext.BaseDirectory);
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "InterCat.slnx")))
+        {
+            current = current.Parent;
+        }
+
+        return current?.FullName ?? throw new InvalidOperationException("The repository root holding InterCat.slnx was not found.");
     }
 
     [Fact(DisplayName = "P2: a head decoded to the empty line that ends it says so, and a head not decoded declares nothing of its body")]

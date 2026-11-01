@@ -41,6 +41,8 @@ internal static class Program
         int bytes = int.Parse(Option(args, "--bytes") ?? "98304", CultureInfo.InvariantCulture);
         bool tls = args.Contains("--tls", StringComparer.Ordinal);
         bool chunked = args.Contains("--chunked", StringComparer.Ordinal);
+        bool gzip = args.Contains("--gzip", StringComparer.Ordinal);
+        bool decode = args.Contains("--decode", StringComparer.Ordinal);
         int concurrency = int.Parse(Option(args, "--concurrency") ?? "1", CultureInfo.InvariantCulture);
         string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0",
@@ -48,6 +50,7 @@ internal static class Program
         if (output is null || requests < 1)
         {
             Console.Error.WriteLine("InterCat.WinInetProbe --output <new directory> [--requests n] [--seed n] [--bytes n] [--tls] [--concurrency n] [--chunked]");
+            Console.Error.WriteLine("  [--gzip [--decode]]: responses coded in gzip, read coded or decoded by WinINet (FX-HTTP-004)");
             Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]");
             Console.Error.WriteLine("  [--impact [--pairs n]]: machine CPU and workload time with and without a scoped capture, in pairs");
             return 2;
@@ -118,6 +121,8 @@ internal static class Program
             };
             if (tls) start.ArgumentList.Add("--tls");
             if (chunked) start.ArgumentList.Add("--chunked");
+            if (gzip) start.ArgumentList.Add("--gzip");
+            if (decode) start.ArgumentList.Add("--decode");
             if (concurrency > 1)
             {
                 start.ArgumentList.Add("--concurrency");
@@ -210,7 +215,8 @@ internal static class Program
             .Count(line => line.Contains("\"kind\":\"CallCompleted\"", StringComparison.Ordinal));
         object report = new
         {
-            exchange = Compare(captured, truth, process.Id, requests, bytes, tls, concurrency, chunked, eventsLost, others, malformed),
+            exchange = Compare(captured, truth, process.Id, requests, bytes, tls, concurrency, chunked, gzip, decode, eventsLost, others,
+                malformed),
             processFilter = new
             {
                 decoyExchangedByTruth = decoyExchanged,
@@ -228,11 +234,23 @@ internal static class Program
     /// time order, and a request head flagged first under an id already seen opens another exchange, so an id WinINet uses
     /// again is counted rather than merged. Each exchange is matched with its request by the path its head names, and each
     /// of its four parts is the concatenation of its buffers in sequence order, compared by length and SHA-256 with the
-    /// server's truth; a chunked response body is compared both with the body and with its framed bytes.
+    /// server's truth; a chunked response body is compared both with the body and with its framed bytes, and a coded one
+    /// with the body before its coding and with the coded bytes.
     /// </summary>
     private static object Compare(List<Buffer> captured, string truth, int processId, int requests, int maximumBodyBytes, bool tls,
-        int concurrency, bool chunked, int eventsLost, long others, long malformed)
+        int concurrency, bool chunked, bool gzip, bool decode, int eventsLost, long others, long malformed)
     {
+        // What the client read of each response body, by its own truth: the coded bytes, or what WinINet decoded them to.
+        var read = new Dictionary<long, string>();
+        foreach (string line in File.ReadLines(Path.Combine(truth, "truth-http-client.jsonl")))
+        {
+            JsonElement record = JsonDocument.Parse(line).RootElement;
+            if (record.GetProperty("kind").GetString() == "CallCompleted" && record.GetProperty("callId").ValueKind == JsonValueKind.Number)
+            {
+                read[record.GetProperty("callId").GetInt64()] = record.GetProperty("resourceName").GetString()!;
+            }
+        }
+
         var wire = new Dictionary<(long Call, string Part), (long Length, string Hash)>();
         foreach (string line in File.ReadLines(Path.Combine(truth, "truth-http-server.jsonl")))
         {
@@ -353,7 +371,8 @@ internal static class Program
         var parts = new Dictionary<string, object>();
         foreach ((int id, string part) in Parts)
         {
-            int present = 0, matched = 0, lengthMatched = 0, missing = 0, unexpected = 0, framedMatches = 0;
+            int present = 0, matched = 0, lengthMatched = 0, missing = 0, unexpected = 0, framedMatches = 0, codedMatches = 0;
+            int clientReadMatches = 0;
             int mostBuffers = 0;
             long totalBytes = 0;
             var lengthDeltas = new SortedDictionary<long, int>();
@@ -378,6 +397,8 @@ internal static class Program
                 if (hash == expected.Hash) matched++;
                 else lengthDeltas[bytes.Length - expected.Length] = lengthDeltas.GetValueOrDefault(bytes.Length - expected.Length) + 1;
                 if (wire.TryGetValue((index, part + "-chunked"), out (long Length, string Hash) framed) && hash == framed.Hash) framedMatches++;
+                if (wire.TryGetValue((index, part + "-coded"), out (long Length, string Hash) codedBody) && hash == codedBody.Hash) codedMatches++;
+                if (part == "response-body" && read.TryGetValue(index, out string? clientRead) && hash == clientRead) clientReadMatches++;
             }
 
             List<Buffer> all = [.. captured.Where(buffer => buffer.EventId == id)];
@@ -387,6 +408,8 @@ internal static class Program
                 truthParts = present,
                 wholeMatches = matched,
                 matchesOfTheChunkedFraming = framedMatches,
+                matchesOfTheCodedBody = codedMatches,
+                matchesOfWhatTheClientRead = clientReadMatches,
                 lengthMatches = lengthMatched,
                 missing,
                 unexpected,
@@ -419,10 +442,12 @@ internal static class Program
             providerGuid = Provider,
             keywords = "0x" + Keywords.ToString("X16", CultureInfo.InvariantCulture),
             processFilter = "EVENT_FILTER_TYPE_PID: the workload's process alone",
-            workload = concurrency > 1 || chunked ? "FX-HTTP-003" : tls ? "FX-HTTP-002" : "FX-HTTP-001",
+            workload = gzip ? "FX-HTTP-004" : concurrency > 1 || chunked ? "FX-HTTP-003" : tls ? "FX-HTTP-002" : "FX-HTTP-001",
             tls,
             concurrency,
             chunked,
+            gzip,
+            decode,
             requests,
             maximumBodyBytes,
             exchangedByTruth,

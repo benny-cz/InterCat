@@ -296,3 +296,12 @@ of the buffers before it, as far back as each was kept whole right after the one
 text no longer hides a match running through it, and a part's matches are those one search of its bytes from the start
 finds. Where a match began is said as so many bytes before the record in its part, no longer as in the buffer before
 it, which it need not be. Nothing else above changes.
+
+## Addendum, revision 859
+
+Bodies in the gzip content coding are measured (FX-HTTP-004, ADR-037): WinINet's capture keeps one as its client read
+it, coded where the client read the coded bytes and decoded where it had WinINet decode it, under the head the wire
+carried, which declares the coded length either way, and no record says which. So the comparison revision 778 added sets
+such a body beside its declared length too: one holding that length agrees, and one holding another, though recorded, is
+said to be possibly the decoded body, never to disagree. A body in another content coding is compared only where it
+holds its declared length. No body's content is read or decoded. Nothing else above changes.

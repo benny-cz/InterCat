@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Globalization;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -23,6 +24,9 @@ internal sealed record HttpWinInetOptions
 
     /// <summary>Several exchanges at once in one process, or chunked responses: FX-HTTP-003.</summary>
     public const string InterleavedScenarioId = "FX-HTTP-003";
+
+    /// <summary>Responses in the gzip content coding, which the client reads coded or has WinINet decode: FX-HTTP-004.</summary>
+    public const string CodedScenarioId = "FX-HTTP-004";
 
     public required string TruthDirectory { get; init; }
     public int Seed { get; init; } = 20_260_929;
@@ -55,8 +59,23 @@ internal sealed record HttpWinInetOptions
     /// <summary>Whether the server answers with chunked transfer coding, in seeded chunk sizes, rather than a Content-Length.</summary>
     public bool Chunked { get; init; }
 
-    /// <summary>The scenario this run is: FX-HTTP-003 with several clients at once or chunked responses, else FX-HTTP-002 over TLS, else FX-HTTP-001.</summary>
-    public string Scenario => Concurrency > 1 || Chunked ? InterleavedScenarioId : Tls ? TlsScenarioId : ScenarioId;
+    /// <summary>
+    /// Whether the server codes every response body in gzip (RFC 9110 §8.4), declaring it by Content-Encoding, and the client
+    /// says it accepts gzip.
+    /// </summary>
+    public bool Gzip { get; init; }
+
+    /// <summary>
+    /// Whether the client has WinINet decode a coded response before it reads it (INTERNET_OPTION_HTTP_DECODING), so what it
+    /// reads is the body before its coding; without it, it reads the coded bytes as they came.
+    /// </summary>
+    public bool Decode { get; init; }
+
+    /// <summary>
+    /// The scenario this run is: FX-HTTP-004 with coded responses, else FX-HTTP-003 with several clients at once or chunked
+    /// responses, else FX-HTTP-002 over TLS, else FX-HTTP-001.
+    /// </summary>
+    public string Scenario => Gzip ? CodedScenarioId : Concurrency > 1 || Chunked ? InterleavedScenarioId : Tls ? TlsScenarioId : ScenarioId;
 }
 
 /// <summary>
@@ -75,6 +94,10 @@ internal static partial class HttpWinInetScenario
     private const uint RequestFlags = 0x80000000 | 0x04000000 | 0x00000100 | 0x00080000 | 0x00000200 | 0x00400000;
     private static string FixtureHeader(HttpWinInetOptions options) => $"X-InterCat-Fixture: {options.Scenario}\r\n";
 
+    // What the client's request adds to the fixture's header: that it accepts gzip, when the server codes its responses.
+    private static string RequestHeaders(HttpWinInetOptions options) =>
+        FixtureHeader(options) + (options.Gzip ? "Accept-Encoding: gzip\r\n" : string.Empty);
+
     // Over TLS: a secure request whose certificate errors - an unknown issuer, a name, dates, revocation - WinINet is told to
     // accept for this request alone, so a self-signed certificate installed nowhere serves the loopback server.
     private const uint SecureRequestFlags = 0x00800000 | 0x00001000 | 0x00002000;
@@ -83,6 +106,9 @@ internal static partial class HttpWinInetScenario
     // A process-wide WinINet option, set for this process alone: how many connections one server may have at once, raised
     // to the run's concurrency so its clients' exchanges really overlap.
     private const int OptionMaxConnectionsPerServer = 73;
+
+    // A request's own option: WinINet decodes a gzip or deflate response before the client reads it.
+    private const int OptionHttpDecoding = 65;
     private const uint IgnoreCertificateErrors = 0x00000100 | 0x00001000 | 0x00002000 | 0x00000080 | 0x00000200;
     private static readonly JsonSerializerOptions SummaryOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -166,6 +192,8 @@ internal static partial class HttpWinInetScenario
             options.Tls,
             options.Concurrency,
             options.Chunked,
+            options.Gzip,
+            options.Decode,
             processId = Environment.ProcessId,
             port,
             options.Seed,
@@ -263,9 +291,16 @@ internal static partial class HttpWinInetScenario
                         continue;
                     }
 
+                    uint decode = 1;
+                    if (options.Decode && !InternetSetOption(request, OptionHttpDecoding, ref decode, sizeof(uint)))
+                    {
+                        client.Write(TruthEventKind.Failure, callId: index, status: $"InternetSetOption failed: {Marshal.GetLastPInvokeError()}");
+                        continue;
+                    }
+
                     client.Write(TruthEventKind.CallIssued, callId: index, declaredBytes: body.Length, status: "request-body",
                         resourceName: Sha256(body));
-                    if (!HttpSendRequest(request, FixtureHeader(options), -1, body, body.Length))
+                    if (!HttpSendRequest(request, RequestHeaders(options), -1, body, body.Length))
                     {
                         client.Write(TruthEventKind.Failure, callId: index, status: $"HttpSendRequest failed: {Marshal.GetLastPInvokeError()}");
                         continue;
@@ -383,21 +418,29 @@ internal static partial class HttpWinInetScenario
                     server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: body.Length, status: "request-body",
                         resourceName: Sha256(body));
 
-                    // A chunked response frames its body in seeded chunks; the truth names the body the client reads and,
-                    // separately, the framed bytes the wire carried, so a capture can be matched with either.
+                    // A chunked response frames its body in seeded chunks, and a coded one codes it in gzip first; the truth
+                    // names the body before either, which a decoding client reads, and apart the coded bytes and the framed
+                    // bytes the wire carried, so a capture can be matched with any of them.
                     byte[] responseBody = Body(options.Seed, index, options.MaximumBodyBytes, request: false);
-                    string framing = options.Chunked
+                    byte[] coded = options.Gzip ? Gzip(responseBody) : responseBody;
+                    string framing = (options.Gzip ? "Content-Encoding: gzip\r\n" : string.Empty) + (options.Chunked
                         ? "Transfer-Encoding: chunked"
-                        : string.Create(CultureInfo.InvariantCulture, $"Content-Length: {responseBody.Length}");
+                        : string.Create(CultureInfo.InvariantCulture, $"Content-Length: {coded.Length}"));
                     byte[] responseHead = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
                         $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n{framing}\r\n{FixtureHeader(options)}\r\n"));
-                    byte[] sentBody = options.Chunked ? Chunks(responseBody, options.Seed, index) : responseBody;
+                    byte[] sentBody = options.Chunked ? Chunks(coded, options.Seed, index) : coded;
                     await stream.WriteAsync(responseHead, cancellationToken).ConfigureAwait(false);
                     await stream.WriteAsync(sentBody, cancellationToken).ConfigureAwait(false);
                     server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: responseHead.Length, status: "response-head",
                         resourceName: Sha256(responseHead));
                     server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: responseBody.Length, status: "response-body",
                         resourceName: Sha256(responseBody));
+                    if (options.Gzip)
+                    {
+                        server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: coded.Length,
+                            status: "response-body-coded", resourceName: Sha256(coded));
+                    }
+
                     if (options.Chunked)
                     {
                         server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: sentBody.Length,
@@ -463,6 +506,27 @@ internal static partial class HttpWinInetScenario
     }
 
     private static string Sha256(byte[] bytes) => "sha256:" + Convert.ToHexStringLower(SHA256.HashData(bytes));
+
+    /// <summary>
+    /// <paramref name="body"/> in the gzip content coding (RFC 9110 §8.4.1.3). An empty body is one gzip member holding no
+    /// data, as RFC 1952 writes it: .NET's stream writes nothing at all for one, which no gzip decoder reads as a member.
+    /// </summary>
+    private static byte[] Gzip(byte[] body)
+    {
+        if (body.Length == 0)
+        {
+            // The member's header, of no name or time and an unknown system; an empty final block; the CRC-32 and size of nothing.
+            return [0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff, 0x03, 0x00, 0, 0, 0, 0, 0, 0, 0, 0];
+        }
+
+        using var coded = new MemoryStream();
+        using (var gzip = new GZipStream(coded, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            gzip.Write(body);
+        }
+
+        return coded.ToArray();
+    }
 
     /// <summary>
     /// <paramref name="body"/> in chunked transfer coding (RFC 9112 §7.1): seeded chunks of 1 to 9,000 bytes, each its size

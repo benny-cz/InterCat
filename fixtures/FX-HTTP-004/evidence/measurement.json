@@ -1,0 +1,60 @@
+{
+  "workload": "FX-HTTP-004",
+  "question": "Whether WinINet's capture keeps a response body in the gzip content coding coded, as the wire carried it, or decoded, as a client that has WinINet decode it reads it.",
+  "answer": "As its client read it: coded where the client read the coded bytes, and the body before its coding where the client had WinINet decode it (INTERNET_OPTION_HTTP_DECODING). The heads are kept as the wire carried them in both, declaring the gzip coding and the coded length, and no record says which the client did.",
+  "probe": {
+    "tool": "tools/InterCat.WinInetProbe --gzip [--decode] [--chunked], 16 exchanges each, bodies up to 98,304 bytes, beside a decoy outside the process filter",
+    "runs": [
+      { "decode": false, "chunked": false, "exchanges": 16, "responseBodiesMatchingTheCodedBytes": 16, "responseBodiesMatchingTheBodyBeforeItsCoding": 0, "headsWhole": 32, "requestBodiesWhole": 16, "eventsLost": 0, "recordsOfTheDecoy": 0 },
+      { "decode": true, "chunked": false, "exchanges": 16, "responseBodiesMatchingTheCodedBytes": 0, "responseBodiesMatchingTheBodyBeforeItsCoding": 16, "headsWhole": 32, "requestBodiesWhole": 16, "eventsLost": 0, "recordsOfTheDecoy": 0 },
+      { "decode": false, "chunked": true, "exchanges": 16, "responseBodiesMatchingTheCodedBytes": 16, "responseBodiesMatchingTheBodyBeforeItsCoding": 0, "responseBodiesMatchingTheChunkedFraming": 0, "headsWhole": 32, "requestBodiesWhole": 16, "eventsLost": 0, "recordsOfTheDecoy": 0 },
+      { "decode": true, "chunked": true, "exchanges": 16, "responseBodiesMatchingTheCodedBytes": 0, "responseBodiesMatchingTheBodyBeforeItsCoding": 16, "responseBodiesMatchingTheChunkedFraming": 0, "headsWhole": 32, "requestBodiesWhole": 16, "eventsLost": 0, "recordsOfTheDecoy": 0 }
+    ]
+  },
+  "capture": {
+    "command": "icat record --profile content --source etw/manifest/Microsoft-Windows-WinINet-Capture --mechanism http --pid <workload> --channel * --max-record-bytes 65536 --max-session-bytes 67108864 --inspection hex-text --duration 20, beside InterCat.TestWorkloads http-wininet --requests 64 --bytes 98304 --start-after 8 --gzip [--decode]",
+    "policy": "scoped-content-request-v1",
+    "runs": [
+      {
+        "decode": false,
+        "evidence": "fixtures/FX-HTTP-004/evidence/coded",
+        "journaledRecords": 990,
+        "httpRecords": 389,
+        "recordsBoundToTheWorkload": 389,
+        "contentKeptBytes": 972135,
+        "lost": "nothing reported",
+        "exchanges": 64,
+        "exchangesRecordedWhole": 64,
+        "headsDecodedToTheirEnd": 128,
+        "responseBodiesSavedByIcatContent": 64,
+        "responseBodiesMatchingTheCodedBytes": 64,
+        "responseBodiesMatchingTheBodyBeforeItsCoding": 0,
+        "responseBodiesAgreeingWithTheLengthTheirHeadsDeclare": 64,
+        "responseBodiesNotSaidToDisagree": 0,
+        "bodiesSaidToDisagree": 0
+      },
+      {
+        "decode": true,
+        "evidence": "fixtures/FX-HTTP-004/evidence/decoded",
+        "journaledRecords": 910,
+        "httpRecords": 406,
+        "recordsBoundToTheWorkload": 406,
+        "contentKeptBytes": 1204349,
+        "lost": "nothing reported",
+        "exchanges": 64,
+        "exchangesRecordedWhole": 64,
+        "headsDecodedToTheirEnd": 128,
+        "responseBodiesSavedByIcatContent": 63,
+        "responseBodiesHoldingNoByte": 1,
+        "responseBodiesMatchingTheCodedBytes": 0,
+        "responseBodiesMatchingTheBodyBeforeItsCoding": 64,
+        "responseBodiesAgreeingWithTheLengthTheirHeadsDeclare": 0,
+        "responseBodiesNotSaidToDisagree": 64,
+        "bodiesSaidToDisagree": 0
+      }
+    ]
+  },
+  "note": "Request 1's response is empty before its coding and 20 bytes in it, one gzip member holding no data; decoded, it is kept as one buffer of no byte, which icat content says holds nothing to save. Bodies are compared by SHA-256 with the server's truth, which names the body before its coding and the coded bytes apart; neither the truth nor this file holds a byte of them.",
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-11-01"
+}

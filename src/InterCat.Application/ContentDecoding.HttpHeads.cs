@@ -9,8 +9,8 @@ namespace InterCat.Application;
 public static partial class ContentDecoders
 {
     /// <summary>
-    /// HTTP/1.1 message heads as WinINet's capture keeps them, each one part (ADR-037; FX-HTTP-001 to FX-HTTP-003 found
-    /// every kept part equal to the wire): a request head's request line - its method, target and version - or a response
+    /// HTTP/1.1 message heads as WinINet's capture keeps them, each one part (ADR-037; FX-HTTP-001 to FX-HTTP-004 found
+    /// every kept head equal to the wire): a request head's request line - its method, target and version - or a response
     /// head's status line - its version, status code and reason - then each field line's name and value, to the empty line
     /// that ends the head (RFC 9112 §2 to §5). A line HTTP/1.1 does not allow where it stands stops the decoding at its
     /// start, saying which line and why, and nothing from it on is decoded, so a head is never decoded as more than its
