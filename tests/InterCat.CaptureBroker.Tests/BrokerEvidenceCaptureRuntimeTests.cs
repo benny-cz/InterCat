@@ -140,8 +140,15 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
 
         await using (var first = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host))
         {
+            // Its second passes and the capture publishes its final evidence and ends; a loaded machine does so later, so its
+            // end is waited for rather than slept past (§13.6).
             Assert.True((await first.StartAsync(ownership, plan, null, CancellationToken.None)).Started);
-            await Task.Delay(TimeSpan.FromSeconds(2));
+            DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+            while (!await first.HasCompletedAsync(ownership.CaptureId, CancellationToken.None))
+            {
+                Assert.True(DateTimeOffset.UtcNow < deadline, "the capture has not ended 30 s after its one-second duration");
+                await Task.Delay(TimeSpan.FromMilliseconds(50));
+            }
         }
 
         await using var recovery = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
@@ -333,7 +340,15 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         BrokerCaptureOwnership ownership = Ownership(plan);
         Assert.True((await runtime.StartAsync(ownership, plan, null, CancellationToken.None)).Started);
 
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        // The capture ends itself once its second has passed; a loaded machine does so later, so its end is waited for
+        // rather than slept past (§13.6).
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        while (!await runtime.HasCompletedAsync(ownership.CaptureId, CancellationToken.None))
+        {
+            Assert.True(DateTimeOffset.UtcNow < deadline, "the capture has not ended 30 s after its one-second duration");
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+
         BrokerRuntimeStopOutcome stopped = await runtime.StopAsync(ownership, CancellationToken.None);
 
         Assert.True(stopped.Milestones.FullyFinalized, stopped.FailureReason);
@@ -354,8 +369,15 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         BrokerStartOutcome started = await coordinator.StartAsync(grant.Token, Guid.NewGuid(), OwnerA);
         Assert.Equal(BrokerOperationCode.Started, started.Code);
 
-        await Task.Delay(TimeSpan.FromSeconds(2));
-        BrokerCaptureOwnership status = (await coordinator.GetStatusAsync(started.CaptureId!.Value, OwnerA))!;
+        // The capture closes itself once its second has passed; a loaded machine says so later, so its status is waited for
+        // rather than slept past (§13.6).
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        BrokerCaptureOwnership status;
+        while ((status = (await coordinator.GetStatusAsync(started.CaptureId!.Value, OwnerA))!).State != CaptureLifecycle.Closed)
+        {
+            Assert.True(DateTimeOffset.UtcNow < deadline, $"the capture is still {status.State} 30 s after its one-second duration");
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
 
         Assert.Equal(CaptureLifecycle.Closed, status.State);
         Assert.True(status.StopMilestones.FullyFinalized);

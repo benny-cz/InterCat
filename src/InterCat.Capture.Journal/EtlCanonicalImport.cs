@@ -227,7 +227,7 @@ public static class EtlCanonicalImport
     {
         var ticks = new List<long>(ClockSampleCount);
         var milliseconds = new List<double>(ClockSampleCount);
-        using (var source = new ETWTraceEventSource(path, TraceEventSourceType.FileOnly))
+        using (ETWTraceEventSource source = EtlAdmissionReplay.Open(path))
         {
             void OnEvent(TraceEvent data)
             {

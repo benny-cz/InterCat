@@ -131,7 +131,10 @@ An import refuses rather than continuing in part:
 - more records than the declared record bound;
 - more spilled runs than the declared run bound;
 - more indistinguishable repeats of one instant and key than the declared multiplicity bound;
-- an options value outside its declared range, refused before the source is read at all.
+- an options value outside its declared range, refused before the source is read at all;
+- a file Windows cannot open as an event trace - bytes of anything else, or a damaged trace - refused as
+  unreadable input (exit 4), naming the file and what Windows said, before anything is made for it, a
+  session folder included (revision 860).
 
 ## 7. Bounded spill and cancellation
 
@@ -209,7 +212,7 @@ or the file `--catalogue <file>` names. It is a hint, never evidence.
 - A file that cannot be read as a catalogue of this contract - unreadable, not one, of another contract,
   or larger than 16 MiB - lists nothing and is never replaced: the import says so once and goes on. A
   catalogue that cannot be written is warned about, and the import stands.
-- A writer holds `import-catalogue-v1.json.lock` beside it, waiting up to five seconds for another, reads
+- A writer holds `import-catalogue-v1.json.lock` beside it, waiting up to thirty seconds for others, reads
   the catalogue again and replaces it whole - written beside it and moved over it - so two imports
   recording at once both stay listed, and a reader meets the old catalogue or the new one, never half of
   either.

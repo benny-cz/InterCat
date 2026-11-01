@@ -253,6 +253,34 @@ public sealed partial class ImportReuseTests : IDisposable
         Assert.DoesNotContain("Hashing", said, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A file Windows' trace reader cannot open - bytes of anything else, or a damaged trace - is the file's fault, so it is
+    /// refused as unreadable input in a sentence naming it and what Windows said, and nothing is made for it. Elsewhere no
+    /// admission plan compiles, so an import stops before it opens a file.
+    /// </summary>
+    [Fact(DisplayName = "§18.4: a file Windows cannot open as an event trace is refused as unreadable input in words, and no folder is made for it")]
+    public async Task AFileThatIsNoTraceIsRefusedAsUnreadable()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        string etl = Etl("other-bytes.etl", 30);
+        string session = Path.Combine(root.Path, "never-made");
+        (InterCatExitCode code, string output, string said) = await Run("import", etl, "--into", session);
+        Assert.Equal((InterCatExitCode.CorruptedInput, string.Empty), (code, output));
+        Assert.Contains($"'{etl}' is not an event trace Windows can open, so nothing in it was read: ", said, StringComparison.Ordinal);
+        Assert.Contains(Compiling, said, StringComparison.Ordinal);
+        Assert.DoesNotContain("Hashing", said, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(session));
+
+        // Imported into no folder, it is refused alike.
+        (code, output, said) = await Run("import", etl);
+        Assert.Equal((InterCatExitCode.CorruptedInput, string.Empty), (code, output));
+        Assert.Contains($"'{etl}' is not an event trace Windows can open, so nothing in it was read: ", said, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "§18.4: icat import's help says a folder holding this file's import is reused")]
     public async Task HelpSaysAFolderHoldingThisImportIsReused()
     {

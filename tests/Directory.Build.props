@@ -1,0 +1,7 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <!-- Every test assembly runs in the invariant culture, whatever the machine's (TestCulture.cs, plan §13.6). -->
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)TestCulture.cs" Link="TestCulture.cs" />
+  </ItemGroup>
+</Project>

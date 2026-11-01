@@ -63,7 +63,14 @@ public sealed class CaptureKeepWindowTests
             Assert.Equal("What the capture keeps", AutomationProperties.GetName(selector));
 
             // Starting a capture tells it the choice made: here the last hour, until stopped. Where no capture can run, the
-            // card says so and keeps the choice for the next try.
+            // card says so and keeps the choice for the next try. It is refused as the runner refuses one where live capture
+            // does not run, so no test starts a real broker, elevated, on a Windows machine running the suite.
+            window.CaptureRunner = (report, _, _) =>
+            {
+                report(new(CaptureUiPhase.Unavailable, "Live capture needs Windows",
+                    "You can still open a saved session or explore the demo. No capture was started."));
+                return Task.CompletedTask;
+            };
             selector.SelectedIndex = 2;
             window.GetControl<Button>("StartExploringButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 

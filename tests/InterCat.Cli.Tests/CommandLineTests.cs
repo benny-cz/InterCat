@@ -96,7 +96,7 @@ public sealed class CommandLineTests : IDisposable
             // A form is named by the first word its synopsis writes after the command that is neither a placeholder nor
             // optional: workspace's subcommands, package's --original and --redacted, retain's two releases.
             string own = (await Run(command, "--help")).Output;
-            foreach (Match synopsis in Regex.Matches(own, @"(?m)^\s*icat " + Regex.Escape(command) + @"\b(.*)$"))
+            foreach (Match synopsis in Regex.Matches(own, @"(?m)^\s*icat " + Regex.Escape(command) + @"\b(.*?)\r?$"))
             {
                 string rest = synopsis.Groups[1].Value;
                 for (string previous = string.Empty; previous != rest;)
@@ -1727,7 +1727,7 @@ public sealed class CommandLineTests : IDisposable
                 StringComparison.Ordinal);
             List<TimelineBucket> lane = [.. view.Lanes[0].Buckets];
             int first = lane.FindIndex(bucket => bucket.ObservationCount > 0);
-            Assert.Matches($@"(?m)^\s+{first + 1}\s+0\.0001 s\s+\S+ s\s+{lane[first].ObservationCount}\s+covered\s*$", text);
+            Assert.Matches($@"(?m)^\s+{first + 1}\s+0\.0001 s\s+\S+ s\s+{lane[first].ObservationCount}\s+covered\s*\r?$", text);
             Assert.DoesNotMatch($@"(?m)^\s+{first + 3}\s+\S+ s\s", text);
             (int unknown, int gap) = (lane.FindIndex(bucket => bucket.Coverage == CoverageState.UnknownCoverage),
                 lane.FindIndex(bucket => bucket.Coverage == CoverageState.PartialGap));
@@ -4287,7 +4287,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(key, page.RootElement.GetProperty("page").GetProperty("operationKey").GetString());
         (code, answer, _) = await Run("evidence", linked.Path, "--channel", key);
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches($@"(?m)^  RPC key +{Regex.Escape(key)}$", answer);
+        Assert.Matches($@"(?m)^  RPC key +{Regex.Escape(key)}\r?$", answer);
     }
 
     [Fact(DisplayName = "§6.4: icat evidence lists a timeline lane's records, as the window lists a chosen cell's: one mechanism's, one source direction's, or those made at one end of a paired channel")]
@@ -4320,8 +4320,8 @@ public sealed class CommandLineTests : IDisposable
 
         (code, answer, _) = await Run("evidence", session.Path, "--direction", "inbound", "--page-size", "2");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^  Source direction +inbound$", answer);
-        Assert.Matches(@"(?m)^  Rows on page +2$", answer);
+        Assert.Matches(@"(?m)^  Source direction +inbound\r?$", answer);
+        Assert.Matches(@"(?m)^  Rows on page +2\r?$", answer);
         Assert.Contains(" --direction inbound", answer, StringComparison.Ordinal);
 
         // One end of the paired channel holds half its records.
@@ -4354,18 +4354,18 @@ public sealed class CommandLineTests : IDisposable
         const string Covered = "Coverage: covered for TCP · no other mechanism collected";
         (InterCatExitCode code, string answer, _) = await Run("evidence", gapped.Path);
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches($@"(?m)^  {Regex.Escape(Covered)}$", answer);
+        Assert.Matches($@"(?m)^  {Regex.Escape(Covered)}\r?$", answer);
         (code, answer, _) = await Run("evidence", gapped.Path, "--interval", "5:15");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches($@"(?m)^  {Regex.Escape(Covered)}$", answer);
+        Assert.Matches($@"(?m)^  {Regex.Escape(Covered)}\r?$", answer);
 
         // A range it delivered nothing in lists no record, and says that is no proof of inactivity, as the inspector does.
         const string Unknown = "Coverage unknown: outside the readings the capture's sources delivered, so a count of none here "
             + "is not proof of inactivity";
         (code, answer, _) = await Run("evidence", gapped.Path, "--interval", "25:35");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^  Rows on page +0$", answer);
-        Assert.Matches($@"(?m)^  {Regex.Escape(Unknown)}$", answer);
+        Assert.Matches(@"(?m)^  Rows on page +0\r?$", answer);
+        Assert.Matches($@"(?m)^  {Regex.Escape(Unknown)}\r?$", answer);
         Assert.Contains("its coverage states what the capture's sources covered over its time scope", answer, StringComparison.Ordinal);
 
         // Its JSON carries each mechanism's state and the fact behind it.
@@ -4384,7 +4384,7 @@ public sealed class CommandLineTests : IDisposable
         // A generation without a ledger has judged nothing, and says so.
         (code, answer, _) = await Run("evidence", session.Path);
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^  Coverage unknown: this generation publishes no coverage ledger, so a count of none here is not proof of inactivity$",
+        Assert.Matches(@"(?m)^  Coverage unknown: this generation publishes no coverage ledger, so a count of none here is not proof of inactivity\r?$",
             answer);
     }
 
@@ -4396,25 +4396,25 @@ public sealed class CommandLineTests : IDisposable
         // Every mechanism's coverage, as the inspector states it beneath its time scope.
         (InterCatExitCode code, string answer, _) = await Run("metric", gapped.Path, "--metric", "observations");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^  Coverage: covered for TCP · no other mechanism collected$", answer);
+        Assert.Matches(@"(?m)^  Coverage: covered for TCP · no other mechanism collected\r?$", answer);
 
         // One mechanism's, over a range the capture delivered nothing in, as one sentence; the projection names it as a
         // lane does, never by its enumeration's name.
         (code, answer, _) = await Run("metric", gapped.Path, "--metric", "observations", "--mechanism", "Tcp", "--interval", "25:35");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^  TCP's coverage over the selected interval is unknown: outside the readings the capture's sources delivered\.$",
+        Assert.Matches(@"(?m)^  TCP's coverage over the selected interval is unknown: outside the readings the capture's sources delivered\.\r?$",
             answer);
-        Assert.Matches(@"(?m)^  Projection +TCP$", answer);
+        Assert.Matches(@"(?m)^  Projection +TCP\r?$", answer);
         Assert.DoesNotContain("Tcp", answer, StringComparison.Ordinal);
         (code, answer, _) = await Run("metric", gapped.Path, "--metric", "observations", "--mechanism", "Tcp");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^  TCP was covered over the session: 2 records from its 1 admitted descriptor, and nothing was reported lost\.$",
+        Assert.Matches(@"(?m)^  TCP was covered over the session: 2 records from its 1 admitted descriptor, and nothing was reported lost\.\r?$",
             answer);
 
         // A generation without a ledger has judged nothing.
         (code, answer, _) = await Run("metric", session.Path, "--metric", "observations");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^  Coverage unknown: this generation publishes no coverage ledger, so a count of none here is not proof of inactivity$",
+        Assert.Matches(@"(?m)^  Coverage unknown: this generation publishes no coverage ledger, so a count of none here is not proof of inactivity\r?$",
             answer);
     }
 
@@ -4465,18 +4465,18 @@ public sealed class CommandLineTests : IDisposable
         (InterCatExitCode code, string answer, _) = await Run("timeline", gapped.Path, "--interval", "0:60", "--columns", "6",
             "--mechanism", "udp");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^  Records +UDP records$", answer);
-        Assert.Matches(@"(?m)^  0\.0 – 1\.0 µs +0 +- +not collected$", answer);
-        Assert.Matches(@"(?m)^  2\.0 – 3\.0 µs +0 +- +unknown$", answer);
-        Assert.Matches(@"(?m)^  5\.0 – 6\.0 µs +0 +- +not collected$", answer);
+        Assert.Matches(@"(?m)^  Records +UDP records\r?$", answer);
+        Assert.Matches(@"(?m)^  0\.0 – 1\.0 µs +0 +- +not collected\r?$", answer);
+        Assert.Matches(@"(?m)^  2\.0 – 3\.0 µs +0 +- +unknown\r?$", answer);
+        Assert.Matches(@"(?m)^  5\.0 – 6\.0 µs +0 +- +not collected\r?$", answer);
         Assert.DoesNotContain("has no column", answer, StringComparison.Ordinal);
 
         // TCP's quiet columns are covered: nothing it collects happened there.
         (code, answer, _) = await Run("timeline", gapped.Path, "--interval", "0:60", "--columns", "6", "--mechanism", "tcp");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^  Records +TCP records$", answer);
-        Assert.Matches(@"(?m)^  0\.0 – 1\.0 µs +0 +- +covered$", answer);
-        Assert.Matches(@"(?m)^  1\.0 – 2\.0 µs +1 +TCP +covered$", answer);
+        Assert.Matches(@"(?m)^  Records +TCP records\r?$", answer);
+        Assert.Matches(@"(?m)^  0\.0 – 1\.0 µs +0 +- +covered\r?$", answer);
+        Assert.Matches(@"(?m)^  1\.0 – 2\.0 µs +1 +TCP +covered\r?$", answer);
     }
 
     [Fact(DisplayName = "R5: icat timeline says interval and column as its table and the window do, never bucket, in its notes and both helps")]
@@ -4510,21 +4510,21 @@ public sealed class CommandLineTests : IDisposable
         // A timeline's buckets: the mechanism a bucket mostly holds and the capture's coverage there, in the window's words.
         (InterCatExitCode code, string answer, _) = await Run("timeline", gapped.Path, "--interval", "0:60", "--columns", "6");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^  1\.0 – 2\.0 µs +1 +TCP +covered$", answer);
-        Assert.Matches(@"(?m)^  2\.0 – 3\.0 µs +0 +- +unknown$", answer);
+        Assert.Matches(@"(?m)^  1\.0 – 2\.0 µs +1 +TCP +covered\r?$", answer);
+        Assert.Matches(@"(?m)^  2\.0 – 3\.0 µs +0 +- +unknown\r?$", answer);
 
         // A session's summary, its coverage table and what was not collected, each epoch's losses named for it.
         (code, answer, _) = await Run("session", gapped.Path, "--rows", "2");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^  Mechanisms +TCP$", answer);
-        Assert.Matches(@"(?m)^  Layers +transport$", answer);
+        Assert.Matches(@"(?m)^  Mechanisms +TCP\r?$", answer);
+        Assert.Matches(@"(?m)^  Layers +transport\r?$", answer);
         Assert.Matches(@"(?m)^  TCP +covered +2 records from its 1 admitted descriptor", answer);
         Assert.Contains("says nothing about their activity: process lifecycle, thread lifecycle, UDP, Unix socket, named pipe,",
             answer, StringComparison.Ordinal);
-        Assert.Matches(@"(?m)^  Epoch 1 +live capture, delivered readings \[0, 20\] source ticks$", answer);
+        Assert.Matches(@"(?m)^  Epoch 1 +live capture, delivered readings \[0, 20\] source ticks\r?$", answer);
         Assert.Matches(@"(?m)^  Epoch 1 losses +the session reported 0 lost events, which may be any mechanism's; the consumer lost 0 "
-            + "buffers of unknown size; InterCat's full queue dropped 0 records; 0 admitted records could not be stored$", answer);
-        Assert.Matches(@"(?m)^  Epoch 2 undecodable +0$", answer);
+            + @"buffers of unknown size; InterCat's full queue dropped 0 records; 0 admitted records could not be stored\r?$", answer);
+        Assert.Matches(@"(?m)^  Epoch 2 undecodable +0\r?$", answer);
 
         // An imported file's epoch, a provider it delivered that the capture did not request, and what the file reported
         // lost, each in the words a coverage reason uses, never an enumeration's name split apart ("Etl import").
@@ -4562,9 +4562,9 @@ public sealed class CommandLineTests : IDisposable
         imported.Store.ReleaseSegmentReaders();
         (code, answer, _) = await Run("session", imported.Path);
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^  Epoch +ETL import, delivered readings \[10, 10\] source ticks$", answer);
-        Assert.Matches(@"(?m)^  Losses +the file reported 2 lost events, which may be any mechanism's$", answer);
-        Assert.Matches(@"(?m) 3 +a provider the capture did not request$", answer);
+        Assert.Matches(@"(?m)^  Epoch +ETL import, delivered readings \[10, 10\] source ticks\r?$", answer);
+        Assert.Matches(@"(?m)^  Losses +the file reported 2 lost events, which may be any mechanism's\r?$", answer);
+        Assert.Matches(@"(?m) 3 +a provider the capture did not request\r?$", answer);
         Assert.DoesNotContain("Etl", answer, StringComparison.Ordinal);
         Assert.Matches(@"(?m)^  10 +TCP +send +100 ", answer);
 
@@ -4583,7 +4583,7 @@ public sealed class CommandLineTests : IDisposable
         (code, answer, _) = await Run("metric", unsized.Path, "--metric", "observations", "--evidence", "2", "--layer", "transport");
         Assert.Equal(InterCatExitCode.Success, code);
         Assert.Matches(@"(?m)^  \S.* +TCP +receive +200 +unknown \(redacted\) ", answer);
-        Assert.Matches(@"(?m)^  Projection +transport$", answer);
+        Assert.Matches(@"(?m)^  Projection +transport\r?$", answer);
 
         // A machine's sources and mechanisms, whatever this machine reports of them, read in words; and a content request's.
         (_, answer, _) = await Run("capabilities");
@@ -4603,7 +4603,7 @@ public sealed class CommandLineTests : IDisposable
         (_, answer, _) = await Run("profiles", "content", "--source", "etw/manifest/Microsoft-Windows-WinINet-Capture",
             "--mechanism", "http", "--pid", "1234", "--channel", "*", "--max-record-bytes", "4096", "--max-session-bytes", "65536",
             "--retention", "stop-at-limit", "--inspection", "hex-text");
-        Assert.Matches(@"(?m)^  Mechanism +HTTP$", answer);
+        Assert.Matches(@"(?m)^  Mechanism +HTTP\r?$", answer);
 
         // None of them names a mechanism, a kind, a layer, a size's reason or a state by its enumeration.
         foreach (string[] asked in (string[][])[["timeline", gapped.Path, "--interval", "0:60", "--columns", "6"], ["session", gapped.Path, "--rows", "2"],

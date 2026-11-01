@@ -305,6 +305,8 @@ internal static partial class ImportCommand
             PreserveExtendedData = true,
         };
 
+        // A file Windows cannot open as an event trace is refused before anything is made for it, a session folder included.
+        EtlAdmissionReplay.EnsureOpens(full);
         ConsoleUi.Progress($"Hashing {full} before reading a record from it.");
         var bounds = new CanonicalImportOptions
         {

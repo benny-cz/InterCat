@@ -746,6 +746,8 @@ Revision 858 shows a redacted package's leak search finds a source value in ever
 
 Revision 859 measures WinINet's responses in the gzip content coding, and sets such a body beside the length its head declares.
 
+Revision 860 runs the suite on Windows as it runs in a container: every test assembly in the invariant culture, each multiline pattern taking Windows' line ends, and what it found on Windows alone fixed.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2640,3 +2642,23 @@ length: one holding that length agrees, and one holding another, though recorded
 body rather than to disagree; a body in another coding, which was not measured, is compared only where it holds that
 length. Measuring it also found that .NET's gzip stream writes nothing for an empty body, which no gzip decoder reads as
 a member, so the workload writes RFC 1952's empty member itself.
+
+Revision 860 makes the suite say on Windows what it says in a container. Run on a Windows workstation in its Czech
+culture, 93 tests failed that the container's runs passed or never reached, the count every slice note since the
+container's work had carried. Most were the culture: the product writes numbers in the person's culture, and the tests
+the container wrote expect the invariant culture's "1,200" and "0.500 s" where this one writes "1 200" and "0,500 s".
+Every test assembly now runs in the invariant culture, set by one module initializer that `tests/Directory.Build.props`
+compiles into each, so the suite answers alike on both; a test of what the product writes in a culture sets that culture
+itself (§13.6). Thirty-three multiline patterns ended a line with a bare end anchor, which .NET places before a line feed
+while Windows writes a carriage return ahead of it, and now allow the return, as the 143 others in their file did; one of
+them read each command's synopsis with the return, which is why `icat retain --release-content` seemed missing from the
+overview. What remained was Windows' own. `icat import` of a file that is not an event trace - the catalogue tests'
+random bytes, which elsewhere stop at compiling the admission plans - ended on an exception the dispatcher reports as
+InterCat's defect: Windows' trace reader refuses such a file as corrupted, and it is now refused as unreadable input, in
+words, before any folder is made for it, through the one way InterCat opens an ETL. Twenty-four imports recording into
+the catalogue at once outwaited its five-second lock on a busy disk, each holding it for a write it flushes to the disk,
+and the wait is now thirty seconds. Two window tests started captures through the real runner, which on Windows launches
+the broker elevated and here could not start it; each now gives the window a runner that refuses as one does where live
+capture cannot run. A broker test that slept two seconds for a one-second capture now waits for it to close, and a window
+test's scratch folder is let go as the others' are. Layout tests that measure text in Segoe UI, which the container does
+not have, remain.

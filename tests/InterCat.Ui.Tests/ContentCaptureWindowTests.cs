@@ -194,6 +194,14 @@ public sealed class ContentCaptureWindowTests
             Assert.False(note.IsVisible);
 
             // A content capture that cannot run here says why on its own start, which still chooses processes, not Explore.
+            // It is refused as the runner refuses one where live capture does not run, so no test starts a real broker,
+            // elevated, on a Windows machine running the suite.
+            window.CaptureRunner = (report, _, _) =>
+            {
+                report(new(CaptureUiPhase.Unavailable, "Live capture needs Windows",
+                    "You can still open a saved session or explore the demo. No capture was started."));
+                return Task.CompletedTask;
+            };
             window.BeginContentCapture(new([new(4_242, "client", Started)], 64 * 1024, 16L * 1024 * 1024,
                 ContentInspectionMode.Disabled, 600));
             await Assert.IsAssignableFrom<Task>(window.CaptureRun).WaitAsync(TimeSpan.FromSeconds(60));

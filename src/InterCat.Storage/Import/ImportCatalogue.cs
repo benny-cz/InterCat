@@ -43,8 +43,12 @@ public sealed class ImportCatalogue
     /// <summary>The longest catalogue read: far beyond what its entries take.</summary>
     public const long MaximumBytes = 16L * 1024 * 1024;
 
-    /// <summary>How long a writer waits for another to finish writing the catalogue.</summary>
-    private static readonly TimeSpan LockWait = TimeSpan.FromSeconds(5);
+    /// <summary>
+    /// How long a writer waits for others to finish writing the catalogue: each holds it for a read, a write it flushes to
+    /// the disk and a move, which a busy disk can make take most of a second, so the wait outlasts a queue of them, while
+    /// a lock never let go still ends in the warning that the import was not recorded.
+    /// </summary>
+    private static readonly TimeSpan LockWait = TimeSpan.FromSeconds(30);
 
     private static readonly JsonSerializerOptions Json = new()
     {
