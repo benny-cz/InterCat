@@ -752,6 +752,8 @@ Revision 861 lays the window out for Segoe UI, the font Windows draws it in, whi
 
 Revision 862 has `icat record` hold its session as a follow does, so a command that would publish beside the recording refuses rather than end it.
 
+Revision 863 qualifies the broker again with real ETW on Windows, the first time since the container's revisions changed it.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2693,3 +2695,10 @@ naming the recording, and what only measures goes ahead. It is no follow ticket,
 derived from: a recording's session is what it recorded, and nothing is left to finish. Run on this workstation, `icat
 compact` and `icat checkpoint` beside a real recording refused in its words and changed nothing, the recording finished
 whole, and its hold was gone once it had.
+
+Revision 863 qualifies the broker again with real ETW, on the Windows workstation, as revision 81's tool does: the last
+qualification was of revision 276, on 29 September, and eighteen revisions since changed the broker, its protocol or the
+Windows capture beneath it, in a container where none of them could run. All five scenarios passed on revision 862's
+code: a clean stop, a broker killed mid-capture whose restart reclaimed its one orphaned session and kept its published
+prefix, the launcher, a capture through `icat capture`, and a client that abandoned its capture; no session was left
+running. Only the report is kept, in `bench/results/broker-qualification-20261101T185750Z`.
