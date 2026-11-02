@@ -167,6 +167,34 @@ public sealed partial class EvidenceRetentionTests
         Assert.Empty(session.Store.LiveLeases(Committed));
     }
 
+    [Fact(DisplayName = "I18: what a release left to a reader goes at the writer's next publication that finds none holding it")]
+    public void WhatAReleaseLeftToAReaderGoesAtTheNextPublication()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult first = Publish(session.Store, 4);
+        _ = Publish(session.Store, 5);
+        string chunk = Path.Combine(session.Path, first.JournalName);
+        SessionStore follower = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
+        using EvidenceLease lease = follower.AcquireLease(nowUtc: Committed);
+
+        // A recording releases the chunk its follow gave up while the follow reads, as a rolling capture's broker does: the
+        // chunk stays for the reader.
+        RetentionOutcome outcome = session.Store.ReleaseJournalChunks([first.JournalName], 4, "the follow gave it up", Committed, Committed);
+        Assert.Contains(first.JournalName, outcome.HeldByLease);
+        Assert.True(File.Exists(chunk));
+
+        // The writer's next publication leaves it while the reader still holds its lease, and removes it at the first after
+        // the reader lets go, with no sweep asked for, so a recording keeping a window keeps no more on disk than it names.
+        _ = Publish(session.Store, 6);
+        Assert.True(File.Exists(chunk));
+        Assert.True(lease.Holds(first.JournalName, Committed));
+        lease.Dispose();
+        _ = Publish(session.Store, 7);
+
+        Assert.False(File.Exists(chunk));
+        Assert.DoesNotContain(first.JournalName, session.Reopen().Recovery.OrphanFiles);
+    }
+
     [Fact(DisplayName = "I18: an expired lease holds nothing, and is not revivable")]
     public void AnExpiredLeaseHoldsNothing()
     {

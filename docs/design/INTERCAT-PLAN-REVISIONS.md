@@ -766,6 +766,8 @@ Revision 868 has a whole-session RPC pairing let go of its source fields and cal
 
 Revision 869 measures the viewer's memory without a hard limit's false failures, and finds a 10-minute capture within §12's 512 MiB analysis budget.
 
+Revision 870 measures a rolling capture for two hours, its session and evidence holding their window, after having a writer remove at its next publication what a release left to a reader.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2796,3 +2798,35 @@ same limit, the 10-minute capture saved whole and met every budget, twice on rev
 session's checkpoint alone needs more than 384 MiB on revision 867's code and at most 320 MiB on revision 868's. So the
 failures revisions 866 to 868 reported under 512 MiB were the measurement's, revision 868's pairing is headroom rather
 than the difference, and the bench README now says how to measure.
+
+Revision 870 measures a rolling capture on Windows for hours, IC-016a's last open item. The qualification tool's new
+`rolling` mode records one Explore capture through the Desktop's own runner, keeping a window as the window's "The
+last 10 minutes" does, until the broker ends it at its quota. Every minute it samples the session time the latest
+overview spans, the bytes and journal chunks the session and the broker's evidence hold, and the viewer's and the
+broker's memory. It passes when the capture records to its quota and saves its session; when, from the window and its
+slack plus a minute on, every sample's session spans the window to the window and its slack, 30 s either side, as the
+saved session does reopened; when by each sample the evidence has given up every chunk the session had given up by
+the one before; and when what each holds per row, and the viewer's heap, grows less than half from the judged samples'
+first quarter to their last. Its first six-minute runs, keeping one minute, held the session's window at every sample
+but not the evidence's. Whenever the broker released what the follow gave up while the follower was reading the
+evidence, the follower's shared guard kept the released chunks on disk, and nothing removed them afterwards: store-v1
+left them reported orphans that only an explicit `RemoveOrphans` takes, and nothing in InterCat asks for it. Sixteen
+chunks stayed in six minutes, a diagnostic reading the evidence's manifest showed, so a capture recording for a day
+would have kept every release a read met. A writer now remembers what a release left to a reader, and its first later
+publication that takes the guard exclusively removes each one no lease of its own names, as it removes superseded
+manifests (store-v1 §8, §9); one that ends first leaves them reported orphans, as before. The same six minutes then
+left none.
+
+Over two hours keeping ten minutes, the capture journaled 8,560,264 records to its quota and saved its session after
+43 releases. At every one of 107 judged samples the session held 606-750 s of session time, in 455,704-1,137,663 rows,
+228-547 MB and 285-355 chunks; the evidence held 286-359 chunks and 111-260 MB, at most one release's 71 chunks behind
+the session and never past the next sample; and a diagnostic reading its manifest each minute found no released chunk
+left on disk. From the first quarter to the last, the session's bytes per row changed by x1.001, the evidence's by
+x1.003 and the viewer's heap by x1.015, its medians 568 and 577 MiB; the rows kept from released intervals as identity
+evidence stayed at 275-431. The saved session reopened with the same 863,476 rows and 694 s. That run was made under a
+2 GiB heap limit, its region range widened as revision 869 measures. Under 512 MiB and under 1 GiB the viewer ran out of
+memory at a release - the first, 12 minutes in at 1,063,482 rows, and the ninth, 27 minutes in at 1,140,795 - and under
+2 GiB its heap reached 1,842 MiB, though its medians were flat. A release plans from the whole generation: it derives
+the session's processes, connections, RPC calls twice and HTTP exchanges again, beside the follow's own derivation of
+the same generation, and a rolling step plans it twice, a preview and then the release. Planning a release from the
+follow's own derivation, once a step, is what bounds a rolling capture's viewer next.

@@ -42,6 +42,7 @@ return args.FirstOrDefault() switch
 
     // What presses Ctrl+C in the console the cli-stop scenario's capture runs in.
     "ctrl-c-child" => Qualification.CtrlCChild(args),
+    "rolling" => await Qualification.RollingAsync(args, cancellation.Token),
     _ => Qualification.Usage(),
 };
 
@@ -62,6 +63,7 @@ internal static partial class Qualification
         Console.Error.WriteLine("       InterCat.BrokerQualification first-feedback --output <new directory> [--runs <1-10>] [--seconds <5-600>] [--bounded]");
         Console.Error.WriteLine("       InterCat.BrokerQualification crashed-viewer --output <new directory> [--seconds <5-60>]");
         Console.Error.WriteLine("       InterCat.BrokerQualification cli-stop --output <new directory>");
+        Console.Error.WriteLine("       InterCat.BrokerQualification rolling --output <new directory> [--hours <h>] [--keep-minutes <1-60>]");
         Console.Error.WriteLine("Runs elevated. Starts real ETW sessions in a broker child process and stops every one it started.");
         return 2;
     }

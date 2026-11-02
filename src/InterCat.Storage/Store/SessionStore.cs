@@ -354,6 +354,13 @@ public sealed partial class SessionStore
     private readonly IOwnedDirectory directory;
     private readonly Lock gate = new();
     private readonly Dictionary<Guid, EvidenceLease> leases = [];
+
+    /// <summary>
+    /// Files a retention of this writer released while a reader held them, so they stayed (I18): a later publication of its
+    /// own removes them once no reader does, as it removes superseded manifests (store-v1 §8, §9). A writer that ends first
+    /// leaves them reported orphans, which <see cref="RemoveOrphans"/> removes when asked.
+    /// </summary>
+    private readonly HashSet<string> awaitingRemoval = new(StringComparer.OrdinalIgnoreCase);
     private SegmentReaderCache segmentReaders = new(DefaultSegmentReaderCacheBytes);
 
     /// <summary>What this instance has read back and hashed, so an unchanged immutable file is hashed once.</summary>
@@ -1907,7 +1914,8 @@ public sealed partial class SessionStore
     /// whole - its manifest and every index no kept generation names, which describe only it and are rebuilt from the
     /// evidence - or not at all, never another dependency, and only while no reader anywhere holds the evidence guard and
     /// no lease here names any of them; otherwise a later publication tries again, led back to the indexes by the manifest
-    /// kept. It never throws: cleanup is optional, preserving evidence is not.
+    /// kept. The files a retention of this writer released while a reader held them go under the same guard, each once no
+    /// lease here names it. It never throws: cleanup is optional, preserving evidence is not.
     /// </remarks>
     /// <param name="removalLockHeld">Whether the caller already holds the evidence guard exclusively, as retention does.</param>
     /// <returns>How many manifests were removed.</returns>
@@ -1964,7 +1972,7 @@ public sealed partial class SessionStore
                 generation = manifest.PreviousGeneration is { } prior && prior < older ? prior : null;
             }
 
-            if (superseded.Count == 0)
+            if (superseded.Count == 0 && awaitingRemoval.Count == 0)
             {
                 return 0;
             }
@@ -1976,6 +1984,7 @@ public sealed partial class SessionStore
             }
 
             Sweep(now);
+            RemoveAwaited(keptFiles, now);
             int removed = 0;
             foreach ((string name, string[] indexes) in superseded)
             {
@@ -1998,6 +2007,36 @@ public sealed partial class SessionStore
             or ArgumentOutOfRangeException)
         {
             return 0;
+        }
+    }
+
+    /// <summary>
+    /// Removes the files a retention of this writer released while a reader held them, now that no reader in another
+    /// process does - the caller holds the evidence guard exclusively - each once no lease here names it. A file a kept
+    /// generation names was never this writer's to remove, and one that cannot be removed now is tried again later.
+    /// </summary>
+    private void RemoveAwaited(HashSet<string> keptFiles, DateTimeOffset now)
+    {
+        foreach (string name in awaitingRemoval.ToArray())
+        {
+            if (IsLeased(name, now))
+            {
+                continue;
+            }
+
+            try
+            {
+                if (!keptFiles.Contains(name))
+                {
+                    _ = directory.RemoveOwnedFile(name);
+                }
+
+                _ = awaitingRemoval.Remove(name);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // Another program holds it, as a scanner can: a later publication tries again.
+            }
         }
     }
 
@@ -2173,6 +2212,10 @@ public sealed partial class SessionStore
                 reclaimed += dependency.LengthBytes;
             }
         }
+
+        // What a reader held goes at a later publication of this writer that finds none holding it: a recording that keeps
+        // a window, released every few publications while its follow reads, would otherwise keep every release a read met.
+        awaitingRemoval.UnionWith(heldByLease);
 
         // A retention has made the previous generation incomplete - now, or as soon as the lease still
         // holding its files lets go - so the retained last-known-good is re-aimed at this one. A pointer that

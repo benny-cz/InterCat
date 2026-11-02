@@ -85,7 +85,8 @@ public sealed record CaptureRunOptions
 
     /// <summary>
     /// The newest stretch of session time the session keeps, its older records released between mirrors by the follow's
-    /// own writer (§20.2, ADR-045); null keeps every record. The broker's evidence keeps every record until it stops.
+    /// own writer (§20.2, ADR-045); null keeps every record. The broker then releases its own copy of what the session gave
+    /// up (ADR-048 decision 5), so its evidence holds the window too.
     /// </summary>
     public RollingRetentionPolicy? Rolling { get; init; }
 

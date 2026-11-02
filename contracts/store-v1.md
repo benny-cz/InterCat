@@ -356,7 +356,11 @@ stale *writer* eligible to publish: publication keeps its own baseline until tha
 Retention and explicit orphan removal take the exclusive guard under the publication lock before deleting
 anything. If any reader in any process holds the shared guard, physical removal is deferred and the released
 files remain as reported orphans. This is intentionally conservative: one reader may defer deletion of an
-unrelated file, but no reader loses a dependency. Disposal, expiry, or process exit releases the OS handle;
+unrelated file, but no reader loses a dependency. Since revision 870 the writer that released them remembers them, and
+each later publication of its own that takes the guard exclusively removes those no lease of its own names, as it removes
+superseded manifests (§9): a recording that keeps a window, whose releases its follow's reads often meet, keeps on disk
+what it names rather than every release a read met. A writer that ends before then leaves them reported orphans, which
+`RemoveOrphans` removes when asked. Disposal, expiry, or process exit releases the OS handle;
 expiry has a timer so an idle client does not hold cleanup indefinitely. A lease is not a durable promise
 across process restart, and the guard is not a cross-process quota reservation for pins: a pin (below) is that promise,
 about a session's records rather than a generation's files.
@@ -458,8 +462,9 @@ list that is empty, that names a generation not earlier than its own or out of o
 release, or two of one kind, or one of the kind its own record releases, is refused.
 
 Releasing and removing are separate steps. The generation stops naming a file immediately, which is what
-makes the retention visible; the bytes go when the last reader that acquired them lets go. A file a live
-lease still holds is reported as awaiting release rather than removed behind the reader.
+makes the retention visible; the bytes go when the last reader that acquired them lets go - at the releasing writer's
+first publication after that, since revision 870, or when `RemoveOrphans` is asked (A lease, above). A file a live lease still
+holds is reported as awaiting release rather than removed behind the reader.
 
 A retention that released anything re-aims the retained last-known-good pointer at the retention generation
 itself. The earlier generation is missing a file, now or as soon as a lease lets go, and a pointer that named
@@ -625,7 +630,9 @@ square of its length: 16 MB after the default 10-minute capture.
   publishes, which would otherwise be left an orphan two publications later. A superseded generation goes whole or
   not at all, so the manifest a later publication finds still leads it to the indexes. A manifest an interrupted
   publication left was never current, and no chain reaches it whatever its number, so it stays an orphan for recovery
-  to judge. Nothing else is removed this way: no other dependency, pointer, lock or staging file.
+  to judge. Nothing else is removed this way: no other dependency, pointer, lock or staging file - except, since
+  revision 870, the files a retention of this writer released while a reader held them (§8), which go with them once
+  no lease of the writer's names them.
 - **When.** Only while the writer can take the evidence guard exclusively, which no reader anywhere holds, and only
   for manifests no lease of the writer's names. Otherwise a later publication removes them all at once. Removal is
   cleanup: a failure is ignored, and the publication already succeeded.

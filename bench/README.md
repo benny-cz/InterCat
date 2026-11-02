@@ -180,6 +180,24 @@ four at stated times after its first generation. It passes when every press stop
 finished its session from every chunk published, leaving no follow ticket (revision 864). Build `src/InterCat.Cli`
 first. Only `report.json` is committed, as `bench/results/cli-stop-<started UTC>/report.json`.
 
+`rolling --output <new scratch directory> [--hours <h>] [--keep-minutes <1-60>]` records one Explore capture for
+hours keeping a window, as the window's "The last 10 minutes" does (two hours keeping ten minutes unless told
+otherwise), through the tool's broker, which ends it at its quota (revision 870). Every minute, or every quarter of a
+shorter window, it samples the session time the latest overview spans, the bytes and journal chunks the session and
+the broker's evidence hold, and the viewer's and the broker's memory. It passes when the capture records to its quota
+and saves its session; when, from the window and its slack plus a minute on, every sample's session spans no less than
+the window less 30 s and no more than the window, its slack and 30 s, as the saved session does reopened; when, by
+each sample, the evidence has given up every chunk the session had given up by the one before (each store's given-up
+chunks are the capture's chunks it was given, published or derived, less the journal chunks its files hold); and when
+the medians of the samples' last quarter are within 1.5 times their first quarter's, for the session's and the
+evidence's bytes per row and for the viewer's heap.
+Under a heap limit beside the region range above, it also shows the viewer within that limit for the whole run. It
+needs no `src/InterCat.Cli` build: the runner launches this tool as its broker. Only `report.json` is committed, as
+`bench/results/rolling-<started UTC>/report.json`. Revision 870's are two six-minute runs keeping one minute, before
+and after a writer came to remove what a release left to a reader (`-6min-keep1-before-fix`, `-6min-keep1`), and
+three of two hours keeping ten minutes: under 2 GiB it passed, and under 512 MiB and 1 GiB the viewer ran out of
+memory at a release, 12 and 27 minutes in.
+
 `impact --output <new scratch directory> [--triplets <1-15>]` measures the broker's capture impact at its
 compiled cadence: the seeded TCP workload with no capture, a broker `OnStop` capture and a broker `Live`
 capture, rotating order within each triplet. It reports machine CPU and the broker process's own CPU,
