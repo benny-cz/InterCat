@@ -764,6 +764,8 @@ Revision 867 measures what a finished 10-minute capture's derivation checkpoint 
 
 Revision 868 has a whole-session RPC pairing let go of its source fields and call records as soon as it is done with them, and size its drafts once.
 
+Revision 869 measures the viewer's memory without a hard limit's false failures, and finds a 10-minute capture within §12's 512 MiB analysis budget.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2782,3 +2784,15 @@ for byte, and the checkpoint publishes under a 384 MiB heap limit where it neede
 segments before the checkpoint - so what bounds a live session of 800,000 records is broader than the pairing:
 compaction's segment built whole in memory, readers growing past the reader cache's budget within one lease, or §12's
 budget itself.
+
+Revision 869 looked at the heap where the viewer ran out, before deciding which. A temporary handler, never committed,
+failed the viewer fast at the first out-of-memory exception, so the runtime's dump held the heap at the failing
+allocation: 296 MB committed - 242 MB of large objects and 49 MB of the second generation, with no free space in either -
+refusing one 62 MB array, the checkpoint's call records, under a 512 MiB limit. The heap was far from full. With regions,
+a hard limit also narrows the address range the GC places them in, and an array of tens of megabytes needs one
+contiguous range; ten minutes of large arrays made and freed leave none. With `DOTNET_GCRegionRange` at 8 GiB beside the
+same limit, the 10-minute capture saved whole and met every budget, twice on revision 868's code and once on 867's, at
+575,833-635,636 records, its heap peaking at 305-380 MiB while it recorded. Measured the same way, a finished
+session's checkpoint alone needs more than 384 MiB on revision 867's code and at most 320 MiB on revision 868's. So the
+failures revisions 866 to 868 reported under 512 MiB were the measurement's, revision 868's pairing is headroom rather
+than the difference, and the bench README now says how to measure.

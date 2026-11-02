@@ -167,6 +167,13 @@ dotnet run --project tools/InterCat.BrokerQualification/InterCat.BrokerQualifica
 Only `report.json` is committed, as `bench/results/broker-qualification-<started UTC>/report.json`; the
 qualification root holds machine-wide journals and stays local (P16).
 
+To judge the live viewer's memory against §12's 512 MiB analysis budget, run `first-feedback --output <new scratch
+directory> --bounded --seconds 600 --runs 1` with `DOTNET_GCHeapHardLimit=0x20000000` and
+`DOTNET_GCRegionRange=0x200000000` in its environment: it completes, the session saved, only if the viewer fits
+(revision 869). The hard limit alone also narrows the address range the GC places its regions in, and an array of tens
+of megabytes then fails for want of one contiguous range though the heap holds far less than the limit; revisions
+866 to 868 took such failures for the viewer outgrowing the budget.
+
 `cli-stop --output <new scratch directory>` presses Ctrl+C in `icat capture`'s own console, as a person at it
 does, at eight moments of a real capture through the tool's broker: four while the capture's follow publishes,
 four at stated times after its first generation. It passes when every press stopped the capture by request and
