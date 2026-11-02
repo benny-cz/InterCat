@@ -485,6 +485,14 @@ public sealed partial class SessionStore
     internal SegmentReaderCache SegmentReaders => segmentReaders;
 
     /// <summary>
+    /// Has this store's cached readers give back every column but session time and mechanism, which every projection reads,
+    /// and returns the bytes released. A pass over the whole generation through readers of its own - a release's plan, a
+    /// compaction - asks it first, so the pass never holds a second copy of the columns queries read: at a busy rolling
+    /// window, that copy was what filled §12's analysis budget (revision 875). A query reads what it needs again.
+    /// </summary>
+    public long GiveBackReaderColumns() => segmentReaders.GiveBack(ResidentColumns);
+
+    /// <summary>
     /// Gives up every cached segment reader and keeps what this store has verified. A viewer does this for a session it
     /// no longer shows, so it holds one session's readers rather than one set per session it has shown. A query already
     /// holding a reader keeps it.

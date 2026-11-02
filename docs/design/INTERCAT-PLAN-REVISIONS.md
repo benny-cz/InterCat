@@ -776,6 +776,8 @@ Revision 873 has a release's readers give back each stage's columns before the n
 
 Revision 874 writes each segment to its staging file in the order of its bytes, byte for byte as before, so a flush no longer holds an array as long as the file beside the columns it was built from.
 
+Revision 875 has the store's cached readers give their columns back before a release, a compaction and between a checkpoint's derivations, and gives a finished session's checkpoint room under the heap's limit for its call records, so it needs 192-208 MiB where it needed 384-416, and finds a busier window's live derivation holding its cached readers' columns past their budget.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2907,3 +2909,41 @@ minutes, a rolling capture then met the busiest machine yet - 695,870 rows by it
 twenty-seventh - and ran out at a release while presizing the 11 MB of call records its RPC pass reads, its heap full
 before the release began: what bounds a busy window's viewer now is what it holds between releases, of which the
 reader cache's 256 MiB budget is the largest part (`bench/results/rolling-20261102T190616Z-2h-keep10-512MiB-revision874`).
+
+Revision 875 has the store's cached readers give back what queries read before a pass over the whole generation reads
+it again. Revision 874's run found the viewer's heap full before a release began, the reader cache near its 256 MiB
+budget its largest part: its readers keep the columns queries read until a trim brings them within the budget, and a
+release's plan, a compaction's runs and a checkpoint's derivations read most of the generation's columns beside them.
+`SessionStore.GiveBackReaderColumns` has every cached reader give back every column but session time and mechanism,
+which every projection reads, keeping what it derived from its rows. A release asks it before it plans, a compaction
+before it reads its runs, and a checkpoint, which reads through the cached readers, between its derivations. Under 512
+MiB for two hours, keeping ten minutes, a rolling capture then held its window and its evidence at all 107 judged
+samples, at 619,034-1,360,702 rows, its heap 371 MiB at the median and at most 473 MiB as sampled. It ran out only
+after its quota, publishing the finished session's checkpoint, as it presized 87.5 MB for its window's 781,247 call
+records (`bench/results/rolling-20261102T201710Z-2h-keep10-512MiB-revision875-before-checkpoint`).
+
+A dump of `icat checkpoint` failing on that session under 384 MiB found 156 MB in the heap's generations and a GC unable
+to commit, and the GC's own figures read before the allocation said why: it held 312 MB committed for a live heap of 61
+MB. Under a heap
+limit the GC keeps the regions its collections free committed, for what it budgets to allocate before its next, and a
+full compacting collection asked for there kept them too; an allocation larger than any region it keeps is committed
+anew, and fails while the live heap is a third of the limit. An aggressive collection gives them back: asked for
+there, it left 97 MB committed, what was live. `HeapRoom.For` asks for one when what the GC held committed at its last collection,
+what has been allocated since, which it may have committed anew, and the allocation could pass what the GC may use;
+without a limit that is the machine's memory, and nothing is collected short of it. The GC's own high-load threshold
+is no guide, since it is reckoned from the machine's memory under a limit too. The RPC pairing asks for room before
+it presizes its call records. It also gives each segment's columns back once it has read the segment's call records,
+and the source-field segments' once it has read their fields (`SegmentReaderV1.GiveBackColumns`, which keeps what a
+reader derived from its rows, costly to derive again): nothing after reads a column, and a whole session's pairing held
+every column it read beside the records. On the saved session `icat checkpoint` publishes the same 362 dependencies as
+revision 874's code and needs 192-208 MiB of heap, where 874's needed 384-416; with room made but every column kept,
+it needs more than 224.
+
+Under 512 MiB for two hours again, the machine was busier than in any run before: 1,409,548 rows in the window by
+minute 12, 2,097,259 by minute 32. The capture held its window and evidence at all 19 samples judged, and the viewer
+then ran out in its live view's derivation of connections, which a release makes derive every segment again
+(`bench/results/rolling-20261102T231123Z-2h-keep10-512MiB-revision875`). `icat overview` of that generation, 2,237,882
+rows in 69 segments, needs 384-512 MiB alone, as revision 874's code does, and its dump at the failure holds 350 MB of
+columns in the store's cached readers: the cache's 256 MiB budget is restored by a trim when a lease ends, and a
+derivation that reads every segment's columns under one lease holds them all past it. S2 bounds the cache by its
+declared budget, not by the rows a lease reads, so the budget must hold while readers read.

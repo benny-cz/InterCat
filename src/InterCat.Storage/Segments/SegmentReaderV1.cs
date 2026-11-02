@@ -1372,6 +1372,15 @@ public sealed class SegmentReaderV1
     public long GiveBack() => Release(NoColumns) + ReleaseDerived();
 
     /// <summary>
+    /// Gives back every column this reader holds, keeping the values derived from its rows, and returns how many bytes
+    /// that released: a derivation that reads each segment's columns once, into what it derives, gives them back as it
+    /// finishes each segment, so it holds one segment's columns at a time beside what it derives, not every segment's
+    /// (revision 875). What a caller already read stays with it, and the next read of a column reads it and checks it
+    /// again, as after a trim. A reader of a whole file releases nothing.
+    /// </summary>
+    public long GiveBackColumns() => Release(NoColumns);
+
+    /// <summary>
     /// One column's bytes, read from the source and checked the first time any caller asks for them. Two threads can
     /// both read and check a column; the first to publish its copy is the one every later caller gets.
     /// </summary>

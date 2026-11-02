@@ -180,6 +180,27 @@ internal sealed class SegmentReaderCache
     }
 
     /// <summary>
+    /// Has every cached reader give back every column but <paramref name="kept"/>, whatever the cache holds against its
+    /// budget, and returns the bytes released: before a pass that reads the whole generation through readers of its own,
+    /// so it never holds a second copy of what queries read (revision 875). Values derived from rows stay, as a trim
+    /// leaves them until columns were not enough; no reader is evicted.
+    /// </summary>
+    public long GiveBack(IReadOnlySet<SegmentColumnId> kept)
+    {
+        ArgumentNullException.ThrowIfNull(kept);
+        lock (gate)
+        {
+            long released = 0;
+            foreach (Entry entry in entries.Values)
+            {
+                released += entry.Reader.Release(kept);
+            }
+
+            return released;
+        }
+    }
+
+    /// <summary>
     /// Keeps what the cache holds within its budget: when its readers hold more, they give back every column but
     /// <paramref name="kept"/>, one reader at a time until the charge fits. No reader is evicted: a query holding one
     /// keeps what it read, and the next read of a released column reads it again. Returns the bytes released.

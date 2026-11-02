@@ -671,6 +671,29 @@ public sealed partial class SegmentV1Tests
         Assert.Equal(file.Length, whole.ResidentBytes);
     }
 
+    [Fact(DisplayName = "S2: a reader gives back every column it holds but keeps what it derived from its rows, and reads each column again as it was when next asked")]
+    public void AReaderGivesBackItsColumnsButKeepsWhatItDerived()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult published = Publish(session.Store, Spread(300));
+        string name = published.Segments[0].Name;
+        SegmentReaderV1 segment = SessionSegments.Open(LocalOwnedDirectory.Open(session.Path), published.Manifest, name);
+        ObservationRowV1[] read = [.. Enumerable.Range(0, segment.RowCount).Select(segment.Row)];
+        var derivation = new object();
+        long[] derived = segment.DerivedRows("test-rows", derivation, source => new long[source.RowCount]);
+        long derivedBytes = (long)derived.Length * sizeof(long);
+        long columns = segment.ResidentBytes - derivedBytes;
+
+        // A derivation that reads each segment's columns once gives them back as it finishes the segment; what the reader
+        // derived from its rows is costly to derive again, and stays.
+        Assert.Equal(columns, segment.GiveBackColumns());
+        Assert.Equal(derivedBytes, segment.ResidentBytes);
+        Assert.Same(derived, segment.DerivedRows<long>("test-rows", derivation, _ => throw new InvalidOperationException("derived twice")));
+        Assert.Equal(read, Enumerable.Range(0, segment.RowCount).Select(segment.Row));
+        Assert.Equal(columns + derivedBytes, segment.ResidentBytes);
+        GC.KeepAlive(derivation);
+    }
+
     [Fact(DisplayName = "I15: damage to a published column is found when the column is read, and other columns are still served")]
     public void DamageToAPublishedColumnIsFoundWhenItIsRead()
     {
@@ -876,6 +899,27 @@ public sealed partial class SegmentV1Tests
         Assert.Equal(
             rows.Select(row => row.NativeTicks),
             result.Segments.SelectMany(segment => AllTicks(session.Store, result.Manifest, segment.Name)));
+    }
+
+    [Fact(DisplayName = "S2: a store's cached readers give back every column but session time and mechanism when a pass asks, and read the rest again")]
+    public void CachedReadersGiveBackTheirColumnsWhenAPassAsks()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult published = Publish(session.Store, Spread(300));
+        string name = Assert.Single(published.Segments).Name;
+        SegmentReaderV1 reader = SessionSegments.Open(session.Store, published.Manifest, name);
+        long? value = reader.SignedValue(SegmentColumnId.ByteValue, 7);
+        SegmentColumnDescriptor mechanism = reader.Column(SegmentColumnId.Mechanism)!;
+        _ = reader.Slice(SegmentColumnId.Mechanism);
+        long held = session.Store.SegmentReaderCache.AdmittedPayloadBytes;
+
+        // What every projection reads stays; the time column read at open and the bytes a query read go, whatever the budget.
+        long released = session.Store.GiveBackReaderColumns();
+        Assert.True(released > 0);
+        Assert.Equal(held - released, session.Store.SegmentReaderCache.AdmittedPayloadBytes);
+        Assert.Equal(mechanism.ValueLength + mechanism.NullBitmapLength, reader.ResidentBytes);
+        Assert.Equal(0, session.Store.GiveBackReaderColumns());
+        Assert.Equal(value, SessionSegments.Open(session.Store, published.Manifest, name).SignedValue(SegmentColumnId.ByteValue, 7));
     }
 
     [Fact(DisplayName = "S2: a flush writes its segment to the staging file in order, allocating less than the segment it writes")]

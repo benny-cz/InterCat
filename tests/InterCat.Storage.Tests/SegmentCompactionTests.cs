@@ -61,6 +61,26 @@ public sealed partial class SegmentCompactionTests
         Assert.Null(SegmentCompaction.Compact(reopened, Committed));
     }
 
+    [Fact(DisplayName = "S2: before a compaction reads its runs, the store's cached readers give back what queries read")]
+    public void ACompactionHasCachedReadersGiveBackWhatQueriesRead()
+    {
+        using var session = new TemporarySession();
+        var options = new CompactionOptions { TargetRows = 20, SmallUnitsBeforeCompaction = 2 };
+        PublishChunk(session.Store, 1, 10);
+        PublishChunk(session.Store, 11, 10);
+        PublishChunk(session.Store, 21, 25);
+        const string large = "seg-0000000003-0000.icats";
+        SegmentReaderV1 queried = SessionSegments.Open(session.Store, session.Store.Current!, large);
+        _ = queried.Slice(SegmentColumnId.ByteValue);
+        Assert.True(queried.ResidentBytes > 0);
+
+        // The two small units are read through readers of the compaction's own and rewritten; the large one stays as it
+        // was, and the reader a query left in the store holds nothing of it any more.
+        Assert.NotNull(SegmentCompaction.Compact(session.Store, Committed, options));
+        Assert.Contains(large, SessionSegments.Names(session.Store.Current!));
+        Assert.Equal(0, queried.ResidentBytes);
+    }
+
     [Fact(DisplayName = "I15: compaction coalesces only runs of small units, and a live budget takes the oldest run in steps")]
     public void CompactionKeepsLargeUnitsAndBoundsALiveStep()
     {

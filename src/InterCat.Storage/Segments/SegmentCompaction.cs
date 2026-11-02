@@ -142,6 +142,9 @@ public static class SegmentCompaction
                     return null;
                 }
 
+                // The runs are read through readers of their own; the store's cached readers give back what queries read
+                // before them, so the two are never held at once (revision 875).
+                _ = store.GiveBackReaderColumns();
                 (builder, rows, fieldRows) = ReadRuns(store, lease.Manifest, plan, generationOptions, cancellationToken);
             }
 

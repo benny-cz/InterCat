@@ -588,7 +588,10 @@ public sealed partial class RpcCallIndex
     /// <summary>
     /// The call records of <paramref name="segments"/>, with the procedure and protocol <paramref name="fieldSegments"/>
     /// carry for their starts, the interfaces they name, and how many RPC records are no call record. The source fields are
-    /// held only by this frame, so ordering and pairing the records holds them no longer (revision 868).
+    /// held only by this frame, so ordering and pairing the records holds them no longer (revision 868). Nothing after
+    /// reads a column, so each reader gives its columns back once what this needs of them is read: the field segments'
+    /// once the fields are, each segment's once its call records are, and a whole session's pairing holds one segment's
+    /// columns beside the records rather than every column it read (revision 875).
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (List<CallRecord> Collected, Guid[] Interfaces, long OtherRecords) CollectAll(
@@ -597,15 +600,24 @@ public sealed partial class RpcCallIndex
         CancellationToken cancellationToken)
     {
         Dictionary<RecordAddress, FieldSlot> fields = ReadFields(fieldSegments, cancellationToken);
+        foreach (SegmentReaderV1 segment in fieldSegments)
+        {
+            _ = segment.GiveBackColumns();
+        }
+
         var interfaces = new List<Guid>();
         var interfaceIndex = new Dictionary<Guid, int>();
-        // Sized from the mechanism column alone, so a session of many calls fills its buffers once.
-        var collected = new List<CallRecord>(CountRpcRecords(segments, cancellationToken));
+        // Sized from the mechanism column alone, so a session of many calls fills its buffers once, in room the GC is
+        // asked for when what it keeps committed would leave none under the heap's limit (revision 875).
+        int count = CountRpcRecords(segments, cancellationToken);
+        _ = HeapRoom.For((long)count * Unsafe.SizeOf<CallRecord>());
+        var collected = new List<CallRecord>(count);
         long otherRecords = 0;
         for (int position = 0; position < segments.Count; position++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             otherRecords += Collect(segments[position], position, fields, interfaces, interfaceIndex, collected);
+            _ = segments[position].GiveBackColumns();
         }
 
         return (collected, [.. interfaces], otherRecords);

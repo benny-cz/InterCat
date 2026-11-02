@@ -270,6 +270,10 @@ public static class IntervalRelease
     /// </summary>
     private static ReleasePlan Plan(SessionStore store, SessionManifestV1 manifest, long boundary, CancellationToken cancellationToken)
     {
+        // The plan reads the whole generation through readers of its own; the store's cached readers give back what queries
+        // read before it, so the two are never held at once (revision 875).
+        _ = store.GiveBackReaderColumns();
+
         // A pin keeps every record read from its moment on, so a release asked for past one plans to it (ADR-046): every row
         // it gives up was then read before the pin. Publication checks the pins again, while it holds them.
         RetentionPin? heldBy = EarliestPinBefore(store, boundary);

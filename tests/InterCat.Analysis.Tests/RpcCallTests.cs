@@ -323,6 +323,30 @@ public sealed class RpcCallTests
         Assert.True(more < Calls * 32L, $"Pairing the session with calls of their own allocated {more:N0} bytes more.");
     }
 
+    [Fact(DisplayName = "§12: pairing a session gives back each segment's columns once it has read its call records, and each source-field segment's once it has read its fields, and pairs it again as before")]
+    public void PairingGivesBackTheColumnsItRead()
+    {
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields, _) = RandomCalls(new Random(875));
+        using var session = new TemporarySession();
+        Publish(session.Store, rows, rowsPerSegment: 7, fields: fields);
+        (SegmentReaderV1[] observations, SegmentReaderV1[] fieldSegments) = SegmentsOf(session.Store);
+        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(observations, TestClock, fieldSegments);
+        Assert.True(observations.Length > 1 && fieldSegments.Length > 0);
+        Assert.All(observations, segment => Assert.True(segment.ResidentBytes > 0));
+
+        // Nothing after the call records are read reads a column, so a whole session's pairing holds one segment's columns
+        // beside the records rather than every column it read (revision 875).
+        RpcCallIndex calls = RpcCallIndex.Derive(observations, fieldSegments, processes, TestClock);
+        Assert.All(observations.Concat(fieldSegments), segment => Assert.Equal(0, segment.ResidentBytes));
+
+        // The columns are read again, and checked again, when next asked for.
+        RpcCallIndex again = RpcCallIndex.Derive(observations, fieldSegments, processes, TestClock);
+        Assert.Equal(calls.Totals, again.Totals);
+        Assert.Equal(
+            calls.Groups.SelectMany(group => calls.CallsOf(group, observations, 0, int.MaxValue)).Select(Comparable),
+            again.Groups.SelectMany(group => again.CallsOf(group, observations, 0, int.MaxValue)).Select(Comparable));
+    }
+
     /// <summary>A session of <paramref name="calls"/> client calls, each a start and a stop, the first <paramref name="withoutActivity"/> without an activity id.</summary>
     private static TemporarySession CallsOf(int calls, int withoutActivity)
     {
@@ -340,7 +364,10 @@ public sealed class RpcCallTests
         return session;
     }
 
-    /// <summary>What pairing a session's calls allocates on this thread, once its columns were read by a pairing before.</summary>
+    /// <summary>
+    /// What pairing a session's calls allocates on this thread after a pairing before it. A pairing gives back the columns it
+    /// read, so each reads them again: as many of them for either session, whose records are as many.
+    /// </summary>
     private static long PairingAllocates(SessionStore store)
     {
         (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(store);

@@ -110,6 +110,11 @@ public static class SessionCheckpoints
                 activity = ProcessActivityIndex.Derive(segments, processes, cancellationToken);
             }
 
+            // Each derivation below reads every segment through the store's readers, and together they read most of the
+            // generation's columns under this one lease; between them the readers give back what one read, so a finished
+            // rolling capture's checkpoint holds at once what its largest derivation reads, the RPC pairing's at a busy
+            // window, rather than every column (revision 875). Nothing derived holds a column of theirs.
+            _ = store.GiveBackReaderColumns();
             OverviewCounts counts = SessionOverviewProjector.Count(
                 segments, SessionOverviewProjector.RetainedFromTicks(manifest), cancellationToken);
 
@@ -123,11 +128,14 @@ public static class SessionCheckpoints
             // How every record binds at its two ends is kept too, so the first ranking by peers reads no segment either
             // (overview-index-v1 minor 7).
             counts = counts with { PeerBindings = SessionPeerRanking.KeptBindings(segments, processes, relations, cancellationToken) };
+            _ = store.GiveBackReaderColumns();
 
             // A capture that collected ALPC keeps its RPC links with the overview, so its first view follows no call
             // (overview-index-v1 §3); one that did not keeps none.
             RpcPeerIndex peers = derivation.RpcPeers(store.Root, segments, clock, fields, cancellationToken);
+            _ = store.GiveBackReaderColumns();
             HttpExchangeIndex exchanges = derivation.HttpExchanges(store.Root, segments, clock, fields, cancellationToken);
+            _ = store.GiveBackReaderColumns();
             if (RpcPeerEdges.Collected(store.Root, manifest, SessionSegments.CoverageLedger(store.Root, manifest)))
             {
                 counts = counts with { RpcLinks = RpcPeerEdges.Totals(peers) };

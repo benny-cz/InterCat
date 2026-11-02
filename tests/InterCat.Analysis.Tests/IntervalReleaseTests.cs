@@ -290,6 +290,34 @@ public sealed class IntervalReleaseTests
         Assert.All(retained.Rows, row => Assert.Equal(recorded.Rows[row.Key], row.Value));
     }
 
+    [Fact(DisplayName = "S6: before a release plans, the store's cached readers give back what queries read, so the plan never holds it twice")]
+    public void AReleaseHasCachedReadersGiveBackWhatQueriesRead()
+    {
+        using var session = new TemporarySession();
+        for (int chunk = 0; chunk < 3; chunk++)
+        {
+            int process = 400 + chunk;
+            ulong first = (ulong)(chunk * 10) + 1;
+            Publish(session.Store, Timed(
+                Lifecycle((chunk * 100) + 1, ObservationKind.Create, process, first),
+                RpcCall((chunk * 100) + 2, ObservationKind.RequestStart, Direction.Outbound, process, first + 1, Activity(chunk + 1)),
+                RpcCall((chunk * 100) + 3, ObservationKind.RequestEnd, Direction.Outbound, process, first + 2, Activity(chunk + 1), status: 0)));
+        }
+
+        // A query read the newest chunk's statuses through the store's readers.
+        SessionManifestV1 before = session.Store.Current!;
+        string newest = SessionSegments.Names(before)[^1];
+        SegmentReaderV1 queried = SessionSegments.Open(session.Store, before, newest);
+        _ = queried.Slice(SegmentColumnId.StatusCode);
+        Assert.True(queried.ResidentBytes > 0);
+
+        // The release reads the generation through readers of its own and keeps the newest chunk's segment as it was; the
+        // reader the query left in the store holds nothing of it any more.
+        _ = IntervalRelease.Release(session.Store, 15_000, "older than the retained window", Committed, Committed);
+        Assert.Contains(newest, SessionSegments.Names(session.Store.Current!));
+        Assert.Equal(0, queried.ResidentBytes);
+    }
+
     [Fact(DisplayName = "I20: on random recordings, every call and exchange a release retains a record of pairs, times and links as before")]
     public void RandomReleasesKeepEveryRetainedOperationsFacts()
     {
