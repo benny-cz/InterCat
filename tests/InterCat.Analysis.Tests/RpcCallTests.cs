@@ -308,6 +308,49 @@ public sealed class RpcCallTests
             StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "§12: pairing a session makes its call drafts once, however many of its records are calls of their own")]
+    public void PairingMakesItsDraftsOnce()
+    {
+        // Two sessions of as many records. In one every start has its stop; in the other one call in fifty has no activity
+        // id, and its two records are calls of their own, so the calls are a little more than half the records.
+        const int Calls = 4_000;
+        using TemporarySession paired = CallsOf(Calls, withoutActivity: 0);
+        using TemporarySession singles = CallsOf(Calls, withoutActivity: Calls / 50);
+
+        // Drafts sized for half the records doubled to fit those few calls, taking about what they all held again; sized
+        // for all of them, the few calls take a few drafts' bytes more (revision 868).
+        long more = PairingAllocates(singles.Store) - PairingAllocates(paired.Store);
+        Assert.True(more < Calls * 32L, $"Pairing the session with calls of their own allocated {more:N0} bytes more.");
+    }
+
+    /// <summary>A session of <paramref name="calls"/> client calls, each a start and a stop, the first <paramref name="withoutActivity"/> without an activity id.</summary>
+    private static TemporarySession CallsOf(int calls, int withoutActivity)
+    {
+        var session = new TemporarySession();
+        var rows = new List<ObservationRowV1> { Lifecycle(10, ObservationKind.Create, 400, 1) };
+        ulong ordinal = 10;
+        for (int call = 0; call < calls; call++)
+        {
+            Guid? activity = call < withoutActivity ? null : Activity(1_000 + call);
+            rows.Add(RpcCall(100 + (call * 10L), ObservationKind.RequestStart, Direction.Outbound, 400, ++ordinal, activity, ServiceControl));
+            rows.Add(RpcCall(105 + (call * 10L), ObservationKind.RequestEnd, Direction.Outbound, 400, ++ordinal, activity, status: 0));
+        }
+
+        Publish(session.Store, [.. rows]);
+        return session;
+    }
+
+    /// <summary>What pairing a session's calls allocates on this thread, once its columns were read by a pairing before.</summary>
+    private static long PairingAllocates(SessionStore store)
+    {
+        (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(store);
+        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(observations, TestClock, fields);
+        _ = RpcCallIndex.Derive(observations, fields, processes, TestClock);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        _ = RpcCallIndex.Derive(observations, fields, processes, TestClock);
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
+
     private static (RpcCallIndex Calls, SegmentReaderV1[] Segments) Derive(SessionStore store)
     {
         (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(store);

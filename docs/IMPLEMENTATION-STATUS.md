@@ -30,8 +30,9 @@ times September's, with event-to-visible p95 0.80–0.82 s and exact p95 2.8–2
 met every §12 budget; the third ended partial when the broker's final publication could not replace a pointer a reader
 held, which since revision 865 a publication waits out. The viewer's managed heap reached 921 MiB at 770,000 records,
 most of it dead; since revision 866 what is live at 837,000 records is 205 MiB, 144 MiB of it the segment reader cache
-within its budget, but the checkpoint a finished capture publishes pairs every RPC call in full and does not fit §12's
-512 MiB analysis budget at that volume. A crashed viewer's capture is stopped and finalized by its lease without a leaked trace, and the next launch
+within its budget. Since revision 868 the whole-session RPC pairing of a finished capture's checkpoint holds half what
+it did at its peak, but under §12's 512 MiB analysis budget such a capture still runs out of memory at its largest
+transient allocations. A crashed viewer's capture is stopped and finalized by its lease without a leaked trace, and the next launch
 offers to finish its session from the evidence the broker kept, including what the broker recorded after the crash.
 Since revision 157, a live generation's derivation
 extends the previous one's, and since revision 158 the overview and minimap come from each segment's in-memory tiles,
@@ -133,6 +134,27 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M12 comparative | Exit gate met ([review](reviews/M12-release-review.md), revision 773): `icat compare` and Compare with… compare two intervals or two captures by relationship or by executable, by records or bytes sent across, stating a change only where both measured alike (revisions 752 to 757), share as a redacted report (754), save comparisons and notes about them in an investigation (758, 759, 771, 772), state and draw a row's difference timeline (760, 761) and mark the graph (762); `icat patterns`, `icat links`, `icat waits` and `icat outliers`, and the window's Recurring patterns…, Follow its links…, Time inside calls… and Outliers…, give recurring patterns (763, 764), over an interval of a session too (795), causal navigation over evidence-backed links (765, 766), over an interval too (797), the time inside calls (767, 769), over an interval too (796), and outliers against a baseline's windows (768, 770) | Outliers judge records alone, against one session's windows; patterns, links and waits read a whole generation or one interval of it, never two captures, all over TCP, UDP, RPC and process creation alone; only a comparison shares as a redacted report of its own. |
 
 ## Recent slices
+
+- **Revision 868 — a whole-session RPC pairing holds half what it did at its peak:**
+  - Revision 867 found the pairing a finished capture's checkpoint runs held the source-field map through the walk,
+    the call records through the placing of the calls, and drafts sized for half the records, which the few records
+    that are calls of their own then doubled. The field map and the call records are now each held only by the frame
+    that needs them, and the drafts are sized for the records with an activity id and those without, and a sixty-fourth
+    more, so they are made once.
+  - What it publishes is unchanged: on revision 867's saved session, `icat checkpoint` of the old and the new build
+    published the same four files byte for byte, the operation index of all 304,621 calls among them, and every RPC
+    test passes. A new test pairs two sessions of 8,001 records, in one of which eighty calls have no activity id: on
+    the old sizing that one allocated 1,125,216 bytes more, a doubled drafts array, and on the new a few kilobytes.
+  - That checkpoint now publishes under a 384 MiB heap limit where it needed 512, its peak private bytes without one
+    485 MiB from 531; at 288 MiB it runs out holding only the reader cache's 143.5 MiB and the call records' 59.4 MiB.
+  - The viewer still runs out of memory under 512 MiB at the end of a 10-minute capture of some 800,000 records: once
+    collecting the checkpoint's call records, once compacting its segments before the checkpoint, wherever its next large
+    transient allocation meets a heap the live session already holds near the limit
+    (`bench/results/first-feedback-20261101T232315Z-10min-bounded-512MiB`,
+    `bench/results/first-feedback-20261101T235305Z-10min-bounded-512MiB`). Bounding that is broader than the pairing
+    (Open work, item 1).
+  - Debug and Release each ran 3,513 tests, and failed only the fixture index check of this workstation's ignored
+    folder, which a clean checkout passes.
 
 - **Revision 867 — what the checkpoint of a finished 10-minute capture holds when it runs out of memory:**
   - Revision 866's viewer ran out of memory under a 512 MiB heap limit publishing its session's derivation
@@ -3387,7 +3409,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      builds a second whole entries array beside the drafts. Ways to bound it, each to be proven against
      `RpcCallIndex.Derive`'s identical result (I14) on real sessions: let the field map go before the walk, size the
      drafts without doubling, place the calls in the drafts' own array, or have the live follow extend the calls as it
-     goes so that the checkpoint pairs only the last chunk's.
+     goes so that the checkpoint pairs only the last chunk's. Revision 868 did the first two, and the call records
+     go before the calls are placed: that checkpoint publishes under 384 MiB. The viewer still runs out under 512 MiB at
+     the end of such a capture, at its largest transient allocations - collecting the checkpoint's call records, or
+     building a compacted segment - beside what the live session holds. What remains is broader: compaction's segment
+     built whole in memory, the reader cache's readers growing past its budget within one lease (they give back columns
+     only when it ends), or §12's budget itself, revised openly by an ADR with this evidence.
 2. Run a real screen reader (Narrator and NVDA) over the Desktop on Windows. Revision 131 audited the automation tree
    headlessly; it cannot hear what a screen reader says. Revision 214's live pass found that Avalonia's menu items
    expose no UI Automation Invoke pattern: the keyboard reaches them, but voice control may not, so check it there. A

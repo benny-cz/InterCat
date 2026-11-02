@@ -545,6 +545,57 @@ public sealed partial class RpcCallIndex
             throw new ArgumentException("The calls are timed on another clock than the process instances.", nameof(clock));
         }
 
+        Drafted drafted = Draft(segments, fieldSegments, clock, cancellationToken);
+        return Assemble(
+            CollectionsMarshal.AsSpan(drafted.Calls),
+            processes,
+            drafted.Interfaces,
+            [.. segments.Select(segment => segment.Published?.Name)],
+            clock,
+            drafted.CallRecords,
+            drafted.OtherRecords,
+            cancellationToken,
+            read: (IdentitiesOf(segments), IdentitiesOf(fieldSegments)),
+            tail: drafted.Tail,
+            kept: drafted.Kept);
+    }
+
+    /// <summary>
+    /// Every call of <paramref name="segments"/>, drafted in the canonical order of its first record, with what a later
+    /// generation needs to extend them. Every call record is read before any is paired, and then in canonical order, so
+    /// the segments' cut and the records' delivery order change no call (§3, I14); the keys a later generation's records
+    /// can still change are kept with their records, for that generation to extend these calls rather than pair them all
+    /// again. The call records are held only by this frame, so placing the drafts holds them no longer (revision 868).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static Drafted Draft(
+        IReadOnlyList<SegmentReaderV1> segments,
+        IReadOnlyList<SegmentReaderV1> fieldSegments,
+        SourceClockDescriptor clock,
+        CancellationToken cancellationToken)
+    {
+        (List<CallRecord> collected, Guid[] interfaces, long otherRecords) = CollectAll(segments, fieldSegments, cancellationToken);
+        int[] order = CanonicalOrder(collected, cancellationToken);
+        long? latest = order.Length == 0 ? null : collected[order[^1]].Ticks;
+        var tails = new Dictionary<CallKey, List<int>>();
+        List<Entry> drafts = Walk(
+            CollectionsMarshal.AsSpan(collected), order, cancellationToken, boundary: BoundaryOf(collected, order, Watermark(latest, clock)),
+            tails: tails);
+        return new(drafts, interfaces, collected.Count, otherRecords, new(latest, Kept(collected, order, tails), [], [], []),
+            KeptRanks(tails, order.Length));
+    }
+
+    /// <summary>
+    /// The call records of <paramref name="segments"/>, with the procedure and protocol <paramref name="fieldSegments"/>
+    /// carry for their starts, the interfaces they name, and how many RPC records are no call record. The source fields are
+    /// held only by this frame, so ordering and pairing the records holds them no longer (revision 868).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (List<CallRecord> Collected, Guid[] Interfaces, long OtherRecords) CollectAll(
+        IReadOnlyList<SegmentReaderV1> segments,
+        IReadOnlyList<SegmentReaderV1> fieldSegments,
+        CancellationToken cancellationToken)
+    {
         Dictionary<RecordAddress, FieldSlot> fields = ReadFields(fieldSegments, cancellationToken);
         var interfaces = new List<Guid>();
         var interfaceIndex = new Dictionary<Guid, int>();
@@ -557,27 +608,7 @@ public sealed partial class RpcCallIndex
             otherRecords += Collect(segments[position], position, fields, interfaces, interfaceIndex, collected);
         }
 
-        // Every call record is read before any is paired, and then in canonical order, so the segments' cut and the
-        // records' delivery order change no call (§3, I14). The keys a later generation's records can still change are
-        // kept with their records, for that generation to extend these calls rather than pair them all again.
-        int[] order = CanonicalOrder(collected, cancellationToken);
-        long? latest = order.Length == 0 ? null : collected[order[^1]].Ticks;
-        var tails = new Dictionary<CallKey, List<int>>();
-        List<Entry> drafts = Walk(
-            CollectionsMarshal.AsSpan(collected), order, cancellationToken, boundary: BoundaryOf(collected, order, Watermark(latest, clock)),
-            tails: tails);
-        return Assemble(
-            CollectionsMarshal.AsSpan(drafts),
-            processes,
-            [.. interfaces],
-            [.. segments.Select(segment => segment.Published?.Name)],
-            clock,
-            collected.Count,
-            otherRecords,
-            cancellationToken,
-            read: (IdentitiesOf(segments), IdentitiesOf(fieldSegments)),
-            tail: new(latest, Kept(collected, order, tails), [], [], []),
-            kept: KeptRanks(tails, order.Length));
+        return (collected, [.. interfaces], otherRecords);
     }
 
     /// <summary>
@@ -1618,7 +1649,17 @@ public sealed partial class RpcCallIndex
         int boundary = int.MaxValue,
         Dictionary<CallKey, List<int>>? tails = null)
     {
-        var calls = new List<Entry>((records.Length / 2) + 1);
+        // A call of two records holds half of them, a record without an activity id is a call of its own, and a call left
+        // open, one without its start and an ambiguous run's records add a few more. Sized for all of them, the drafts are
+        // made once: sized for half the records, the last few calls doubled them, and a whole-session pairing held three
+        // times their size at once (revision 868).
+        int withoutActivity = 0;
+        foreach (ref readonly CallRecord record in records)
+        {
+            withoutActivity += record.HasActivity ? 0 : 1;
+        }
+
+        var calls = new List<Entry>(((records.Length - withoutActivity) / 2) + withoutActivity + (records.Length >> 6) + 1);
         var open = new Dictionary<CallKey, OpenCall>();
         for (int rank = 0; rank < order.Length; rank++)
         {
@@ -2074,6 +2115,12 @@ public sealed partial class RpcCallIndex
 
     /// <summary>Calls bound, dealt into their groups in reading order and counted; each group's sorted durations by the groups' order.</summary>
     private readonly record struct Placed(Entry[] Entries, RpcCallGroup[] Groups, RpcCallCounts Totals, long[][] Durations);
+
+    /// <summary>
+    /// A derivation's calls drafted (<see cref="Draft"/>): the drafts, the interfaces they name by index, the call records
+    /// read and the other RPC records, what a later generation can still change, and by each record's rank whether it does.
+    /// </summary>
+    private sealed record Drafted(List<Entry> Calls, Guid[] Interfaces, int CallRecords, long OtherRecords, CallTail Tail, bool[] Kept);
 
     /// <summary>
     /// Where the calls of the index an index was extended from went in it (<see cref="Lineage"/>), for the calls' other

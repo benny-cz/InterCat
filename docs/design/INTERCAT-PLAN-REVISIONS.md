@@ -762,6 +762,8 @@ Revision 866 has a cached segment reader hold the derivation its derived values 
 
 Revision 867 measures what a finished 10-minute capture's derivation checkpoint holds when it runs out of memory.
 
+Revision 868 has a whole-session RPC pairing let go of its source fields and call records as soon as it is done with them, and size its drafts once.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2770,3 +2772,13 @@ pass therefore needs some 200 MB at 650,000 RPC records on top of whatever the r
 go before the walk, sizing the drafts without doubling and placing the calls in the drafts' own array would each take a
 part of that; having the live follow extend the calls as it goes would leave the checkpoint only the last chunk's to
 pair. Each must give `RpcCallIndex.Derive`'s identical result (I14), which real sessions' digests can prove.
+
+Revision 868 takes the first two and a third. The field map is read and held by the frame that collects the call
+records, the call records by the frame that walks them, and the drafts are sized for the records with an activity id
+and those without, and a sixty-fourth more, so a few calls of their own no longer double them: the pass holds about half
+what it did at its peak. On revision 867's session the old and the new build's checkpoints are the same four files byte
+for byte, and the checkpoint publishes under a 384 MiB heap limit where it needed 512. The viewer still ran out under
+512 MiB at the end of a 10-minute capture, though - once collecting the checkpoint's call records, once compacting its
+segments before the checkpoint - so what bounds a live session of 800,000 records is broader than the pairing:
+compaction's segment built whole in memory, readers growing past the reader cache's budget within one lease, or §12's
+budget itself.
