@@ -170,7 +170,7 @@ public sealed partial class RpcPeerIndex
         ArgumentNullException.ThrowIfNull(calls);
         ArgumentNullException.ThrowIfNull(fieldSegments);
         calls.RequireDerivedFrom(segments);
-        return Link(calls, segments, Read(calls, segments, fieldSegments, cancellationToken), RpcCallIndex.IdentitiesOf(fieldSegments),
+        return Link(calls, segments, Read(() => calls, segments, fieldSegments, cancellationToken), RpcCallIndex.IdentitiesOf(fieldSegments),
             cancellationToken);
     }
 
@@ -485,10 +485,11 @@ public sealed partial class RpcPeerIndex
     /// <summary>
     /// The ALPC sends and receives of <paramref name="segments"/> and the server calls' starts, each sorted as the rule
     /// looks them up: sends by thread and reading, receives that carry a message id by id and reading, starts by thread and
-    /// reading; and the server-start window in the calls' clock ticks.
+    /// reading; and the server-start window in the calls' clock ticks. The calls are asked for only once a message is
+    /// found: without one there is no start to look up.
     /// </summary>
     private static Evidence Read(
-        RpcCallIndex calls,
+        Func<RpcCallIndex> callsOnceNeeded,
         IReadOnlyList<SegmentReaderV1> segments,
         IReadOnlyList<SegmentReaderV1> fieldSegments,
         CancellationToken cancellationToken)
@@ -511,6 +512,7 @@ public sealed partial class RpcPeerIndex
         sent.AsSpan().Sort(BySender);
         Message[] received = [.. receives.Where(receive => receive.HasId)];
         received.AsSpan().Sort(ById);
+        RpcCallIndex calls = callsOnceNeeded();
         return new(sent, received, ServerStarts(calls, segments), Window(calls), sends.Count, receives.Count);
     }
 

@@ -163,11 +163,9 @@ public sealed class RollingRetention
             lastPlanned = planned;
             try
             {
-                if (IntervalRelease.Preview(store, boundary, cancellationToken).ReleasesAnything)
-                {
-                    released = IntervalRelease.Release(store, boundary, Policy.Reason, nowUtc, cancellationToken: cancellationToken);
-                    Releases++;
-                }
+                // One plan of the whole generation both asks whether anything is due and releases it.
+                released = IntervalRelease.ReleaseIfAny(store, boundary, Policy.Reason, nowUtc, cancellationToken: cancellationToken);
+                Releases += released is null ? 0 : 1;
             }
             catch (RetentionPinnedException)
             {

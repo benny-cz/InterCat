@@ -5,29 +5,46 @@ namespace InterCat.Analysis;
 public sealed partial class RpcPeerIndex
 {
     /// <summary>
-    /// What an interval release owes the links between the calls of <paramref name="calls"/> (ADR-043,
+    /// What an interval release owes the links between the calls <paramref name="derive"/> pairs (ADR-043,
     /// `operations-v1` §5c). A completed client call that stays keeps what its other end is read from: every ALPC send on
     /// its thread in its window, every receive of its one send's message id read after the send and before the call
     /// stopped, and the first server call the receiving thread began after the receive, whole. A server call that stays
     /// keeps every client call that reached it, so one that two calls reached stays neither's. Each link, and each reason a
     /// call has none, is then read from what it was read from before.
     /// </summary>
+    /// <param name="derive">
+    /// Pairs the calls, asked only once the segments hold an ALPC message: without one no call has an other end to keep, so
+    /// a release of a capture that collected no ALPC, as Explore's, pairs none of its calls for it (revision 871).
+    /// </param>
     internal static ReleaseDependencies ReleaseDependenciesOf(
-        RpcCallIndex calls,
+        Func<RpcCallIndex> derive,
         IReadOnlyList<SegmentReaderV1> segments,
         IReadOnlyList<SegmentReaderV1> fieldSegments,
         Func<ulong, bool> released,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(calls);
+        ArgumentNullException.ThrowIfNull(derive);
         ArgumentNullException.ThrowIfNull(fieldSegments);
-        calls.RequireDerivedFrom(segments);
+        RpcCallIndex? paired = null;
+        RpcCallIndex Calls()
+        {
+            if (paired is null)
+            {
+                paired = derive();
+                paired.RequireDerivedFrom(segments);
+            }
+
+            return paired;
+        }
+
         var dependencies = new ReleaseDependencies(released);
-        Evidence evidence = Read(calls, segments, fieldSegments, cancellationToken);
+        Evidence evidence = Read(Calls, segments, fieldSegments, cancellationToken);
         if (evidence.Sends + evidence.Receives == 0)
         {
             return dependencies;
         }
+
+        RpcCallIndex calls = Calls();
 
         var reachedBy = new Dictionary<int, List<int>>();
         for (int call = 0; call < calls.Count; call++)

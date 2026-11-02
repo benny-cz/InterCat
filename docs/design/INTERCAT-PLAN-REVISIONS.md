@@ -768,6 +768,8 @@ Revision 869 measures the viewer's memory without a hard limit's false failures,
 
 Revision 870 measures a rolling capture for two hours, its session and evidence holding their window, after having a writer remove at its next publication what a release left to a reader.
 
+Revision 871 has a rolling capture's release plan once a step and pair only the calls it reaches, in half the memory, with the same result.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2830,3 +2832,23 @@ memory at a release - the first, 12 minutes in at 1,063,482 rows, and the ninth,
 the session's processes, connections, RPC calls twice and HTTP exchanges again, beside the follow's own derivation of
 the same generation, and a rolling step plans it twice, a preview and then the release. Planning a release from the
 follow's own derivation, once a step, is what bounds a rolling capture's viewer next.
+
+Revision 871 has a rolling capture's releases plan in a fraction of the memory. A heap dump written at revision 870's
+first failing release held 222 MiB live: 127 MiB of segment columns and 56 MiB of RPC call records, which the
+release's dependency pass gathered for every call of the session into a list doubling as it grew, then asking for one
+contiguous array of some 112 MB. The release would next have paired every call again, in full, for their other ends,
+though an Explore capture collects no ALPC to link them by, and each rolling step planned the whole generation twice,
+a preview and then the release. A rolling step now plans once (`IntervalRelease.ReleaseIfAny`, null when nothing is
+due); the pass for calls' other ends pairs the calls only once it finds an ALPC message; and the dependency pass reads
+only the keys a released record names, every record of each, sized for two a key. A key's records pair apart from
+every other key's (`operations-v1` §3), so those keys' calls and ambiguous runs are exactly those of every record, and
+a key no released record names owes the release nothing. On the two-hour run's saved session, `icat retain
+--release-before 6800 s` releases 338,552 records in 137 of 325 chunks and publishes the same 217 dependencies, by name,
+length and digest, with either build; it needs 512-640 MiB of heap on revision 870's code and 256-320 MiB on 871's. A
+test pins a call open across the boundary keeping its start with no ALPC to link it, which a mutation letting only
+released stops name a key fails, as the random releases' test does. Reading the release's segments through the store's
+reader cache, tried on the way, held the cache near its 256 MiB budget afterwards - a trim gives back only what is over
+it - and moved the viewer's failure to compaction 35 minutes in; the release reads its own again. Keeping ten minutes,
+a rolling capture then ran 45 minutes under 512 MiB, made 13 releases at 415,195-727,717 rows and saved its session
+(its fail-fast handler, armed for a dump, never fired). The machine recorded half the morning's rate, so the 1.1
+million rows the morning's windows held are still to be measured under it.

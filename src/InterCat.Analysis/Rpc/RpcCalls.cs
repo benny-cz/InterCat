@@ -1463,14 +1463,19 @@ public sealed partial class RpcCallIndex
         return fields;
     }
 
-    /// <summary>Reads one segment's call records; returns how many of its RPC records are no call record.</summary>
+    /// <summary>
+    /// Reads one segment's call records; returns how many of its RPC records are no call record. Given
+    /// <paramref name="keys"/>, it reads only the records of those keys, which pair among themselves exactly as among every
+    /// record, since a key's records pair apart from every other key's (§3).
+    /// </summary>
     private static long Collect(
         SegmentReaderV1 segment,
         int position,
         Dictionary<RecordAddress, FieldSlot> fields,
         List<Guid> interfaces,
         Dictionary<Guid, int> interfaceIndex,
-        List<CallRecord> records)
+        List<CallRecord> records,
+        HashSet<CallKey>? keys = null)
     {
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
         long other = 0;
@@ -1525,6 +1530,11 @@ public sealed partial class RpcCallIndex
                 || owners.At(row, Mechanism.Rpc) is not { } processId)
             {
                 other++;
+                continue;
+            }
+
+            if (keys is not null && (activities.GuidAt(row) is not { } keyed || !keys.Contains(new(processId, callSide, keyed))))
+            {
                 continue;
             }
 

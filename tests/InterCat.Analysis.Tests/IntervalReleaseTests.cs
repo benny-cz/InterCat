@@ -260,6 +260,36 @@ public sealed class IntervalReleaseTests
         Assert.Contains(retained.Rows.Values, fact => fact.Contains(" Completed ", StringComparison.Ordinal) && fact.Contains("peer Served", StringComparison.Ordinal));
     }
 
+    [Fact(DisplayName = "I20: with no ALPC to link calls, a call open across the boundary keeps its start, from one plan that publishes only what is due")]
+    public void ACallOpenAcrossTheBoundaryKeepsItsStartFromOnePlan()
+    {
+        using var session = new TemporarySession();
+        Guid service = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        Publish(session.Store, Timed(
+            Lifecycle(1, ObservationKind.Create, 400, 1),
+            RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 400, 2, Activity(1), service),
+            RpcCall(101, ObservationKind.RequestStart, Direction.Outbound, 400, 3, Activity(2), service),
+            RpcCall(102, ObservationKind.RequestEnd, Direction.Outbound, 400, 4, Activity(2), status: 0)));
+        Publish(session.Store, Timed(RpcCall(200, ObservationKind.RequestEnd, Direction.Outbound, 400, 5, Activity(1), status: 0)));
+        Publish(session.Store, Timed(RpcCall(300, ObservationKind.RequestStart, Direction.Outbound, 400, 6, Activity(3), service)));
+        Operations recorded = OperationsOf(session.Store);
+
+        // Before every record nothing is due: one plan says so, and nothing is published.
+        long generation = session.Store.Current!.Generation;
+        Assert.Null(IntervalRelease.ReleaseIfAny(session.Store, 50, "nothing is due", Committed, Committed));
+        Assert.Equal(generation, session.Store.Current!.Generation);
+
+        // Before the second chunk the first goes, but for the start whose stop stays and the process it belongs to: no ALPC
+        // links a call here, so only the call's own records keep its start. The call read wholly before goes.
+        IntervalReleaseResult result = Assert.IsType<IntervalReleaseResult>(
+            IntervalRelease.ReleaseIfAny(session.Store, 15_000, "older than the retained window", Committed, Committed));
+        Assert.Equal((1, 4L, 2L, 2L), (result.Preview.ReleasedUnits, result.Preview.ReleasedRecords, result.Preview.ReleasedRows,
+            result.Preview.KeptRows));
+        Operations retained = OperationsOf(SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path)));
+        Assert.Equal([2UL, 5, 6], retained.Rows.Keys.Select(row => row.Ordinal).Order().ToArray());
+        Assert.All(retained.Rows, row => Assert.Equal(recorded.Rows[row.Key], row.Value));
+    }
+
     [Fact(DisplayName = "I20: on random recordings, every call and exchange a release retains a record of pairs, times and links as before")]
     public void RandomReleasesKeepEveryRetainedOperationsFacts()
     {

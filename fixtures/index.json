@@ -2506,7 +2506,8 @@
       ],
       "I20": [
         "I20: a call and an exchange open across the boundary keep their records, and a client call what its other end was read from",
-        "I20: on random recordings, every call and exchange a release retains a record of pairs, times and links as before"
+        "I20: on random recordings, every call and exchange a release retains a record of pairs, times and links as before",
+        "I20: with no ALPC to link calls, a call open across the boundary keeps its start, from one plan that publishes only what is due"
       ],
       "S5": [
         "S5: a capture keeping a window projects its journal and free disk from what the window holds, so they stop it only if the window outgrows them",

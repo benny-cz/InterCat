@@ -152,7 +152,33 @@ public static class IntervalRelease
         DateTimeOffset committedUtc,
         DateTimeOffset? nowUtc = null,
         DerivedGenerationOptions? options = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        Release(store, boundaryNanoseconds, reason, committedUtc, nowUtc, options, refuse: true, cancellationToken)!;
+
+    /// <summary>
+    /// <see cref="Release"/> when the boundary releases anything, from one plan of the generation; null, with nothing
+    /// published, when it would release nothing. A rolling policy asks this where a preview and then a release would plan
+    /// the whole generation twice (revision 871).
+    /// </summary>
+    public static IntervalReleaseResult? ReleaseIfAny(
+        SessionStore store,
+        long boundaryNanoseconds,
+        string reason,
+        DateTimeOffset committedUtc,
+        DateTimeOffset? nowUtc = null,
+        DerivedGenerationOptions? options = null,
+        CancellationToken cancellationToken = default) =>
+        Release(store, boundaryNanoseconds, reason, committedUtc, nowUtc, options, refuse: false, cancellationToken);
+
+    private static IntervalReleaseResult? Release(
+        SessionStore store,
+        long boundaryNanoseconds,
+        string reason,
+        DateTimeOffset committedUtc,
+        DateTimeOffset? nowUtc,
+        DerivedGenerationOptions? options,
+        bool refuse,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
@@ -166,7 +192,12 @@ public static class IntervalRelease
                 plan = Plan(store, lease.Manifest, boundaryNanoseconds, cancellationToken);
                 if (!plan.Preview.ReleasesAnything)
                 {
-                    throw new InvalidOperationException(Refusal(plan.Preview) + " Nothing was published.");
+                    if (refuse)
+                    {
+                        throw new InvalidOperationException(Refusal(plan.Preview) + " Nothing was published.");
+                    }
+
+                    return null;
                 }
 
                 builder = Rewrite(store, lease.Manifest, plan, options, cancellationToken);
@@ -429,7 +460,7 @@ public static class IntervalRelease
         [
             RpcCallIndex.ReleaseDependenciesOf(segments, released, cancellationToken),
             RpcPeerIndex.ReleaseDependenciesOf(
-                RpcCallIndex.Derive(segments, fields, processes, clock, cancellationToken), segments, fields, released, cancellationToken),
+                () => RpcCallIndex.Derive(segments, fields, processes, clock, cancellationToken), segments, fields, released, cancellationToken),
             HttpExchangeIndex.ReleaseDependenciesOf(segments, fields, released, cancellationToken),
         ];
 
