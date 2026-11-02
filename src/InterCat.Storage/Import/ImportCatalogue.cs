@@ -50,6 +50,12 @@ public sealed class ImportCatalogue
     /// </summary>
     private static readonly TimeSpan LockWait = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// How long a read waits out a refusal to open the catalogue: a writer's move over it can refuse an open for the moment
+    /// the move takes, which a busy machine can draw out, while a file another program keeps holding is still said.
+    /// </summary>
+    private static readonly TimeSpan ReadWait = TimeSpan.FromSeconds(2);
+
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -93,32 +99,46 @@ public sealed class ImportCatalogue
     /// <summary>How the system compares folder paths: whatever their case on Windows, exactly elsewhere.</summary>
     public static StringComparer PathComparer => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
-    /// <summary>Reads the catalogue at <paramref name="path"/>; one not there yet lists nothing.</summary>
+    /// <summary>
+    /// Reads the catalogue at <paramref name="path"/>; one not there yet lists nothing. A refusal to open it is read again
+    /// for a while, since a writer moving a new catalogue over it can refuse one for a moment: a reader then meets the old
+    /// catalogue or the new one, and a writer records its import, rather than either taking the moment for a file that is
+    /// not a catalogue (revision 872).
+    /// </summary>
     public static ImportCatalogue Read(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         string full = System.IO.Path.GetFullPath(path);
-        try
+        DateTime until = DateTime.UtcNow + ReadWait;
+        while (true)
         {
-            if (!File.Exists(full))
+            try
             {
-                return new(full, [], null);
-            }
+                if (!File.Exists(full))
+                {
+                    return new(full, [], null);
+                }
 
-            // Shared with a writer moving a new catalogue over it, which then never waits for this read.
-            using var stream = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            if (stream.Length > MaximumBytes)
+                // Shared with a writer moving a new catalogue over it, which then never waits for this read.
+                using var stream = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                if (stream.Length > MaximumBytes)
+                {
+                    return new(full, [], $"{full} is larger than a catalogue of imports grows, so it is not one");
+                }
+
+                var bytes = new byte[stream.Length];
+                stream.ReadExactly(bytes);
+                return Parse(full, bytes);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                return new(full, [], $"{full} is larger than a catalogue of imports grows, so it is not one");
-            }
+                if (DateTime.UtcNow >= until)
+                {
+                    return new(full, [], $"{full} could not be read: {exception.Message}");
+                }
 
-            var bytes = new byte[stream.Length];
-            stream.ReadExactly(bytes);
-            return Parse(full, bytes);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return new(full, [], $"{full} could not be read: {exception.Message}");
+                Thread.Sleep(25);
+            }
         }
     }
 

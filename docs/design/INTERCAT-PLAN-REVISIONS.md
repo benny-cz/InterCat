@@ -770,6 +770,8 @@ Revision 870 measures a rolling capture for two hours, its session and evidence 
 
 Revision 871 has a rolling capture's release plan once a step and pair only the calls it reaches, in half the memory, with the same result.
 
+Revision 872 has a catalogue of imports read again through the moment a writer's move holds it, rather than taken for a file that is not one, and finds revision 871's rolling viewer out of 512 MiB at a release of a busy window.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2852,3 +2854,21 @@ it - and moved the viewer's failure to compaction 35 minutes in; the release rea
 a rolling capture then ran 45 minutes under 512 MiB, made 13 releases at 415,195-727,717 rows and saved its session
 (its fail-fast handler, armed for a dump, never fired). The machine recorded half the morning's rate, so the 1.1
 million rows the morning's windows held are still to be measured under it.
+
+Revision 872 fixes a race the full suite met once in Debug. While 24 writers recorded imports at once, a reader of the
+catalogue of imports found it refusing to open and reported it as unreadable. `ImportCatalogue.Read` took any refusal
+to open the file for a file that is not a catalogue, and a writer records nothing after such a read, so the same moment
+could also have lost an import, against `import-v1` §8.1's promise that a reader meets the old catalogue or the new one
+and two imports recording at once both stay listed. A writer replaces the catalogue by moving a new one over it, which
+can refuse an open for as long as the move takes, and longer on a loaded machine. A refusal to open the catalogue is now
+tried again every 25 ms for up to two seconds before it counts as unreadable, so a file another program keeps holding
+is still said, two seconds later. A test holds the catalogue for 300 ms while a reader and a writer start: both then
+meet it whole and the writer's import is listed, which a read that does not wait fails.
+
+Revision 872 also records revision 871's code kept to 512 MiB for two hours, which it was not. Keeping ten minutes, the
+capture held its window at every sample for 45 minutes, at 391,784-1,083,796 rows, until the machine's rate rose and
+the window reached its 1.08 million rows: the viewer then ran out of memory at a release, reading a column for its RPC
+dependency pass into readers the release already held every column its derivations of processes and connections had
+read into. Letting each stage's columns go would bound that, but opening the segments afresh for each stage, tried
+first, read every segment's time column again each time and needed more, so the readers must give back columns between
+stages, which only the store can ask of them now (`bench/results/rolling-20261102T155755Z-2h-keep10-512MiB-revision871`).

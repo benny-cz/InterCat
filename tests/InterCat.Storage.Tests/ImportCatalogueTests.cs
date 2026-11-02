@@ -157,6 +157,28 @@ public sealed class ImportCatalogueTests : IDisposable
         Assert.Equal([Path.Combine(root, "a")], ImportCatalogue.Read(Catalogue).Entries.Select(entry => entry.Path));
     }
 
+    [Fact(DisplayName = "§8.1: a catalogue held for a moment, as a writer's move holds it, is read once let go, and an import meanwhile recorded")]
+    public async Task ACatalogueHeldForAMomentIsReadOnceLetGo()
+    {
+        WriteCatalogue([Listed(Entry("a", 1, 1))]);
+        Task<ImportCatalogue> reading;
+        Task<ImportCatalogue> writing;
+        using (new FileStream(Catalogue, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            reading = Task.Run(() => ImportCatalogue.Read(Catalogue));
+            writing = Task.Run(() => ImportCatalogue.Update(Catalogue, Entry("b", 2, 2), []));
+            await Task.Delay(TimeSpan.FromMilliseconds(300));
+        }
+
+        // Neither took the moment for a file that is not a catalogue: the reader met the catalogue whole, and the import
+        // was recorded beside the one listed.
+        ImportCatalogue read = await reading;
+        Assert.Null(read.Problem);
+        Assert.Contains(Path.Combine(root, "a"), read.Entries.Select(entry => entry.Path));
+        Assert.Null((await writing).Problem);
+        Assert.Equal([Path.Combine(root, "b"), Path.Combine(root, "a")], ImportCatalogue.Read(Catalogue).Entries.Select(entry => entry.Path));
+    }
+
     [Fact(DisplayName = "§8.1: a file larger than a catalogue grows is not read as one, and is never replaced")]
     public void ALargerFileIsNotACatalogue()
     {

@@ -197,7 +197,8 @@ needs no `src/InterCat.Cli` build: the runner launches this tool as its broker. 
 and after a writer came to remove what a release left to a reader (`-6min-keep1-before-fix`, `-6min-keep1`), and
 three of two hours keeping ten minutes: under 2 GiB it passed, and under 512 MiB and 1 GiB the viewer ran out of
 memory at a release, 12 and 27 minutes in. Revision 871's, of 45 minutes keeping ten under 512 MiB once a release
-planned in half the memory, passed (`-45min-keep10-512MiB`).
+planned in half the memory, passed (`-45min-keep10-512MiB`), and of two hours under 512 MiB ran out at a release 45
+minutes in, once the window held 1.08 million rows (`-2h-keep10-512MiB-revision871`).
 
 `impact --output <new scratch directory> [--triplets <1-15>]` measures the broker's capture impact at its
 compiled cadence: the seeded TCP workload with no capture, a broker `OnStop` capture and a broker `Live`

@@ -215,7 +215,9 @@ or the file `--catalogue <file>` names. It is a hint, never evidence.
 - A writer holds `import-catalogue-v1.json.lock` beside it, waiting up to thirty seconds for others, reads
   the catalogue again and replaces it whole - written beside it and moved over it - so two imports
   recording at once both stay listed, and a reader meets the old catalogue or the new one, never half of
-  either.
+  either. A move can refuse a reader's open for the moment it takes, so since revision 872 a refusal to
+  open the catalogue is tried again for up to two seconds before it counts as unreadable: a reader does
+  not take the moment for a file that is not a catalogue, nor a writer leave its import unrecorded.
 
 ```json
 {
