@@ -772,6 +772,8 @@ Revision 871 has a rolling capture's release plan once a step and pair only the 
 
 Revision 872 has a catalogue of imports read again through the moment a writer's move holds it, rather than taken for a file that is not one, and finds revision 871's rolling viewer out of 512 MiB at a release of a busy window.
 
+Revision 873 has a release's readers give back each stage's columns before the next, so a release needs 192-224 MiB where it needed 256-320, and finds a busy window's viewer bounded next by building a segment whole in memory.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2872,3 +2874,18 @@ dependency pass into readers the release already held every column its derivatio
 read into. Letting each stage's columns go would bound that, but opening the segments afresh for each stage, tried
 first, read every segment's time column again each time and needed more, so the readers must give back columns between
 stages, which only the store can ask of them now (`bench/results/rolling-20261102T155755Z-2h-keep10-512MiB-revision871`).
+
+Revision 873 has the readers an interval release opens give back what each of its stages read before the next one
+reads its own. The release derives processes, connections, the calls' dependencies, their other ends and HTTP exchanges,
+each from columns of every segment and together from most of the generation's, and its readers held each column read
+until the last stage. `SegmentReaderV1.GiveBack` gives back every column and derived value a reader holds: what a caller
+already read stays with it, and the next read of a column reads it and checks it again, as after the reader cache's
+trim. Nothing a release derives holds a column of its readers. On the two-hour run's saved session, `icat retain
+--release-before 6800 s` publishes the same 217 dependencies as revision 871's code and needs 192-224 MiB of heap, where
+871's needed 256-320 and 870's 512-640. Opening the segments afresh for each stage, which revision 872 tried, needed
+more. Under 512 MiB for two hours, keeping ten minutes, a rolling capture then held its window at every one of 55 judged
+samples for 68 minutes, at up to 960,894 rows, 23 minutes past where revision 871's ran out, its heap 288 MiB at the
+median and at most 422 MiB as sampled. It then ran out at a release's rewrite, building a segment to replace one that
+held a released row: a segment is built whole in memory, its rows and then one array as long as its file, up to 250,000
+rows or 64 MiB staged, as compaction builds one (`bench/results/rolling-20261102T171833Z-2h-keep10-512MiB-revision873`).
+That build, in a release's rewrite and in compaction alike, is what bounds a busy window's viewer next.

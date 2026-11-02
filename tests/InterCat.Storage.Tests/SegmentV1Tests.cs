@@ -647,6 +647,30 @@ public sealed partial class SegmentV1Tests
         Assert.True(segment.ResidentBytes < file.Length);
     }
 
+    [Fact(DisplayName = "S2: a reader gives back every column it holds, and reads each again as it was when next asked")]
+    public void AReaderGivesBackEveryColumnItHolds()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult published = Publish(session.Store, Spread(300));
+        string name = published.Segments[0].Name;
+        SegmentReaderV1 segment = SessionSegments.Open(LocalOwnedDirectory.Open(session.Path), published.Manifest, name);
+        ObservationRowV1[] read = [.. Enumerable.Range(0, segment.RowCount).Select(segment.Row)];
+        long held = segment.ResidentBytes;
+
+        // Between the stages of a pass a reader gives back all it holds, its time column too, and reads a column again only
+        // when one is asked for: every row then reads as it did.
+        Assert.Equal(held, segment.GiveBack());
+        Assert.Equal(0, segment.ResidentBytes);
+        Assert.Equal(read, Enumerable.Range(0, segment.RowCount).Select(segment.Row));
+        Assert.Equal(held, segment.ResidentBytes);
+
+        // A reader of a whole file holds all of it, and gives back only what it derived.
+        byte[] file = File.ReadAllBytes(Path.Combine(session.Path, name));
+        SegmentReaderV1 whole = SegmentReaderV1.Open(file, DictionariesOf(session.Path, published.Manifest.Generation, file));
+        Assert.Equal(0, whole.GiveBack());
+        Assert.Equal(file.Length, whole.ResidentBytes);
+    }
+
     [Fact(DisplayName = "I15: damage to a published column is found when the column is read, and other columns are still served")]
     public void DamageToAPublishedColumnIsFoundWhenItIsRead()
     {

@@ -451,18 +451,25 @@ public static class IntervalRelease
         SegmentReaderV1[] fields = [.. fieldNames.Select(name => SessionSegments.Open(store.Root, manifest, name))];
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This session's journal names no clock, so its processes cannot be derived.");
+
+        // Each stage reads columns of every segment, and together they read most of the generation's: the readers give back
+        // what one stage read before the next, so a release holds at once what its largest stage reads, not all of it, and
+        // a busy window's release fits beside the views (revision 873). Nothing derived here holds a column of theirs.
         ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
+        GiveBack(segments, fields);
         TransportRelationIndex relations = TransportRelationIndex.Derive(segments, processes, cancellationToken);
+        GiveBack(segments, fields);
 
         // An operation open across the boundary keeps its records, and a client call what its other end is read from, so
         // each pairs, times and links as it did (I20).
-        ReleaseDependencies[] operations =
-        [
-            RpcCallIndex.ReleaseDependenciesOf(segments, released, cancellationToken),
-            RpcPeerIndex.ReleaseDependenciesOf(
-                () => RpcCallIndex.Derive(segments, fields, processes, clock, cancellationToken), segments, fields, released, cancellationToken),
-            HttpExchangeIndex.ReleaseDependenciesOf(segments, fields, released, cancellationToken),
-        ];
+        ReleaseDependencies calls = RpcCallIndex.ReleaseDependenciesOf(segments, released, cancellationToken);
+        GiveBack(segments, fields);
+        ReleaseDependencies links = RpcPeerIndex.ReleaseDependenciesOf(
+            () => RpcCallIndex.Derive(segments, fields, processes, clock, cancellationToken), segments, fields, released, cancellationToken);
+        GiveBack(segments, fields);
+        ReleaseDependencies exchanges = HttpExchangeIndex.ReleaseDependenciesOf(segments, fields, released, cancellationToken);
+        GiveBack(segments, fields);
+        ReleaseDependencies[] operations = [calls, links, exchanges];
 
         // A kept row is evidence like a retained one, so its own process, connection and operation are kept too: a
         // process's first record can be a connection's, whose other end then stays as well. Each round only adds rows, so
@@ -483,6 +490,20 @@ public static class IntervalRelease
         while (kept.Count > known);
 
         return kept;
+    }
+
+    /// <summary>Has every reader of a stage give back what it read, before the next stage reads what it needs.</summary>
+    private static void GiveBack(SegmentReaderV1[] segments, SegmentReaderV1[] fields)
+    {
+        foreach (SegmentReaderV1 reader in segments)
+        {
+            _ = reader.GiveBack();
+        }
+
+        foreach (SegmentReaderV1 reader in fields)
+        {
+            _ = reader.GiveBack();
+        }
     }
 
     /// <summary>The PIDs the rows that stay belong to: the retained rows, and the released ones already kept.</summary>

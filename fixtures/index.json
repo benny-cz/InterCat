@@ -2559,7 +2559,8 @@
         "S2: a tile block cache keeps a block's tiles and each of its parts apart and once, giving a query that read the same again the first kept, each charged its bytes",
         "S2: past its bound, the spanning level's finest tiles are made ten times wider until their tally entries fit, and where none do it is given up; a zoom, a brush, a focus and a zoom's byte lanes count the same either way",
         "S2: past its budget a tile block cache gives up parts chosen at random until what it keeps fits, never every part, and keeps none that could never fit",
-        "S2: a segment reader keeps the values derived from its rows, never the derivation they were derived under"
+        "S2: a segment reader keeps the values derived from its rows, never the derivation they were derived under",
+        "S2: a reader gives back every column it holds, and reads each again as it was when next asked"
       ],
       "S4": [
         "S4: a chunk's certified owners count only for instances that bind its records alike: a record bound to none bound to none still, and an instance found by identity, of the same PID, binding every reading of its records as strongly, a lifecycle record's directly",

@@ -133,6 +133,9 @@ public sealed class SegmentReaderV1
     /// <summary>One slot per defined column code; a column's code is refused at open unless §20.1 defines it.</summary>
     private static readonly int ColumnCodeSlots = Enum.GetValues<SegmentColumnId>().Max(id => (int)id) + 1;
 
+    /// <summary>The columns <see cref="GiveBack"/> keeps: none.</summary>
+    private static readonly IReadOnlySet<SegmentColumnId> NoColumns = new HashSet<SegmentColumnId>();
+
     private readonly SegmentBytes source;
     private readonly Dictionary<SegmentColumnId, SegmentColumnDescriptor> columns;
 
@@ -1358,6 +1361,15 @@ public sealed class SegmentReaderV1
         _ = Interlocked.Add(ref residentBytes, -released);
         return released;
     }
+
+    /// <summary>
+    /// Gives back every column this reader holds and every value derived from its rows, and returns how many bytes that
+    /// released: a pass over a whole generation does so between its stages, so the readers it opened hold at once only
+    /// what one stage reads, not every column any stage read (revision 873). What a caller already read stays with it, and
+    /// the next read of a column reads it and checks it again, as after a trim. A reader of a whole file gives back only
+    /// its derived values.
+    /// </summary>
+    public long GiveBack() => Release(NoColumns) + ReleaseDerived();
 
     /// <summary>
     /// One column's bytes, read from the source and checked the first time any caller asks for them. Two threads can
