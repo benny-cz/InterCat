@@ -855,7 +855,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
         journal?.FlushBatch();
         FlushJournalToDevice();
 
-        SegmentBuildResult built = open.Build(nextDictionaryId);
+        PreparedSegment built = open.Prepare(nextDictionaryId);
         var dictionaryNames = new List<string>(built.Dictionaries.Count);
         foreach (SegmentDictionaryV1 dictionary in built.Dictionaries)
         {
@@ -866,14 +866,14 @@ public sealed class DerivedGenerationBuilder : IDisposable
         }
 
         string segmentName = SegmentFormatV1.SegmentFileName(generation, segments.Count);
-        Stage(segmentName, StoreDependencyKind.Segment, built.Segment);
+        Stage(segmentName, StoreDependencyKind.Segment, content => open.WriteTo(built, content));
         segments.Add(new(
             segmentName,
             built.SegmentId,
             built.RowCount,
             built.MinNativeTicks,
             built.MaxNativeTicks,
-            built.Segment.Length,
+            built.FileLength,
             dictionaryNames));
         open = new(identity, segments.Count);
     }
@@ -895,7 +895,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
 
         journal?.FlushBatch();
         FlushJournalToDevice();
-        SegmentBuildResult built = openFields.Build(nextDictionaryId);
+        PreparedSegment built = openFields.Prepare(nextDictionaryId);
         var dictionaryNames = new List<string>(built.Dictionaries.Count);
         foreach (SegmentDictionaryV1 dictionary in built.Dictionaries)
         {
@@ -906,14 +906,14 @@ public sealed class DerivedGenerationBuilder : IDisposable
         }
 
         string segmentName = SegmentFormatV1.FieldSegmentFileName(generation, fieldSegments.Count);
-        Stage(segmentName, StoreDependencyKind.Segment, built.Segment);
+        Stage(segmentName, StoreDependencyKind.Segment, content => openFields.WriteTo(built, content));
         fieldSegments.Add(new(
             segmentName,
             built.SegmentId,
             built.RowCount,
             built.MinNativeTicks,
             built.MaxNativeTicks,
-            built.Segment.Length,
+            built.FileLength,
             dictionaryNames));
         openFields = new(identity, fieldSegments.Count);
     }
@@ -1030,11 +1030,15 @@ public sealed class DerivedGenerationBuilder : IDisposable
         journalFile.Content.Flush();
     }
 
-    private void Stage(string name, StoreDependencyKind kind, byte[] content)
+    private void Stage(string name, StoreDependencyKind kind, byte[] content) =>
+        Stage(name, kind, stream => stream.Write(content));
+
+    /// <summary>Stages a file whose bytes <paramref name="write"/> writes to its content, as a segment's are, in order.</summary>
+    private void Stage(string name, StoreDependencyKind kind, Action<Stream> write)
     {
         StoreStagingFile file = store.Stage(name, kind);
         staged.Add(file);
-        file.Content.Write(content);
+        write(file.Content);
         _ = file.Complete();
     }
 

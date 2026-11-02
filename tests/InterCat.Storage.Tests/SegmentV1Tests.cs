@@ -878,6 +878,25 @@ public sealed partial class SegmentV1Tests
             result.Segments.SelectMany(segment => AllTicks(session.Store, result.Manifest, segment.Name)));
     }
 
+    [Fact(DisplayName = "S2: a flush writes its segment to the staging file in order, allocating less than the segment it writes")]
+    public void AFlushWritesItsSegmentWithoutHoldingItWhole()
+    {
+        using var session = new TemporarySession();
+        using DerivedGenerationBuilder builder = DerivedGenerationBuilder.Begin(session.Store, Identity, TestClock, Committed);
+        foreach (ObservationRowV1 row in Spread(40_000))
+        {
+            builder.AddRow(row);
+        }
+
+        // A flush copied its staged columns into one array as long as the file, and wrote that; it now writes them in the
+        // order of the file's bytes, holding one column's at a time (revision 874).
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        builder.FlushSegment();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long written = Directory.EnumerateFiles(session.Path).Max(file => new FileInfo(file).Length);
+        Assert.True(allocated < written, $"{allocated:N0} bytes allocated to write a segment of {written:N0}");
+    }
+
     [Fact(DisplayName = "I15: an abandoned generation publishes nothing and leaves only staging files")]
     public void AnAbandonedGenerationPublishesNothing()
     {

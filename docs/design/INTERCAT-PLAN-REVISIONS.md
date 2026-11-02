@@ -774,6 +774,8 @@ Revision 872 has a catalogue of imports read again through the moment a writer's
 
 Revision 873 has a release's readers give back each stage's columns before the next, so a release needs 192-224 MiB where it needed 256-320, and finds a busy window's viewer bounded next by building a segment whole in memory.
 
+Revision 874 writes each segment to its staging file in the order of its bytes, byte for byte as before, so a flush no longer holds an array as long as the file beside the columns it was built from.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2889,3 +2891,19 @@ median and at most 422 MiB as sampled. It then ran out at a release's rewrite, b
 held a released row: a segment is built whole in memory, its rows and then one array as long as its file, up to 250,000
 rows or 64 MiB staged, as compaction builds one (`bench/results/rolling-20261102T171833Z-2h-keep10-512MiB-revision873`).
 That build, in a release's rewrite and in compaction alike, is what bounds a busy window's viewer next.
+
+Revision 874 writes each segment a derivation flushes - a capture's, a release's rewrite, a compaction's - straight to
+its staging file. A flush staged a segment's columns as its rows arrived, then copied them, in sorted order, into one
+array as long as the file and wrote that: up to 64 MiB staged, twice over at the copy, which revision 873's release
+rewrite ran out of memory allocating at 960,894 rows. A segment is now planned first - its rows sorted, its dictionaries
+made, each column encoded once into a buffer one column long for the checksums its directory carries, and its head
+written - and then written in the order of its bytes, each column encoded again as it goes and the trailing digest
+computed as they pass. `SegmentWriterV1.Build` writes through the same path into a stream in memory, so there is one
+writer. Every segment test passes, the golden test of `observation-v1`'s bytes among them, and on the two-hour run's
+saved session `icat retain --release-before 6800 s` publishes the same 217 dependencies, its rewritten segments'
+digests included, as revision 870's code. A test flushes 40,000 rows: the flush allocates 3.2 MB to write a 7.1 MB
+segment, and 10.3 MB when made to write through a buffer as long as the file. Under 512 MiB for two hours, keeping ten
+minutes, a rolling capture then met the busiest machine yet - 695,870 rows by its twelfth minute, 1,065,515 by its
+twenty-seventh - and ran out at a release while presizing the 11 MB of call records its RPC pass reads, its heap full
+before the release began: what bounds a busy window's viewer now is what it holds between releases, of which the
+reader cache's 256 MiB budget is the largest part (`bench/results/rolling-20261102T190616Z-2h-keep10-512MiB-revision874`).

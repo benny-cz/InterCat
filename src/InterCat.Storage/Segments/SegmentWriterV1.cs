@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -55,6 +56,45 @@ public sealed record SegmentIdentityV1
             : StableSegmentId.Derive(string.Create(
                 CultureInfo.InvariantCulture,
                 $"InterCat.Segment.v1.table{(uint)table}|{CaptureId}|{ClockId}|{Derivation}|{ordinal}|{rowCount}|{minNativeTicks}|{maxNativeTicks}"));
+}
+
+/// <summary>
+/// A segment planned for writing: its dictionaries, identity, columns with their checksums and its head, from which its
+/// bytes are written once, in order (revision 874). The rows' order and the dictionaries are what its columns are encoded
+/// from again as they are written.
+/// </summary>
+internal sealed class PreparedSegment
+{
+    public required IReadOnlyList<SegmentDictionaryV1> Dictionaries { get; init; }
+
+    public required Guid SegmentId { get; init; }
+
+    public required int RowCount { get; init; }
+
+    public required long MinNativeTicks { get; init; }
+
+    public required long MaxNativeTicks { get; init; }
+
+    public required IReadOnlyList<SegmentColumnDescriptor> Columns { get; init; }
+
+    public required int FileLength { get; init; }
+
+    /// <summary>The header, directory and time blocks: every byte before the first column.</summary>
+    public required byte[] Head { get; init; }
+
+    public required byte[] Chunk { get; init; }
+
+    public required int ChunkOffset { get; init; }
+
+    /// <summary>The staged place of each row in sorted order.</summary>
+    public required int[] Order { get; init; }
+
+    public required SegmentDictionaryV1? SchemaDictionary { get; init; }
+
+    public required SegmentDictionaryV1? TextDictionary { get; init; }
+
+    /// <summary>The most bytes one column's values and null bitmap take together.</summary>
+    public required int Widest { get; init; }
 }
 
 /// <summary>One finished segment: its bytes, the dictionaries it references, and what it holds.</summary>
@@ -174,6 +214,12 @@ public sealed class SegmentWriterV1
     /// fact key — which is total, so the file is a function of its row set rather than of arrival order.
     /// </summary>
     public SegmentBuildResult Build(ushort firstDictionaryId = 1) => builder.Build(firstDictionaryId);
+
+    /// <summary>Plans the segment <see cref="Build"/> writes, writing nothing.</summary>
+    internal PreparedSegment Prepare(ushort firstDictionaryId) => builder.Prepare(firstDictionaryId);
+
+    /// <summary>Writes a planned segment to <paramref name="destination"/>, byte for byte the file <see cref="Build"/> returns.</summary>
+    internal void WriteTo(PreparedSegment prepared, Stream destination) => builder.WriteTo(prepared, destination);
 }
 
 /// <summary>
@@ -241,6 +287,12 @@ public sealed class SourceFieldWriterV1
     /// observation carries each field at most once.
     /// </summary>
     public SegmentBuildResult Build(ushort firstDictionaryId = 1) => builder.Build(firstDictionaryId);
+
+    /// <inheritdoc cref="SegmentWriterV1.Prepare"/>
+    internal PreparedSegment Prepare(ushort firstDictionaryId) => builder.Prepare(firstDictionaryId);
+
+    /// <inheritdoc cref="SegmentWriterV1.WriteTo"/>
+    internal void WriteTo(PreparedSegment prepared, Stream destination) => builder.WriteTo(prepared, destination);
 }
 
 /// <summary>
@@ -250,6 +302,9 @@ public sealed class SourceFieldWriterV1
 /// </summary>
 internal sealed class SegmentTableBuilder
 {
+    /// <summary>The zeros a written segment's alignment padding is made of.</summary>
+    private static readonly byte[] Zeros = new byte[4_096];
+
     private readonly SegmentIdentityV1 identity;
     private readonly int ordinal;
     private SegmentTableId table;
@@ -370,6 +425,21 @@ internal sealed class SegmentTableBuilder
 
     public SegmentBuildResult Build(ushort firstDictionaryId)
     {
+        PreparedSegment prepared = Prepare(firstDictionaryId);
+        using var file = new MemoryStream(prepared.FileLength);
+        WriteTo(prepared, file);
+        return new(file.GetBuffer(), prepared.Dictionaries, prepared.SegmentId, prepared.RowCount, prepared.MinNativeTicks,
+            prepared.MaxNativeTicks, prepared.Columns);
+    }
+
+    /// <summary>
+    /// Sorts the rows, makes the dictionaries and plans the segment: its layout, its columns' checksums and its head, writing
+    /// nothing. <see cref="WriteTo"/> then writes its bytes once, in order, so a segment is never held whole in memory - its
+    /// staged columns and an array as long as its file at once, as a busy rolling window's rewrites and compactions held
+    /// them (revision 874).
+    /// </summary>
+    internal PreparedSegment Prepare(ushort firstDictionaryId)
+    {
         if (rowCount == 0)
         {
             throw new InvalidOperationException(
@@ -426,10 +496,11 @@ internal sealed class SegmentTableBuilder
 
         var plan = new List<SegmentColumnDescriptor>(columns.Count);
         int nullBitmapBytes = (rowCount + 7) / 8;
-        int cursor = Align(
+        int headLength = Align(
             SegmentFormatV1.HeaderLength
             + (columns.Count * SegmentFormatV1.ColumnEntryLength)
             + (TimeBlockCount * SegmentFormatV1.TimeBlockEntryLength));
+        int cursor = headLength;
 
         foreach (SegmentColumnSpec column in columns)
         {
@@ -488,28 +559,114 @@ internal sealed class SegmentTableBuilder
                 + "segment holds. The derivation flushes sooner rather than writing past the bound.");
         }
 
-        byte[] file = new byte[fileLength];
+        // Each column is encoded here into a buffer one column long, for the checksums the directory carries, and again as
+        // it is written.
+        int widest = plan.Count == 0 ? 0 : plan.Max(column => column.ValueLength + column.NullBitmapLength);
         uint chunkCrc = Crc32C.Compute(chunk);
-        for (int index = 0; index < plan.Count; index++)
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(Math.Max(1, widest));
+        try
         {
-            plan[index] = WriteColumn(file, plan[index], order, schemaDictionary, textDictionary);
-            if (plan[index].Encoding == SegmentColumnEncoding.VariableReference)
+            for (int index = 0; index < plan.Count; index++)
             {
-                plan[index] = plan[index] with { VariableChunkCrc32C = chunkCrc };
+                plan[index] = Encode(plan[index], buffer, order, schemaDictionary, textDictionary);
+                if (plan[index].Encoding == SegmentColumnEncoding.VariableReference)
+                {
+                    plan[index] = plan[index] with { VariableChunkCrc32C = chunkCrc };
+                }
             }
         }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
 
-        chunk.CopyTo(file.AsSpan(chunkOffset));
         long minTicks = sorted[0].NativeTicks;
         long maxTicks = sorted[rowCount - 1].NativeTicks;
         Guid segmentId = identity.SegmentIdFor(table, ordinal, rowCount, minTicks, maxTicks);
-        WriteTimeBlocks(file, sorted);
-        WriteDirectory(file, plan);
-        WriteHeader(file, segmentId, minTicks, maxTicks, chunkOffset, chunk.Length, fileLength);
-        SHA256.HashData(
-            file.AsSpan(0, fileLength - SegmentFormatV1.TrailerLength),
-            file.AsSpan(fileLength - SegmentFormatV1.TrailerLength));
-        return new(file, dictionaries, segmentId, rowCount, minTicks, maxTicks, plan);
+
+        // The head - header, directory and time blocks - is everything before the first column.
+        byte[] head = new byte[headLength];
+        WriteTimeBlocks(head, sorted);
+        WriteDirectory(head, plan);
+        WriteHeader(head, segmentId, minTicks, maxTicks, chunkOffset, chunk.Length, fileLength);
+        return new()
+        {
+            Dictionaries = dictionaries,
+            SegmentId = segmentId,
+            RowCount = rowCount,
+            MinNativeTicks = minTicks,
+            MaxNativeTicks = maxTicks,
+            Columns = plan,
+            FileLength = fileLength,
+            Head = head,
+            Chunk = chunk,
+            ChunkOffset = chunkOffset,
+            Order = order,
+            SchemaDictionary = schemaDictionary,
+            TextDictionary = textDictionary,
+            Widest = widest,
+        };
+    }
+
+    /// <summary>
+    /// Writes a prepared segment to <paramref name="destination"/> in the order of its bytes, computing its trailing digest
+    /// as they go: byte for byte the file <see cref="Build"/> returns, holding one column's bytes at a time.
+    /// </summary>
+    internal void WriteTo(PreparedSegment prepared, Stream destination)
+    {
+        ArgumentNullException.ThrowIfNull(prepared);
+        ArgumentNullException.ThrowIfNull(destination);
+        using var digest = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        long written = 0;
+        Emit(prepared.Head);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(Math.Max(1, prepared.Widest));
+        try
+        {
+            foreach (SegmentColumnDescriptor column in prepared.Columns)
+            {
+                _ = Encode(column, buffer, prepared.Order, prepared.SchemaDictionary, prepared.TextDictionary);
+                PadTo(column.ValueOffset);
+                Emit(buffer.AsSpan(0, column.ValueLength));
+                if (column.Nullable)
+                {
+                    PadTo(column.NullBitmapOffset);
+                    Emit(buffer.AsSpan(column.ValueLength, column.NullBitmapLength));
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+
+        PadTo(prepared.ChunkOffset);
+        Emit(prepared.Chunk);
+        PadTo(prepared.FileLength - SegmentFormatV1.TrailerLength);
+        Span<byte> trailer = stackalloc byte[SegmentFormatV1.TrailerLength];
+        _ = digest.GetHashAndReset(trailer);
+        destination.Write(trailer);
+        written += trailer.Length;
+        if (written != prepared.FileLength)
+        {
+            throw new InvalidOperationException(
+                $"This segment wrote {written} bytes, and its layout holds {prepared.FileLength}. Nothing staged is published.");
+        }
+
+        void Emit(ReadOnlySpan<byte> bytes)
+        {
+            digest.AppendData(bytes);
+            destination.Write(bytes);
+            written += bytes.Length;
+        }
+
+        // The padding that aligns each region, which a file built in memory held as the zeros it began as.
+        void PadTo(long offset)
+        {
+            while (written < offset)
+            {
+                Emit(Zeros.AsSpan(0, (int)Math.Min(Zeros.Length, offset - written)));
+            }
+        }
     }
 
     public void SetUInt8(SegmentColumnId id, int row, byte value) => Slot(id, row, 1)[0] = value;
@@ -666,16 +823,22 @@ internal sealed class SegmentTableBuilder
         return [.. chunk];
     }
 
-    private SegmentColumnDescriptor WriteColumn(
-        byte[] file,
+    /// <summary>
+    /// Encodes one column in the rows' sorted order into <paramref name="buffer"/>: its values from the start, then its null
+    /// bitmap, each as the file holds them; returns its descriptor with its counts and checksums.
+    /// </summary>
+    private SegmentColumnDescriptor Encode(
         SegmentColumnDescriptor descriptor,
+        byte[] buffer,
         int[] order,
         SegmentDictionaryV1? schemaDictionary,
         SegmentDictionaryV1? textDictionary)
     {
-        Span<byte> destination = file.AsSpan(descriptor.ValueOffset, descriptor.ValueLength);
+        // A value no row stages, and every bit a row does not set, is zero, as in a file that began as zeros.
+        buffer.AsSpan(0, descriptor.ValueLength + descriptor.NullBitmapLength).Clear();
+        Span<byte> destination = buffer.AsSpan(0, descriptor.ValueLength);
         Span<byte> bitmap = descriptor.Nullable
-            ? file.AsSpan(descriptor.NullBitmapOffset, descriptor.NullBitmapLength)
+            ? buffer.AsSpan(descriptor.ValueLength, descriptor.NullBitmapLength)
             : [];
         int position = positions[descriptor.Id];
         bool[] staged = presence[position];
@@ -809,14 +972,14 @@ internal sealed class SegmentTableBuilder
         }
     }
 
-    private void WriteTimeBlocks(byte[] file, SortKey[] sorted)
+    private void WriteTimeBlocks(byte[] head, SortKey[] sorted)
     {
         int offset = SegmentFormatV1.HeaderLength + (columns.Count * SegmentFormatV1.ColumnEntryLength);
         for (int block = 0; block < TimeBlockCount; block++)
         {
             int first = block * SegmentFormatV1.RowsPerTimeBlock;
             int count = Math.Min(SegmentFormatV1.RowsPerTimeBlock, rowCount - first);
-            Span<byte> entry = file.AsSpan(offset + (block * SegmentFormatV1.TimeBlockEntryLength));
+            Span<byte> entry = head.AsSpan(offset + (block * SegmentFormatV1.TimeBlockEntryLength));
             BinaryPrimitives.WriteUInt32LittleEndian(entry, (uint)first);
             BinaryPrimitives.WriteUInt32LittleEndian(entry[4..], (uint)count);
             BinaryPrimitives.WriteInt64LittleEndian(entry[8..], sorted[first].NativeTicks);
@@ -825,12 +988,12 @@ internal sealed class SegmentTableBuilder
         }
     }
 
-    private static void WriteDirectory(byte[] file, List<SegmentColumnDescriptor> plan)
+    private static void WriteDirectory(byte[] head, List<SegmentColumnDescriptor> plan)
     {
         for (int index = 0; index < plan.Count; index++)
         {
             SegmentColumnDescriptor column = plan[index];
-            Span<byte> entry = file.AsSpan(
+            Span<byte> entry = head.AsSpan(
                 SegmentFormatV1.HeaderLength + (index * SegmentFormatV1.ColumnEntryLength),
                 SegmentFormatV1.ColumnEntryLength);
             BinaryPrimitives.WriteUInt16LittleEndian(entry, (ushort)column.Id);
@@ -853,7 +1016,7 @@ internal sealed class SegmentTableBuilder
     }
 
     private void WriteHeader(
-        byte[] file,
+        byte[] head,
         Guid segmentId,
         long minTicks,
         long maxTicks,
@@ -861,7 +1024,7 @@ internal sealed class SegmentTableBuilder
         int chunkLength,
         int fileLength)
     {
-        Span<byte> header = file.AsSpan(0, SegmentFormatV1.HeaderLength);
+        Span<byte> header = head.AsSpan(0, SegmentFormatV1.HeaderLength);
         BinaryPrimitives.WriteUInt64LittleEndian(header, SegmentFormatV1.Magic);
         BinaryPrimitives.WriteUInt16LittleEndian(header[8..], SegmentFormatV1.FormatMajor);
         BinaryPrimitives.WriteUInt16LittleEndian(header[10..], SegmentFormatV1.FormatMinor);
@@ -893,7 +1056,7 @@ internal sealed class SegmentTableBuilder
             + (TimeBlockCount * SegmentFormatV1.TimeBlockEntryLength);
         BinaryPrimitives.WriteUInt32LittleEndian(
             header[124..],
-            Crc32C.Compute(file.AsSpan(SegmentFormatV1.HeaderLength, directoriesEnd - SegmentFormatV1.HeaderLength)));
+            Crc32C.Compute(head.AsSpan(SegmentFormatV1.HeaderLength, directoriesEnd - SegmentFormatV1.HeaderLength)));
     }
 
     private Span<byte> Slot(SegmentColumnId id, int row, int width)
