@@ -21,7 +21,8 @@ approximate.
 
 1. **Four indexes, published together.** A finished generation names at most one of each, published in one index
    publication by the same writers - an import, the end of a live follow, a finished recording, a compaction, a
-   re-derivation and `icat checkpoint`:
+   re-derivation and `icat checkpoint`; since revision 884 the Desktop publishes the end of its follows' in a process of
+   its own, so the publication's heap is its own rather than what the window leaves of its:
    - the **derivation checkpoint**: the process instances, their activity and the transport relations derived from named
      segments, so a reopen derives nothing it covers (S1);
    - the **overview**: the whole-session timeline, mechanism lanes and minimap counts, the pyramid's top level, so the

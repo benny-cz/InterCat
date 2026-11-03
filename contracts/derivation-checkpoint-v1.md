@@ -117,7 +117,10 @@ since revision 440 the operation index (`contracts/operation-index-v1.md`) and s
 (`contracts/tile-index-v1.md`), when it has finished writing a session:
 
 - an import (`icat import --into`);
-- the end of a live follow: the Desktop's, its finish of an interrupted one, `icat follow` and `icat capture`;
+- the end of a live follow: the Desktop's, its finish of an interrupted one, `icat follow` and `icat capture`; since
+  revision 884 the Desktop publishes its own in a process of its own, `InterCat.Desktop.exe --publish-checkpoint
+  <session-directory>`, which writes what it published as one line of JSON, so the publication reads every segment
+  within a heap of its own rather than beside everything the window holds;
 - a finished recording (`icat record`);
 - a compaction (`icat compact`);
 - a re-derivation (`icat rederive`).

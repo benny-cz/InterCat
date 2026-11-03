@@ -794,6 +794,8 @@ Revision 882 pairs a checkpoint's RPC calls as it writes their operation index, 
 
 Revision 883 has a checkpoint read through readers of its own held to a budget, and a pass read segments side by side only while their columns fit half the cache's budget, so a loaded hour's checkpoint publishes under 512 MiB on 24 processors.
 
+Revision 884 has the Desktop publish a finished capture's checkpoint, and an interrupted capture's it finishes, in a process of its own launched from its own executable, so the publication's heap is its own rather than what the window leaves of its.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3135,3 +3137,26 @@ the allowance at 4,587,942 rows by minute 17, and its viewer, at 293-478 MiB com
 the finished session's checkpoint and saved it; reopened, it held the same rows and 1,010 s
 (`bench/results/rolling-20261103T171438Z-4h-keep60-512MiB-load1400-revision883`). The finish fits beside such a viewer
 in some runs and not in others.
+
+Revision 884 publishes that checkpoint in a process of its own. What a checkpoint needs alone fits 512 MiB, and what a
+window holds at its budgets through a busy hour leaves it no dependable room beside them, so the Desktop launches itself
+to publish it: `InterCat.Desktop.exe --publish-checkpoint <session directory>` opens the session as its writer, as
+`icat checkpoint` does, publishes the checkpoint and its indexes, and writes what it published as one line of JSON,
+UTF-8 whatever the console's code page (`CheckpointProcess`). The window waits for it on the step that finished the
+follow; a cancel ends it and its children; and the window's store, which a lease always brings to the current
+generation, reads the one it published as it would another writer's. The finish of an interrupted capture publishes
+the same way. A checkpoint only saves time, so a child that cannot start, ends without saying what it published - one
+that ran out of memory, say - or is refused fails nothing: the publication says why, and the session reopens from its
+segments. A host other than the Desktop publishes in its own process unless told what to launch, as the qualification
+tool is, launching itself in a `publish-checkpoint` mode as the Desktop does (`CaptureRunOptions.Checkpointer`). The
+follow publishes nothing after its checkpoint, which the child publishes on its behalf (live-follow-v1 §6). Tests launch
+the Desktop as its tests' output holds it: a finished capture's checkpoint is the child's, its generation the window's
+store's current one, which a second launch finds current; given a child that cannot start, the capture publishes none
+of its own; the child's report reads back whole; one that cannot start or ends without a report publishes nothing and
+says why; and a cancelled one is ended before it publishes, the session unchanged three seconds on. Four mutations are
+caught. "The last hour" at 1,400 messages a second under 512 MiB then reached the allowance at 4,604,816 rows by minute
+19 and saved its session, its checkpoint and indexes the child's; reopened, it held the same rows and 1,158.8 s
+(`bench/results/rolling-20261103T182427Z-4h-keep60-512MiB-load1400-revision884`). The next run reached it at 4,599,688
+rows by minute 17 and saved its session alike, reopened holding the same rows and 1,022.3 s, its window at up to 455 MiB
+(`bench/results/rolling-20261103T184459Z-4h-keep60-512MiB-load1400-revision884`): two runs of two, where revision 883
+saved one of two.

@@ -45,13 +45,18 @@ internal sealed record LiveDerivationStep(
 /// The newest stretch of session time the session keeps, its older records released after a step's mirrors by this
 /// follow's own writer, the only one that may publish beneath it (ADR-044, ADR-045); null keeps every record.
 /// </param>
+/// <param name="checkpointer">
+/// What publishes the finished session's checkpoint in a process of its own (<see cref="CheckpointProcess"/>); null
+/// publishes it in this one.
+/// </param>
 internal sealed class LiveDerivation(
     string evidencePath,
     string sessionPath,
     Stopwatch elapsed,
     SessionStoreRegistry? stores = null,
     Func<EvidencePolicy>? policy = null,
-    RollingRetention? rolling = null) : IDisposable
+    RollingRetention? rolling = null,
+    CheckpointLaunchTarget? checkpointer = null) : IDisposable
 {
     private readonly CancellationTokenSource halt = new();
     private LiveFollow? follower;
@@ -152,8 +157,9 @@ internal sealed class LiveDerivation(
         if (step.Finished && Checkpoint is null)
         {
             // The session holds everything the capture published, compacted, so nothing will replace its segments. The
-            // generation it adds names the same evidence and is shown as the next one, taken from the same derivation.
-            Checkpoint = SessionCheckpoints.Publish(derived!, DateTimeOffset.UtcNow, cancellationToken);
+            // generation it adds names the same evidence and is shown as the next one. Published in a process of its own,
+            // the checkpoint reads every segment within a heap of its own, not beside all this window holds (revision 884).
+            Checkpoint = CheckpointProcess.PublishFinished(derived!, sessionPath, checkpointer, cancellationToken);
         }
 
         if (derived!.Current is not { } current || current.Generation == shownGeneration)

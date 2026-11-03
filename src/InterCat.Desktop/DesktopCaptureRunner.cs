@@ -72,6 +72,12 @@ public sealed record CaptureRunOptions
     /// <summary>The broker to launch; null means the one installed beside the Desktop.</summary>
     public BrokerLaunchTarget? Broker { get; init; }
 
+    /// <summary>
+    /// What publishes the finished session's checkpoint in a process of its own; null means the Desktop's own executable
+    /// when this process is the Desktop, and this process in any other host (<see cref="CheckpointProcess"/>).
+    /// </summary>
+    public CheckpointLaunchTarget? Checkpointer { get; init; }
+
     /// <summary>The directory that receives the derived session; null means the user's local application data.</summary>
     public string? SessionRoot { get; init; }
 
@@ -395,7 +401,8 @@ public static class DesktopCaptureRunner
             // lease keep their own cadence however long a growing session takes to derive (§12, §19.3, revision 128's
             // 10-minute measurement). A finished step wakes the loop at once, so its overview is not held for a poll.
             using var derivation = new LiveDerivation(evidencePath, sessionPath, elapsed, policy: options.EvidencePolicy,
-                rolling: options.Rolling is { } keep ? new RollingRetention(keep) : null);
+                rolling: options.Rolling is { } keep ? new RollingRetention(keep) : null,
+                checkpointer: options.Checkpointer ?? CheckpointLaunchTarget.OfThisDesktop());
             Task<LiveDerivationStep>? deriving = null;
             bool derivingAfterClose = false;
             long stepStarted = 0;

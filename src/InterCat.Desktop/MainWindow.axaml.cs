@@ -3823,10 +3823,12 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
                 InterruptedFollowResult finished = CaptureFinisher(follow.Ticket, progress, finishing.Token);
 
                 // A finished session is complete, so its derivation checkpoint lets it reopen without reading every
-                // record; one that is not published only costs that reopen time (derivation-checkpoint-v1).
+                // record; one that is not published only costs that reopen time (derivation-checkpoint-v1). It is
+                // published as a finished capture's is, in a process of its own (revision 884).
                 if (finished.Completed)
                 {
-                    _ = SessionCheckpoints.Publish(finished.Session, DateTimeOffset.UtcNow, finishing.Token);
+                    _ = CheckpointProcess.PublishFinished(finished.Session, follow.Ticket.SessionDirectory,
+                        CheckpointLaunchTarget.OfThisDesktop(), finishing.Token);
                 }
 
                 return finished;

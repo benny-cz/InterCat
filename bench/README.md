@@ -231,6 +231,9 @@ passes side by side within a budget, reached the allowance at 4,549,999 rows by 
 step later, binding peers, beside a viewer holding up to 465 MiB
 (`rolling-20261103T161927Z-4h-keep60-512MiB-load1400-revision883`); its next run reached the allowance at 4,587,942
 rows by minute 17 and saved its session, reopened alike (`rolling-20261103T171438Z-4h-keep60-512MiB-load1400-revision883`).
+Revision 884's, the window publishing that checkpoint in a process of its own, reached the allowance at 4,604,816 rows
+by minute 19 and saved its session, reopened alike (`rolling-20261103T182427Z-4h-keep60-512MiB-load1400-revision884`),
+and so did its next run, at 4,599,688 rows by minute 17 (`rolling-20261103T184459Z-4h-keep60-512MiB-load1400-revision884`).
 
 `impact --output <new scratch directory> [--triplets <1-15>]` measures the broker's capture impact at its
 compiled cadence: the seeded TCP workload with no capture, a broker `OnStop` capture and a broker `Live`

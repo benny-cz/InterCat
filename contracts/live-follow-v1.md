@@ -103,7 +103,9 @@ makes the follow's next publication fail, which ends the follow (ADR-044). So `i
 and `retain --confirm` refuse such a session before they publish, saying what to do instead (revision 833). What only
 measures goes ahead: `compact --check`, `rederive --check`, and `retain` without `--confirm`. So does `icat pin`,
 which publishes no generation and which every release keeps to. A ticket no follow holds is an interrupted follow's,
-and its session is finished (§4) rather than refused.
+and its session is finished (§4) rather than refused. The Desktop's follow publishes its finished session's checkpoint
+through a process of its own (revision 884), once it has published its last generation: that process publishes on the
+follow's behalf, and the follow publishes nothing after it.
 
 `icat record` publishes into its own session as a follow does, every few seconds, and is refused beside alike (revision
 862): from before its first publication to after its derivation checkpoint it holds `<session directory>.recording`,

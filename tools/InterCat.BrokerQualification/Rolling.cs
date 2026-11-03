@@ -128,9 +128,12 @@ internal static partial class Qualification
         try
         {
             using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            // The finished session's checkpoint is published by this tool in a process of its own, as the Desktop publishes
+            // it by launching itself.
             Task capture = DesktopCaptureRunner.RunAsync(collected.Receive, stop.Token, new CaptureRunOptions
             {
                 Broker = new(Environment.ProcessPath!, ["serve"]),
+                Checkpointer = new(Environment.ProcessPath!, ["publish-checkpoint"]),
                 SessionRoot = Path.Combine(output, "session"),
                 MaximumDurationSeconds = seconds,
                 Rolling = policy,

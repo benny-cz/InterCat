@@ -43,6 +43,10 @@ return args.FirstOrDefault() switch
     // What presses Ctrl+C in the console the cli-stop scenario's capture runs in.
     "ctrl-c-child" => Qualification.CtrlCChild(args),
     "rolling" => await Qualification.RollingAsync(args, cancellation.Token),
+
+    // What the rolling scenario's viewer launches to publish its finished session's checkpoint, as the Desktop launches
+    // itself (revision 884).
+    "publish-checkpoint" when args.Length == 2 => InterCat.Desktop.CheckpointProcess.RunOverStandardOutput(args[1], cancellation.Token),
     _ => Qualification.Usage(),
 };
 
