@@ -228,7 +228,9 @@ load of 1,400 messages a second and reached the allowance at 4,475,678 rows by m
 checkpoint ran out summing bytes, its byte pass reading one of 24 segments of some 250,000 rows a processor at once
 (`-4h-keep60-512MiB-load1400-revision882`). Revision 883's, the checkpoint reading through readers of its own and its
 passes side by side within a budget, reached the allowance at 4,549,999 rows by minute 19, and its checkpoint ran out a
-step later, binding peers, beside a viewer holding up to 465 MiB (`-4h-keep60-512MiB-load1400-revision883`).
+step later, binding peers, beside a viewer holding up to 465 MiB
+(`rolling-20261103T161927Z-4h-keep60-512MiB-load1400-revision883`); its next run reached the allowance at 4,587,942
+rows by minute 17 and saved its session, reopened alike (`rolling-20261103T171438Z-4h-keep60-512MiB-load1400-revision883`).
 
 `impact --output <new scratch directory> [--triplets <1-15>]` measures the broker's capture impact at its
 compiled cadence: the seeded TCP workload with no capture, a broker `OnStop` capture and a broker `Live`

@@ -3130,3 +3130,8 @@ a step later than revision 882's, in that peer-binding pass
 (`bench/results/rolling-20261103T161927Z-4h-keep60-512MiB-load1400-revision883`). The viewer itself held up to 465 MiB
 committed through its last minutes of recording, and the checkpoint it publishes on finishing runs beside what it
 holds: what a checkpoint needs alone now fits, and what a viewer holds beside one, unmeasured, does not leave it room.
+The next run of the same code, built with a handler to dump the heap on running out of memory, which never ran, reached
+the allowance at 4,587,942 rows by minute 17, and its viewer, at 293-478 MiB committed over its last minutes, published
+the finished session's checkpoint and saved it; reopened, it held the same rows and 1,010 s
+(`bench/results/rolling-20261103T171438Z-4h-keep60-512MiB-load1400-revision883`). The finish fits beside such a viewer
+in some runs and not in others.
