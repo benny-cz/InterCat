@@ -788,6 +788,8 @@ Revision 879 gives every column a reader reads room under the heap's limit when 
 
 Revision 880 holds a release's own readers to a budget while it reads, so planning a release of a three-million-row window needs 192-256 MiB where 512 MiB was not enough, and a loaded rolling capture passes its two-hour qualification under 512 MiB whole at up to 3.2 million rows.
 
+Revision 881 has the derivation cache keep, of one session, only the newest derived generation beside the one asked for, so a live capture's viewer holds the newest copy of its window's derivations and the one it is making, where it held four.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3044,3 +3046,27 @@ MiB as sampled, from the first quarter to the last ×0.93
 (`bench/results/rolling-20261103T083943Z-2h-keep10-512MiB-load1400-revision880`). It ran near its limit throughout: its
 GC took 4,153 full collections, 464 of them the aggressive ones taken for room, and by its 60th minute the viewer had
 spent 1,079 s of processor time where revision 879's had spent 719 s, reading again what its budgeted readers gave back.
+
+Revision 881 keeps one live session's newest derivations rather than four generations'. The window's "The last hour",
+qualified for four hours under 512 MiB, ran out 42 minutes in, before its window had filled or any release had run: the
+machine's own traffic had brought it to 3,062,309 rows, and the viewer's heap had been near 450 MiB since minute 20
+(`bench/results/rolling-20261103T105247Z-4h-keep60-512MiB-revision880`). A dump of the same run at its failure held 496
+MB, of which 290 MB were columns and some 200 MB derivations in four copies: four entries of the derivation cache, each
+with its own process instances, connections and activity, 28,778 instances and 107,130 incarnations among them. ADR-054
+keeps the derivations of the four most recently used generations by count, measured at 400 processes; an hour of a busy
+machine holds thousands of processes and tens of thousands of connections, and a live capture moves to a new generation
+every publication, each extending the latest earlier one that has them and copying what it extends. Of one session the
+cache now keeps the newest generation holding derivations, which the next generation's extend, beside the one asked for,
+and lets go each earlier one whose derivations the newest's cover: one holding a derivation the newest has not made yet,
+such as the calls an RPC listing paired, stays for the newest to extend rather than pair every call again. A view that
+reads an earlier generation once it went derives it again, from the checkpoint that generation names. Tests hold both:
+through six publications, each projected, only the newest is kept beside the one it extended, every derivation still
+extended; and a generation holding calls the newest has not paired stays until the newest has paired them too. The
+machine was busier still for the next four hours, 2.9 million rows by minute 10, and "The last hour" under 512 MiB held
+4,460,042 rows by minute 26, its heap 360-467 MiB where revision 880's was 450 MiB at 2.97 million, when its evidence
+reached the capture's 1 GiB journal allowance and the broker ended the capture, as the size line projects. The finished
+session's checkpoint then ran out of memory pairing its RPC calls
+(`bench/results/rolling-20261103T125343Z-4h-keep60-512MiB-revision881`); on the saved session, 2.2 GB, `icat checkpoint`
+needs more than 1 GiB of heap, and 34 s without a limit. The operation index pairs every call record of the session at
+once, with every field it carried and every call it made: within §12's analysis budget only by building it in bounded
+memory or apart from the indexes ADR-054 publishes together.

@@ -13,7 +13,10 @@ namespace InterCat.Application;
 /// <remarks>
 /// The derived indexes hold no segment or file reference, so keeping them never delays retention. Only the few most
 /// recently used generations are kept; a live capture moves to a new generation every publication, and a generation's
-/// derivations extend those of the latest earlier generation of the session that has them (IC-015).
+/// derivations extend those of the latest earlier generation of the session that has them (IC-015). Of one session, a
+/// generation whose derivations the newest derived generation's cover goes, unless it is the one asked for: each kept
+/// generation holds a copy of its own, some 50 MB at a busy hour's window, and a live capture's four were most of what
+/// its viewer held beside the reader cache (revision 881).
 /// </remarks>
 internal static class SessionDerivationCache
 {
@@ -42,12 +45,48 @@ internal static class SessionDerivationCache
             }
 
             Recent.Insert(0, entry);
+            ForgetSuperseded(entry);
             if (Recent.Count > Capacity)
             {
                 Recent.RemoveAt(Recent.Count - 1);
             }
 
             return entry;
+        }
+    }
+
+    /// <summary>
+    /// Of <paramref name="asked"/>'s session's kept generations that hold derivations, keeps the newest, which the next
+    /// generation's derivations extend, and lets go every earlier one whose derivations the newest's cover, but for the
+    /// one just asked for. A generation still deriving what an earlier one holds keeps that one to extend; a view that
+    /// reads an earlier generation once it went derives it again, from the checkpoint the generation names. Called under
+    /// the gate.
+    /// </summary>
+    private static void ForgetSuperseded(SessionDerivation asked)
+    {
+        SessionDerivation? newest = null;
+        foreach (SessionDerivation kept in Recent)
+        {
+            if (kept.SessionId == asked.SessionId && kept.HoldsDerivations
+                && (newest is null || kept.Generation > newest.Generation))
+            {
+                newest = kept;
+            }
+        }
+
+        if (newest is not null)
+        {
+            _ = Recent.RemoveAll(kept => kept.SessionId == asked.SessionId && !ReferenceEquals(kept, newest)
+                && !ReferenceEquals(kept, asked) && kept.Generation < newest.Generation && newest.Covers(kept));
+        }
+    }
+
+    /// <summary>The generations of <paramref name="sessionId"/> kept now, most recently used first; a test reads which went.</summary>
+    internal static IReadOnlyList<long> KeptGenerations(Guid sessionId)
+    {
+        lock (Gate)
+        {
+            return [.. Recent.Where(kept => kept.SessionId == sessionId).Select(kept => kept.Generation)];
         }
     }
 
@@ -153,6 +192,22 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
 
     /// <summary>The HTTP exchanges already grouped, or null before they are asked for: what a later generation extends.</summary>
     public HttpExchangeIndex? DerivedHttpExchanges => Volatile.Read(ref httpExchanges);
+
+    /// <summary>Whether any derivation a later generation extends is made here, which keeping this generation holds.</summary>
+    internal bool HoldsDerivations => DerivedProcesses is not null || DerivedRelations is not null || DerivedActivity is not null
+        || DerivedRpcCalls is not null || DerivedRpcPeers is not null || DerivedHttpExchanges is not null;
+
+    /// <summary>
+    /// Whether every derivation <paramref name="earlier"/> holds is made here too, so a later generation extends these
+    /// rather than those, and keeping both holds two copies for one use.
+    /// </summary>
+    internal bool Covers(SessionDerivation earlier) =>
+        (earlier.DerivedProcesses is null || DerivedProcesses is not null)
+        && (earlier.DerivedRelations is null || DerivedRelations is not null)
+        && (earlier.DerivedActivity is null || DerivedActivity is not null)
+        && (earlier.DerivedRpcCalls is null || DerivedRpcCalls is not null)
+        && (earlier.DerivedRpcPeers is null || DerivedRpcPeers is not null)
+        && (earlier.DerivedHttpExchanges is null || DerivedHttpExchanges is not null);
 
     /// <summary>Whether the RPC calls were extended from an earlier generation's rather than paired in full.</summary>
     internal bool RpcCallsExtended { get; private set; }

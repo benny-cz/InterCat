@@ -54,7 +54,9 @@ approximate.
    a release's plan opens of its own, outside the cache, hold a budget of their own by the same rule, an eighth of the
    cache's (`SegmentReaderBudget`). The derivations of the four
    most recently used generations are kept process-wide, by count: a derivation holds no file, so keeping it never
-   delays a release. Since revision 751 a tile index keeps what its queries read of it - blocks decoded, and their
+   delays a release. Since revision 881, of one session only the newest generation holding derivations is kept beside the
+   one asked for, and each earlier one whose derivations it covers goes: each kept generation held a copy of its own,
+   and a busy hour's live window held four, some 200 MB. Since revision 751 a tile index keeps what its queries read of it - blocks decoded, and their
    tallies, byte sums and records - against a byte budget, 64 MiB by default, which the tiles of every chunk a live
    session's generations name share, giving up a part chosen at random once full; before, each chunk's tiles kept 64
    blocks, fewer than a chunk of a busy machine's traffic holds, and every focus read them all again.
@@ -79,7 +81,9 @@ approximate.
   incrementally from the generation before it, and its indexes come with the publication that ends it.
 - §19.3's rule that a cache is budgeted by bytes, not entry count alone, has one exception, the derivation cache, and
   its basis is a measurement at 400 processes. A machine of thousands of processes and tens of thousands of relations is
-  unmeasured; if its derivations prove large, the cache needs a byte budget too. The scale tier that would measure it
+  unmeasured; if its derivations prove large, the cache needs a byte budget too. Revision 881 met one, an hour of a busy
+  machine whose four kept generations held 28,778 process instances and 107,130 connection incarnations, and keeps one
+  session's newest generation rather than four, still by count. The scale tier that would measure it
   waits on M5's disk.
 - At 100 million records, faster scans are not enough, and what a brush and a group count must come from the pyramid;
   that tier is unmeasured for the same reason.
