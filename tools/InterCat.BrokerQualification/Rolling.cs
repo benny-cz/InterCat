@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using InterCat.Application;
@@ -32,6 +34,12 @@ internal static partial class Qualification
     /// <summary>The fewest samples a run judges, once its window has filled: two in each quarter.</summary>
     private const int FewestJudgedSamples = 8;
 
+    /// <summary>The most messages a second a run's load stream is asked for: some 40,000 records a second.</summary>
+    private const int MostLoadMessagesPerSecond = 20_000;
+
+    /// <summary>How often the load stream writes its burst of messages: a timer's resolution, give or take.</summary>
+    private static readonly TimeSpan LoadTick = TimeSpan.FromMilliseconds(20);
+
     public static async Task<int> RollingAsync(string[] args, CancellationToken cancellationToken)
     {
         string? output = Option(args, "--output");
@@ -39,9 +47,11 @@ internal static partial class Qualification
             && parsedHours is > 0 and <= 24 ? parsedHours : -1;
         int keepMinutes = int.TryParse(Option(args, "--keep-minutes") ?? "10", NumberStyles.None, CultureInfo.InvariantCulture, out int parsedKeep)
             && parsedKeep is >= 1 and <= 60 ? parsedKeep : -1;
+        int load = int.TryParse(Option(args, "--load") ?? "0", NumberStyles.None, CultureInfo.InvariantCulture, out int parsedLoad)
+            && parsedLoad is >= 0 and <= MostLoadMessagesPerSecond ? parsedLoad : -1;
 
         // A run records at least four windows, so that its window fills and is then held for most of it.
-        if (output is null || hours < 0 || keepMinutes < 0 || keepMinutes * 4 > hours * 60)
+        if (output is null || hours < 0 || keepMinutes < 0 || load < 0 || keepMinutes * 4 > hours * 60)
         {
             return Usage();
         }
@@ -64,6 +74,13 @@ internal static partial class Qualification
         int seconds = (int)Math.Round(hours * 3_600);
         var policy = new RollingRetentionPolicy(TimeSpan.FromMinutes(keepMinutes));
         TimeSpan every = TimeSpan.FromSeconds(Math.Min(60, keepMinutes * 15));
+        string[] loadNote = load == 0 ? [] :
+        [
+            "A load of " + load.ToString("N0", CultureInfo.InvariantCulture) + " messages a second ran beside that traffic "
+                + "for the whole recording: a second loopback TCP stream writing 1 KiB messages in bursts every 20 ms, each "
+                + "read at its other end before the next, so a window holds as many rows as a busy machine's whatever else "
+                + "the machine did; the messages it sent are counted.",
+        ];
         var report = new RollingReport
         {
             Schema = "intercat.rolling-capture.v1",
@@ -75,6 +92,7 @@ internal static partial class Qualification
             SampleSeconds = (int)every.TotalSeconds,
             GcHeapHardLimit = System.Environment.GetEnvironmentVariable("DOTNET_GCHeapHardLimit"),
             GcRegionRange = System.Environment.GetEnvironmentVariable("DOTNET_GCRegionRange"),
+            LoadMessagesPerSecond = load,
             Notes =
             [
                 "The Desktop's DesktopCaptureRunner runs unchanged but for its options: this tool as its broker over a "
@@ -100,11 +118,13 @@ internal static partial class Qualification
                     + "and the evidence's, so the rate of the machine's traffic cancels out, and for the viewer's heap.",
                 "A run under DOTNET_GCHeapHardLimit with a wide DOTNET_GCRegionRange, as the report names, also shows the "
                     + "viewer kept within that heap for its whole length: otherwise it runs out of memory and fails.",
+                .. loadNote,
             ],
         };
 
         IReadOnlyList<string> sessionsBefore = InterCatSessions(etw);
         var collected = new RollingCollector();
+        Task<long> loading = Task.FromResult(0L);
         try
         {
             using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -121,6 +141,7 @@ internal static partial class Qualification
             if (!capture.IsCompleted)
             {
                 traffic = PacedLoopbackAsync(TimeSpan.FromSeconds(seconds + 120), capture, cancellationToken);
+                loading = load > 0 ? LoadLoopbackAsync(load, TimeSpan.FromSeconds(seconds + 120), capture, cancellationToken) : loading;
                 sampling = SampleRollingAsync(collected, capture, every, report.Samples, cancellationToken);
             }
 
@@ -178,6 +199,10 @@ internal static partial class Qualification
         }
         finally
         {
+            // The load stream stops at its next burst once the capture ends, however it ended, so even a run that failed
+            // says how many messages it carried.
+            _ = await Task.WhenAny(loading, Task.Delay(TimeSpan.FromSeconds(30), CancellationToken.None));
+            report.LoadMessagesSent = loading.IsCompletedSuccessfully ? loading.Result : report.LoadMessagesSent;
             report.LeakedSessions = [.. InterCatSessions(etw).Except(sessionsBefore, StringComparer.OrdinalIgnoreCase)];
             report.FinishedUtc = DateTimeOffset.UtcNow;
             report.Passed = report.Failure is null && report.LeakedSessions.Count == 0 && report.SessionSaved
@@ -240,6 +265,44 @@ internal static partial class Qualification
     }
 
     private static double? Growth(double before, double after) => before > 0 ? Math.Round(after / before, 3) : null;
+
+    /// <summary>
+    /// A second loopback stream carrying <paramref name="messagesPerSecond"/> 1 KiB messages, each read at its other end
+    /// before the next is written, in a burst every <see cref="LoadTick"/>, for the given duration or until the capture
+    /// ends; returns the messages sent. A burst falls behind on a machine too slow for the rate, and the next tick writes
+    /// what the clock says is due, so the rate holds over the run rather than tick by tick.
+    /// </summary>
+    private static async Task<long> LoadLoopbackAsync(int messagesPerSecond, TimeSpan duration, Task capture, CancellationToken cancellationToken)
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using var stream = new TcpClient { NoDelay = true };
+        Task<TcpClient> accepted = listener.AcceptTcpClientAsync(cancellationToken).AsTask();
+        await stream.ConnectAsync(IPAddress.Loopback, port, cancellationToken);
+        using TcpClient peer = await accepted;
+        byte[] payload = new byte[1024];
+        byte[] buffer = new byte[payload.Length];
+        var clock = Stopwatch.StartNew();
+        long sent = 0;
+        while (clock.Elapsed < duration && !capture.IsCompleted)
+        {
+            long due = (long)(clock.Elapsed.TotalSeconds * messagesPerSecond);
+            for (; sent < due; sent++)
+            {
+                await stream.GetStream().WriteAsync(payload, cancellationToken);
+                int read = 0;
+                while (read < buffer.Length)
+                {
+                    read += await peer.GetStream().ReadAsync(buffer.AsMemory(read), cancellationToken);
+                }
+            }
+
+            await Task.Delay(LoadTick, cancellationToken);
+        }
+
+        return sent;
+    }
 
     /// <summary>The session time an overview's extent spans, in seconds: what the session holds; null when it holds no timed record.</summary>
     private static double? HeldSeconds(SessionOverviewBundle overview) =>
@@ -464,6 +527,12 @@ internal sealed class RollingReport
 
     /// <summary>The GC region range the run was made under, as its environment set it; null when the runtime chose.</summary>
     public string? GcRegionRange { get; init; }
+
+    /// <summary>The messages a second the run's load stream was asked to carry beside its paced traffic; 0 for none.</summary>
+    public int LoadMessagesPerSecond { get; init; }
+
+    /// <summary>The messages the load stream sent, each read at its other end.</summary>
+    public long LoadMessagesSent { get; set; }
 
     public required IReadOnlyList<string> Notes { get; init; }
 

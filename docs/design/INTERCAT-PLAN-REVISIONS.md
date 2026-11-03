@@ -782,6 +782,8 @@ Revision 876 has the segment-reader cache hold its budget while a query reads, n
 
 Revision 877 has the keyboard wait for the inspector's records a newer generation reads again, rather than go to the ranked table when the read comes back late.
 
+Revision 878 has the rolling qualification carry a load of its own, so a window of two to three million rows is measured whenever it is asked for, and finds the viewer holding one for 119 minutes under 512 MiB before running out.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2983,3 +2985,18 @@ table. Each session shown reads its cell's records through the window's reader, 
 back, as other tests replace the window's session verifier and interrupted-capture finder. Held back, the
 keyboard is on neither the ranked table nor Stop, and once let go it is in the inspector; without the wait the test fails
 with the suite's own message, the keyboard on a row outside the inspector.
+
+Revision 878 has the rolling qualification carry a load of its own. Its busiest windows came only when the machine
+happened to be busy: revision 875's runs met two million rows, and revision 876's, on a calmer night, at most 786,382,
+so whether the viewer holds a window that size could not be asked for. `rolling --load <messages a second>` adds a
+second loopback TCP stream beside the paced traffic, writing 1 KiB messages in bursts every 20 ms, each read at its
+other end before the next, so that the clock, not the tick, sets the rate. The report states the load asked for and the
+messages sent, a run that fails included. Six minutes keeping one minute at 1,000 messages a second sent 1,003 a second
+and held 2,474-2,678 rows a held second, about two records a message beside the machine's own
+(`bench/results/rolling-20261103T030428Z-6min-keep1-load1000`). Under 512 MiB for two hours, keeping ten minutes, at
+1,400 messages a second the capture journaled 3,581 records a second and its window held 2,082,335-2,910,910 rows at
+all 106 judged samples, the viewer's heap 385 MiB at the median and at most 486 MiB as sampled. In the last minute before
+its quota the viewer ran out deriving its processes after a release, reading a column
+(`bench/results/rolling-20261103T031106Z-2h-keep10-512MiB-load1400-revision878`; its report counts no message sent,
+since until this revision only a run that ended well counted them). Revision 875's code ran out at minute 32 at 2.1
+million rows; what the viewer holds beside the reader cache's budget at such a window is what bounds it now.

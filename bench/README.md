@@ -180,7 +180,7 @@ four at stated times after its first generation. It passes when every press stop
 finished its session from every chunk published, leaving no follow ticket (revision 864). Build `src/InterCat.Cli`
 first. Only `report.json` is committed, as `bench/results/cli-stop-<started UTC>/report.json`.
 
-`rolling --output <new scratch directory> [--hours <h>] [--keep-minutes <1-60>]` records one Explore capture for
+`rolling --output <new scratch directory> [--hours <h>] [--keep-minutes <1-60>] [--load <messages a second>]` records one Explore capture for
 hours keeping a window, as the window's "The last 10 minutes" does (two hours keeping ten minutes unless told
 otherwise), through the tool's broker, which ends it at its quota (revision 870). Every minute, or every quarter of a
 shorter window, it samples the session time the latest overview spans, the bytes and journal chunks the session and
@@ -191,6 +191,9 @@ each sample, the evidence has given up every chunk the session had given up by t
 chunks are the capture's chunks it was given, published or derived, less the journal chunks its files hold); and when
 the medians of the samples' last quarter are within 1.5 times their first quarter's, for the session's and the
 evidence's bytes per row and for the viewer's heap.
+With `--load` (revision 878), a second loopback TCP stream carries that many 1 KiB messages a second beside the paced
+traffic, each read at its other end before the next, about two records each, so a window holds a busy machine's rows
+whatever else the machine does; the report states the load asked for and the messages it sent.
 Under a heap limit beside the region range above, it also shows the viewer within that limit for the whole run. It
 needs no `src/InterCat.Cli` build: the runner launches this tool as its broker. Only `report.json` is committed, as
 `bench/results/rolling-<started UTC>/report.json`. Revision 870's are two six-minute runs keeping one minute, before
@@ -208,6 +211,10 @@ checkpoint given room, the busiest machine yet brought the window to 2,097,259 r
 out in its live derivation after a release (`-2h-keep10-512MiB-revision875`). Revision 876's, its reader cache
 holding its budget while a query reads, passed whole: its window and evidence held at all 106 judged samples, at
 356,340-786,382 rows on a calmer machine, and its session was saved and reopened (`-2h-keep10-512MiB-revision876`).
+Revision 878's carried a load: six minutes keeping one minute at 1,000 messages a second held about 2,550 rows a held
+second (`-6min-keep1-load1000`), and two hours keeping ten at 1,400 a second held its window at 2,082,335-2,910,910
+rows at every judged sample for 119 minutes before the viewer ran out in a live derivation
+(`-2h-keep10-512MiB-load1400-revision878`).
 
 `impact --output <new scratch directory> [--triplets <1-15>]` measures the broker's capture impact at its
 compiled cadence: the seeded TCP workload with no capture, a broker `OnStop` capture and a broker `Live`
