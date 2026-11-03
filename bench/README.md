@@ -214,7 +214,9 @@ holding its budget while a query reads, passed whole: its window and evidence he
 Revision 878's carried a load: six minutes keeping one minute at 1,000 messages a second held about 2,550 rows a held
 second (`-6min-keep1-load1000`), and two hours keeping ten at 1,400 a second held its window at 2,082,335-2,910,910
 rows at every judged sample for 119 minutes before the viewer ran out in a live derivation
-(`-2h-keep10-512MiB-load1400-revision878`).
+(`-2h-keep10-512MiB-load1400-revision878`). Revision 879's, its column reads given room the GC keeps committed, held 47
+minutes under 448 MiB where 878's code held 18 (`-1h-keep10-448MiB-load1400-revision879`), and 83 under 512 MiB at up to
+3,221,606 rows, until a release's RPC pass ran out (`-2h-keep10-512MiB-load1400-revision879`).
 
 `impact --output <new scratch directory> [--triplets <1-15>]` measures the broker's capture impact at its
 compiled cadence: the seeded TCP workload with no capture, a broker `OnStop` capture and a broker `Live`

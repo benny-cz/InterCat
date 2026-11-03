@@ -350,6 +350,7 @@ internal static partial class Qualification
             RollingCollector.Seen seen = collected.Snapshot();
             (long sessionBytes, int sessionChunks) = seen.SessionPath is { } path ? Holding(path) : (0, 0);
             (long evidenceBytes, int evidenceChunks) = NewestEvidence() is { } evidence ? Holding(evidence) : (0, 0);
+            GCMemoryInfo heap = GC.GetGCMemoryInfo();
             samples.Add(new()
             {
                 ElapsedSeconds = (int)Math.Round(clock.Elapsed.TotalSeconds),
@@ -366,7 +367,10 @@ internal static partial class Qualification
                 EvidenceBytes = evidenceBytes,
                 EvidenceChunks = evidenceChunks,
                 ViewerPrivateBytes = viewer.PrivateMemorySize64,
-                ViewerManagedHeapBytes = GC.GetGCMemoryInfo().HeapSizeBytes,
+                ViewerManagedHeapBytes = heap.HeapSizeBytes,
+                ViewerCommittedBytes = heap.TotalCommittedBytes,
+                ViewerFullCollections = GC.CollectionCount(GC.MaxGeneration),
+                ViewerRoomCollections = HeapRoom.Collections,
                 BrokerPrivateBytes = brokerPrivate,
             });
         }
@@ -659,6 +663,14 @@ internal sealed class RollingSample
     public long ViewerPrivateBytes { get; init; }
 
     public long ViewerManagedHeapBytes { get; init; }
+
+    /// <summary>What the viewer's GC held committed as of its latest collection, the regions it keeps for its budgets included.</summary>
+    public long ViewerCommittedBytes { get; init; }
+
+    /// <summary>The viewer's full collections so far, and how many of them were the aggressive ones its reads asked for room with.</summary>
+    public int ViewerFullCollections { get; init; }
+
+    public long ViewerRoomCollections { get; init; }
 
     public long? BrokerPrivateBytes { get; init; }
 }

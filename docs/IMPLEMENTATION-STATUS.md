@@ -135,6 +135,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 879 — a column read is given room the GC keeps committed:**
+  - A dump of the viewer running out under 448 MiB at a loaded window found 200 MB in the heap's generations and a GC
+    unable to commit, a release's plan reading a column: as at revision 875's checkpoint, the GC kept committed the
+    regions its collections freed. The columns readers read and give back are most of what a busy window's analysis
+    allocates, so every column or chunk a reader reads now asks `HeapRoom.For` for room first. An aggressive collection
+    is taken only when the allocation could pass the limit and the GC keeps more than an eighth of it committed beyond
+    its heap, so a heap that itself nears the limit takes none. The rolling report counts the viewer's full collections
+    and those taken for room.
+  - Under 448 MiB at 1,400 messages a second the viewer held its window at 2,111,196-2,804,019 rows for 47 minutes,
+    where it ran out after 18 before, taking 198 collections for room among 1,029 full ones, until its heap neared the
+    limit itself (`bench/results/rolling-20261103T054553Z-1h-keep10-448MiB-load1400-revision879`). Under 512 MiB the
+    machine's own traffic brought the window to 2,025,423-3,221,606 rows; it held 83 minutes, its heap 405 MiB at the
+    median and 481 MiB at most, until a release's RPC pass ran out
+    (`bench/results/rolling-20261103T063415Z-2h-keep10-512MiB-load1400-revision879`).
+
 - **Revision 878 — the rolling qualification carries a load of its own:**
   - The busiest windows came only when the machine happened to be busy, as revision 875's two million rows did once
     and revision 876's run did not. `rolling --load <messages a second>` adds a second loopback TCP stream of 1 KiB

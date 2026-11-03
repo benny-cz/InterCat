@@ -96,13 +96,20 @@ internal sealed class PublishedSegmentFile : SegmentBytes
 
     public override ReadOnlyMemory<byte> Read(int offset, int length)
     {
+        _ = HeapRoom.For(length);
         using FileStream stream = OpenChecked();
         return ReadAt(stream, offset, length);
     }
 
+    /// <summary>
+    /// A column's values and null bitmap, read in room the GC is asked for when what it keeps committed would leave none
+    /// under the heap's limit: the columns readers read and give back are most of what a busy window's analysis
+    /// allocates, and what the GC keeps for them stays committed (revision 879).
+    /// </summary>
     public override (ReadOnlyMemory<byte> Values, ReadOnlyMemory<byte> Nulls) ReadColumn(SegmentColumnDescriptor column)
     {
         ArgumentNullException.ThrowIfNull(column);
+        _ = HeapRoom.For((long)column.ValueLength + (column.Nullable ? column.NullBitmapLength : 0));
         using FileStream stream = OpenChecked();
         byte[] values = ReadAt(stream, column.ValueOffset, column.ValueLength);
         byte[] nulls = column.Nullable ? ReadAt(stream, column.NullBitmapOffset, column.NullBitmapLength) : [];

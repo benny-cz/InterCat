@@ -784,6 +784,8 @@ Revision 877 has the keyboard wait for the inspector's records a newer generatio
 
 Revision 878 has the rolling qualification carry a load of its own, so a window of two to three million rows is measured whenever it is asked for, and finds the viewer holding one for 119 minutes under 512 MiB before running out.
 
+Revision 879 gives every column a reader reads room under the heap's limit when the GC keeps regions committed past what its heap holds, so a loaded window's viewer held 47 minutes under 448 MiB where it held 18.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3000,3 +3002,21 @@ its quota the viewer ran out deriving its processes after a release, reading a c
 (`bench/results/rolling-20261103T031106Z-2h-keep10-512MiB-load1400-revision878`; its report counts no message sent,
 since until this revision only a run that ended well counted them). Revision 875's code ran out at minute 32 at 2.1
 million rows; what the viewer holds beside the reader cache's budget at such a window is what bounds it now.
+
+Revision 879 gives a column read room under the heap's limit. A dump of the viewer running out under 448 MiB, 18 minutes
+into a run at 1,400 messages a second, found 200 MB in the heap's generations, 209 MB committed to them, and a GC that
+could not commit for a release's plan reading a column: as at revision 875's checkpoint, the GC kept committed the
+regions its collections freed, for what it budgets next. The columns readers read and give back are most of what a busy
+window's analysis allocates, so the GC keeps them most. Every column or chunk a published segment's reader reads now asks
+`HeapRoom.For` for room first. Asked so often, the rule needs a second condition, or a heap that itself fills the limit
+would collect at every read for nothing: an aggressive collection is taken only when the allocation could pass what the
+GC may use, as before, and the GC kept more than an eighth of that committed beyond the heap its last collection left,
+which one collection empties until the GC keeps that much again. A test holds both conditions, a heap near its limit
+taking none. The rolling report now counts the viewer's full collections and those taken for room, and the GC's committed
+bytes beside its heap. Under 448 MiB at the same load the viewer held its window at 2,111,196-2,804,019 rows for 47
+minutes, taking 198 collections for room among 1,029 full ones, until its heap neared the limit itself
+(`bench/results/rolling-20261103T054553Z-1h-keep10-448MiB-load1400-revision879`). Under 512 MiB the machine's own
+traffic beside the load brought the window to 2,025,423-3,221,606 rows: the viewer held 83 minutes at all 70 judged
+samples, its heap 405 MiB at the median and 481 MiB at most, then ran out in a release's RPC pass
+(`bench/results/rolling-20261103T063415Z-2h-keep10-512MiB-load1400-revision879`). `icat overview` and `icat checkpoint`
+need what they needed, since alone each holds its heap near its limit rather than regions the GC keeps.
