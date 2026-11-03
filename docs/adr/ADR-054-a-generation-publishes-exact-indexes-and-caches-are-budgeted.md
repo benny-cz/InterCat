@@ -94,9 +94,10 @@ approximate.
   waits on M5's disk.
 - At 100 million records, faster scans are not enough, and what a brush and a group count must come from the pyramid;
   that tier is unmeasured for the same reason.
-- An operation index is written and checked in bounded memory, but a view reads it whole: a reopen's first RPC view
-  holds every call it keeps, as pairing them did - at a busy hour's 4.46 million rows, 2,007,063 calls. A capture that
-  collected ALPC still pairs its calls whole, to follow their other ends.
+- An operation index is written and checked in bounded memory, and since revision 885 read as its file streams, each
+  call held once, but a view still holds every call it keeps, as pairing them did - at a busy hour's 4.46 million rows,
+  2,007,063 calls, which `icat waits` holds within 512 MiB and not 384. A capture that collected ALPC still pairs its
+  calls whole, to follow their other ends.
 
 ## Alternatives considered
 

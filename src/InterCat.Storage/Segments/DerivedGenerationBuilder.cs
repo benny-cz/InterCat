@@ -1384,6 +1384,121 @@ public static class SessionSegments
             : throw new InvalidDataException($"{dependency.DigestMismatch(digest)}.");
     }
 
+    /// <summary>
+    /// What <paramref name="read"/> makes of a published dependency as it streams, given the file's stream and length,
+    /// rather than of its bytes held whole, refused as <see cref="ReadVerified(IOwnedDirectory, StoreDependency, int)"/>
+    /// refuses them: a file of another length before a byte is read, and one whose bytes hash to another digest once
+    /// every byte has been, even where <paramref name="read"/> refused it first. So a reader of a large index holds what
+    /// it makes of the file rather than the file as well (revision 885).
+    /// </summary>
+    public static T ReadVerified<T>(
+        IOwnedDirectory directory,
+        StoreDependency dependency,
+        int maximumBytes,
+        Func<Stream, int, T> read)
+    {
+        ArgumentNullException.ThrowIfNull(directory);
+        ArgumentNullException.ThrowIfNull(dependency);
+        ArgumentNullException.ThrowIfNull(read);
+        if (dependency.LengthBytes < 0 || dependency.LengthBytes > maximumBytes)
+        {
+            throw new InvalidDataException(
+                $"'{dependency.Name}' is {dependency.LengthBytes:N0} bytes, outside its {maximumBytes:N0}-byte bound.");
+        }
+
+        using FileStream stream = directory.OpenOwnedFile(
+            dependency.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan);
+        if (stream.Length != dependency.LengthBytes)
+        {
+            throw new InvalidDataException($"{dependency.LengthMismatch(stream.Length)}.");
+        }
+
+        using var hashed = new HashedReadStream(stream);
+        T value;
+        try
+        {
+            value = read(hashed, (int)dependency.LengthBytes);
+        }
+        catch (InvalidDataException)
+        {
+            // Bytes changed since they were published are said to have, whatever they read as.
+            RequireDigest(dependency, hashed);
+            throw;
+        }
+
+        RequireDigest(dependency, hashed);
+        return value;
+    }
+
+    private static void RequireDigest(StoreDependency dependency, HashedReadStream hashed)
+    {
+        string digest = hashed.DigestOfAll();
+        if (!string.Equals(digest, dependency.Digest, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"{dependency.DigestMismatch(digest)}.");
+        }
+    }
+
+    /// <summary>A file read forward, its SHA-256 taken of every byte read, and of the rest once asked for its digest.</summary>
+    private sealed class HashedReadStream(Stream inner) : Stream
+    {
+        private readonly IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => inner.Length;
+
+        public override long Position
+        {
+            get => inner.Position;
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            int read = inner.Read(buffer);
+            hash.AppendData(buffer[..read]);
+            return read;
+        }
+
+        /// <summary>The digest of every byte of the file: those read, then the rest, read now.</summary>
+        public string DigestOfAll()
+        {
+            byte[] rest = new byte[64 * 1024];
+            while (Read(rest) > 0)
+            {
+            }
+
+            return string.Concat("sha256:", Convert.ToHexStringLower(hash.GetHashAndReset()));
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                hash.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
+    }
+
     /// <summary>The largest redaction policy a generation publishes or a reader accepts.</summary>
     public const int MaximumRedactionPolicyBytes = 65_536;
 

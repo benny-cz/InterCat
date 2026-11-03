@@ -191,8 +191,10 @@ public sealed partial class RpcCallIndex
             throw reader.Invalid($"its calls hold {records:N0} records, and it counts {callRecords:N0}.");
         }
 
+        // Nothing reads the drafts after, so the calls are put in their places within their own array (revision 885).
         placed = new int[drafted.Length];
-        return Assemble(drafted, processes, interfaces, segmentNames, clock, callRecords, otherRecords, cancellationToken, placed);
+        return Assemble(drafted, processes, interfaces, segmentNames, clock, callRecords, otherRecords, cancellationToken, placed,
+            inPlace: drafted);
     }
 
     /// <summary>

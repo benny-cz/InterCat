@@ -271,11 +271,7 @@ public static class SessionCheckpoints
                         manifest.SessionId).Segments,
                     manifest)
                 && OperationIndex.NamedBy(manifest) is { } operations
-                && OperationIndex.Verify(
-                    SessionSegments.ReadVerified(directory, operations, OperationIndex.MaximumBytes),
-                    manifest.SessionId,
-                    clock,
-                    saved.Processes) is { KeepsExchanges: true } kept
+                && OperationIndex.Verify(directory, operations, manifest.SessionId, clock, saved.Processes) is { KeepsExchanges: true } kept
                 && kept.Covers(SessionOverviewIndex.ObservationSegments(manifest), SessionOverviewIndex.FieldSegments(manifest))
                 && SessionTileIndex.NamedBy(manifest) is { } tiles
                 && SessionTileIndex.Open(directory, tiles, manifest.SessionId) is { Minor: >= SessionTileIndex.Minor } file

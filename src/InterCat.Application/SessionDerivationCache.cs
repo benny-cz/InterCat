@@ -833,12 +833,8 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
                 ProcessInstanceIndex instances = processes
                     ?? FromCheckpointLocked(directory, clock)?.Processes
                     ?? ProcessesLocked(directory, segments, clock, fields, cancellationToken);
-                OperationIndex saved = OperationIndex.Read(
-                    SessionSegments.ReadVerified(directory, named, OperationIndex.MaximumBytes),
-                    Manifest.SessionId,
-                    clock,
-                    instances,
-                    cancellationToken);
+                // Read as the file streams, so its bytes are not held beside its calls (revision 885).
+                OperationIndex saved = OperationIndex.Read(directory, named, Manifest.SessionId, clock, instances, cancellationToken);
                 operationIndex = saved.Covers(observed, SessionOverviewIndex.FieldSegments(Manifest)) ? saved : null;
                 operationIndexRead = true;
             }

@@ -796,6 +796,8 @@ Revision 883 has a checkpoint read through readers of its own held to a budget, 
 
 Revision 884 has the Desktop publish a finished capture's checkpoint, and an interrupted capture's it finishes, in a process of its own launched from its own executable, so the publication's heap is its own rather than what the window leaves of its.
 
+Revision 885 reads an operation index as its file streams and puts its calls in their groups within the array that read them, so a reopened busy hour's RPC views hold each call once and `icat waits` on two million calls fits 512 MiB where it ran out.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3160,3 +3162,23 @@ caught. "The last hour" at 1,400 messages a second under 512 MiB then reached th
 rows by minute 17 and saved its session alike, reopened holding the same rows and 1,022.3 s, its window at up to 455 MiB
 (`bench/results/rolling-20261103T184459Z-4h-keep60-512MiB-load1400-revision884`): two runs of two, where revision 883
 saved one of two.
+
+Revision 885 reads an operation index as its file streams. A reopened session's first RPC view - a call ranking, a
+listing, `icat waits` - read the index whole: `SessionSegments.ReadVerified` gave it the file's bytes, the reader made
+every call of them, and placing the calls in their groups made each again in an array of its own. On revision 882's
+saved session, 4,460,042 rows and 2,007,063 calls in a 158,563,008-byte index, `icat waits` ran out of memory under 512
+MiB in 6.8 s, where it answered in 5.4-12.7 s without a limit. The index is now read as it streams: an
+`IndexFileReader` over a stream of a stated length takes its fields a 64 KiB window at a time, refilling it as a field
+reaches past what it holds and widening it for a field longer than it, every refusal in the same words as over the
+bytes held whole; `SessionSegments.ReadVerified` over a stream refuses a file of another length before a byte is read,
+takes the file's SHA-256 as its reader reads it and checks it once every byte has been - the rest read for it where the
+reader stopped short - and says a digest that differs before whatever its reader made of the bytes, as a whole read
+does; and the calls are put in their groups within the array that read them, each moved once along a cycle of places,
+nothing held beside it but a bit a call. The derivation cache reads the index this way, and a writer asking whether it
+is current checks it so. Tests hold it: a stream reads every field as the bytes held whole read it, across its window's
+edges and past its width, and is refused in the same words cut short, followed by more or counting more than it holds;
+a streamed file is refused for its length before a byte is read and for its digest even where its reader refused it
+first, and in its reader's words where its digest holds; an index read from its file answers as its bytes do, writes
+the same bytes again, and every damaged index the reader refuses is refused alike from its file. Six mutations are
+caught. On the same session `icat waits` now answers under 512 MiB, giving revision 884's answer in the same 12.7 s
+without a limit; under 384 MiB it still runs out, since the view holds all 2,007,063 calls.

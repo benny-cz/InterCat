@@ -35,6 +35,15 @@ public sealed class OperationIndexTests
         Assert.Same(derived.Processes, read.Calls!.Processes);
         Assert.Same(read.Calls, read.Peers!.Calls);
 
+        // Read as its file streams, holding neither the file nor its calls twice, it answers as its bytes do (revision 885).
+        (IOwnedDirectory streamed, StoreDependency named) = Published(session, bytes);
+        OperationIndex fromFile = OperationIndex.Read(streamed, named, derived.SessionId, TestClock, derived.Processes);
+        Assert.Equal(Describe(derived.Peers, derived.Observations), Describe(fromFile.Peers!, derived.Observations));
+        Assert.Equal(Describe(derived.Exchanges), Describe(fromFile.Exchanges!));
+        Assert.Equal(bytes, Write(derived with { Calls = fromFile.Calls!, Peers = fromFile.Peers!, Exchanges = fromFile.Exchanges! }));
+        Assert.True(OperationIndex.Verify(streamed, named, derived.SessionId, TestClock, derived.Processes)
+            is { KeepsCalls: true, KeepsExchanges: true } checkedFile && checkedFile.Covers(derived.Segments, derived.FieldSegments));
+
         // Checked call by call, it covers and keeps what it reads as.
         VerifiedOperationIndex verified = OperationIndex.Verify(bytes, derived.SessionId, TestClock, derived.Processes);
         Assert.Equal((derived.SessionId, derived.Generation, true, true),
@@ -96,9 +105,13 @@ public sealed class OperationIndexTests
             Assert.Contains(reason, refused.Message, StringComparison.Ordinal);
             Assert.StartsWith("The operation index is not readable: ", refused.Message, StringComparison.Ordinal);
 
-            // A writer asking whether the index is current checks it call by call, holding none, and refuses it alike.
+            // A writer asking whether the index is current checks it call by call, holding none, and refuses it alike; and
+            // read as its file streams, as published with those bytes, it is refused in the same words (revision 885).
             Assert.Equal(refused.Message, Assert.Throws<InvalidDataException>(
                 () => OperationIndex.Verify(damaged, sessionId ?? derived.SessionId, TestClock, processes ?? derived.Processes)).Message);
+            (IOwnedDirectory directory, StoreDependency file) = Published(session, damaged);
+            Assert.Equal(refused.Message, Assert.Throws<InvalidDataException>(
+                () => OperationIndex.Read(directory, file, sessionId ?? derived.SessionId, TestClock, processes ?? derived.Processes)).Message);
         }
 
         Refused(bytes[..20], "ends inside a field");
@@ -354,6 +367,19 @@ public sealed class OperationIndexTests
             calls,
             RpcPeerIndex.Derive(calls, observations, fieldSegments),
             HttpExchangeIndex.Derive(observations, fieldSegments, processes));
+    }
+
+    /// <summary>
+    /// <paramref name="bytes"/> as a published operation index of their own beside the session: written to a file, named
+    /// with their length and digest, as a generation names the index it publishes.
+    /// </summary>
+    private static (IOwnedDirectory Directory, StoreDependency File) Published(TemporarySession session, byte[] bytes)
+    {
+        string folder = Directory.CreateDirectory(System.IO.Path.Combine(session.Path, "published-index")).FullName;
+        string name = OperationIndex.FileNameFor(2);
+        File.WriteAllBytes(System.IO.Path.Combine(folder, name), bytes);
+        return (LocalOwnedDirectory.Open(folder), new StoreDependency(name, StoreDependencyKind.Index, bytes.Length,
+            "sha256:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes))));
     }
 
     private static byte[] Write(Derivation derived, long maximumBytes = OperationIndex.MaximumBytes)

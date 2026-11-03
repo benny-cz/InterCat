@@ -73,7 +73,9 @@ sorted runs of a temporary file deleted when it is closed. The bytes are exactly
 holds the calls in flight and the records of the segments whose readings overlap rather than every call. Where the
 segments hold ALPC records, whose other ends the peer rule follows over every call, or where the generation's calls are
 held already, the index is written from calls held whole. A writer asking whether a generation's index is current
-checks it as a reader reads it (§4), every refusal the same, call by call and holding none.
+checks it as a reader reads it (§4), every refusal the same, call by call and holding none. Since revision 885 a reader
+reads it as the file streams, its digest checked once every byte has been read and said before anything the bytes
+read as, so it holds each call once rather than the file beside them.
 
 An index is written even for a generation with no RPC or HTTP record: it then holds no call or exchange, and a
 reopen's first call ranking or HTTP listing reads that rather than every segment's records. Calls that would take more

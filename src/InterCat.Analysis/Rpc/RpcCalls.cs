@@ -1282,6 +1282,10 @@ public sealed partial class RpcCallIndex
     /// <param name="read">The segments and source-field segments read, when the index made may be extended.</param>
     /// <param name="tail">What a later generation can still change, when the index made may be extended.</param>
     /// <param name="kept">With <paramref name="tail"/>, by each call's rank, whether a later generation pairs its first record again.</param>
+    /// <param name="inPlace">
+    /// The array <paramref name="drafted"/> is, when nothing reads the drafts after: the calls are put in their places
+    /// within it rather than in an array of their own beside it, which at two million calls is some 300 MB (revision 885).
+    /// </param>
     private static RpcCallIndex Assemble(
         Span<Entry> drafted,
         ProcessInstanceIndex processes,
@@ -1294,11 +1298,12 @@ public sealed partial class RpcCallIndex
         int[]? placed = null,
         (StoreDependency?[] Segments, StoreDependency?[] Fields)? read = null,
         CallTail? tail = null,
-        bool[]? kept = null)
+        bool[]? kept = null,
+        Entry[]? inPlace = null)
     {
         int[]? canonical = tail is null ? null : new int[drafted.Length];
         List<int>? keptCalls = tail is null ? null : [];
-        Placed assembled = Place(drafted, processes, interfaces, clock, placed, canonical, kept, keptCalls, cancellationToken);
+        Placed assembled = Place(drafted, processes, interfaces, clock, placed, canonical, kept, keptCalls, cancellationToken, inPlace);
         return new(assembled.Entries, interfaces, segmentNames, clock, processes, callRecords, otherRecords, assembled.Groups,
             assembled.Totals, read,
             tail is null ? null : tail with { Canonical = canonical!, KeptCalls = [.. keptCalls!], Durations = assembled.Durations });
@@ -1314,7 +1319,8 @@ public sealed partial class RpcCallIndex
         int[]? canonical,
         bool[]? kept,
         List<int>? keptCalls,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Entry[]? inPlace = null)
     {
         for (int index = 0; index < drafted.Length; index++)
         {
@@ -1324,7 +1330,7 @@ public sealed partial class RpcCallIndex
             };
         }
 
-        Entry[] entries = InGroupsInReadingOrder(drafted, cancellationToken, placed, canonical, kept, keptCalls);
+        Entry[] entries = InGroupsInReadingOrder(drafted, cancellationToken, placed, canonical, kept, keptCalls, inPlace);
         (RpcCallGroup[] groups, RpcCallCounts totals, long[][] durations) = Group(entries, interfaces, clock);
         return new(entries, groups, totals, durations);
     }
@@ -1870,14 +1876,21 @@ public sealed partial class RpcCallIndex
     /// <param name="canonical">When given, receives the index's call positions in the canonical order of their first records.</param>
     /// <param name="kept">When given, by each draft's rank, whether a later generation pairs its first record again.</param>
     /// <param name="keptCalls">With <paramref name="kept"/>, receives the ranks of those calls, in order.</param>
+    /// <param name="inPlace">The array <paramref name="drafted"/> is, to put the calls in their places within, and return.</param>
     private static Entry[] InGroupsInReadingOrder(
-        ReadOnlySpan<Entry> drafted,
+        Span<Entry> drafted,
         CancellationToken cancellationToken,
         int[]? placed = null,
         int[]? canonical = null,
         bool[]? kept = null,
-        List<int>? keptCalls = null)
+        List<int>? keptCalls = null,
+        Entry[]? inPlace = null)
     {
+        if (inPlace is not null && inPlace.Length != drafted.Length)
+        {
+            throw new ArgumentException("The calls are put in their places only within the array that holds them all.", nameof(inPlace));
+        }
+
         var numbered = new Dictionary<GroupKey, int>();
         int[] provisional = new int[drafted.Length];
         int ranks = 0;
@@ -1927,7 +1940,8 @@ public sealed partial class RpcCallIndex
             next[group] += next[group - 1];
         }
 
-        var entries = new Entry[drafted.Length];
+        Entry[] entries = inPlace ?? new Entry[drafted.Length];
+        int[]? targets = inPlace is null ? placed : placed ?? new int[drafted.Length];
         int ranked = 0;
         foreach (int index in byRank)
         {
@@ -1937,10 +1951,23 @@ public sealed partial class RpcCallIndex
             }
 
             int at = next[final[provisional[index]]]++;
-            entries[at] = drafted[index] with { FirstRank = ranked };
-            if (placed is not null)
+            if (kept is not null && kept[drafted[index].FirstRank])
             {
-                placed[index] = at;
+                keptCalls!.Add(ranked);
+            }
+
+            if (inPlace is null)
+            {
+                entries[at] = drafted[index] with { FirstRank = ranked };
+            }
+            else
+            {
+                drafted[index] = drafted[index] with { FirstRank = ranked };
+            }
+
+            if (targets is not null)
+            {
+                targets[index] = at;
             }
 
             if (canonical is not null)
@@ -1948,15 +1975,42 @@ public sealed partial class RpcCallIndex
                 canonical[ranked] = at;
             }
 
-            if (kept is not null && kept[drafted[index].FirstRank])
-            {
-                keptCalls!.Add(ranked);
-            }
-
             ranked++;
         }
 
+        if (inPlace is not null)
+        {
+            PutInPlaces(inPlace, targets!);
+        }
+
         return entries;
+    }
+
+    /// <summary>
+    /// Moves each call to the place <paramref name="targets"/> gives it, within the array, one cycle of places at a time:
+    /// every call moves once, and none is held beside the array but the one in hand.
+    /// </summary>
+    private static void PutInPlaces(Entry[] calls, int[] targets)
+    {
+        var moved = new System.Collections.BitArray(calls.Length);
+        for (int start = 0; start < calls.Length; start++)
+        {
+            if (moved[start] || targets[start] == start)
+            {
+                continue;
+            }
+
+            Entry carried = calls[start];
+            int from = start;
+            do
+            {
+                int to = targets[from];
+                (calls[to], carried) = (carried, calls[to]);
+                moved[to] = true;
+                from = to;
+            }
+            while (from != start);
+        }
     }
 
     /// <summary>

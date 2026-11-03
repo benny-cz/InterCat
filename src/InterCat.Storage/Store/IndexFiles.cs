@@ -114,17 +114,40 @@ public sealed class IndexFileWriter(Stream destination, long maximumBytes, strin
 
 /// <summary>
 /// Reads an index file's fields, refusing with <see cref="InvalidDataException"/> anything the bytes cannot hold: a field
-/// past the end, a count larger than the bytes left could hold, a string that is not UTF-8.
+/// past the end, a count larger than the bytes left could hold, a string that is not UTF-8. It reads them from the bytes
+/// held whole, or from a stream of a stated length a window at a time, so a reader of a large index holds what it makes of
+/// the fields rather than the file as well (revision 885).
 /// </summary>
 public sealed class IndexFileReader(ReadOnlyMemory<byte> bytes, string what)
 {
     /// <summary>The longest string an index holds: an image path far beyond any Windows allows.</summary>
     public const int MaximumStringBytes = 1024 * 1024;
 
+    /// <summary>How many bytes a reader over a stream reads at once, a field longer than that read whole.</summary>
+    private const int WindowBytes = 64 * 1024;
+
     private static readonly UTF8Encoding Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+    private readonly Stream? source;
+    private readonly int length = bytes.Length;
+    private byte[] window = [];
+    private int cursor;
+    private int filled;
     private int position;
 
-    public int Remaining => bytes.Length - position;
+    /// <summary>
+    /// Reads the fields of the <paramref name="sourceLength"/> bytes <paramref name="source"/> holds from where it stands,
+    /// a window at a time, refusing what it cannot hold as a reader of the bytes held whole refuses it.
+    /// </summary>
+    public IndexFileReader(Stream source, int sourceLength, string what)
+        : this(ReadOnlyMemory<byte>.Empty, what)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentOutOfRangeException.ThrowIfNegative(sourceLength);
+        this.source = source;
+        length = sourceLength;
+    }
+
+    public int Remaining => length - position;
 
     public byte U8() => Take(1)[0];
 
@@ -191,9 +214,53 @@ public sealed class IndexFileReader(ReadOnlyMemory<byte> bytes, string what)
             throw Invalid("it ends inside a field.");
         }
 
-        ReadOnlySpan<byte> span = bytes.Span.Slice(position, count);
+        if (source is null)
+        {
+            ReadOnlySpan<byte> held = bytes.Span.Slice(position, count);
+            position += count;
+            return held;
+        }
+
+        if (filled - cursor < count)
+        {
+            Refill(count);
+        }
+
+        ReadOnlySpan<byte> span = window.AsSpan(cursor, count);
+        cursor += count;
         position += count;
         return span;
+    }
+
+    /// <summary>
+    /// Moves what is left of the window to its front and reads on until it holds <paramref name="count"/> bytes, a window's
+    /// worth when the stream has that many left.
+    /// </summary>
+    private void Refill(int count)
+    {
+        int left = filled - cursor;
+        if (window.Length < Math.Max(count, WindowBytes))
+        {
+            byte[] wider = new byte[Math.Max(count, WindowBytes)];
+            window.AsSpan(cursor, left).CopyTo(wider);
+            window = wider;
+        }
+        else
+        {
+            window.AsSpan(cursor, left).CopyTo(window);
+        }
+
+        cursor = 0;
+        filled = left;
+        int wanted = Math.Min(window.Length, Remaining);
+        try
+        {
+            filled += source!.ReadAtLeast(window.AsSpan(filled, wanted - filled), count - filled, throwOnEndOfStream: true);
+        }
+        catch (EndOfStreamException exception)
+        {
+            throw new InvalidDataException($"The {what} is not readable: it ends inside a field.", exception);
+        }
     }
 
     private string Text(ReadOnlySpan<byte> utf8)

@@ -327,23 +327,31 @@ public sealed class OperationIndex
         Guid sessionId,
         SourceClockDescriptor clock,
         ProcessInstanceIndex processes,
-        CancellationToken cancellationToken = default) =>
-        Readable(bytes, clock, processes, reader =>
-        {
-            Head head = ReadHead(reader, sessionId, clock);
-            RpcCallIndex? calls = null;
-            RpcPeerIndex? peers = null;
-            if (reader.Flag())
-            {
-                calls = RpcCallIndex.ReadState(reader, processes, clock, head.Positions, cancellationToken, out int[] placed);
-                peers = RpcPeerIndex.ReadState(reader, calls, placed);
-            }
+        CancellationToken cancellationToken = default)
+    {
+        RequireClock(clock, processes);
+        return Readable(Held(bytes), reader => ReadWhole(reader, sessionId, clock, processes, cancellationToken));
+    }
 
-            HttpExchangeIndex? exchanges = ReadExchanges(reader, head, processes, cancellationToken);
-            reader.RequireEnd();
-            return new OperationIndex(
-                head.SessionId, head.DerivedGeneration, head.Segments, head.FieldSegments, calls, peers, head.Minor >= 1, exchanges);
-        });
+    /// <summary>
+    /// Reads the operation index <paramref name="dependency"/> names in <paramref name="directory"/> as
+    /// <see cref="Read(ReadOnlyMemory{byte}, Guid, SourceClockDescriptor, ProcessInstanceIndex, CancellationToken)"/> reads
+    /// its bytes, every refusal the same, as it streams the file rather than holding it whole beside its calls: at a busy
+    /// hour's two million calls the file is 158 MB (revision 885). Bytes other than those published are refused as
+    /// `SessionSegments.ReadVerified` refuses them.
+    /// </summary>
+    public static OperationIndex Read(
+        IOwnedDirectory directory,
+        StoreDependency dependency,
+        Guid sessionId,
+        SourceClockDescriptor clock,
+        ProcessInstanceIndex processes,
+        CancellationToken cancellationToken = default)
+    {
+        RequireClock(clock, processes);
+        return SessionSegments.ReadVerified(directory, dependency, MaximumBytes, (stream, length) =>
+            Readable(new IndexFileReader(stream, length, What), reader => ReadWhole(reader, sessionId, clock, processes, cancellationToken)));
+    }
 
     /// <summary>
     /// What an operation index <see cref="Read"/> would read covers and keeps, the bytes checked as it checks them - every
@@ -356,44 +364,87 @@ public sealed class OperationIndex
         Guid sessionId,
         SourceClockDescriptor clock,
         ProcessInstanceIndex processes,
-        CancellationToken cancellationToken = default) =>
-        Readable(bytes, clock, processes, reader =>
-        {
-            Head head = ReadHead(reader, sessionId, clock);
-            bool keepsCalls = reader.Flag();
-            if (keepsCalls)
-            {
-                RpcPeerIndex.VerifyState(reader, RpcCallIndex.VerifyState(reader, processes, head.Positions.Length, cancellationToken));
-            }
-
-            _ = ReadExchanges(reader, head, processes, cancellationToken);
-            reader.RequireEnd();
-            return new VerifiedOperationIndex(
-                head.SessionId, head.DerivedGeneration, head.Segments, head.FieldSegments, keepsCalls, head.Minor >= 1);
-        });
+        CancellationToken cancellationToken = default)
+    {
+        RequireClock(clock, processes);
+        return Readable(Held(bytes), reader => VerifyWhole(reader, sessionId, clock, processes, cancellationToken));
+    }
 
     /// <summary>
-    /// Reads an index with <paramref name="read"/>, refusing one past its bound, or read with instances of another clock.
-    /// Calls are bound by the instances' own rules, which refuse a PID they were not derived from with the exceptions a
-    /// derivation raises; here they say only that the index is unreadable.
+    /// What <see cref="Read(IOwnedDirectory, StoreDependency, Guid, SourceClockDescriptor, ProcessInstanceIndex, CancellationToken)"/>
+    /// would read of the index <paramref name="dependency"/> names, checked call by call as it streams, holding neither its
+    /// calls nor the file.
     /// </summary>
-    private static T Readable<T>(
-        ReadOnlyMemory<byte> bytes, SourceClockDescriptor clock, ProcessInstanceIndex processes, Func<IndexFileReader, T> read)
+    public static VerifiedOperationIndex Verify(
+        IOwnedDirectory directory,
+        StoreDependency dependency,
+        Guid sessionId,
+        SourceClockDescriptor clock,
+        ProcessInstanceIndex processes,
+        CancellationToken cancellationToken = default)
+    {
+        RequireClock(clock, processes);
+        return SessionSegments.ReadVerified(directory, dependency, MaximumBytes, (stream, length) =>
+            Readable(new IndexFileReader(stream, length, What), reader => VerifyWhole(reader, sessionId, clock, processes, cancellationToken)));
+    }
+
+    private static OperationIndex ReadWhole(
+        IndexFileReader reader, Guid sessionId, SourceClockDescriptor clock, ProcessInstanceIndex processes, CancellationToken cancellationToken)
+    {
+        Head head = ReadHead(reader, sessionId, clock);
+        RpcCallIndex? calls = null;
+        RpcPeerIndex? peers = null;
+        if (reader.Flag())
+        {
+            calls = RpcCallIndex.ReadState(reader, processes, clock, head.Positions, cancellationToken, out int[] placed);
+            peers = RpcPeerIndex.ReadState(reader, calls, placed);
+        }
+
+        HttpExchangeIndex? exchanges = ReadExchanges(reader, head, processes, cancellationToken);
+        reader.RequireEnd();
+        return new OperationIndex(
+            head.SessionId, head.DerivedGeneration, head.Segments, head.FieldSegments, calls, peers, head.Minor >= 1, exchanges);
+    }
+
+    private static VerifiedOperationIndex VerifyWhole(
+        IndexFileReader reader, Guid sessionId, SourceClockDescriptor clock, ProcessInstanceIndex processes, CancellationToken cancellationToken)
+    {
+        Head head = ReadHead(reader, sessionId, clock);
+        bool keepsCalls = reader.Flag();
+        if (keepsCalls)
+        {
+            RpcPeerIndex.VerifyState(reader, RpcCallIndex.VerifyState(reader, processes, head.Positions.Length, cancellationToken));
+        }
+
+        _ = ReadExchanges(reader, head, processes, cancellationToken);
+        reader.RequireEnd();
+        return new VerifiedOperationIndex(
+            head.SessionId, head.DerivedGeneration, head.Segments, head.FieldSegments, keepsCalls, head.Minor >= 1);
+    }
+
+    private static void RequireClock(SourceClockDescriptor clock, ProcessInstanceIndex processes)
     {
         ArgumentNullException.ThrowIfNull(processes);
         if (processes.Clock != clock.Id)
         {
             throw new ArgumentException("The instances were derived on another clock than the calls are read on.", nameof(processes));
         }
+    }
 
-        if (bytes.Length > MaximumBytes)
-        {
-            throw new InvalidDataException($"The {What} is not readable: it is larger than {MaximumBytes / (1024 * 1024)} MiB.");
-        }
+    /// <summary>A reader of an index's bytes held whole, refusing them past the bound.</summary>
+    private static IndexFileReader Held(ReadOnlyMemory<byte> bytes) => bytes.Length > MaximumBytes
+        ? throw new InvalidDataException($"The {What} is not readable: it is larger than {MaximumBytes / (1024 * 1024)} MiB.")
+        : new IndexFileReader(bytes, What);
 
+    /// <summary>
+    /// Reads an index with <paramref name="read"/>. Calls are bound by the instances' own rules, which refuse a PID they were
+    /// not derived from with the exceptions a derivation raises; here they say only that the index is unreadable.
+    /// </summary>
+    private static T Readable<T>(IndexFileReader opened, Func<IndexFileReader, T> read)
+    {
         try
         {
-            return read(new IndexFileReader(bytes, What));
+            return read(opened);
         }
         catch (ArgumentException exception)
         {
