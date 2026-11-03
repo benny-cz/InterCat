@@ -1114,13 +1114,31 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
     /// gives it to whichever row it lays out next, so the keyboard went to a row other than the chosen one. A list given a
     /// newer generation's rows takes the row out of the window, which then finds no list of its own: the list it was in
     /// gets the keyboard back, on the process or host still chosen in it, not the ranked table, or on the relationship,
-    /// pair of programs or host it was on, which no choice holds, wherever the newer counts list it.
+    /// pair of programs or host it was on, which no choice holds, wherever the newer counts list it. The inspector's list
+    /// of a chosen cell's records is emptied as a newer generation reads them again: while they are read, the keyboard
+    /// waits for them rather than go to the ranked table, which a read a busy machine held past this left it on.
     /// </summary>
     private bool GiveBackLastKeyboard()
     {
         if (lastKeyboard is ListBoxItem row && (row.FindAncestorOfType<ListBox>() ?? lastKeyboardList) is { } list)
         {
-            return this.IsVisualAncestorOf(list) && FocusRow(list, SameRow(list, lastKeyboardRow));
+            if (!this.IsVisualAncestorOf(list))
+            {
+                return false;
+            }
+
+            if (FocusRow(list, SameRow(list, lastKeyboardRow)))
+            {
+                return true;
+            }
+
+            if (ReferenceEquals(list, CellRecordsList) && workspace.CellRecordsReady is { IsCompleted: false } reading)
+            {
+                reading.GetAwaiter().OnCompleted(KeepKeyboard);
+                return true;
+            }
+
+            return false;
         }
 
         return lastKeyboard is Control { IsEffectivelyVisible: true, IsEffectivelyEnabled: true } last
@@ -3667,6 +3685,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
     internal Func<string, InterruptedFollow?> InterruptedCaptureFinder { get; set; } = FindInterruptedCapture;
 
     /// <summary>
+    /// How each session shown reads its inspector's records of a chosen cell (<see cref="WorkspaceViewModel.ReadCellRecords"/>):
+    /// a test holds the read back, as a busy machine does, to see where the keyboard waits meanwhile (R15).
+    /// </summary>
+    internal Func<SessionEvidenceSource, EvidenceScope, int, CancellationToken, Task<SessionEvidencePage>> CellRecordsReader { get; set; } =
+        WorkspaceViewModel.ReadCellRecords;
+
+    /// <summary>
     /// How the window finishes an unfinished capture's session from its evidence, off its thread; a test holds one
     /// partway, as a long capture's is.
     /// </summary>
@@ -5427,7 +5452,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
         var replacement = new WorkspaceViewModel(shownSnapshot,
             WorkspaceCollectors.Identity(WorkspaceGrouping.Identity(overview.GraphIdentity, grouping), collectorsAside), evidence,
             savedNavigation is null ? null : workspace.LaidOutPositions, pins,
-            hostsOpened: savedNavigation is not null ? workspace.HostsOpened : restored?.HostsOpened ?? false);
+            hostsOpened: savedNavigation is not null ? workspace.HostsOpened : restored?.HostsOpened ?? false)
+        {
+            CellRecordsReader = CellRecordsReader,
+        };
 
         if (restored is { } settings)
         {

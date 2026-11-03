@@ -172,6 +172,90 @@ public sealed class CaptureKeyboardTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R15: a recording's new view whose inspector reads its records late keeps the keyboard for them, never giving it to the ranked table or Stop meanwhile")]
+    public async Task AnInspectorReadLateKeepsTheKeyboard()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(0));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+
+        // The next generation's read of the chosen cell's records is held back until released, as a busy machine holds it.
+        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool holding = false;
+        window.CellRecordsReader = async (source, scope, limit, cancellationToken) =>
+        {
+            if (holding)
+            {
+                await held.Task.WaitAsync(cancellationToken);
+            }
+
+            return await WorkspaceViewModel.ReadCellRecords(source, scope, limit, cancellationToken);
+        };
+        window.Show();
+        try
+        {
+            Dispatch();
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Recording, "Recording", "Recording."));
+            Dispatch();
+            window.ApplyCaptureUpdate(Published(session, CaptureUiPhase.Recording));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+
+            // From the ranked table the client's process is opened, a moment stepped to on the timeline, and its records
+            // read in the inspector, which has the keyboard.
+            ListBox rail = window.GetControl<ListBox>("RungList");
+            Assert.True(Assert.IsAssignableFrom<Control>(rail.ContainerFromIndex(0)).Focus(NavigationMethod.Tab));
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            await workspace.TimelineDetailReady;
+            Dispatch();
+            window.KeyPressQwerty(PhysicalKey.F6, RawInputModifiers.None);
+            window.KeyPressQwerty(PhysicalKey.F6, RawInputModifiers.None);
+            window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+            await workspace.IntervalReady;
+            await workspace.CellRecordsReady;
+            Dispatch();
+            window.KeyPressQwerty(PhysicalKey.F6, RawInputModifiers.None);
+            Dispatch();
+            Control inspector = window.GetControl<Control>("Inspector");
+            Assert.True(inspector.IsKeyboardFocusWithin, Focused(window));
+
+            // A newer generation empties the list while its records are read again, taking the row the keyboard was on. The
+            // keyboard waits for them: on neither the ranked table nor Stop, where the next Enter would stop the capture.
+            holding = true;
+            Publish(session.Store, Rows(100));
+            window.ApplyCaptureUpdate(Published(session, CaptureUiPhase.Recording));
+            var newer = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await newer.LayoutReady;
+            for (int wait = 0; wait < 10; wait++)
+            {
+                Dispatch();
+                await Task.Delay(10);
+            }
+
+            Assert.False(newer.CellRecordsReady.IsCompleted);
+            Assert.False(rail.IsKeyboardFocusWithin, Focused(window));
+            Assert.False(window.GetControl<Button>("StopCaptureButton").IsFocused, Focused(window));
+
+            // Once they are read, the inspector has the keyboard back, on the row its list chose.
+            held.SetResult();
+            await newer.CellRecordsReady;
+            for (int wait = 0; wait < 10; wait++)
+            {
+                Dispatch();
+                await Task.Delay(10);
+            }
+
+            Assert.True(inspector.IsKeyboardFocusWithin, Focused(window));
+        }
+        finally
+        {
+            held.TrySetResult();
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R15: Forward and Restore defaults, which go once pressed, give the ranked table the keyboard")]
     public async Task ButtonsThatGoGiveTheRankedTableTheKeyboard()
     {

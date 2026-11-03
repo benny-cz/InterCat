@@ -1654,6 +1654,7 @@
         "R15: a record's window leaves the keyboard where the person moved it while the window read",
         "R15: a recording's new view leaves the keyboard where the person put it - the ranked table, the search - never moving it to Stop",
         "R15: a recording's new view rebuilding the inspector under the keyboard keeps it in the inspector, never on Stop",
+        "R15: a recording's new view whose inspector reads its records late keeps the keyboard for them, never giving it to the ranked table or Stop meanwhile",
         "R15: a recording's newer generation leaves the card's detail where it is read, and a change of state shows its first line",
         "R15: a relationship table that lists none says why in its place, and says nothing while it lists any",
         "R15: a rolling capture's newer generation says in silence that its release clipped a brush reaching into what it gave up",

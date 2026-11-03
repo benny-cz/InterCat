@@ -427,6 +427,17 @@ public sealed partial class WorkspaceViewModel
     public Task CellRecordsReady { get; private set; } = Task.CompletedTask;
 
     /// <summary>
+    /// Reads a chosen cell's first records for the inspector (<see cref="ReadCellRecords"/>). A test holds it back, as a
+    /// busy machine holds a read back past the moment a newer generation's rows are laid out (R15).
+    /// </summary>
+    internal Func<SessionEvidenceSource, EvidenceScope, int, CancellationToken, Task<SessionEvidencePage>> CellRecordsReader { get; set; } =
+        ReadCellRecords;
+
+    /// <summary>How a chosen cell's first records are read: one page of its scope, off the UI thread.</summary>
+    internal static readonly Func<SessionEvidenceSource, EvidenceScope, int, CancellationToken, Task<SessionEvidencePage>> ReadCellRecords =
+        static (source, scope, limit, cancellationToken) => source.ReadScopeAsync(scope, limit, cancellationToken);
+
+    /// <summary>
     /// The first records of the cell the analysis interval is, exactly as E would list them, beneath the cell's
     /// explanation: §6.2's overlapping marks expanded to a detail list, and §6.4's chosen cell opening its contributing
     /// evidence without leaving the rung. Empty while they are read, and without such a cell.
@@ -542,7 +553,7 @@ public sealed partial class WorkspaceViewModel
         try
         {
             // One more than the list holds says whether more remain where the cell's count is not E's.
-            SessionEvidencePage page = await source.ReadScopeAsync(scope, CellRecordsListed + 1, query.Token).AnsweredLater();
+            SessionEvidencePage page = await CellRecordsReader(source, scope, CellRecordsListed + 1, query.Token).AnsweredLater();
             if (disposed || !ReferenceEquals(cellRecordsQuery, query))
             {
                 return;

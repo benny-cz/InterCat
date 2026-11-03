@@ -780,6 +780,8 @@ Revision 875 has the store's cached readers give their columns back before a rel
 
 Revision 876 has the segment-reader cache hold its budget while a query reads, not only when its lease ends, so a busy window's overview needs 320-352 MiB where it needed 384-512, and a rolling capture passes its two-hour qualification under 512 MiB whole.
 
+Revision 877 has the keyboard wait for the inspector's records a newer generation reads again, rather than go to the ranked table when the read comes back late.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2968,3 +2970,16 @@ then passed the qualification whole for the first time: its window and evidence 
 median and at most 441 MiB as sampled (`bench/results/rolling-20261103T002827Z-2h-keep10-512MiB-revision876`). The
 machine was calmer than in revision 875's runs, its window at 356,340-786,382 rows judged, so the viewer beside a window
 of two million rows is still to be measured when a machine that busy recurs.
+
+Revision 877 fixes a race revision 876's full Release suite met once, in R15's test that a recording's newer generation
+rebuilding the inspector under the keyboard keeps it there: the keyboard was on a row of the ranked table. A newer
+generation empties the inspector's list of a chosen cell's records and reads them again in the background, and the row
+the keyboard was on goes with the list. The window then gives the keyboard back once the view is laid out, to the row
+its list chose; when the read had not come back, as on a machine loaded by every test assembly at once, it found the
+list empty and gave the keyboard to the ranked table, where it stayed once the records came. Alone the test passed
+eight runs in eight. While the records are read, the keyboard now waits for them, on nothing that Enter acts on, and the
+inspector has it back once they are, on the row its list chose; a read that finds none still gives it to the ranked
+table. Each session shown reads its cell's records through the window's reader, which a test replaces to hold the read
+back, as other tests replace the window's session verifier and interrupted-capture finder. Held back, the
+keyboard is on neither the ranked table nor Stop, and once let go it is in the inspector; without the wait the test fails
+with the suite's own message, the keyboard on a row outside the inspector.
