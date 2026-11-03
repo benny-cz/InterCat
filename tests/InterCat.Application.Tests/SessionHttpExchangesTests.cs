@@ -201,6 +201,100 @@ public sealed class SessionHttpExchangesTests
         Assert.True(SegmentMeasurement.IsUnsummable(refusal));
     }
 
+    /// <summary>
+    /// FX-HTTP-005 measured that an asynchronous WinINet client's exchanges are recorded as a synchronous one's, and that in
+    /// either a buffer is raised on whichever of the client's threads finished the step it records: the thread that called,
+    /// where the call finished at once, or one of WinINet's own, where it waited - every head among them. The fixture's
+    /// ledger holds each buffer the lab probe captured of 64 exchanges made asynchronously eight at once, the server pacing
+    /// its chunked responses, in time order with its exchange number, place, ends and length, the request its exchange's
+    /// head named and which kind of thread raised it, never its bytes. Grouped as a session's records are, it is one
+    /// exchange to a request, every buffer its request's, every part whole and as long as the server's truth.
+    /// </summary>
+    [Fact(DisplayName = "R22: FX-HTTP-005's asynchronous exchanges, eight at once and raised on the client's threads and WinINet's, are one exchange to a request, each part whole and as long as the server's truth")]
+    public void AsynchronousExchangesAreOneToARequest()
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-HTTP-005", "evidence", "eight-at-once");
+        (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes, int Request, bool Client)[] ledger =
+        [
+            .. File.ReadLines(Path.Combine(evidence, "buffers.csv")).Skip(1).Select(line => line.Split(',')).Select(field => (
+                long.Parse(field[0], CultureInfo.InvariantCulture), ushort.Parse(field[1], CultureInfo.InvariantCulture),
+                long.Parse(field[2], CultureInfo.InvariantCulture), long.Parse(field[3], CultureInfo.InvariantCulture),
+                long.Parse(field[4], CultureInfo.InvariantCulture), long.Parse(field[5], CultureInfo.InvariantCulture),
+                int.Parse(field[6], CultureInfo.InvariantCulture), field[7] == "client")),
+        ];
+        var truth = new Dictionary<(long Call, string Part), long>();
+        foreach (string line in File.ReadLines(Path.Combine(evidence, "truth-http-server.jsonl")))
+        {
+            using var record = System.Text.Json.JsonDocument.Parse(line);
+            if (record.RootElement.TryGetProperty("callId", out var call) && call.ValueKind == System.Text.Json.JsonValueKind.Number
+                && record.RootElement.TryGetProperty("status", out var part) && part.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                truth[(call.GetInt64(), part.GetString()!)] = record.RootElement.GetProperty("declaredBytes").GetInt64();
+            }
+        }
+
+        // Both kinds of thread raised buffers, and an exchange's buffers came from both.
+        Assert.Contains(ledger, buffer => buffer.Client);
+        Assert.Contains(ledger, buffer => !buffer.Client);
+        Assert.Contains(ledger.GroupBy(buffer => buffer.Request), request => request.Select(buffer => buffer.Client).Distinct().Count() == 2);
+
+        // Each buffer a record of the client, process 4242, raised on one of its threads that made requests or on another.
+        ObservationRowV1[] buffers =
+        [
+            .. ledger.Select((buffer, index) => HttpBuffer(buffer.Ticks + 10, buffer.Event, (ulong)(index + 1), buffer.Bytes) with
+            {
+                HeaderThreadId = buffer.Client ? 4_243 : 4_244,
+            }),
+        ];
+        SourceFieldRowV1[] fields =
+        [
+            .. ledger.SelectMany((buffer, index) => new[]
+            {
+                Field(buffers[index], SourceField.HttpExchangeId, buffer.Number),
+                Field(buffers[index], SourceField.ContentBufferSequence, buffer.Sequence),
+                Field(buffers[index], SourceField.ContentBufferFlags, buffer.Flags),
+            }),
+        ];
+        using var session = new TemporarySession();
+        Publish(session.Store, [Lifecycle(1, ObservationKind.Create, 4_242, 100_000), .. buffers], fields: fields);
+
+        HttpChannelSummary channel = Assert.Single(SessionHttpExchanges.Channels(session.Store, Client(session.Store)).Channels);
+        Assert.Equal((64L, 64L, (long)ledger.Length), (channel.Exchanges, channel.Complete, channel.Records));
+        HttpExchangePage page = SessionHttpExchanges.Exchanges(session.Store, channel.Key);
+        Assert.Equal(64, page.Exchanges.Count);
+
+        // Each exchange is one request's, by the path its head named: every request once, every buffer of an exchange its
+        // request's, and each part as long as the server's truth of it - a chunked body as its client read it.
+        int[] requests = [.. page.Exchanges.Select(row => ledger[(int)row.Exchange.First.Ordinal - 1].Request)];
+        Assert.Equal(Enumerable.Range(0, 64), requests.Order());
+        foreach ((HttpExchangeRow row, int request) in page.Exchanges.Zip(requests))
+        {
+            HttpExchange exchange = row.Exchange;
+            Assert.True(exchange.Complete, row.Parts(CultureInfo.InvariantCulture));
+            Assert.Equal(
+                (truth[(request, "request-head")], truth[(request, "request-body")], truth[(request, "response-head")], truth[(request, "response-body")]),
+                (exchange.RequestHead.Bytes, exchange.RequestBody.Bytes, exchange.ResponseHead.Bytes, exchange.ResponseBody.Bytes));
+            SessionEvidencePage records = SessionEvidenceQuery.Read(session.Store, operationKey: row.Key);
+            Assert.Equal(exchange.Records, records.Records.Count);
+            Assert.All(records.Records, record => Assert.Equal(request, ledger[(int)record.Observation.RawRecordOrdinal - 1].Request));
+        }
+
+        // They ran at once: most began before an earlier one's response ended.
+        Assert.True(page.Exchanges.Select((row, index) => (row, index)).Count(pair => page.Exchanges.Take(pair.index)
+            .Any(earlier => earlier.Exchange.ResponseEndNanoseconds > pair.row.Exchange.FirstNanoseconds)) > 32);
+    }
+
+    private static string RepositoryRoot()
+    {
+        DirectoryInfo? current = new(AppContext.BaseDirectory);
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "InterCat.slnx")))
+        {
+            current = current.Parent;
+        }
+
+        return current?.FullName ?? throw new InvalidOperationException("The repository root holding InterCat.slnx was not found.");
+    }
+
     internal static ProcessInstanceId Client(SessionStore store) =>
         SessionOverviewProjector.Project(store).Nodes.Single(node => node.ProcessId == 4_242).Id;
 

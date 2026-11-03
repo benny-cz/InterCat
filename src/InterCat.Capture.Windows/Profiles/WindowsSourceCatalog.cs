@@ -745,6 +745,10 @@ public static class WindowsSourceCatalog
                 + "its first and last.",
                 "Every record is raised in the client process that made the exchange, so a record binds to its header's "
                 + "process (ADR-030, process-binding-v4).",
+                "Measured on FX-HTTP-005 (ADR-037): a client working WinINet asynchronously raises the same records as one "
+                + "working it synchronously, and in either a record is raised on whichever of the process's threads finished "
+                + "the step it records - the calling thread where the call finished at once, one of WinINet's own where it "
+                + "waited, every head among them - so its header's thread is not the thread that made the request.",
                 "Only WinINet's clients raise these records: .NET's HTTP client, WinHTTP and browsers' own stacks do not.",
                 "Its message bytes are kept only under a scoped content policy; under any other, the buffer's length is.",
                 "Capture impact, seven pairs of FX-HTTP-001 on 2026-09-28 with 4,096 exchanges each: a median of 0.71 CPU "

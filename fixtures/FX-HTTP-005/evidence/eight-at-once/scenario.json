@@ -1,0 +1,35 @@
+{
+  "scenarioId": "FX-HTTP-005",
+  "tls": false,
+  "concurrency": 8,
+  "chunked": true,
+  "gzip": false,
+  "decode": false,
+  "async": true,
+  "paceMilliseconds": 5,
+  "asynchronous": {
+    "sendsAtOnce": 0,
+    "sendsPending": 64,
+    "readsAtOnce": 63,
+    "readsPending": 70
+  },
+  "processId": 55944,
+  "clientThreads": [
+    12320,
+    14836,
+    39444,
+    40040,
+    44908,
+    46852,
+    56556,
+    62360
+  ],
+  "port": 23145,
+  "seed": 20260929,
+  "requests": 64,
+  "completed": 64,
+  "sentBytes": 635120,
+  "readBytes": 547101,
+  "maximumBodyBytes": 98304,
+  "note": "The server\u0027s truth log names every head and body it received and sent by length and SHA-256; the client\u0027s names what it sent and read. Neither holds a byte of them. The client threads are the threads that made the requests, by their Windows thread IDs."
+}

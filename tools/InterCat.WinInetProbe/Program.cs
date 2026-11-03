@@ -17,8 +17,9 @@ namespace InterCat.WinInetProbe;
 /// loopback server logs the exact bytes on the wire by length and SHA-256. The provider is enabled in one uniquely named
 /// real-time session of this probe's own, scoped by a process filter to the workload alone, so no other process's traffic
 /// reaches it; what it delivers is the workload's synthetic exchange, compared in memory and never written. Only counters
-/// are. With --tls the same exchange runs over TLS as FX-HTTP-002, and the server's truth is the bytes above the
-/// encryption: a capture that matches it holds the plaintext its client sent and read.
+/// are, and with --ledger each buffer's metadata, never its bytes. With --tls the same exchange runs over TLS as FX-HTTP-002, and the server's truth is the bytes above the
+/// encryption: a capture that matches it holds the plaintext its client sent and read. With --async the client works
+/// WinINet asynchronously as FX-HTTP-005, and each record is counted by whether a thread that made a request raised it.
 /// </summary>
 internal static class Program
 {
@@ -43,6 +44,9 @@ internal static class Program
         bool chunked = args.Contains("--chunked", StringComparer.Ordinal);
         bool gzip = args.Contains("--gzip", StringComparer.Ordinal);
         bool decode = args.Contains("--decode", StringComparer.Ordinal);
+        bool async = args.Contains("--async", StringComparer.Ordinal);
+        int pace = int.Parse(Option(args, "--pace") ?? "0", CultureInfo.InvariantCulture);
+        bool ledger = args.Contains("--ledger", StringComparer.Ordinal);
         int concurrency = int.Parse(Option(args, "--concurrency") ?? "1", CultureInfo.InvariantCulture);
         string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0",
@@ -51,6 +55,10 @@ internal static class Program
         {
             Console.Error.WriteLine("InterCat.WinInetProbe --output <new directory> [--requests n] [--seed n] [--bytes n] [--tls] [--concurrency n] [--chunked]");
             Console.Error.WriteLine("  [--gzip [--decode]]: responses coded in gzip, read coded or decoded by WinINet (FX-HTTP-004)");
+            Console.Error.WriteLine("  [--async]: the client works WinINet asynchronously, with any of the others (FX-HTTP-005)");
+            Console.Error.WriteLine("  [--pace ms]: the server waits that long before each 16 KiB of a response body, so reads wait or pend");
+            Console.Error.WriteLine("  [--ledger]: writes each captured buffer's metadata - time, event, exchange, place, ends, length, thread -");
+            Console.Error.WriteLine("             never its bytes, as buffers.csv beside the report");
             Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]");
             Console.Error.WriteLine("  [--impact [--pairs n]]: machine CPU and workload time with and without a scoped capture, in pairs");
             return 2;
@@ -123,6 +131,13 @@ internal static class Program
             if (chunked) start.ArgumentList.Add("--chunked");
             if (gzip) start.ArgumentList.Add("--gzip");
             if (decode) start.ArgumentList.Add("--decode");
+            if (async) start.ArgumentList.Add("--async");
+            if (pace > 0)
+            {
+                start.ArgumentList.Add("--pace");
+                start.ArgumentList.Add(pace.ToString(CultureInfo.InvariantCulture));
+            }
+
             if (concurrency > 1)
             {
                 start.ArgumentList.Add("--concurrency");
@@ -215,8 +230,8 @@ internal static class Program
             .Count(line => line.Contains("\"kind\":\"CallCompleted\"", StringComparison.Ordinal));
         object report = new
         {
-            exchange = Compare(captured, truth, process.Id, requests, bytes, tls, concurrency, chunked, gzip, decode, eventsLost, others,
-                malformed),
+            exchange = Compare(captured, truth, process.Id, requests, bytes, tls, concurrency, chunked, gzip, decode, async, pace, eventsLost, others,
+                malformed, ledger ? Path.Combine(output, "buffers.csv") : null),
             processFilter = new
             {
                 decoyExchangedByTruth = decoyExchanged,
@@ -238,8 +253,16 @@ internal static class Program
     /// with the body before its coding and with the coded bytes.
     /// </summary>
     private static object Compare(List<Buffer> captured, string truth, int processId, int requests, int maximumBodyBytes, bool tls,
-        int concurrency, bool chunked, bool gzip, bool decode, int eventsLost, long others, long malformed)
+        int concurrency, bool chunked, bool gzip, bool decode, bool async, int pace, int eventsLost, long others, long malformed,
+        string? ledger)
     {
+        // The threads that made the requests, by the workload's own account: a record raised on any other thread of its
+        // process was raised by WinINet working a request on a thread of its own.
+        using JsonDocument scenario = JsonDocument.Parse(File.ReadAllText(Path.Combine(truth, "scenario.json")));
+        HashSet<int> clientThreads = scenario.RootElement.TryGetProperty("clientThreads", out JsonElement threadIds)
+            ? [.. threadIds.EnumerateArray().Select(thread => (int)thread.GetUInt32())]
+            : [];
+
         // What the client read of each response body, by its own truth: the coded bytes, or what WinINet decoded them to.
         var read = new Dictionary<long, string>();
         foreach (string line in File.ReadLines(Path.Combine(truth, "truth-http-client.jsonl")))
@@ -334,6 +357,21 @@ internal static class Program
             if (owner[timeline[index - 1]] != mine && exchanges[mine][0] != timeline[index]) interleavedBuffers++;
         }
 
+        // Each buffer's metadata in time order, never its bytes, for a test to group as the product groups them: when it was
+        // raised after the first, its event, exchange number, place and ends, length, the request its exchange's head names,
+        // and whether a thread that made a request raised it.
+        if (ledger is not null)
+        {
+            double start = timeline.Count == 0 ? 0 : timeline[0].Milliseconds;
+            int?[] requestOf = [.. exchanges.Select(RequestOf)];
+            File.WriteAllLines(ledger,
+            [
+                "ticks,event,exchange,sequence,flags,bytes,request,thread",
+                .. timeline.Select(buffer => string.Create(CultureInfo.InvariantCulture,
+                    $"{(long)Math.Round((buffer.Milliseconds - start) * 10_000)},{buffer.EventId},{buffer.SessionId},{buffer.Sequence},{buffer.Flags},{buffer.Bytes.Length},{requestOf[owner[buffer]] ?? -1},{(clientThreads.Contains(buffer.ThreadId) ? "client" : "wininet")}")),
+            ]);
+        }
+
         // What the flags and sequence numbers say, counted by where a buffer sits in its part - alone, first, between or
         // last - and checked as rules: a part's buffers are numbered from 0 in order, its first carries flag 1 and its last
         // flag 2.
@@ -416,6 +454,8 @@ internal static class Program
                 events = all.Count,
                 mostBuffersInOnePart = mostBuffers,
                 largestBuffer = all.Count == 0 ? 0 : all.Max(buffer => buffer.Bytes.Length),
+                raisedOnAThreadThatMadeARequest = all.Count(buffer => clientThreads.Contains(buffer.ThreadId)),
+                raisedOnAnotherThread = all.Count(buffer => !clientThreads.Contains(buffer.ThreadId)),
                 bytes = totalBytes,
                 lengthDeltasOfMismatches = lengthDeltas.ToDictionary(pair => pair.Key.ToString(CultureInfo.InvariantCulture), pair => pair.Value),
             };
@@ -442,7 +482,9 @@ internal static class Program
             providerGuid = Provider,
             keywords = "0x" + Keywords.ToString("X16", CultureInfo.InvariantCulture),
             processFilter = "EVENT_FILTER_TYPE_PID: the workload's process alone",
-            workload = gzip ? "FX-HTTP-004" : concurrency > 1 || chunked ? "FX-HTTP-003" : tls ? "FX-HTTP-002" : "FX-HTTP-001",
+            workload = async ? "FX-HTTP-005" : gzip ? "FX-HTTP-004" : concurrency > 1 || chunked ? "FX-HTTP-003" : tls ? "FX-HTTP-002" : "FX-HTTP-001",
+            async,
+            paceMilliseconds = pace,
             tls,
             concurrency,
             chunked,
@@ -476,6 +518,9 @@ internal static class Program
             partsNumberedFromZeroInOrder = numberedInOrder,
             partsFlaggedFirstAndLast = flaggedFirstAndLast,
             threads = captured.Select(buffer => buffer.ThreadId).Distinct().Count(),
+            threadsThatMadeRequests = clientThreads.Count,
+            raisedOnAThreadThatMadeARequest = captured.Count(buffer => clientThreads.Contains(buffer.ThreadId)),
+            raisedOnAnotherThread = captured.Count(buffer => !clientThreads.Contains(buffer.ThreadId)),
             workloadProcessId = processId,
         };
     }

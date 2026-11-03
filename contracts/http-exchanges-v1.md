@@ -18,7 +18,9 @@ what they say (§5f).
 A record is a buffer when its mechanism is `Http`, its event is 2001 to 2004 - request head, request body, response head,
 response body - and its source fields name its exchange (`HttpExchangeId`, 16), its place (`ContentBufferSequence`, 17)
 and its ends (`ContentBufferFlags`, 18: 1 first, 2 last). Its process is the one that raised it, by
-`process-binding-v4` (`contracts/entities-v1.md` §7). An HTTP record whose fields name no exchange belongs to none and is
+`process-binding-v4` (`contracts/entities-v1.md` §7). Its thread is whichever of that process's threads WinINet finished
+the buffer's step on, for a synchronous client as for an asynchronous one, and not the thread that made the request
+(FX-HTTP-005, revision 886): nothing here reads it. An HTTP record whose fields name no exchange belongs to none and is
 counted as such.
 
 ## 2. Grouping (`http-exchange-v1`)
@@ -32,7 +34,9 @@ in time, then by place, and a buffer opens another use of the number when:
 
 Nothing else ends a use. WinINet raises the empty buffer that ends a request body after the response has ended (measured
 live in revision 247), so an exchange is not over when its response is. Each use is one exchange, bound to a process
-instance by its first buffer. Two uses are never merged (R22).
+instance by its first buffer. Two uses are never merged (R22). An asynchronous client's buffers are grouped as a
+synchronous one's: FX-HTTP-005's 64 exchanges eight at once, their buffers raised on the client's threads and WinINet's,
+are one exchange to a request, each part whole (revision 886).
 
 A release of a session's oldest interval (`contracts/store-v1.md` §8, ADR-043, revision 435) keeps every buffer of an
 exchange one of whose buffers stays, and the use before a use opened only by repeating one of its buffers, so every
@@ -210,5 +214,5 @@ how many heads were not decoded. It writes no JSON: the command line's document 
 - An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
   asked for reads, and only `http-exchange-heads-v1` writes, asked for with them (§5c, §5d, §5f,
   `contracts/decoders-v1.md` §2).
-- HTTP/2 and asynchronous WinINet (ADR-037), and how WinINet's capture keeps a body in a content coding other than gzip
-  (§5e).
+- HTTP/2 (ADR-037), a request body written in pieces, and how WinINet's capture keeps a body in a content coding other
+  than gzip (§5e). Asynchronous WinINet is measured since revision 886 (FX-HTTP-005).

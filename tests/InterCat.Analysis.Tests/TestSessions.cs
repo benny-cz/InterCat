@@ -727,7 +727,7 @@ internal static class TestSessions
         ];
         ObservationRowV1[] rows =
         [
-            .. buffers.Select((buffer, index) => Http(buffer.Ticks, buffer.Event, (ulong)(index + 1), buffer.Bytes) with
+            .. buffers.Select((buffer, index) => HttpBuffer(buffer.Ticks, buffer.Event, (ulong)(index + 1), buffer.Bytes) with
             {
                 RawStreamId = index >= 12 && laterStream is { } later ? later : stream,
             }),
@@ -745,7 +745,7 @@ internal static class TestSessions
     }
 
     /// <summary>A WinINet capture record of <paramref name="eventId"/>, raised by process 4242, with a session time.</summary>
-    private static ObservationRowV1 Http(long ticks, ushort eventId, ulong ordinal, long bytes) =>
+    public static ObservationRowV1 HttpBuffer(long ticks, ushort eventId, ulong ordinal, long bytes) =>
         Transfer(ticks, eventId <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
             eventId <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, bytes, null, ordinal) with
         {

@@ -1,9 +1,11 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Authentication;
 using System.Security.Cryptography;
@@ -27,6 +29,9 @@ internal sealed record HttpWinInetOptions
 
     /// <summary>Responses in the gzip content coding, which the client reads coded or has WinINet decode: FX-HTTP-004.</summary>
     public const string CodedScenarioId = "FX-HTTP-004";
+
+    /// <summary>The exchange made through WinINet asynchronously, each send and read completing on WinINet's threads: FX-HTTP-005.</summary>
+    public const string AsyncScenarioId = "FX-HTTP-005";
 
     public required string TruthDirectory { get; init; }
     public int Seed { get; init; } = 20_260_929;
@@ -72,10 +77,24 @@ internal sealed record HttpWinInetOptions
     public bool Decode { get; init; }
 
     /// <summary>
-    /// The scenario this run is: FX-HTTP-004 with coded responses, else FX-HTTP-003 with several clients at once or chunked
-    /// responses, else FX-HTTP-002 over TLS, else FX-HTTP-001.
+    /// Whether the client works WinINet asynchronously (INTERNET_FLAG_ASYNC), as a client that must not block does: each send
+    /// and each read is begun on the client's thread and, when WinINet cannot finish it at once, completes on one of
+    /// WinINet's own, which its status callback tells.
     /// </summary>
-    public string Scenario => Gzip ? CodedScenarioId : Concurrency > 1 || Chunked ? InterleavedScenarioId : Tls ? TlsScenarioId : ScenarioId;
+    public bool Async { get; init; }
+
+    /// <summary>
+    /// Milliseconds the server waits before each slice of a response body it writes, 16 KiB at most, once the head is sent;
+    /// 0 writes the body at once. Paced, a read finds no byte waiting and blocks, or, asynchronously, pends.
+    /// </summary>
+    public int PaceMilliseconds { get; init; }
+
+    /// <summary>
+    /// The scenario this run is: FX-HTTP-005 made asynchronously, else FX-HTTP-004 with coded responses, else FX-HTTP-003
+    /// with several clients at once or chunked responses, else FX-HTTP-002 over TLS, else FX-HTTP-001.
+    /// </summary>
+    public string Scenario => Async ? AsyncScenarioId : Gzip ? CodedScenarioId
+        : Concurrency > 1 || Chunked ? InterleavedScenarioId : Tls ? TlsScenarioId : ScenarioId;
 }
 
 /// <summary>
@@ -109,6 +128,15 @@ internal static partial class HttpWinInetScenario
 
     // A request's own option: WinINet decodes a gzip or deflate response before the client reads it.
     private const int OptionHttpDecoding = 65;
+
+    // An asynchronous session (INTERNET_FLAG_ASYNC): an operation on its handles that WinINet cannot finish at once fails
+    // with ERROR_IO_PENDING and completes later, which the status callback tells as INTERNET_STATUS_REQUEST_COMPLETE with an
+    // INTERNET_ASYNC_RESULT - the operation's result, then its error.
+    private const int FlagAsync = 0x10000000;
+    private const uint StatusRequestComplete = 100;
+    private const int ErrorIoPending = 997;
+    private const int ErrorTimeout = 1460;
+    private static readonly IntPtr InvalidStatusCallback = -1;
     private const uint IgnoreCertificateErrors = 0x00000100 | 0x00001000 | 0x00002000 | 0x00000080 | 0x00000200;
     private static readonly JsonSerializerOptions SummaryOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -139,6 +167,32 @@ internal static partial class HttpWinInetScenario
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool InternetCloseHandle(IntPtr handle);
 
+    [LibraryImport("wininet.dll", EntryPoint = "InternetSetStatusCallbackW", SetLastError = true)]
+    private static partial IntPtr InternetSetStatusCallback(IntPtr internet, IntPtr callback);
+
+    // The same send and read with their bytes in memory that stays where it is until the operation completes, which an
+    // asynchronous one may do after the call returns: WinINet reads the headers and body it sends, and writes the bytes it
+    // read and their count, as it gets to them.
+    [LibraryImport("wininet.dll", EntryPoint = "HttpSendRequestW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool BeginHttpSendRequest(IntPtr request, IntPtr headers, int headersLength, IntPtr optional, int optionalLength);
+
+    [LibraryImport("wininet.dll", EntryPoint = "InternetReadFile", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool BeginInternetReadFile(IntPtr file, IntPtr buffer, int toRead, IntPtr read);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetCurrentThreadId")]
+    private static partial uint GetCurrentThreadId();
+
+    // Each asynchronous client's completion, under the context its handles carry: WinINet's callback finds it there.
+    private static readonly ConcurrentDictionary<nint, Completion> Completions = new();
+
+    // How an asynchronous run's sends and reads went: finished at once, or pending and completed by the callback.
+    private static int sendsAtOnce, sendsPending, readsAtOnce, readsPending;
+
+    // The most a paced response writes at a time.
+    private const int PacedSliceBytes = 16 * 1024;
+
     public static async Task<int> RunAsync(HttpWinInetOptions options, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(options.TruthDirectory);
@@ -147,6 +201,7 @@ internal static partial class HttpWinInetScenario
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         int completed;
         long sentBytes = 0, readBytes = 0;
+        var clientThreads = new ConcurrentBag<uint>();
         using X509Certificate2? certificate = options.Tls ? LoopbackCertificate() : null;
         await using (var server = new TruthLog(
             Path.Combine(options.TruthDirectory, "truth-http-server.jsonl"), options.Scenario, "server"))
@@ -170,7 +225,7 @@ internal static partial class HttpWinInetScenario
             using var serving = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             Task served = ServeAsync(listener, server, options, certificate, serving.Token);
             (completed, sentBytes, readBytes) = await Task.Factory.StartNew(
-                () => Exchange(port, client, options, cancellationToken), cancellationToken,
+                () => Exchange(port, client, options, clientThreads, cancellationToken), cancellationToken,
                 TaskCreationOptions.LongRunning, TaskScheduler.Default).ConfigureAwait(false);
             await serving.CancelAsync().ConfigureAwait(false);
             listener.Stop();
@@ -194,7 +249,11 @@ internal static partial class HttpWinInetScenario
             options.Chunked,
             options.Gzip,
             options.Decode,
+            options.Async,
+            options.PaceMilliseconds,
+            asynchronous = options.Async ? new { sendsAtOnce, sendsPending, readsAtOnce, readsPending } : null,
             processId = Environment.ProcessId,
+            clientThreads = clientThreads.Order().ToArray(),
             port,
             options.Seed,
             options.Requests,
@@ -203,7 +262,8 @@ internal static partial class HttpWinInetScenario
             readBytes,
             options.MaximumBodyBytes,
             note = "The server's truth log names every head and body it received and sent by length and SHA-256; "
-                + "the client's names what it sent and read. Neither holds a byte of them.",
+                + "the client's names what it sent and read. Neither holds a byte of them. The client threads are the "
+                + "threads that made the requests, by their Windows thread IDs.",
         };
         await File.WriteAllTextAsync(Path.Combine(options.TruthDirectory, "scenario.json"),
             JsonSerializer.Serialize(summary, SummaryOptions), cancellationToken).ConfigureAwait(false);
@@ -220,9 +280,9 @@ internal static partial class HttpWinInetScenario
 
     /// <summary>The client: every request through WinINet on one kept-alive connection, each logged as sent and read.</summary>
     private static (int Completed, long Sent, long Read) Exchange(int port, TruthLog client, HttpWinInetOptions options,
-        CancellationToken cancellationToken)
+        ConcurrentBag<uint> clientThreads, CancellationToken cancellationToken)
     {
-        IntPtr internet = InternetOpen("InterCat-" + options.Scenario, OpenTypeDirect, null, null, 0);
+        IntPtr internet = InternetOpen("InterCat-" + options.Scenario, OpenTypeDirect, null, null, options.Async ? FlagAsync : 0);
         if (internet == IntPtr.Zero)
         {
             client.Write(TruthEventKind.Failure, status: $"InternetOpen failed: {Marshal.GetLastPInvokeError()}");
@@ -231,6 +291,13 @@ internal static partial class HttpWinInetScenario
 
         try
         {
+            // An asynchronous session tells every handle descended from it how its operations go through one callback.
+            if (options.Async && InternetSetStatusCallback(internet, StatusCallback()) == InvalidStatusCallback)
+            {
+                client.Write(TruthEventKind.Failure, status: $"InternetSetStatusCallback failed: {Marshal.GetLastPInvokeError()}");
+                return (0, 0, 0);
+            }
+
             uint connections = (uint)Math.Max(2, options.Concurrency);
             if (options.Concurrency > 1 && !InternetSetOption(IntPtr.Zero, OptionMaxConnectionsPerServer, ref connections, sizeof(uint)))
             {
@@ -241,7 +308,7 @@ internal static partial class HttpWinInetScenario
             Task<(int Completed, long Sent, long Read)>[] clients =
             [
                 .. Enumerable.Range(0, Math.Max(1, options.Concurrency)).Select(worker => Task.Factory.StartNew(
-                    () => Requests(internet, port, client, options, worker, cancellationToken), cancellationToken,
+                    () => Requests(internet, port, client, options, worker, clientThreads, cancellationToken), cancellationToken,
                     TaskCreationOptions.LongRunning, TaskScheduler.Default)),
             ];
             (int Completed, long Sent, long Read)[] results = Task.WhenAll(clients).GetAwaiter().GetResult();
@@ -249,20 +316,46 @@ internal static partial class HttpWinInetScenario
         }
         finally
         {
+            if (options.Async) InternetSetStatusCallback(internet, IntPtr.Zero);
             InternetCloseHandle(internet);
         }
     }
 
-    /// <summary>One client's requests - every nth from its own - on its own connection handle.</summary>
+    private static unsafe IntPtr StatusCallback() =>
+        (IntPtr)(delegate* unmanaged[Stdcall]<IntPtr, nint, uint, IntPtr, uint, void>)&StatusChanged;
+
+    /// <summary>
+    /// WinINet's status callback, on whichever thread WinINet is working a request on: a completed operation ends its
+    /// client's wait; every other step a request reports - resolving, connecting, sending, receiving, closing - is passed by.
+    /// </summary>
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+    private static void StatusChanged(IntPtr handle, nint context, uint status, IntPtr information, uint informationLength)
+    {
+        if (status == StatusRequestComplete && informationLength >= IntPtr.Size + sizeof(int)
+            && Completions.TryGetValue(context, out Completion? completion))
+        {
+            completion.Complete(Marshal.ReadIntPtr(information), Marshal.ReadInt32(information, IntPtr.Size));
+        }
+    }
+
+    /// <summary>
+    /// One client's requests - every nth from its own - on its own connection handle; asynchronously, each send and read
+    /// waits for the completion WinINet's callback reports under the context its handles carry.
+    /// </summary>
     private static (int Completed, long Sent, long Read) Requests(IntPtr internet, int port, TruthLog client,
-        HttpWinInetOptions options, int worker, CancellationToken cancellationToken)
+        HttpWinInetOptions options, int worker, ConcurrentBag<uint> clientThreads, CancellationToken cancellationToken)
     {
         int completed = 0;
         long sent = 0, read = 0;
         IntPtr connect = IntPtr.Zero;
+        clientThreads.Add(GetCurrentThreadId());
+
+        // A synchronous client's handles carry no context, as before; an asynchronous one's name its completion.
+        nint context = options.Async ? worker + 1 : 0;
+        using AsyncCalls? calls = options.Async ? new AsyncCalls(context) : null;
         try
         {
-            connect = InternetConnect(internet, "127.0.0.1", (ushort)port, null, null, ServiceHttp, 0, IntPtr.Zero);
+            connect = InternetConnect(internet, "127.0.0.1", (ushort)port, null, null, ServiceHttp, 0, context);
             if (connect == IntPtr.Zero)
             {
                 client.Write(TruthEventKind.Failure, status: $"InternetConnect failed: {Marshal.GetLastPInvokeError()}");
@@ -275,7 +368,7 @@ internal static partial class HttpWinInetScenario
                 cancellationToken.ThrowIfCancellationRequested();
                 byte[] body = Body(options.Seed, index, options.MaximumBodyBytes, request: true);
                 IntPtr request = HttpOpenRequest(connect, "POST", string.Create(CultureInfo.InvariantCulture, $"/fx/{index}"),
-                    "HTTP/1.1", null, IntPtr.Zero, RequestFlags | (options.Tls ? SecureRequestFlags : 0), IntPtr.Zero);
+                    "HTTP/1.1", null, IntPtr.Zero, RequestFlags | (options.Tls ? SecureRequestFlags : 0), context);
                 if (request == IntPtr.Zero)
                 {
                     client.Write(TruthEventKind.Failure, callId: index, status: $"HttpOpenRequest failed: {Marshal.GetLastPInvokeError()}");
@@ -300,19 +393,35 @@ internal static partial class HttpWinInetScenario
 
                     client.Write(TruthEventKind.CallIssued, callId: index, declaredBytes: body.Length, status: "request-body",
                         resourceName: Sha256(body));
-                    if (!HttpSendRequest(request, RequestHeaders(options), -1, body, body.Length))
+                    if (!Send(calls, request, RequestHeaders(options), body, out int sendError))
                     {
-                        client.Write(TruthEventKind.Failure, callId: index, status: $"HttpSendRequest failed: {Marshal.GetLastPInvokeError()}");
+                        client.Write(TruthEventKind.Failure, callId: index, status: $"HttpSendRequest failed: {sendError}");
+                        if (calls?.Abandoned == true) break;
                         continue;
                     }
 
                     sent += body.Length;
                     using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
                     long total = 0;
-                    while (InternetReadFile(request, buffer, buffer.Length, out int count) && count > 0)
+                    int readError;
+                    bool ended = false;
+                    while (Read(calls, request, buffer, out int count, out readError))
                     {
+                        if (count == 0)
+                        {
+                            ended = true;
+                            break;
+                        }
+
                         hash.AppendData(buffer, 0, count);
                         total += count;
+                    }
+
+                    if (!ended)
+                    {
+                        client.Write(TruthEventKind.Failure, callId: index, status: $"InternetReadFile failed: {readError}");
+                        if (calls?.Abandoned == true) break;
+                        continue;
                     }
 
                     read += total;
@@ -332,6 +441,142 @@ internal static partial class HttpWinInetScenario
         }
 
         return (completed, sent, read);
+    }
+
+    /// <summary>Sends a request's head and body, at once or, asynchronously, once WinINet completes it; false with its error.</summary>
+    private static bool Send(AsyncCalls? calls, IntPtr request, string headers, byte[] body, out int error)
+    {
+        if (calls is not null) return calls.Send(request, headers, body, out error);
+        bool sent = HttpSendRequest(request, headers, -1, body, body.Length);
+        error = sent ? 0 : Marshal.GetLastPInvokeError();
+        return sent;
+    }
+
+    /// <summary>Reads the next bytes of a response's body, none at its end; false with WinINet's error.</summary>
+    private static bool Read(AsyncCalls? calls, IntPtr request, byte[] buffer, out int count, out int error)
+    {
+        if (calls is not null) return calls.Read(request, buffer, out count, out error);
+        bool read = InternetReadFile(request, buffer, buffer.Length, out count);
+        error = read ? 0 : Marshal.GetLastPInvokeError();
+        return read;
+    }
+
+    /// <summary>
+    /// One asynchronous client's calls, one at a time: each begun with its bytes in memory of its own, which stays where it
+    /// is until WinINet is done with it, and, when WinINet cannot finish it at once, waited for until its callback reports
+    /// it complete under this client's context. A call not completed within a minute abandons the client: WinINet may still
+    /// complete it, into memory that is then kept for it.
+    /// </summary>
+    private sealed class AsyncCalls : IDisposable
+    {
+        private const int ReadBytes = 16 * 1024;
+        private readonly nint context;
+        private readonly Completion completion = new();
+        private readonly IntPtr readBuffer = Marshal.AllocHGlobal(ReadBytes);
+        private readonly IntPtr readCount = Marshal.AllocHGlobal(sizeof(int));
+
+        public AsyncCalls(nint context)
+        {
+            this.context = context;
+            Completions[context] = completion;
+        }
+
+        public bool Abandoned { get; private set; }
+
+        public bool Send(IntPtr request, string headers, byte[] body, out int error)
+        {
+            IntPtr sentHeaders = Marshal.StringToHGlobalUni(headers);
+            IntPtr sentBody = Marshal.AllocHGlobal(Math.Max(1, body.Length));
+            Marshal.Copy(body, 0, sentBody, body.Length);
+            completion.Begin();
+            bool sent = Finished(BeginHttpSendRequest(request, sentHeaders, -1, sentBody, body.Length), out error,
+                ref sendsAtOnce, ref sendsPending);
+            if (!Abandoned)
+            {
+                Marshal.FreeHGlobal(sentHeaders);
+                Marshal.FreeHGlobal(sentBody);
+            }
+
+            return sent;
+        }
+
+        public bool Read(IntPtr request, byte[] into, out int count, out int error)
+        {
+            count = 0;
+            Marshal.WriteInt32(readCount, 0);
+            completion.Begin();
+            if (!Finished(BeginInternetReadFile(request, readBuffer, Math.Min(into.Length, ReadBytes), readCount), out error,
+                ref readsAtOnce, ref readsPending))
+            {
+                return false;
+            }
+
+            // The count is WinINet's, written once the read completed, at once or later.
+            count = Marshal.ReadInt32(readCount);
+            Marshal.Copy(readBuffer, into, 0, count);
+            return true;
+        }
+
+        /// <summary>
+        /// Whether a call just made has completed and succeeded: at once, or once its callback said so, counted either way.
+        /// </summary>
+        private bool Finished(bool returned, out int error, ref int atOnce, ref int pending)
+        {
+            if (returned)
+            {
+                Interlocked.Increment(ref atOnce);
+                error = 0;
+                return true;
+            }
+
+            error = Marshal.GetLastPInvokeError();
+            if (error != ErrorIoPending) return false;
+            Interlocked.Increment(ref pending);
+            if (completion.Wait(out error)) return true;
+            Abandoned |= error == ErrorTimeout;
+            return false;
+        }
+
+        public void Dispose()
+        {
+            if (Abandoned) return;
+            Completions.TryRemove(context, out _);
+            Marshal.FreeHGlobal(readBuffer);
+            Marshal.FreeHGlobal(readCount);
+            completion.Dispose();
+        }
+    }
+
+    /// <summary>The completion of one operation at a time: reported by WinINet's callback, waited for by its client.</summary>
+    private sealed class Completion : IDisposable
+    {
+        private readonly ManualResetEventSlim completed = new(initialState: false);
+        private nint result;
+        private int error;
+
+        public void Begin() => completed.Reset();
+
+        public void Complete(nint operationResult, int operationError)
+        {
+            result = operationResult;
+            error = operationError;
+            completed.Set();
+        }
+
+        /// <summary>Whether the operation completed within a minute and succeeded; its error otherwise.</summary>
+        public bool Wait(out int operationError)
+        {
+            if (!completed.Wait(TimeSpan.FromMinutes(1)))
+            {
+                operationError = ErrorTimeout;
+                return false;
+            }
+
+            operationError = result != 0 ? 0 : error;
+            return result != 0;
+        }
+
+        public void Dispose() => completed.Dispose();
     }
 
     /// <summary>
@@ -430,7 +675,20 @@ internal static partial class HttpWinInetScenario
                         $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n{framing}\r\n{FixtureHeader(options)}\r\n"));
                     byte[] sentBody = options.Chunked ? Chunks(coded, options.Seed, index) : coded;
                     await stream.WriteAsync(responseHead, cancellationToken).ConfigureAwait(false);
-                    await stream.WriteAsync(sentBody, cancellationToken).ConfigureAwait(false);
+                    if (options.PaceMilliseconds > 0)
+                    {
+                        for (int at = 0; at < sentBody.Length; at += PacedSliceBytes)
+                        {
+                            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                            await Task.Delay(options.PaceMilliseconds, cancellationToken).ConfigureAwait(false);
+                            await stream.WriteAsync(sentBody.AsMemory(at, Math.Min(PacedSliceBytes, sentBody.Length - at)),
+                                cancellationToken).ConfigureAwait(false);
+                        }
+                    }
+                    else
+                    {
+                        await stream.WriteAsync(sentBody, cancellationToken).ConfigureAwait(false);
+                    }
                     server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: responseHead.Length, status: "response-head",
                         resourceName: Sha256(responseHead));
                     server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: responseBody.Length, status: "response-body",

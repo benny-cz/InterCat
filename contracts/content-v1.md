@@ -290,7 +290,8 @@ processes chosen from the person's own and the broker's review shown before anyt
 | Source | `etw/manifest/Microsoft-Windows-WinINet-Capture`, events 2001 to 2004: a request head and body sent, a response head and body received |
 | Layout | `SessionId`, `SequenceNumber`, `Flags`, `PayloadByteLength` (u32 each), then that many bytes of `Payload`; the first three are kept as source fields 16 to 18 |
 | Kept as | `ApplicationPayload`, encoding binary, one buffer a record: a part is its buffers in sequence order, from the one flagged first to the one flagged last. A body is what its client sent or read: a chunked response's without its chunk framing, which only its head names (FX-HTTP-003); a response in the gzip content coding coded where its client read the coded bytes, and decoded where its client had WinINet decode it, under a head that declares the coding and the coded length either way, and no record says which (FX-HTTP-004, revision 859) |
-| Exchange | `SessionId`: the client process's own count from 1, so it names an exchange only within one run of its client; exchanges at once keep their own (FX-HTTP-003, revision 244) |
+| Exchange | `SessionId`: the client process's own count from 1, so it names an exchange only within one run of its client; exchanges at once keep their own (FX-HTTP-003, revision 244); a client working WinINet asynchronously raises the same records as one working it synchronously (FX-HTTP-005, revision 886) |
+| Thread | none stated: a record is raised on whichever of its client's threads finished the step it records - every head and sent body on one of WinINet's own, a read's bytes on the reading thread where they were waiting and on WinINet's where the read waited - for a synchronous client as for an asynchronous one, so its header's thread is not the thread that made the request (FX-HTTP-005, revision 886) |
 | Scope | the named processes, by the provider's process filter, each held open while the capture runs so no other process can be given its ID; a process not running is refused (revision 245); every exchange of theirs (`*`) |
 | Impact | Low: a median 0.71 CPU pp and 2.5% of the workload's time (`bench/results/wininet-capture-impact-20260928T105549Z`); over TLS a median 0.74 CPU pp (`bench/results/wininet-capture-impact-tls-20260928T121427Z`) |
 | Encryption | none stated: WinINet holds a message above any encryption, so over HTTPS the capture holds its plaintext, and a record does not say whether its exchange was encrypted (FX-HTTP-002, revision 243). A request says so before it records |
@@ -304,12 +305,17 @@ revision 244: FX-HTTP-003's 256 exchanges, eight at once with chunked responses,
 their requests by path, all 1,024 parts matched the server's bodies and none the chunk framing. And on revision 859:
 FX-HTTP-004's 64 exchanges in the gzip content coding, recorded twice, each response body saved by `icat content --part`
 matched the coded bytes where the client read them, 64 of 64, and the body before its coding where the client had
-WinINet decode it, 64 of 64, every head as the wire carried it; the lab probe found the same of chunked responses.
+WinINet decode it, 64 of 64, every head as the wire carried it; the lab probe found the same of chunked responses. And
+on revision 886: FX-HTTP-005's 64 exchanges made asynchronously, recorded three times - one at a time, paced and not,
+and eight at once with chunked responses - each kept every exchange whole, and every part `icat content --part` saved
+matched the server's bytes, 254 of 254 that held any; the lab probe found the same over TLS and of gzip decoded by
+WinINet.
 
 ## 6. What is not defined at this version
 
-- HTTP/2 and asynchronous WinINet are unmeasured, and so are content codings other than gzip and the other client
-  libraries, which raise no such records.
+- HTTP/2 is unmeasured, and so are content codings other than gzip, a request body written in pieces
+  (`InternetWriteFile`) and the other client libraries, which raise no such records. Asynchronous WinINet is measured
+  since revision 886 (FX-HTTP-005).
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
 - A broker content capture of another user's, another sign-in's or a higher integrity's process: the broker keeps
   content only from its client's own processes (`contracts/broker-v1.md` §2.1, ADR-049).

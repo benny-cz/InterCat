@@ -4,15 +4,18 @@
   to their client as `process-binding-v4` (revision 238); admitted under a Content request, through `icat record`
   (revision 239); HTTPS measured, and kept as its plaintext (revision 243); exchanges at once and chunked responses
   measured, and an exchange's number bound to its use in time (revision 244); its scope held to the named processes
-  themselves (revision 245); a process's exchanges on its rung (revision 247, `contracts/http-exchanges-v1.md`)
+  themselves (revision 245); a process's exchanges on its rung (revision 247, `contracts/http-exchanges-v1.md`);
+  asynchronous clients measured, and the thread each record is raised on (revision 886)
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
 - Relates to: §3.7, §11, §11.1, §11.2, M3, M8, I21, R21, R22, ADR-030, ADR-036, FX-HTTP-001, FX-HTTP-002,
-  FX-HTTP-003, `contracts/content-v1.md`, `tools/InterCat.WinInetProbe`,
+  FX-HTTP-003, FX-HTTP-005, `contracts/content-v1.md`, `tools/InterCat.WinInetProbe`,
   `bench/results/wininet-capture-feasibility-20260928T102426Z`,
   `bench/results/wininet-capture-feasibility-tls-20260928T120408Z`,
   `bench/results/wininet-capture-interleaved-20260928T123007Z`, `bench/results/wininet-capture-chunked-20260928T123023Z`,
-  `bench/results/wininet-capture-numbering-20260928T123112Z`
+  `bench/results/wininet-capture-numbering-20260928T123112Z`,
+  `bench/results/wininet-capture-async-paced-eight-chunked-20261103T210230Z`,
+  `bench/results/wininet-capture-sync-paced-20261103T204528Z`
 
 ## Context
 
@@ -94,6 +97,35 @@ names, not by time.
   exchanges begun before an earlier one ended; all 1,024 parts matched and none the framing, and `icat content --part`
   saved a 98,304-byte chunked body from 8 buffers that matched.
 
+## Measurement of asynchronous clients (revision 886)
+
+FX-HTTP-005 makes the exchange through WinINet asynchronously: its client opens its session with `INTERNET_FLAG_ASYNC`,
+and each send and read WinINet does not finish at once fails with `ERROR_IO_PENDING` and completes later on one of
+WinINet's threads, which the status callback reports; the bytes it sends and the buffer it reads into stay where they
+are until then. The server can pace a response, waiting 5 ms before each 16 KiB of its body, so a read finds no byte
+waiting and waits for it. The probe ran it nine times beside a decoy - 16 exchanges, or 64 eight at once, paced or
+not, chunked, over TLS and in gzip decoded by WinINet - and once paced and synchronous, as a control; the workload names
+the threads that made its requests.
+
+- **The records are a synchronous client's.** Every part of every exchange matched the server's truth, 64 of 64 and 256
+  of 256; every part was numbered from 0 and flagged at its ends; sent bodies were cut into buffers of at most 64,511
+  bytes and read bodies came in the client's reads of 16 KiB; nothing was lost, and none of the decoy's records reached
+  the session. Every send waited for WinINet; a read finished at once where its bytes were waiting, and waited where the
+  server's pacing held them back - 70 of 133 reads in a run eight at once.
+- **A record is raised on whichever thread finished its step.** Every head and every sent body's bytes were raised on
+  one of WinINet's own threads, never on the thread that made the request; a read's bytes on the reading thread where
+  they were waiting, and on one of WinINet's where the read waited for them; the empty buffer that ends a request body -
+  raised after its response ended, 63 of 64 eight at once - and the one that ends a response, on the thread that read
+  the response's end. The synchronous control split its records between the threads exactly as its asynchronous twin
+  did, 31 and 68 of 99: a synchronous call is WinINet's work on its own threads, waited for. A record's header thread is
+  therefore not the thread that made the request, in either mode.
+- **Through `icat record`** (FX-HTTP-005: 64 exchanges one at a time, paced and not, and 64 eight at once with chunked
+  responses, 56 of them begun before an earlier one ended): every record bound to the workload, every exchange recorded
+  whole, every head decoded to its end, and every part `icat content --part` saved matched the server's bytes, 254 of 254
+  that held any; no body was said to disagree with its head. The ledger of the run eight at once, each buffer's place,
+  ends, length and kind of thread but never its bytes, is kept with the fixture and grouped by a test as a session's
+  records are.
+
 ## Decision
 
 1. **The source contract, for its admission to implement.** An exchange is a `SessionId`; a part is its event, which
@@ -113,7 +145,9 @@ names, not by time.
 4. **Whose records they are.** The records name no process; each is raised in the client process that made the
    exchange - 444 of 444 here. Binding them by their header's process is ADR-030's rule reaching a new mechanism, which
    changes what `process-binding-v3` bound (`contracts/entities-v1.md` §7); revision 238 binds them so, as
-   `process-binding-v4`, under a new mechanism, `Http`.
+   `process-binding-v4`, under a new mechanism, `Http`. Their header's thread is not the client's: WinINet raises each
+   on whichever of the process's threads finished the step it records, for a synchronous client as for an asynchronous
+   one (revision 886), so no grouping reads a record's thread, and none is said to be the thread that made a request.
 5. **Admitted under a request.** Revision 239 measured its overhead - Low, a median 0.71 CPU pp and 2.5% of the
    workload's time over seven pairs - and admits it under a bounded Content request that names its processes and, since
    the source cannot select channels, every channel of theirs (`*`). `icat record --profile content` records it; the
@@ -147,8 +181,11 @@ names, not by time.
 - Responses in the gzip content coding are measured (revision 859, FX-HTTP-004): a coded body is kept as its client read
   it, coded where the client read the coded bytes and decoded where it had WinINet decode it, under the head the wire
   carried, which declares the coded length either way; no record says which the client did.
-- Not measured: asynchronous WinINet; HTTP/2; content codings other than gzip; redirects, proxies and authentication.
-  Each is measured before a profile claims it.
+- Asynchronous clients are measured (revision 886, FX-HTTP-005): their exchanges are recorded as a synchronous
+  client's, and in either a record is raised on whichever of the client's threads WinINet finished its step on.
+- Not measured: HTTP/2; content codings other than gzip; redirects, proxies and authentication; a request body written
+  in pieces (`HttpSendRequestEx` and `InternetWriteFile`), where every measured client handed its body to
+  `HttpSendRequest` whole. Each is measured before a profile claims it.
 - The scope is the named processes themselves (revision 245): the provider's filter holds their IDs by number, and the
   capture holds each process open while it runs, so a named process's exit ends its content and no process started
   after it can take its ID.

@@ -867,6 +867,59 @@
         "P2: a body is set beside the length its head declares, and said to disagree with it only where its recorded bytes do",
         "P2: FX-HTTP-004's responses, kept coded or as WinINet decoded them, agree with the length their heads declare or are not said to disagree"
       ]
+    },
+    {
+      "id": "FX-HTTP-005",
+      "title": "WinINet exchanges made asynchronously",
+      "scenario": "Asynchronous WinINet (ADR-037, revision 886): the workload's client opens its WinINet session with INTERNET_FLAG_ASYNC and waits on its status callback for each send and read WinINet does not finish at once, one request at a time or eight at once, and the loopback server, paced, waits 5 ms before each 16 KiB of a response body, so reads wait for their bytes; WinINet's capture provider is enabled for the workload's process alone.",
+      "milestone": "M3",
+      "mechanism": "Http",
+      "backlog": [
+        "IC-011",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [
+          "I21"
+        ],
+        "prohibitions": [
+          "P28"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads http-wininet --async, with --pace 5, --concurrency 8 and --chunked",
+        "seed": 20260929,
+        "log": "fixtures/FX-HTTP-005/evidence/eight-at-once/truth-http-server.jsonl",
+        "independence": "The loopback server is the witness: it logs every request head and body it received and every response head and body it sent, a chunked body and its framed bytes apart, by length and SHA-256, never the bytes. The client logs what it sent and read, and its scenario names the threads that made its requests and how many of its sends and reads waited for WinINet. Neither reads InterCat state."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-HTTP-005/evidence/measurement.json",
+        "note": "An asynchronous client's exchanges are recorded as a synchronous one's: through icat record, three runs of 64 exchanges - one at a time, paced, and eight at once with chunked responses, 56 of them begun before an earlier one ended - each kept every exchange whole, every part as long as the server's truth and, saved by icat content --part, its bytes, 254 of 254 that held any; the lab probe found the same of nine runs, over TLS and decoded gzip too. In either mode a record is raised on whichever of the client's threads finished the step it records - every head and sent body on one of WinINet's own, a read's bytes on the reading thread where they were waiting and on WinINet's where the read waited - so a record's thread is not the thread that made the request. The ledger of the eight-at-once run's 388 buffers, never their bytes, is grouped by a test as a session's records are."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-03",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record --profile content scoped to the workload's process, three times: 842, 1,061 and 1,157 records journaled, 1,201,379, 1,201,379 and 1,201,750 bytes of content kept, nothing lost. Every record bound to the workload, every exchange recorded whole and every head decoded to its end; every part saved by icat content matched the server's bytes, and no body was said to disagree with its head. Tier ExperimentalEvidence: HTTP/2 is unmeasured (ADR-037)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The server's and the client's truth logs and the scenario of two runs - ports, thread IDs, lengths and SHA-256 of synthetic requests and responses, never their bytes - one run's buffer ledger, each buffer's reading, event, exchange number, place, ends, length, request and kind of thread, never its bytes, and the measurement's counters. The captures themselves are not kept."
+      },
+      "tests": [
+        "R22: FX-HTTP-005's asynchronous exchanges, eight at once and raised on the client's threads and WinINet's, are one exchange to a request, each part whole and as long as the server's truth",
+        "R22: a process's HTTP exchanges are its numbers' uses in time, each part recorded whole or said not to be",
+        "I21: a part is assembled only from every buffer from its first to its last, each kept whole; else its gaps are named",
+        "I21: a recording keeps each WinINet buffer beside its journal chunk, with its exchange, its place and its ends",
+        "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone"
+      ]
     }
   ],
   "retired": [
@@ -2056,6 +2109,7 @@
         "R21: when the capture did not collect RPC, no call ranks the rows, and the export says why"
       ],
       "R22": [
+        "R22: FX-HTTP-005's asynchronous exchanges, eight at once and raised on the client's threads and WinINet's, are one exchange to a request, each part whole and as long as the server's truth",
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
         "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused",
         "R22: a boot is named by a token kept only until the machine restarts, and its count is no identity",

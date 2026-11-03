@@ -39,3 +39,13 @@ asynchronous WinINet are unmeasured, and the timing profile is unavailable; each
 claimed.
 
 M4 - multi-machine investigation - is next in dependency order; M5 depends on it and on M3.
+
+## Addendum, revision 886
+
+Asynchronous WinINet is measured (FX-HTTP-005, ADR-037): a client working WinINet asynchronously raises the same
+records as one working it synchronously, every part exact, numbered and flagged, and through `icat record` three runs of
+64 exchanges, one at a time and eight at once, kept every exchange whole and every part as the server sent and received
+it. In either mode a record is raised on whichever of the client's threads WinINet finished its step on, so a record's
+thread is not the thread that made the request, and nothing reads it as one. Of the semantics the verdict names
+unmeasured, RPC over TCP transport and HTTP/2 remain, and of compressed responses all but the gzip coding (revision 859).
+Nothing else above changes.

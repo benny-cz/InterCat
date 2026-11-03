@@ -798,6 +798,8 @@ Revision 884 has the Desktop publish a finished capture's checkpoint, and an int
 
 Revision 885 reads an operation index as its file streams and puts its calls in their groups within the array that read them, so a reopened busy hour's RPC views hold each call once and `icat waits` on two million calls fits 512 MiB where it ran out.
 
+Revision 886 measures asynchronous WinINet through its capture (FX-HTTP-005): an asynchronous client's exchanges are recorded as a synchronous one's, and in either a record is raised on whichever of the client's threads finished the step it records, so a record's thread is not the thread that made the request.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3182,3 +3184,25 @@ first, and in its reader's words where its digest holds; an index read from its 
 the same bytes again, and every damaged index the reader refuses is refused alike from its file. Six mutations are
 caught. On the same session `icat waits` now answers under 512 MiB, giving revision 884's answer in the same 12.7 s
 without a limit; under 384 MiB it still runs out, since the view holds all 2,007,063 calls.
+
+Revision 886 measures asynchronous WinINet, the next of the semantics ADR-037 left unmeasured before a profile claims
+them (FX-HTTP-005). The truth workload's client can open its WinINet session with `INTERNET_FLAG_ASYNC` and wait on its
+status callback for each send and read WinINet does not finish at once, the bytes it sends and the buffer it reads into
+held in place until the callback says the operation completed; its server can pace a response, waiting 5 ms before each
+16 KiB of its body, so reads find no byte waiting; and its scenario names the threads that made its requests. In nine
+lab runs beside a decoy - 16 exchanges, or 64 eight at once, paced or not, chunked, over TLS and in gzip decoded by
+WinINet - every part was the server's, numbered from 0 and flagged at its ends, in the buffers a synchronous client's
+are cut into, nothing lost and none of the decoy's records in the session; through `icat record --profile content` three
+runs of 64 exchanges kept every exchange whole, and every part `icat content --part` saved matched the server's bytes,
+254 of 254 that held any. What differs is not async's: a record is raised on whichever of the client's threads finished
+the step it records - every head and sent body on one of WinINet's own, a read's bytes on the reading thread where they
+were waiting and on WinINet's where the read waited, the empty buffers that end the bodies on the thread that read the
+response's end - and the synchronous control split its records between the threads exactly as its asynchronous twin
+did, a synchronous call being WinINet's work on its own threads, waited for. So a record's thread is not the thread that
+made the request, in either mode; nothing in InterCat reads one, and the source catalog, ADR-037 and the contracts now
+say why. The fixture keeps the ledger of its run eight at once - each buffer's reading, event, number, place, ends,
+length and kind of thread, never its bytes - and a test groups it as a session's records are grouped: one exchange to a
+request, every buffer its request's, every part as long as the server's truth. A mutation that keys an exchange by its
+buffers' thread is caught by that test alone, the synthetic tests' buffers sharing one thread. HTTP/2, content codings
+other than gzip, and a request body written in pieces - every measured client handed `HttpSendRequest` its body whole -
+remain unmeasured.
