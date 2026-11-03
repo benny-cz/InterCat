@@ -396,7 +396,7 @@ public sealed class ChosenPathFlowTests : IDisposable
         Dispatcher.UIThread.RunJobs();
         choices.Answer(moved);
         Press(window, "Relink…");
-        await Until(() => InvestigationWorkspace.Read(workspace).Members[1].Path.EndsWith("moved-server", StringComparison.Ordinal));
+        await Until(() => Saved(workspace)?.Members[1].Path.EndsWith("moved-server", StringComparison.Ordinal) == true);
         Assert.Matches("^Where is Session [0-9a-f]{8} now\\?$", choices.Folders[3].Title);
         await Until(() => window.View is { } view && view.Members.All(member => member.State == WorkspaceMemberState.Present));
 
@@ -462,6 +462,22 @@ public sealed class ChosenPathFlowTests : IDisposable
 
     private static List<string> Texts(Window window) =>
         [.. window.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text).OfType<string>()];
+
+    /// <summary>
+    /// The workspace as last saved, or null while the window is moving its next save into place: a reader that opens the
+    /// file during that move is refused, as the move would be past a reader that shares no delete.
+    /// </summary>
+    private static InvestigationWorkspaceFile? Saved(string path)
+    {
+        try
+        {
+            return InvestigationWorkspace.Read(path);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
 
     private static async Task Until(Func<bool> condition)
     {
