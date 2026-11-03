@@ -39,7 +39,11 @@ approximate.
    that does not know them ignores; an additive generation does not carry them, and a compaction or a retention that
    releases a segment releases them. Each can be rebuilt from retained evidence (R20). Each file is bounded - a
    checkpoint at 512 MiB, an operation index at 1 GiB, a tile index's directory at 64 MiB - and one past its bound is
-   refused rather than read in part.
+   refused rather than read in part. Since revision 882 an operation index of segments holding no ALPC send or receive
+   is written as its calls are paired, holding the calls in flight, the call records of the segments whose readings
+   overlap and 16 MiB of calls paired, the rest spilled to a temporary file, rather than every call: the bytes are those
+   of the calls paired whole (`operation-index-v1` §2). A writer asking whether an index is current checks it call by
+   call, holding none, with every refusal a reader would make.
 4. **Common summaries, not a cube.** Tiles keep counts by mechanism and record kind, owner and channel bindings, and
    tallies and byte sums by owner, channel and direction only where keeping them spares reading rows; nothing is
    precomputed across host, process, peer, resource, operation and time together. A question the indexes do not hold is
@@ -87,6 +91,9 @@ approximate.
   waits on M5's disk.
 - At 100 million records, faster scans are not enough, and what a brush and a group count must come from the pyramid;
   that tier is unmeasured for the same reason.
+- An operation index is written and checked in bounded memory, but a view reads it whole: a reopen's first RPC view
+  holds every call it keeps, as pairing them did - at a busy hour's 4.46 million rows, 2,007,063 calls. A capture that
+  collected ALPC still pairs its calls whole, to follow their other ends.
 
 ## Alternatives considered
 

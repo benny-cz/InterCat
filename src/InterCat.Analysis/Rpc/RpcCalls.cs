@@ -1260,14 +1260,18 @@ public sealed partial class RpcCallIndex
     private static CallKey KeyOf(in CallRecord record) => new(record.ProcessId, record.Side, record.Activity);
 
     /// <summary>Two records by the canonical order (§3): reading, then raw locator, then fact key.</summary>
-    private static int CompareRecords(in CallRecord one, in CallRecord other)
+    private static int CompareRecords(in CallRecord one, in CallRecord other) =>
+        CompareReadings(one.Ticks, one.Address, other.Ticks, other.Address);
+
+    /// <summary>Two rows by the canonical order (§3) of the records they are or name: reading, then raw locator, then fact key.</summary>
+    private static int CompareReadings(long ticks, in RecordAddress address, long otherTicks, in RecordAddress other)
     {
-        int order = one.Ticks.CompareTo(other.Ticks);
-        order = order != 0 ? order : one.Address.Stream.CompareTo(other.Address.Stream);
-        order = order != 0 ? order : one.Address.Epoch.CompareTo(other.Address.Epoch);
-        order = order != 0 ? order : one.Address.Ordinal.CompareTo(other.Address.Ordinal);
-        order = order != 0 ? order : one.Address.FactKey.High.CompareTo(other.Address.FactKey.High);
-        return order != 0 ? order : one.Address.FactKey.Low.CompareTo(other.Address.FactKey.Low);
+        int order = ticks.CompareTo(otherTicks);
+        order = order != 0 ? order : address.Stream.CompareTo(other.Stream);
+        order = order != 0 ? order : address.Epoch.CompareTo(other.Epoch);
+        order = order != 0 ? order : address.Ordinal.CompareTo(other.Ordinal);
+        order = order != 0 ? order : address.FactKey.High.CompareTo(other.FactKey.High);
+        return order != 0 ? order : address.FactKey.Low.CompareTo(other.FactKey.Low);
     }
 
     /// <summary>

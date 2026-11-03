@@ -35,6 +35,16 @@ public sealed class OperationIndexTests
         Assert.Same(derived.Processes, read.Calls!.Processes);
         Assert.Same(read.Calls, read.Peers!.Calls);
 
+        // Checked call by call, it covers and keeps what it reads as.
+        VerifiedOperationIndex verified = OperationIndex.Verify(bytes, derived.SessionId, TestClock, derived.Processes);
+        Assert.Equal((derived.SessionId, derived.Generation, true, true),
+            (verified.SessionId, verified.DerivedGeneration, verified.KeepsCalls, verified.KeepsExchanges));
+        Assert.Equal(derived.Segments, verified.Segments);
+        Assert.Equal(derived.FieldSegments, verified.FieldSegments);
+        Assert.True(verified.Covers(derived.Segments, derived.FieldSegments));
+        Assert.False(verified.Covers([.. derived.Segments.Reverse()], derived.FieldSegments));
+        Assert.False(verified.Covers(derived.Segments, []));
+
         // Every call state and every other end the rules give is among them, so each is read back, and so is every
         // exchange: interleaved, used again, cut short, its request head lost.
         string described = Describe(derived.Peers, derived.Observations);
@@ -60,6 +70,9 @@ public sealed class OperationIndexTests
             derived.Processes);
         Assert.Equal((false, (HttpExchangeIndex?)null), (minorZero.KeepsExchanges, minorZero.Exchanges));
         Assert.Equal(described, Describe(minorZero.Peers!, derived.Observations));
+        VerifiedOperationIndex zero = OperationIndex.Verify(Patched(bytes[..(httpFlag - 17)], 10, [0, 0]), derived.SessionId, TestClock,
+            derived.Processes);
+        Assert.Equal((true, false), (zero.KeepsCalls, zero.KeepsExchanges));
 
         // Without ALPC no other end is resolved, and the index says so in two counts.
         using var plain = new TemporarySession();
@@ -82,6 +95,10 @@ public sealed class OperationIndexTests
                 () => OperationIndex.Read(damaged, sessionId ?? derived.SessionId, TestClock, processes ?? derived.Processes));
             Assert.Contains(reason, refused.Message, StringComparison.Ordinal);
             Assert.StartsWith("The operation index is not readable: ", refused.Message, StringComparison.Ordinal);
+
+            // A writer asking whether the index is current checks it call by call, holding none, and refuses it alike.
+            Assert.Equal(refused.Message, Assert.Throws<InvalidDataException>(
+                () => OperationIndex.Verify(damaged, sessionId ?? derived.SessionId, TestClock, processes ?? derived.Processes)).Message);
         }
 
         Refused(bytes[..20], "ends inside a field");
@@ -212,6 +229,13 @@ public sealed class OperationIndexTests
         Refused(bytes, "does not occur in the evidence", processes: ProcessInstanceIndex.Derive(SegmentsOf(stranger.Store).Observations, TestClock));
         Assert.Throws<ArgumentException>(
             () => OperationIndex.Read(bytes, derived.SessionId, ClockFor(new ClockId(Guid.NewGuid()), "another"), derived.Processes));
+        Assert.Throws<ArgumentException>(
+            () => OperationIndex.Verify(bytes, derived.SessionId, ClockFor(new ClockId(Guid.NewGuid()), "another"), derived.Processes));
+
+        // A call that binds to nothing refuses the index only after the bytes are read as far as a reader reads them first:
+        // with the record count wrong too, both say the count.
+        Refused(Patched(bytes, counted, Int64(derived.Calls.CallRecords + 1)), "and it counts",
+            processes: ProcessInstanceIndex.Derive(SegmentsOf(stranger.Store).Observations, TestClock));
     }
 
     [Fact(DisplayName = "I14: calls that would take more than an operation index may hold are not kept, and the index says so")]
@@ -242,6 +266,7 @@ public sealed class OperationIndexTests
         read = OperationIndex.Read(onlyExchanges, derived.SessionId, TestClock, derived.Processes);
         Assert.Equal(((RpcCallIndex?)null, (RpcPeerIndex?)null), (read.Calls, read.Peers));
         Assert.Equal(Describe(derived.Exchanges), Describe(read.Exchanges!));
+        Assert.False(OperationIndex.Verify(onlyExchanges, derived.SessionId, TestClock, derived.Processes).KeepsCalls);
         byte[] bounded = Write(derived, callsFlag + 19);
         Assert.Equal(callsFlag + 19, bounded.Length);
         read = OperationIndex.Read(bounded, derived.SessionId, TestClock, derived.Processes);

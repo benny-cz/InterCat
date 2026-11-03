@@ -131,14 +131,19 @@ public static class SessionCheckpoints
             _ = store.GiveBackReaderColumns();
 
             // A capture that collected ALPC keeps its RPC links with the overview, so its first view follows no call
-            // (overview-index-v1 §3); one that did not keeps none.
-            RpcPeerIndex peers = derivation.RpcPeers(store.Root, segments, clock, fields, cancellationToken);
+            // (overview-index-v1 §3); one that did not keeps none. Its calls' other ends are followed over calls held
+            // whole, and so are calls this generation holds already; any other generation's are paired as the operation
+            // index is written, which holds the calls in flight rather than every one (revision 882).
+            bool linked = RpcPeerEdges.Collected(store.Root, manifest, SessionSegments.CoverageLedger(store.Root, manifest));
+            RpcPeerIndex? peers = linked || derivation.DerivedRpcCalls is not null
+                ? derivation.RpcPeers(store.Root, segments, clock, fields, cancellationToken)
+                : null;
             _ = store.GiveBackReaderColumns();
             HttpExchangeIndex exchanges = derivation.HttpExchanges(store.Root, segments, clock, fields, cancellationToken);
             _ = store.GiveBackReaderColumns();
-            if (RpcPeerEdges.Collected(store.Root, manifest, SessionSegments.CoverageLedger(store.Root, manifest)))
+            if (linked)
             {
-                counts = counts with { RpcLinks = RpcPeerEdges.Totals(peers) };
+                counts = counts with { RpcLinks = RpcPeerEdges.Totals(peers!) };
             }
 
             long next = store.NextGeneration;
@@ -151,15 +156,37 @@ public static class SessionCheckpoints
                 overview.Content, manifest.SessionId, manifest.Generation, SessionOverviewIndex.ObservationSegments(manifest), counts);
             _ = overview.Complete();
             using StoreStagingFile operations = store.Stage(OperationIndex.FileNameFor(next), StoreDependencyKind.Index);
-            bytes += OperationIndex.Write(
-                operations.Content,
-                manifest.SessionId,
-                manifest.Generation,
-                SessionOverviewIndex.ObservationSegments(manifest),
-                SessionOverviewIndex.FieldSegments(manifest),
-                peers.Calls,
-                peers,
-                exchanges);
+            long? streamed = peers is null
+                ? OperationIndex.WriteFromSegments(
+                    operations.Content,
+                    manifest.SessionId,
+                    manifest.Generation,
+                    SessionOverviewIndex.ObservationSegments(manifest),
+                    SessionOverviewIndex.FieldSegments(manifest),
+                    segments,
+                    fields,
+                    clock,
+                    exchanges,
+                    cancellationToken: cancellationToken)
+                : null;
+
+            // Segments holding ALPC records a coverage ledger does not name are written from calls held whole, as before.
+            if (streamed is null)
+            {
+                peers ??= derivation.RpcPeers(store.Root, segments, clock, fields, cancellationToken);
+                streamed = OperationIndex.Write(
+                    operations.Content,
+                    manifest.SessionId,
+                    manifest.Generation,
+                    SessionOverviewIndex.ObservationSegments(manifest),
+                    SessionOverviewIndex.FieldSegments(manifest),
+                    peers.Calls,
+                    peers,
+                    exchanges);
+            }
+
+            bytes += streamed.Value;
+            _ = store.GiveBackReaderColumns();
             _ = operations.Complete();
             StoreDependency[] described = SessionOverviewIndex.ObservationSegments(manifest);
             if (!described.Select(segment => segment.Name).SequenceEqual(SessionSegments.Names(manifest), StringComparer.Ordinal))
@@ -214,7 +241,8 @@ public static class SessionCheckpoints
     /// so it is replaced, and so is a generation published before revision 440, which names no operation index, 441, whose
     /// index keeps no exchanges, 456, which names no tile index, 457, whose tile index keeps no bindings - or keeps them
     /// under a derivation other than the checkpoint's - or 701, whose tile index keeps no level spanning its segments - or
-    /// 736, whose checkpoint counts no connection's transfers - or 738, whose checkpoint keeps no records by owner.
+    /// 736, whose checkpoint counts no connection's transfers - or 738, whose checkpoint keeps no records by owner. The
+    /// operation index is checked call by call, holding none (revision 882).
     /// </summary>
     private static bool IsCurrent(
         IOwnedDirectory directory,
@@ -238,7 +266,7 @@ public static class SessionCheckpoints
                         manifest.SessionId).Segments,
                     manifest)
                 && OperationIndex.NamedBy(manifest) is { } operations
-                && OperationIndex.Read(
+                && OperationIndex.Verify(
                     SessionSegments.ReadVerified(directory, operations, OperationIndex.MaximumBytes),
                     manifest.SessionId,
                     clock,

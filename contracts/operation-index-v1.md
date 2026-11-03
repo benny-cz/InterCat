@@ -63,6 +63,18 @@ retention that releases a segment releases it with the segments, in the same ret
 names a checkpoint and an overview but no operation index, as every one published before revision 440 does, is not
 current: its writer's next publication, or `icat checkpoint`, publishes all three again.
 
+A writer need not hold the calls to write them (revision 882). Where the covered segments hold no ALPC send or receive,
+the calls are paired as the index is written: the call records are taken in canonical order across the segments, a
+segment read once that order reaches its earliest reading - which its reader verifies on opening it - and given up once
+its last call record is taken; each start's source fields are joined as they are taken in the same order, since a field
+row carries the reading of the record it names (`segment-v1`); each key's records are paired as they come; and the
+calls paired are held, up to 16 MiB of them, until the counts and names the calls begin with are known, past that in
+sorted runs of a temporary file deleted when it is closed. The bytes are exactly those of the calls paired whole, so it
+holds the calls in flight and the records of the segments whose readings overlap rather than every call. Where the
+segments hold ALPC records, whose other ends the peer rule follows over every call, or where the generation's calls are
+held already, the index is written from calls held whole. A writer asking whether a generation's index is current
+checks it as a reader reads it (§4), every refusal the same, call by call and holding none.
+
 An index is written even for a generation with no RPC or HTTP record: it then holds no call or exchange, and a
 reopen's first call ranking or HTTP listing reads that rather than every segment's records. Calls that would take more
 than 1 GiB are not kept, and exchanges that would not fit in what is left are not either; the index says which (§3),

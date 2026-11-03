@@ -1172,6 +1172,7 @@
         "I19: navigation math depends only on its inputs, never on workspace state"
       ],
       "I2": [
+        "I2: a call's procedure named twice refuses an operation index written as its calls are paired, as it refuses a derivation, and segments that are not the files named are refused",
         "I2: a call's procedure named twice refuses the derivation, even when one row carried no value",
         "I2: a generation naming two derivations of one capture is refused rather than counted twice",
         "I2: a standalone ETL's identity is its bytes and its kind, computed before it is read",

@@ -2036,7 +2036,10 @@ Revision 163 removes both, and a finished session's reopen no longer grows with 
   published with them: the generation's RPC calls and their other ends, and since revision 441 its HTTP exchanges,
   without process bindings, which a reader makes from the instances as a derivation does. A reopen's first call
   ranking, RPC or HTTP listing, or brush reads them from it instead of pairing every call record or grouping every
-  buffer of every segment, which a call's request and response lying in different segments otherwise requires.
+  buffer of every segment, which a call's request and response lying in different segments otherwise requires. Since
+  revision 882 a writer pairs the calls of segments holding no ALPC as it writes their index, holding the calls in flight
+  rather than every call, and checks an index current call by call, so a checkpoint of a busy hour's two million calls
+  publishes within §12's analysis budget.
 
 | Measure | Revision 162 | Revision 163 |
 |---|---|---|

@@ -223,7 +223,10 @@ release's own readers holding a budget while it reads, passed whole at 1,400 mes
 60`): revision 880's ran out 42 minutes in, at 3,062,309 rows before any release (`-4h-keep60-512MiB-revision880`), and
 revision 881's, one session's derivations kept once rather than four times, held 4,460,042 rows by minute 26, when the
 capture reached its 1 GiB journal allowance and its finished session's checkpoint ran out pairing its RPC calls
-(`-4h-keep60-512MiB-revision881`).
+(`-4h-keep60-512MiB-revision881`). Revision 882's, its checkpoint pairing calls as it writes their index, carried a
+load of 1,400 messages a second and reached the allowance at 4,475,678 rows by minute 19, when its finished session's
+checkpoint ran out summing bytes, its byte pass reading one of 24 segments of some 250,000 rows a processor at once
+(`-4h-keep60-512MiB-load1400-revision882`).
 
 `impact --output <new scratch directory> [--triplets <1-15>]` measures the broker's capture impact at its
 compiled cadence: the seeded TCP workload with no capture, a broker `OnStop` capture and a broker `Live`

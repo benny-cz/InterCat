@@ -790,6 +790,8 @@ Revision 880 holds a release's own readers to a budget while it reads, so planni
 
 Revision 881 has the derivation cache keep, of one session, only the newest derived generation beside the one asked for, so a live capture's viewer holds the newest copy of its window's derivations and the one it is making, where it held four.
 
+Revision 882 pairs a checkpoint's RPC calls as it writes their operation index, and checks an index current call by call, so a busy hour's finished session, two million calls at its 1 GiB journal allowance, publishes its checkpoint under 512 MiB where it needed more than 1 GiB.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3070,3 +3072,37 @@ session's checkpoint then ran out of memory pairing its RPC calls
 needs more than 1 GiB of heap, and 34 s without a limit. The operation index pairs every call record of the session at
 once, with every field it carried and every call it made: within §12's analysis budget only by building it in bounded
 memory or apart from the indexes ADR-054 publishes together.
+
+Revision 882 builds it in bounded memory. Without its operation index, that checkpoint published under 512 MiB in 21 s,
+128 MiB live where the RPC pairing began; the pairing held 4,013,672 call records of 112 bytes, a dictionary of every
+start's source fields and its 2,007,063 calls twice over. `OperationIndex.WriteFromSegments` writes the same bytes from
+the segments: it takes the call records in canonical order across them, reading a segment once that order reaches its
+earliest reading, which its reader verified on opening it, and giving it up once its last call record is taken, so it
+holds the records of the segments whose readings overlap - a live capture's by about a delivery flush; it joins each
+start's procedure and protocol as the source fields are taken in the same order, a field
+row carrying its record's reading; it pairs each key's records as they come, holding the calls in flight; and it holds
+the calls paired, 16 MiB of them, until the counts, interfaces and origins the calls begin with are known, writing the
+rest in sorted runs to a temporary file deleted when it is closed, merged as they are written. A capture that collected
+ALPC is still written from calls paired whole, whose other ends the peer rule follows over every call, and so is a
+generation whose calls are held already; segments holding ALPC records their ledger does not name are found as they are
+read and written whole too. A writer asking whether an index is current had read it whole, every call bound and
+grouped, and ran out of memory there under 512 MiB once the index existed; `OperationIndex.Verify` checks it call
+by call, binding each as a reader does and keeping a byte a call for the other ends' check, with every refusal the same
+and in the same order. Tests hold both: random live captures, cut and stored every way, their segments overlapping and
+in no order at all, write the bytes of calls paired whole with one call held at a time and under every bound; records
+read at one instant lie in segments either way round, with every call state, interface, field and exchange; ALPC is
+left to calls paired whole, a field named twice is refused, and a finished session without ALPC holds no call after
+its checkpoint and reopens to its twin's answers; every damaged index a reader refuses, `Verify` refuses with the same
+words. Twenty-one mutations are caught. On the saved 4,460,042-row session the checkpoint publishes under 512 MiB in
+28.7 s and under 448 MiB in 23.4 s, its 158,563,008-byte operation index byte for byte revision 881's, which needed
+more than 1 GiB; unlimited it takes 20 s where revision 881's took 28.8 s. Run again on the published session, the
+checkpoint is current under 384 MiB in 11.5 s, where it ran out under 512 MiB. A view still reads an index whole: a
+reopened session's first RPC view holds its 2,007,063 calls, as pairing them did. Under 512 MiB for four hours keeping
+an hour, at 1,400 messages a second, "The last hour" then reached the capture's allowance at 4,475,678 rows by minute
+19, the viewer at up to 493 MiB committed, and its finished session's checkpoint ran out before its operation
+index, summing bytes per channel end (`bench/results/rolling-20261103T145545Z-4h-keep60-512MiB-load1400-revision882`).
+The load's records are TCP, and that session's 24 segments hold some 250,000 rows each, against the 47,000 of the busy
+machine's 95; the byte pass reads one segment a processor at once, 24 on this machine. Alone, its checkpoint needs more
+than 512 MiB, and publishes under it on 4 processors in 13.6 s, as fast as on 24, and on one in 18.9 s; its
+46,742,123-byte operation index is byte for byte revision 881's. A checkpoint's whole-session passes read as many
+segments at once as the machine has processors, whatever the segments hold.

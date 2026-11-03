@@ -164,13 +164,116 @@ public sealed class OperationIndex
                 "The calls or the exchanges were read from other segments, or in another order.", nameof(segments));
         }
 
+        RequireCoveredSegments(segments, fieldSegments);
+        return WriteCovering(
+            destination,
+            sessionId,
+            derivedGeneration,
+            segments,
+            fieldSegments,
+            calls.Clock,
+            calls.StateBytes() + peers.StateBytes(),
+            writer =>
+            {
+                int[] order = calls.InCanonicalOrder();
+                calls.WriteState(writer, order);
+                peers.WriteState(writer, order);
+            },
+            exchanges,
+            maximumBytes);
+    }
+
+    /// <summary>
+    /// Writes what <see cref="Write"/> writes of the calls <see cref="RpcCallIndex.Derive"/> pairs from
+    /// <paramref name="observations"/> and <paramref name="fields"/> - the segments <paramref name="segments"/> and
+    /// <paramref name="fieldSegments"/> name, in that order - their other ends and <paramref name="exchanges"/>: the same
+    /// bytes, with the calls paired as they are written rather than held (revision 882). It holds the calls in flight,
+    /// the call records of the segments whose readings overlap, and up to <paramref name="heldBytes"/> of calls paired;
+    /// past that they wait, sorted, in a file under <paramref name="spillDirectory"/>, by default the system's temporary
+    /// directory, deleted once they are written. Segments holding an ALPC send or receive are not written here, since
+    /// those calls' other ends are followed over calls held whole: <see cref="Write"/> writes those.
+    /// </summary>
+    /// <returns>How many bytes were written; null, with nothing written, when the segments hold an ALPC send or receive.</returns>
+    public static long? WriteFromSegments(
+        Stream destination,
+        Guid sessionId,
+        long derivedGeneration,
+        IReadOnlyList<StoreDependency> segments,
+        IReadOnlyList<StoreDependency> fieldSegments,
+        IReadOnlyList<SegmentReaderV1> observations,
+        IReadOnlyList<SegmentReaderV1> fields,
+        SourceClockDescriptor clock,
+        HttpExchangeIndex exchanges,
+        long maximumBytes = MaximumBytes,
+        int heldBytes = RpcCallIndex.StreamedCallBytes,
+        string? spillDirectory = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(fieldSegments);
+        ArgumentNullException.ThrowIfNull(observations);
+        ArgumentNullException.ThrowIfNull(fields);
+        ArgumentNullException.ThrowIfNull(exchanges);
+        ArgumentOutOfRangeException.ThrowIfLessThan(derivedGeneration, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(maximumBytes, MaximumBytes);
+        if (!observations.Select(segment => segment.Published?.Name).SequenceEqual(segments.Select(segment => segment.Name))
+            || !fields.Select(segment => segment.Published?.Name).SequenceEqual(fieldSegments.Select(segment => segment.Name))
+            || !exchanges.SegmentNames.SequenceEqual(segments.Select(segment => segment.Name)))
+        {
+            throw new ArgumentException(
+                "The segments, the source-field segments or the exchanges' segments are not the files named, in their order.",
+                nameof(segments));
+        }
+
+        RequireCoveredSegments(segments, fieldSegments);
+        using RpcCallIndex.StreamedCalls? calls =
+            RpcCallIndex.StreamCalls(observations, fields, heldBytes, spillDirectory, cancellationToken);
+        return calls is null
+            ? null
+            : WriteCovering(
+                destination,
+                sessionId,
+                derivedGeneration,
+                segments,
+                fieldSegments,
+                clock,
+                calls.StateBytes() + RpcPeerIndex.NoneReadBytes,
+                writer =>
+                {
+                    calls.WriteState(writer);
+                    RpcPeerIndex.WriteNoneRead(writer);
+                },
+                exchanges,
+                maximumBytes);
+    }
+
+    private static void RequireCoveredSegments(IReadOnlyList<StoreDependency> segments, IReadOnlyList<StoreDependency> fieldSegments)
+    {
         if (segments.Concat(fieldSegments).Any(file => file.Kind != StoreDependencyKind.Segment)
             || segments.Concat(fieldSegments).Select(file => file.Name).Distinct(StringComparer.Ordinal).Count()
                 != segments.Count + fieldSegments.Count)
         {
             throw new ArgumentException("A covered file is not a segment, or is named twice.", nameof(fieldSegments));
         }
+    }
 
+    /// <summary>
+    /// Writes the index's header and covered files, the calls and their other ends by <paramref name="writeCalls"/> when
+    /// their <paramref name="callsBytes"/> fit, and the exchanges when they fit after them.
+    /// </summary>
+    private static long WriteCovering(
+        Stream destination,
+        Guid sessionId,
+        long derivedGeneration,
+        IReadOnlyList<StoreDependency> segments,
+        IReadOnlyList<StoreDependency> fieldSegments,
+        SourceClockDescriptor clock,
+        long callsBytes,
+        Action<IndexFileWriter> writeCalls,
+        HttpExchangeIndex exchanges,
+        long maximumBytes)
+    {
         var writer = new IndexFileWriter(destination, maximumBytes, What);
         writer.Raw(Magic);
         writer.U16(Major);
@@ -180,8 +283,8 @@ public sealed class OperationIndex
         writer.Str8(ProcessInstanceIndex.BindingRule);
         writer.Identity(sessionId);
         writer.I64(derivedGeneration);
-        writer.Identity(calls.Clock.Id.Value);
-        writer.Identity(calls.Clock.HostId.Value);
+        writer.Identity(clock.Id.Value);
+        writer.Identity(clock.HostId.Value);
         writer.Count(segments.Count + fieldSegments.Count);
         foreach ((StoreDependency file, byte role) in segments.Select(file => (file, ObservationRole))
             .Concat(fieldSegments.Select(file => (file, FieldRole))))
@@ -193,13 +296,11 @@ public sealed class OperationIndex
         }
 
         // Whether the calls fit is known before any of them is written: one flag byte says, after what is written so far.
-        bool held = writer.Written + 1 + calls.StateBytes() + peers.StateBytes() <= maximumBytes;
+        bool held = writer.Written + 1 + callsBytes <= maximumBytes;
         writer.Flag(held);
         if (held)
         {
-            int[] order = calls.InCanonicalOrder();
-            calls.WriteState(writer, order);
-            peers.WriteState(writer, order);
+            writeCalls(writer);
         }
 
         // The exchanges follow under their own rule, kept when they fit after what is written.
@@ -226,7 +327,58 @@ public sealed class OperationIndex
         Guid sessionId,
         SourceClockDescriptor clock,
         ProcessInstanceIndex processes,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        Readable(bytes, clock, processes, reader =>
+        {
+            Head head = ReadHead(reader, sessionId, clock);
+            RpcCallIndex? calls = null;
+            RpcPeerIndex? peers = null;
+            if (reader.Flag())
+            {
+                calls = RpcCallIndex.ReadState(reader, processes, clock, head.Positions, cancellationToken, out int[] placed);
+                peers = RpcPeerIndex.ReadState(reader, calls, placed);
+            }
+
+            HttpExchangeIndex? exchanges = ReadExchanges(reader, head, processes, cancellationToken);
+            reader.RequireEnd();
+            return new OperationIndex(
+                head.SessionId, head.DerivedGeneration, head.Segments, head.FieldSegments, calls, peers, head.Minor >= 1, exchanges);
+        });
+
+    /// <summary>
+    /// What an operation index <see cref="Read"/> would read covers and keeps, the bytes checked as it checks them - every
+    /// refusal the same, each call bound to <paramref name="processes"/> - without holding its calls: each is checked and
+    /// let go. A writer asking whether its generation's index is current reads every call of it, two million at a busy
+    /// hour's 4.46 million rows, which read whole would take more than its analysis budget (revision 882).
+    /// </summary>
+    public static VerifiedOperationIndex Verify(
+        ReadOnlyMemory<byte> bytes,
+        Guid sessionId,
+        SourceClockDescriptor clock,
+        ProcessInstanceIndex processes,
+        CancellationToken cancellationToken = default) =>
+        Readable(bytes, clock, processes, reader =>
+        {
+            Head head = ReadHead(reader, sessionId, clock);
+            bool keepsCalls = reader.Flag();
+            if (keepsCalls)
+            {
+                RpcPeerIndex.VerifyState(reader, RpcCallIndex.VerifyState(reader, processes, head.Positions.Length, cancellationToken));
+            }
+
+            _ = ReadExchanges(reader, head, processes, cancellationToken);
+            reader.RequireEnd();
+            return new VerifiedOperationIndex(
+                head.SessionId, head.DerivedGeneration, head.Segments, head.FieldSegments, keepsCalls, head.Minor >= 1);
+        });
+
+    /// <summary>
+    /// Reads an index with <paramref name="read"/>, refusing one past its bound, or read with instances of another clock.
+    /// Calls are bound by the instances' own rules, which refuse a PID they were not derived from with the exceptions a
+    /// derivation raises; here they say only that the index is unreadable.
+    /// </summary>
+    private static T Readable<T>(
+        ReadOnlyMemory<byte> bytes, SourceClockDescriptor clock, ProcessInstanceIndex processes, Func<IndexFileReader, T> read)
     {
         ArgumentNullException.ThrowIfNull(processes);
         if (processes.Clock != clock.Id)
@@ -239,11 +391,9 @@ public sealed class OperationIndex
             throw new InvalidDataException($"The {What} is not readable: it is larger than {MaximumBytes / (1024 * 1024)} MiB.");
         }
 
-        // Calls are bound by the instances' own rules, which refuse a PID they were not derived from with the exceptions a
-        // derivation raises; here they say only that the index is unreadable.
         try
         {
-            return ReadCore(new IndexFileReader(bytes, What), sessionId, clock, processes, cancellationToken);
+            return read(new IndexFileReader(bytes, What));
         }
         catch (ArgumentException exception)
         {
@@ -259,12 +409,27 @@ public sealed class OperationIndex
         }
     }
 
-    private static OperationIndex ReadCore(
-        IndexFileReader reader,
-        Guid sessionId,
-        SourceClockDescriptor clock,
-        ProcessInstanceIndex processes,
-        CancellationToken cancellationToken)
+    /// <summary>The exchanges an index of <paramref name="head"/>'s minor keeps under its rule, or null where it keeps none.</summary>
+    private static HttpExchangeIndex? ReadExchanges(
+        IndexFileReader reader, Head head, ProcessInstanceIndex processes, CancellationToken cancellationToken)
+    {
+        if (head.Minor < 1)
+        {
+            return null;
+        }
+
+        string grouping = reader.Str8();
+        if (grouping != HttpExchangeIndex.GroupingRule)
+        {
+            throw reader.Invalid(
+                $"its exchanges were grouped under {grouping}, and this build groups under {HttpExchangeIndex.GroupingRule}.");
+        }
+
+        return reader.Flag() ? HttpExchangeIndex.ReadState(reader, processes, head.Positions, cancellationToken) : null;
+    }
+
+    /// <summary>An index's head: its format's minor, the session and generation it was derived at, and the files it covers.</summary>
+    private static Head ReadHead(IndexFileReader reader, Guid sessionId, SourceClockDescriptor clock)
     {
         if (!reader.Matches(Magic))
         {
@@ -327,34 +492,47 @@ public sealed class OperationIndex
             (role == ObservationRole ? segments : fields).Add(new(name, StoreDependencyKind.Segment, length, digest));
         }
 
-        string[] positions = [.. segments.Select(segment => segment.Name)];
-        RpcCallIndex? calls = null;
-        RpcPeerIndex? peers = null;
-        if (reader.Flag())
-        {
-            calls = RpcCallIndex.ReadState(reader, processes, clock, positions, cancellationToken, out int[] placed);
-            peers = RpcPeerIndex.ReadState(reader, calls, placed);
-        }
-
-        HttpExchangeIndex? exchanges = null;
-        if (minor >= 1)
-        {
-            string grouping = reader.Str8();
-            if (grouping != HttpExchangeIndex.GroupingRule)
-            {
-                throw reader.Invalid(
-                    $"its exchanges were grouped under {grouping}, and this build groups under {HttpExchangeIndex.GroupingRule}.");
-            }
-
-            exchanges = reader.Flag() ? HttpExchangeIndex.ReadState(reader, processes, positions, cancellationToken) : null;
-        }
-
-        reader.RequireEnd();
-        return new(session, derivedGeneration, segments.AsReadOnly(), fields.AsReadOnly(), calls, peers, minor >= 1, exchanges);
+        return new(minor, session, derivedGeneration, segments.AsReadOnly(), fields.AsReadOnly(), [.. segments.Select(segment => segment.Name)]);
     }
 
     private static bool IsDigest(string digest) =>
         digest.Length == 71
         && digest.StartsWith("sha256:", StringComparison.Ordinal)
         && !digest.AsSpan(7).ContainsAnyExcept(LowerHex);
+
+    /// <summary>An index's head as read: its minor, session, generation and covered files, and the observation segments' names by position.</summary>
+    private sealed record Head(
+        ushort Minor,
+        Guid SessionId,
+        long DerivedGeneration,
+        IReadOnlyList<StoreDependency> Segments,
+        IReadOnlyList<StoreDependency> FieldSegments,
+        string[] Positions);
+}
+
+/// <summary>
+/// What an operation index covers and keeps, as <see cref="OperationIndex.Verify"/> found it: readable as
+/// <see cref="OperationIndex.Read"/> reads it, without its calls held.
+/// </summary>
+/// <param name="SessionId">The session it belongs to.</param>
+/// <param name="DerivedGeneration">The generation its calls and exchanges were derived at.</param>
+/// <param name="Segments">The observation segments it covers, in the order its calls name them by.</param>
+/// <param name="FieldSegments">The source-field segments it covers.</param>
+/// <param name="KeepsCalls">Whether it keeps its calls, which it does unless they would not fit.</param>
+/// <param name="KeepsExchanges">Whether its minor keeps exchanges, as since minor 1.</param>
+public sealed record VerifiedOperationIndex(
+    Guid SessionId,
+    long DerivedGeneration,
+    IReadOnlyList<StoreDependency> Segments,
+    IReadOnlyList<StoreDependency> FieldSegments,
+    bool KeepsCalls,
+    bool KeepsExchanges)
+{
+    /// <summary>Whether it covers exactly <paramref name="segments"/>, in that order, and <paramref name="fieldSegments"/>.</summary>
+    public bool Covers(IReadOnlyList<StoreDependency> segments, IReadOnlyList<StoreDependency> fieldSegments)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(fieldSegments);
+        return Segments.SequenceEqual(segments) && FieldSegments.SequenceEqual(fieldSegments);
+    }
 }

@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -36,16 +37,10 @@ public sealed partial class RpcCallIndex
     /// <summary>How many bytes <see cref="WriteState"/> writes.</summary>
     internal long StateBytes()
     {
-        int origins = entries.Select(entry => OriginOf(entry.FirstAddress)).Distinct().Count();
-        long bytes = 8 + 8 + 4 + (16L * interfaces.Length) + 4 + ((long)OriginBytes * origins) + 4;
+        long bytes = HeadBytes(interfaces.Length, entries.Select(entry => OriginOf(entry.FirstAddress)).Distinct().Count());
         foreach (Entry entry in entries)
         {
-            bytes += CallHeadBytes
-                + (entry.StartSegment >= 0 ? StartBytes : 0)
-                + (entry.StopSegment >= 0 ? StopBytes : 0)
-                + (entry.HasProcedure ? 8 : 0)
-                + (entry.HasProtocol ? 8 : 0)
-                + (entry.HasStatus ? 8 : 0);
+            bytes += CallBytes(entry);
         }
 
         return bytes;
@@ -60,13 +55,6 @@ public sealed partial class RpcCallIndex
     {
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(order);
-        writer.I64(CallRecords);
-        writer.I64(OtherRpcRecords);
-        writer.Count(interfaces.Length);
-        foreach (Guid uuid in interfaces)
-        {
-            writer.Identity(uuid);
-        }
 
         // A capture's call records share a few streams and epochs and one fact key, so each is written once, in the order
         // the calls first name them, and a call names its own by number.
@@ -76,8 +64,39 @@ public sealed partial class RpcCallIndex
             _ = numbered.TryAdd(OriginOf(entries[index].FirstAddress), numbered.Count);
         }
 
-        writer.Count(numbered.Count);
-        foreach (Origin origin in numbered.Keys)
+        WriteHead(writer, CallRecords, OtherRpcRecords, interfaces, [.. numbered.Keys], order.Length);
+        foreach (int index in order)
+        {
+            Entry entry = entries[index];
+            WriteCall(writer, numbered[OriginOf(entry.FirstAddress)], entry);
+        }
+    }
+
+    /// <summary>The bytes of the calls' state before its first call: the records counted, the interfaces, the origins and how many calls follow.</summary>
+    private static long HeadBytes(int interfaces, int origins) => 8 + 8 + 4 + (16L * interfaces) + 4 + ((long)OriginBytes * origins) + 4;
+
+    /// <summary>The bytes one call takes in the calls' state: its head, its records and what they carried.</summary>
+    private static int CallBytes(in Entry entry) =>
+        CallHeadBytes
+        + (entry.StartSegment >= 0 ? StartBytes : 0)
+        + (entry.StopSegment >= 0 ? StopBytes : 0)
+        + (entry.HasProcedure ? 8 : 0)
+        + (entry.HasProtocol ? 8 : 0)
+        + (entry.HasStatus ? 8 : 0);
+
+    /// <summary>Writes the calls' state up to its first call: the records counted, the interfaces named, the origins in the order the calls first name them, and how many calls follow.</summary>
+    private static void WriteHead(IndexFileWriter writer, long callRecords, long otherRecords, Guid[] interfaces, Origin[] origins, int calls)
+    {
+        writer.I64(callRecords);
+        writer.I64(otherRecords);
+        writer.Count(interfaces.Length);
+        foreach (Guid uuid in interfaces)
+        {
+            writer.Identity(uuid);
+        }
+
+        writer.Count(origins.Length);
+        foreach (Origin origin in origins)
         {
             writer.U32(origin.Stream);
             writer.U32(origin.Epoch);
@@ -85,45 +104,46 @@ public sealed partial class RpcCallIndex
             writer.U64(origin.FactKey.Low);
         }
 
-        writer.Count(order.Length);
-        foreach (int index in order)
+        writer.Count(calls);
+    }
+
+    /// <summary>Writes one call, its first record's origin by <paramref name="origin"/>, its number among those written.</summary>
+    private static void WriteCall(IndexFileWriter writer, int origin, in Entry entry)
+    {
+        writer.I32(origin);
+        writer.U64(entry.FirstAddress.Ordinal);
+        writer.I32(entry.ProcessId);
+        writer.U8((byte)entry.Side);
+        writer.U8((byte)entry.State);
+        writer.U8((byte)FlagsOf(entry));
+        if (entry.StartSegment >= 0)
         {
-            Entry entry = entries[index];
-            writer.I32(numbered[OriginOf(entry.FirstAddress)]);
-            writer.U64(entry.FirstAddress.Ordinal);
-            writer.I32(entry.ProcessId);
-            writer.U8((byte)entry.Side);
-            writer.U8((byte)entry.State);
-            writer.U8((byte)FlagsOf(entry));
-            if (entry.StartSegment >= 0)
-            {
-                writer.I32(entry.Interface);
-                writer.I64(entry.StartTicks);
-                writer.I32(entry.StartSegment);
-                writer.I32(entry.StartRow);
-            }
+            writer.I32(entry.Interface);
+            writer.I64(entry.StartTicks);
+            writer.I32(entry.StartSegment);
+            writer.I32(entry.StartRow);
+        }
 
-            if (entry.StopSegment >= 0)
-            {
-                writer.I64(entry.StopTicks);
-                writer.I32(entry.StopSegment);
-                writer.I32(entry.StopRow);
-            }
+        if (entry.StopSegment >= 0)
+        {
+            writer.I64(entry.StopTicks);
+            writer.I32(entry.StopSegment);
+            writer.I32(entry.StopRow);
+        }
 
-            if (entry.HasProcedure)
-            {
-                writer.I64(entry.Procedure);
-            }
+        if (entry.HasProcedure)
+        {
+            writer.I64(entry.Procedure);
+        }
 
-            if (entry.HasProtocol)
-            {
-                writer.I64(entry.Protocol);
-            }
+        if (entry.HasProtocol)
+        {
+            writer.I64(entry.Protocol);
+        }
 
-            if (entry.HasStatus)
-            {
-                writer.I64(entry.Status);
-            }
+        if (entry.HasStatus)
+        {
+            writer.I64(entry.Status);
         }
     }
 
@@ -144,6 +164,105 @@ public sealed partial class RpcCallIndex
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(processes);
         ArgumentNullException.ThrowIfNull(segmentNames);
+        (long callRecords, long otherRecords, Guid[] interfaces, Origin[] origins) = ReadHead(reader);
+
+        // The smallest call holds its head and one stop.
+        var drafted = new Entry[reader.Count(CallHeadBytes + StopBytes)];
+        long records = 0;
+        for (int position = 0; position < drafted.Length; position++)
+        {
+            if ((position & 0xFFFF) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            Entry entry = ReadEntry(reader, position, origins, interfaces.Length, segmentNames.Length);
+            if (position > 0 && CompareFirstRecords(drafted[position - 1], entry) > 0)
+            {
+                throw reader.Invalid($"call {position:N0} is not in the canonical order of its first record.");
+            }
+
+            records += (entry.StartSegment >= 0 ? 1 : 0) + (entry.StopSegment >= 0 ? 1 : 0);
+            drafted[position] = entry;
+        }
+
+        if (records != callRecords)
+        {
+            throw reader.Invalid($"its calls hold {records:N0} records, and it counts {callRecords:N0}.");
+        }
+
+        placed = new int[drafted.Length];
+        return Assemble(drafted, processes, interfaces, segmentNames, clock, callRecords, otherRecords, cancellationToken, placed);
+    }
+
+    /// <summary>
+    /// Checks the calls <see cref="WriteState"/> wrote as <see cref="ReadState"/> reads them - every refusal the same and
+    /// in the same order, each call bound to <paramref name="processes"/> as a reader binds it - without holding them:
+    /// each call is checked and let go (revision 882). Returns each call's side and state by its place in the canonical
+    /// order, which the check of their other ends reads (<see cref="RpcPeerIndex.VerifyState"/>).
+    /// </summary>
+    internal static byte[] VerifyState(IndexFileReader reader, ProcessInstanceIndex processes, int segments, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        ArgumentNullException.ThrowIfNull(processes);
+        (long callRecords, _, Guid[] interfaces, Origin[] origins) = ReadHead(reader);
+        byte[] facts = new byte[reader.Count(CallHeadBytes + StopBytes)];
+        long records = 0;
+        Entry previous = default;
+        ExceptionDispatchInfo? unbound = null;
+        for (int position = 0; position < facts.Length; position++)
+        {
+            if ((position & 0xFFFF) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            Entry entry = ReadEntry(reader, position, origins, interfaces.Length, segments);
+            if (position > 0 && CompareFirstRecords(previous, entry) > 0)
+            {
+                throw reader.Invalid($"call {position:N0} is not in the canonical order of its first record.");
+            }
+
+            records += (entry.StartSegment >= 0 ? 1 : 0) + (entry.StopSegment >= 0 ? 1 : 0);
+            facts[position] = FactOf(entry.Side, entry.State);
+
+            // A reader binds the calls once every one is read, so a call that binds to nothing refuses the index only
+            // after a call the bytes contradict, or a count of records they do not hold, would have.
+            if (unbound is null)
+            {
+                try
+                {
+                    _ = processes.Bind(entry.ProcessId, entry.FirstTicks, isLifecycleRecord: false);
+                }
+                catch (Exception exception) when (exception is ArgumentException or InvalidDataException or InvalidOperationException
+                    or OverflowException)
+                {
+                    unbound = ExceptionDispatchInfo.Capture(exception);
+                }
+            }
+
+            previous = entry;
+        }
+
+        if (records != callRecords)
+        {
+            throw reader.Invalid($"its calls hold {records:N0} records, and it counts {callRecords:N0}.");
+        }
+
+        unbound?.Throw();
+        return facts;
+    }
+
+    /// <summary>A call's side and state in one byte, as <see cref="VerifyState"/> keeps them.</summary>
+    internal static byte FactOf(RpcCallSide side, RpcCallState state) => (byte)(((int)side << 4) | (int)state);
+
+    internal static RpcCallSide SideOf(byte fact) => (RpcCallSide)(fact >> 4);
+
+    internal static RpcCallState StateOf(byte fact) => (RpcCallState)(fact & 0xF);
+
+    /// <summary>The calls' state before its first call: the records counted, the interfaces named and the origins, each named once.</summary>
+    private static (long CallRecords, long OtherRecords, Guid[] Interfaces, Origin[] Origins) ReadHead(IndexFileReader reader)
+    {
         long callRecords = reader.I64();
         long otherRecords = reader.I64();
         if (callRecords < 0 || otherRecords < 0)
@@ -173,33 +292,7 @@ public sealed partial class RpcCallIndex
             }
         }
 
-        // The smallest call holds its head and one stop.
-        var drafted = new Entry[reader.Count(CallHeadBytes + StopBytes)];
-        long records = 0;
-        for (int position = 0; position < drafted.Length; position++)
-        {
-            if ((position & 0xFFFF) == 0)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-            }
-
-            Entry entry = ReadEntry(reader, position, origins, interfaces.Length, segmentNames.Length);
-            if (position > 0 && CompareFirstRecords(drafted[position - 1], entry) > 0)
-            {
-                throw reader.Invalid($"call {position:N0} is not in the canonical order of its first record.");
-            }
-
-            records += (entry.StartSegment >= 0 ? 1 : 0) + (entry.StopSegment >= 0 ? 1 : 0);
-            drafted[position] = entry;
-        }
-
-        if (records != callRecords)
-        {
-            throw reader.Invalid($"its calls hold {records:N0} records, and it counts {callRecords:N0}.");
-        }
-
-        placed = new int[drafted.Length];
-        return Assemble(drafted, processes, interfaces, segmentNames, clock, callRecords, otherRecords, cancellationToken, placed);
+        return (callRecords, otherRecords, interfaces, origins);
     }
 
     private static Entry ReadEntry(IndexFileReader reader, int position, Origin[] origins, int interfaces, int segments)
