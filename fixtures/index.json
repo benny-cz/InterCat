@@ -972,6 +972,59 @@
         "P2: C on an HTTP exchange opens its conversation, which says what each head said only once asked, and Show its buffers opens them",
         "P2: the content viewer decodes a buffer's whole HTTP head only when asked, shows a field's bytes in the part, and never decodes a head that is not whole"
       ]
+    },
+    {
+      "id": "FX-HTTP-007",
+      "title": "WinINet request bodies written in pieces",
+      "scenario": "A request body written after its head (ADR-037, revision 888): the workload's client sends each request's head with HttpSendRequestEx, declaring the body's length, writes the body with InternetWriteFile in seeded pieces of 1 to n bytes, and ends the request with HttpEndRequest, synchronously or asynchronously, over HTTP/1.1 or HTTP/2, one request at a time or eight clients at once; WinINet's capture provider is enabled for the workload's process alone.",
+      "milestone": "M3",
+      "mechanism": "Http",
+      "backlog": [
+        "IC-011",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [
+          "I21"
+        ],
+        "prohibitions": [
+          "P28"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads http-wininet --write n, with --bytes 262144, --async, --http2 and --concurrency 8",
+        "seed": 20260929,
+        "log": "fixtures/FX-HTTP-007/evidence/eight-at-once/truth-http-server.jsonl",
+        "independence": "The loopback server is the witness: it logs every request head and body it received and every response head and body it sent by length and SHA-256, never the bytes. The client logs what it sent and read, and each piece of a body it wrote, in order, by length and SHA-256. Neither reads InterCat state."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-HTTP-007/evidence/measurement.json",
+        "note": "A body written in pieces is kept a buffer to a write, in order, numbered and flagged - a piece past 64,511 bytes cut there, as a whole body is - and ended by an empty buffer flagged last, as a body handed to HttpSendRequest whole is: through icat record, two runs of 64 exchanges kept every exchange whole, all 63 bodies of each in their writes' buffers, and every part icat content --part saved matched the server's bytes, 254 of 254 that held any; the lab probe found the same of six runs, asynchronously and over HTTP/2 too. The ledger of the run eight at once, 684 buffers and never their bytes, is grouped by a test as a session's records are."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-03",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record --profile content scoped to the workload's process, twice: 927 and 1,137 records journaled, 3,171,757 and 1,201,379 bytes of content kept, nothing lost. Every record bound to the workload, every exchange recorded whole and every head decoded to its end; each body was a buffer to each piece its client wrote, and every part saved by icat content matched the server's bytes. Tier ExperimentalEvidence: content codings other than gzip are unmeasured (ADR-037)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The server's and the client's truth logs and the scenario of two runs - ports, thread IDs, lengths and SHA-256 of synthetic requests, responses and the pieces written, never their bytes - one run's buffer ledger, each buffer's reading, event, exchange number, place, ends, length, request and kind of thread, never its bytes, and the measurement's counters. The captures themselves are not kept."
+      },
+      "tests": [
+        "R22: FX-HTTP-007's request bodies, written in pieces eight clients at once, are each its exchange's, a buffer to a write and one to end it, every part whole and as long as the server's truth",
+        "R22: a process's HTTP exchanges are its numbers' uses in time, each part recorded whole or said not to be",
+        "I21: a part is assembled only from every buffer from its first to its last, each kept whole; else its gaps are named",
+        "I21: a recording keeps each WinINet buffer beside its journal chunk, with its exchange, its place and its ends",
+        "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone"
+      ]
     }
   ],
   "retired": [
@@ -2163,6 +2216,7 @@
       "R22": [
         "R22: FX-HTTP-005's asynchronous exchanges, eight at once and raised on the client's threads and WinINet's, are one exchange to a request, each part whole and as long as the server's truth",
         "R22: FX-HTTP-006's exchanges over HTTP/2, eight clients' multiplexed on one connection, are one exchange to a request, each part whole and each body as long as the server's truth",
+        "R22: FX-HTTP-007's request bodies, written in pieces eight clients at once, are each its exchange's, a buffer to a write and one to end it, every part whole and as long as the server's truth",
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
         "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused",
         "R22: a boot is named by a token kept only until the machine restarts, and its count is no identity",

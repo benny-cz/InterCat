@@ -41,6 +41,9 @@ internal sealed record HttpWinInetOptions
     /// <summary>The exchange over HTTP/2, which the client enables and the server offers by ALPN over TLS: FX-HTTP-006.</summary>
     public const string Http2ScenarioId = "FX-HTTP-006";
 
+    /// <summary>Each request body written in seeded pieces after its head is sent: FX-HTTP-007.</summary>
+    public const string WrittenScenarioId = "FX-HTTP-007";
+
     public required string TruthDirectory { get; init; }
     public int Seed { get; init; } = 20_260_929;
     public int Requests { get; init; } = 16;
@@ -105,12 +108,19 @@ internal sealed record HttpWinInetOptions
     public bool Http2 { get; init; }
 
     /// <summary>
-    /// The scenario this run is: FX-HTTP-006 over HTTP/2, else FX-HTTP-005 made asynchronously, else FX-HTTP-004 with coded
-    /// responses, else FX-HTTP-003 with several clients at once or chunked responses, else FX-HTTP-002 over TLS, else
-    /// FX-HTTP-001.
+    /// The most bytes the client writes of a request body at once, where it writes the body in pieces: it sends the head
+    /// with HttpSendRequestEx, declaring the body's length, writes the body with InternetWriteFile in seeded pieces of 1 to
+    /// this many bytes, and ends the request with HttpEndRequest. 0 hands HttpSendRequest the body whole, as before.
     /// </summary>
-    public string Scenario => Http2 ? Http2ScenarioId : Async ? AsyncScenarioId : Gzip ? CodedScenarioId
-        : Concurrency > 1 || Chunked ? InterleavedScenarioId : Tls ? TlsScenarioId : ScenarioId;
+    public int WriteBytes { get; init; }
+
+    /// <summary>
+    /// The scenario this run is: FX-HTTP-007 with bodies written in pieces, else FX-HTTP-006 over HTTP/2, else FX-HTTP-005
+    /// made asynchronously, else FX-HTTP-004 with coded responses, else FX-HTTP-003 with several clients at once or chunked
+    /// responses, else FX-HTTP-002 over TLS, else FX-HTTP-001.
+    /// </summary>
+    public string Scenario => WriteBytes > 0 ? WrittenScenarioId : Http2 ? Http2ScenarioId : Async ? AsyncScenarioId
+        : Gzip ? CodedScenarioId : Concurrency > 1 || Chunked ? InterleavedScenarioId : Tls ? TlsScenarioId : ScenarioId;
 }
 
 /// <summary>
@@ -201,14 +211,44 @@ internal static partial class HttpWinInetScenario
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool BeginInternetReadFile(IntPtr file, IntPtr buffer, int toRead, IntPtr read);
 
+    // A request whose body is written after its head: the head sent with HttpSendRequestEx, which an INTERNET_BUFFERS
+    // tells the headers and the body's whole length; the body with InternetWriteFile; the request ended with HttpEndRequest.
+    [LibraryImport("wininet.dll", EntryPoint = "HttpSendRequestExW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool HttpSendRequestEx(IntPtr request, IntPtr buffersIn, IntPtr buffersOut, int flags, IntPtr context);
+
+    [LibraryImport("wininet.dll", EntryPoint = "InternetWriteFile", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool InternetWriteFile(IntPtr file, IntPtr buffer, int toWrite, IntPtr written);
+
+    [LibraryImport("wininet.dll", EntryPoint = "HttpEndRequestW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool HttpEndRequest(IntPtr request, IntPtr buffersOut, int flags, IntPtr context);
+
+    /// <summary>INTERNET_BUFFERSW, as HttpSendRequestEx reads it: the headers to add and the length of the body to come.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct InternetBuffers
+    {
+        public int StructSize;
+        public IntPtr Next;
+        public IntPtr Header;
+        public int HeadersLength;
+        public int HeadersTotal;
+        public IntPtr Buffer;
+        public int BufferLength;
+        public int BufferTotal;
+        public int OffsetLow;
+        public int OffsetHigh;
+    }
+
     [LibraryImport("kernel32.dll", EntryPoint = "GetCurrentThreadId")]
     private static partial uint GetCurrentThreadId();
 
     // Each asynchronous client's completion, under the context its handles carry: WinINet's callback finds it there.
     private static readonly ConcurrentDictionary<nint, Completion> Completions = new();
 
-    // How an asynchronous run's sends and reads went: finished at once, or pending and completed by the callback.
-    private static int sendsAtOnce, sendsPending, readsAtOnce, readsPending;
+    // How an asynchronous run's sends, writes and reads went: finished at once, or pending and completed by the callback.
+    private static int sendsAtOnce, sendsPending, readsAtOnce, readsPending, writesAtOnce, writesPending;
 
     // HTTP/2 on a session (INTERNET_OPTION_ENABLE_HTTP_PROTOCOL, HTTP_PROTOCOL_FLAG_HTTP2), and which protocol a request
     // was made over once sent (INTERNET_OPTION_HTTP_PROTOCOL_USED); how many of the run's were HTTP/2.
@@ -304,7 +344,8 @@ internal static partial class HttpWinInetScenario
             options.PaceMilliseconds,
             options.Http2,
             requestsOverHttp2 = options.Http2 ? requestsOverHttp2 : (int?)null,
-            asynchronous = options.Async ? new { sendsAtOnce, sendsPending, readsAtOnce, readsPending } : null,
+            options.WriteBytes,
+            asynchronous = options.Async ? new { sendsAtOnce, sendsPending, writesAtOnce, writesPending, readsAtOnce, readsPending } : null,
             processId = Environment.ProcessId,
             clientThreads = clientThreads.Order().ToArray(),
             port,
@@ -454,7 +495,19 @@ internal static partial class HttpWinInetScenario
 
                     client.Write(TruthEventKind.CallIssued, callId: index, declaredBytes: body.Length, status: "request-body",
                         resourceName: Sha256(body));
-                    if (!Send(calls, request, RequestHeaders(options), body, out int sendError))
+
+                    // Written in pieces, each piece the client writes is logged in order, by length and SHA-256.
+                    int[] pieces = options.WriteBytes > 0 ? Pieces(body.Length, options.Seed, index, options.WriteBytes) : [];
+                    for (int piece = 0, at = 0; piece < pieces.Length; at += pieces[piece], piece++)
+                    {
+                        client.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: pieces[piece], status: "request-body-write",
+                            resourceName: "sha256:" + Convert.ToHexStringLower(SHA256.HashData(body.AsSpan(at, pieces[piece]))));
+                    }
+
+                    bool requestSent = options.WriteBytes > 0
+                        ? SendWritten(calls, request, context, RequestHeaders(options), body, pieces, out int sendError)
+                        : Send(calls, request, RequestHeaders(options), body, out sendError);
+                    if (!requestSent)
                     {
                         client.Write(TruthEventKind.Failure, callId: index, status: $"HttpSendRequest failed: {sendError}");
                         if (calls?.Abandoned == true) break;
@@ -526,6 +579,85 @@ internal static partial class HttpWinInetScenario
         return sent;
     }
 
+    /// <summary>
+    /// The seeded lengths a request body of <paramref name="length"/> bytes is written in: pieces of 1 to
+    /// <paramref name="most"/> bytes in turn until the body is written, none for an empty one.
+    /// </summary>
+    private static int[] Pieces(int length, int seed, int index, int most)
+    {
+        var random = new Random(unchecked((seed * 7919) ^ (index * 13) ^ 0x51CE));
+        var pieces = new List<int>();
+        for (int left = length; left > 0;)
+        {
+            int piece = Math.Min(left, random.Next(1, most + 1));
+            pieces.Add(piece);
+            left -= piece;
+        }
+
+        return [.. pieces];
+    }
+
+    /// <summary>
+    /// Sends a request with its body written after its head: the head with HttpSendRequestEx, declaring the body's whole
+    /// length, each piece with InternetWriteFile, then HttpEndRequest - each step at once, or asynchronously once WinINet
+    /// completes it - every byte from memory that stays where it is until then; false with the failed step's error.
+    /// </summary>
+    private static bool SendWritten(AsyncCalls? calls, IntPtr request, nint context, string headers, byte[] body, int[] pieces,
+        out int error)
+    {
+        int size = Marshal.SizeOf<InternetBuffers>();
+        IntPtr sentHeaders = Marshal.StringToHGlobalUni(headers);
+        IntPtr buffers = Marshal.AllocHGlobal(size);
+        IntPtr piece = Marshal.AllocHGlobal(Math.Max(1, pieces.Length == 0 ? 1 : pieces.Max()));
+        IntPtr written = Marshal.AllocHGlobal(sizeof(int));
+        try
+        {
+            Marshal.StructureToPtr(new InternetBuffers
+            {
+                StructSize = size,
+                Header = sentHeaders,
+                HeadersLength = headers.Length,
+                HeadersTotal = headers.Length,
+                BufferTotal = body.Length,
+            }, buffers, fDeleteOld: false);
+            if (!Step(calls, () => HttpSendRequestEx(request, buffers, IntPtr.Zero, 0, context), sending: true, out error)) return false;
+            for (int index = 0, at = 0; index < pieces.Length; at += pieces[index], index++)
+            {
+                int length = pieces[index];
+                Marshal.Copy(body, at, piece, length);
+                Marshal.WriteInt32(written, 0);
+                if (!Step(calls, () => InternetWriteFile(request, piece, length, written), sending: false, out error)) return false;
+                if (Marshal.ReadInt32(written) != length)
+                {
+                    // WinINet wrote less than it was given, which no measured client met; the request is not sent whole.
+                    error = -Marshal.ReadInt32(written) - 1;
+                    return false;
+                }
+            }
+
+            return Step(calls, () => HttpEndRequest(request, IntPtr.Zero, 0, context), sending: true, out error);
+        }
+        finally
+        {
+            if (calls?.Abandoned != true)
+            {
+                Marshal.FreeHGlobal(sentHeaders);
+                Marshal.FreeHGlobal(buffers);
+                Marshal.FreeHGlobal(piece);
+                Marshal.FreeHGlobal(written);
+            }
+        }
+    }
+
+    /// <summary>One step of a written request, at once, or asynchronously once WinINet's callback completes it.</summary>
+    private static bool Step(AsyncCalls? calls, Func<bool> begin, bool sending, out int error)
+    {
+        if (calls is not null) return calls.Step(begin, sending, out error);
+        bool done = begin();
+        error = done ? 0 : Marshal.GetLastPInvokeError();
+        return done;
+    }
+
     /// <summary>Reads the next bytes of a response's body, none at its end; false with WinINet's error.</summary>
     private static bool Read(AsyncCalls? calls, IntPtr request, byte[] buffer, out int count, out int error)
     {
@@ -572,6 +704,15 @@ internal static partial class HttpWinInetScenario
             }
 
             return sent;
+        }
+
+        /// <summary>A step of a written request: the head sent, a piece written, or the request ended.</summary>
+        public bool Step(Func<bool> begin, bool sending, out int error)
+        {
+            completion.Begin();
+            return sending
+                ? Finished(begin(), out error, ref sendsAtOnce, ref sendsPending)
+                : Finished(begin(), out error, ref writesAtOnce, ref writesPending);
         }
 
         public bool Read(IntPtr request, byte[] into, out int count, out int error)

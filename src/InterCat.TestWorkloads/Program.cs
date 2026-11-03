@@ -58,6 +58,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Async = args.Contains("--async", StringComparer.Ordinal),
         PaceMilliseconds = Integer(args, "--pace") ?? 0,
         Http2 = args.Contains("--http2", StringComparer.Ordinal),
+        WriteBytes = Integer(args, "--write") ?? 0,
     };
 
     var pipeOptions = new PipeLoopbackOptions
@@ -199,7 +200,7 @@ static void PrintHelp()
     Console.WriteLine("      truth log names each message's length and SHA-256, never its bytes.");
     Console.WriteLine();
     Console.WriteLine("  http-wininet --truth <dir> [--seed n] [--requests n] [--bytes n] [--wait-for-start | --start-after s] [--tls]");
-    Console.WriteLine("               [--concurrency n] [--chunked] [--gzip [--decode]] [--async] [--pace ms] [--http2]");
+    Console.WriteLine("               [--concurrency n] [--chunked] [--gzip [--decode]] [--async] [--pace ms] [--http2] [--write n]");
     Console.WriteLine("      FX-HTTP-001: seeded HTTP/1.1 requests through WinINet to a server this process runs on");
     Console.WriteLine("      loopback, bodies from empty to past 64 KiB both ways. The server logs every head and body");
     Console.WriteLine("      it received and sent by length and SHA-256, never the bytes. --wait-for-start waits for a");
@@ -217,7 +218,10 @@ static void PrintHelp()
     Console.WriteLine("      of the others. --pace has the server wait that many milliseconds before each 16 KiB of a");
     Console.WriteLine("      response body. --http2 has the client enable HTTP/2 and Kestrel serve it over TLS, offered by");
     Console.WriteLine("      ALPN beside HTTP/1.1; the server logs each body as it read and wrote it and each request's");
-    Console.WriteLine("      field names, never the frames; it makes the run FX-HTTP-006, and refuses --chunked.");
+    Console.WriteLine("      field names, never the frames; it makes the run FX-HTTP-006, and refuses --chunked. --write has");
+    Console.WriteLine("      the client send each request's head with HttpSendRequestEx and write its body with InternetWriteFile");
+    Console.WriteLine("      in seeded pieces of 1 to n bytes, logging each piece, then end it with HttpEndRequest; it makes");
+    Console.WriteLine("      the run FX-HTTP-007, with any of the others.");
     Console.WriteLine();
     Console.WriteLine("  No scenario runs implicitly. Nothing is captured or observed by this executable.");
 }

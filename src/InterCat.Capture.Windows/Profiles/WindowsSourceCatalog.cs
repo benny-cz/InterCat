@@ -752,6 +752,9 @@ public static class WindowsSourceCatalog
                 "Measured on FX-HTTP-006 (ADR-037): an exchange WinINet makes over HTTP/2 is recorded as one over HTTP/1.1, its "
                 + "bodies as its client sent and read them and its heads in HTTP/1.1's form, which no wire carried, so the "
                 + "version a head names is WinINet's and no record says which protocol carried the exchange.",
+                "Measured on FX-HTTP-007 (ADR-037): a request body its client writes in pieces with InternetWriteFile is kept "
+                + "a buffer to a write - one past 64,511 bytes cut there, as a body handed over whole is - and ended by an empty "
+                + "buffer flagged last.",
                 "Only WinINet's clients raise these records: .NET's HTTP client, WinHTTP and browsers' own stacks do not.",
                 "Its message bytes are kept only under a scoped content policy; under any other, the buffer's length is.",
                 "Capture impact, seven pairs of FX-HTTP-001 on 2026-09-28 with 4,096 exchanges each: a median of 0.71 CPU "

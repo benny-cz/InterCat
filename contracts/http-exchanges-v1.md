@@ -38,7 +38,9 @@ instance by its first buffer. Two uses are never merged (R22). An asynchronous c
 synchronous one's: FX-HTTP-005's 64 exchanges eight at once, their buffers raised on the client's threads and WinINet's,
 are one exchange to a request, each part whole (revision 886). So are an exchange's over HTTP/2, which WinINet records
 as over HTTP/1.1, its heads in HTTP/1.1's form: FX-HTTP-006's eight clients' 64 exchanges, multiplexed on one connection,
-are one exchange to a request, each part whole (revision 887).
+are one exchange to a request, each part whole (revision 887). So are an exchange's whose request body was written in
+pieces, a buffer to a write: FX-HTTP-007's eight clients' 64 exchanges, their bodies in up to 46 buffers each, are one
+exchange to a request, each body in its writes' buffers and one to end it (revision 888).
 
 A release of a session's oldest interval (`contracts/store-v1.md` §8, ADR-043, revision 435) keeps every buffer of an
 exchange one of whose buffers stays, and the use before a use opened only by repeating one of its buffers, so every
@@ -219,6 +221,6 @@ how many heads were not decoded. It writes no JSON: the command line's document 
 - An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
   asked for reads, and only `http-exchange-heads-v1` writes, asked for with them (§5c, §5d, §5f,
   `contracts/decoders-v1.md` §2).
-- A request body written in pieces, and how WinINet's capture keeps a body in a content coding other than gzip (§5e).
-  Asynchronous WinINet is measured since revision 886 (FX-HTTP-005), and HTTP/2 since revision 887 (FX-HTTP-006),
-  whose heads no record tells from HTTP/1.1's.
+- How WinINet's capture keeps a body in a content coding other than gzip (§5e). Asynchronous WinINet is measured
+  since revision 886 (FX-HTTP-005), HTTP/2 since revision 887 (FX-HTTP-006), whose heads no record tells from
+  HTTP/1.1's, and a request body written in pieces since revision 888 (FX-HTTP-007).

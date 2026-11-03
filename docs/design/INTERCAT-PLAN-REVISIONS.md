@@ -802,6 +802,8 @@ Revision 886 measures asynchronous WinINet through its capture (FX-HTTP-005): an
 
 Revision 887 measures HTTP/2 through WinINet's capture (FX-HTTP-006): an exchange over HTTP/2 is kept as over HTTP/1.1, its heads in HTTP/1.1's form that no wire carried, so a decoded head now says its version is WinINet's wherever heads are decoded.
 
+Revision 888 measures a request body written in pieces through WinINet's capture (FX-HTTP-007): it is kept a buffer to a write, a write past 64,511 bytes cut as a whole body is, and ended by an empty buffer, so the grouping needs nothing new.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3230,3 +3232,20 @@ test groups as a session's records are: one exchange to a request, every body as
 mutations of the statement - said of no head, of every decoding, of a head not read, missing from or added to a
 listing, missing from the conversation or hidden in the viewer - are caught. A table's version columns stay the heads'
 own. Content codings other than gzip, and a request body written in pieces, remain unmeasured.
+
+Revision 888 measures a request body written in pieces through WinINet's capture (FX-HTTP-007). Every client measured
+before handed `HttpSendRequest` its body whole; the truth workload's client can now send the head with
+`HttpSendRequestEx`, declaring the body's length, write the body with `InternetWriteFile` in seeded pieces of 1 to n
+bytes, logging each by length and SHA-256, and end the request with `HttpEndRequest`, synchronously or asynchronously.
+Six lab runs - pieces of up to 80,000 bytes of bodies to 256 KiB and of up to 2,000, each asynchronous too, the first
+over HTTP/2, and pieces of up to 4,096 eight clients at once - kept each body a buffer to a write, in order, a piece
+past 64,511 bytes cut there as a body handed over whole is, and ended it with an empty buffer flagged last; every part
+matched the server's truth and nothing was lost. Through `icat record --profile content` two runs of 64 exchanges kept
+every exchange whole, each of the 63 bodies of each run in as many buffers as its writes made and one to end it, and
+every part `icat content --part` saved matched the server's bytes, 254 of 254 that held any. The grouping needs nothing
+new; FX-HTTP-007 keeps the ledger of its run eight at once, which a test groups and holds each body to its client's
+writes. Revision 887's first clean-worktree run had failed three tests its code never touched while other work ran
+beside it - two tests' session folders under the shared test temp folder vanished mid-test, cause not found, and a
+chunked-recording test that trusted a 400 ms pause published once - and passed whole when rerun alone; the three
+fixtures of that shape now hold their scripted capture until a generation is published rather than sleep. Content
+codings other than gzip, and redirects, proxies and authentication, remain unmeasured.

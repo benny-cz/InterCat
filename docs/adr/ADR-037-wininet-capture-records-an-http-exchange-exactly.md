@@ -6,11 +6,11 @@
   measured, and an exchange's number bound to its use in time (revision 244); its scope held to the named processes
   themselves (revision 245); a process's exchanges on its rung (revision 247, `contracts/http-exchanges-v1.md`);
   asynchronous clients measured, and the thread each record is raised on (revision 886); HTTP/2 measured, its heads kept
-  in HTTP/1.1's form (revision 887)
+  in HTTP/1.1's form (revision 887); a request body written in pieces measured (revision 888)
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
 - Relates to: §3.7, §11, §11.1, §11.2, M3, M8, I21, R21, R22, ADR-030, ADR-036, FX-HTTP-001, FX-HTTP-002,
-  FX-HTTP-003, FX-HTTP-005, FX-HTTP-006, `contracts/content-v1.md`, `contracts/decoders-v1.md`,
+  FX-HTTP-003, FX-HTTP-005, FX-HTTP-006, FX-HTTP-007, `contracts/content-v1.md`, `contracts/decoders-v1.md`,
   `tools/InterCat.WinInetProbe`,
   `bench/results/wininet-capture-feasibility-20260928T102426Z`,
   `bench/results/wininet-capture-feasibility-tls-20260928T120408Z`,
@@ -19,7 +19,9 @@
   `bench/results/wininet-capture-async-paced-eight-chunked-20261103T210230Z`,
   `bench/results/wininet-capture-sync-paced-20261103T204528Z`,
   `bench/results/wininet-capture-http2-20261103T214430Z`,
-  `bench/results/wininet-capture-http2-paced-eight-20261103T215057Z`
+  `bench/results/wininet-capture-http2-paced-eight-20261103T215057Z`,
+  `bench/results/wininet-capture-written-20261103T223930Z`,
+  `bench/results/wininet-capture-written-eight-20261103T223954Z`
 
 ## Context
 
@@ -156,6 +158,25 @@ paced or not, asynchronous, in gzip read coded and decoded, and 64 eight at once
   HTTP/1.1, every response's with no reason - and every body `icat content --part` saved matched the server's bytes,
   126 of 126 that held any; no body was said to disagree with its head.
 
+## Measurement of a request body written in pieces (revision 888)
+
+Every client measured before handed `HttpSendRequest` its body whole. FX-HTTP-007's client writes it after the head
+instead: `HttpSendRequestEx` sends the head and declares the body's length, `InternetWriteFile` writes the body in
+seeded pieces of 1 to n bytes, and `HttpEndRequest` ends the request; the client logs each piece by length and SHA-256,
+in order. The probe ran it six times beside a decoy: pieces of up to 80,000 bytes of bodies to 256 KiB and of up to
+2,000 bytes, each synchronously and asynchronously, the first over HTTP/2 too, and pieces of up to 4,096 bytes eight
+clients at once.
+
+- **A buffer to a write.** Each body's buffers that hold bytes were the pieces its client wrote, by length and in
+  order - 424 of them in the run eight at once, 103 in one body - and a piece past 64,511 bytes was cut there, as a body
+  handed over whole is; every body then ended with an empty buffer flagged last, as before. Every part was numbered from
+  0 and flagged at its ends, every part matched the server's truth, nothing was lost and none of the decoy's records
+  reached the session.
+- **Through `icat record`** (FX-HTTP-007: 64 exchanges with bodies to 256 KiB in pieces of up to 80,000 bytes, and 64
+  eight at once in pieces of up to 4,096): every record bound to the workload, every exchange recorded whole, each of
+  the 63 bodies of each run in as many buffers as its writes made and one to end it, and every part `icat content
+  --part` saved matched the server's bytes, 254 of 254 that held any.
+
 ## Decision
 
 1. **The source contract, for its admission to implement.** An exchange is a `SessionId`; a part is its event, which
@@ -221,9 +242,10 @@ paced or not, asynchronous, in gzip read coded and decoded, and 64 eight at once
 - HTTP/2 is measured (revision 887, FX-HTTP-006): its bodies are kept as over HTTP/1.1 and its heads in HTTP/1.1's
   form, so a head's version is WinINet's and InterCat says so where heads are decoded; exchanges multiplexed on one
   connection keep their own numbers.
-- Not measured: content codings other than gzip; redirects, proxies and authentication; a request body written in
-  pieces (`HttpSendRequestEx` and `InternetWriteFile`), where every measured client handed its body to
-  `HttpSendRequest` whole. Each is measured before a profile claims it.
+- A request body written in pieces is measured (revision 888, FX-HTTP-007): it is kept a buffer to a write, a write past
+  64,511 bytes cut there, and ended by an empty buffer, as a body handed over whole is.
+- Not measured: content codings other than gzip; redirects, proxies and authentication. Each is measured before a
+  profile claims it.
 - The scope is the named processes themselves (revision 245): the provider's filter holds their IDs by number, and the
   capture holds each process open while it runs, so a named process's exit ends its content and no process started
   after it can take its ID.

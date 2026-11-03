@@ -88,9 +88,11 @@ public sealed class LiveSessionRecorderTests
         long now = Stopwatch.GetTimestamp();
         for (int index = 0; index < 4; index++)
         {
+            // The last two records wait for a generation of the first two, so one is published while the capture records
+            // however busy the machine is: a fixed 400 ms pause let a loaded clean-worktree run publish only at the stop.
             if (index == 2)
             {
-                host.Pause(TimeSpan.FromMilliseconds(400));
+                host.PauseUntil(() => store.Current is not null, TimeSpan.FromSeconds(30));
             }
 
             var admitted = new AdmittedEvent
@@ -225,9 +227,10 @@ public sealed class LiveSessionRecorderTests
         long now = Stopwatch.GetTimestamp();
         for (int index = 0; index < 4; index++)
         {
+            // As above: the first two records' generation is published before the last two arrive, however busy the machine.
             if (index == 2)
             {
-                host.Pause(TimeSpan.FromMilliseconds(400));
+                host.PauseUntil(() => store.Current is not null, TimeSpan.FromSeconds(30));
             }
 
             var admitted = new AdmittedEvent
@@ -910,7 +913,13 @@ public sealed class LiveSessionRecorderTests
             long now = Stopwatch.GetTimestamp();
             for (int index = 0; index < 6; index++)
             {
-                if (index is 2 or 4)
+                // Asked to publish its first chunk early, the recording does so before the next records arrive, however
+                // busy the machine is; elsewhere a pause shows what is not published early.
+                if (index == 2 && first is not null)
+                {
+                    host.PauseUntil(() => store.Current is not null, TimeSpan.FromSeconds(30));
+                }
+                else if (index is 2 or 4)
                 {
                     host.Pause(TimeSpan.FromMilliseconds(400));
                 }

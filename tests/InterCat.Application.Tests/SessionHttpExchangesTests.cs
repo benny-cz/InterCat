@@ -245,6 +245,45 @@ public sealed class SessionHttpExchangesTests
     }
 
     /// <summary>
+    /// FX-HTTP-007 measured that a request body its client writes in pieces with InternetWriteFile, after sending the head
+    /// with HttpSendRequestEx, is kept a buffer to a write - a write past 64,511 bytes cut as a whole body is - and ended by
+    /// an empty buffer flagged last, as a body handed to HttpSendRequest whole is. The ledger of eight clients' 64 exchanges,
+    /// their bodies written in pieces of up to 4,096 bytes, grouped as a session's records are, is one exchange to a
+    /// request, each part whole and as long as the server's truth, and each body as many buffers as its client's writes and
+    /// the one that ends it.
+    /// </summary>
+    [Fact(DisplayName = "R22: FX-HTTP-007's request bodies, written in pieces eight clients at once, are each its exchange's, a buffer to a write and one to end it, every part whole and as long as the server's truth")]
+    public void BodiesWrittenInPiecesAreTheirExchanges()
+    {
+        (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes, int Request, bool Client)[] ledger =
+            GroupedAsTheirRequests("FX-HTTP-007", heads: true);
+
+        // The client's own account of each body's writes, in order: the buffers holding bytes are those writes, one to one.
+        var writes = new Dictionary<long, List<long>>();
+        foreach (string line in File.ReadLines(Path.Combine(RepositoryRoot(), "fixtures", "FX-HTTP-007", "evidence", "eight-at-once", "truth-http-client.jsonl")))
+        {
+            using var record = System.Text.Json.JsonDocument.Parse(line);
+            if (record.RootElement.GetProperty("status").ValueKind == System.Text.Json.JsonValueKind.String
+                && record.RootElement.GetProperty("status").GetString() == "request-body-write")
+            {
+                long call = record.RootElement.GetProperty("callId").GetInt64();
+                if (!writes.TryGetValue(call, out List<long>? lengths)) writes[call] = lengths = [];
+                lengths.Add(record.RootElement.GetProperty("declaredBytes").GetInt64());
+            }
+        }
+
+        Assert.Equal(63, writes.Count);
+        Assert.True(writes.Values.Sum(lengths => lengths.Count) > 300);
+        foreach ((long call, List<long> lengths) in writes)
+        {
+            (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes, int Request, bool Client)[] body =
+                [.. ledger.Where(buffer => buffer.Request == call && buffer.Event == 2002).OrderBy(buffer => buffer.Sequence)];
+            Assert.Equal(lengths, body.Where(buffer => buffer.Bytes > 0).Select(buffer => buffer.Bytes));
+            Assert.Equal((0L, 2L), (body[^1].Bytes, body[^1].Flags));
+        }
+    }
+
+    /// <summary>
     /// The ledger of <paramref name="fixture"/>'s run eight at once, grouped as a session's records are: one exchange to a
     /// request, every buffer of an exchange its request's, every part whole and each as long as the server's truth of it -
     /// a chunked body as its client read it - or, where the server holds no head's bytes, the heads recorded whole.

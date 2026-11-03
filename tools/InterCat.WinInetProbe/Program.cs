@@ -49,6 +49,7 @@ internal static partial class Program
         bool decode = args.Contains("--decode", StringComparer.Ordinal);
         bool async = args.Contains("--async", StringComparer.Ordinal);
         bool http2 = args.Contains("--http2", StringComparer.Ordinal);
+        int write = int.Parse(Option(args, "--write") ?? "0", CultureInfo.InvariantCulture);
         int pace = int.Parse(Option(args, "--pace") ?? "0", CultureInfo.InvariantCulture);
         bool ledger = args.Contains("--ledger", StringComparer.Ordinal);
         int concurrency = int.Parse(Option(args, "--concurrency") ?? "1", CultureInfo.InvariantCulture);
@@ -61,6 +62,7 @@ internal static partial class Program
             Console.Error.WriteLine("  [--gzip [--decode]]: responses coded in gzip, read coded or decoded by WinINet (FX-HTTP-004)");
             Console.Error.WriteLine("  [--async]: the client works WinINet asynchronously, with any of the others (FX-HTTP-005)");
             Console.Error.WriteLine("  [--http2]: the client enables HTTP/2 and Kestrel serves it over TLS (FX-HTTP-006)");
+            Console.Error.WriteLine("  [--write n]: the client writes each request body in seeded pieces of 1 to n bytes (FX-HTTP-007)");
             Console.Error.WriteLine("  [--pace ms]: the server waits that long before each 16 KiB of a response body, so reads wait or pend");
             Console.Error.WriteLine("  [--ledger]: writes each captured buffer's metadata - time, event, exchange, place, ends, length, thread -");
             Console.Error.WriteLine("             never its bytes, as buffers.csv beside the report");
@@ -138,6 +140,12 @@ internal static partial class Program
             if (decode) start.ArgumentList.Add("--decode");
             if (async) start.ArgumentList.Add("--async");
             if (http2) start.ArgumentList.Add("--http2");
+            if (write > 0)
+            {
+                start.ArgumentList.Add("--write");
+                start.ArgumentList.Add(write.ToString(CultureInfo.InvariantCulture));
+            }
+
             if (pace > 0)
             {
                 start.ArgumentList.Add("--pace");
@@ -236,7 +244,7 @@ internal static partial class Program
             .Count(line => line.Contains("\"kind\":\"CallCompleted\"", StringComparison.Ordinal));
         object report = new
         {
-            exchange = Compare(captured, truth, process.Id, requests, bytes, tls || http2, concurrency, chunked, gzip, decode, async, http2, pace, eventsLost, others,
+            exchange = Compare(captured, truth, process.Id, requests, bytes, tls || http2, concurrency, chunked, gzip, decode, async, http2, write, pace, eventsLost, others,
                 malformed, ledger ? Path.Combine(output, "buffers.csv") : null),
             processFilter = new
             {
@@ -259,7 +267,7 @@ internal static partial class Program
     /// with the body before its coding and with the coded bytes.
     /// </summary>
     private static object Compare(List<Buffer> captured, string truth, int processId, int requests, int maximumBodyBytes, bool tls,
-        int concurrency, bool chunked, bool gzip, bool decode, bool async, bool http2, int pace, int eventsLost, long others, long malformed,
+        int concurrency, bool chunked, bool gzip, bool decode, bool async, bool http2, int write, int pace, int eventsLost, long others, long malformed,
         string? ledger)
     {
         // The threads that made the requests, by the workload's own account: a record raised on any other thread of its
@@ -412,6 +420,44 @@ internal static partial class Program
             }
         }
 
+        // Written in pieces: each request body's buffers that hold bytes, in order, against the lengths its client wrote -
+        // one buffer to a write, or a write cut where it passes the 64,511 bytes a buffer holds at most.
+        var writes = new Dictionary<long, List<long>>();
+        foreach (string line in File.ReadLines(Path.Combine(truth, "truth-http-client.jsonl")))
+        {
+            if (!line.Contains("\"status\":\"request-body-write\"", StringComparison.Ordinal)) continue;
+            JsonElement record = JsonDocument.Parse(line).RootElement;
+            long call = record.GetProperty("callId").GetInt64();
+            if (!writes.TryGetValue(call, out List<long>? lengths)) writes[call] = lengths = [];
+            lengths.Add(record.GetProperty("declaredBytes").GetInt64());
+        }
+
+        int bodiesAsWritten = 0, bodiesCutWhereAWriteWasLonger = 0, bodiesOtherwise = 0, writesPastTheLimit = 0;
+        var otherwise = new List<string>();
+        foreach ((long call, List<long> lengths) in writes)
+        {
+            writesPastTheLimit += lengths.Count(length => length > 64_511);
+            long[] held = byRequest.TryGetValue((int)call, out List<List<Buffer>>? written) && written.Count == 1
+                ? [.. written[0].Where(buffer => buffer.EventId == 2002 && buffer.Bytes.Length > 0).OrderBy(buffer => buffer.Sequence)
+                    .Select(buffer => (long)buffer.Bytes.Length)]
+                : [];
+            long[] cut = [.. lengths.SelectMany(length => Enumerable.Range(0, (int)((length + 64_510) / 64_511))
+                .Select(piece => Math.Min(64_511, length - (piece * 64_511L))))];
+            if (held.SequenceEqual(lengths))
+            {
+                bodiesAsWritten++;
+            }
+            else if (held.SequenceEqual(cut))
+            {
+                bodiesCutWhereAWriteWasLonger++;
+            }
+            else
+            {
+                bodiesOtherwise++;
+                if (otherwise.Count < 3) otherwise.Add($"request {call}: wrote {string.Join(' ', lengths)}; buffers {string.Join(' ', held)}");
+            }
+        }
+
         var parts = new Dictionary<string, object>();
         foreach ((int id, string part) in Parts)
         {
@@ -529,8 +575,12 @@ internal static partial class Program
             providerGuid = Provider,
             keywords = "0x" + Keywords.ToString("X16", CultureInfo.InvariantCulture),
             processFilter = "EVENT_FILTER_TYPE_PID: the workload's process alone",
-            workload = http2 ? "FX-HTTP-006" : async ? "FX-HTTP-005" : gzip ? "FX-HTTP-004" : concurrency > 1 || chunked ? "FX-HTTP-003"
-                : tls ? "FX-HTTP-002" : "FX-HTTP-001",
+            workload = write > 0 ? "FX-HTTP-007" : http2 ? "FX-HTTP-006" : async ? "FX-HTTP-005" : gzip ? "FX-HTTP-004"
+                : concurrency > 1 || chunked ? "FX-HTTP-003" : tls ? "FX-HTTP-002" : "FX-HTTP-001",
+            writeBytes = write,
+            requestBodiesWritten = write > 0
+                ? new { bodiesAsWritten, bodiesCutWhereAWriteWasLonger, bodiesOtherwise, writesPastTheLimit, otherwise }
+                : null,
             http2,
             requestsOverHttp2ByTheClient = http2 ? ProtocolCount("truth-http-client.jsonl", "protocol-used", "HTTP/2") : (int?)null,
             requestsOverHttp2ByTheServer = http2 ? ProtocolCount("truth-http-server.jsonl", "request-protocol", "HTTP/2") : (int?)null,
