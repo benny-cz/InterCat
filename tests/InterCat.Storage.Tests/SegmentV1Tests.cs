@@ -1071,6 +1071,68 @@ public sealed partial class SegmentV1Tests
         Assert.Equal(Payload(names[0]) + Payload(names[1]), afterSecond.AdmittedPayloadBytes);
     }
 
+    [Fact(DisplayName = "S2: a store's cached readers hold no more than the cache's budget while a query reads them, but the reader read, and stay cached, reading again what they gave back")]
+    public void CachedReadersHoldTheBudgetWhileAQueryReads()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] spread = Spread(600);
+        _ = Publish(session.Store, spread[..200]);
+        _ = Publish(session.Store, spread[200..400]);
+        DerivedGenerationResult last = Publish(session.Store, spread[400..]);
+        string[] names = [.. SessionSegments.Names(last.Manifest)];
+        Assert.Equal(3, names.Length);
+        static long Kept(SegmentReaderV1 reader) => reader.Columns
+            .Where(column => column.Id is SegmentColumnId.SessionRelativeTicks or SegmentColumnId.Mechanism)
+            .Sum(column => (long)column.ValueLength + column.NullBitmapLength);
+
+        // A derivation reads the columns it needs, a column at a time, as these read every column of a fixed width.
+        static long ReadColumns(SegmentReaderV1 reader)
+        {
+            foreach (SegmentColumnDescriptor column in reader.Columns.Where(column => column.Encoding != SegmentColumnEncoding.VariableReference))
+            {
+                _ = reader.Slice(column.Id);
+            }
+
+            return reader.ResidentBytes;
+        }
+
+        // Room for every reader's decoded dictionaries and kept columns and for one reader's columns read, not for two.
+        long dictionaries = last.Manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Dictionary)
+            .Sum(dependency => dependency.LengthBytes);
+        SegmentReaderV1[] measured = [.. names.Select(name => SessionSegments.Open(session.Store.Root, last.Manifest, name))];
+        long[] whole = [.. measured.Select(ReadColumns)];
+        ObservationRowV1[] before = [.. measured.SelectMany(reader => Enumerable.Range(0, reader.RowCount).Select(reader.Row))];
+        long budget = dictionaries + measured.Sum(Kept) + measured.Select((reader, index) => whole[index] - Kept(reader)).Max();
+        session.Store.UseSegmentReaderBudget(budget);
+
+        // A query reads every segment's columns under one lease. Each reader the cache holds gives back all but the kept
+        // columns once another, read past the budget, needs the room; the one being read keeps what the query read of it,
+        // and the charge holds the budget at every step rather than only once the lease ends (revision 876).
+        SegmentReaderV1[] readers;
+        using (EvidenceLease lease = session.Store.AcquireLease())
+        {
+            readers = [.. names.Select(name => SessionSegments.Open(session.Store, lease.Manifest, name))];
+            for (int index = 0; index < readers.Length; index++)
+            {
+                _ = ReadColumns(readers[index]);
+                long held = session.Store.SegmentReaderCache.AdmittedPayloadBytes;
+                Assert.True(held <= budget, $"{held:N0} held against {budget:N0} once segment {index} was read.");
+                Assert.Equal(whole[index], readers[index].ResidentBytes);
+                Assert.All(readers[..index], reader => Assert.Equal(Kept(reader), reader.ResidentBytes));
+            }
+        }
+
+        // No reader was dropped, and what one gave back is read and checked again when asked for, and says the same.
+        Assert.Equal(3, session.Store.SegmentReaderCache.Entries);
+        Assert.True(session.Store.SegmentReaderCache.AdmittedPayloadBytes <= budget);
+        using (EvidenceLease lease = session.Store.AcquireLease())
+        {
+            SegmentReaderV1[] again = [.. names.Select(name => SessionSegments.Open(session.Store, lease.Manifest, name))];
+            Assert.All(again.Zip(readers), pair => Assert.Same(pair.Second, pair.First));
+            Assert.Equal(before, again.SelectMany(reader => Enumerable.Range(0, reader.RowCount).Select(reader.Row)));
+        }
+    }
+
     [Fact(DisplayName = "When a query ends, cached readers give back every column but session time and mechanism, and stay cached")]
     public void AnEndedQueryTrimsWhatCachedReadersHold()
     {
@@ -1079,13 +1141,21 @@ public sealed partial class SegmentV1Tests
         _ = Publish(session.Store, [Row(200, bytes: 2), Row(210, bytes: 5)]);
         DerivedGenerationResult last = Publish(session.Store, [Row(300, bytes: 3), Row(310, bytes: 6)]);
         string[] names = [.. SessionSegments.Names(last.Manifest)];
+        static long Kept(SegmentReaderV1 reader) => reader.Columns
+            .Where(column => column.Id is SegmentColumnId.SessionRelativeTicks or SegmentColumnId.Mechanism)
+            .Sum(column => (long)column.ValueLength + column.NullBitmapLength);
 
-        // A budget every reader fits in once opened - its time column and its decoded dictionaries - but not once a query
-        // has read every one of its columns.
+        // A budget every reader's kept columns and decoded dictionaries fit in, but not the columns of the last reader a
+        // query reads: while the query reads, the reader read keeps them, past the budget.
         long dictionaries = last.Manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Dictionary)
             .Sum(dependency => dependency.LengthBytes);
-        long budget = 2 * (dictionaries
-            + names.Sum(name => SessionSegments.Open(session.Store.Root, last.Manifest, name).ResidentBytes));
+        SegmentReaderV1[] measured = [.. names.Select(name => SessionSegments.Open(session.Store.Root, last.Manifest, name))];
+        foreach (SegmentReaderV1 reader in measured)
+        {
+            _ = Enumerable.Range(0, reader.RowCount).Select(reader.Row).ToList();
+        }
+
+        long budget = dictionaries + measured.Sum(Kept);
         session.Store.UseSegmentReaderBudget(budget);
         ObservationRowV1[] before;
         SegmentReaderV1[] readers;
@@ -1097,16 +1167,12 @@ public sealed partial class SegmentV1Tests
             Assert.True(session.Store.SegmentReaderCache.AdmittedPayloadBytes > budget);
         }
 
-        // The lease's end brought the charge back within the budget without dropping a reader. Readers were trimmed only
-        // until it fit: a trimmed one kept exactly the two columns every projection reads, and none kept less.
+        // The lease's end brought the charge back within the budget without dropping a reader: each kept exactly the two
+        // columns every projection reads.
         SegmentReaderCacheSnapshot trimmed = session.Store.SegmentReaderCache;
         Assert.Equal(3, trimmed.Entries);
         Assert.True(trimmed.AdmittedPayloadBytes <= budget, $"{trimmed.AdmittedPayloadBytes} held against {budget}.");
-        static long Kept(SegmentReaderV1 reader) => reader.Columns
-            .Where(column => column.Id is SegmentColumnId.SessionRelativeTicks or SegmentColumnId.Mechanism)
-            .Sum(column => (long)column.ValueLength + column.NullBitmapLength);
-        Assert.Contains(readers, reader => reader.ResidentBytes == Kept(reader));
-        Assert.All(readers, reader => Assert.True(reader.ResidentBytes >= Kept(reader)));
+        Assert.All(readers, reader => Assert.Equal(Kept(reader), reader.ResidentBytes));
 
         // A released column is read and checked again when asked for, and says the same.
         using (EvidenceLease lease = session.Store.AcquireLease())

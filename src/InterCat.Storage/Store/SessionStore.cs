@@ -310,10 +310,10 @@ public sealed partial class SessionStore
     /// <summary>
     /// Per open store, the verified immutable segment payload its queries keep in memory (§20.1): what the cached readers
     /// hold, their read columns, chunks and decoded dictionaries. A reader that does not fit is served without entering
-    /// the cache, and when a query leaves the cached readers holding more, they give back every column but session time
-    /// and mechanism (R8, §12). It is not an entry count or a managed-memory measurement. Half of §12's 512 MiB analysis
-    /// budget; trimmed readers hold about nine bytes a row, so it keeps a reader for every segment of a session of
-    /// tens of millions of rows.
+    /// the cache, and when the cached readers come to hold more, they give back every column but session time and
+    /// mechanism: while a query reads, all but the reader it reads, and the rest once its lease ends (R8, §12, S2). It is
+    /// not an entry count or a managed-memory measurement. Half of §12's 512 MiB analysis budget; trimmed readers hold
+    /// about nine bytes a row, so it keeps a reader for every segment of a session of tens of millions of rows.
     /// </summary>
     public const long DefaultSegmentReaderCacheBytes = 256L * 1024 * 1024;
 
@@ -361,7 +361,7 @@ public sealed partial class SessionStore
     /// leaves them reported orphans, which <see cref="RemoveOrphans"/> removes when asked.
     /// </summary>
     private readonly HashSet<string> awaitingRemoval = new(StringComparer.OrdinalIgnoreCase);
-    private SegmentReaderCache segmentReaders = new(DefaultSegmentReaderCacheBytes);
+    private SegmentReaderCache segmentReaders = new(DefaultSegmentReaderCacheBytes, ResidentColumns);
 
     /// <summary>What this instance has read back and hashed, so an unchanged immutable file is hashed once.</summary>
     private readonly DependencyMeasurements measurements;
@@ -504,7 +504,7 @@ public sealed partial class SessionStore
     {
         lock (gate)
         {
-            segmentReaders = new(budgetBytes);
+            segmentReaders = new(budgetBytes, ResidentColumns);
             if (current is not null)
             {
                 segmentReaders.Prune(current);
@@ -2439,8 +2439,8 @@ public sealed partial class SessionStore
             _ = leases.Remove(lease.Id);
         }
 
-        // A query may have read many columns of the cached readers; what they hold comes back within the budget when it
-        // ends, down to the columns every projection reads again.
+        // While a query reads, the cached readers hold the budget but for the one it reads (revision 876); what they hold
+        // comes back within it when the query ends, down to the columns every projection reads again.
         _ = segmentReaders.Trim(ResidentColumns);
     }
 

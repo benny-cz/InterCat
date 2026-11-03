@@ -778,6 +778,8 @@ Revision 874 writes each segment to its staging file in the order of its bytes, 
 
 Revision 875 has the store's cached readers give their columns back before a release, a compaction and between a checkpoint's derivations, and gives a finished session's checkpoint room under the heap's limit for its call records, so it needs 192-208 MiB where it needed 384-416, and finds a busier window's live derivation holding its cached readers' columns past their budget.
 
+Revision 876 has the segment-reader cache hold its budget while a query reads, not only when its lease ends, so a busy window's overview needs 320-352 MiB where it needed 384-512, and a rolling capture passes its two-hour qualification under 512 MiB whole.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -2947,3 +2949,22 @@ rows in 69 segments, needs 384-512 MiB alone, as revision 874's code does, and i
 columns in the store's cached readers: the cache's 256 MiB budget is restored by a trim when a lease ends, and a
 derivation that reads every segment's columns under one lease holds them all past it. S2 bounds the cache by its
 declared budget, not by the rows a lease reads, so the budget must hold while readers read.
+
+Revision 876 holds the segment-reader cache to its budget while a query reads (§12.1 S2, ADR-054 decision 5). A cached
+reader now tells its cache, on the thread that read and outside every lock it takes, each time it comes to hold more: a
+column or its chunk read, or a value derived from its rows kept (`SegmentReaderV1.Grew`). Past the budget, every other
+cached reader gives back every column but session time and mechanism, in the order the cache took them, the oldest
+segments first, which a live view reads least. The reader that grew keeps what it holds, which its query is reading,
+and what readers derived from their rows waits for the trim at the lease's end, which still brings the rest within the
+budget: values derived are a fraction of the columns they spare a query from reading, and costly to derive again.
+Giving back the readers read most recently first, which a scan in segment order reaches last, was tried and needed
+about as much. `icat overview` of revision 875's busiest generation, 2,237,882 rows in 69 segments, prints the same
+overview and needs 320-352 MiB, where revision 875's code needed 384-512, in 6-11 s against 7-9 s; the checkpoint of
+875's other run still needs 192-208 MiB. A test reads every segment's columns under one lease with room for one
+segment's beside the others' kept columns, and finds the charge within the budget at every step, each reader read
+before at its kept columns and the one read whole. Under 512 MiB for two hours, keeping ten minutes, a rolling capture
+then passed the qualification whole for the first time: its window and evidence held at all 106 judged samples through
+43 releases, its session was saved with its checkpoint and reopened holding its window, and its heap was 308 MiB at the
+median and at most 441 MiB as sampled (`bench/results/rolling-20261103T002827Z-2h-keep10-512MiB-revision876`). The
+machine was calmer than in revision 875's runs, its window at 356,340-786,382 rows judged, so the viewer beside a window
+of two million rows is still to be measured when a machine that busy recurs.

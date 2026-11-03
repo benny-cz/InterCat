@@ -205,7 +205,9 @@ revision 874's met 1,065,515 rows by minute 27 and ran out at a release with its
 and compaction, held its window and evidence at all 107 judged samples, at up to 1,360,702 rows, and ran out after its
 quota, publishing the finished session's checkpoint (`-2h-keep10-512MiB-revision875-before-checkpoint`); with the
 checkpoint given room, the busiest machine yet brought the window to 2,097,259 rows by minute 32, when the viewer ran
-out in its live derivation after a release (`-2h-keep10-512MiB-revision875`).
+out in its live derivation after a release (`-2h-keep10-512MiB-revision875`). Revision 876's, its reader cache
+holding its budget while a query reads, passed whole: its window and evidence held at all 106 judged samples, at
+356,340-786,382 rows on a calmer machine, and its session was saved and reopened (`-2h-keep10-512MiB-revision876`).
 
 `impact --output <new scratch directory> [--triplets <1-15>]` measures the broker's capture impact at its
 compiled cadence: the seeded TCP workload with no capture, a broker `OnStop` capture and a broker `Live`

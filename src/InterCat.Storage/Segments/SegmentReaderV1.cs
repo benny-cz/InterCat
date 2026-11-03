@@ -174,6 +174,9 @@ public sealed class SegmentReaderV1
     /// <summary>The bytes a reader that reads its file in pieces holds: the columns and chunk it has read.</summary>
     private long residentBytes;
 
+    /// <summary>Told when this reader comes to hold more (<see cref="Grew"/>).</summary>
+    private Action<SegmentReaderV1>? grew;
+
     private SegmentReaderV1(
         SegmentBytes source,
         Guid segmentId,
@@ -262,6 +265,18 @@ public sealed class SegmentReaderV1
     /// </summary>
     public long ResidentBytes =>
         (source.Whole is { } whole ? whole.Length : Interlocked.Read(ref residentBytes)) + Interlocked.Read(ref derivedBytes);
+
+    /// <summary>
+    /// Told, on the thread that read, each time this reader comes to hold more: a column or its chunk read, or a value
+    /// derived from its rows kept. The cache holding the reader sets it, to keep its budget while queries read rather
+    /// than only once their leases end (S2, revision 876); a reader no cache holds tells nothing. It is told outside
+    /// every lock this reader takes.
+    /// </summary>
+    internal Action<SegmentReaderV1>? Grew
+    {
+        get => Volatile.Read(ref grew);
+        set => Volatile.Write(ref grew, value);
+    }
 
     /// <summary>
     /// Opens a segment, with the dictionaries its columns reference. A column whose dictionary was not
@@ -1302,8 +1317,11 @@ public sealed class SegmentReaderV1
 
             _ = Interlocked.Add(ref derivedBytes, bytes - (derived.TryGetValue(kind, out var replaced) ? replaced.Bytes : 0));
             derived[kind] = (new(source), rows, bytes);
-            return rows;
         }
+
+        // Outside the gate: the cache, keeping its budget, takes other readers' gates.
+        Grew?.Invoke(this);
+        return rows;
     }
 
     /// <summary>Whether values kept under <paramref name="kept"/> were derived under <paramref name="source"/>, still alive.</summary>
@@ -1409,6 +1427,7 @@ public sealed class SegmentReaderV1
         if (source.Whole is null)
         {
             _ = Interlocked.Add(ref residentBytes, values.Length + nulls.Length);
+            Grew?.Invoke(this);
         }
 
         return bytes;
@@ -1429,6 +1448,7 @@ public sealed class SegmentReaderV1
             if (ReferenceEquals(known, candidate) && source.Whole is null)
             {
                 _ = Interlocked.Add(ref residentBytes, bytes.Length);
+                Grew?.Invoke(this);
             }
         }
 

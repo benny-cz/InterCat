@@ -22,8 +22,11 @@ public sealed record SegmentReaderCacheSnapshot(
 /// dictionaries it decoded - not its file's length. What a reader holds grows as queries read more of it, so when the
 /// cache holds more than its budget, <see cref="Trim"/> gives back every column but the few every projection reads.
 /// Since revision 169 a reader also keeps values derived from its rows, such as a derivation's bindings, charged as
-/// columns are; a trim gives them back only when giving back the columns was not enough. Pruning drops only the cache's
-/// reference: a query already holding a reader remains valid for the generation it leased.
+/// columns are; a trim gives them back only when giving back the columns was not enough. Since revision 876 the budget
+/// holds while queries read, not only once their leases end: a cached reader that comes to hold more past the budget
+/// has every other give back its columns but the few every projection reads, so a derivation reading every segment's
+/// columns under one lease holds the budget and the reader it reads rather than every column it read (S2). Pruning
+/// drops only the cache's reference: a query already holding a reader remains valid for the generation it leased.
 /// </summary>
 /// <remarks>
 /// Readers are admitted while they fit and served uncached once the cache is full; a reachable reader is never evicted
@@ -38,15 +41,21 @@ internal sealed class SegmentReaderCache
     private readonly Lock gate = new();
     private readonly Dictionary<string, Entry> entries = new(StringComparer.OrdinalIgnoreCase);
     private readonly long budgetBytes;
+    private readonly IReadOnlySet<SegmentColumnId> resident;
+    private readonly Action<SegmentReaderV1> grown;
     private SessionManifestV1? selectedManifest;
     private long hits;
     private long misses;
     private long bypasses;
 
-    public SegmentReaderCache(long budgetBytes)
+    /// <param name="resident">The columns a reader keeps when the budget holds while it is read: those every projection reads.</param>
+    public SegmentReaderCache(long budgetBytes, IReadOnlySet<SegmentColumnId> resident)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(budgetBytes);
+        ArgumentNullException.ThrowIfNull(resident);
         this.budgetBytes = budgetBytes;
+        this.resident = resident;
+        grown = Grown;
     }
 
     public SegmentReaderCacheSnapshot Snapshot
@@ -129,6 +138,11 @@ internal sealed class SegmentReaderCache
     {
         lock (gate)
         {
+            foreach (Entry entry in entries.Values)
+            {
+                entry.Reader.Grew = null;
+            }
+
             entries.Clear();
         }
     }
@@ -175,6 +189,7 @@ internal sealed class SegmentReaderCache
             }
 
             entries.Add(segment.Name, entry);
+            reader.Grew = grown;
             return reader;
         }
     }
@@ -211,16 +226,7 @@ internal sealed class SegmentReaderCache
         lock (gate)
         {
             long charge = Charge();
-            long released = 0;
-            foreach (Entry entry in entries.Values)
-            {
-                if (charge - released <= budgetBytes)
-                {
-                    break;
-                }
-
-                released += entry.Reader.Release(kept);
-            }
+            long released = GiveBackColumns(kept, charge, spared: null);
 
             // Values derived from rows go only after every column: they are a fraction of the columns they spare a query
             // from reading, and derived again only at that cost (SegmentReaderV1.DerivedRows).
@@ -238,6 +244,46 @@ internal sealed class SegmentReaderCache
         }
     }
 
+    /// <summary>
+    /// Keeps the budget while a query reads: told that <paramref name="reader"/>, cached, came to hold more, has every
+    /// other cached reader give back every column but those every projection reads while the charge passes the budget.
+    /// The reader that grew keeps what it holds, which its query is reading, and what readers derived from their rows
+    /// stays until a trim, when the query's lease ends; a reader passed is read again when a query next needs it
+    /// (revision 876).
+    /// </summary>
+    private void Grown(SegmentReaderV1 reader)
+    {
+        lock (gate)
+        {
+            _ = GiveBackColumns(resident, Charge(), reader);
+        }
+    }
+
+    /// <summary>
+    /// Has the cached readers give back every column but <paramref name="kept"/>, a reader at a time while
+    /// <paramref name="charge"/> less what they released passes the budget, sparing <paramref name="spared"/>, and
+    /// returns the bytes released. The readers give back in the order they were cached, the oldest segments first: a
+    /// live view reads its newest most. Called under the gate.
+    /// </summary>
+    private long GiveBackColumns(IReadOnlySet<SegmentColumnId> kept, long charge, SegmentReaderV1? spared)
+    {
+        long released = 0;
+        foreach (Entry entry in entries.Values)
+        {
+            if (charge - released <= budgetBytes)
+            {
+                break;
+            }
+
+            if (!ReferenceEquals(entry.Reader, spared))
+            {
+                released += entry.Reader.Release(kept);
+            }
+        }
+
+        return released;
+    }
+
     /// <summary>What every cached reader holds now. Called under the gate.</summary>
     private long Charge()
     {
@@ -252,6 +298,7 @@ internal sealed class SegmentReaderCache
 
     private void Remove(Entry entry)
     {
+        entry.Reader.Grew = null;
         _ = entries.Remove(entry.Segment.Name);
     }
 

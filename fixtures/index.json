@@ -2565,6 +2565,7 @@
         "S2: a reader gives back every column it holds but keeps what it derived from its rows, and reads each column again as it was when next asked",
         "S2: a flush writes its segment to the staging file in order, allocating less than the segment it writes",
         "S2: a store's cached readers give back every column but session time and mechanism when a pass asks, and read the rest again",
+        "S2: a store's cached readers hold no more than the cache's budget while a query reads them, but the reader read, and stay cached, reading again what they gave back",
         "S2: before a compaction reads its runs, the store's cached readers give back what queries read"
       ],
       "S4": [
