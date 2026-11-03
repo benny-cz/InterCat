@@ -74,8 +74,13 @@ public static class SessionCheckpoints
                     "The generation names no source clock, so nothing is derived from it.");
             }
 
-            SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-            SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+            // A checkpoint reads every segment, once a derivation, under this one lease, and what the store's readers keep
+            // is what its views read again. Its own readers are held to a budget of their own while they read, as a
+            // release's are (revision 880): read through the store's, a loaded hour's checkpoint held the cache's budget,
+            // the segments its passes read side by side and their rows' bindings beside it, and ran out (revision 883).
+            var budget = new SegmentReaderBudget();
+            SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => budget.Open(store.Root, manifest, name))];
+            SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => budget.Open(store.Root, manifest, name))];
             if (segments.Length == 0)
             {
                 return Unpublished(CheckpointOutcome.NothingToDerive, manifest.Generation, started,
@@ -110,10 +115,10 @@ public static class SessionCheckpoints
                 activity = ProcessActivityIndex.Derive(segments, processes, cancellationToken);
             }
 
-            // Each derivation below reads every segment through the store's readers, and together they read most of the
-            // generation's columns under this one lease; between them the readers give back what one read, so a finished
-            // rolling capture's checkpoint holds at once what its largest derivation reads, the RPC pairing's at a busy
-            // window, rather than every column (revision 875). Nothing derived holds a column of theirs.
+            // Each derivation below reads every segment, and together they read most of the generation's columns under
+            // this one lease; the store's readers give back what they hold between them too, so a viewer publishing its
+            // finished capture's checkpoint holds little of its own beside it (revision 875). Nothing derived holds a
+            // column of theirs.
             _ = store.GiveBackReaderColumns();
             OverviewCounts counts = SessionOverviewProjector.Count(
                 segments, SessionOverviewProjector.RetainedFromTicks(manifest), cancellationToken);

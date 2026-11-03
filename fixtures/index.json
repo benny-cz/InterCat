@@ -2569,6 +2569,7 @@
         "S2: a store's cached readers give back every column but session time and mechanism when a pass asks, and read the rest again",
         "S2: a store's cached readers hold no more than the cache's budget while a query reads them, but the reader read, and stay cached, reading again what they gave back",
         "S2: a pass's own readers hold no more than their budget while a stage reads every segment, but the reader read, and read again what they gave back",
+        "S2: a pass reads segments side by side only while their columns fit its budget, one at a time where one does not fit, and counts what a serial pass counts",
         "S2: before a compaction reads its runs, the store's cached readers give back what queries read"
       ],
       "S4": [

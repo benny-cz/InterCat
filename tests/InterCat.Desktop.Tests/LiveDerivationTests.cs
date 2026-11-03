@@ -115,8 +115,11 @@ public sealed class LiveDerivationTests
         Assert.Same(derived, stores.Open(sessionPath, derived.SessionId));
         Assert.Same(derived, stores.Open(sessionPath.ToUpperInvariant()));
 
-        // Projecting the new generation read through that store, and the saved session no longer holds readers.
-        Assert.NotEqual(0, derived.SegmentReaderCache.Entries);
+        // The finished follow's checkpoint read through readers of its own, so the store keeps none until the window reads
+        // a segment through it (revision 883), and the saved session no longer holds readers.
+        Assert.Equal(0, derived.SegmentReaderCache.Entries);
+        _ = SessionSegments.Open(derived, derived.Current!, SessionSegments.Names(derived.Current!)[0]);
+        Assert.Equal(1, derived.SegmentReaderCache.Entries);
         Assert.Equal(0, saved.SegmentReaderCache.Entries);
     });
 

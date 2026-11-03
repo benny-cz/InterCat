@@ -226,7 +226,9 @@ capture reached its 1 GiB journal allowance and its finished session's checkpoin
 (`-4h-keep60-512MiB-revision881`). Revision 882's, its checkpoint pairing calls as it writes their index, carried a
 load of 1,400 messages a second and reached the allowance at 4,475,678 rows by minute 19, when its finished session's
 checkpoint ran out summing bytes, its byte pass reading one of 24 segments of some 250,000 rows a processor at once
-(`-4h-keep60-512MiB-load1400-revision882`).
+(`-4h-keep60-512MiB-load1400-revision882`). Revision 883's, the checkpoint reading through readers of its own and its
+passes side by side within a budget, reached the allowance at 4,549,999 rows by minute 19, and its checkpoint ran out a
+step later, binding peers, beside a viewer holding up to 465 MiB (`-4h-keep60-512MiB-load1400-revision883`).
 
 `impact --output <new scratch directory> [--triplets <1-15>]` measures the broker's capture impact at its
 compiled cadence: the seeded TCP workload with no capture, a broker `OnStop` capture and a broker `Live`

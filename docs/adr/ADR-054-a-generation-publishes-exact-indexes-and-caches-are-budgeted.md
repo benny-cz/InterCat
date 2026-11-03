@@ -56,7 +56,9 @@ approximate.
    kept for the query reading it, so a derivation reading every segment under one lease holds the budget rather than
    every column it read; values derived from rows wait for the trim at the lease's end. Since revision 880 the readers
    a release's plan opens of its own, outside the cache, hold a budget of their own by the same rule, an eighth of the
-   cache's (`SegmentReaderBudget`). The derivations of the four
+   cache's (`SegmentReaderBudget`), and since revision 883 so do a checkpoint's, which read every segment beside the
+   viewer's cache; a pass reads segments side by side only while their columns fit half the cache's budget between
+   them, a segment alone always, where it read one a processor at once. The derivations of the four
    most recently used generations are kept process-wide, by count: a derivation holds no file, so keeping it never
    delays a release. Since revision 881, of one session only the newest generation holding derivations is kept beside the
    one asked for, and each earlier one whose derivations it covers goes: each kept generation held a copy of its own,

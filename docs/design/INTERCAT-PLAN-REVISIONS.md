@@ -792,6 +792,8 @@ Revision 881 has the derivation cache keep, of one session, only the newest deri
 
 Revision 882 pairs a checkpoint's RPC calls as it writes their operation index, and checks an index current call by call, so a busy hour's finished session, two million calls at its 1 GiB journal allowance, publishes its checkpoint under 512 MiB where it needed more than 1 GiB.
 
+Revision 883 has a checkpoint read through readers of its own held to a budget, and a pass read segments side by side only while their columns fit half the cache's budget, so a loaded hour's checkpoint publishes under 512 MiB on 24 processors.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3106,3 +3108,25 @@ machine's 95; the byte pass reads one segment a processor at once, 24 on this ma
 than 512 MiB, and publishes under it on 4 processors in 13.6 s, as fast as on 24, and on one in 18.9 s; its
 46,742,123-byte operation index is byte for byte revision 881's. A checkpoint's whole-session passes read as many
 segments at once as the machine has processors, whatever the segments hold.
+
+Revision 883 bounds what a checkpoint holds beside them. A dump of that checkpoint's failure under 512 MiB held 499 MB:
+366 MB of columns in 1,144 arrays, and 98 MB of the rows' owner and peer bindings, which a reader keeps until its pass
+lets them go. The checkpoint read every segment through the store's cached readers, whose 256 MiB budget it filled
+beside the derivations, and each of its parallel passes read one segment a processor at once - some of 250,000 rows
+and 203 bytes a row, 48 MB of columns. `SegmentPasses` now lets a worker read its segment only once its columns fit,
+beside those of the segments being read, within half the cache's budget, 128 MiB, a segment read alone always; at most
+one worker a processor reads. A checkpoint reads through readers of its own held to a `SegmentReaderBudget`, as a
+release's plan does since revision 880, so the store's cache keeps what its views read and a viewer finishing a capture
+holds no more of its columns for the checkpoint. A test holds the budget: a pass whose budget no segment fits reads one
+at a time, one two and a half fit reads two at most, one every segment fits reads them side by side, each counting what
+a serial pass counts; and a checkpoint leaves the store's cache empty. Four mutations are caught. On 24 processors the
+loaded session's checkpoint then publishes under 512 MiB in 18.4 s, and the busy machine's under 384 MiB in 17.8 s
+where it needed 448 MiB; all four indexes of each - checkpoint, overview, operation index and tiles - are byte for byte
+revision 882's, at 12.7-19.1 s against 13.4-18.5 s unlimited, within the runs' spread. Under 448 MiB the loaded one
+still runs out, in the peer-binding pass: a dump at that allocation held 82 MB live and 257 MB of columns and bindings
+its 24 workers had already let go, which the collector had not yet taken. "The last hour" at 1,400 messages a second,
+under 512 MiB, then reached the allowance at 4,549,999 rows by minute 19, and its finished session's checkpoint ran out
+a step later than revision 882's, in that peer-binding pass
+(`bench/results/rolling-20261103T161927Z-4h-keep60-512MiB-load1400-revision883`). The viewer itself held up to 465 MiB
+committed through its last minutes of recording, and the checkpoint it publishes on finishing runs beside what it
+holds: what a checkpoint needs alone now fits, and what a viewer holds beside one, unmeasured, does not leave it room.
