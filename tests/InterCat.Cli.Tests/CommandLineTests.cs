@@ -2953,6 +2953,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"(?m)^  method +bytes 0 to 2 \(3 bytes\) +GET\r?$", output);
         Assert.Matches(@"(?m)^  target +bytes 4 to 14 \(11 bytes\) +/index.html\r?$", output);
         Assert.Matches(@"(?m)^  Host +bytes 26 to 38 \(13 bytes\) +example\r?$", output);
+        Assert.Contains(ContentDecoders.HttpHeadVersionStatement, output, StringComparison.Ordinal);
         Assert.DoesNotContain("Not decoded", output, StringComparison.Ordinal);
         Assert.DoesNotContain("THE WHOLE PART", output, StringComparison.Ordinal);
         Assert.DoesNotContain("Its bytes are hidden", output, StringComparison.Ordinal);
@@ -2982,6 +2983,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
         Assert.Contains("Not decoded: The part is not whole, so it is not decoded", output, StringComparison.Ordinal);
         Assert.DoesNotContain("  Read ", output, StringComparison.Ordinal);
+        Assert.DoesNotContain(ContentDecoders.HttpHeadVersionStatement, output, StringComparison.Ordinal);
 
         // InterCat's decoders, each at its version with what it reads; the list takes nothing else.
         (code, output, said) = await Run("content", "--decoders");
@@ -3073,6 +3075,10 @@ public sealed class CommandLineTests : IDisposable
         Assert.DoesNotContain("Exchange 9, its", output, StringComparison.Ordinal);
         Assert.DoesNotContain("Request head", output, StringComparison.Ordinal);
 
+        // A head's version is WinINet's, which keeps an HTTP/2 exchange's heads in HTTP/1.1's form (FX-HTTP-006): said
+        // where heads were decoded, once.
+        Assert.Equal(2, output.Split(ContentDecoders.HttpHeadVersionStatement).Length);
+
         // Another process's exchange of the same number is its own, its response head not whole and not decoded.
         (code, output, said) = await Run("exchanges", kept.Path, "--pid", "4141", "--decode");
         Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
@@ -3095,6 +3101,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.Contains("Request head", output, StringComparison.Ordinal);
         Assert.DoesNotContain("GET", output, StringComparison.Ordinal);
         Assert.DoesNotContain("Heads decoded by", output, StringComparison.Ordinal);
+        Assert.DoesNotContain(ContentDecoders.HttpHeadVersionStatement, output, StringComparison.Ordinal);
 
         static ObservationRowV1 Wininet(long ticks, ushort eventId, ulong ordinal) =>
             Transfer(ticks, eventId <= 2002 ? ObservationKind.Send : ObservationKind.Receive,

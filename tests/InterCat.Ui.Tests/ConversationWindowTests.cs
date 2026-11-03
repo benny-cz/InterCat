@@ -52,6 +52,10 @@ public sealed class ConversationWindowTests
             Assert.Contains("Body: 5 B in 1 buffer, recorded whole", shown);
             Assert.Contains("whole: every part from its first buffer to its last", shown);
             Assert.DoesNotContain(shown, text => text.Contains("GET", StringComparison.Ordinal));
+
+            // Before a head is decoded, it says whose a head's version is: WinINet keeps an HTTP/2 exchange's heads in
+            // HTTP/1.1's form (FX-HTTP-006).
+            Assert.Contains(shown, text => text.EndsWith(ContentDecoders.HttpHeadVersionStatement, StringComparison.Ordinal));
             Button decode = Labelled(conversation, "Decode its heads");
             Assert.Equal(SessionConversationWindow.DecodeDoes, Offers.Offered(decode));
             await Until(() => conversation.FocusManager?.GetFocusedElement() == decode);

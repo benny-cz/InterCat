@@ -800,6 +800,8 @@ Revision 885 reads an operation index as its file streams and puts its calls in 
 
 Revision 886 measures asynchronous WinINet through its capture (FX-HTTP-005): an asynchronous client's exchanges are recorded as a synchronous one's, and in either a record is raised on whichever of the client's threads finished the step it records, so a record's thread is not the thread that made the request.
 
+Revision 887 measures HTTP/2 through WinINet's capture (FX-HTTP-006): an exchange over HTTP/2 is kept as over HTTP/1.1, its heads in HTTP/1.1's form that no wire carried, so a decoded head now says its version is WinINet's wherever heads are decoded.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3206,3 +3208,25 @@ request, every buffer its request's, every part as long as the server's truth. A
 buffers' thread is caught by that test alone, the synthetic tests' buffers sharing one thread. HTTP/2, content codings
 other than gzip, and a request body written in pieces - every measured client handed `HttpSendRequest` its body whole -
 remain unmeasured.
+
+Revision 887 measures HTTP/2 through WinINet's capture (FX-HTTP-006). The truth workload's client can enable HTTP/2 on
+its WinINet session, and its server becomes Kestrel on loopback, offering HTTP/2 and HTTP/1.1 by ALPN over TLS with
+the run's certificate made in memory: HTTP/2 frames every message and compresses its fields, so only a server that
+speaks it can take one apart, and its truth names each request's protocol, connection and field names as it decoded
+them, and each body as it read and wrote it. Client and server both said every request went over HTTP/2. Seven lab runs
+- paced, asynchronous, in gzip read coded and decoded, and eight clients at once - kept every body as over HTTP/1.1, in
+the same buffers, numbered and flagged, nothing lost; the eight clients' 64 exchanges went over one connection and kept
+their own numbers. The heads were HTTP/1.1's form, which no wire carried: a request line naming HTTP/1.1 above the
+fields WinINet sent, with no Connection field, each request head holding exactly the fields the server decoded, and a
+status line naming HTTP/1.1 and no reason above the fields received, in lower case as HTTP/2 names them. Through `icat
+record --profile content` two runs of 64 exchanges kept every exchange whole, every head decoded to its end naming
+HTTP/1.1, and every body `icat content --part` saved matched the server's bytes, 126 of 126 that held any. Nothing kept
+says an exchange went over HTTP/2, so the version a decoded head names is WinINet's, not the protocol's, and InterCat
+now says so wherever heads are decoded - beneath a head `icat content --part --decode` decodes, among `icat exchanges
+--decode`'s caveats, beneath the content viewer's decoding of a head and in an exchange's conversation - one statement
+for all four (ADR-037 decision 9). The decoder corpus pins the two heads WinINet kept of one exchange over HTTP/2, a
+response's status line with no reason among them, and FX-HTTP-006 keeps the ledger of its run eight at once, which a
+test groups as a session's records are: one exchange to a request, every body as long as the server's truth. Seven
+mutations of the statement - said of no head, of every decoding, of a head not read, missing from or added to a
+listing, missing from the conversation or hidden in the viewer - are caught. A table's version columns stay the heads'
+own. Content codings other than gzip, and a request body written in pieces, remain unmeasured.

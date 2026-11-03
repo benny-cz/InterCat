@@ -94,7 +94,7 @@ internal sealed class SessionConversationWindow : Window, IDisposable
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         disclosure.Text = "Its heads say what was asked and answered, which may be sensitive. They are read only when you ask, "
             + "each whole, from the bytes the capture kept with consent to inspect them, and decoded by InterCat's HTTP/1.1 "
-            + "head decoder. Nothing decoded is kept, and no body is read here.";
+            + "head decoder. Nothing decoded is kept, and no body is read here. " + ContentDecoders.HttpHeadVersionStatement;
         AutomationProperties.SetName(decode, "Decode its heads");
         AutomationProperties.SetName(buffers, "Show its buffers");
         buffers.IsVisible = offersBuffers;

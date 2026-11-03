@@ -50,13 +50,14 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         MaximumBodyBytes = Integer(args, "--bytes") ?? 96 * 1024,
         WaitForStart = args.Contains("--wait-for-start", StringComparer.Ordinal),
         StartAfterSeconds = Integer(args, "--start-after") ?? 0,
-        Tls = args.Contains("--tls", StringComparer.Ordinal),
+        Tls = args.Contains("--tls", StringComparer.Ordinal) || args.Contains("--http2", StringComparer.Ordinal),
         Concurrency = Integer(args, "--concurrency") ?? 1,
         Chunked = args.Contains("--chunked", StringComparer.Ordinal),
         Gzip = args.Contains("--gzip", StringComparer.Ordinal),
         Decode = args.Contains("--decode", StringComparer.Ordinal),
         Async = args.Contains("--async", StringComparer.Ordinal),
         PaceMilliseconds = Integer(args, "--pace") ?? 0,
+        Http2 = args.Contains("--http2", StringComparer.Ordinal),
     };
 
     var pipeOptions = new PipeLoopbackOptions
@@ -198,7 +199,7 @@ static void PrintHelp()
     Console.WriteLine("      truth log names each message's length and SHA-256, never its bytes.");
     Console.WriteLine();
     Console.WriteLine("  http-wininet --truth <dir> [--seed n] [--requests n] [--bytes n] [--wait-for-start | --start-after s] [--tls]");
-    Console.WriteLine("               [--concurrency n] [--chunked] [--gzip [--decode]] [--async]");
+    Console.WriteLine("               [--concurrency n] [--chunked] [--gzip [--decode]] [--async] [--pace ms] [--http2]");
     Console.WriteLine("      FX-HTTP-001: seeded HTTP/1.1 requests through WinINet to a server this process runs on");
     Console.WriteLine("      loopback, bodies from empty to past 64 KiB both ways. The server logs every head and body");
     Console.WriteLine("      it received and sent by length and SHA-256, never the bytes. --wait-for-start waits for a");
@@ -213,7 +214,10 @@ static void PrintHelp()
     Console.WriteLine("      it; without it the client reads the coded bytes. --gzip makes the run FX-HTTP-004. --async has");
     Console.WriteLine("      the client work WinINet asynchronously, each send and read it cannot finish at once completing");
     Console.WriteLine("      on WinINet's own threads, told by its status callback; it makes the run FX-HTTP-005, with any");
-    Console.WriteLine("      of the others.");
+    Console.WriteLine("      of the others. --pace has the server wait that many milliseconds before each 16 KiB of a");
+    Console.WriteLine("      response body. --http2 has the client enable HTTP/2 and Kestrel serve it over TLS, offered by");
+    Console.WriteLine("      ALPN beside HTTP/1.1; the server logs each body as it read and wrote it and each request's");
+    Console.WriteLine("      field names, never the frames; it makes the run FX-HTTP-006, and refuses --chunked.");
     Console.WriteLine();
     Console.WriteLine("  No scenario runs implicitly. Nothing is captured or observed by this executable.");
 }

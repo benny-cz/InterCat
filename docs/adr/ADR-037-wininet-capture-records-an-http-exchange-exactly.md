@@ -5,17 +5,21 @@
   (revision 239); HTTPS measured, and kept as its plaintext (revision 243); exchanges at once and chunked responses
   measured, and an exchange's number bound to its use in time (revision 244); its scope held to the named processes
   themselves (revision 245); a process's exchanges on its rung (revision 247, `contracts/http-exchanges-v1.md`);
-  asynchronous clients measured, and the thread each record is raised on (revision 886)
+  asynchronous clients measured, and the thread each record is raised on (revision 886); HTTP/2 measured, its heads kept
+  in HTTP/1.1's form (revision 887)
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
 - Relates to: §3.7, §11, §11.1, §11.2, M3, M8, I21, R21, R22, ADR-030, ADR-036, FX-HTTP-001, FX-HTTP-002,
-  FX-HTTP-003, FX-HTTP-005, `contracts/content-v1.md`, `tools/InterCat.WinInetProbe`,
+  FX-HTTP-003, FX-HTTP-005, FX-HTTP-006, `contracts/content-v1.md`, `contracts/decoders-v1.md`,
+  `tools/InterCat.WinInetProbe`,
   `bench/results/wininet-capture-feasibility-20260928T102426Z`,
   `bench/results/wininet-capture-feasibility-tls-20260928T120408Z`,
   `bench/results/wininet-capture-interleaved-20260928T123007Z`, `bench/results/wininet-capture-chunked-20260928T123023Z`,
   `bench/results/wininet-capture-numbering-20260928T123112Z`,
   `bench/results/wininet-capture-async-paced-eight-chunked-20261103T210230Z`,
-  `bench/results/wininet-capture-sync-paced-20261103T204528Z`
+  `bench/results/wininet-capture-sync-paced-20261103T204528Z`,
+  `bench/results/wininet-capture-http2-20261103T214430Z`,
+  `bench/results/wininet-capture-http2-paced-eight-20261103T215057Z`
 
 ## Context
 
@@ -126,6 +130,32 @@ the threads that made its requests.
   ends, length and kind of thread but never its bytes, is kept with the fixture and grouped by a test as a session's
   records are.
 
+## Measurement over HTTP/2 (revision 887)
+
+FX-HTTP-006 makes the exchange over HTTP/2: its client enables HTTP/2 on its WinINet session, and its server - Kestrel
+on loopback, since HTTP/2 frames every message and compresses its fields - offers HTTP/2 and HTTP/1.1 by ALPN over TLS
+with the run's certificate. Both said every request went over HTTP/2. HTTP/2 carries no head as bytes - the request
+line travels as pseudo-header fields, and every field compressed - so the server's truth names each request's fields
+as it decoded them, and each body as it read and wrote it. The probe ran it seven times beside a decoy: 16 exchanges,
+paced or not, asynchronous, in gzip read coded and decoded, and 64 eight at once.
+
+- **The bodies are as over HTTP/1.1.** Every body was the server's: each request's as it read it, each response's as
+  the client read it - the coded bytes or the body before its coding, as FX-HTTP-004 found over HTTP/1.1 - in the same
+  buffers, cut at 64,511 bytes sent and read in the client's 16 KiB reads, every part numbered from 0 and flagged at its
+  ends, nothing lost and none of the decoy's records in the session.
+- **The heads are HTTP/1.1's form, which no wire carried.** A request head is a request line naming HTTP/1.1 above the
+  fields WinINet sent, named as it names them, with no Connection field, which HTTP/2 forbids; a response head is a
+  status line naming HTTP/1.1 and no reason, which HTTP/2 does not carry, above the fields received, named in lower case
+  as HTTP/2 names them. Each request head held exactly the fields the server decoded, 64 of 64. No record says the
+  exchange went over HTTP/2.
+- **Exchanges multiplexed stay apart.** Eight clients, each on a connection handle of its own, sent their 64 exchanges
+  over one HTTP/2 connection, by the server's account: each kept its own number, 222 buffers followed another
+  exchange's, and every part matched.
+- **Through `icat record`** (FX-HTTP-006: 64 exchanges one at a time, and 64 eight at once on one connection): every
+  record bound to the workload, every exchange recorded whole, every head decoded to its end - 128 of 128 naming
+  HTTP/1.1, every response's with no reason - and every body `icat content --part` saved matched the server's bytes,
+  126 of 126 that held any; no body was said to disagree with its head.
+
 ## Decision
 
 1. **The source contract, for its admission to implement.** An exchange is a `SessionId`; a part is its event, which
@@ -169,6 +199,11 @@ the threads that made its requests.
    place the use already holds; nothing else ends it, since WinINet raises the empty buffer that ends a request body
    after the response has ended (a live content capture of 96 exchanges read as 191 before this was known). An
    exchange's duration runs from its first buffer to the one that ended its response.
+9. **What a head says of its protocol: only WinINet's form** (revision 887). WinINet keeps an exchange it made over
+   HTTP/2 with heads in HTTP/1.1's form, so the version a head names is WinINet's, and nothing kept says which protocol
+   carried an exchange. A decoded head's version is never said to be its exchange's protocol: wherever heads are
+   decoded - `icat content --part --decode`, `icat exchanges --decode`, the content viewer and an exchange's
+   conversation - InterCat says so beside them (`contracts/decoders-v1.md` §4).
 
 ## Consequences
 
@@ -183,8 +218,11 @@ the threads that made its requests.
   carried, which declares the coded length either way; no record says which the client did.
 - Asynchronous clients are measured (revision 886, FX-HTTP-005): their exchanges are recorded as a synchronous
   client's, and in either a record is raised on whichever of the client's threads WinINet finished its step on.
-- Not measured: HTTP/2; content codings other than gzip; redirects, proxies and authentication; a request body written
-  in pieces (`HttpSendRequestEx` and `InternetWriteFile`), where every measured client handed its body to
+- HTTP/2 is measured (revision 887, FX-HTTP-006): its bodies are kept as over HTTP/1.1 and its heads in HTTP/1.1's
+  form, so a head's version is WinINet's and InterCat says so where heads are decoded; exchanges multiplexed on one
+  connection keep their own numbers.
+- Not measured: content codings other than gzip; redirects, proxies and authentication; a request body written in
+  pieces (`HttpSendRequestEx` and `InternetWriteFile`), where every measured client handed its body to
   `HttpSendRequest` whole. Each is measured before a profile claims it.
 - The scope is the named processes themselves (revision 245): the provider's filter holds their IDs by number, and the
   capture holds each process open while it runs, so a named process's exit ends its content and no process started

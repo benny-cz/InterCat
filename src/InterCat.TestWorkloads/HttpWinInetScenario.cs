@@ -13,6 +13,11 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using InterCat.Domain;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.Logging;
 
 namespace InterCat.TestWorkloads;
 
@@ -32,6 +37,9 @@ internal sealed record HttpWinInetOptions
 
     /// <summary>The exchange made through WinINet asynchronously, each send and read completing on WinINet's threads: FX-HTTP-005.</summary>
     public const string AsyncScenarioId = "FX-HTTP-005";
+
+    /// <summary>The exchange over HTTP/2, which the client enables and the server offers by ALPN over TLS: FX-HTTP-006.</summary>
+    public const string Http2ScenarioId = "FX-HTTP-006";
 
     public required string TruthDirectory { get; init; }
     public int Seed { get; init; } = 20_260_929;
@@ -90,10 +98,18 @@ internal sealed record HttpWinInetOptions
     public int PaceMilliseconds { get; init; }
 
     /// <summary>
-    /// The scenario this run is: FX-HTTP-005 made asynchronously, else FX-HTTP-004 with coded responses, else FX-HTTP-003
-    /// with several clients at once or chunked responses, else FX-HTTP-002 over TLS, else FX-HTTP-001.
+    /// Whether the exchange runs over HTTP/2 (RFC 9113): the client enables it on its WinINet session
+    /// (INTERNET_OPTION_ENABLE_HTTP_PROTOCOL), and the server - Kestrel, which frames HTTP/2 itself - offers it and HTTP/1.1
+    /// by ALPN over TLS, so the run is over TLS too. HTTP/2 has no chunked transfer coding, so --chunked is refused with it.
     /// </summary>
-    public string Scenario => Async ? AsyncScenarioId : Gzip ? CodedScenarioId
+    public bool Http2 { get; init; }
+
+    /// <summary>
+    /// The scenario this run is: FX-HTTP-006 over HTTP/2, else FX-HTTP-005 made asynchronously, else FX-HTTP-004 with coded
+    /// responses, else FX-HTTP-003 with several clients at once or chunked responses, else FX-HTTP-002 over TLS, else
+    /// FX-HTTP-001.
+    /// </summary>
+    public string Scenario => Http2 ? Http2ScenarioId : Async ? AsyncScenarioId : Gzip ? CodedScenarioId
         : Concurrency > 1 || Chunked ? InterleavedScenarioId : Tls ? TlsScenarioId : ScenarioId;
 }
 
@@ -163,6 +179,10 @@ internal static partial class HttpWinInetScenario
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool InternetSetOption(IntPtr handle, int option, ref uint buffer, int length);
 
+    [LibraryImport("wininet.dll", EntryPoint = "InternetQueryOptionW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool InternetQueryOption(IntPtr handle, int option, ref uint buffer, ref int length);
+
     [LibraryImport("wininet.dll", EntryPoint = "InternetCloseHandle", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool InternetCloseHandle(IntPtr handle);
@@ -190,15 +210,32 @@ internal static partial class HttpWinInetScenario
     // How an asynchronous run's sends and reads went: finished at once, or pending and completed by the callback.
     private static int sendsAtOnce, sendsPending, readsAtOnce, readsPending;
 
+    // HTTP/2 on a session (INTERNET_OPTION_ENABLE_HTTP_PROTOCOL, HTTP_PROTOCOL_FLAG_HTTP2), and which protocol a request
+    // was made over once sent (INTERNET_OPTION_HTTP_PROTOCOL_USED); how many of the run's were HTTP/2.
+    private const int OptionEnableHttpProtocol = 148;
+    private const int OptionHttpProtocolUsed = 149;
+    private const uint ProtocolFlagHttp2 = 0x2;
+    private static int requestsOverHttp2;
+
     // The most a paced response writes at a time.
     private const int PacedSliceBytes = 16 * 1024;
 
     public static async Task<int> RunAsync(HttpWinInetOptions options, CancellationToken cancellationToken)
     {
+        if (options.Http2 && options.Chunked)
+        {
+            await Console.Error.WriteLineAsync("HTTP/2 frames a body itself and has no chunked transfer coding; --chunked is refused with --http2.")
+                .ConfigureAwait(false);
+            return 2;
+        }
+
         Directory.CreateDirectory(options.TruthDirectory);
+
+        // HTTP/1.1 is served by this workload's own loopback server, which logs every byte of every message; HTTP/2 by
+        // Kestrel, which frames it, started once the server's truth log is open.
         using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        if (!options.Http2) listener.Start();
+        int port = options.Http2 ? 0 : ((IPEndPoint)listener.LocalEndpoint).Port;
         int completed;
         long sentBytes = 0, readBytes = 0;
         var clientThreads = new ConcurrentBag<uint>();
@@ -208,6 +245,10 @@ internal static partial class HttpWinInetScenario
         await using (var client = new TruthLog(
             Path.Combine(options.TruthDirectory, "truth-http-client.jsonl"), options.Scenario, "client"))
         {
+            await using WebApplication? kestrel = options.Http2
+                ? await Http2ServerAsync(server, options, certificate!, cancellationToken).ConfigureAwait(false)
+                : null;
+            if (kestrel is not null) port = new Uri(kestrel.Urls.First()).Port;
             server.Write(TruthEventKind.ListenerBound, localPort: port);
             client.Write(TruthEventKind.ProcessStarted);
             if (options.WaitForStart && !await StartedAsync(options.StartWaitSeconds, cancellationToken).ConfigureAwait(false))
@@ -222,20 +263,30 @@ internal static partial class HttpWinInetScenario
                 await Task.Delay(TimeSpan.FromSeconds(options.StartAfterSeconds), cancellationToken).ConfigureAwait(false);
             }
 
-            using var serving = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            Task served = ServeAsync(listener, server, options, certificate, serving.Token);
-            (completed, sentBytes, readBytes) = await Task.Factory.StartNew(
-                () => Exchange(port, client, options, clientThreads, cancellationToken), cancellationToken,
-                TaskCreationOptions.LongRunning, TaskScheduler.Default).ConfigureAwait(false);
-            await serving.CancelAsync().ConfigureAwait(false);
-            listener.Stop();
-            try
+            if (kestrel is not null)
             {
-                await served.ConfigureAwait(false);
+                (completed, sentBytes, readBytes) = await Task.Factory.StartNew(
+                    () => Exchange(port, client, options, clientThreads, cancellationToken), cancellationToken,
+                    TaskCreationOptions.LongRunning, TaskScheduler.Default).ConfigureAwait(false);
+                await kestrel.StopAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception exception) when (exception is OperationCanceledException or SocketException or ObjectDisposedException)
+            else
             {
-                // The listener was stopped under the accept loop; every exchange had finished.
+                using var serving = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                Task served = ServeAsync(listener, server, options, certificate, serving.Token);
+                (completed, sentBytes, readBytes) = await Task.Factory.StartNew(
+                    () => Exchange(port, client, options, clientThreads, cancellationToken), cancellationToken,
+                    TaskCreationOptions.LongRunning, TaskScheduler.Default).ConfigureAwait(false);
+                await serving.CancelAsync().ConfigureAwait(false);
+                listener.Stop();
+                try
+                {
+                    await served.ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is OperationCanceledException or SocketException or ObjectDisposedException)
+                {
+                    // The listener was stopped under the accept loop; every exchange had finished.
+                }
             }
 
             client.Write(TruthEventKind.ProcessExiting);
@@ -251,6 +302,8 @@ internal static partial class HttpWinInetScenario
             options.Decode,
             options.Async,
             options.PaceMilliseconds,
+            options.Http2,
+            requestsOverHttp2 = options.Http2 ? requestsOverHttp2 : (int?)null,
             asynchronous = options.Async ? new { sendsAtOnce, sendsPending, readsAtOnce, readsPending } : null,
             processId = Environment.ProcessId,
             clientThreads = clientThreads.Order().ToArray(),
@@ -295,6 +348,14 @@ internal static partial class HttpWinInetScenario
             if (options.Async && InternetSetStatusCallback(internet, StatusCallback()) == InvalidStatusCallback)
             {
                 client.Write(TruthEventKind.Failure, status: $"InternetSetStatusCallback failed: {Marshal.GetLastPInvokeError()}");
+                return (0, 0, 0);
+            }
+
+            // HTTP/2 is the session's to enable: WinINet offers it by ALPN to a server over TLS, and speaks HTTP/1.1 otherwise.
+            uint protocols = ProtocolFlagHttp2;
+            if (options.Http2 && !InternetSetOption(internet, OptionEnableHttpProtocol, ref protocols, sizeof(uint)))
+            {
+                client.Write(TruthEventKind.Failure, status: $"InternetSetOption failed: {Marshal.GetLastPInvokeError()}");
                 return (0, 0, 0);
             }
 
@@ -401,6 +462,19 @@ internal static partial class HttpWinInetScenario
                     }
 
                     sent += body.Length;
+
+                    // Which protocol WinINet made the request over, once it was sent: HTTP/2 only where the server agreed to it.
+                    if (options.Http2)
+                    {
+                        uint used = 0;
+                        int length = sizeof(uint);
+                        bool known = InternetQueryOption(request, OptionHttpProtocolUsed, ref used, ref length);
+                        bool http2 = known && (used & ProtocolFlagHttp2) != 0;
+                        if (http2) Interlocked.Increment(ref requestsOverHttp2);
+                        client.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: known ? used : -1, status: "protocol-used",
+                            resourceName: !known ? "unknown" : http2 ? "HTTP/2" : "HTTP/1.1");
+                    }
+
                     using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
                     long total = 0;
                     int readError;
@@ -710,6 +784,84 @@ internal static partial class HttpWinInetScenario
             {
                 // The client closed its connection, or the run ended; what was exchanged is already logged.
             }
+        }
+    }
+
+    /// <summary>
+    /// The HTTP/2 server: Kestrel on loopback over TLS, offering HTTP/2 and HTTP/1.1 by ALPN, with the run's certificate.
+    /// HTTP/2 frames every message and compresses its heads, so its truth is what Kestrel's handler read and wrote - each
+    /// request body as taken from its DATA frames and each response body as written into them, and the names of each
+    /// request's fields as Kestrel decoded them - never the frames, which TLS encrypts.
+    /// </summary>
+    private static async Task<WebApplication> Http2ServerAsync(TruthLog server, HttpWinInetOptions options, X509Certificate2 certificate,
+        CancellationToken cancellationToken)
+    {
+        WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.ConfigureKestrel(kestrel =>
+        {
+            kestrel.AddServerHeader = false;
+            kestrel.Listen(IPAddress.Loopback, 0, listen =>
+            {
+                listen.Protocols = HttpProtocols.Http1AndHttp2;
+                listen.UseHttps(certificate);
+            });
+        });
+        WebApplication app = builder.Build();
+        app.Run(context => AnswerAsync(context, server, options));
+        await app.StartAsync(cancellationToken).ConfigureAwait(false);
+        return app;
+    }
+
+    /// <summary>One request read whole and answered as the loopback server answers it, each part logged as the handler held it.</summary>
+    private static async Task AnswerAsync(HttpContext context, TruthLog server, HttpWinInetOptions options)
+    {
+        string path = context.Request.Path.Value ?? string.Empty;
+        int index = int.Parse(path.AsSpan("/fx/".Length), NumberStyles.None, CultureInfo.InvariantCulture);
+        using var received = new MemoryStream();
+        await context.Request.Body.CopyToAsync(received, context.RequestAborted).ConfigureAwait(false);
+        byte[] body = received.ToArray();
+
+        // The fields' names, never their values: the pseudo-headers HTTP/2 carries the request line in, then each header.
+        string[] fields = [":method", ":scheme", ":authority", ":path", .. context.Request.Headers.Keys.Select(name => name.ToLowerInvariant())];
+        server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: 0, status: "request-protocol",
+            resourceName: context.Request.Protocol);
+        server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: 0, status: "request-connection",
+            resourceName: context.Connection.Id);
+        server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: fields.Length, status: "request-fields",
+            resourceName: string.Join(',', fields));
+        server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: body.Length, status: "request-body",
+            resourceName: Sha256(body));
+
+        byte[] responseBody = Body(options.Seed, index, options.MaximumBodyBytes, request: false);
+        byte[] coded = options.Gzip ? Gzip(responseBody) : responseBody;
+        context.Response.StatusCode = StatusCodes.Status200OK;
+        context.Response.ContentType = "application/octet-stream";
+        if (options.Gzip) context.Response.Headers.ContentEncoding = "gzip";
+        context.Response.ContentLength = coded.Length;
+        context.Response.Headers["X-InterCat-Fixture"] = options.Scenario;
+        if (options.PaceMilliseconds > 0)
+        {
+            await context.Response.StartAsync(context.RequestAborted).ConfigureAwait(false);
+            for (int at = 0; at < coded.Length; at += PacedSliceBytes)
+            {
+                await context.Response.Body.FlushAsync(context.RequestAborted).ConfigureAwait(false);
+                await Task.Delay(options.PaceMilliseconds, context.RequestAborted).ConfigureAwait(false);
+                await context.Response.Body.WriteAsync(coded.AsMemory(at, Math.Min(PacedSliceBytes, coded.Length - at)),
+                    context.RequestAborted).ConfigureAwait(false);
+            }
+        }
+        else
+        {
+            await context.Response.Body.WriteAsync(coded, context.RequestAborted).ConfigureAwait(false);
+        }
+
+        server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: responseBody.Length, status: "response-body",
+            resourceName: Sha256(responseBody));
+        if (options.Gzip)
+        {
+            server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: coded.Length, status: "response-body-coded",
+                resourceName: Sha256(coded));
         }
     }
 

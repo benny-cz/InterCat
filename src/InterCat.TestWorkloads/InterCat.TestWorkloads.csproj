@@ -1,10 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- The source-generated interop for the service control API needs it; no unsafe code is written here. -->
+    <!-- The source-generated interop needs it, and so does the one unsafe method: the address of WinINet's status
+         callback, for FX-HTTP-005's asynchronous client. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Kestrel, FX-HTTP-006's HTTP/2 server: HTTP/2 frames every message and compresses its heads, which only a server
+         that speaks it can take apart. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 </Project>

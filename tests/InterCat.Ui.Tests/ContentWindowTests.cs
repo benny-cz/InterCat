@@ -485,6 +485,7 @@ public sealed class ContentWindowTests
         ];
         Assert.Contains("Decoded by InterCat's content fixture decoder, version 1", read);
         Assert.Contains("It read bytes 0 to 63 (64 bytes) of the record's message.", read);
+        Assert.DoesNotContain(ContentDecoders.HttpHeadVersionStatement, read);
         Assert.Equal(
         [
             "message, bytes 33 to 33 (1 byte): 4",
@@ -633,6 +634,7 @@ public sealed class ContentWindowTests
         Assert.Equal("Decoded 4 fields; the Decoded tab lists them.", Named<TextBlock>(window, "Content status").Text);
         ScrollViewer view = Named<ScrollViewer>(window, "What the decoder made of the kept bytes");
         Assert.Contains("It read bytes 0 to 42 (43 bytes) of the request head of exchange 7.", Texts(window));
+        Assert.Contains(ContentDecoders.HttpHeadVersionStatement, Texts(window));
         Assert.Equal(
         [
             "method, bytes 0 to 2 (3 bytes): GET",

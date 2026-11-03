@@ -82,8 +82,13 @@ limit, one cut inside its header, one not the fixture's, and one whose filler br
 ## 4. The HTTP/1.1 head decoder
 
 WinINet's capture keeps each request and response head as a part, in buffers, and FX-HTTP-001 to FX-HTTP-003 found
-every kept part equal to the bytes on the wire (ADR-037). The decoder reads a request or response head's whole part as
-HTTP/1.1 defines a head (RFC 9112 §2 to §5), line by line, each line ended by CRLF or by LF alone:
+every kept part equal to the bytes on the wire (ADR-037). Over HTTP/2, which carries no head as bytes but frames and
+compresses its fields, WinINet keeps both heads in HTTP/1.1's form all the same (FX-HTTP-006, revision 887): a request
+line naming HTTP/1.1 above the fields it sent, and a status line naming HTTP/1.1 and no reason above the fields it
+received, named in lower case. So the version a head names is WinINet's, not the protocol that carried its exchange,
+which nothing kept says; the command line and the window say so wherever a head is decoded (§5, §5a). The decoder
+reads a request or response head's whole part as HTTP/1.1 defines a head (RFC 9112 §2 to §5), line by line, each line
+ended by CRLF or by LF alone:
 
 - **The first line.** A request head's is a request line: a method, a request target and an HTTP version, one space
   apart, as the fields `method`, `target` and `version`. A response head's is a status line: an HTTP version, a
@@ -115,7 +120,8 @@ decoding that read nothing - a part not whole, kept without consent, or holding 
 `--reveal` does for bytes it cannot show. `icat exchanges --decode` decodes each listed exchange's request and
 response heads the same way, and lists what each request asked for and what its response answered beside the exchange
 (`contracts/http-exchanges-v1.md` §5c), and with `--json` or `--output` writes them, as `http-exchange-heads-v1` or a
-table (§5f there).
+table (§5f there). Since revision 887 a head decoded by either says beneath it, and a listing with its heads decoded
+among its caveats, that the version a head names is WinINet's (§4); a table's version columns are the heads' own.
 
 ## 5a. The window
 
@@ -128,7 +134,8 @@ content --decoders` lists them. The Decoded tab names the decoder and its versio
 record's message, or of the part - and lists each field with its bytes and what was not decoded; a field's Show its
 bytes shows them in the hex view, of the whole part where the decoder read one. Nothing is decoded until asked. An
 exchange's conversation (`contracts/http-exchanges-v1.md` §5d) decodes its two heads the same way, side by side, when
-its Decode its heads is pressed. Since revision 784 a process's HTTP exchanges export with what their heads say, as a
+its Decode its heads is pressed. Since revision 887 the Decoded tab says beneath an HTTP head's decoding, and the
+conversation before its heads are decoded, that the version a head names is WinINet's (§4). Since revision 784 a process's HTTP exchanges export with what their heads say, as a
 table, once the window has said the table is content (`contracts/http-exchanges-v1.md` §5f).
 
 ## 6. Not defined at this version

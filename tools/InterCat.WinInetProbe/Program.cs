@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using InterCat.Capture.Windows;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Session;
@@ -20,8 +21,10 @@ namespace InterCat.WinInetProbe;
 /// are, and with --ledger each buffer's metadata, never its bytes. With --tls the same exchange runs over TLS as FX-HTTP-002, and the server's truth is the bytes above the
 /// encryption: a capture that matches it holds the plaintext its client sent and read. With --async the client works
 /// WinINet asynchronously as FX-HTTP-005, and each record is counted by whether a thread that made a request raised it.
+/// With --http2 the exchange runs over HTTP/2 as FX-HTTP-006, served by Kestrel, whose truth holds no head's bytes: the
+/// heads kept are described by their start lines' shapes and their fields' names, against the fields the server decoded.
 /// </summary>
-internal static class Program
+internal static partial class Program
 {
     private const string Schema = "intercat.wininet-capture-feasibility.v1";
 
@@ -45,6 +48,7 @@ internal static class Program
         bool gzip = args.Contains("--gzip", StringComparer.Ordinal);
         bool decode = args.Contains("--decode", StringComparer.Ordinal);
         bool async = args.Contains("--async", StringComparer.Ordinal);
+        bool http2 = args.Contains("--http2", StringComparer.Ordinal);
         int pace = int.Parse(Option(args, "--pace") ?? "0", CultureInfo.InvariantCulture);
         bool ledger = args.Contains("--ledger", StringComparer.Ordinal);
         int concurrency = int.Parse(Option(args, "--concurrency") ?? "1", CultureInfo.InvariantCulture);
@@ -56,6 +60,7 @@ internal static class Program
             Console.Error.WriteLine("InterCat.WinInetProbe --output <new directory> [--requests n] [--seed n] [--bytes n] [--tls] [--concurrency n] [--chunked]");
             Console.Error.WriteLine("  [--gzip [--decode]]: responses coded in gzip, read coded or decoded by WinINet (FX-HTTP-004)");
             Console.Error.WriteLine("  [--async]: the client works WinINet asynchronously, with any of the others (FX-HTTP-005)");
+            Console.Error.WriteLine("  [--http2]: the client enables HTTP/2 and Kestrel serves it over TLS (FX-HTTP-006)");
             Console.Error.WriteLine("  [--pace ms]: the server waits that long before each 16 KiB of a response body, so reads wait or pend");
             Console.Error.WriteLine("  [--ledger]: writes each captured buffer's metadata - time, event, exchange, place, ends, length, thread -");
             Console.Error.WriteLine("             never its bytes, as buffers.csv beside the report");
@@ -132,6 +137,7 @@ internal static class Program
             if (gzip) start.ArgumentList.Add("--gzip");
             if (decode) start.ArgumentList.Add("--decode");
             if (async) start.ArgumentList.Add("--async");
+            if (http2) start.ArgumentList.Add("--http2");
             if (pace > 0)
             {
                 start.ArgumentList.Add("--pace");
@@ -230,7 +236,7 @@ internal static class Program
             .Count(line => line.Contains("\"kind\":\"CallCompleted\"", StringComparison.Ordinal));
         object report = new
         {
-            exchange = Compare(captured, truth, process.Id, requests, bytes, tls, concurrency, chunked, gzip, decode, async, pace, eventsLost, others,
+            exchange = Compare(captured, truth, process.Id, requests, bytes, tls || http2, concurrency, chunked, gzip, decode, async, http2, pace, eventsLost, others,
                 malformed, ledger ? Path.Combine(output, "buffers.csv") : null),
             processFilter = new
             {
@@ -253,7 +259,7 @@ internal static class Program
     /// with the body before its coding and with the coded bytes.
     /// </summary>
     private static object Compare(List<Buffer> captured, string truth, int processId, int requests, int maximumBodyBytes, bool tls,
-        int concurrency, bool chunked, bool gzip, bool decode, bool async, int pace, int eventsLost, long others, long malformed,
+        int concurrency, bool chunked, bool gzip, bool decode, bool async, bool http2, int pace, int eventsLost, long others, long malformed,
         string? ledger)
     {
         // The threads that made the requests, by the workload's own account: a record raised on any other thread of its
@@ -473,6 +479,47 @@ internal static class Program
             }
         }
 
+        // What every captured head holds, as text: the shapes of its start lines, numbers as n, and the names of its fields,
+        // each with how many heads hold it - the fixture's own synthetic heads, never their values.
+        (SortedDictionary<string, int> StartLines, SortedDictionary<string, int> FieldNames) HeadsOf(int id)
+        {
+            var startLines = new SortedDictionary<string, int>(StringComparer.Ordinal);
+            var fieldNames = new SortedDictionary<string, int>(StringComparer.Ordinal);
+            foreach (List<Buffer> exchange in exchanges)
+            {
+                byte[] head = [.. exchange.Where(buffer => buffer.EventId == id).OrderBy(buffer => buffer.Sequence).SelectMany(buffer => buffer.Bytes)];
+                if (head.Length == 0) continue;
+                string[] lines = Encoding.ASCII.GetString(head).Split("\r\n");
+                string shape = Numbers().Replace(lines[0], "n");
+                startLines[shape] = startLines.GetValueOrDefault(shape) + 1;
+                foreach (string line in lines.Skip(1).TakeWhile(line => line.Length > 0))
+                {
+                    int colon = line.IndexOf(':', StringComparison.Ordinal);
+                    string name = colon < 0 ? "(no colon)" : line[..colon];
+                    fieldNames[name] = fieldNames.GetValueOrDefault(name) + 1;
+                }
+            }
+
+            return (startLines, fieldNames);
+        }
+
+        (SortedDictionary<string, int> requestStartLines, SortedDictionary<string, int> requestFieldNames) = HeadsOf(2001);
+        (SortedDictionary<string, int> responseStartLines, SortedDictionary<string, int> responseFieldNames) = HeadsOf(2003);
+
+        // Over HTTP/2, which protocol each request was made over by the client's account and by the server's, and the
+        // names of the fields the server decoded from the first request's compressed head.
+        int ProtocolCount(string file, string status, string protocol) => File.ReadLines(Path.Combine(truth, file))
+            .Count(line => line.Contains($"\"status\":\"{status}\"", StringComparison.Ordinal)
+                && line.Contains($"\"resourceName\":\"{protocol}\"", StringComparison.Ordinal));
+        string? decodedFields = File.ReadLines(Path.Combine(truth, "truth-http-server.jsonl"))
+            .Where(line => line.Contains("\"status\":\"request-fields\"", StringComparison.Ordinal))
+            .Select(line => JsonDocument.Parse(line).RootElement.GetProperty("resourceName").GetString())
+            .FirstOrDefault();
+        int connections = File.ReadLines(Path.Combine(truth, "truth-http-server.jsonl"))
+            .Where(line => line.Contains("\"status\":\"request-connection\"", StringComparison.Ordinal))
+            .Select(line => JsonDocument.Parse(line).RootElement.GetProperty("resourceName").GetString())
+            .Distinct(StringComparer.Ordinal).Count();
+
         return new
         {
             schema = Schema,
@@ -482,7 +529,17 @@ internal static class Program
             providerGuid = Provider,
             keywords = "0x" + Keywords.ToString("X16", CultureInfo.InvariantCulture),
             processFilter = "EVENT_FILTER_TYPE_PID: the workload's process alone",
-            workload = async ? "FX-HTTP-005" : gzip ? "FX-HTTP-004" : concurrency > 1 || chunked ? "FX-HTTP-003" : tls ? "FX-HTTP-002" : "FX-HTTP-001",
+            workload = http2 ? "FX-HTTP-006" : async ? "FX-HTTP-005" : gzip ? "FX-HTTP-004" : concurrency > 1 || chunked ? "FX-HTTP-003"
+                : tls ? "FX-HTTP-002" : "FX-HTTP-001",
+            http2,
+            requestsOverHttp2ByTheClient = http2 ? ProtocolCount("truth-http-client.jsonl", "protocol-used", "HTTP/2") : (int?)null,
+            requestsOverHttp2ByTheServer = http2 ? ProtocolCount("truth-http-server.jsonl", "request-protocol", "HTTP/2") : (int?)null,
+            fieldsTheServerDecodedOfTheFirstRequest = decodedFields,
+            connectionsByTheServer = http2 ? connections : (int?)null,
+            requestHeadStartLines = requestStartLines,
+            requestHeadFieldNames = requestFieldNames,
+            responseHeadStartLines = responseStartLines,
+            responseHeadFieldNames = responseFieldNames,
             async,
             paceMilliseconds = pace,
             tls,
@@ -556,6 +613,9 @@ internal static class Program
 
     private static async Task WriteAsync(string output, object report) =>
         await File.WriteAllTextAsync(Path.Combine(output, "report.json"), JsonSerializer.Serialize(report, Json));
+
+    [GeneratedRegex("[0-9]+")]
+    private static partial Regex Numbers();
 
     private static string? Option(string[] args, string name)
     {

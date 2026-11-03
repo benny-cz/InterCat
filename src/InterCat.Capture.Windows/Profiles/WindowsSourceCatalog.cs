@@ -749,6 +749,9 @@ public static class WindowsSourceCatalog
                 + "working it synchronously, and in either a record is raised on whichever of the process's threads finished "
                 + "the step it records - the calling thread where the call finished at once, one of WinINet's own where it "
                 + "waited, every head among them - so its header's thread is not the thread that made the request.",
+                "Measured on FX-HTTP-006 (ADR-037): an exchange WinINet makes over HTTP/2 is recorded as one over HTTP/1.1, its "
+                + "bodies as its client sent and read them and its heads in HTTP/1.1's form, which no wire carried, so the "
+                + "version a head names is WinINet's and no record says which protocol carried the exchange.",
                 "Only WinINet's clients raise these records: .NET's HTTP client, WinHTTP and browsers' own stacks do not.",
                 "Its message bytes are kept only under a scoped content policy; under any other, the buffer's length is.",
                 "Capture impact, seven pairs of FX-HTTP-001 on 2026-09-28 with 4,096 exchanges each: a median of 0.71 CPU "

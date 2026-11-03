@@ -36,7 +36,9 @@ Nothing else ends a use. WinINet raises the empty buffer that ends a request bod
 live in revision 247), so an exchange is not over when its response is. Each use is one exchange, bound to a process
 instance by its first buffer. Two uses are never merged (R22). An asynchronous client's buffers are grouped as a
 synchronous one's: FX-HTTP-005's 64 exchanges eight at once, their buffers raised on the client's threads and WinINet's,
-are one exchange to a request, each part whole (revision 886).
+are one exchange to a request, each part whole (revision 886). So are an exchange's over HTTP/2, which WinINet records
+as over HTTP/1.1, its heads in HTTP/1.1's form: FX-HTTP-006's eight clients' 64 exchanges, multiplexed on one connection,
+are one exchange to a request, each part whole (revision 887).
 
 A release of a session's oldest interval (`contracts/store-v1.md` §8, ADR-043, revision 435) keeps every buffer of an
 exchange one of whose buffers stays, and the use before a use opened only by repeating one of its buffers, so every
@@ -135,7 +137,10 @@ whose start line is not HTTP/1.1's says nothing in its cells. Why is said beneat
 a head stops being HTTP/1.1, and where a body does not hold what its head declared (§5e). Every listed head is read
 under one lease in one pass over the session's segments, and only the exchanges listed are read. Asked for with
 `--json` or `--output`, the listed exchanges and their heads are written (§5f); `--decode` refuses a listing of no
-exchanges. The figures above the exchanges are read as without `--decode`.
+exchanges. The figures above the exchanges are read as without `--decode`. Since revision 887 a listing with its heads
+decoded says among its caveats that the version a head names is WinINet's: it keeps an exchange it made over HTTP/2
+with heads in HTTP/1.1's form, so no head says which protocol carried its exchange (FX-HTTP-006,
+`contracts/decoders-v1.md` §4).
 
 ## 5d. An exchange's conversation (revision 777)
 
@@ -214,5 +219,6 @@ how many heads were not decoded. It writes no JSON: the command line's document 
 - An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
   asked for reads, and only `http-exchange-heads-v1` writes, asked for with them (§5c, §5d, §5f,
   `contracts/decoders-v1.md` §2).
-- HTTP/2 (ADR-037), a request body written in pieces, and how WinINet's capture keeps a body in a content coding other
-  than gzip (§5e). Asynchronous WinINet is measured since revision 886 (FX-HTTP-005).
+- A request body written in pieces, and how WinINet's capture keeps a body in a content coding other than gzip (§5e).
+  Asynchronous WinINet is measured since revision 886 (FX-HTTP-005), and HTTP/2 since revision 887 (FX-HTTP-006),
+  whose heads no record tells from HTTP/1.1's.

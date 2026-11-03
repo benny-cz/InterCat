@@ -920,6 +920,58 @@
         "I21: a recording keeps each WinINet buffer beside its journal chunk, with its exchange, its place and its ends",
         "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone"
       ]
+    },
+    {
+      "id": "FX-HTTP-006",
+      "title": "WinINet exchanges over HTTP/2",
+      "scenario": "HTTP/2 (ADR-037, revision 887): the workload's client enables HTTP/2 on its WinINet session, and its server, Kestrel on loopback, offers HTTP/2 and HTTP/1.1 by ALPN over TLS with a certificate made in memory for the run; both say each request went over HTTP/2. One request at a time, or eight clients at once, whose exchanges WinINet multiplexes on one connection; WinINet's capture provider is enabled for the workload's process alone.",
+      "milestone": "M3",
+      "mechanism": "Http",
+      "backlog": [
+        "IC-011",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": [
+          "P2"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads http-wininet --http2, with --pace 5 and --concurrency 8",
+        "seed": 20260929,
+        "log": "fixtures/FX-HTTP-006/evidence/eight-at-once/truth-http-server.jsonl",
+        "independence": "The server is the witness: HTTP/2 frames every message and compresses its fields, so it logs each request body as it read it from its frames and each response body as it wrote them, by length and SHA-256, never the bytes, and the protocol, the connection and the names of the fields of each request, never their values. The client logs what it sent and read and the protocol WinINet says each request went over. Neither reads InterCat state."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-HTTP-006/evidence/measurement.json",
+        "note": "An exchange over HTTP/2 is kept with its bodies as over HTTP/1.1 - through icat record, twice 64 exchanges, one at a time and eight at once on one connection, 57 of them begun before an earlier one ended, every exchange whole and every body icat content --part saved the server's, 126 of 126 that held any - and its heads in HTTP/1.1's form, which no wire carried: 128 of 128 decoded to their end naming HTTP/1.1, every response's with no reason, every request's holding the fields the server decoded. No record says the exchange went over HTTP/2, so a head's version is WinINet's, and InterCat says so wherever heads are decoded. The ledger of the run eight at once, 387 buffers and never their bytes, is grouped by a test as a session's records are."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-03",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record --profile content scoped to the workload's process, twice: 926 and 864 records journaled, 1,202,083 bytes of content kept each time, nothing lost. Every record bound to the workload, every exchange recorded whole and every head decoded to its end, in HTTP/1.1's form; every body saved by icat content matched the server's bytes, and none was said to disagree with its head. Tier ExperimentalEvidence: content codings other than gzip, and a request body written in pieces, are unmeasured (ADR-037)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The server's and the client's truth logs and the scenario of two runs - ports, thread IDs, the protocol and connection of each request and the names of its fields, lengths and SHA-256 of synthetic requests and responses, never their bytes - one run's buffer ledger, each buffer's reading, event, exchange number, place, ends, length, request and kind of thread, never its bytes, and the measurement's counters. The captures themselves are not kept; the decoder corpus holds the two heads WinINet kept of one exchange."
+      },
+      "tests": [
+        "R22: FX-HTTP-006's exchanges over HTTP/2, eight clients' multiplexed on one connection, are one exchange to a request, each part whole and each body as long as the server's truth",
+        "P2: every decoder InterCat lists has a corpus at its version, and decodes each of its cases exactly as the corpus says",
+        "P2: icat content --part --decode decodes a whole HTTP head, says a buffer alone and a body are read by none, and --decoders lists every decoder",
+        "P2: icat exchanges --decode says what each listed request asked for, of which host, and what its response answered, each head read whole",
+        "P2: C on an HTTP exchange opens its conversation, which says what each head said only once asked, and Show its buffers opens them",
+        "P2: the content viewer decodes a buffer's whole HTTP head only when asked, shows a field's bytes in the part, and never decodes a head that is not whole"
+      ]
     }
   ],
   "retired": [
@@ -2110,6 +2162,7 @@
       ],
       "R22": [
         "R22: FX-HTTP-005's asynchronous exchanges, eight at once and raised on the client's threads and WinINet's, are one exchange to a request, each part whole and as long as the server's truth",
+        "R22: FX-HTTP-006's exchanges over HTTP/2, eight clients' multiplexed on one connection, are one exchange to a request, each part whole and each body as long as the server's truth",
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
         "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused",
         "R22: a boot is named by a token kept only until the machine restarts, and its count is no identity",

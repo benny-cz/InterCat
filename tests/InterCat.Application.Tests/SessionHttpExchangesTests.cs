@@ -213,7 +213,46 @@ public sealed class SessionHttpExchangesTests
     [Fact(DisplayName = "R22: FX-HTTP-005's asynchronous exchanges, eight at once and raised on the client's threads and WinINet's, are one exchange to a request, each part whole and as long as the server's truth")]
     public void AsynchronousExchangesAreOneToARequest()
     {
-        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-HTTP-005", "evidence", "eight-at-once");
+        (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes, int Request, bool Client)[] ledger =
+            GroupedAsTheirRequests("FX-HTTP-005", heads: true);
+
+        // Both kinds of thread raised buffers, and an exchange's buffers came from both.
+        Assert.Contains(ledger, buffer => buffer.Client);
+        Assert.Contains(ledger, buffer => !buffer.Client);
+        Assert.Contains(ledger.GroupBy(buffer => buffer.Request), request => request.Select(buffer => buffer.Client).Distinct().Count() == 2);
+    }
+
+    /// <summary>
+    /// FX-HTTP-006 measured that WinINet keeps an exchange it made over HTTP/2 as it keeps one over HTTP/1.1 - its bodies as
+    /// its client sent and read them, in the same buffers, numbered and flagged - but its heads in HTTP/1.1's form, which no
+    /// wire carried, so the server's truth holds no head's bytes. Eight clients' 64 exchanges went over one HTTP/2
+    /// connection, its streams interleaved. The ledger of that run, grouped as a session's records are, is one exchange to
+    /// a request, every buffer its request's, every head recorded whole and every body as long as the server's truth.
+    /// </summary>
+    [Fact(DisplayName = "R22: FX-HTTP-006's exchanges over HTTP/2, eight clients' multiplexed on one connection, are one exchange to a request, each part whole and each body as long as the server's truth")]
+    public void Http2ExchangesAreOneToARequest()
+    {
+        (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes, int Request, bool Client)[] ledger =
+            GroupedAsTheirRequests("FX-HTTP-006", heads: false);
+
+        // The server's account: one connection carried every request, each over HTTP/2.
+        string[] truth = [.. File.ReadLines(Path.Combine(RepositoryRoot(), "fixtures", "FX-HTTP-006", "evidence", "eight-at-once", "truth-http-server.jsonl"))];
+        Assert.Single(truth.Where(line => line.Contains("\"status\":\"request-connection\"", StringComparison.Ordinal))
+            .Select(line => System.Text.Json.JsonDocument.Parse(line).RootElement.GetProperty("resourceName").GetString()).Distinct());
+        Assert.Equal(64, truth.Count(line => line.Contains("\"status\":\"request-protocol\"", StringComparison.Ordinal)
+            && line.Contains("\"resourceName\":\"HTTP/2\"", StringComparison.Ordinal)));
+        Assert.Equal(387, ledger.Length);
+    }
+
+    /// <summary>
+    /// The ledger of <paramref name="fixture"/>'s run eight at once, grouped as a session's records are: one exchange to a
+    /// request, every buffer of an exchange its request's, every part whole and each as long as the server's truth of it -
+    /// a chunked body as its client read it - or, where the server holds no head's bytes, the heads recorded whole.
+    /// </summary>
+    private static (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes, int Request, bool Client)[]
+        GroupedAsTheirRequests(string fixture, bool heads)
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", fixture, "evidence", "eight-at-once");
         (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes, int Request, bool Client)[] ledger =
         [
             .. File.ReadLines(Path.Combine(evidence, "buffers.csv")).Skip(1).Select(line => line.Split(',')).Select(field => (
@@ -232,11 +271,6 @@ public sealed class SessionHttpExchangesTests
                 truth[(call.GetInt64(), part.GetString()!)] = record.RootElement.GetProperty("declaredBytes").GetInt64();
             }
         }
-
-        // Both kinds of thread raised buffers, and an exchange's buffers came from both.
-        Assert.Contains(ledger, buffer => buffer.Client);
-        Assert.Contains(ledger, buffer => !buffer.Client);
-        Assert.Contains(ledger.GroupBy(buffer => buffer.Request), request => request.Select(buffer => buffer.Client).Distinct().Count() == 2);
 
         // Each buffer a record of the client, process 4242, raised on one of its threads that made requests or on another.
         ObservationRowV1[] buffers =
@@ -264,16 +298,25 @@ public sealed class SessionHttpExchangesTests
         Assert.Equal(64, page.Exchanges.Count);
 
         // Each exchange is one request's, by the path its head named: every request once, every buffer of an exchange its
-        // request's, and each part as long as the server's truth of it - a chunked body as its client read it.
+        // request's, and each part as long as the server's truth of it - a chunked body as its client read it - or, where the
+        // server holds no head's bytes, recorded whole.
         int[] requests = [.. page.Exchanges.Select(row => ledger[(int)row.Exchange.First.Ordinal - 1].Request)];
         Assert.Equal(Enumerable.Range(0, 64), requests.Order());
         foreach ((HttpExchangeRow row, int request) in page.Exchanges.Zip(requests))
         {
             HttpExchange exchange = row.Exchange;
             Assert.True(exchange.Complete, row.Parts(CultureInfo.InvariantCulture));
-            Assert.Equal(
-                (truth[(request, "request-head")], truth[(request, "request-body")], truth[(request, "response-head")], truth[(request, "response-body")]),
-                (exchange.RequestHead.Bytes, exchange.RequestBody.Bytes, exchange.ResponseHead.Bytes, exchange.ResponseBody.Bytes));
+            Assert.Equal((truth[(request, "request-body")], truth[(request, "response-body")]), (exchange.RequestBody.Bytes, exchange.ResponseBody.Bytes));
+            Assert.Equal(heads, truth.ContainsKey((request, "request-head")) && truth.ContainsKey((request, "response-head")));
+            if (heads)
+            {
+                Assert.Equal((truth[(request, "request-head")], truth[(request, "response-head")]), (exchange.RequestHead.Bytes, exchange.ResponseHead.Bytes));
+            }
+            else
+            {
+                Assert.True(exchange.RequestHead is { Whole: true, Bytes: > 0 } && exchange.ResponseHead is { Whole: true, Bytes: > 0 });
+            }
+
             SessionEvidencePage records = SessionEvidenceQuery.Read(session.Store, operationKey: row.Key);
             Assert.Equal(exchange.Records, records.Records.Count);
             Assert.All(records.Records, record => Assert.Equal(request, ledger[(int)record.Observation.RawRecordOrdinal - 1].Request));
@@ -282,6 +325,7 @@ public sealed class SessionHttpExchangesTests
         // They ran at once: most began before an earlier one's response ended.
         Assert.True(page.Exchanges.Select((row, index) => (row, index)).Count(pair => page.Exchanges.Take(pair.index)
             .Any(earlier => earlier.Exchange.ResponseEndNanoseconds > pair.row.Exchange.FirstNanoseconds)) > 32);
+        return ledger;
     }
 
     private static string RepositoryRoot()

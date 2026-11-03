@@ -407,6 +407,7 @@ internal static class ExchangesCommand
                     + "in order. WinINet raises no record for an empty request body, so a request without one lacks nothing.",
                 "A duration runs from an exchange's first recorded buffer to its response's last, as the client library held "
                     + "them; an exchange whose response end was not recorded has none.",
+                .. heads is null ? Array.Empty<string>() : [ContentDecoders.HttpHeadVersionStatement],
             ],
         };
     }

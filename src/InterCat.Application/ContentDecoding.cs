@@ -84,6 +84,21 @@ public static partial class ContentDecoders
     public static ContentDecoderInfo HttpHeadDecoder => Known.Single(decoder => decoder.Id == HttpHeads.Id);
 
     /// <summary>
+    /// What the version a decoded HTTP head names is (FX-HTTP-006, ADR-037): WinINet's. WinINet keeps an exchange it made
+    /// over HTTP/2 with heads in HTTP/1.1's form - a start line naming HTTP/1.1, a response's with no reason - and its
+    /// bodies as for HTTP/1.1, so nothing kept says which protocol carried an exchange. Said wherever heads are decoded.
+    /// </summary>
+    public const string HttpHeadVersionStatement = "The version a head names is WinINet's: it keeps an exchange it made over HTTP/2 "
+        + "with heads in HTTP/1.1's form, so no head says which protocol carried the exchange.";
+
+    /// <summary>What a person reads of <paramref name="decoding"/>'s version beside it: for an HTTP head read, the statement above.</summary>
+    public static string? VersionNote(DecodedContent decoding)
+    {
+        ArgumentNullException.ThrowIfNull(decoding);
+        return decoding.DecoderId == HttpHeads.Id && decoding.Read is not null ? HttpHeadVersionStatement : null;
+    }
+
+    /// <summary>
     /// InterCat's decoders in a sentence, each by its name, identifier and version and what it reads, as `icat content
     /// --decoders` lists them: what a view says where no decoder reads what it shows.
     /// </summary>

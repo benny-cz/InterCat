@@ -49,3 +49,12 @@ it. In either mode a record is raised on whichever of the client's threads WinIN
 thread is not the thread that made the request, and nothing reads it as one. Of the semantics the verdict names
 unmeasured, RPC over TCP transport and HTTP/2 remain, and of compressed responses all but the gzip coding (revision 859).
 Nothing else above changes.
+
+## Addendum, revision 887
+
+HTTP/2 through WinINet is measured (FX-HTTP-006, ADR-037): an exchange WinINet makes over HTTP/2 is kept as over
+HTTP/1.1, its bodies as its client sent and read them and its heads in HTTP/1.1's form, which no wire carried, and
+through `icat record` two runs of 64 exchanges, one at a time and eight at once on one connection, kept every exchange
+whole. No record says which protocol carried an exchange, so a decoded head's version is said to be WinINet's. Of the
+semantics the verdict names unmeasured, RPC over TCP transport remains, and of compressed responses all but the gzip
+coding. Nothing else above changes.

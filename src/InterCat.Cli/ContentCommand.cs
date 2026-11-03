@@ -418,6 +418,11 @@ internal static class ContentCommand
         {
             ConsoleUi.Note("Not decoded: " + rest);
         }
+
+        if (ContentDecoders.VersionNote(decoding) is { } version)
+        {
+            ConsoleUi.Note(version);
+        }
     }
 
     /// <summary>InterCat's decoders, each at its version with what it reads (`contracts/decoders-v1.md`).</summary>

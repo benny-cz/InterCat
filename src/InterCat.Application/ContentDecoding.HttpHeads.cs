@@ -9,13 +9,14 @@ namespace InterCat.Application;
 public static partial class ContentDecoders
 {
     /// <summary>
-    /// HTTP/1.1 message heads as WinINet's capture keeps them, each one part (ADR-037; FX-HTTP-001 to FX-HTTP-004 found
-    /// every kept head equal to the wire): a request head's request line - its method, target and version - or a response
-    /// head's status line - its version, status code and reason - then each field line's name and value, to the empty line
-    /// that ends the head (RFC 9112 §2 to §5). A line HTTP/1.1 does not allow where it stands stops the decoding at its
-    /// start, saying which line and why, and nothing from it on is decoded, so a head is never decoded as more than its
-    /// bytes show (M8). A line ends in CRLF, or in LF alone, as RFC 9112 §2.2 lets a recipient read it. Values are inert
-    /// text: each byte outside visible ASCII and the space is written as \xHH.
+    /// HTTP/1.1 message heads as WinINet's capture keeps them, each one part (ADR-037; FX-HTTP-001 to FX-HTTP-005 found
+    /// every kept head of an HTTP/1.1 exchange equal to the wire, and FX-HTTP-006 an HTTP/2 exchange's heads kept in this
+    /// form too, which no wire carried, so a head's version is WinINet's): a request head's request line - its method,
+    /// target and version - or a response head's status line - its version, status code and reason - then each field
+    /// line's name and value, to the empty line that ends the head (RFC 9112 §2 to §5). A line HTTP/1.1 does not allow
+    /// where it stands stops the decoding at its start, saying which line and why, and nothing from it on is decoded, so
+    /// a head is never decoded as more than its bytes show (M8). A line ends in CRLF, or in LF alone, as RFC 9112 §2.2
+    /// lets a recipient read it. Values are inert text: each byte outside visible ASCII and the space is written as \xHH.
     /// </summary>
     private static class HttpHeads
     {

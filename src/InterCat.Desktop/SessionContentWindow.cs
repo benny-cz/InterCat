@@ -66,6 +66,7 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
     private readonly Button decode = new() { Content = "Decode", IsVisible = false };
     private readonly TextBlock decodedHeading = new() { FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock decodedRead = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock decodedVersion = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly Grid decodedFields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"), ColumnSpacing = 16, RowSpacing = 3 };
     private readonly TextBlock notDecoded = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly TabItem decodedTab = new() { Header = "Decoded", IsVisible = false };
@@ -223,7 +224,7 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
             {
                 Spacing = 8,
                 Margin = new Thickness(0, 6, 0, 0),
-                Children = { decodedHeading, decodedRead, decodedFields, notDecoded },
+                Children = { decodedHeading, decodedRead, decodedVersion, decodedFields, notDecoded },
             },
         };
         AutomationProperties.SetName(decodedView, "What the decoder made of the kept bytes");
@@ -821,6 +822,10 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
         decodedRead.Text = decoded.Read is { } read
             ? "It read " + read.Describe(culture) + " of " + of + "."
             : "It read no byte of " + of + ".";
+
+        // An HTTP head's version is WinINet's, which keeps an HTTP/2 exchange's heads in HTTP/1.1's form (FX-HTTP-006).
+        decodedVersion.Text = ContentDecoders.VersionNote(decoded) ?? string.Empty;
+        decodedVersion.IsVisible = decodedVersion.Text.Length > 0;
         decodedFields.Children.Clear();
         decodedFields.RowDefinitions.Clear();
         decodedFields.IsVisible = decoded.Fields.Count > 0;

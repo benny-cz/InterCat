@@ -305,3 +305,14 @@ carried, which declares the coded length either way, and no record says which. S
 such a body beside its declared length too: one holding that length agrees, and one holding another, though recorded, is
 said to be possibly the decoded body, never to disagree. A body in another content coding is compared only where it
 holds its declared length. No body's content is read or decoded. Nothing else above changes.
+
+## Addendum, revision 887
+
+Heads of exchanges over HTTP/2 are measured (FX-HTTP-006, ADR-037): WinINet keeps them in HTTP/1.1's form - a request
+line naming HTTP/1.1 above the fields WinINet sent, a status line naming HTTP/1.1 and no reason above the fields
+received, named in lower case as HTTP/2 names them - and
+the HTTP/1.1 head decoder decodes them to their end, as its corpus now pins. Since no record says which protocol carried
+an exchange, the version a decoded head names is WinINet's, and the command line and the window now say so wherever a
+head is decoded: beneath `icat content --part --decode`'s decoding, among `icat exchanges --decode`'s caveats, beneath
+the content viewer's decoding and in an exchange's conversation (`decoders-v1` §4, §5, §5a). A table's version columns
+are the heads' own. Nothing else above changes.
