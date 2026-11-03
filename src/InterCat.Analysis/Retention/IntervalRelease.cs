@@ -451,14 +451,16 @@ public static class IntervalRelease
         Func<ulong, bool> released,
         CancellationToken cancellationToken)
     {
-        SegmentReaderV1[] segments = [.. observationNames.Select(name => SessionSegments.Open(store.Root, manifest, name))];
-        SegmentReaderV1[] fields = [.. fieldNames.Select(name => SessionSegments.Open(store.Root, manifest, name))];
+        // Each stage reads columns of every segment, and together they read most of the generation's: the readers give back
+        // what one stage read before the next, so a release holds at once what its largest stage reads, not all of it, and
+        // a busy window's release fits beside the views (revision 873). Within a stage they hold a budget of their own and
+        // the segment read, not every column the stage read (revision 880). Nothing derived here holds a column of theirs.
+        var budget = new SegmentReaderBudget();
+        SegmentReaderV1[] segments = [.. observationNames.Select(name => budget.Open(store.Root, manifest, name))];
+        SegmentReaderV1[] fields = [.. fieldNames.Select(name => budget.Open(store.Root, manifest, name))];
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This session's journal names no clock, so its processes cannot be derived.");
 
-        // Each stage reads columns of every segment, and together they read most of the generation's: the readers give back
-        // what one stage read before the next, so a release holds at once what its largest stage reads, not all of it, and
-        // a busy window's release fits beside the views (revision 873). Nothing derived here holds a column of theirs.
         ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
         GiveBack(segments, fields);
         TransportRelationIndex relations = TransportRelationIndex.Derive(segments, processes, cancellationToken);

@@ -50,7 +50,9 @@ approximate.
    reader a query holds is never taken from it. Since revision 876 the budget holds while a query reads, not only once
    its lease ends: a cached reader that grows past it has every other give back its columns but those few, its own
    kept for the query reading it, so a derivation reading every segment under one lease holds the budget rather than
-   every column it read; values derived from rows wait for the trim at the lease's end. The derivations of the four
+   every column it read; values derived from rows wait for the trim at the lease's end. Since revision 880 the readers
+   a release's plan opens of its own, outside the cache, hold a budget of their own by the same rule, an eighth of the
+   cache's (`SegmentReaderBudget`). The derivations of the four
    most recently used generations are kept process-wide, by count: a derivation holds no file, so keeping it never
    delays a release. Since revision 751 a tile index keeps what its queries read of it - blocks decoded, and their
    tallies, byte sums and records - against a byte budget, 64 MiB by default, which the tiles of every chunk a live

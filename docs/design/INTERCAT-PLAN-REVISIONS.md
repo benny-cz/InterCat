@@ -786,6 +786,8 @@ Revision 878 has the rolling qualification carry a load of its own, so a window 
 
 Revision 879 gives every column a reader reads room under the heap's limit when the GC keeps regions committed past what its heap holds, so a loaded window's viewer held 47 minutes under 448 MiB where it held 18.
 
+Revision 880 holds a release's own readers to a budget while it reads, so planning a release of a three-million-row window needs 192-256 MiB where 512 MiB was not enough, and a loaded rolling capture passes its two-hour qualification under 512 MiB whole at up to 3.2 million rows.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3020,3 +3022,25 @@ traffic beside the load brought the window to 2,025,423-3,221,606 rows: the view
 samples, its heap 405 MiB at the median and 481 MiB at most, then ran out in a release's RPC pass
 (`bench/results/rolling-20261103T063415Z-2h-keep10-512MiB-load1400-revision879`). `icat overview` and `icat checkpoint`
 need what they needed, since alone each holds its heap near its limit rather than regions the GC keeps.
+
+Revision 880 holds a release's own readers to a budget while they read. A release plans from the whole generation
+through readers of its own, opened on the store's root rather than through its cache, and kept across its stages -
+processes, connections, the calls' dependencies, their other ends and HTTP exchanges - which give back what one stage read
+before the next (revision 873). Within a stage they held every segment's columns: the RPC pass reads some 95 bytes a row,
+about 285 MB at three million rows, beside the store's cache and the views. `SegmentReaderBudget` opens a pass's readers
+and holds them to a budget while they read, an eighth of the store's cache budget, through the hook the cache keeps its
+own with (revision 876): a reader that comes to hold more past it has every other give back its columns, the first opened
+first, its own kept for the stage reading it, and values derived from rows stay until the pass gives them back between
+stages. The other readers a release opens, one segment at a time, hold one already. On revision 879's run's store,
+3,267,983 rows in 65 segments, `icat retain --release-before 4400 s` measures the same plan - 984,932 records given up,
+731 rows kept as evidence, 72 files rewritten - in 192-256 MiB of heap, where revision 879's code ran out under 512 MiB,
+taking 14-18 s against 11 s for reading again what its readers gave back; the capture never finished, so the release is
+only measured, never performed. A test reads every segment's columns through readers held to room for one segment's, and
+finds the budget held at every step, each reader read before holding nothing and the one read whole. Under 512 MiB for two
+hours, keeping ten minutes, at 1,400 messages a second, a rolling capture then passed the qualification whole at the
+busiest windows yet: 2,182,540-3,239,434 rows at all 107 judged samples, 29,133,254 records journaled through 43
+releases, its session saved and reopened holding 3,162,619 rows, the viewer's heap 398 MiB at the median and at most 491
+MiB as sampled, from the first quarter to the last ×0.93
+(`bench/results/rolling-20261103T083943Z-2h-keep10-512MiB-load1400-revision880`). It ran near its limit throughout: its
+GC took 4,153 full collections, 464 of them the aggressive ones taken for room, and by its 60th minute the viewer had
+spent 1,079 s of processor time where revision 879's had spent 719 s, reading again what its budgeted readers gave back.

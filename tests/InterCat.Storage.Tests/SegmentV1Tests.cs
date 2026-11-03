@@ -1133,6 +1133,48 @@ public sealed partial class SegmentV1Tests
         }
     }
 
+    [Fact(DisplayName = "S2: a pass's own readers hold no more than their budget while a stage reads every segment, but the reader read, and read again what they gave back")]
+    public void APassesReadersHoldTheirBudgetWhileAStageReads()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] spread = Spread(600);
+        _ = Publish(session.Store, spread[..200]);
+        _ = Publish(session.Store, spread[200..400]);
+        DerivedGenerationResult last = Publish(session.Store, spread[400..]);
+        string[] names = [.. SessionSegments.Names(last.Manifest)];
+        Assert.Equal(3, names.Length);
+        IOwnedDirectory directory = LocalOwnedDirectory.Open(session.Path);
+        static long ReadColumns(SegmentReaderV1 reader)
+        {
+            foreach (SegmentColumnDescriptor column in reader.Columns.Where(column => column.Encoding != SegmentColumnEncoding.VariableReference))
+            {
+                _ = reader.Slice(column.Id);
+            }
+
+            return reader.ResidentBytes;
+        }
+
+        // Room for one reader's columns read, not for two.
+        SegmentReaderV1[] measured = [.. names.Select(name => SessionSegments.Open(directory, last.Manifest, name))];
+        long[] whole = [.. measured.Select(ReadColumns)];
+        ObservationRowV1[] before = [.. measured.SelectMany(reader => Enumerable.Range(0, reader.RowCount).Select(reader.Row))];
+        var budget = new SegmentReaderBudget(whole.Max());
+
+        // A release's stage reads every segment's columns through readers it keeps across its stages; each reader read
+        // before gives back what it holds once the next is read, and the one read keeps it (revision 880).
+        SegmentReaderV1[] readers = [.. names.Select(name => budget.Open(directory, last.Manifest, name))];
+        for (int index = 0; index < readers.Length; index++)
+        {
+            _ = ReadColumns(readers[index]);
+            Assert.True(budget.HeldBytes <= budget.BudgetBytes, $"{budget.HeldBytes:N0} held against {budget.BudgetBytes:N0} once segment {index} was read.");
+            Assert.Equal(whole[index], readers[index].ResidentBytes);
+            Assert.All(readers[..index], reader => Assert.Equal(0, reader.ResidentBytes));
+        }
+
+        // What one gave back is read and checked again when asked for, and says the same.
+        Assert.Equal(before, readers.SelectMany(reader => Enumerable.Range(0, reader.RowCount).Select(reader.Row)));
+    }
+
     [Fact(DisplayName = "When a query ends, cached readers give back every column but session time and mechanism, and stay cached")]
     public void AnEndedQueryTrimsWhatCachedReadersHold()
     {

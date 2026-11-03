@@ -216,7 +216,10 @@ second (`-6min-keep1-load1000`), and two hours keeping ten at 1,400 a second hel
 rows at every judged sample for 119 minutes before the viewer ran out in a live derivation
 (`-2h-keep10-512MiB-load1400-revision878`). Revision 879's, its column reads given room the GC keeps committed, held 47
 minutes under 448 MiB where 878's code held 18 (`-1h-keep10-448MiB-load1400-revision879`), and 83 under 512 MiB at up to
-3,221,606 rows, until a release's RPC pass ran out (`-2h-keep10-512MiB-load1400-revision879`).
+3,221,606 rows, until a release's RPC pass ran out (`-2h-keep10-512MiB-load1400-revision879`). Revision 880's, a
+release's own readers holding a budget while it reads, passed whole at 1,400 messages a second: its window held
+2,182,540-3,239,434 rows at all 107 judged samples, and its session was saved and reopened
+(`-2h-keep10-512MiB-load1400-revision880`).
 
 `impact --output <new scratch directory> [--triplets <1-15>]` measures the broker's capture impact at its
 compiled cadence: the seeded TCP workload with no capture, a broker `OnStop` capture and a broker `Live`
