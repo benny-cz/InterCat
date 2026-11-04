@@ -1,6 +1,7 @@
 # ADR-077: COM-Perf records each out-of-process COM call at both ends, and its activations name nothing
 
-- Status: accepted for M6's COM/DCOM/WinRT work package; COM-Perf is inventoried as COM calls' lead (revision 912), and no
+- Status: accepted for M6's COM/DCOM/WinRT work package; COM-Perf is inventoried as COM calls' lead (revision 912), a call
+  is the RPC call that carries it and its two ends are linked by the client's activity (ADR-079, revision 913), and no
   profile requests it
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
@@ -131,3 +132,12 @@ The first decision held COM-Perf out of the catalog until a mechanism for COM ca
 
 No build carries a tier for COM calls: no fixture has measured them through the product. A test holds the lead, its
 absence from every profile and the absence of a tier; six mutations of the catalog entry are caught.
+
+## Addendum: what carries a call, and what links its ends (revision 913)
+
+The third addendum held COM-Perf's events out until their layering over the RPC call that carries them was settled.
+ADR-079 measured FX-COM-001's exchange with Microsoft-Windows-RPC collected beside COM-Perf, in this record's four shapes:
+each COM call is carried by one RPC call at each end, on its interface with its method as the procedure, and the
+server's COM call carries the client's activity id. So a COM call and its RPC call are one call, COM-Perf annotating
+it (ADR-079's first decision). The second decision's pairing by causality and rank agreed with the activity on every
+invoke; the activity is now the link, this record's checks its checks (ADR-079's fourth decision).

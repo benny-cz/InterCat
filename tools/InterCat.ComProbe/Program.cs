@@ -49,6 +49,8 @@ internal static class Program
             Console.Error.WriteLine("  calls, and with --ledger each of its records' metadata, never a pointer.");
             Console.Error.WriteLine("  --filter scopes the session to FX-COM-001's two processes beside a decoy pair outside it;");
             Console.Error.WriteLine("  --in-process runs FX-COM-002, one process's calls across an apartment, never a process.");
+            Console.Error.WriteLine("  --layering runs FX-COM-001 with Microsoft-Windows-RPC collected beside COM-Perf, as the product's");
+            Console.Error.WriteLine("  profiles request it, and sets each COM call beside the RPC calls of its process and thread.");
             Console.Error.WriteLine("  --impact [--pairs n] [--calls n]: machine CPU and workload time with and without a session");
             Console.Error.WriteLine("  collecting COM-Perf machine-wide, in pairs, over FX-COM-001's exchange unpaced.");
             return 2;
@@ -79,6 +81,7 @@ internal static class Program
         }
 
         return !measure ? Inspect(output)
+            : args.Contains("--layering", StringComparer.Ordinal) ? await Layering.RunAsync(output, args)
             : args.Contains("--filter", StringComparer.Ordinal) || args.Contains("--in-process", StringComparer.Ordinal)
                 ? await Scope.RunAsync(output, args)
                 : await Measure.RunAsync(output, args);

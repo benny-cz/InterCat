@@ -179,6 +179,10 @@ public sealed class ComPerfLeadTests
         Assert.Contains(comPerf.Notes, note => note.Contains("FX-COM-002", StringComparison.Ordinal));
         Assert.Contains("FX-COM-001", comPerf.FilteringNotes, StringComparison.Ordinal);
 
+        // Its notes say what carries a call and what links its two ends, as FX-COM-001 measured beside RPC (ADR-079).
+        Assert.Contains(comPerf.Notes, note => note.Contains("beside RPC", StringComparison.Ordinal) && note.Contains("one call, never two", StringComparison.Ordinal));
+        Assert.Contains(comPerf.Notes, note => note.Contains("activity id, which the server's records carry", StringComparison.Ordinal));
+
         // No profile requests it, and no other source claims COM calls.
         Assert.DoesNotContain(CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures),
             profile => profile.Sources.Any(source => source.SourceId == WindowsSourceCatalog.ComPerfSourceId));

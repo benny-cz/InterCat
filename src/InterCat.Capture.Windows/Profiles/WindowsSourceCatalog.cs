@@ -874,8 +874,9 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        // COM calls' lead (ADR-077, ADR-078): inventoried and requested by no profile, admitting no event until a COM call's
-        // records have a binding of their own; its measured notes are what icat capabilities states of it.
+        // COM calls' lead (ADR-077, ADR-078, ADR-079): inventoried and requested by no profile, admitting no event until a COM
+        // call's records have a binding of their own and a rule joining them to the RPC calls that carry them; its measured
+        // notes are what icat capabilities states of it.
         var comPerf = new WindowsSourceDefinition
         {
             SourceId = ComPerfSourceId,
@@ -906,8 +907,13 @@ public static class WindowsSourceCatalog
                 "Measured on FX-COM-001: every out-of-process COM call at both ends - its client's start naming the server's "
                 + "process and the server's naming the client's, with its interface and method, each start joined to its stop "
                 + "by its call trace number, with its HRESULT.",
-                "A causality names a chain of calls, not one, and the threads its records name are none the other end recorded, "
-                + "so a call's two ends pair by causality and rank, the server's start inside the client's call.",
+                "A causality names a chain of calls, not one, and the threads its records name are none the other end recorded. "
+                + "A call's two ends are linked by the client's activity id, which the server's records carry: one server call "
+                + "for each client call, naming the client as the client names the server, inside the client's call (ADR-079).",
+                "Measured on FX-COM-001 beside RPC: each call is carried by one RPC call at each end, on its interface with its "
+                + "method as the procedure - at the client the RPC call of its activity id, at the server the one around it on "
+                + "its thread - so the two are one call, never two (ADR-079). Its HRESULT is the method's answer, which the RPC "
+                + "call's status is not: a call answered E_NOINTERFACE stopped with RPC status 0.",
                 "A call across an apartment within one process is recorded as an out-of-process one is, both ends naming the "
                 + "process itself (FX-COM-002): a call is between processes only where the process it names is another.",
                 "Its activation events carry no field, so none names what was activated or becomes a call count.",

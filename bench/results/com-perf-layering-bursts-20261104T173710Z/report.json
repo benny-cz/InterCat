@@ -1,0 +1,114 @@
+{
+  "schema": "intercat.com-perf-layering.v1",
+  "measuredUtc": "2026-11-04T17:37:18.3735223+00:00",
+  "build": "10.0.26220.0-x64",
+  "workload": {
+    "calls": 512,
+    "delay": 1000,
+    "burst": 128
+  },
+  "session": {
+    "eventsLost": 0,
+    "realTimeBuffersLost": 0,
+    "sourceEventsLost": 0,
+    "records": 16929,
+    "comPerfRecords": 7501,
+    "rpcCallRecords": 9428,
+    "unreadable": 0,
+    "dropped": 0,
+    "processesRaisingRecords": 32,
+    "note": "COM-Perf enabled machine-wide at verbose, every keyword, and Microsoft-Windows-RPC at informational with no keyword mask, as the product\u0027s profiles request it, in one real-time session: the workload\u0027s processes do not exist before it starts, so their records are those raised in them."
+  },
+  "truth": {
+    "issued": 512,
+    "completedOk": 512,
+    "served": 512
+  },
+  "client": {
+    "comCalls": 1539,
+    "comStarts": 1539,
+    "comStartsWithNoActivity": 0,
+    "rpcStarts": 1556,
+    "rpcStartsWithNoActivity": 1,
+    "rpcCalls": 1555,
+    "comCallsWithOneRpcCallOfTheirActivity": 1539,
+    "comCallsWithNoRpcCallOfTheirActivity": 0,
+    "comCallsWithSeveralRpcCallsOfTheirActivity": 0,
+    "carriersOnTheComCallsThread": 1539,
+    "carriersStartingInsideTheComCall": 1539,
+    "carriersStoppingAtOrAfterTheComCallsStop": 1539,
+    "carrierStopAfterTheComCallsStopMicroseconds": {
+      "min": 0.6,
+      "max": 8.5
+    },
+    "comStopsSharingTheirCarriersActivity": 1539,
+    "carriersOnTheComCallsInterfaceAndMethod": 1539,
+    "carriersByProtocol": {
+      "3": 1539
+    },
+    "comCallsByMethod": {
+      "{00000134-0000-0000-c000-000000000046} method 3": 513,
+      "{00020400-0000-0000-c000-000000000046} method 5": 512,
+      "{00020400-0000-0000-c000-000000000046} method 6": 512,
+      "{00000134-0000-0000-c000-000000000046} method 4": 1,
+      "{00000134-0000-0000-c000-000000000046} method 5": 1
+    },
+    "rpcCallsCarryingNoComCall": 16,
+    "rpcCallsCarryingNoComCallByProcedure": {
+      "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 0": 3,
+      "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 1": 3,
+      "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 5": 2,
+      "{12345778-1234-abcd-ef00-0123456789ab} procedure 0": 1,
+      "{12345778-1234-abcd-ef00-0123456789ab} procedure 31": 1,
+      "{b9e79e60-3d52-11ce-aaa1-00006901293f} procedure 3": 1,
+      "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 0": 1,
+      "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 5": 1,
+      "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 6": 1,
+      "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 2": 1,
+      "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 3": 1
+    },
+    "otherRpcEvents": {
+      "14": 5,
+      "16": 1
+    }
+  },
+  "server": {
+    "comCalls": 1539,
+    "comStarts": 1539,
+    "comStartsWithNoActivity": 0,
+    "rpcStarts": 1539,
+    "rpcStartsWithNoActivity": 0,
+    "rpcCalls": 1539,
+    "comCallsWithOneRpcCallAroundThemOnTheirThread": 1539,
+    "comCallsWithNoRpcCallAroundThemOnTheirThread": 0,
+    "comCallsWithSeveralRpcCallsAroundThemOnTheirThread": 0,
+    "carriersOnTheComCallsInterfaceAndMethod": 1539,
+    "carriersSharingTheComCallsActivity": 0,
+    "carriersByProtocol": {
+      "3": 1539
+    },
+    "rpcCallsCarryingNoComCall": 0,
+    "rpcCallsCarryingNoComCallByProcedure": {},
+    "serverRpcCallsSharingAClientActivity": 0,
+    "otherRpcEvents": {
+      "14": 6,
+      "16": 1
+    }
+  },
+  "across": {
+    "clientCallsWhoseActivityOneServerCallCarries": 1539,
+    "clientCallsWhoseActivityNoServerCallCarries": 0,
+    "clientCallsWhoseActivitySeveralServerCallsCarry": 0,
+    "serverCallsOfAnActivityNoClientCallCarries": 0,
+    "serverCallsLinkedMoreThanOnce": 0,
+    "linkedCallsNamingEachOthersProcess": 1539,
+    "linkedCallsOnOneInterfaceAndMethod": 1539,
+    "linkedServerCallsInsideTheClientsCall": 1539,
+    "linkedServerStopsCarryingTheActivity": 1539,
+    "invokePairsByCausalityAndRank": 512,
+    "invokePairsTheActivityLinksAlike": 512,
+    "clientRpcCallsLinkedToTheServerRpcCallThatServedIt": 1539,
+    "linkedRpcCallsOnOneInterfaceAndProcedure": 1539,
+    "serverRpcCallsLinkedMoreThanOnce": 0
+  }
+}

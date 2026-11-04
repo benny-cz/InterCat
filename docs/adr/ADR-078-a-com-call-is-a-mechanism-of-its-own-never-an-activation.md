@@ -1,6 +1,7 @@
 # ADR-078: A COM call is a mechanism of its own, never an activation
 
-- Status: accepted for M6's COM/DCOM/WinRT work package; EN-Mechanism gains `ComCall`, which no source admits yet
+- Status: accepted for M6's COM/DCOM/WinRT work package; EN-Mechanism gains `ComCall`, which no source admits yet; its
+  layering over RPC, which the fourth decision left to a measurement, is ADR-079's (revision 913)
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
 - Relates to: ADR-030, ADR-037, ADR-077, plan §5.1, §23, M6, R5, P4, P7, FX-COM-001, FX-COM-002

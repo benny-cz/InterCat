@@ -836,6 +836,7 @@ Revision 909 measures what scopes COM-Perf's records (ADR-077's addendum): a ses
 Revision 910 measures what collecting COM-Perf costs (ADR-077's second addendum): Low processor time, a median 0.3 to 0.6 points, but a COM-heavy workload ran 17 to 18% slower, past §12's 5% throughput target, so only an opt-in profile stating it may admit the source.
 Revision 911 gives a COM call a mechanism of its own (ADR-078): EN-Mechanism gains `ComCall`, code 22, a call through COM's channel from one apartment to another, never an activation, and a test now holds §23's table to the domain's enumeration (R5).
 Revision 912 inventories COM-Perf as COM calls' lead (ADR-077's third addendum): experimental, requested by no profile and admitting no event, its measured notes and its Low cost, with the throughput regression beside it, stated by `icat capabilities`; no build carries a tier for COM calls.
+Revision 913 measures what carries a COM call and decides it (ADR-079): with RPC collected beside COM-Perf, every COM call of FX-COM-001's four runs was carried by one RPC call at each end, so the RPC call stays the operation and COM-Perf's records annotate it, never a second call; the server's COM call carries the client's activity id, which links a call's two ends and so the RPC calls carrying them, replacing causality and rank as the link.
 
 ## Revisions, a paragraph each, in order
 
@@ -3611,3 +3612,17 @@ both ends, paired by causality and rank, a call across an apartment naming its o
 evidence, its notes saying a COM-heavy workload ran 17 to 18% slower, so only an opt-in profile stating it may admit
 it. No build carries a tier for COM calls. A test holds the lead, its absence from every profile and the absence of a
 tier; six mutations of the catalog entry are caught.
+
+Revision 913 measures what carries a COM call. `tools/InterCat.ComProbe --measure --layering` ran FX-COM-001's exchange
+with Microsoft-Windows-RPC collected beside COM-Perf, as the product's profiles request RPC, in ADR-077's four shapes,
+nothing lost. Every COM call was carried by one RPC call at each end, on its interface with its method as the procedure:
+at the client the RPC call of its activity id on its thread, whose stop follows the COM call's by microseconds, so
+containment in time would join none; at the server the RPC call around it on its thread, with an id of its own. The
+server's COM call carries the client's activity id - exactly one for each client call, naming the client as the client
+names the server, inside the client's call - which agreed with causality and rank on every invoke and links every client
+RPC call carrying a COM call to the RPC call that served it. ADR-079 decides that a COM call is the RPC call that carries
+it: the RPC call stays the operation and COM-Perf's records annotate it with the other end's process, the HRESULT - the
+method's answer, which RPC's status is not - and the causality, never a second call (P4); the activity is the link
+between a call's ends; and a single-threaded apartment's server, unmeasured, finds no carrier. FX-COM-001 holds the paced
+run's ledger, its threads and activities as ordinals, never an id, and its truth; two tests hold them and the four runs,
+COM-Perf's catalog notes state the result, and eleven alterations of the evidence and the notes are caught.

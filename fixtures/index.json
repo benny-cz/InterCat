@@ -383,7 +383,7 @@
     {
       "id": "FX-COM-001",
       "title": "Out-of-process COM calls through the running object table, as Microsoft-Windows-COM-Perf records them",
-      "scenario": "Plan M6's COM/DCOM/WinRT work package (§4.2, ADR-077): a server process puts an automation object in the running object table under an item moniker of its own, and a client process takes it from there and calls it through IDispatch - 64 to 1,024 calls, paced, unpaced and in bursts; nothing is registered with the machine. Read by a lab session of tools/InterCat.ComProbe enabling COM-Perf machine-wide.",
+      "scenario": "Plan M6's COM/DCOM/WinRT work package (§4.2, ADR-077): a server process puts an automation object in the running object table under an item moniker of its own, and a client process takes it from there and calls it through IDispatch - 64 to 1,024 calls, paced, unpaced and in bursts; nothing is registered with the machine. Read by a lab session of tools/InterCat.ComProbe enabling COM-Perf machine-wide, and for its layering with Microsoft-Windows-RPC beside it.",
       "milestone": "M6",
       "backlog": [
         "IC-002"
@@ -394,6 +394,7 @@
         ],
         "invariants": [],
         "prohibitions": [
+          "P4",
           "P7",
           "P8"
         ]
@@ -406,25 +407,27 @@
       },
       "expected": {
         "artifact": "fixtures/FX-COM-001/evidence/measurement.json",
-        "note": "Four runs under a lab session reading COM-Perf machine-wide, nothing lost: every truth call an IDispatch::Invoke start at the client naming the server and one at the server naming the client, each start joined to its stop by its trace number, each client invoke paired with the server invoke of its causality and rank, the server's start inside the client's call. A causality names a chain of calls, threads name nothing the other end recorded, and activations carry no field. The paced run's ledger is held to its truth by tests. Under a session's process filter, beside a decoy pair outside it, its two processes' every call arrived and nothing of the decoy's or any other process."
+        "note": "Four runs under a lab session reading COM-Perf machine-wide, nothing lost: every truth call an IDispatch::Invoke start at the client naming the server and one at the server naming the client, each start joined to its stop by its trace number, each client invoke paired with the server invoke of its causality and rank, the server's start inside the client's call. A causality names a chain of calls, threads name nothing the other end recorded, and activations carry no field. The paced run's ledger is held to its truth by tests. Under a session's process filter, beside a decoy pair outside it, its two processes' every call arrived and nothing of the decoy's or any other process. With RPC collected beside COM-Perf, four runs, every COM call was carried by one RPC call at each end - at the client the RPC call of its activity id on its thread, at the server the one around it on its thread - on its interface and method, and the server's COM call carried the client's activity id, linking every call's two ends and so the RPC calls carrying them (ADR-079)."
       },
       "environment": [
         {
           "build": "10.0.26220.0-x64",
           "supportTier": "Primary",
           "date": "2026-11-04",
-          "result": "Measured by tools/InterCat.ComProbe, four runs, nothing lost: every out-of-process call of the exchange recorded at both ends with its interface, method and other end's process. No tier is assigned: no source is inventoried, as no mechanism for COM calls exists yet, and the provider's cost is not measured (ADR-077)."
+          "result": "Measured by tools/InterCat.ComProbe, four runs, nothing lost: every out-of-process call of the exchange recorded at both ends with its interface, method and other end's process, and, with RPC beside it, carried by one RPC call at each end. No tier is assigned: COM-Perf is inventoried as COM calls' lead and admits no event, so no capture has recorded a COM call through the product (ADR-077, ADR-079)."
         }
       ],
       "provenance": {
         "adapter": "windows-etw-inventory-0.8.0",
         "shareable": true,
-        "contents": "The two processes' truth logs and scenario of the paced run - calls by their number, of a synthetic object - and the ledger of the workload's COM-Perf records: each one's time, the role of the process it was raised in, its event, call trace number, the role at its other end, interface, method, causality and HRESULT, never a PID, a thread, a pointer or an IPID; and the measurement's counters."
+        "contents": "The two processes' truth logs and scenario of the paced run - calls by their number, of a synthetic object - and the ledger of the workload's COM-Perf records: each one's time, the role of the process it was raised in, its event, call trace number, the role at its other end, interface, method, causality and HRESULT, never a PID, a thread, a pointer or an IPID; and the measurement's counters. Under evidence/layering, the layering's paced run: its truth logs and scenario, and the ledger of the workload's COM-Perf and RPC records - each one's time, the role of the process it was raised in, its provider and event, its thread and activity as ordinals of the run, its call trace number, the role at its other end, its interface, method or procedure, protocol and HRESULT or status - never a PID, a thread id, an activity id, a pointer or an endpoint."
       },
       "tests": [
         "P8: FX-COM-001's COM-Perf records pair as measured - each truth call one invoke at the client and one at the server, of its causality and rank, the server's inside the client's call, each start joined to its stop by its trace number",
         "P7: FX-COM-001's every COM-Perf call names the other workload process at both ends, its threads pairing nothing, and its activations name nothing to count as a call",
-        "R21: a session's process filter holds for COM-Perf - FX-COM-001's filtered pair has its every call recorded at both ends, and a decoy pair making as many calls beside it, and every other process, none: outside the filter is not collected, never quiet"
+        "R21: a session's process filter holds for COM-Perf - FX-COM-001's filtered pair has its every call recorded at both ends, and a decoy pair making as many calls beside it, and every other process, none: outside the filter is not collected, never quiet",
+        "P4: FX-COM-001's every COM call is carried by one RPC call at each end - at the client the RPC call of its activity on its thread, at the server the one around it on its thread - on its interface and method, so a COM call beside RPC is one call, never two",
+        "P7: FX-COM-001's every client COM call has its activity carried by one server COM call naming the client, on its interface and method inside the client's call, which links the RPC call that carried it to the RPC call that served it"
       ]
     },
     {
@@ -2207,6 +2210,7 @@
         "P3: requested and completed pipe bytes stay in separate domains"
       ],
       "P4": [
+        "P4: FX-COM-001's every COM call is carried by one RPC call at each end - at the client the RPC call of its activity on its thread, at the server the one around it on its thread - on its interface and method, so a COM call beside RPC is one call, never two",
         "P4: FX-RPC-002's calls over TCP are counted once - 256 client calls paired by activity id, the endpoint mapper's 512 records pairing with nothing, and every byte the 8 connections' beneath them",
         "P4: started, completed and failed calls are counted from the calls, never from the records beneath them",
         "P4: what no derived operation can answer is unavailable with its reason, never a zero"
@@ -2228,6 +2232,7 @@
       ],
       "P7": [
         "P7: FX-COM-001's every COM-Perf call names the other workload process at both ends, its threads pairing nothing, and its activations name nothing to count as a call",
+        "P7: FX-COM-001's every client COM call has its activity carried by one server COM call naming the client, on its interface and method inside the client's call, which links the RPC call that carried it to the RPC call that served it",
         "P7: FX-COM-002's calls across an apartment are recorded as an out-of-process call is, each naming its own process at both ends, so a call is between processes only where the process it names is another",
         "P7: a client call and a server call are never paired, even when they carry one activity id",
         "P7: a peer is claimed only when the two sides share an activity, and is checked against truth",

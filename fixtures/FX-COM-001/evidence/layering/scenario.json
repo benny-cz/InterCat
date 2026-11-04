@@ -1,0 +1,11 @@
+{
+  "scenarioId": "FX-COM-001",
+  "calls": 64,
+  "interCallDelayMilliseconds": 5,
+  "burst": 0,
+  "moniker": "InterCat.FX-COM-001.73784",
+  "serverProcessId": 73784,
+  "clientProcessId": 29632,
+  "serverExitCode": 0,
+  "clientExitCode": 0
+}

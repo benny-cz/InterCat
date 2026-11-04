@@ -424,5 +424,449 @@
         }
       }
     ]
+  },
+  "layering": {
+    "question": "What carries a COM call, and what joins its two ends: FX-COM-001's exchange under one lab session collecting COM-Perf beside Microsoft-Windows-RPC, requested as the product's profiles request it, each COM call set beside the RPC calls of its process and each client call beside the server call carrying its activity id.",
+    "answer": "In four runs - 64 calls paced, 256 and 1,024 unpaced, and four bursts of 128 - nothing lost, every COM call was carried by exactly one RPC call at each end, on its interface with its method as the procedure, over local RPC: at the client the RPC call of its activity id, on its thread, starting inside it and stopping 0.6 to 14.5 microseconds after it, its stop sharing the COM stop's activity; at the server the RPC call around it on its thread, with an activity of its own. The server's COM call carried the client's activity id: exactly one server call for each client call, naming the client as the client named the server, on its interface and method, inside the client's call. Every invoke pair by causality and rank was the pair the activity links, and every client RPC call carrying a COM call was so linked to the RPC call that served it, none twice. The client's other RPC calls, 16 a run, all came before its first COM call, and every RPC server call of the server carried one. A call COM answered E_NOINTERFACE stopped with RPC status 0.",
+    "runs": [
+      {
+        "run": "paced",
+        "bench": "bench/results/com-perf-layering-paced-20261104T173656Z",
+        "workload": {
+          "calls": 64,
+          "delay": 5,
+          "burst": 0
+        },
+        "session": {
+          "eventsLost": 0,
+          "realTimeBuffersLost": 0,
+          "sourceEventsLost": 0,
+          "comPerfRecords": 1997,
+          "rpcCallRecords": 4222,
+          "processesRaisingRecords": 41
+        },
+        "truth": {
+          "issued": 64,
+          "completedOk": 64,
+          "served": 64
+        },
+        "client": {
+          "comCalls": 195,
+          "comStarts": 195,
+          "comStartsWithNoActivity": 0,
+          "rpcStarts": 212,
+          "rpcStartsWithNoActivity": 1,
+          "rpcCalls": 211,
+          "comCallsWithOneRpcCallOfTheirActivity": 195,
+          "comCallsWithNoRpcCallOfTheirActivity": 0,
+          "comCallsWithSeveralRpcCallsOfTheirActivity": 0,
+          "carriersOnTheComCallsThread": 195,
+          "carriersStartingInsideTheComCall": 195,
+          "carriersStoppingAtOrAfterTheComCallsStop": 195,
+          "carrierStopAfterTheComCallsStopMicroseconds": {
+            "min": 0.6,
+            "max": 14.5
+          },
+          "comStopsSharingTheirCarriersActivity": 195,
+          "carriersOnTheComCallsInterfaceAndMethod": 195,
+          "carriersByProtocol": {
+            "3": 195
+          },
+          "comCallsByMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3": 65,
+            "{00020400-0000-0000-c000-000000000046} method 5": 64,
+            "{00020400-0000-0000-c000-000000000046} method 6": 64,
+            "{00000134-0000-0000-c000-000000000046} method 4": 1,
+            "{00000134-0000-0000-c000-000000000046} method 5": 1
+          },
+          "rpcCallsCarryingNoComCall": 16,
+          "rpcCallsCarryingNoComCallByProcedure": {
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 0": 3,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 1": 3,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 5": 2,
+            "{12345778-1234-abcd-ef00-0123456789ab} procedure 0": 1,
+            "{12345778-1234-abcd-ef00-0123456789ab} procedure 31": 1,
+            "{b9e79e60-3d52-11ce-aaa1-00006901293f} procedure 3": 1,
+            "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 0": 1,
+            "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 5": 1,
+            "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 6": 1,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 2": 1,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 3": 1
+          },
+          "otherRpcEvents": {
+            "14": 5,
+            "16": 1
+          }
+        },
+        "server": {
+          "comCalls": 195,
+          "comStarts": 195,
+          "comStartsWithNoActivity": 0,
+          "rpcStarts": 195,
+          "rpcStartsWithNoActivity": 0,
+          "rpcCalls": 195,
+          "comCallsWithOneRpcCallAroundThemOnTheirThread": 195,
+          "comCallsWithNoRpcCallAroundThemOnTheirThread": 0,
+          "comCallsWithSeveralRpcCallsAroundThemOnTheirThread": 0,
+          "carriersOnTheComCallsInterfaceAndMethod": 195,
+          "carriersSharingTheComCallsActivity": 0,
+          "carriersByProtocol": {
+            "3": 195
+          },
+          "rpcCallsCarryingNoComCall": 0,
+          "rpcCallsCarryingNoComCallByProcedure": {},
+          "serverRpcCallsSharingAClientActivity": 0,
+          "otherRpcEvents": {
+            "14": 6,
+            "16": 1
+          }
+        },
+        "across": {
+          "clientCallsWhoseActivityOneServerCallCarries": 195,
+          "clientCallsWhoseActivityNoServerCallCarries": 0,
+          "clientCallsWhoseActivitySeveralServerCallsCarry": 0,
+          "serverCallsOfAnActivityNoClientCallCarries": 0,
+          "serverCallsLinkedMoreThanOnce": 0,
+          "linkedCallsNamingEachOthersProcess": 195,
+          "linkedCallsOnOneInterfaceAndMethod": 195,
+          "linkedServerCallsInsideTheClientsCall": 195,
+          "linkedServerStopsCarryingTheActivity": 195,
+          "invokePairsByCausalityAndRank": 64,
+          "invokePairsTheActivityLinksAlike": 64,
+          "clientRpcCallsLinkedToTheServerRpcCallThatServedIt": 195,
+          "linkedRpcCallsOnOneInterfaceAndProcedure": 195,
+          "serverRpcCallsLinkedMoreThanOnce": 0
+        }
+      },
+      {
+        "run": "unpaced",
+        "bench": "bench/results/com-perf-layering-unpaced-20261104T173701Z",
+        "workload": {
+          "calls": 256,
+          "delay": 0,
+          "burst": 0
+        },
+        "session": {
+          "eventsLost": 0,
+          "realTimeBuffersLost": 0,
+          "sourceEventsLost": 0,
+          "comPerfRecords": 3357,
+          "rpcCallRecords": 3712,
+          "processesRaisingRecords": 28
+        },
+        "truth": {
+          "issued": 256,
+          "completedOk": 256,
+          "served": 256
+        },
+        "client": {
+          "comCalls": 771,
+          "comStarts": 771,
+          "comStartsWithNoActivity": 0,
+          "rpcStarts": 788,
+          "rpcStartsWithNoActivity": 1,
+          "rpcCalls": 787,
+          "comCallsWithOneRpcCallOfTheirActivity": 771,
+          "comCallsWithNoRpcCallOfTheirActivity": 0,
+          "comCallsWithSeveralRpcCallsOfTheirActivity": 0,
+          "carriersOnTheComCallsThread": 771,
+          "carriersStartingInsideTheComCall": 771,
+          "carriersStoppingAtOrAfterTheComCallsStop": 771,
+          "carrierStopAfterTheComCallsStopMicroseconds": {
+            "min": 0.6,
+            "max": 3.6
+          },
+          "comStopsSharingTheirCarriersActivity": 771,
+          "carriersOnTheComCallsInterfaceAndMethod": 771,
+          "carriersByProtocol": {
+            "3": 771
+          },
+          "comCallsByMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3": 257,
+            "{00020400-0000-0000-c000-000000000046} method 5": 256,
+            "{00020400-0000-0000-c000-000000000046} method 6": 256,
+            "{00000134-0000-0000-c000-000000000046} method 4": 1,
+            "{00000134-0000-0000-c000-000000000046} method 5": 1
+          },
+          "rpcCallsCarryingNoComCall": 16,
+          "rpcCallsCarryingNoComCallByProcedure": {
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 0": 3,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 1": 3,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 5": 2,
+            "{12345778-1234-abcd-ef00-0123456789ab} procedure 0": 1,
+            "{12345778-1234-abcd-ef00-0123456789ab} procedure 31": 1,
+            "{b9e79e60-3d52-11ce-aaa1-00006901293f} procedure 3": 1,
+            "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 0": 1,
+            "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 5": 1,
+            "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 6": 1,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 2": 1,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 3": 1
+          },
+          "otherRpcEvents": {
+            "14": 5,
+            "16": 1
+          }
+        },
+        "server": {
+          "comCalls": 771,
+          "comStarts": 771,
+          "comStartsWithNoActivity": 0,
+          "rpcStarts": 771,
+          "rpcStartsWithNoActivity": 0,
+          "rpcCalls": 771,
+          "comCallsWithOneRpcCallAroundThemOnTheirThread": 771,
+          "comCallsWithNoRpcCallAroundThemOnTheirThread": 0,
+          "comCallsWithSeveralRpcCallsAroundThemOnTheirThread": 0,
+          "carriersOnTheComCallsInterfaceAndMethod": 771,
+          "carriersSharingTheComCallsActivity": 0,
+          "carriersByProtocol": {
+            "3": 771
+          },
+          "rpcCallsCarryingNoComCall": 0,
+          "rpcCallsCarryingNoComCallByProcedure": {},
+          "serverRpcCallsSharingAClientActivity": 0,
+          "otherRpcEvents": {
+            "14": 6,
+            "16": 1
+          }
+        },
+        "across": {
+          "clientCallsWhoseActivityOneServerCallCarries": 771,
+          "clientCallsWhoseActivityNoServerCallCarries": 0,
+          "clientCallsWhoseActivitySeveralServerCallsCarry": 0,
+          "serverCallsOfAnActivityNoClientCallCarries": 0,
+          "serverCallsLinkedMoreThanOnce": 0,
+          "linkedCallsNamingEachOthersProcess": 771,
+          "linkedCallsOnOneInterfaceAndMethod": 771,
+          "linkedServerCallsInsideTheClientsCall": 771,
+          "linkedServerStopsCarryingTheActivity": 771,
+          "invokePairsByCausalityAndRank": 256,
+          "invokePairsTheActivityLinksAlike": 256,
+          "clientRpcCallsLinkedToTheServerRpcCallThatServedIt": 771,
+          "linkedRpcCallsOnOneInterfaceAndProcedure": 771,
+          "serverRpcCallsLinkedMoreThanOnce": 0
+        }
+      },
+      {
+        "run": "long",
+        "bench": "bench/results/com-perf-layering-long-20261104T173705Z",
+        "workload": {
+          "calls": 1024,
+          "delay": 0,
+          "burst": 0
+        },
+        "session": {
+          "eventsLost": 0,
+          "realTimeBuffersLost": 0,
+          "sourceEventsLost": 0,
+          "comPerfRecords": 14095,
+          "rpcCallRecords": 12848,
+          "processesRaisingRecords": 29
+        },
+        "truth": {
+          "issued": 1024,
+          "completedOk": 1024,
+          "served": 1024
+        },
+        "client": {
+          "comCalls": 3075,
+          "comStarts": 3075,
+          "comStartsWithNoActivity": 0,
+          "rpcStarts": 3092,
+          "rpcStartsWithNoActivity": 1,
+          "rpcCalls": 3091,
+          "comCallsWithOneRpcCallOfTheirActivity": 3075,
+          "comCallsWithNoRpcCallOfTheirActivity": 0,
+          "comCallsWithSeveralRpcCallsOfTheirActivity": 0,
+          "carriersOnTheComCallsThread": 3075,
+          "carriersStartingInsideTheComCall": 3075,
+          "carriersStoppingAtOrAfterTheComCallsStop": 3075,
+          "carrierStopAfterTheComCallsStopMicroseconds": {
+            "min": 0.7,
+            "max": 11.6
+          },
+          "comStopsSharingTheirCarriersActivity": 3075,
+          "carriersOnTheComCallsInterfaceAndMethod": 3075,
+          "carriersByProtocol": {
+            "3": 3075
+          },
+          "comCallsByMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3": 1025,
+            "{00020400-0000-0000-c000-000000000046} method 5": 1024,
+            "{00020400-0000-0000-c000-000000000046} method 6": 1024,
+            "{00000134-0000-0000-c000-000000000046} method 4": 1,
+            "{00000134-0000-0000-c000-000000000046} method 5": 1
+          },
+          "rpcCallsCarryingNoComCall": 16,
+          "rpcCallsCarryingNoComCallByProcedure": {
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 0": 3,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 1": 3,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 5": 2,
+            "{12345778-1234-abcd-ef00-0123456789ab} procedure 0": 1,
+            "{12345778-1234-abcd-ef00-0123456789ab} procedure 31": 1,
+            "{b9e79e60-3d52-11ce-aaa1-00006901293f} procedure 3": 1,
+            "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 0": 1,
+            "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 5": 1,
+            "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 6": 1,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 2": 1,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 3": 1
+          },
+          "otherRpcEvents": {
+            "14": 5,
+            "16": 1
+          }
+        },
+        "server": {
+          "comCalls": 3075,
+          "comStarts": 3075,
+          "comStartsWithNoActivity": 0,
+          "rpcStarts": 3075,
+          "rpcStartsWithNoActivity": 0,
+          "rpcCalls": 3075,
+          "comCallsWithOneRpcCallAroundThemOnTheirThread": 3075,
+          "comCallsWithNoRpcCallAroundThemOnTheirThread": 0,
+          "comCallsWithSeveralRpcCallsAroundThemOnTheirThread": 0,
+          "carriersOnTheComCallsInterfaceAndMethod": 3075,
+          "carriersSharingTheComCallsActivity": 0,
+          "carriersByProtocol": {
+            "3": 3075
+          },
+          "rpcCallsCarryingNoComCall": 0,
+          "rpcCallsCarryingNoComCallByProcedure": {},
+          "serverRpcCallsSharingAClientActivity": 0,
+          "otherRpcEvents": {
+            "14": 6,
+            "16": 1
+          }
+        },
+        "across": {
+          "clientCallsWhoseActivityOneServerCallCarries": 3075,
+          "clientCallsWhoseActivityNoServerCallCarries": 0,
+          "clientCallsWhoseActivitySeveralServerCallsCarry": 0,
+          "serverCallsOfAnActivityNoClientCallCarries": 0,
+          "serverCallsLinkedMoreThanOnce": 0,
+          "linkedCallsNamingEachOthersProcess": 3075,
+          "linkedCallsOnOneInterfaceAndMethod": 3075,
+          "linkedServerCallsInsideTheClientsCall": 3075,
+          "linkedServerStopsCarryingTheActivity": 3075,
+          "invokePairsByCausalityAndRank": 1024,
+          "invokePairsTheActivityLinksAlike": 1024,
+          "clientRpcCallsLinkedToTheServerRpcCallThatServedIt": 3075,
+          "linkedRpcCallsOnOneInterfaceAndProcedure": 3075,
+          "serverRpcCallsLinkedMoreThanOnce": 0
+        }
+      },
+      {
+        "run": "bursts",
+        "bench": "bench/results/com-perf-layering-bursts-20261104T173710Z",
+        "workload": {
+          "calls": 512,
+          "delay": 1000,
+          "burst": 128
+        },
+        "session": {
+          "eventsLost": 0,
+          "realTimeBuffersLost": 0,
+          "sourceEventsLost": 0,
+          "comPerfRecords": 7501,
+          "rpcCallRecords": 9428,
+          "processesRaisingRecords": 32
+        },
+        "truth": {
+          "issued": 512,
+          "completedOk": 512,
+          "served": 512
+        },
+        "client": {
+          "comCalls": 1539,
+          "comStarts": 1539,
+          "comStartsWithNoActivity": 0,
+          "rpcStarts": 1556,
+          "rpcStartsWithNoActivity": 1,
+          "rpcCalls": 1555,
+          "comCallsWithOneRpcCallOfTheirActivity": 1539,
+          "comCallsWithNoRpcCallOfTheirActivity": 0,
+          "comCallsWithSeveralRpcCallsOfTheirActivity": 0,
+          "carriersOnTheComCallsThread": 1539,
+          "carriersStartingInsideTheComCall": 1539,
+          "carriersStoppingAtOrAfterTheComCallsStop": 1539,
+          "carrierStopAfterTheComCallsStopMicroseconds": {
+            "min": 0.6,
+            "max": 8.5
+          },
+          "comStopsSharingTheirCarriersActivity": 1539,
+          "carriersOnTheComCallsInterfaceAndMethod": 1539,
+          "carriersByProtocol": {
+            "3": 1539
+          },
+          "comCallsByMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3": 513,
+            "{00020400-0000-0000-c000-000000000046} method 5": 512,
+            "{00020400-0000-0000-c000-000000000046} method 6": 512,
+            "{00000134-0000-0000-c000-000000000046} method 4": 1,
+            "{00000134-0000-0000-c000-000000000046} method 5": 1
+          },
+          "rpcCallsCarryingNoComCall": 16,
+          "rpcCallsCarryingNoComCallByProcedure": {
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 0": 3,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 1": 3,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 5": 2,
+            "{12345778-1234-abcd-ef00-0123456789ab} procedure 0": 1,
+            "{12345778-1234-abcd-ef00-0123456789ab} procedure 31": 1,
+            "{b9e79e60-3d52-11ce-aaa1-00006901293f} procedure 3": 1,
+            "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 0": 1,
+            "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 5": 1,
+            "{e60c73e6-88f9-11cf-9af1-0020af6e72f4} procedure 6": 1,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 2": 1,
+            "{fb8a0729-2d04-4658-be93-27b4ad553fac} procedure 3": 1
+          },
+          "otherRpcEvents": {
+            "14": 5,
+            "16": 1
+          }
+        },
+        "server": {
+          "comCalls": 1539,
+          "comStarts": 1539,
+          "comStartsWithNoActivity": 0,
+          "rpcStarts": 1539,
+          "rpcStartsWithNoActivity": 0,
+          "rpcCalls": 1539,
+          "comCallsWithOneRpcCallAroundThemOnTheirThread": 1539,
+          "comCallsWithNoRpcCallAroundThemOnTheirThread": 0,
+          "comCallsWithSeveralRpcCallsAroundThemOnTheirThread": 0,
+          "carriersOnTheComCallsInterfaceAndMethod": 1539,
+          "carriersSharingTheComCallsActivity": 0,
+          "carriersByProtocol": {
+            "3": 1539
+          },
+          "rpcCallsCarryingNoComCall": 0,
+          "rpcCallsCarryingNoComCallByProcedure": {},
+          "serverRpcCallsSharingAClientActivity": 0,
+          "otherRpcEvents": {
+            "14": 6,
+            "16": 1
+          }
+        },
+        "across": {
+          "clientCallsWhoseActivityOneServerCallCarries": 1539,
+          "clientCallsWhoseActivityNoServerCallCarries": 0,
+          "clientCallsWhoseActivitySeveralServerCallsCarry": 0,
+          "serverCallsOfAnActivityNoClientCallCarries": 0,
+          "serverCallsLinkedMoreThanOnce": 0,
+          "linkedCallsNamingEachOthersProcess": 1539,
+          "linkedCallsOnOneInterfaceAndMethod": 1539,
+          "linkedServerCallsInsideTheClientsCall": 1539,
+          "linkedServerStopsCarryingTheActivity": 1539,
+          "invokePairsByCausalityAndRank": 512,
+          "invokePairsTheActivityLinksAlike": 512,
+          "clientRpcCallsLinkedToTheServerRpcCallThatServedIt": 1539,
+          "linkedRpcCallsOnOneInterfaceAndProcedure": 1539,
+          "serverRpcCallsLinkedMoreThanOnce": 0
+        }
+      }
+    ],
+    "ledger": "fixtures/FX-COM-001/evidence/layering/ledger.csv, of the paced run, its truth logs and scenario beside it: each workload record's time, the role of the process it was raised in, its provider and event, its thread and activity as ordinals of the run, its call trace number, the role at its other end, its interface, its method or procedure, its protocol and its HRESULT or status - never a PID, a thread id, an activity id, a pointer or an endpoint.",
+    "session": "COM-Perf enabled machine-wide at verbose, every keyword, and Microsoft-Windows-RPC at informational with no keyword mask, as the product's profiles request it, in one real-time session of the probe's own, drained after its stop before it was disposed."
   }
 }
