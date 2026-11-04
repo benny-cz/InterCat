@@ -325,14 +325,18 @@ part `icat content --part` saved matched the server's bytes of its leg, 382 of 3
 revision 891: FX-HTTP-010's 64 requests eight at once through a proxy, recorded over HTTP and over TLS, each kept every
 exchange whole - over TLS a CONNECT's too, one before every request - and every part `icat content --part` saved matched
 the server's bytes, 254 of 254 that held any in each, each CONNECT's head and answer the server's log of it, 128 of 128.
+And on revision 892: FX-HTTP-011's 64 requests eight at once, challenged for Basic credentials and answered with them,
+recorded twice, each kept a challenge and its answer as an exchange each, 72 whole, and every part `icat content
+--part` saved matched the server's bytes of its leg, 277 of 277 that held any in each - the credentials as sent.
 
 ## 6. What is not defined at this version
 
-- Content codings other than gzip, deflate and br are unmeasured, and so are authentication and the other client
-  libraries, which raise no such records. Asynchronous WinINet is measured since revision 886 (FX-HTTP-005), HTTP/2
-  since revision 887 (FX-HTTP-006), a request body written in pieces since revision 888 (FX-HTTP-007), deflate and br
-  since revision 889 (FX-HTTP-008), redirects WinINet follows since revision 890 (FX-HTTP-009), and requests through a
-  proxy since revision 891 (FX-HTTP-010).
+- Content codings other than gzip, deflate and br are unmeasured, and so are authentication in schemes other than Basic,
+  a proxy's challenge and the other client libraries, which raise no such records. Asynchronous WinINet is measured
+  since revision 886 (FX-HTTP-005), HTTP/2 since revision 887 (FX-HTTP-006), a request body written in pieces since
+  revision 888 (FX-HTTP-007), deflate and br since revision 889 (FX-HTTP-008), redirects WinINet follows since revision
+  890 (FX-HTTP-009), requests through a proxy since revision 891 (FX-HTTP-010), and Basic authentication since revision
+  892 (FX-HTTP-011).
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
 - A broker content capture of another user's, another sign-in's or a higher integrity's process: the broker keeps
   content only from its client's own processes (`contracts/broker-v1.md` §2.1, ADR-049).

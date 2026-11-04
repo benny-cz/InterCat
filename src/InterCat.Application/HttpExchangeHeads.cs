@@ -68,6 +68,15 @@ public sealed record HttpExchangeHeads(DecodedContent? Request, DecodedContent? 
     /// tunnel; null where its request line was not decoded, or names neither.
     /// </summary>
     public HttpProxyUse? Proxy => HttpProxies.Of(this);
+
+    /// <summary>
+    /// The challenge for credentials its response makes (§5i): a 401 naming WWW-Authenticate or a 407 naming
+    /// Proxy-Authenticate, its head decoded to its end; null otherwise.
+    /// </summary>
+    public HttpChallenge? Challenge => HttpChallenges.Of(this);
+
+    /// <summary>The credentials its request carries, by their field and scheme, never their value (§5i); null where none.</summary>
+    public HttpCredentials? Credentials => HttpChallenges.CredentialsOf(this);
 }
 
 /// <summary>

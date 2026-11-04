@@ -54,6 +54,12 @@ public sealed record HttpExchangeLine
     /// were not decoded, or no listed exchange followed it.
     /// </summary>
     public HttpFollowUp? FollowedBy { get; init; }
+
+    /// <summary>
+    /// Where its response challenges for credentials, the listed exchange that answered it (§5i); null where it makes no
+    /// challenge, its heads were not decoded, or no listed exchange answered it.
+    /// </summary>
+    public HttpFollowUp? AnsweredBy { get; init; }
 }
 
 /// <summary>
@@ -61,8 +67,9 @@ public sealed record HttpExchangeLine
 /// listed, its numbers invariant, its text cells quoted where they hold a comma, a quote or a line end and neutralized
 /// where a spreadsheet would evaluate them, since names and decoded values come from the observed machine. With decoded
 /// heads it adds what they say, each value the decoding's own, and why a head was not decoded in that head's own cell;
-/// and, where a response redirects, its location and the number of the listed exchange that followed it (§5g), and how
-/// its request went to a proxy (§5h).
+/// and, where a response redirects, its location and the number of the listed exchange that followed it (§5g), how its
+/// request went to a proxy (§5h), and where a response challenges for credentials, its challenges and the number of the
+/// listed exchange that answered it, and the scheme of the credentials its request carries, never their value (§5i).
 /// </summary>
 public static class HttpExchangeTable
 {
@@ -85,7 +92,7 @@ public static class HttpExchangeTable
         "decoder", "decoder_version", "method", "target", "request_version", "host", "status", "reason", "response_version",
         "request_head_decoded_to_end", "response_head_decoded_to_end", "request_head_not_decoded", "response_head_not_decoded",
         "request_body_declared", "request_body_contradicts", "response_body_declared", "response_body_contradicts",
-        "redirect_location", "redirect_followed_by", "proxy",
+        "redirect_location", "redirect_followed_by", "proxy", "challenge", "challenge_answered_by", "credentials",
     ];
 
     /// <summary>
@@ -156,6 +163,9 @@ public static class HttpExchangeTable
             Text(heads.Redirect?.Location),
             line.FollowedBy is { } followUp ? Number(followUp.Number) : string.Empty,
             Text(heads.Proxy?.Kind),
+            Text(heads.Challenge?.Challenges),
+            line.AnsweredBy is { } answer ? Number(answer.Number) : string.Empty,
+            Text(heads.Credentials?.Scheme),
         ];
     }
 

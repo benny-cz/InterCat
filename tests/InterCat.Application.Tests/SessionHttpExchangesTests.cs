@@ -482,6 +482,118 @@ public sealed class SessionHttpExchangesTests
     }
 
     /// <summary>
+    /// FX-HTTP-011 measured that WinINet answers a challenge for credentials by itself where its client gave it some - or
+    /// once its client gives them, sending the request again - and that its capture keeps the request it then sends with
+    /// them as an exchange of its own, numbered apart and begun once the challenge's response ended; and that once answered,
+    /// it sends the credentials with every later request to that server unasked. Each run's ledger of eight clients' 64
+    /// requests - each client's first challenged, every other carrying credentials unasked - grouped as a session's records
+    /// are, each head rebuilt and checked against the server's truth byte for byte, is an exchange to each leg, every part
+    /// whole and as long as the server's truth of its leg; each challenge names what answers it and is answered by its own
+    /// request, and each request carrying credentials says so, by their field and scheme.
+    /// </summary>
+    [Theory(DisplayName = "R22: FX-HTTP-011's requests challenged for credentials, eight clients at once, are an exchange to each leg, each part whole, each challenge answered by its own request and each request carrying credentials said to")]
+    [InlineData("basic-eight-at-once", false)]
+    [InlineData("basic-late-eight-at-once", true)]
+    public void ChallengesAreAnsweredByTheirOwnRequests(string run, bool late)
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-HTTP-011", "evidence", run);
+        LedgerBuffer[] ledger = LedgerOf(evidence);
+        Dictionary<(long Call, string Part), (long Length, string Hash)> truth = ServerTruthOf(evidence);
+        using var scenario = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "scenario.json")));
+        string host = string.Create(CultureInfo.InvariantCulture, $"127.0.0.1:{scenario.RootElement.GetProperty("port").GetInt32()}");
+        HashSet<int> challenged = [.. ledger.Where(buffer => buffer.Leg == "challenged").Select(buffer => buffer.Request)];
+        Assert.Equal(8, challenged.Count);
+
+        // Each leg's heads as the wire carried them, rebuilt and checked against the server's truth byte for byte: the
+        // request challenged and its challenge, then the request carrying credentials and its answer - sent again by its
+        // client, the client's field anew after WinINet's own, and the credentials after all.
+        const string Fixture = "X-InterCat-Fixture: FX-HTTP-011\r\n";
+        const string Credentials = "Authorization: Basic aW50ZXJjYXQtZml4dHVyZTpmeC1odHRwLTAxMS1ub3QtYS1zZWNyZXQ=\r\n";
+        byte[] Head(LedgerBuffer buffer)
+        {
+            int request = buffer.Request;
+            bool carries = buffer.Leg == "authorized";
+            string length = string.Create(CultureInfo.InvariantCulture,
+                $"Content-Length: {truth[(request, carries ? "request-body" : "challenged-request-body")].Length}\r\n");
+            string fields = string.Create(CultureInfo.InvariantCulture, $"User-Agent: InterCat-FX-HTTP-011\r\nHost: {host}\r\n{length}Connection: Keep-Alive\r\nCache-Control: no-cache\r\n");
+            string text = (buffer.Event, carries) switch
+            {
+                (2001, false) => string.Create(CultureInfo.InvariantCulture, $"POST /fx/{request} HTTP/1.1\r\n{Fixture}{fields}\r\n"),
+                (2001, true) when late && challenged.Contains(request) =>
+                    string.Create(CultureInfo.InvariantCulture, $"POST /fx/{request} HTTP/1.1\r\n{fields}{Fixture}{Credentials}\r\n"),
+                (2001, true) => string.Create(CultureInfo.InvariantCulture, $"POST /fx/{request} HTTP/1.1\r\n{Fixture}{fields}{Credentials}\r\n"),
+                (_, false) => $"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"FX-HTTP-011\"\r\nContent-Length: 0\r\n{Fixture}\r\n",
+                (_, true) => string.Create(CultureInfo.InvariantCulture,
+                    $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {truth[(request, "response-body")].Length}\r\n{Fixture}\r\n"),
+            };
+            byte[] bytes = System.Text.Encoding.ASCII.GetBytes(text);
+            string logged = (buffer.Event, carries) switch
+            {
+                (2001, false) => "challenged-request-head",
+                (2001, true) => "request-head",
+                (_, false) => "challenge-response-head",
+                (_, true) => "response-head",
+            };
+            Assert.Equal(truth[(request, logged)], (bytes.LongLength, Sha256(bytes)));
+            return bytes;
+        }
+
+        using TemporarySession session = Published(ledger, Head);
+        HttpChannelSummary channel = Assert.Single(SessionHttpExchanges.Channels(session.Store, Client(session.Store)).Channels);
+        Assert.Equal((72L, 72L, (long)ledger.Length), (channel.Exchanges, channel.Complete, channel.Records));
+        HttpExchangePage page = SessionHttpExchanges.ExchangesUpTo(session.Store, channel.Key, 1_000);
+        HttpExchangeTableRead table = SessionHttpExchanges.Table(session.Store, page.SessionId, channel.Key, 1_000);
+        Assert.Equal(page.Exchanges.Select(row => row.Key), table.Lines.Select(line => line.Key));
+
+        // Each exchange is one leg of one request, by its first buffer: every buffer of it that leg's, every part whole and
+        // as long as the server's truth of that leg.
+        var legs = new Dictionary<(int Request, bool Carries), (HttpExchangeRow Row, HttpExchangeLine Line)>();
+        foreach ((HttpExchangeRow row, HttpExchangeLine line) in page.Exchanges.Zip(table.Lines))
+        {
+            LedgerBuffer first = ledger[(int)row.Exchange.First.Ordinal - 1];
+            bool carries = first.Leg == "authorized";
+            legs.Add((first.Request, carries), (row, line));
+            HttpExchange exchange = row.Exchange;
+            Assert.True(exchange.Complete, row.Parts(CultureInfo.InvariantCulture));
+            (string requestPart, string responsePart) = carries ? ("request-", "response-") : ("challenged-request-", "challenge-response-");
+            Assert.Equal(
+                (truth[(first.Request, requestPart + "head")].Length, truth[(first.Request, requestPart + "body")].Length,
+                    truth[(first.Request, responsePart + "head")].Length, truth[(first.Request, responsePart + "body")].Length),
+                (exchange.RequestHead.Bytes, exchange.RequestBody.Bytes, exchange.ResponseHead.Bytes, exchange.ResponseBody.Bytes));
+            SessionEvidencePage records = SessionEvidenceQuery.Read(session.Store, operationKey: row.Key);
+            Assert.Equal(exchange.Records, records.Records.Count);
+            Assert.All(records.Records, record => Assert.Equal(first.Number, ledger[(int)record.Observation.RawRecordOrdinal - 1].Number));
+        }
+
+        // Each challenge names what answers it and is answered by its own request carrying credentials, numbered apart and
+        // begun once its response ended; every request carrying them says so and makes no challenge; no body disagrees.
+        Assert.Equal(72, legs.Count);
+        for (int request = 0; request < 64; request++)
+        {
+            (HttpExchangeRow answered, HttpExchangeLine answeredLine) = legs[(request, true)];
+            Assert.Equal((new HttpCredentials("Authorization", "Basic", answeredLine.Heads!.Credentials!.Statement), (HttpChallenge?)null),
+                (answeredLine.Heads.Credentials, answeredLine.Heads.Challenge));
+            Assert.Null(answeredLine.AnsweredBy);
+            Assert.False(answeredLine.Heads.ResponseBody(answered.Exchange.ResponseBody)!.Contradicts);
+            if (!challenged.Contains(request))
+            {
+                Assert.False(legs.ContainsKey((request, false)));
+                continue;
+            }
+
+            (HttpExchangeRow challenge, HttpExchangeLine challengeLine) = legs[(request, false)];
+            string target = string.Create(CultureInfo.InvariantCulture, $"/fx/{request}");
+            Assert.Equal(new HttpChallenge("401", "WWW-Authenticate", "Basic realm=\"FX-HTTP-011\"", "Authorization", target, host),
+                challengeLine.Heads!.Challenge);
+            Assert.Equal((new HttpFollowUp(answered.Key, answered.Exchange.Number), (HttpCredentials?)null),
+                (challengeLine.AnsweredBy, challengeLine.Heads.Credentials));
+            Assert.NotEqual(challenge.Exchange.Number, answered.Exchange.Number);
+            Assert.True(answered.Exchange.FirstNanoseconds >= challenge.Exchange.ResponseEndNanoseconds);
+            Assert.False(challengeLine.Heads.ResponseBody(challenge.Exchange.ResponseBody)!.Contradicts);
+        }
+    }
+
+    /// <summary>
     /// One buffer a lab probe's ledger holds, in time order, never its bytes: its 100 ns readings after the first, event,
     /// exchange number, place, ends and length, the request its exchange's head named (-1 for none), whether a thread that
     /// made a request raised it, and, where the run was redirected, its leg.

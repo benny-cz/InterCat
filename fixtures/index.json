@@ -1174,6 +1174,58 @@
         "P2: a body is set beside the length its head declares, and said to disagree with it only where its recorded bytes do",
         "P2: every decoder InterCat lists has a corpus at its version, and decodes each of its cases exactly as the corpus says"
       ]
+    },
+    {
+      "id": "FX-HTTP-011",
+      "title": "WinINet requests challenged for Basic credentials, answered when connecting and once challenged",
+      "scenario": "Basic authentication (ADR-037, revision 892): the loopback server answers each request that does not carry the run's credentials - test values made for the fixture's own server, secret to nothing - with a 401 of no body naming Basic in WWW-Authenticate; the client gives WinINet the credentials when it connects, or only once challenged, setting them on the request and sending it again. Over HTTP and TLS, asynchronously too, one request at a time or eight clients at once; WinINet's capture provider is enabled for the workload's process alone.",
+      "milestone": "M3",
+      "mechanism": "Http",
+      "backlog": [
+        "IC-011",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": [
+          "P2"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads http-wininet --auth basic and --auth basic-late, with --tls, --async and --concurrency 8",
+        "seed": 20260929,
+        "log": "fixtures/FX-HTTP-011/evidence/basic-eight-at-once/truth-http-server.jsonl",
+        "independence": "The loopback server is the witness: it logs the head and body of each request it challenged and of the challenge it sent, then of the request that carried the credentials and its response, by length and SHA-256, never the bytes. The client logs what it sent and read, each challenge it answered and the status each response gave it. Neither reads InterCat state."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-HTTP-011/evidence/measurement.json",
+        "note": "A challenge and its answer are an exchange each: the request challenged and its 401, a head and an empty body, under one number, and the request WinINet then sent with the credentials under another, begun once the challenge's response ended; once answered, WinINet sent the credentials with every later request to that server unasked, so of eight clients' 64 requests each client's first, eight, was challenged. The capture keeps the Authorization field as sent. Through icat record, two runs of 64 requests eight at once kept 72 exchanges each, every one whole, and every part icat content --part saved matched the server's bytes of its leg, 277 of 277 that held any in each; each of the 16 challenges named what answers it and was answered by its own request, and each of the 128 requests carrying credentials said so. The lab probe found the same of six runs, over TLS and asynchronously too. The ledgers of the two runs eight at once, never their bytes, are grouped by a test as a session's records are."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-04",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record --profile content scoped to the workload's process, twice: 893 and 892 records journaled, 1,372,632 and 1,372,704 bytes of content kept, nothing lost. Every exchange recorded whole and every head decoded to its end; each challenge answered by its own request, each request carrying credentials said so, and every part saved by icat content matched the server's bytes. Tier ExperimentalEvidence: authentication in other schemes and a proxy's challenge are unmeasured (ADR-037)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The server's and the client's truth logs and the scenario of two runs - ports, thread IDs, lengths and SHA-256 of synthetic requests and responses and of each leg apart, never their bytes, and the statuses the client read - their buffer ledgers, each buffer's reading, event, exchange number, place, ends, length, request, kind of thread and leg, never its bytes, and the measurement's counters. The credentials are the fixture's own test values, held by no file here. The captures themselves are not kept."
+      },
+      "tests": [
+        "R22: FX-HTTP-011's requests challenged for credentials, eight clients at once, are an exchange to each leg, each part whole, each challenge answered by its own request and each request carrying credentials said to",
+        "P2: a 401 naming WWW-Authenticate, or a 407 naming Proxy-Authenticate, challenges its client for credentials, and names the field that answers it",
+        "P2: a request carrying credentials says so, by their field and scheme and never their value, and that Basic credentials are readable",
+        "P2: a listed challenge is answered by the first exchange listed after it, begun once its response ended, that asked for its target of its host carrying credentials",
+        "P2: icat exchanges --decode names each listed challenge for credentials and the exchange that answered it, and which requests carry credentials, never their value",
+        "P2: a conversation says, once its heads are decoded, that its response challenged for credentials or that its request carried them, legibly and heard"
+      ]
     }
   ],
   "retired": [
@@ -1710,6 +1762,7 @@
         "P2: Find in kept content offers Stop while a search runs, which ends it keeping what it found, and says it was stopped",
         "P2: Find in kept content searches on from where a search ended, adding what it finds after the records listed, and says what the whole search read",
         "P2: a 301, 302, 303, 307 or 308 response naming one Location redirects there, resolved against its request's target and host",
+        "P2: a 401 naming WWW-Authenticate, or a 407 naming Proxy-Authenticate, challenges its client for credentials, and names the field that answers it",
         "P2: a CONNECT's conversation says, once its heads are decoded, that it asked a proxy to open a tunnel and that its answer holds no body, legibly and heard",
         "P2: a body is set beside the length its head declares, and said to disagree with it only where its recorded bytes do",
         "P2: a buffer longer than a view shows at once is shown from its first byte, and the view says where it stopped",
@@ -1719,6 +1772,7 @@
         "P2: a content search lists the records whose kept bytes hold a text, how often and where first, and shows no byte unless previews are asked for",
         "P2: a content search read on from where it ended lists what one search from the start would, never a record twice, every count summed once",
         "P2: a content search stopped when asked answers with what it found before, says it was stopped and is partial; one cancelled lists nothing",
+        "P2: a conversation says, once its heads are decoded, that its response challenged for credentials or that its request carried them, legibly and heard",
         "P2: a conversation whose response redirects says where once its heads are decoded, and what WinINet does with a redirect, legibly and heard",
         "P2: a decoder that fails on its bytes decodes nothing and says it failed and how, stopping nothing that asked it",
         "P2: a decoding reads at most what a view shows at once, within its time budget, and says where it stopped",
@@ -1728,11 +1782,13 @@
         "P2: a head decoded to the empty line that ends it says so, and a head not decoded declares nothing of its body",
         "P2: a head decoding reads at most what a view shows at once, within its time budget, and says where it stopped",
         "P2: a head is decoded only as its whole part, from bytes kept with consent to inspect them, and a body by no decoder",
+        "P2: a listed challenge is answered by the first exchange listed after it, begun once its response ended, that asked for its target of its host carrying credentials",
         "P2: a listed redirect is followed by the first exchange listed after it, begun once its response ended, that asked for its location of its host",
         "P2: a part of one buffer, its first and last, that the record limit cut says so of the buffer, and that the rest was cut",
         "P2: a part that is not whole is shown with each gap in place, and no byte stands in for what is missing",
         "P2: a process's exchanges export with what their heads say only once the window has said the table is content, each exchange of the scope a line",
         "P2: a process's exchanges read as a table are the ones its rung lists, each with what its heads say, within a scope and a limit, and refused for another session",
+        "P2: a request carrying credentials says so, by their field and scheme and never their value, and that Basic credentials are readable",
         "P2: a request naming its whole address went to a proxy, and a CONNECT asked one to open a tunnel, each said so; any other went to none known",
         "P2: a view of a part with gaps stops at the bytes it shows at once, at a buffer's start, and says so",
         "P2: a whole HTTP request or response head decodes into its start line and its field lines, each with its bytes, linked to its part and the decoder's version",
@@ -1752,6 +1808,7 @@
         "P2: icat content says why it shows no byte of a part kept without consent, and that an empty part holds none",
         "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one",
         "P2: icat content shows and saves a whole HTTP part as one, and refuses --part of a record that belongs to none",
+        "P2: icat exchanges --decode names each listed challenge for credentials and the exchange that answered it, and which requests carry credentials, never their value",
         "P2: icat exchanges --decode names where each listed redirect sends its request, and the listed exchange that followed it, in its listing, its JSON and its table",
         "P2: icat exchanges --decode says what each listed request asked for, of which host, and what its response answered, each head read whole",
         "P2: icat exchanges --decode says which listed requests went to a proxy and how, in its JSON and its table, and that a CONNECT's answer holds no body",
@@ -2376,6 +2433,7 @@
         "R22: FX-HTTP-007's request bodies, written in pieces eight clients at once, are each its exchange's, a buffer to a write and one to end it, every part whole and as long as the server's truth",
         "R22: FX-HTTP-009's redirected requests, eight clients at once, are two exchanges each - the redirect and the request WinINet made to its location - each part whole, and each redirect followed by its own",
         "R22: FX-HTTP-010's requests through a proxy, eight clients at once, are each one exchange and over TLS each CONNECT one more, every part whole and each said to have gone to a proxy",
+        "R22: FX-HTTP-011's requests challenged for credentials, eight clients at once, are an exchange to each leg, each part whole, each challenge answered by its own request and each request carrying credentials said to",
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
         "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused",
         "R22: a boot is named by a token kept only until the machine restarts, and its count is no identity",

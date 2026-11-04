@@ -141,7 +141,7 @@ public static class HttpRedirects
     /// What a request asked for, as a redirect's location is resolved: its target's path and query, and the host it named;
     /// null where its request line was not decoded, or its target is neither a path nor an absolute HTTP address.
     /// </summary>
-    private static (string Target, string? Host)? Asked(HttpExchangeHeads heads)
+    internal static (string Target, string? Host)? Asked(HttpExchangeHeads heads)
     {
         if (heads.RequestLine?.Target is not { } target)
         {

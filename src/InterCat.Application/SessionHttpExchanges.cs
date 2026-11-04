@@ -453,6 +453,7 @@ public static class SessionHttpExchanges
         // Where a response redirects, the exchange listed after it that followed it (§5g).
         HttpExchange[] listed = [.. positions.Select(position => all[position])];
         int[] followUps = HttpRedirects.FollowUps(listed, heads);
+        int[] answers = HttpChallenges.AnsweredBy(listed, heads);
         string Key(HttpExchange exchange) =>
             HttpExchangeKeys.Exchange(channelKey, exchange.First.Stream, exchange.First.Epoch, exchange.First.Ordinal);
         return new(manifest.SessionId, manifest.Generation,
@@ -479,6 +480,7 @@ public static class SessionHttpExchanges
                     ResponseBody = exchange.ResponseBody,
                     Heads = heads[at],
                     FollowedBy = followUps[at] < 0 ? null : new(Key(listed[followUps[at]]), listed[followUps[at]].Number),
+                    AnsweredBy = answers[at] < 0 ? null : new(Key(listed[answers[at]]), listed[answers[at]].Number),
                 };
             }),
         ], scoped.Length > limit, null);

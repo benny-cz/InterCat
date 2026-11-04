@@ -234,10 +234,13 @@ internal sealed class SessionConversationWindow : Window, IDisposable
         request.Show(exchange.RequestHead, exchange.RequestBody, read.Heads?.Request, read.Heads is not null,
             read.Heads?.Asked is { } asked ? asked + (read.Heads.Host is { } host ? ", of " + host : string.Empty) : null,
             read.Heads?.RequestBody(exchange.RequestBody), bodyNone: "none recorded, as for a request without one",
-            proxy: read.Heads?.Proxy?.Statement);
+            proxy: read.Heads?.Proxy?.Statement, credentials: read.Heads?.Credentials?.Statement);
         response.Show(exchange.ResponseHead, exchange.ResponseBody, read.Heads?.Response, read.Heads is not null,
             read.Heads?.Answered, read.Heads?.ResponseBody(exchange.ResponseBody), bodyNone: "none recorded",
-            redirect: read.Heads?.Redirect is { } redirect ? $"It redirects to {redirect.Location}. {HttpRedirects.Statement}" : null);
+            redirect: read.Heads?.Redirect is { } redirect ? $"It redirects to {redirect.Location}. {HttpRedirects.Statement}" : null,
+            challenge: read.Heads?.Challenge is { } challenge
+                ? $"It challenges its client for credentials in its {challenge.Field} field: {challenge.Challenges}. {HttpChallenges.Statement}"
+                : null);
         status.Text = string.Create(culture, $"Read from generation {read.Generation:N0}")
             + (read.Heads is not { } heads ? "; its heads are decoded only when you ask." : "; " + Decoded(heads));
     }
@@ -330,6 +333,8 @@ internal sealed class SessionConversationWindow : Window, IDisposable
         private readonly SelectableTextBlock said = new() { FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, IsVisible = false };
         private readonly TextBlock redirected = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
         private readonly TextBlock proxied = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
+        private readonly TextBlock challenged = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
+        private readonly TextBlock credentialed = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
         private readonly Grid fields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*"), ColumnSpacing = 12, RowSpacing = 3, IsVisible = false };
         private readonly TextBlock notDecoded = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
 
@@ -343,7 +348,11 @@ internal sealed class SessionConversationWindow : Window, IDisposable
             View = new ScrollViewer
             {
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                Content = new StackPanel { Spacing = 6, Children = { heading, head, body, declared, decoder, said, redirected, proxied, fields, notDecoded } },
+                Content = new StackPanel
+                {
+                    Spacing = 6,
+                    Children = { heading, head, body, declared, decoder, said, redirected, proxied, challenged, credentialed, fields, notDecoded },
+                },
             };
             AutomationProperties.SetName(View, $"The exchange's {name}: what was recorded of it, and what its head says once decoded");
         }
@@ -356,7 +365,7 @@ internal sealed class SessionConversationWindow : Window, IDisposable
         {
             head.Text = body.Text = string.Empty;
             declared.IsVisible = decoder.IsVisible = said.IsVisible = redirected.IsVisible = proxied.IsVisible = false;
-            fields.IsVisible = notDecoded.IsVisible = false;
+            challenged.IsVisible = credentialed.IsVisible = fields.IsVisible = notDecoded.IsVisible = false;
         }
 
         /// <summary>
@@ -364,11 +373,20 @@ internal sealed class SessionConversationWindow : Window, IDisposable
         /// what its decoding made of it: <paramref name="summary"/> above its fields, or why it decoded none; and what the
         /// head declares of the body beside what was recorded of it, in the caution colour where the two disagree. A
         /// response that redirects says where, and what WinINet does with it, beneath its summary (<paramref name="redirect"/>);
-        /// a request that went to a proxy says how, and what WinINet kept of it (<paramref name="proxy"/>).
+        /// a request that went to a proxy says how, and what WinINet kept of it (<paramref name="proxy"/>); a response that
+        /// challenges for credentials says so, and what WinINet does with a challenge (<paramref name="challenge"/>); and a
+        /// request that carries credentials says so, by their field and scheme (<paramref name="credentials"/>).
         /// </summary>
         public void Show(HttpPartRecord headRecord, HttpPartRecord bodyRecord, DecodedContent? decoded, bool asked, string? summary,
-            HttpBodyDeclaration? declaration, string bodyNone, string? redirect = null, string? proxy = null)
+            HttpBodyDeclaration? declaration, string bodyNone, string? redirect = null, string? proxy = null, string? challenge = null,
+            string? credentials = null)
         {
+            challenged.Text = challenge ?? string.Empty;
+            challenged.IsVisible = challenge is not null;
+            AutomationProperties.SetName(challenged, $"Its {name} challenges for credentials: {challenge}");
+            credentialed.Text = credentials ?? string.Empty;
+            credentialed.IsVisible = credentials is not null;
+            AutomationProperties.SetName(credentialed, $"Its {name} carries credentials: {credentials}");
             redirected.Text = redirect ?? string.Empty;
             redirected.IsVisible = redirect is not null;
             AutomationProperties.SetName(redirected, $"Its {name} redirects: {redirect}");

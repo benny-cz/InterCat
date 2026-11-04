@@ -3299,6 +3299,96 @@ public sealed class CommandLineTests : IDisposable
             };
     }
 
+    [Fact(DisplayName = "P2: icat exchanges --decode names each listed challenge for credentials and the exchange that answered it, and which requests carry credentials, never their value")]
+    public async Task ExchangesSayWhoWasChallengedForCredentials()
+    {
+        // PID 4242: exchange 1 a POST challenged for Basic credentials, which exchange 2 answered carrying them; exchange 3
+        // carries a bearer token. PID 4141's exchange 1 carries none and is challenged for none.
+        using var kept = new TemporarySession();
+        using var files = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        ObservationRowV1[] rows =
+        [
+            Wininet(10, 2001, 1), Wininet(11, 2003, 2), Wininet(12, 2004, 3),
+            Wininet(20, 2001, 4), Wininet(21, 2003, 5), Wininet(22, 2004, 6),
+            Wininet(30, 2001, 7), Wininet(31, 2003, 8),
+            Wininet(5, 2001, 9) with { HeaderProcessId = 4_141 }, Wininet(6, 2003, 10) with { HeaderProcessId = 4_141 },
+        ];
+        (int Row, long Exchange)[] parts = [(0, 1), (1, 1), (2, 1), (3, 2), (4, 2), (5, 2), (6, 3), (7, 3), (8, 1), (9, 1)];
+        string[] messages =
+        [
+            "POST /a HTTP/1.1\r\nHost: h\r\nContent-Length: 0\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"x\"\r\nContent-Length: 0\r\n\r\n", "",
+            "POST /a HTTP/1.1\r\nHost: h\r\nContent-Length: 0\r\nAuthorization: Basic eDp5\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n", "ok",
+            "GET /b HTTP/1.1\r\nHost: h\r\nAuthorization: Bearer t\r\n\r\n", "HTTP/1.1 204 No Content\r\n\r\n",
+            "GET /x HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 204 No Content\r\n\r\n",
+        ];
+        rows = [.. rows.Select((row, index) => row with { ByteValue = messages[index].Length })];
+        Publish(kept.Store, rows,
+            fields: [.. parts.SelectMany(part => new[]
+            {
+                Field(rows[part.Row], SourceField.HttpExchangeId, part.Exchange),
+                Field(rows[part.Row], SourceField.ContentBufferSequence, 0),
+                Field(rows[part.Row], SourceField.ContentBufferFlags, 3),
+            })],
+            content: (ContentHeader(recordLimit: 128),
+                [.. messages.Select((message, index) => (message, index)).Where(entry => entry.message.Length > 0)
+                    .Select(entry => Content(rows[entry.index], System.Text.Encoding.ASCII.GetBytes(entry.message), 128, ContentEncodingV1.Binary))]));
+        kept.Store.ReleaseSegmentReaders();
+
+        // A challenge's answer names the listed exchange that answered it; what WinINet does with a challenge, and that the
+        // heads hold credentials, are each said once beneath.
+        (InterCatExitCode code, string output, string said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  \S+ +1 +no end +POST /a +h +401 Unauthorized, answered by exchange 2 +whole\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +2 +no end +POST /a +h +200 OK +whole\r?$", output);
+        Assert.Equal(2, output.Split(HttpChallenges.Statement).Length);
+        Assert.Equal(2, output.Split(HttpChallenges.CredentialsStatement).Length);
+
+        // A listing of no challenge and no credentials says nothing of either.
+        (code, output, said) = await Run("exchanges", kept.Path, "--pid", "4141", "--decode");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.DoesNotContain(HttpChallenges.Statement, output, StringComparison.Ordinal);
+        Assert.DoesNotContain(HttpChallenges.CredentialsStatement, output, StringComparison.Ordinal);
+
+        // In JSON each challenge is its status, field, challenges and answering field, and the exchange that answered it; each
+        // request carrying credentials names their field and scheme, never their value.
+        (code, output, said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using (JsonDocument document = JsonDocument.Parse(output))
+        {
+            JsonElement[] listed = [.. document.RootElement.GetProperty("groups").EnumerateArray().Single().GetProperty("list").EnumerateArray()];
+            JsonElement challenge = listed[0].GetProperty("heads").GetProperty("challenge");
+            Assert.Equal(("401", "WWW-Authenticate", "Basic realm=\"x\"", "Authorization"), (challenge.GetProperty("status").GetString(),
+                challenge.GetProperty("field").GetString(), challenge.GetProperty("challenges").GetString(), challenge.GetProperty("answer").GetString()));
+            Assert.Equal((listed[1].GetProperty("key").GetString(), 2L), (challenge.GetProperty("answeredBy").GetProperty("key").GetString(),
+                challenge.GetProperty("answeredBy").GetProperty("number").GetInt64()));
+            Assert.Equal(JsonValueKind.Null, listed[0].GetProperty("heads").GetProperty("credentials").ValueKind);
+            JsonElement basic = listed[1].GetProperty("heads").GetProperty("credentials");
+            Assert.Equal(("Authorization", "Basic"), (basic.GetProperty("field").GetString(), basic.GetProperty("scheme").GetString()));
+            Assert.DoesNotContain("eDp5", basic.GetRawText(), StringComparison.Ordinal);
+            Assert.Equal("Bearer", listed[2].GetProperty("heads").GetProperty("credentials").GetProperty("scheme").GetString());
+            Assert.Equal(JsonValueKind.Null, listed[1].GetProperty("heads").GetProperty("challenge").ValueKind);
+        }
+
+        // In a table, each challenge, the number of the exchange that answered it, and each request's credentials' scheme.
+        string table = Path.Combine(files.Path, "challenges.csv");
+        (code, _, said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode", "--output", table);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal([("Basic realm=\"x\"", "2", ""), ("", "", "Basic"), ("", "", "Bearer")],
+            Csv(File.ReadAllText(table)).Select(line => (line["challenge"], line["challenge_answered_by"], line["credentials"])));
+
+        static ObservationRowV1 Wininet(long ticks, ushort eventId, ulong ordinal) =>
+            Transfer(ticks, eventId <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
+                eventId <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, 1, null, ordinal) with
+            {
+                Mechanism = Mechanism.Http,
+                Layer = ObservationLayer.Application,
+                EventId = eventId,
+                HeaderProcessId = 4_242,
+                Direction = eventId <= 2002 ? Direction.Outbound : Direction.Inbound,
+                ByteDomain = ByteDomain.ApplicationPayload,
+            };
+    }
+
     [Fact(DisplayName = "P2: icat exchanges writes the listed exchanges' heads only when asked, as content, in JSON or as a table whose cells a spreadsheet will not evaluate")]
     public async Task ExchangesHeadsAreWrittenOnlyWhenAsked()
     {

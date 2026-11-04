@@ -810,6 +810,8 @@ Revision 890 measures redirects through WinINet's capture (FX-HTTP-009): a redir
 
 Revision 891 measures requests through a proxy through WinINet's capture (FX-HTTP-010): one over HTTP is kept as WinINet sent it to the proxy, its target the whole address, and over TLS the CONNECT before it as an exchange of its own, so a decoded request says how it went to a proxy and a 2xx answer to CONNECT is said to hold no body.
 
+Revision 892 measures Basic authentication through WinINet's capture (FX-HTTP-011): a challenge and the request answering it with credentials are an exchange each, credentials then sent unasked, so a decoded challenge names what answers it, a listing the exchange that did, and a request carrying credentials says so, never their value.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3313,3 +3315,25 @@ conversation saying it beneath the request (`http-exchanges-v1` §5h); and a red
 location against the request's whole address. A test groups the fixture's two ledgers, their heads rebuilt and checked
 against the server's truth byte for byte, as an exchange to each request and each CONNECT; the head decoder's corpus
 holds the three new heads; twelve mutations are caught. Authentication remains unmeasured.
+
+Revision 892 measures Basic authentication through WinINet's capture (FX-HTTP-011), where every server measured before
+had answered each request without asking who sent it. The truth workload's server can challenge each request that does
+not carry the run's credentials - test values made for its own loopback server - with a 401 of no body naming Basic,
+logging each leg apart, and its client can give WinINet the credentials when it connects, or only once challenged,
+setting them on the request and sending it again. Six probe runs, over TLS and asynchronously too, and two `icat record
+--profile content` runs of 64 requests eight clients at once found a challenge and its answer kept as an exchange each:
+the request challenged and its 401, a head and an empty body, under one number, and the request sent with the
+credentials under another, begun once the challenge's response ended, every part matching the server's truth of its
+leg. WinINet answered a challenge by itself where its client gave it credentials, and once a challenge was answered sent
+them with every later request to that server unasked, so of eight clients' 64 requests only each client's first was
+challenged; and its capture kept the Authorization field as sent, Basic credentials encoded, not encrypted. The grouping
+needs nothing new. Where heads are decoded a 401 naming WWW-Authenticate, or a 407 naming Proxy-Authenticate, now says
+it challenges for credentials and which field answers it, and a request carrying them says so by their field and
+scheme, never their value, Basic credentials said to be readable; `icat exchanges --decode` names beside a challenge's
+answer the exchange that answered it - the first listed after it, begun once its response ended, carrying credentials
+for its target - and says once each what WinINet does with a challenge and that the heads are to be shared only as their
+credentials would be, giving each in its JSON and its table, as the window's Export with their heads… does, while the
+conversation says each beneath its side (`http-exchanges-v1` §5i). A test groups the fixture's two ledgers, their heads
+rebuilt and checked against the server's truth byte for byte, each of 16 challenges answered by its own request;
+twenty-six mutations are caught. Other schemes - NTLM and Negotiate, which take the user's own credentials - and a
+proxy's challenge remain unmeasured.

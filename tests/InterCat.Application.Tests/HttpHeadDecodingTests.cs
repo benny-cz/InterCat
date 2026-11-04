@@ -404,6 +404,99 @@ public sealed class HttpHeadDecodingTests
         Assert.Null(new HttpExchangeHeads(null, heads.Response).Proxy);
     }
 
+    [Theory(DisplayName = "P2: a 401 naming WWW-Authenticate, or a 407 naming Proxy-Authenticate, challenges its client for credentials, and names the field that answers it")]
+    [InlineData("POST /fx/0 HTTP/1.1\r\nHost: 127.0.0.1:5000\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"FX-HTTP-011\"\r\nContent-Length: 0\r\n\r\n", "401", "WWW-Authenticate", "Basic realm=\"FX-HTTP-011\"", "Authorization", "/fx/0", "127.0.0.1:5000")]
+    [InlineData("GET /a HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nwww-authenticate: Negotiate\r\nWWW-Authenticate: Basic realm=\"r\"\r\n\r\n", "401", "WWW-Authenticate", "Negotiate, Basic realm=\"r\"", "Authorization", "/a", "h")]
+    [InlineData("GET http://p.test/a HTTP/1.1\r\nHost: p.test\r\n\r\n", "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"proxy\"\r\n\r\n", "407", "Proxy-Authenticate", "Basic realm=\"proxy\"", "Proxy-Authorization", "/a", "p.test")]
+    [InlineData(null, "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic\r\n\r\n", "401", "WWW-Authenticate", "Basic", "Authorization", null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n", null, null, null, null, null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate:\r\n\r\n", null, null, null, null, null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 407 Proxy Authentication Required\r\nWWW-Authenticate: Basic\r\n\r\n", null, null, null, null, null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 200 OK\r\nWWW-Authenticate: Basic\r\n\r\n", null, null, null, null, null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic\r\n", null, null, null, null, null, null)]
+    public void AChallengeNamesWhatAnswersIt(string? request, string response, string? status, string? field, string? challenges, string? answer,
+        string? target, string? host)
+    {
+        var heads = new HttpExchangeHeads(request is null ? null : Head(request, request: true), Head(response, request: false));
+        Assert.Equal(status is null ? null : new HttpChallenge(status, field!, challenges!, answer!, target, host), heads.Challenge);
+
+        // A response no buffer of whose head was recorded challenges for nothing that is known.
+        Assert.Null(new HttpExchangeHeads(heads.Request, null).Challenge);
+    }
+
+    [Theory(DisplayName = "P2: a request carrying credentials says so, by their field and scheme and never their value, and that Basic credentials are readable")]
+    [InlineData("POST /fx/0 HTTP/1.1\r\nHost: h\r\nAuthorization: Basic aW50ZXJjYXQtZml4dHVyZTpmeC1odHRwLTAxMS1ub3QtYS1zZWNyZXQ=\r\n\r\n", "Authorization", "Basic", "It carries credentials in its Authorization field, in the Basic scheme, kept as WinINet sent them: a user name and password, encoded, not encrypted, which anyone reading these heads can read (FX-HTTP-011).")]
+    [InlineData("GET /a HTTP/1.1\r\nauthorization: basic eDp5\r\n\r\n", "authorization", "basic", "It carries credentials in its authorization field, in the basic scheme, kept as WinINet sent them: a user name and password, encoded, not encrypted, which anyone reading these heads can read (FX-HTTP-011).")]
+    [InlineData("GET /a HTTP/1.1\r\nAuthorization: Bearer abc.def\r\n\r\n", "Authorization", "Bearer", "It carries credentials in its Authorization field, in the Bearer scheme, kept as WinINet sent them (FX-HTTP-011).")]
+    [InlineData("GET http://p.test/a HTTP/1.1\r\nProxy-Authorization: Basic eDp5\r\n\r\n", "Proxy-Authorization", "Basic", "It carries credentials in its Proxy-Authorization field, in the Basic scheme, kept as WinINet sent them: a user name and password, encoded, not encrypted, which anyone reading these heads can read (FX-HTTP-011).")]
+    [InlineData("GET /a HTTP/1.1\r\nAuthorization: Negotiate\r\n\r\n", "Authorization", "Negotiate", "It carries credentials in its Authorization field, in the Negotiate scheme, kept as WinINet sent them (FX-HTTP-011).")]
+    [InlineData("GET /a HTTP/1.1\r\nAuthorization:\r\nHost: h\r\n\r\n", null, null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: h\r\n\r\n", null, null, null)]
+    public void ARequestCarryingCredentialsSaysSo(string request, string? field, string? scheme, string? statement)
+    {
+        var heads = new HttpExchangeHeads(Head(request, request: true), null);
+        Assert.Equal(field is null ? null : new HttpCredentials(field, scheme!, statement!), heads.Credentials);
+        Assert.Null(new HttpExchangeHeads(null, null).Credentials);
+    }
+
+    /// <summary>
+    /// No record ties a challenge to the request WinINet then sent with credentials (FX-HTTP-011), so a listing names as its
+    /// answer the first exchange listed after it, begun once its response ended, that asked for its target of its host
+    /// carrying the field that answers it.
+    /// </summary>
+    [Fact(DisplayName = "P2: a listed challenge is answered by the first exchange listed after it, begun once its response ended, that asked for its target of its host carrying credentials")]
+    public void AChallengeIsAnsweredByTheFirstLaterRequestCarryingCredentials()
+    {
+        const string Basic = "Authorization: Basic eDp5\r\n";
+        (long First, long? End, string? Request, string? Response)[] listed =
+        [
+            (10, 100, "POST /a HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic\r\n\r\n"),
+            (50, 60, "POST /a HTTP/1.1\r\nHost: h\r\n" + Basic + "\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (105, 110, "POST /a HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic\r\n\r\n"),
+            (112, 115, "POST /a HTTP/1.1\r\nHost: other\r\n" + Basic + "\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (120, 125, "POST /a HTTP/1.1\r\nHost: h\r\nProxy-Authorization: Basic eDp5\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (130, 135, "POST /a HTTP/1.1\r\nHost: H\r\n" + Basic + "\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (140, 150, "GET http://p.test/b HTTP/1.1\r\nHost: p.test\r\n\r\n", "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\n\r\n"),
+            (155, 160, "GET http://p.test/b HTTP/1.1\r\nHost: p.test\r\n" + Basic + "\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (165, 170, "GET http://p.test/b HTTP/1.1\r\nHost: p.test\r\nProxy-Authorization: Basic eDp5\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (180, 185, "POST /a HTTP/1.1\r\nHost: h\r\n" + Basic + "\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (200, 210, "GET /c HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic\r\n\r\n"),
+            (220, 225, null, null),
+        ];
+        HttpExchange[] exchanges =
+        [
+            .. listed.Select((exchange, at) => new HttpExchange
+            {
+                Number = at + 1,
+                ProcessId = 4_242,
+                Process = new ProcessBinding(0, RelationStrength.Direct, ProcessBindingReason.Bound),
+                FirstTicks = exchange.First,
+                LastTicks = exchange.End ?? exchange.First,
+                FirstNanoseconds = exchange.First,
+                LastNanoseconds = exchange.End ?? exchange.First,
+                ResponseEndNanoseconds = exchange.End,
+                RequestHead = new(1, 20, true),
+                RequestBody = default,
+                ResponseHead = new(1, 20, true),
+                ResponseBody = new(1, 0, exchange.End is not null),
+                First = (1, 0, (ulong)(at + 1)),
+            }),
+        ];
+        HttpExchangeHeads?[] heads =
+        [
+            .. listed.Select(exchange => exchange.Request is null
+                ? null
+                : new HttpExchangeHeads(Head(exchange.Request, request: true), Head(exchange.Response!, request: false))),
+        ];
+
+        // The first challenge is answered by the first exchange after it, once its response ended, that asked for /a of h
+        // with an Authorization field, its host in any case - not one begun before, nor one challenged too, of another
+        // host, or carrying the field that answers a proxy, nor a later one; so is the second; a proxy's challenge by
+        // Proxy-Authorization alone; and one none listed answered has none.
+        Assert.Equal([5, -1, 5, -1, -1, -1, 8, -1, -1, -1, -1, -1], HttpChallenges.AnsweredBy(exchanges, heads));
+        Assert.Throws<ArgumentException>(() => HttpChallenges.AnsweredBy(exchanges, heads[1..]));
+    }
+
     /// <summary>
     /// No record ties a redirect to the request WinINet made to its location (FX-HTTP-009), so a listing names as its
     /// follow-up the first exchange listed after it, begun once its response ended, that asked for its location of its host -

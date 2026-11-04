@@ -57,6 +57,7 @@ internal static partial class Program
         int pace = int.Parse(Option(args, "--pace") ?? "0", CultureInfo.InvariantCulture);
         int redirect = int.Parse(Option(args, "--redirect") ?? "0", CultureInfo.InvariantCulture);
         bool proxy = args.Contains("--proxy", StringComparer.Ordinal);
+        string? auth = Option(args, "--auth");
         bool ledger = args.Contains("--ledger", StringComparer.Ordinal);
         int concurrency = int.Parse(Option(args, "--concurrency") ?? "1", CultureInfo.InvariantCulture);
         string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(
@@ -75,6 +76,8 @@ internal static partial class Program
             Console.Error.WriteLine("             WinINet follows by itself, and each leg is compared apart (FX-HTTP-009)");
             Console.Error.WriteLine("  [--proxy]: the client reaches the server through a proxy, the server itself, over HTTP in absolute form");
             Console.Error.WriteLine("             and over TLS through a CONNECT tunnel, each CONNECT compared too (FX-HTTP-010)");
+            Console.Error.WriteLine("  [--auth basic|basic-late]: the server challenges each request without the run's test credentials, which");
+            Console.Error.WriteLine("             WinINet answers, and each leg is compared apart (FX-HTTP-011)");
             Console.Error.WriteLine("  [--ledger]: writes each captured buffer's metadata - time, event, exchange, place, ends, length, thread -");
             Console.Error.WriteLine("             never its bytes, as buffers.csv beside the report");
             Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]");
@@ -175,6 +178,11 @@ internal static partial class Program
             }
 
             if (proxy) start.ArgumentList.Add("--proxy");
+            if (auth is not null)
+            {
+                start.ArgumentList.Add("--auth");
+                start.ArgumentList.Add(auth);
+            }
 
             if (concurrency > 1)
             {
@@ -269,7 +277,7 @@ internal static partial class Program
         object report = new
         {
             exchange = Compare(captured, truth, process.Id, requests, bytes, tls || http2, concurrency, chunked, coding, decode, async, http2, write, pace, redirect,
-                proxy, eventsLost, others, malformed, ledger ? Path.Combine(output, "buffers.csv") : null),
+                proxy, auth, eventsLost, others, malformed, ledger ? Path.Combine(output, "buffers.csv") : null),
             processFilter = new
             {
                 decoyExchangedByTruth = decoyExchanged,
@@ -291,11 +299,13 @@ internal static partial class Program
     /// with the body before its coding and with the coded bytes. Redirected, a request is two legs, told apart by the path
     /// each head names: the one the server answered with its redirect, compared with what it logged of that leg, and the
     /// one WinINet made to the path moved, compared with the rest. Through a proxy, an exchange whose head asks to CONNECT
-    /// is no request's, and is compared with the server's log of each CONNECT it answered.
+    /// is no request's, and is compared with the server's log of each CONNECT it answered. Challenged for credentials, a
+    /// request is two legs too, told apart by whether its head carries them: the one the server answered with its
+    /// challenge, and the one that carried them.
     /// </summary>
     private static object Compare(List<Buffer> captured, string truth, int processId, int requests, int maximumBodyBytes, bool tls,
         int concurrency, bool chunked, string? coding, bool decode, bool async, bool http2, int write, int pace, int redirect, bool proxy,
-        int eventsLost, long others, long malformed, string? ledger)
+        string? auth, int eventsLost, long others, long malformed, string? ledger)
     {
         // The threads that made the requests, by the workload's own account: a record raised on any other thread of its
         // process was raised by WinINet working a request on a thread of its own.
@@ -348,10 +358,12 @@ internal static partial class Program
 
         // Which request each exchange is, by the path its request head's first line names: "POST /fx/{index} HTTP/1.1", or
         // "/fx/{index}/moved" where a redirect sent it.
+        string HeadText(List<Buffer> exchange) => Encoding.ASCII.GetString(
+            [.. exchange.Where(buffer => buffer.EventId == 2001).OrderBy(buffer => buffer.Sequence).SelectMany(buffer => buffer.Bytes)]);
+
         string StartLine(List<Buffer> exchange)
         {
-            byte[] head = [.. exchange.Where(buffer => buffer.EventId == 2001).OrderBy(buffer => buffer.Sequence).SelectMany(buffer => buffer.Bytes)];
-            string text = Encoding.ASCII.GetString(head);
+            string text = HeadText(exchange);
             int end = text.IndexOf("\r\n", StringComparison.Ordinal);
             return end < 0 ? text : text[..end];
         }
@@ -368,10 +380,18 @@ internal static partial class Program
 
         bool Moved(List<Buffer> exchange) => StartLine(exchange).Contains("/moved ", StringComparison.Ordinal);
 
-        // Each request's exchange - redirected, the leg WinINet made to the path moved - and, redirected, apart, the leg the
-        // server answered with its redirect.
+        // Challenged, whether a request's head carries credentials, in an Authorization field.
+        bool Authorized(List<Buffer> exchange) => HeadText(exchange).Split("\r\n")
+            .Any(line => line.StartsWith("Authorization:", StringComparison.OrdinalIgnoreCase));
+
+        // Redirected or challenged, a request is two legs: the one the server answered with its redirect or its challenge,
+        // and the one WinINet then made, to the path moved or carrying credentials.
+        bool legged = redirect > 0 || auth is not null;
+        bool FirstLeg(List<Buffer> exchange) => redirect > 0 ? !Moved(exchange) : auth is not null && !Authorized(exchange);
+
+        // Each request's exchange - redirected or challenged, the second leg - and, apart, its first leg.
         var byRequest = new Dictionary<int, List<List<Buffer>>>();
-        var byRedirected = new Dictionary<int, List<List<Buffer>>>();
+        var byFirstLeg = new Dictionary<int, List<List<Buffer>>>();
         var connects = new List<List<Buffer>>();
         int unmatched = 0;
         foreach (List<Buffer> exchange in exchanges)
@@ -382,7 +402,7 @@ internal static partial class Program
             }
             else if (RequestOf(exchange) is { } index)
             {
-                Dictionary<int, List<List<Buffer>>> legs = redirect > 0 && !Moved(exchange) ? byRedirected : byRequest;
+                Dictionary<int, List<List<Buffer>>> legs = FirstLeg(exchange) ? byFirstLeg : byRequest;
                 if (!legs.TryGetValue(index, out List<List<Buffer>>? found)) legs[index] = found = [];
                 found.Add(exchange);
             }
@@ -424,12 +444,15 @@ internal static partial class Program
         if (ledger is not null)
         {
             double start = timeline.Count == 0 ? 0 : timeline[0].Milliseconds;
-            // Redirected, each buffer's leg too: the one the server answered with its redirect, or the one to the path moved.
+            // Redirected or challenged, each buffer's leg too: the one the server answered with its redirect or its challenge,
+            // or the one WinINet then made, to the path moved or carrying credentials.
             int?[] requestOf = [.. exchanges.Select(RequestOf)];
-            string[] legOf = [.. exchanges.Select(exchange => redirect == 0 ? string.Empty : Moved(exchange) ? ",moved" : ",redirected")];
+            string[] legOf = [.. exchanges.Select(exchange => !legged ? string.Empty
+                : FirstLeg(exchange) ? (redirect > 0 ? ",redirected" : ",challenged")
+                : redirect > 0 ? ",moved" : ",authorized")];
             File.WriteAllLines(ledger,
             [
-                "ticks,event,exchange,sequence,flags,bytes,request,thread" + (redirect == 0 ? string.Empty : ",leg"),
+                "ticks,event,exchange,sequence,flags,bytes,request,thread" + (legged ? ",leg" : string.Empty),
                 .. timeline.Select(buffer => string.Create(CultureInfo.InvariantCulture,
                     $"{(long)Math.Round((buffer.Milliseconds - start) * 10_000)},{buffer.EventId},{buffer.SessionId},{buffer.Sequence},{buffer.Flags},{buffer.Bytes.Length},{requestOf[owner[buffer]] ?? -1},{(clientThreads.Contains(buffer.ThreadId) ? "client" : "wininet")}{legOf[owner[buffer]]}")),
             ]);
@@ -545,7 +568,7 @@ internal static partial class Program
                     if (readByTheClient && part == "response-body" && read.TryGetValue(index, out string? clientRead) && hash == clientRead) clientReadMatches++;
                 }
 
-                List<Buffer> all = redirect == 0
+                List<Buffer> all = !legged
                     ? [.. captured.Where(buffer => buffer.EventId == id)]
                     : [.. legs.Values.SelectMany(found => found).SelectMany(exchange => exchange).Where(buffer => buffer.EventId == id)];
                 compared[part] = new
@@ -574,44 +597,49 @@ internal static partial class Program
 
         Dictionary<string, object> parts = PartsOf(byRequest, part => part, readByTheClient: true);
 
-        // Redirected, the legs the server answered with its redirect, against what it logged of them; and how each request's
-        // two legs stand to each other - under one capture exchange id or two, and the leg to the path moved after the other.
-        object? Redirects()
+        // Redirected or challenged, the first legs - the ones the server answered with its redirect or its challenge - against
+        // what it logged of them; and how each request's two legs stand to each other - under one capture exchange id or two,
+        // and the second leg after the first.
+        object? Legs()
         {
             int both = 0, oneId = 0, twoIds = 0, inOrder = 0;
             for (int index = 0; index < requests; index++)
             {
-                if (!byRedirected.TryGetValue(index, out List<List<Buffer>>? redirected) || redirected.Count != 1
-                    || !byRequest.TryGetValue(index, out List<List<Buffer>>? moved) || moved.Count != 1)
+                if (!byFirstLeg.TryGetValue(index, out List<List<Buffer>>? first) || first.Count != 1
+                    || !byRequest.TryGetValue(index, out List<List<Buffer>>? second) || second.Count != 1)
                 {
                     continue;
                 }
 
                 both++;
-                oneId += redirected[0][0].SessionId == moved[0][0].SessionId ? 1 : 0;
-                twoIds += redirected[0][0].SessionId != moved[0][0].SessionId ? 1 : 0;
-                inOrder += moved[0][0].Milliseconds >= redirected[0][^1].Milliseconds ? 1 : 0;
+                oneId += first[0][0].SessionId == second[0][0].SessionId ? 1 : 0;
+                twoIds += first[0][0].SessionId != second[0][0].SessionId ? 1 : 0;
+                inOrder += second[0][0].Milliseconds >= first[0][^1].Milliseconds ? 1 : 0;
             }
 
-            List<List<Buffer>> legs = [.. byRedirected.Values.SelectMany(found => found)];
+            List<List<Buffer>> legs = [.. byFirstLeg.Values.SelectMany(found => found)];
             return new
             {
-                redirectedLegs = legs.Count,
-                movedLegs = byRequest.Values.Sum(found => found.Count),
-                requestsRedirectedAsSeveralExchanges = byRedirected.Count(pair => pair.Value.Count > 1),
+                firstLegs = legs.Count,
+                secondLegs = byRequest.Values.Sum(found => found.Count),
+                requestsWithAFirstLegAsSeveralExchanges = byFirstLeg.Count(pair => pair.Value.Count > 1),
                 requestsWithBothLegs = both,
                 legsUnderOneExchangeId = oneId,
                 legsUnderTwoExchangeIds = twoIds,
-                movedLegAfterTheRedirectedLeg = inOrder,
-                redirectedLegsWithAResponseHead = legs.Count(exchange => exchange.Any(buffer => buffer.EventId == 2003)),
-                redirectedLegsWithAResponseBodyBuffer = legs.Count(exchange => exchange.Any(buffer => buffer.EventId == 2004)),
-                redirectedLegsWithARequestBodyBuffer = legs.Count(exchange => exchange.Any(buffer => buffer.EventId == 2002)),
-                parts = PartsOf(byRedirected, part => part switch
+                secondLegAfterTheFirst = inOrder,
+                firstLegsWithAResponseHead = legs.Count(exchange => exchange.Any(buffer => buffer.EventId == 2003)),
+                firstLegsWithAResponseBodyBuffer = legs.Count(exchange => exchange.Any(buffer => buffer.EventId == 2004)),
+                firstLegsWithARequestBodyBuffer = legs.Count(exchange => exchange.Any(buffer => buffer.EventId == 2002)),
+                parts = PartsOf(byFirstLeg, part => (redirect > 0, part) switch
                 {
-                    "request-head" => "redirected-request-head",
-                    "request-body" => "redirected-request-body",
-                    "response-head" => "redirect-response-head",
-                    _ => "redirect-response-body",
+                    (true, "request-head") => "redirected-request-head",
+                    (true, "request-body") => "redirected-request-body",
+                    (true, "response-head") => "redirect-response-head",
+                    (true, _) => "redirect-response-body",
+                    (false, "request-head") => "challenged-request-head",
+                    (false, "request-body") => "challenged-request-body",
+                    (false, "response-head") => "challenge-response-head",
+                    (false, _) => "challenge-response-body",
                 }, readByTheClient: false),
             };
         }
@@ -665,7 +693,7 @@ internal static partial class Program
 
         // The first exchange's heads as text, for the person running the probe - redirected, each leg's: they are the
         // fixture's own requests to its own server on loopback, and are printed here, never written.
-        foreach ((Dictionary<int, List<List<Buffer>>> legs, string leg) in new[] { (byRedirected, " redirected"), (byRequest, string.Empty) })
+        foreach ((Dictionary<int, List<List<Buffer>>> legs, string leg) in new[] { (byFirstLeg, redirect > 0 ? " redirected" : " challenged"), (byRequest, string.Empty) })
         {
             if (!legs.TryGetValue(0, out List<List<Buffer>>? first)) continue;
             foreach (int id in (int[])[2001, 2003])
@@ -726,7 +754,7 @@ internal static partial class Program
             providerGuid = Provider,
             keywords = "0x" + Keywords.ToString("X16", CultureInfo.InvariantCulture),
             processFilter = "EVENT_FILTER_TYPE_PID: the workload's process alone",
-            workload = proxy ? "FX-HTTP-010" : redirect > 0 ? "FX-HTTP-009" : coding is not (null or "gzip") ? "FX-HTTP-008" : write > 0 ? "FX-HTTP-007" : http2 ? "FX-HTTP-006"
+            workload = auth is not null ? "FX-HTTP-011" : proxy ? "FX-HTTP-010" : redirect > 0 ? "FX-HTTP-009" : coding is not (null or "gzip") ? "FX-HTTP-008" : write > 0 ? "FX-HTTP-007" : http2 ? "FX-HTTP-006"
                 : async ? "FX-HTTP-005" : coding is "gzip" ? "FX-HTTP-004"
                 : concurrency > 1 || chunked ? "FX-HTTP-003" : tls ? "FX-HTTP-002" : "FX-HTTP-001",
             coding,
@@ -735,7 +763,9 @@ internal static partial class Program
                 ? new { bodiesAsWritten, bodiesCutWhereAWriteWasLonger, bodiesOtherwise, writesPastTheLimit, otherwise }
                 : null,
             redirectStatus = redirect,
-            redirected = redirect > 0 ? Redirects() : null,
+            redirected = redirect > 0 ? Legs() : null,
+            auth,
+            challenged = auth is not null ? Legs() : null,
             proxy,
             connects = proxy ? Connects() : null,
             http2,

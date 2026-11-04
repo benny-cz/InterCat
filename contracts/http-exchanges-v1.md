@@ -49,7 +49,10 @@ made through a proxy, grouped as any: over HTTP its request is kept as WinINet s
 whole address; over TLS WinINet first asks the proxy to CONNECT a tunnel, and keeps the CONNECT as an exchange of its
 own - its head and the proxy's answer of no body - and the request it then sends through the tunnel as an exchange of
 its own too, as over TLS directly. FX-HTTP-010's eight clients' 64 requests through a proxy are one exchange to a
-request, and over TLS one more to each CONNECT, each part whole (revision 891; §5h).
+request, and over TLS one more to each CONNECT, each part whole (revision 891; §5h). So is a challenge for credentials
+and its answer: WinINet keeps the request a server challenged and the request it then sends with credentials as an
+exchange each, numbered apart; FX-HTTP-011's eight clients' 64 requests, each client's first challenged, are an exchange
+to each leg, each part whole (revision 892; §5i).
 
 A release of a session's oldest interval (`contracts/store-v1.md` §8, ADR-043, revision 435) keeps every buffer of an
 exchange one of whose buffers stays, and the use before a use opened only by repeating one of its buffers, so every
@@ -153,7 +156,9 @@ decoded says among its caveats that the version a head names is WinINet's: it ke
 with heads in HTTP/1.1's form, so no head says which protocol carried its exchange (FX-HTTP-006,
 `contracts/decoders-v1.md` §4). Since revision 890 a response that redirects is listed with the exchange that followed
 it, or with its location where none listed did (§5g), and since revision 891 a listing that holds a request to a proxy
-says among its caveats, once, what that means for what was kept (§5h).
+says among its caveats, once, what that means for what was kept (§5h); since revision 892 a challenge for credentials
+is listed with the exchange that answered it, and a listing holding a challenge, or a request carrying credentials,
+says among its caveats, once, what WinINet does with one, and that the heads then hold the credentials (§5i).
 
 ## 5d. An exchange's conversation (revision 777)
 
@@ -214,10 +219,13 @@ recorded, else its `part`, the bytes it `read` (`first` and `last`, null where i
 null where the head was not decoded; and since revision 890 `redirect`, where its response redirects (§5g) - its
 `status`, its `location` as its head gave it, the `target` and `host` a request there names, each null where it could
 not be resolved, and `followedBy`, the listed exchange that followed it, by `key` and `number`, null where none listed
-did - null where it does not; and since revision 891 `proxy`, how its request went to a proxy (§5h) - its `kind`,
-`request` or `tunnel`, and its `statement` - null where it went to none. A file written says beside it that it holds
-content. Without `--decode` none of these is
-written, not even as null: `http-exchanges-v1` never holds a head's value.
+did - null where it does not; since revision 891 `proxy`, how its request went to a proxy (§5h) - its `kind`,
+`request` or `tunnel`, and its `statement` - null where it went to none; and since revision 892 `challenge`, where its
+response challenges for credentials (§5i) - its `status`, the `field` that makes it, its `challenges` as given, the
+`answer` field a request answering it carries, and `answeredBy`, the listed exchange that answered it, null where none
+listed did - and `credentials`, where its request carries them - their `field`, their `scheme` and a `statement`,
+never their value - each null where there is none. A file written says beside it that it holds content. Without
+`--decode` none of these is written, not even as null: `http-exchanges-v1` never holds a head's value.
 
 `--output` writes JSON; `--format csv`, or a path ending `.csv`, writes the listed exchanges as a table instead, one
 line per exchange in the order listed after a header naming its columns: `session_id`, `generation`, `pid`, `process`,
@@ -227,8 +235,10 @@ With `--decode` it adds `decoder`, `decoder_version`, `method`, `target`, `reque
 `reason`, `response_version`, `request_head_decoded_to_end` and `response_head_decoded_to_end`,
 `request_head_not_decoded` and `response_head_not_decoded`, where a head no buffer of which was recorded says so,
 each body's `_declared` statement and `_contradicts`, and since revision 890 `redirect_location`, where a response
-redirects, and `redirect_followed_by`, the number of the listed exchange that followed it (§5g), and since revision 891
-`proxy`, the kind of its going to a proxy (§5h). Numbers are
+redirects, and `redirect_followed_by`, the number of the listed exchange that followed it (§5g), since revision 891
+`proxy`, the kind of its going to a proxy (§5h), and since revision 892 `challenge`, its challenges as given,
+`challenge_answered_by`, the number of the listed exchange that answered it, and `credentials`, the scheme of the
+credentials its request carries (§5i). Numbers are
 invariant, flags `true` or `false`, and what is not known is empty. A cell holding a comma, a quote or a line end is
 quoted, its quotes doubled; a text cell beginning
 with `=`, `+`, `-`, `@`, a tab or a carriage return begins with an apostrophe, so a spreadsheet shows it rather than
@@ -289,13 +299,41 @@ CONNECT named - and says among its caveats, once, what going to a proxy means fo
 give each request's kind (§5f). The window's conversation says, beneath a request's head, how it went to a proxy and
 what was kept.
 
+## 5i. Challenges for credentials, and credentials carried (revision 892)
+
+Where an exchange's heads are decoded (§5c, §5d, §5f), a 401 response whose head, decoded to its end, names
+WWW-Authenticate challenges its client for credentials, which a request answers in an Authorization field; a 407
+naming Proxy-Authenticate challenges for a proxy's, answered in Proxy-Authorization (RFC 9110 §11.6, §11.7). Its
+challenges are the field's values as given, every one; a head naming none, or one empty, challenges for nothing known.
+A request whose head names Authorization or Proxy-Authorization with a value carries credentials: said by the field and
+the scheme, the value's first token, never the value - though the decoded head beside it holds the value, as a decoding
+holds every field's. Basic credentials (RFC 7617) are a user name and password, encoded, not encrypted, and are said to
+be readable by anyone reading the heads.
+
+FX-HTTP-011 measured that WinINet answers a Basic challenge by itself where its client gave it credentials when it
+connected, and sends the request again once a client that gives them only when challenged sets them and sends it; its
+capture keeps the request challenged and the one sent with credentials as an exchange each, numbered apart, the answer
+begun once the challenge's response ended. Once a challenge was answered WinINet sent the credentials with every later
+request to that server unasked: of eight clients' 64 requests, only each client's first was challenged. No record ties
+a challenge to its answer, so a listing names as its answer the first exchange listed after it, begun once its response
+ended, that asked for its target of its host carrying the field that answers it - its target and host resolved as a
+redirect's location is (§5g) - and each of FX-HTTP-011's 16 challenges was answered so by its own request.
+
+`icat exchanges --decode` says, beside a challenge's answer, the listed exchange that answered it, and says among its
+caveats, once each, what WinINet does with a challenge and how its answer is found, and that heads holding credentials
+are to be shared only as those credentials would be; its JSON and its table give each challenge and each request's
+credentials (§5f). The window's conversation says, beneath a response, the challenge it makes and what WinINet does with
+one, and beneath a request, the credentials it carries; it reads one exchange, and names no answer.
+
 ## 6. Not defined at this version
 
 - An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
   asked for reads, and only `http-exchange-heads-v1` writes, asked for with them (§5c, §5d, §5f,
   `contracts/decoders-v1.md` §2).
 - How WinINet's capture keeps a body in a content coding other than gzip, deflate and br (§5e), and an exchange past
-  authentication. Asynchronous WinINet is measured since revision 886 (FX-HTTP-005), HTTP/2 since revision 887
-  (FX-HTTP-006), whose heads no record tells from HTTP/1.1's, a request body written in pieces since revision 888
-  (FX-HTTP-007), deflate and br since revision 889 (FX-HTTP-008), redirects WinINet follows since revision 890
-  (FX-HTTP-009, §5g), and requests through a proxy since revision 891 (FX-HTTP-010, §5h).
+  authentication in a scheme other than Basic - NTLM and Negotiate, which take several exchanges and the user's own
+  credentials, among them - or past a proxy's challenge. Asynchronous WinINet is measured since revision 886
+  (FX-HTTP-005), HTTP/2 since revision 887 (FX-HTTP-006), whose heads no record tells from HTTP/1.1's, a request body
+  written in pieces since revision 888 (FX-HTTP-007), deflate and br since revision 889 (FX-HTTP-008), redirects
+  WinINet follows since revision 890 (FX-HTTP-009, §5g), requests through a proxy since revision 891 (FX-HTTP-010,
+  §5h), and Basic authentication since revision 892 (FX-HTTP-011, §5i).

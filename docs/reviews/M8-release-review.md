@@ -350,3 +350,15 @@ CONNECT's answer, which declares no length, as a body that ran until its connect
 holds no body, its connection a tunnel from its head's end, and is now said so. The head decoder's corpus holds the
 three heads WinINet kept of a request to a proxy, of a CONNECT and of its answer, each decoded as before. Nothing else
 above changes.
+
+## Addendum, revision 892
+
+Basic authentication is measured (FX-HTTP-011, ADR-037). Where heads are decoded a 401 naming WWW-Authenticate, or a 407
+naming Proxy-Authenticate, says it challenges for credentials and which field answers it, and a request carrying them in
+Authorization or Proxy-Authorization says so, by their field and scheme, never their value - Basic credentials said to
+be readable by anyone reading the heads. `icat exchanges --decode` names beside a challenge's answer the exchange that
+answered it - the first listed after it, begun once its response ended, carrying credentials for its target - and says
+once each what WinINet does with a challenge and that the heads are to be shared only as their credentials would be,
+giving each challenge and each request's credentials in its JSON and its table, as the window's Export with their heads…
+does; the conversation says each beneath its side (`http-exchanges-v1` §5i). Each of FX-HTTP-011's 16 challenges was
+answered so by its own request. Nothing else above changes.

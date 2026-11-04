@@ -56,6 +56,15 @@ internal sealed record HttpWinInetOptions
     /// <summary>The host a proxied client asks for: one no resolver knows (RFC 6761), so only the proxy can reach it.</summary>
     public const string ProxiedHost = "fx.invalid";
 
+    /// <summary>Each request challenged for credentials until it carries them, which WinINet answers: FX-HTTP-011.</summary>
+    public const string AuthScenarioId = "FX-HTTP-011";
+
+    /// <summary>The run's credentials: test values made for the fixture's own loopback server, secret to nothing.</summary>
+    public const string AuthUser = "intercat-fixture";
+
+    /// <inheritdoc cref="AuthUser"/>
+    public const string AuthPassword = "fx-http-011-not-a-secret";
+
     public required string TruthDirectory { get; init; }
     public int Seed { get; init; } = 20_260_929;
     public int Requests { get; init; } = 16;
@@ -142,12 +151,26 @@ internal sealed record HttpWinInetOptions
     public bool Proxy { get; init; }
 
     /// <summary>
-    /// The scenario this run is: FX-HTTP-010 through a proxy, else FX-HTTP-009 with each request redirected once, else
+    /// How the client meets the server's challenge for credentials (RFC 9110 §11.6.1): the server answers each request
+    /// that does not carry the run's Basic credentials (RFC 7617) with a 401 of no body naming Basic. "basic" has the
+    /// client give WinINet the credentials when it connects, so WinINet answers a challenge by itself; "basic-late" has
+    /// it give them only once challenged, setting them on the request and sending it again, as a client that asks its user
+    /// does; null asks for none.
+    /// </summary>
+    public string? Auth { get; init; }
+
+    /// <summary>The ways <see cref="Auth"/> takes.</summary>
+    public static IReadOnlyList<string> AuthModes { get; } = ["basic", "basic-late"];
+
+    /// <summary>
+    /// The scenario this run is: FX-HTTP-011 challenged for credentials, else FX-HTTP-010 through a proxy, else FX-HTTP-009
+    /// with each request redirected once, else
     /// FX-HTTP-008 with responses in deflate or br, else FX-HTTP-007 with bodies written in pieces,
     /// else FX-HTTP-006 over HTTP/2, else FX-HTTP-005 made asynchronously, else FX-HTTP-004 with responses in gzip, else
     /// FX-HTTP-003 with several clients at once or chunked responses, else FX-HTTP-002 over TLS, else FX-HTTP-001.
     /// </summary>
-    public string Scenario => Proxy ? ProxyScenarioId : RedirectStatus > 0 ? RedirectScenarioId : Coding is not (null or "gzip") ? CodingsScenarioId
+    public string Scenario => Auth is not null ? AuthScenarioId : Proxy ? ProxyScenarioId : RedirectStatus > 0 ? RedirectScenarioId
+        : Coding is not (null or "gzip") ? CodingsScenarioId
         : WriteBytes > 0 ? WrittenScenarioId
         : Http2 ? Http2ScenarioId : Async ? AsyncScenarioId : Coding is "gzip" ? CodedScenarioId
         : Concurrency > 1 || Chunked ? InterleavedScenarioId : Tls ? TlsScenarioId : ScenarioId;
@@ -203,6 +226,12 @@ internal static partial class HttpWinInetScenario
     private const int ErrorIoPending = 997;
     private const int ErrorTimeout = 1460;
     private const int ErrorRedirectNeedsConfirmation = 12168;
+
+    // A request's credentials, set once it is challenged (INTERNET_OPTION_USERNAME, INTERNET_OPTION_PASSWORD), and the
+    // status its response gave, as a number (HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER).
+    private const int OptionUsername = 28;
+    private const int OptionPassword = 29;
+    private const uint QueryStatusCode = 19 | 0x20000000;
     private static readonly IntPtr InvalidStatusCallback = -1;
     private const uint IgnoreCertificateErrors = 0x00000100 | 0x00001000 | 0x00002000 | 0x00000080 | 0x00000200;
     private static readonly JsonSerializerOptions SummaryOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -229,6 +258,14 @@ internal static partial class HttpWinInetScenario
     [LibraryImport("wininet.dll", EntryPoint = "InternetSetOptionW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool InternetSetOption(IntPtr handle, int option, ref uint buffer, int length);
+
+    [LibraryImport("wininet.dll", EntryPoint = "InternetSetOptionW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool InternetSetOptionText(IntPtr handle, int option, string buffer, int length);
+
+    [LibraryImport("wininet.dll", EntryPoint = "HttpQueryInfoW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool HttpQueryInfo(IntPtr request, uint infoLevel, ref uint buffer, ref int length, IntPtr index);
 
     [LibraryImport("wininet.dll", EntryPoint = "InternetQueryOptionW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -314,6 +351,14 @@ internal static partial class HttpWinInetScenario
         {
             await Console.Error.WriteLineAsync("--redirect takes 301, 302, 303, 307 or 308, and its server is HTTP/1.1's, so it is refused with --http2.")
                 .ConfigureAwait(false);
+            return 2;
+        }
+
+        if (options.Auth is { } auth && (!HttpWinInetOptions.AuthModes.Contains(auth, StringComparer.Ordinal) || options.Http2 || options.Proxy
+            || options.RedirectStatus != 0 || options.WriteBytes > 0))
+        {
+            await Console.Error.WriteLineAsync($"--auth takes {string.Join(" or ", HttpWinInetOptions.AuthModes)}, and is refused with "
+                + "--http2, --proxy, --redirect and --write.").ConfigureAwait(false);
             return 2;
         }
 
@@ -409,6 +454,7 @@ internal static partial class HttpWinInetScenario
             options.WriteBytes,
             options.RedirectStatus,
             options.Proxy,
+            options.Auth,
             asynchronous = options.Async ? new { sendsAtOnce, sendsPending, writesAtOnce, writesPending, readsAtOnce, readsPending } : null,
             processId = Environment.ProcessId,
             clientThreads = clientThreads.Order().ToArray(),
@@ -526,7 +572,8 @@ internal static partial class HttpWinInetScenario
             // Through a proxy, the client asks for a host only the proxy can reach, at its scheme's own port.
             connect = options.Proxy
                 ? InternetConnect(internet, HttpWinInetOptions.ProxiedHost, (ushort)(options.Tls ? 443 : 80), null, null, ServiceHttp, 0, context)
-                : InternetConnect(internet, "127.0.0.1", (ushort)port, null, null, ServiceHttp, 0, context);
+                : InternetConnect(internet, "127.0.0.1", (ushort)port, options.Auth == "basic" ? HttpWinInetOptions.AuthUser : null,
+                    options.Auth == "basic" ? HttpWinInetOptions.AuthPassword : null, ServiceHttp, 0, context);
             if (connect == IntPtr.Zero)
             {
                 client.Write(TruthEventKind.Failure, status: $"InternetConnect failed: {Marshal.GetLastPInvokeError()}");
@@ -584,6 +631,34 @@ internal static partial class HttpWinInetScenario
                     {
                         client.Write(TruthEventKind.MessageReceived, callId: index, status: "redirect-needs-confirmation");
                         requestSent = Send(calls, request, RequestHeaders(options), body, out sendError);
+                    }
+
+                    // Challenged for credentials it was not given when it connected, the client reads the challenge to its end,
+                    // gives them once asked, as a client asking its user does, and sends the request again.
+                    if (requestSent && options.Auth == "basic-late" && StatusOf(request) == 401)
+                    {
+                        while (Read(calls, request, buffer, out int drained, out _) && drained > 0)
+                        {
+                            // The challenge's body, which holds nothing the client keeps.
+                        }
+
+                        client.Write(TruthEventKind.MessageReceived, callId: index, status: "challenge-answered");
+                        if (!InternetSetOptionText(request, OptionUsername, HttpWinInetOptions.AuthUser, HttpWinInetOptions.AuthUser.Length)
+                            || !InternetSetOptionText(request, OptionPassword, HttpWinInetOptions.AuthPassword, HttpWinInetOptions.AuthPassword.Length))
+                        {
+                            requestSent = false;
+                            sendError = Marshal.GetLastPInvokeError();
+                        }
+                        else
+                        {
+                            requestSent = Send(calls, request, RequestHeaders(options), body, out sendError);
+                        }
+                    }
+
+                    // Challenged, which status the response the client read gave: what WinINet made of the challenge.
+                    if (requestSent && options.Auth is not null)
+                    {
+                        client.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: StatusOf(request), status: "response-status");
                     }
 
                     if (!requestSent)
@@ -647,6 +722,14 @@ internal static partial class HttpWinInetScenario
         }
 
         return (completed, sent, read);
+    }
+
+    /// <summary>The status a sent request's response gave, by WinINet's account; 0 where it gave none it could read.</summary>
+    private static uint StatusOf(IntPtr request)
+    {
+        uint status = 0;
+        int length = sizeof(uint);
+        return HttpQueryInfo(request, QueryStatusCode, ref status, ref length, IntPtr.Zero) ? status : 0;
     }
 
     /// <summary>Sends a request's head and body, at once or, asynchronously, once WinINet completes it; false with its error.</summary>
@@ -979,6 +1062,24 @@ internal static partial class HttpWinInetScenario
                         continue;
                     }
 
+                    // Authenticated, a request that does not carry the run's credentials is answered by a challenge alone, of no
+                    // body, naming Basic (RFC 9110 §11.6.1, RFC 7617); each leg is logged apart.
+                    if (options.Auth is not null && !Authorized(headText))
+                    {
+                        server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: head.Length,
+                            status: "challenged-request-head", resourceName: Sha256(head));
+                        server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: body.Length,
+                            status: "challenged-request-body", resourceName: Sha256(body));
+                        byte[] challenge = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
+                            $"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"{options.Scenario}\"\r\nContent-Length: 0\r\n{FixtureHeader(options)}\r\n"));
+                        await stream.WriteAsync(challenge, cancellationToken).ConfigureAwait(false);
+                        server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: challenge.Length,
+                            status: "challenge-response-head", resourceName: Sha256(challenge));
+                        server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: 0, status: "challenge-response-body",
+                            resourceName: Sha256([]));
+                        continue;
+                    }
+
                     server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: head.Length, status: "request-head",
                         resourceName: Sha256(head));
                     server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: body.Length, status: "request-body",
@@ -1145,6 +1246,24 @@ internal static partial class HttpWinInetScenario
         int end = start;
         while (end < head.Length && char.IsAsciiDigit(head[end])) end++;
         return int.Parse(head.AsSpan(start, end - start), NumberStyles.None, CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Whether a request head carries the run's Basic credentials (RFC 7617) in an Authorization field.</summary>
+    private static bool Authorized(string head)
+    {
+        string expected = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
+            HttpWinInetOptions.AuthUser + ":" + HttpWinInetOptions.AuthPassword));
+        foreach (string line in head.Split("\r\n"))
+        {
+            int colon = line.IndexOf(':', StringComparison.Ordinal);
+            if (colon > 0 && line[..colon].Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+                && line[(colon + 1)..].Trim().Equals(expected, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>The reason phrase of a redirect's status.</summary>

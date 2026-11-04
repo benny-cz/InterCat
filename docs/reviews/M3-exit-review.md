@@ -81,3 +81,11 @@ proxy, its target the whole address, and over TLS the CONNECT WinINet first asks
 its own, its answer of no body, and the request then sent through the tunnel as over TLS directly; through `icat record`
 two runs of 64 requests eight at once kept every exchange whole. Of the semantics the verdict names unmeasured, RPC over
 TCP transport remains. Nothing else above changes.
+
+## Addendum, revision 892
+
+Basic authentication is measured (FX-HTTP-011, ADR-037): a request a server challenges and the request WinINet then
+sends with credentials are kept as an exchange each, and once a challenge is answered WinINet sends the credentials with
+every later request unasked, which the capture keeps as sent; through `icat record` two runs of 64 requests eight at
+once kept every exchange whole. Of the semantics the verdict names unmeasured, RPC over TCP transport remains. Nothing
+else above changes.

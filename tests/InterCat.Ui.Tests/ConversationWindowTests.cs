@@ -487,6 +487,82 @@ public sealed class ConversationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "P2: a conversation says, once its heads are decoded, that its response challenged for credentials or that its request carried them, legibly and heard")]
+    public async Task AConversationSaysWhatOfCredentials()
+    {
+        // Process 4242's exchange 1, a POST challenged for Basic credentials, and its exchange 2, the POST carrying them.
+        string[] messages =
+        [
+            "POST /a HTTP/1.1\r\nHost: h\r\nContent-Length: 0\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"x\"\r\nContent-Length: 0\r\n\r\n",
+            "POST /a HTTP/1.1\r\nHost: h\r\nContent-Length: 0\r\nAuthorization: Basic eDp5\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n",
+        ];
+        ObservationRowV1[] rows =
+        [
+            Http(10, 2001, 1, messages[0].Length), Http(11, 2003, 2, messages[1].Length), Http(12, 2004, 3, 0),
+            Http(20, 2001, 4, messages[2].Length), Http(21, 2003, 5, messages[3].Length), Http(22, 2004, 6, 0),
+        ];
+        using var session = new TemporarySession();
+        int[] headRows = [0, 1, 3, 4];
+        Publish(session.Store, [Lifecycle(1, ObservationKind.Create, 4_242, 1_000_000), .. rows],
+            fields: [.. rows.SelectMany((row, index) => new[]
+            {
+                Field(row, SourceField.HttpExchangeId, index < 3 ? 1 : 2),
+                Field(row, SourceField.ContentBufferSequence, 0),
+                Field(row, SourceField.ContentBufferFlags, 3),
+            })],
+            content: (ContentHeader(recordLimit: 128), [.. headRows.Select((row, at) =>
+                Content(rows[row], Encoding.ASCII.GetBytes(messages[at]), 128, ContentEncodingV1.Binary))]));
+        session.Store.ReleaseSegmentReaders();
+        ProcessInstanceId client = SessionOverviewProjector.Project(session.Store).Nodes.Single(node => node.ProcessId == 4_242).Id;
+        string[] keys = [.. SessionHttpExchanges.Exchanges(session.Store, HttpExchangeKeys.Channel(client)).Exchanges.Select(row => row.Key)];
+        Assert.Equal(2, keys.Length);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            foreach ((string key, bool challenge) in new[] { (keys[0], true), (keys[1], false) })
+            {
+                using var conversation = new SessionConversationWindow(session.Path, session.Store.SessionId, key,
+                    EvidencePolicy.IncludeCorrelated, "client.exe · PID 4242", SessionClock.Session(TimeZoneInfo.Utc));
+                conversation.Width = conversation.MinWidth;
+                conversation.Height = conversation.MinHeight;
+                _ = conversation.ShowDialog<bool>(owner);
+                await Until(() => Status(conversation).StartsWith("Read from generation", StringComparison.Ordinal));
+                TextBlock challenged = Named<TextBlock>(conversation, name => name.StartsWith("Its response challenges for credentials", StringComparison.Ordinal));
+                TextBlock carried = Named<TextBlock>(conversation, name => name.StartsWith("Its request carries credentials", StringComparison.Ordinal));
+                Assert.False(challenged.IsVisible || carried.IsVisible);
+
+                // Decoded, the challenge says what it asks for and what WinINet does with it; the request carrying
+                // credentials says so by their field and scheme, never their value; neither says the other.
+                Labelled(conversation, "Decode its heads").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await Until(() => Status(conversation).Contains("decoded", StringComparison.Ordinal));
+                Assert.Equal((challenge, !challenge), (challenged.IsEffectivelyVisible, carried.IsEffectivelyVisible));
+                if (challenge)
+                {
+                    Assert.Equal("It challenges its client for credentials in its WWW-Authenticate field: Basic realm=\"x\". " + HttpChallenges.Statement,
+                        challenged.Text);
+                    Assert.Equal("Its response challenges for credentials: " + challenged.Text, AutomationProperties.GetName(challenged));
+                }
+                else
+                {
+                    Assert.StartsWith("It carries credentials in its Authorization field, in the Basic scheme, kept as WinINet sent them",
+                        carried.Text, StringComparison.Ordinal);
+                    Assert.DoesNotContain("eDp5", carried.Text, StringComparison.Ordinal);
+                    Assert.Equal("Its request carries credentials: " + carried.Text, AutomationProperties.GetName(carried));
+                }
+
+                Dispatch();
+                Assert.Empty(LegibleTextTests.CutOff(conversation, challenge ? "a challenge's conversation" : "a conversation carrying credentials"));
+                Assert.Empty(AccessibilityAuditTests.Unheard(conversation, out _));
+                conversation.Close();
+            }
+        }
+        finally
+        {
+            owner.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "P2: a process's exchanges export with what their heads say only once the window has said the table is content, each exchange of the scope a line")]
     public async Task ExchangesExportWithTheirHeadsOnceTheTableIsSaidToBeContent()
     {

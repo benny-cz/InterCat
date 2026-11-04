@@ -110,7 +110,14 @@ internal sealed record ExchangeHeadsDocument
     /// <summary>How its request went to a proxy, and what that means for what was kept (§5h); null where it did not.</summary>
     public required HttpProxyUse? Proxy { get; init; }
 
-    public static ExchangeHeadsDocument From(HttpExchangeHeads heads, ExchangeDocument exchange, HttpFollowUp? followedBy) => new()
+    /// <summary>The challenge for credentials its response makes, and the listed exchange that answered it (§5i); null where none.</summary>
+    public required HttpChallengeDocument? Challenge { get; init; }
+
+    /// <summary>The credentials its request carries, by their field and scheme, never their value (§5i); null where none.</summary>
+    public required HttpCredentials? Credentials { get; init; }
+
+    public static ExchangeHeadsDocument From(HttpExchangeHeads heads, ExchangeDocument exchange, HttpFollowUp? followedBy,
+        HttpFollowUp? answeredBy) => new()
     {
         Asked = heads.Asked,
         Host = heads.Host,
@@ -123,8 +130,20 @@ internal sealed record ExchangeHeadsDocument
             ? new(redirect.Status, redirect.Location, redirect.Target, redirect.Host, followedBy)
             : null,
         Proxy = heads.Proxy,
+        Challenge = heads.Challenge is { } challenge
+            ? new(challenge.Status, challenge.Field, challenge.Challenges, challenge.Answer, answeredBy)
+            : null,
+        Credentials = heads.Credentials,
     };
 }
+
+/// <summary>
+/// A challenge for credentials (`contracts/http-exchanges-v1.md` §5i): its status, the field that makes it and its
+/// challenges as its head gave them, the field a request answering it carries, and the listed exchange that answered it -
+/// the first after it, begun once its response ended, that asked for its target of its host carrying that field - null
+/// where none listed did.
+/// </summary>
+internal sealed record HttpChallengeDocument(string Status, string Field, string Challenges, string Answer, HttpFollowUp? AnsweredBy);
 
 /// <summary>
 /// Where a response redirects (`contracts/http-exchanges-v1.md` §5g): its status and its Location as its head gave them;
@@ -379,6 +398,12 @@ internal static class ExchangesCommand
             HttpFollowUp? FollowUpOf(int at) => decoded is null || followUps[at] < 0
                 ? null
                 : new(KeyOf(listed[followUps[at]]), listed[followUps[at]].Number);
+
+            // Where a listed response challenges for credentials, the exchange listed after it that answered it (§5i).
+            int[] answers = decoded is null ? [] : HttpChallenges.AnsweredBy(listed, decoded);
+            HttpFollowUp? AnswerOf(int at) => decoded is null || answers[at] < 0
+                ? null
+                : new(KeyOf(listed[answers[at]]), listed[answers[at]].Number);
             groups.Add(new()
             {
                 ProcessId = group.ProcessId,
@@ -406,7 +431,7 @@ internal static class ExchangesCommand
                         RequestBody = exchange.RequestBody,
                         ResponseHead = exchange.ResponseHead,
                         ResponseBody = exchange.ResponseBody,
-                    }, decoded?[at], FollowUpOf(at)))],
+                    }, decoded?[at], FollowUpOf(at), AnswerOf(at)))],
             });
         }
 
@@ -440,13 +465,23 @@ internal static class ExchangesCommand
                 .. heads?.Any(group => group.Any(exchange => exchange.Proxy is not null)) == true
                     ? [HttpProxies.Statement]
                     : Array.Empty<string>(),
+                .. heads?.Any(group => group.Any(exchange => exchange.Challenge is not null)) == true
+                    ? [HttpChallenges.Statement]
+                    : Array.Empty<string>(),
+                .. heads?.Any(group => group.Any(exchange => exchange.Credentials is not null)) == true
+                    ? [HttpChallenges.CredentialsStatement]
+                    : Array.Empty<string>(),
             ],
         };
     }
 
-    /// <summary>A listed exchange, with what its heads say where they were decoded, and the exchange that followed its redirect.</summary>
-    private static ExchangeDocument Listed(ExchangeDocument exchange, HttpExchangeHeads? heads, HttpFollowUp? followedBy) =>
-        heads is null ? exchange : exchange with { Heads = ExchangeHeadsDocument.From(heads, exchange, followedBy) };
+    /// <summary>
+    /// A listed exchange, with what its heads say where they were decoded, the exchange that followed its redirect, and the
+    /// exchange that answered its challenge.
+    /// </summary>
+    private static ExchangeDocument Listed(ExchangeDocument exchange, HttpExchangeHeads? heads, HttpFollowUp? followedBy,
+        HttpFollowUp? answeredBy) =>
+        heads is null ? exchange : exchange with { Heads = ExchangeHeadsDocument.From(heads, exchange, followedBy, answeredBy) };
 
     /// <summary>The listed exchanges as a table (`http-exchanges-v1` §5f), with what their heads say where they were decoded.</summary>
     private static string Table(Guid sessionId, ExchangesDocument document, IReadOnlyList<IReadOnlyList<HttpExchangeHeads>>? heads) =>
@@ -471,6 +506,7 @@ internal static class ExchangesCommand
                 ResponseBody = exchange.ResponseBody,
                 Heads = heads?[at][position],
                 FollowedBy = exchange.Heads?.Redirect?.FollowedBy,
+                AnsweredBy = exchange.Heads?.Challenge?.AnsweredBy,
             })),
         ], decoded: heads is not null);
 
@@ -609,11 +645,14 @@ internal static class ExchangesCommand
     }
 
     /// <summary>
-    /// What a response answered, in a cell: its status and reason, and where it redirects, the listed exchange that followed
-    /// it, or its location where none listed did (§5g).
+    /// What a response answered, in a cell: its status and reason; where it redirects, the listed exchange that followed it,
+    /// or its location where none listed did (§5g); and where it challenges for credentials, the listed exchange that
+    /// answered it, where one did (§5i).
     /// </summary>
     private static string Answered(HttpExchangeHeads heads, ExchangeDocument exchange) =>
         heads.Answered is not { } answered ? (heads.Response is null ? "no head recorded" : "not decoded")
+        : exchange.Heads?.Challenge?.AnsweredBy is { } answer
+            ? string.Create(CultureInfo.CurrentCulture, $"{answered}, answered by exchange {answer.Number:N0}")
         : exchange.Heads?.Redirect is not { } redirect ? answered
         : redirect.FollowedBy is { } followUp ? string.Create(CultureInfo.CurrentCulture, $"{answered}, followed by exchange {followUp.Number:N0}")
         : $"{answered}, to {redirect.Location}";

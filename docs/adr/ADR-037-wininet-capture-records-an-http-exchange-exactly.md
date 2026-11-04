@@ -8,11 +8,13 @@
   asynchronous clients measured, and the thread each record is raised on (revision 886); HTTP/2 measured, its heads kept
   in HTTP/1.1's form (revision 887); a request body written in pieces measured (revision 888); responses in deflate and
   br measured (revision 889); redirects WinINet follows measured, each leg an exchange of its own (revision 890);
-  requests through a proxy measured, a CONNECT an exchange of its own (revision 891)
+  requests through a proxy measured, a CONNECT an exchange of its own (revision 891); Basic authentication measured,
+  a challenge and its answer an exchange each (revision 892)
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
 - Relates to: §3.7, §11, §11.1, §11.2, M3, M8, I21, R21, R22, ADR-030, ADR-036, FX-HTTP-001, FX-HTTP-002,
-  FX-HTTP-003, FX-HTTP-005, FX-HTTP-006, FX-HTTP-007, FX-HTTP-008, FX-HTTP-009, FX-HTTP-010, `contracts/content-v1.md`,
+  FX-HTTP-003, FX-HTTP-005, FX-HTTP-006, FX-HTTP-007, FX-HTTP-008, FX-HTTP-009, FX-HTTP-010, FX-HTTP-011,
+  `contracts/content-v1.md`,
   `contracts/decoders-v1.md`, `contracts/http-exchanges-v1.md`,
   `tools/InterCat.WinInetProbe`,
   `bench/results/wininet-capture-feasibility-20260928T102426Z`,
@@ -31,7 +33,9 @@
   `bench/results/wininet-capture-redirect-302-eight-20261104T013021Z`,
   `bench/results/wininet-capture-redirect-307-eight-20261104T013026Z`,
   `bench/results/wininet-capture-proxy-http-eight-20261104T023404Z`,
-  `bench/results/wininet-capture-proxy-tls-eight-20261104T023409Z`
+  `bench/results/wininet-capture-proxy-tls-eight-20261104T023409Z`,
+  `bench/results/wininet-capture-auth-basic-eight-20261104T031707Z`,
+  `bench/results/wininet-capture-auth-basic-late-eight-20261104T031712Z`
 
 ## Context
 
@@ -256,6 +260,29 @@ once, beside a decoy.
   until its connection closed; a 2xx answer to CONNECT holds no body, its connection a tunnel from its head's end (RFC
   9112 §6.3), and is now said so.
 
+## Measurement of Basic authentication (revision 892)
+
+Every server measured before answered each request without asking who sent it. FX-HTTP-011's server answers a request
+that does not carry the run's credentials - test values made for the fixture's own loopback server - with a 401 of no
+body naming Basic, logging each leg apart; its client gives WinINet the credentials when it connects, or only once
+challenged, setting them on the request and sending it again. The probe ran both, over TLS and asynchronously too, and
+both eight clients at once, beside a decoy.
+
+- **A challenge and its answer, an exchange each.** The request challenged and its 401 - a head and an empty body,
+  whole - were kept under one exchange number, and the request then sent with the credentials, and its answer, under
+  another, begun once the challenge's response had ended. No record ties the two. WinINet answered the challenge by
+  itself where its client gave it credentials when it connected; a client giving them only once challenged sent the
+  request again, its own field then after WinINet's.
+- **Then credentials unasked.** Once a challenge was answered, WinINet sent the credentials with every later request to
+  that server, unasked: one request of 16 was challenged, and of eight clients' 64 each client's first, eight.
+- **Credentials as sent.** The capture keeps the Authorization field as WinINet sent it: Basic credentials, a user name
+  and password encoded, not encrypted, which anyone reading the kept content can read.
+- **Through `icat record`** (FX-HTTP-011: 64 requests eight at once, each way): 72 exchanges each, every one recorded
+  whole and every part as long as the server's truth of its leg, every part `icat content --part` saved matching the
+  server's bytes. The grouping needs nothing new; where heads are decoded, each challenge now names what answers it and
+  is answered, in a listing, by the first exchange listed after it carrying credentials for its target - each of the 16
+  its own request - and each request carrying credentials says so, by their field and scheme.
+
 ## Decision
 
 1. **The source contract, for its admission to implement.** An exchange is a `SessionId`; a part is its event, which
@@ -316,6 +343,12 @@ once, beside a decoy.
    CONNECT is an exchange of its own, and a request through its tunnel one of its own too, kept as over TLS directly,
    which no record ties to it - so nothing says which tunnel a request went through. A request in origin form says
    nothing of a proxy (`contracts/http-exchanges-v1.md` §5h).
+12. **Credentials are said wherever a head holds them** (revision 892). A decoding holds every field's value, so a head
+   carrying credentials holds them as WinINet sent them, and Basic credentials are readable. InterCat neither hides nor
+   repeats them: where heads are decoded, a request carrying credentials says so by their field and scheme, a listing
+   says once that its heads are to be shared only as those credentials would be, and a challenge names what answers it
+   and the exchange that answered it, found as a redirect's follow-up is - an inference from what was asked and when,
+   never a record's claim (`contracts/http-exchanges-v1.md` §5i).
 
 ## Consequences
 
@@ -343,7 +376,10 @@ once, beside a decoy.
 - Requests through a proxy are measured (revision 891, FX-HTTP-010): one over HTTP is kept as WinINet sent it to the
   proxy, in absolute form, and over TLS the CONNECT before it is an exchange of its own, its answer of no body, and the
   request through the tunnel one of its own too.
-- Not measured: content codings other than gzip, deflate and br; authentication. Each is measured before a profile
+- Basic authentication is measured (revision 892, FX-HTTP-011): a challenge and the request answering it are an
+  exchange each, credentials are then sent unasked, and the capture keeps them as sent, which InterCat says.
+- Not measured: content codings other than gzip, deflate and br; authentication in another scheme - NTLM and Negotiate
+  take the user's own credentials and several exchanges - and a proxy's challenge. Each is measured before a profile
   claims it.
 - The scope is the named processes themselves (revision 245): the provider's filter holds their IDs by number, and the
   capture holds each process open while it runs, so a named process's exit ends its content and no process started
