@@ -134,20 +134,20 @@ public static partial class SessionMetrics
             ? derived.Calls(cancellationToken)
             : RpcCallIndex.Derive(readers, context.FieldSegments, processes, clock, cancellationToken);
 
-        // A filter, grouping or count that reads a call's other end rests on rpc-call-peer-v1's links (§8a).
+        // A filter, grouping or count that reads a call's other end rests on rpc-call-peer-v2's links (§8a).
         CallEnds? ends = null;
         if (NeedsOtherEnds(request))
         {
             RpcPeerIndex peers = context.Derived is { Peers: { } followed } given && ReferenceEquals(processes, given.Processes)
                 ? followed(cancellationToken)
                 : RpcPeerIndex.Derive(calls, readers, context.FieldSegments, cancellationToken);
-            if (!peers.CollectedAlpc)
+            if (!peers.FollowedOtherEnds)
             {
                 return Unavailable(request, context.Generation, MetricUnavailableReason.NoLogicalOperations,
                     $"{OtherEndsAskedFor(request)} needs the process at a call's other end, and this generation holds no "
-                    + "ALPC record to link a call to the call that served it (operations-v1 §5c). A capture with the RPC "
-                    + "peers profile collects ALPC: choose RPC peers in the window's Keep, or run icat capture --profile "
-                    + "rpc-peers.");
+                    + "ALPC record to link a call to the call that served it, nor a COM call record (operations-v1 §5c). A "
+                    + "capture with the RPC peers profile collects ALPC: choose RPC peers in the window's Keep, or run icat "
+                    + "capture --profile rpc-peers.");
             }
 
             ends = CallEnds.Of(calls, peers, request, processes);

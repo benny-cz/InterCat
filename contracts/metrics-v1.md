@@ -410,10 +410,10 @@ a served call's client. The filters and groupings of §5 and §6 read it as they
   the count is a lower bound beside it; none known is `NothingMeasured`. Grouped, it is not defined at this version.
 - A call no link reached has an unresolved other end, `CallNotLinked`. Left out of a filter only for that, it is
   disclosed with the unresolved counterparts; under a peer grouping it is unattributed. Beside either, the answer
-  counts such calls by the reason `rpc-call-peer-v1` gives (`unlinkedCalls`), and a served call that no client call
+  counts such calls by the reason `rpc-call-peer-v2` gives (`unlinkedCalls`), and a served call that no client call
   reached is `NotReached`.
-- An answer that read other ends names `rpc-call-peer-v1` as its relation rule. A capture that collected no ALPC has no
-  link to read, and such a request is `NoLogicalOperations`.
+- An answer that read other ends names `rpc-call-peer-v2` as its relation rule. A capture that collected neither ALPC
+  nor a COM call record has no link to read, and such a request is `NoLogicalOperations`.
 
 **What no derived operation answers** is `NoLogicalOperations`, with what it needs:
 

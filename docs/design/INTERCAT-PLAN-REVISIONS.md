@@ -840,6 +840,7 @@ Revision 913 measures what carries a COM call and decides it (ADR-079): with RPC
 Revision 914 binds a COM call's records to the process that raised them, as `process-binding-v5` (ADR-077's fifth addendum): COM-Perf's records name no owner, FX-COM-001 measured each raised in the process it describes, and a checkpoint of an earlier rule is read as version 5's wherever every record named its owner.
 Revision 915 admits COM-Perf's four synchronous call events (ADR-079's addendum): a call's trace number, the process at its other end as `PeerProcessId`, never its owner, its method and interface, and its HRESULT, with three new source fields and nothing of its threads, causality or pointers; no profile requests it yet.
 Revision 916 implements ADR-079's carriers and links as `com-call-link-v1` (`contracts/com-calls-v1.md`): a generation's COM calls are paired by process, side and trace number, each joined to the RPC call carrying it and each client call linked to the server call carrying its activity, which relates the RPC calls they ride; over FX-COM-001's ledger it derives every call as measured.
+Revision 917 makes the RPC peer rule `rpc-call-peer-v2` (ADR-079's third addendum): a client call carrying a COM call that `com-call-link-v1` links is served by the RPC call carrying the server's, with or without ALPC, a disagreement with ALPC conflicting; an operation index of minor 2 keeps those links.
 
 ## Revisions, a paragraph each, in order
 
@@ -3666,3 +3667,16 @@ related to neither. FX-COM-001's layering ledger, made a session of the rows the
 measured: 195 calls at each end, all carried and linked, and 195 client RPC calls related to the calls that served
 them, none twice. No reader uses the links yet. Tests derive the rule over synthetic calls and the ledger; eleven
 mutations are caught.
+
+Revision 917 makes the RPC peer rule `rpc-call-peer-v2` (`contracts/operations-v1.md` §5c, ADR-079's third addendum):
+a completed client RPC call carrying a COM call that `com-call-link-v1` links is served by the RPC call carrying the
+server's COM call, with or without ALPC. Where ALPC's chain reaches the same server call the call is ALPC's; where it
+reaches another, the two disagree and the call is conflicting, linked to neither. A call linked through COM says so at
+both ends. It is a new rule identity, so an operation index of `rpc-call-peer-v1` is refused and derived again; the
+index's minor 2 says whether its generation holds COM call records and marks each call linked through one. A
+generation holding a COM call record follows its other ends again from every segment and is never streamed into an
+index. Metrics, a channel's other ends and a call's row read the links wherever the generation holds ALPC or COM call
+records, and the texts naming the rule name both ways. FX-COM-001's ledger, made a session, has its 195 client RPC
+calls carrying COM calls served through COM, its other 18 unresolved for want of ALPC. Tests serve a call through COM
+without ALPC, keep it ALPC's where ALPC agrees, conflict where ALPC reaches another call, decline to extend over a COM
+call record, and read the links back from an operation index; eleven mutations are caught.

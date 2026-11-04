@@ -30,8 +30,8 @@ public sealed partial class RpcCallIndex
     /// its records come, so only the calls in flight are held, and each call paired is held until it is written, up to
     /// <paramref name="heldBytes"/> of them: past that, those held are written, sorted, to a file of their own under
     /// <paramref name="spillDirectory"/>, by default the system's temporary directory, which is deleted when it is closed.
-    /// Null when the segments hold an ALPC send or receive: those calls' other ends are followed over calls held whole
-    /// (<see cref="RpcPeerIndex.Derive"/>).
+    /// Null when the segments hold an ALPC send or receive, or a COM call record: those calls' other ends are followed over
+    /// calls held whole (<see cref="RpcPeerIndex.Derive"/>).
     /// </summary>
     internal static StreamedCalls? StreamCalls(
         IReadOnlyList<SegmentReaderV1> segments,
@@ -41,7 +41,10 @@ public sealed partial class RpcCallIndex
         CancellationToken cancellationToken) =>
         StreamedCalls.Pair(segments, fieldSegments, heldBytes, spillDirectory, cancellationToken);
 
-    /// <summary>How many of a segment's records are ALPC sends or receives, whose calls a streamed pairing does not pair.</summary>
+    /// <summary>
+    /// How many of a segment's records are ALPC sends or receives, or COM call records, whose calls a streamed pairing does
+    /// not pair: the other ends of those calls are followed through them, over calls held whole.
+    /// </summary>
     private static long CountAlpcMessages(SegmentReaderV1 segment)
     {
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
@@ -50,7 +53,14 @@ public sealed partial class RpcCallIndex
         long count = 0;
         for (int row = 0; row < segment.RowCount; row++)
         {
-            if ((Mechanism)mechanisms.UnsignedAt(row)!.Value != Mechanism.Alpc)
+            var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+            if (mechanism == Mechanism.ComCall)
+            {
+                count++;
+                continue;
+            }
+
+            if (mechanism != Mechanism.Alpc)
             {
                 continue;
             }

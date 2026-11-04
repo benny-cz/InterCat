@@ -4482,8 +4482,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             // An RPC edge is calls linked through ALPC, not a transport: it counts call records and carries no size.
             metric = "Linked RPC call records";
             semantics = "Basis: source observations · unit: records · domain: RPC calls linked to the calls that served them "
-                + "through ALPC (rpc-call-peer-v1) · accounting: both ends' call records; the ALPC records are the link's "
-                + "evidence, not counted";
+                + $"through ALPC or the COM calls they carry ({RpcPeerIndex.PeerRule}) · accounting: both ends' call records; "
+                + "the ALPC and COM records are the link's evidence, not counted";
         }
         else if (realOverview)
         {

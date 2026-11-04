@@ -7,7 +7,7 @@ namespace InterCat.Analysis.Tests;
 
 /// <summary>
 /// Peers of RPC calls on the logical-operations basis (`contracts/metrics-v1.md` §8a, revision 228): a call's other end is
-/// the process of the call `rpc-call-peer-v1` links it to through ALPC, which answers peer(P,Q), grouping by peer,
+/// the process of the call `rpc-call-peer-v2` links it to through ALPC or a COM call, which answers peer(P,Q), grouping by peer,
 /// participant(P), between(A,B) either way and a count of peers; a call no link reached is disclosed, never guessed.
 /// </summary>
 public sealed class OperationPeerMetricsTests
@@ -29,7 +29,7 @@ public sealed class OperationPeerMetricsTests
         Assert.Equal(RpcPeerIndex.PeerRule, served.RelationRule);
         Assert.Equal(new Dictionary<ProcessBindingReason, long> { [ProcessBindingReason.CallNotLinked] = 1 }, served.UnresolvedCounterparts);
         Assert.Equal(new Dictionary<RpcPeerState, long> { [RpcPeerState.NoSend] = 1 }, served.UnlinkedCalls);
-        Assert.Contains(served.Caveats, caveat => caveat.Contains("rpc-call-peer-v1", StringComparison.Ordinal));
+        Assert.Contains(served.Caveats, caveat => caveat.Contains("rpc-call-peer-v2", StringComparison.Ordinal));
 
         // The same filter measures those two calls' durations: a client call's, from its start to its stop.
         MetricResult durations = SessionMetrics.Evaluate(session.Store, Request(Metric.Duration) with

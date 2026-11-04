@@ -379,8 +379,8 @@ public static class SessionOverviewProjector
             .. (rpc.Length == 0 ? [] : new[]
             {
                 "RPC edges join a process and the process that served its calls, each call linked through its one ALPC "
-                    + "message (rpc-call-peer-v1). An edge counts the call records at its two ends; the ALPC records that "
-                    + "link them are its evidence, not a second count.",
+                    + $"message or the COM call it carries ({RpcPeerIndex.PeerRule}). An edge counts the call records at its "
+                    + "two ends; the ALPC and COM records that link them are its evidence, not a second count.",
             }),
             .. (!pending ? [] : new[]
             {

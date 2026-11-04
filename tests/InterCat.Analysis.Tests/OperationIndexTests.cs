@@ -118,8 +118,8 @@ public sealed class OperationIndexTests
         Refused(bytes[..^1], "a count of 2 is more than the 15 bytes left can hold");
         Refused([.. bytes, 0], "1 bytes follow its last field");
         Refused(Patched(bytes, 0, "ICATDCKP"u8), "does not begin as an operation index does");
-        Refused(Patched(bytes, 10, [2, 0]), "format 1.2");
-        Refused(Patched(bytes, 8, [2, 0]), "format 2.1");
+        Refused(Patched(bytes, 10, [3, 0]), "format 1.3");
+        Refused(Patched(bytes, 8, [2, 0]), "format 2.2");
         Refused(Replaced(bytes, RpcCallIndex.OperationRule, "rpc-call-operation-v0"), "derived under rpc-call-operation-v0");
         Refused(Replaced(bytes, RpcPeerIndex.PeerRule, "rpc-call-peer-v0"), "rpc-call-peer-v0");
         Refused(Replaced(bytes, ProcessInstanceIndex.BindingRule, ProcessInstanceIndex.BindingRule[..^1] + "0"), "and this build derives under");
@@ -212,7 +212,11 @@ public sealed class OperationIndexTests
         Refused(Patched(bytes, unsent, [(byte)RpcPeerState.NotCompleted]), "contradicts the call it names");
         Refused(Patched(bytes, peers + (5 * StateAt(bytes, peers, RpcPeerState.NotCompleted)), [(byte)RpcPeerState.NoSend]),
             "contradicts the call it names");
-        Refused(Patched(bytes, peers - 16, Int64(-1)), "fewer than no ALPC records");
+        // The ALPC records read, and whether the generation holds COM call records, precede the calls' other ends (minor 2).
+        Refused(Patched(bytes, peers - 17, Int64(-1)), "fewer than no ALPC records");
+        Assert.Equal(0, bytes[peers - 1]);
+        Refused(Patched(bytes, peers - 1, [2]), "says neither that the generation holds COM call records nor that it holds none");
+        Refused(Patched(bytes, peers, [(byte)((byte)RpcPeerState.Served | 0x80)]), "is not one the peer rule gives");
 
         // The exchanges follow under their rule: the HTTP records that named none, two origins, then each exchange in the
         // order of its first buffer - the first is exchange 1, from tick 10, with every time, its parts and its six

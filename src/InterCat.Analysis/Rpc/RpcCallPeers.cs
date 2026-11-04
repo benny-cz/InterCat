@@ -4,7 +4,7 @@ using InterCat.Storage;
 
 namespace InterCat.Analysis;
 
-/// <summary>What a client call's other end is under `rpc-call-peer-v1` (`contracts/operations-v1.md` §5c, ADR-034).</summary>
+/// <summary>What a client call's other end is under `rpc-call-peer-v2` (`contracts/operations-v1.md` §5c, ADR-034, ADR-079).</summary>
 public enum RpcPeerState
 {
     /// <summary>Its one send's one receive began a server call of the same interface and procedure.</summary>
@@ -96,13 +96,17 @@ public sealed record RpcPeerTally(int ProcessId, ProcessBinding Process, Guid? I
 
 /// <summary>
 /// The other ends of one generation's RPC calls: each client call linked to the server call that served it through the
-/// call's one ALPC send, that message's one receive and the call the receiving thread began (ADR-034), or the reason it
-/// is not. It is a derivation over published segments and the calls paired from them, so it is rebuildable (R20).
+/// call's one ALPC send, that message's one receive and the call the receiving thread began (ADR-034), or through the COM
+/// call it carries, linked by `com-call-link-v1` to the COM call the server call carries (ADR-079) - or the reason it is
+/// not. It is a derivation over published segments and the calls paired from them, so it is rebuildable (R20).
 /// </summary>
 public sealed partial class RpcPeerIndex
 {
-    /// <summary>The rule's identity. A change to what links, how, or when a link is refused is a new rule (§24).</summary>
-    public const string PeerRule = "rpc-call-peer-v1";
+    /// <summary>
+    /// The rule's identity. A change to what links, how, or when a link is refused is a new rule (§24). Version 2 also links
+    /// a client call through the COM call it carries (`contracts/com-calls-v1.md`, ADR-079).
+    /// </summary>
+    public const string PeerRule = "rpc-call-peer-v2";
 
     /// <summary>How long after the receive a server call may begin on the receiving thread (ADR-034).</summary>
     public const long ServerStartWindowNanoseconds = 5_000_000;
@@ -120,6 +124,9 @@ public sealed partial class RpcPeerIndex
     /// <summary>The published identities of the source-field segments the message ids were read from; null where nothing extends.</summary>
     private readonly StoreDependency?[]? fieldsRead;
 
+    /// <summary>By call, whether a linked call was linked through the COM call it carries; null where none was.</summary>
+    private readonly bool[]? throughCom;
+
     /// <summary>
     /// The ALPC records read, sorted as the rule looks them up, for a later generation to extend (<see cref="Extend"/>);
     /// null where nothing extends, and given up to the first index extended from it, which holds them merged.
@@ -134,7 +141,9 @@ public sealed partial class RpcPeerIndex
         long receives,
         StoreDependency?[]? fieldsRead = null,
         Evidence? evidence = null,
-        int[]? reached = null)
+        int[]? reached = null,
+        bool comCalls = false,
+        bool[]? throughCom = null)
     {
         this.calls = calls;
         this.states = states;
@@ -142,9 +151,20 @@ public sealed partial class RpcPeerIndex
         this.reached = reached;
         this.fieldsRead = fieldsRead;
         this.evidence = evidence;
+        this.throughCom = throughCom;
         AlpcSends = sends;
         AlpcReceives = receives;
+        HoldsComCalls = comCalls;
     }
+
+    /// <summary>
+    /// Whether the call at <paramref name="position"/> of <paramref name="group"/> is linked through the COM call it carries
+    /// (ADR-079) rather than through ALPC; false for a call not linked.
+    /// </summary>
+    public bool LinkedThroughCom(RpcCallGroup group, int position) => throughCom is { } com && com[At(group, position)];
+
+    /// <summary>Whether a call, by its position in the calls, is linked through the COM call it carries.</summary>
+    internal bool LinkedThroughComAt(int call) => throughCom is { } com && com[call];
 
     /// <summary>The calls whose other ends these are.</summary>
     public RpcCallIndex Calls => calls;
@@ -153,13 +173,29 @@ public sealed partial class RpcPeerIndex
 
     public long AlpcReceives { get; }
 
-    /// <summary>Whether the generation holds any ALPC send or receive: without one, no call's other end is resolved.</summary>
+    /// <summary>
+    /// Whether the generation holds any ALPC send or receive: without one, no call's other end is resolved through ALPC,
+    /// though a call carrying a COM call may be through it.
+    /// </summary>
     public bool CollectedAlpc => AlpcSends + AlpcReceives > 0;
+
+    /// <summary>
+    /// Whether the generation holds any COM call record, whose links a call carrying a COM call is resolved by
+    /// (`contracts/com-calls-v1.md`); an operation index says it since its minor 2.
+    /// </summary>
+    public bool HoldsComCalls { get; }
+
+    /// <summary>
+    /// Whether the generation holds anything a call's other end is followed through - an ALPC send or receive, or a COM
+    /// call record - so that a call's other end is resolved or unresolved by a reason of its own.
+    /// </summary>
+    public bool FollowedOtherEnds => CollectedAlpc || HoldsComCalls;
 
     /// <summary>
     /// Links every completed client call of <paramref name="calls"/> to the server call that served it, from the ALPC
     /// records of <paramref name="segments"/> - the segments the calls were paired from, in the same order - and the
-    /// message ids <paramref name="fieldSegments"/> carry for them.
+    /// message ids <paramref name="fieldSegments"/> carry for them, and from the COM calls the calls carry, as
+    /// `com-call-link-v1` links them over the same segments.
     /// </summary>
     public static RpcPeerIndex Derive(
         RpcCallIndex calls,
@@ -170,8 +206,9 @@ public sealed partial class RpcPeerIndex
         ArgumentNullException.ThrowIfNull(calls);
         ArgumentNullException.ThrowIfNull(fieldSegments);
         calls.RequireDerivedFrom(segments);
+        ComCallIndex comCalls = ComCallIndex.Derive(calls, segments, fieldSegments, cancellationToken);
         return Link(calls, segments, Read(() => calls, segments, fieldSegments, cancellationToken), RpcCallIndex.IdentitiesOf(fieldSegments),
-            cancellationToken);
+            cancellationToken, comCalls);
     }
 
     /// <summary>
@@ -184,7 +221,8 @@ public sealed partial class RpcPeerIndex
     /// <see cref="Derive"/>'s over the same segments. Null, for a full derivation to answer, when these keep no records to
     /// extend (read from an operation index, or given up to a later extension already), when a segment read here is
     /// missing or another, or when an added message id names no added ALPC record: a record's fields are published with
-    /// it, so such an id could change a link these hold.
+    /// it, so such an id could change a link these hold. Null too when these or the added segments hold a COM call record:
+    /// `com-call-link-v1` links over every segment, never extended (`contracts/com-calls-v1.md` §8).
     /// </summary>
     public RpcPeerIndex? Extend(
         RpcCallIndex calls,
@@ -196,7 +234,8 @@ public sealed partial class RpcPeerIndex
         ArgumentNullException.ThrowIfNull(fieldSegments);
         calls.RequireDerivedFrom(segments);
         StoreDependency?[] offeredFields = RpcCallIndex.IdentitiesOf(fieldSegments);
-        if (fieldsRead is null
+        if (HoldsComCalls
+            || fieldsRead is null
             || this.calls.Read is not { } earlier
             || calls.Clock.Id != this.calls.Clock.Id
             || !RpcCallIndex.Begins(RpcCallIndex.IdentitiesOf(segments), earlier.Segments)
@@ -211,6 +250,7 @@ public sealed partial class RpcPeerIndex
         var sends = new List<Message>();
         var receives = new List<Message>();
         int named = 0;
+        bool comAdded = false;
         try
         {
             ids = ReadMessageIds(
@@ -220,6 +260,7 @@ public sealed partial class RpcPeerIndex
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 named += CollectAlpc(segments[position], position, ids, sends, receives);
+                comAdded |= HoldsComCall(segments[position]);
             }
         }
         catch
@@ -228,7 +269,7 @@ public sealed partial class RpcPeerIndex
             throw;
         }
 
-        if (named != ids.Count)
+        if (named != ids.Count || comAdded)
         {
             evidence = before;
             return null;
@@ -277,21 +318,26 @@ public sealed partial class RpcPeerIndex
         IReadOnlyList<SegmentReaderV1> segments,
         Evidence evidence,
         StoreDependency?[] fieldsRead,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ComCallIndex? comCalls = null)
     {
         int count = calls.Count;
-        if (evidence.Sends + evidence.Receives == 0)
+        bool holdsComCalls = comCalls is { } held && (held.Calls.Count > 0 || held.OtherComRecords > 0);
+        Dictionary<int, int>? throughCom = ThroughCom(comCalls);
+        bool alpc = evidence.Sends + evidence.Receives > 0;
+        if (!alpc && throughCom is null)
         {
             var states = new RpcPeerState[count];
             int[] peers = new int[count];
             Array.Fill(states, RpcPeerState.NoAlpcEvidence);
             Array.Fill(peers, -1);
-            return new(calls, states, peers, 0, 0, fieldsRead, evidence);
+            return new(calls, states, peers, 0, 0, fieldsRead, evidence, comCalls: holdsComCalls);
         }
 
         var resolved = new RpcPeerState[count];
         int[] reached = new int[count];
         Array.Fill(reached, -1);
+        bool[]? viaCom = throughCom is null ? null : new bool[count];
         foreach (RpcCallGroup group in calls.Groups)
         {
             if (group.Side != RpcCallSide.Client)
@@ -303,11 +349,67 @@ public sealed partial class RpcPeerIndex
             for (int call = first; call < first + calling; call++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                (resolved[call], reached[call]) = Resolve(calls, segments, calls.FactsOf(call), evidence);
+                (RpcPeerState state, int server) = alpc ? Resolve(calls, segments, calls.FactsOf(call), evidence) : (RpcPeerState.NoAlpcEvidence, -1);
+                if (throughCom is not null && throughCom.TryGetValue(call, out int served) && calls.FactsOf(call).State == RpcCallState.Completed)
+                {
+                    // A call carrying a linked COM call is served by the RPC call carrying the server's COM call (ADR-079);
+                    // ALPC reaching another server call, or one of another interface or procedure, is conflicting evidence.
+                    // Where ALPC reached the same server call, the call is ALPC's.
+                    viaCom![call] = state is not (RpcPeerState.Served or RpcPeerState.Conflicting);
+                    (state, server) = state switch
+                    {
+                        RpcPeerState.Served when server == served => (state, server),
+                        RpcPeerState.Served or RpcPeerState.Conflicting => (RpcPeerState.Conflicting, -1),
+                        _ => (RpcPeerState.Served, served),
+                    };
+                }
+
+                (resolved[call], reached[call]) = (state, server);
             }
         }
 
-        return Settled(calls, resolved, reached, evidence, fieldsRead);
+        return Settled(calls, resolved, reached, evidence, fieldsRead, holdsComCalls, viaCom);
+    }
+
+    /// <summary>
+    /// The client RPC calls `com-call-link-v1` relates to the RPC calls that served them, by client call; null where it relates
+    /// none. A client call two relations name is in neither.
+    /// </summary>
+    private static Dictionary<int, int>? ThroughCom(ComCallIndex? comCalls)
+    {
+        if (comCalls is null || comCalls.RpcLinks.Count == 0)
+        {
+            return null;
+        }
+
+        var links = new Dictionary<int, int>();
+        var named = new HashSet<int>();
+        foreach (ComRpcLink link in comCalls.RpcLinks)
+        {
+            if (!named.Add(link.ClientRpcCall))
+            {
+                links.Remove(link.ClientRpcCall);
+                continue;
+            }
+
+            links[link.ClientRpcCall] = link.ServerRpcCall;
+        }
+
+        return links;
+    }
+
+    private static bool HoldsComCall(SegmentReaderV1 segment)
+    {
+        SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+        for (int row = 0; row < segment.RowCount; row++)
+        {
+            if ((Mechanism)mechanisms.UnsignedAt(row)!.Value == Mechanism.ComCall)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -378,10 +480,18 @@ public sealed partial class RpcPeerIndex
     /// </summary>
     /// <param name="resolved">By call, what each client call reached, a server call two reached included.</param>
     /// <param name="reached">By call, the server call a client call reached; -1 for any other.</param>
+    /// <param name="viaCom">By call, whether a client call reached its server call through the COM call it carries; null where none did.</param>
     private static RpcPeerIndex Settled(
-        RpcCallIndex calls, RpcPeerState[] resolved, int[] reached, Evidence evidence, StoreDependency?[] fieldsRead)
+        RpcCallIndex calls,
+        RpcPeerState[] resolved,
+        int[] reached,
+        Evidence evidence,
+        StoreDependency?[] fieldsRead,
+        bool comCalls = false,
+        bool[]? viaCom = null)
     {
         int count = calls.Count;
+        bool[]? throughCom = viaCom is null ? null : new bool[count];
         int[] claims = new int[count];
         foreach (int server in reached)
         {
@@ -410,6 +520,11 @@ public sealed partial class RpcPeerIndex
                 {
                     peers[call] = server;
                     peers[server] = call;
+                    if (viaCom?[call] == true)
+                    {
+                        throughCom![call] = true;
+                        throughCom[server] = true;
+                    }
                 }
             }
         }
@@ -428,7 +543,7 @@ public sealed partial class RpcPeerIndex
             }
         }
 
-        return new(calls, states, peers, evidence.Sends, evidence.Receives, fieldsRead, evidence, reached);
+        return new(calls, states, peers, evidence.Sends, evidence.Receives, fieldsRead, evidence, reached, comCalls, throughCom);
     }
 
     /// <summary>

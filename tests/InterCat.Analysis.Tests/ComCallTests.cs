@@ -163,12 +163,146 @@ public sealed class ComCallTests
         Assert.Equal(195 + 16, index.RpcCalls.Groups.Where(group => group is { Side: RpcCallSide.Client, ProcessId: Ledger.Client }).Sum(group => group.Counts.Completed));
     }
 
+    [Fact(DisplayName = "P7: under rpc-call-peer-v2 a client RPC call carrying a linked COM call is served by the RPC call carrying the server's, with no ALPC record, linked through COM - where ALPC serves it alike it is ALPC's, and where ALPC reaches another call it conflicts")]
+    public void ACallCarryingALinkedComCallIsServed()
+    {
+        var exchanges = new Exchanges();
+        exchanges.Call(1_000, client: 400, server: 700);
+        using var session = new TemporarySession();
+        (RpcPeerIndex peers, RpcCallIndex calls, SegmentReaderV1[] segments, SegmentReaderV1[] fieldSegments) = exchanges.Published(session.Store);
+
+        // Without one ALPC record the call is served through the COM call it carries, at both ends; the generation's
+        // other ends are never extended, being derived from every segment.
+        Assert.Equal((false, true, true), (peers.CollectedAlpc, peers.HoldsComCalls, peers.FollowedOtherEnds));
+        Assert.Null(peers.Extend(calls, segments, fieldSegments));
+
+        // A metric reads the link as it reads ALPC's: the client's one peer is the server.
+        ProcessInstanceId owner = calls.Processes.Instances.Single(instance => instance.ProcessId == 400).Id;
+        MetricResult active = SessionMetrics.Evaluate(session.Store, new()
+        {
+            Basis = AnalysisBasis.LogicalOperations,
+            Metric = Metric.ActivePeers,
+            Owner = owner,
+        });
+        Assert.Equal((MetricUnavailableReason.None, (long?)1), (active.Unavailable, active.Value));
+        RpcCallGroup client = Group(peers, 400, RpcCallSide.Client);
+        RpcCallGroup server = Group(peers, 700, RpcCallSide.Server);
+        (RpcPeerState state, RpcCall? other) = peers.PeerOf(client, 0, segments);
+        Assert.Equal((RpcPeerState.Served, 700, RpcCallSide.Server), (state, other!.ProcessId, other.Side));
+        Assert.Equal((true, true), (peers.LinkedThroughCom(client, 0), peers.LinkedThroughCom(server, 0)));
+        Assert.Equal((1L, 700), (peers.CountsOf(client).Served, Assert.Single(peers.PeersOf(client)).ProcessId));
+        Assert.Equal("rpc-call-peer-v2", RpcPeerIndex.PeerRule);
+
+        // ALPC reaching the same server call keeps the call ALPC's; ALPC reaching another process's call conflicts with
+        // the COM link, and links neither.
+        var both = new Exchanges();
+        both.Call(1_000, client: 401, server: 701, alpcTo: 701);
+        both.Call(2_000_000, client: 402, server: 702, alpcTo: 802);
+
+        // A client RPC call still open at capture end is served by nothing, as ALPC serves no call that is not completed,
+        // though the COM calls it carries are linked.
+        both.Call(4_000_000, client: 403, server: 703, clientRpcOpen: true);
+        using var second = new TemporarySession();
+        (RpcPeerIndex mixed, SegmentReaderV1[] mixedSegments) = both.DerivePeers(second.Store);
+        Assert.True(mixed.CollectedAlpc);
+        RpcCallGroup agreeing = Group(mixed, 401, RpcCallSide.Client);
+        (RpcPeerState agreed, RpcCall? agreedWith) = mixed.PeerOf(agreeing, 0, mixedSegments);
+        Assert.Equal((RpcPeerState.Served, 701, false), (agreed, agreedWith!.ProcessId, mixed.LinkedThroughCom(agreeing, 0)));
+        RpcCallGroup conflicting = Group(mixed, 402, RpcCallSide.Client);
+        Assert.Equal(RpcPeerState.Conflicting, mixed.PeerOf(conflicting, 0, mixedSegments).Item1);
+        Assert.Equal(0L, mixed.CountsOf(Group(mixed, 702, RpcCallSide.Server)).Served);
+        Assert.Equal(RpcPeerState.NotCompleted, mixed.PeerOf(Group(mixed, 403, RpcCallSide.Client), 0, mixedSegments).Item1);
+        Assert.Equal(0L, mixed.CountsOf(Group(mixed, 703, RpcCallSide.Server)).Served);
+    }
+
+    [Fact(DisplayName = "I14: other ends followed in a generation holding no COM call record are not extended over an added segment holding one, which a full derivation answers")]
+    public void AnAddedComCallIsNeverExtended()
+    {
+        var exchanges = new Exchanges();
+        exchanges.RpcOnly(1_000, client: 400, server: 700);
+        using var session = new TemporarySession();
+        (RpcPeerIndex first, _, _, _) = exchanges.Published(session.Store);
+        Assert.False(first.HoldsComCalls);
+
+        exchanges.Call(2_000_000, client: 401, server: 701);
+        (RpcPeerIndex full, RpcCallIndex calls, SegmentReaderV1[] segments, SegmentReaderV1[] fieldSegments) = exchanges.Published(session.Store);
+        Assert.Null(first.Extend(calls, segments, fieldSegments));
+        Assert.True(full.LinkedThroughCom(Group(full, 401, RpcCallSide.Client), 0));
+    }
+
+    [Fact(DisplayName = "P7: FX-COM-001's layering run, its ledger made a session, has every client RPC call carrying a COM call served under rpc-call-peer-v2 through COM, and the client's other RPC calls unresolved for want of ALPC")]
+    public void TheMeasuredRunServesEveryCarriedCall()
+    {
+        using var session = new TemporarySession();
+        (RpcPeerIndex peers, _) = Ledger.DerivePeers(session.Store);
+        RpcCallGroup[] made = [.. peers.Calls.Groups.Where(group => group is { ProcessId: Ledger.Client, Side: RpcCallSide.Client })];
+        RpcCallGroup[] served = [.. peers.Calls.Groups.Where(group => group is { ProcessId: Ledger.Server, Side: RpcCallSide.Server })];
+        Assert.Equal((195L, 195L), (made.Sum(group => peers.CountsOf(group).Served), served.Sum(group => peers.CountsOf(group).Served)));
+        Assert.All(made, group => Assert.All(peers.CountsOf(group).Unresolved.Keys, reason => Assert.Equal(RpcPeerState.NoAlpcEvidence, reason)));
+        // The client's 16 other completed calls, and its thread's first, whose start and stop carry no activity id and are
+        // each a call of its own.
+        Assert.Equal(18L, made.Sum(group => peers.CountsOf(group).Unresolved.Values.Sum()));
+        Assert.All(served.Concat(made), group => Assert.All(Enumerable.Range(0, (int)group.Counts.Calls), position =>
+            Assert.Equal(peers.CountsOf(group, [position]).Served == 1, peers.LinkedThroughCom(group, position))));
+    }
+
+    [Fact(DisplayName = "I14: an operation index keeps that its generation holds COM call records and which calls are linked through one, with no ALPC record, and reads them back so")]
+    public void AnOperationIndexKeepsLinksThroughCom()
+    {
+        var exchanges = new Exchanges();
+        exchanges.Call(1_000, client: 400, server: 700);
+        exchanges.Call(2_000_000, client: 403, server: 703, serverRpc: false);
+        using var session = new TemporarySession();
+        Indexed derived = exchanges.Index(session.Store);
+        using var written = new MemoryStream();
+        OperationIndex.Write(written, derived.SessionId, derived.Generation, derived.Segments, derived.FieldSegments,
+            derived.Calls, derived.Peers, derived.Exchanges);
+        OperationIndex read = OperationIndex.Read(written.ToArray(), derived.SessionId, TestClock, derived.Processes);
+        RpcPeerIndex peers = read.Peers!;
+
+        // Calls whose other ends are followed through COM call records are held whole, never streamed into an index.
+        using var streamed = new MemoryStream();
+        Assert.Null(OperationIndex.WriteFromSegments(streamed, derived.SessionId, derived.Generation, derived.Segments, derived.FieldSegments,
+            derived.Observations, derived.Fields, TestClock, derived.Exchanges));
+        Assert.Equal(0, streamed.Length);
+        Assert.Equal((false, true), (peers.CollectedAlpc, peers.HoldsComCalls));
+        foreach (RpcCallGroup group in derived.Peers.Calls.Groups)
+        {
+            RpcCallGroup again = peers.Calls.Groups.Single(other => other.ProcessId == group.ProcessId && other.Side == group.Side && other.Interface == group.Interface);
+            for (int position = 0; position < group.Counts.Calls; position++)
+            {
+                Assert.Equal(derived.Peers.LinkedThroughCom(group, position), peers.LinkedThroughCom(again, position));
+                Assert.Equal(derived.Peers.CountsOf(group, [position]).Served, peers.CountsOf(again, [position]).Served);
+            }
+        }
+
+        Assert.True(peers.LinkedThroughCom(Group(peers, 400, RpcCallSide.Client), 0));
+        Assert.Equal((RpcPeerState.NoAlpcEvidence, 1L), (Assert.Single(peers.CountsOf(Group(peers, 403, RpcCallSide.Client)).Unresolved).Key,
+            peers.CountsOf(Group(peers, 403, RpcCallSide.Client)).Unresolved[RpcPeerState.NoAlpcEvidence]));
+    }
+
+    private static RpcCallGroup Group(RpcPeerIndex peers, int process, RpcCallSide side) =>
+        peers.Calls.Groups.Single(group => group.ProcessId == process && group.Side == side);
+
     private static int Position(ComCallIndex index, ComCallSide side, int process)
     {
         int found = index.Calls.ToList().FindIndex(call => call.Side == side && call.ProcessId == process);
         Assert.True(found >= 0, $"no {side} call of process {process}");
         return found;
     }
+
+    /// <summary>What an operation index is written from: a generation's calls, their other ends and its exchanges.</summary>
+    private sealed record Indexed(
+        Guid SessionId,
+        long Generation,
+        StoreDependency[] Segments,
+        StoreDependency[] FieldSegments,
+        SegmentReaderV1[] Observations,
+        SegmentReaderV1[] Fields,
+        ProcessInstanceIndex Processes,
+        RpcCallIndex Calls,
+        RpcPeerIndex Peers,
+        HttpExchangeIndex Exchanges);
 
     /// <summary>A generation's COM calls and the RPC calls carrying them, with the fields each carries.</summary>
     private sealed class Exchanges
@@ -198,14 +332,29 @@ public sealed class ComCallTests
             bool servedAfter = false,
             bool serverActivity = false,
             bool clientTwice = false,
-            long? serverRpcStop = null)
+            long? serverRpcStop = null,
+            int? alpcTo = null,
+            bool clientRpcOpen = false)
         {
             Guid called = Activity();
             long number = ++trace;
             Com(start, ObservationKind.RequestStart, Direction.Outbound, client, called, number, clientNames ?? server, client + 1);
             if (clientRpc)
             {
-                Rpc(start + 5, start + 1_005, Direction.Outbound, client, client + 1, called, clientProcedure);
+                Rpc(start + 5, clientRpcOpen ? null : start + 1_005, Direction.Outbound, client, client + 1, called, clientProcedure);
+            }
+
+            if (alpcTo is { } reached)
+            {
+                // The client RPC call's one ALPC send, received in the process named, whose thread then begins a server call
+                // of the same interface and procedure: the chain ADR-034 follows.
+                long message = 9_000 + number;
+                Alpc(start + 10, ObservationKind.Send, client, client + 1, message);
+                Alpc(start + 20, ObservationKind.Receive, reached, reached + 1, message);
+                if (reached != server)
+                {
+                    Rpc(start + 30, start + 600, Direction.Inbound, reached, reached + 1, Activity(), clientProcedure);
+                }
             }
 
             if (clientTwice)
@@ -239,17 +388,68 @@ public sealed class ComCallTests
             Com(start + 1_000, ObservationKind.RequestEnd, Direction.Outbound, client, called, number, null, client + 1, hresult: 0x8000_4002);
         }
 
+        /// <summary>A client's RPC call and the server's that serves it, with no COM call record and no ALPC message.</summary>
+        public void RpcOnly(long start, int client, int server)
+        {
+            Rpc(start, start + 1_000, Direction.Outbound, client, client + 1, Activity(), 6);
+            Rpc(start + 100, start + 600, Direction.Inbound, server, server + 1, Activity(), 6);
+        }
+
         /// <summary>One COM call record of its own, with a trace number or none.</summary>
         public void Record(long ticks, ObservationKind kind, Direction direction, int process, long? trace) =>
             Com(ticks, kind, direction, process, Activity(), trace, kind == ObservationKind.RequestStart ? process + 1_000 : null, process + 1);
 
         public (ComCallIndex Index, SegmentReaderV1[] Segments) Derive(SessionStore store)
         {
+            (RpcCallIndex calls, SegmentReaderV1[] observations, SegmentReaderV1[] fieldSegments) = Calls(store);
+            return (ComCallIndex.Derive(calls, observations, fieldSegments), observations);
+        }
+
+        public (RpcPeerIndex Peers, SegmentReaderV1[] Segments) DerivePeers(SessionStore store)
+        {
+            (RpcCallIndex calls, SegmentReaderV1[] observations, SegmentReaderV1[] fieldSegments) = Calls(store);
+            return (RpcPeerIndex.Derive(calls, observations, fieldSegments), observations);
+        }
+
+        /// <summary>Publishes the calls added since the last publication as a generation of their own, and derives over every one so far.</summary>
+        public (RpcPeerIndex Peers, RpcCallIndex Calls, SegmentReaderV1[] Segments, SegmentReaderV1[] Fields) Published(SessionStore store)
+        {
+            (RpcCallIndex calls, SegmentReaderV1[] observations, SegmentReaderV1[] fieldSegments) = Calls(store);
+            return (RpcPeerIndex.Derive(calls, observations, fieldSegments), calls, observations, fieldSegments);
+        }
+
+        public Indexed Index(SessionStore store)
+        {
+            (RpcCallIndex calls, SegmentReaderV1[] observations, SegmentReaderV1[] fieldSegments) = Calls(store);
+            return new(
+                store.Current!.SessionId,
+                store.Current.Generation,
+                [.. observations.Select(segment => segment.Published!)],
+                [.. fieldSegments.Select(segment => segment.Published!)],
+                observations,
+                fieldSegments,
+                calls.Processes,
+                calls,
+                RpcPeerIndex.Derive(calls, observations, fieldSegments),
+                HttpExchangeIndex.Derive(observations, fieldSegments, calls.Processes));
+        }
+
+        private (RpcCallIndex Calls, SegmentReaderV1[] Observations, SegmentReaderV1[] Fields) Calls(SessionStore store)
+        {
+            // Each publication holds what was added since the one before, in a generation of its own.
             Publish(store, [.. rows.OrderBy(row => row.NativeTicks).ThenBy(row => row.RawRecordOrdinal)], fields: fields);
+            rows.Clear();
+            fields.Clear();
             (SegmentReaderV1[] observations, SegmentReaderV1[] fieldSegments) = SegmentsOf(store);
             ProcessInstanceIndex instances = ProcessInstanceIndex.Derive(observations, TestClock, fieldSegments);
-            RpcCallIndex calls = RpcCallIndex.Derive(observations, fieldSegments, instances, TestClock);
-            return (ComCallIndex.Derive(calls, observations, fieldSegments), observations);
+            return (RpcCallIndex.Derive(observations, fieldSegments, instances, TestClock), observations, fieldSegments);
+        }
+
+        private void Alpc(long ticks, ObservationKind kind, int process, int thread, long message)
+        {
+            ObservationRowV1 row = TestSessions.Alpc(ticks, kind, process, thread, ++ordinal);
+            rows.Add(row);
+            fields.Add(Field(row, SourceField.AlpcMessageId, message));
         }
 
         private Guid Activity() => new(++activity, 0x434f, 0x4d31, 0x80, 0, 0, 0, 0, 0, 0, 3);
@@ -275,12 +475,15 @@ public sealed class ComCallTests
             }
         }
 
-        private void Rpc(long start, long stop, Direction direction, int process, int thread, Guid activityId, long procedure)
+        private void Rpc(long start, long? stop, Direction direction, int process, int thread, Guid activityId, long procedure)
         {
             ObservationRowV1 opened = RpcCall(start, ObservationKind.RequestStart, direction, process, ++ordinal, activityId, Dispatch) with { HeaderThreadId = thread };
             rows.Add(opened);
             fields.Add(Field(opened, SourceField.RpcProcedureNumber, procedure));
-            rows.Add(RpcCall(stop, ObservationKind.RequestEnd, direction, process, ++ordinal, activityId, status: 0) with { HeaderThreadId = thread });
+            if (stop is { } stopped)
+            {
+                rows.Add(RpcCall(stopped, ObservationKind.RequestEnd, direction, process, ++ordinal, activityId, status: 0) with { HeaderThreadId = thread });
+            }
         }
     }
 
@@ -296,6 +499,18 @@ public sealed class ComCallTests
         public const int Server = 700;
 
         public static (ComCallIndex Index, SegmentReaderV1[] Segments) Derive(SessionStore store)
+        {
+            (RpcCallIndex calls, SegmentReaderV1[] observations, SegmentReaderV1[] fieldSegments) = Calls(store);
+            return (ComCallIndex.Derive(calls, observations, fieldSegments), observations);
+        }
+
+        public static (RpcPeerIndex Peers, SegmentReaderV1[] Segments) DerivePeers(SessionStore store)
+        {
+            (RpcCallIndex calls, SegmentReaderV1[] observations, SegmentReaderV1[] fieldSegments) = Calls(store);
+            return (RpcPeerIndex.Derive(calls, observations, fieldSegments), observations);
+        }
+
+        private static (RpcCallIndex Calls, SegmentReaderV1[] Observations, SegmentReaderV1[] Fields) Calls(SessionStore store)
         {
             string path = Path.Combine(RepositoryRoot(), "fixtures", "FX-COM-001", "evidence", "layering", "ledger.csv");
             string[][] lines = [.. File.ReadLines(path).Skip(1).Where(line => line.Length > 0).Select(line => line.Split(','))];
@@ -344,8 +559,7 @@ public sealed class ComCallTests
             Publish(store, rows, fields: fields);
             (SegmentReaderV1[] observations, SegmentReaderV1[] fieldSegments) = SegmentsOf(store);
             ProcessInstanceIndex instances = ProcessInstanceIndex.Derive(observations, TestClock, fieldSegments);
-            RpcCallIndex calls = RpcCallIndex.Derive(observations, fieldSegments, instances, TestClock);
-            return (ComCallIndex.Derive(calls, observations, fieldSegments), observations);
+            return (RpcCallIndex.Derive(observations, fieldSegments, instances, TestClock), observations, fieldSegments);
         }
 
         private static string RepositoryRoot()

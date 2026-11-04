@@ -428,7 +428,8 @@
         "R21: a session's process filter holds for COM-Perf - FX-COM-001's filtered pair has its every call recorded at both ends, and a decoy pair making as many calls beside it, and every other process, none: outside the filter is not collected, never quiet",
         "P4: FX-COM-001's every COM call is carried by one RPC call at each end - at the client the RPC call of its activity on its thread, at the server the one around it on its thread - on its interface and method, so a COM call beside RPC is one call, never two",
         "P7: FX-COM-001's every client COM call has its activity carried by one server COM call naming the client, on its interface and method inside the client's call, which links the RPC call that carried it to the RPC call that served it",
-        "P7: FX-COM-001's layering run, its ledger made a session, has every call's two ends linked under com-call-link-v1 as measured, and every client RPC call carrying a COM call related to the RPC call that served it"
+        "P7: FX-COM-001's layering run, its ledger made a session, has every call's two ends linked under com-call-link-v1 as measured, and every client RPC call carrying a COM call related to the RPC call that served it",
+        "P7: FX-COM-001's layering run, its ledger made a session, has every client RPC call carrying a COM call served under rpc-call-peer-v2 through COM, and the client's other RPC calls unresolved for want of ALPC"
       ]
     },
     {
@@ -1666,6 +1667,7 @@
         "I14: an import option outside its declared range is refused before anything is read",
         "I14: an import that spills to disk produces exactly the index it would in memory",
         "I14: an operation index cut short, changed, of another format, rule, session or clock, or contradicting its calls or their instances, is refused, never misread",
+        "I14: an operation index keeps that its generation holds COM call records and which calls are linked through one, with no ALPC record, and reads them back so",
         "I14: an operation index reads back as the calls and other ends it was written from, bound by the instances it is read with, and writes the same bytes again",
         "I14: an operation index that cannot be read, or that covers other segments, is paired around, the overview says why, and publishing replaces it",
         "I14: an operation index written before it kept exchanges gives its calls, the exchanges are grouped from the segments, and publishing replaces it",
@@ -1689,6 +1691,7 @@
         "I14: nothing is published for a session with no generation or no records, and a stale writer is refused",
         "I14: one admitted record cannot satisfy two truth operations",
         "I14: only instances and the relations derived with them are written, and a generation names one checkpoint",
+        "I14: other ends followed in a generation holding no COM call record are not extended over an added segment holding one, which a full derivation answers",
         "I14: other ends followed while no ALPC was read are all linked again once a generation reads some",
         "I14: peer bindings that name an instance the checkpoint does not hold are not used: the peers are counted from the checkpoint's records by owner, or read from the segments where it keeps none",
         "I14: process bytes that name an instance or a channel end the checkpoint does not hold are not used, and the segments are read",
@@ -2236,6 +2239,7 @@
         "P7: FX-COM-001's every COM-Perf call names the other workload process at both ends, its threads pairing nothing, and its activations name nothing to count as a call",
         "P7: FX-COM-001's every client COM call has its activity carried by one server COM call naming the client, on its interface and method inside the client's call, which links the RPC call that carried it to the RPC call that served it",
         "P7: FX-COM-001's layering run, its ledger made a session, has every call's two ends linked under com-call-link-v1 as measured, and every client RPC call carrying a COM call related to the RPC call that served it",
+        "P7: FX-COM-001's layering run, its ledger made a session, has every client RPC call carrying a COM call served under rpc-call-peer-v2 through COM, and the client's other RPC calls unresolved for want of ALPC",
         "P7: FX-COM-002's calls across an apartment are recorded as an out-of-process call is, each naming its own process at both ends, so a call is between processes only where the process it names is another",
         "P7: a COM call's ends are never linked by an activity alone - a server in the client's own process, two server calls of one activity, ends that do not name each other, or a served call outside the client's link nothing, each with its reason",
         "P7: a client COM call is linked to the one server COM call carrying its activity, each naming the other's process and the served one inside it, and so its RPC call to the RPC call that served it",
@@ -2243,7 +2247,8 @@
         "P7: a peer is claimed only when the two sides share an activity, and is checked against truth",
         "P7: a pipe peer pairing is checked against the truth log rather than assumed",
         "P7: a process's connections to ends no record holds are rows of its rung, each opening its own records",
-        "P7: a process's one-sided connections are its channels no record's other end holds, named by their endpoints, never by a guessed peer"
+        "P7: a process's one-sided connections are its channels no record's other end holds, named by their endpoints, never by a guessed peer",
+        "P7: under rpc-call-peer-v2 a client RPC call carrying a linked COM call is served by the RPC call carrying the server's, with no ALPC record, linked through COM - where ALPC serves it alike it is ALPC's, and where ALPC reaches another call it conflicts"
       ],
       "P8": [
         "P8: FX-COM-001's COM-Perf records pair as measured - each truth call one invoke at the client and one at the server, of its causality and rank, the server's inside the client's call, each start joined to its stop by its trace number",

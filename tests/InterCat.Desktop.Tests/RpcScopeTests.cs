@@ -324,7 +324,7 @@ public sealed class RpcScopeTests
         GraphDisplayEdge drawn = Assert.Single(workspace.GraphDisplay.Edges, edge => edge.Mechanism == Mechanism.Rpc);
         HoverCard card = workspace.DescribeGraphHover(drawn.Key)!;
         Assert.Contains(card.Lines, line => line.StartsWith("Linked RPC call records: 8", StringComparison.Ordinal));
-        Assert.Contains("Rule: rpc-call-peer, version 1 · evidence: the calls its links join, by key", card.Lines);
+        Assert.Contains("Rule: rpc-call-peer, version 2 · evidence: the calls its links join, by key", card.Lines);
         Assert.Contains("Bytes: none · an RPC call carries no size", card.Lines);
         Assert.Contains("Double-click opens the calls its links join", card.Lines);
 

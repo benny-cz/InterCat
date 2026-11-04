@@ -1,8 +1,8 @@
 # InterCat operations v1
 
 Status: **implemented** as `rpc-call-operation-v1`, for RPC calls (revision 178), and counted on the logical-operations
-metric basis since revision 183 (`contracts/metrics-v1.md` §8a). A client call's other end is `rpc-call-peer-v1`'s
-since revision 225 (§5c). No other mechanism derives an operation at this version (§8).
+metric basis since revision 183 (`contracts/metrics-v1.md` §8a). A client call's other end is `rpc-call-peer-v2`'s
+(§5c): through ALPC since revision 225, and through the COM call it carries since revision 917. No other mechanism derives an operation at this version (§8).
 
 This contract fixes how §7.1's `Operation` - a derived logical call with an optional start, end and status and the
 observations it is made of - is derived from a generation's published segments. It is §7.4's RPC correlator, with the
@@ -136,7 +136,7 @@ as a paired channel is. An interval holding every reading answers exactly as the
 ## 5c. A client call's other end (revision 225)
 
 A client call's other end is the server call that served it. ADR-034 measured the chain that finds it through ALPC,
-and `rpc-call-peer-v1` follows it, over this contract's calls and the generation's ALPC records: a row whose
+and `rpc-call-peer-v2` follows it, over this contract's calls and the generation's ALPC records: a row whose
 mechanism is `Alpc` and whose kind is `Send` or `Receive`, its header process and thread, its reading, and its
 `AlpcMessageId` source field. A client call is **served** by a server call when:
 
@@ -176,6 +176,21 @@ Every other shape leaves the call's other end unresolved, with its reason:
   each found no send on its thread in its window, and the endpoint mapper's records of the calls it served were reached
   by none. The rule is unchanged; a reader says of such a call, where its other end is unresolved, that it went over TCP,
   which ALPC does not carry, and of such a server call that it came over TCP.
+
+**Through the COM call it carries** (revision 917, `rpc-call-peer-v2`, ADR-079). A completed client call carrying a COM
+call that `com-call-link-v1` links is served by the RPC call carrying the server's COM call
+(`contracts/com-calls-v1.md` §5), whether or not the generation holds an ALPC record:
+
+- where ALPC's chain reaches that same server call, the call is ALPC's;
+- where it reaches another server call, or one of another interface or procedure, the two disagree: the call is
+  `Conflicting`, linked to neither;
+- a server call two client calls reach, this way or through ALPC, is `ServerCallShared` for both, as above;
+- a call linked through the COM call it carries says so, and so does the server call it reached;
+- in a generation with no ALPC record, a call no COM link serves is `NoAlpcEvidence`, the reason it would have without
+  COM-Perf.
+
+A generation holding a COM call record has its other ends followed again from every segment, never extended from the
+last generation's (`contracts/com-calls-v1.md` §8).
 
 Revision 226: a reader of §5a's channels also names who is at the other end of a channel's calls - for a client
 channel the processes that served them, the most first, and why the rest are unresolved; for a server channel the
@@ -225,8 +240,8 @@ call whose start its capture never saw is still `StartNotObserved` (I20).
 
 A derivation is identified by `rpc-call-operation-v1`, the `process-binding-v5` derivation it rests on, and the
 generation it was derived from. A change to what pairs, how, or what a call holds is a new rule identity (§24
-`correlationRevision`). The other ends of §5c are identified by `rpc-call-peer-v1`, the `rpc-call-operation-v1`
-derivation they rest on, and the generation; a change to what links, how, or when a link is refused is a new rule.
+`correlationRevision`). The other ends of §5c are identified by `rpc-call-peer-v2`, the `rpc-call-operation-v1` and
+`com-call-link-v1` derivations they rest on, and the generation; a change to what links, how, or when a link is refused is a new rule.
 
 ## 8. Not defined at this version
 

@@ -520,7 +520,7 @@ public static class SessionRpcCalls
         EvidencePolicy policy)
     {
         var row = new RpcCallRow(CallKey(channelKey, call), call);
-        if (!peers.CollectedAlpc)
+        if (!peers.FollowedOtherEnds)
         {
             return row;
         }
@@ -551,7 +551,7 @@ public static class SessionRpcCalls
         IReadOnlyList<int>? positions,
         EvidencePolicy policy)
     {
-        if (!peers.CollectedAlpc)
+        if (!peers.FollowedOtherEnds)
         {
             return null;
         }

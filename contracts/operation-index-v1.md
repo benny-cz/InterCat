@@ -1,8 +1,8 @@
 # InterCat operation index v1
 
-Status: **implemented** in plan revision 440; minor 1 in revision 441. A generation can name one operation index: its
+Status: **implemented** in plan revision 440; minor 1 in revision 441; minor 2 in revision 917. A generation can name one operation index: its
 RPC calls under `rpc-call-operation-v1` (`contracts/operations-v1.md` §3–§5) and their other ends under
-`rpc-call-peer-v1` (§5c), and since minor 1 its HTTP exchanges under `http-exchange-v1`
+`rpc-call-peer-v2` (§5c), and since minor 1 its HTTP exchanges under `http-exchange-v1`
 (`contracts/http-exchanges-v1.md`), as derived from named segments. A reader that finds one covering the segments its generation names reads the calls and
 exchanges from it, binds them to the generation's process instances, and gets exactly what pairing every call record
 and grouping every buffer give. Without one, a reopened session's first call ranking, RPC listing or brush pairs every
@@ -25,8 +25,9 @@ For the covered observation and source-field segments, what the two derivations 
   belong to, its side and state, and of its start and its stop, those it has, the reading and the segment position and
   row. A start also holds the interface it named, and the procedure and protocol it carried as source fields; a stop
   holds its status. A completed call with a procedure and a status takes 71 bytes.
-- **Other ends.** How many ALPC sends and receives were read and, when there were any, each call's state under
-  `rpc-call-peer-v1` and the call at its other end.
+- **Other ends.** How many ALPC sends and receives were read, whether the generation holds COM call records (minor 2)
+  and, when it held either, each call's state under `rpc-call-peer-v2`, whether it is linked through the COM call it
+  carries, and the call at its other end.
 - **Exchanges** (minor 1). How many HTTP records named no exchange; the origins of the exchanges' first buffers - each
   distinct raw stream and epoch; and every exchange: its number, the PID its buffers belong to, its first buffer's origin
   and raw ordinal, its first and last readings, the session times of its first and last buffers and of the buffer that
@@ -63,15 +64,15 @@ retention that releases a segment releases it with the segments, in the same ret
 names a checkpoint and an overview but no operation index, as every one published before revision 440 does, is not
 current: its writer's next publication, or `icat checkpoint`, publishes all three again.
 
-A writer need not hold the calls to write them (revision 882). Where the covered segments hold no ALPC send or receive,
-the calls are paired as the index is written: the call records are taken in canonical order across the segments, a
+A writer need not hold the calls to write them (revision 882). Where the covered segments hold no ALPC send or receive and
+no COM call record, the calls are paired as the index is written: the call records are taken in canonical order across the segments, a
 segment read once that order reaches its earliest reading - which its reader verifies on opening it - and given up once
 its last call record is taken; each start's source fields are joined as they are taken in the same order, since a field
 row carries the reading of the record it names (`segment-v1`); each key's records are paired as they come; and the
 calls paired are held, up to 16 MiB of them, until the counts and names the calls begin with are known, past that in
 sorted runs of a temporary file deleted when it is closed. The bytes are exactly those of the calls paired whole, so it
 holds the calls in flight and the records of the segments whose readings overlap rather than every call. Where the
-segments hold ALPC records, whose other ends the peer rule follows over every call, or where the generation's calls are
+segments hold ALPC records or COM call records, whose other ends the peer rule follows over every call, or where the generation's calls are
 held already, the index is written from calls held whole. A writer asking whether a generation's index is current
 checks it as a reader reads it (§4), every refusal the same, call by call and holding none. Since revision 885 a reader
 reads it as the file streams, its digest checked once every byte has been read and said before anything the bytes
@@ -91,8 +92,8 @@ Little-endian throughout. `str8` is an unsigned byte count followed by that many
 
 ```text
 index       = header covered held [calls peers] http       ; http from minor 1: a minor-0 index ends at its peers
-header      = "ICATOPIX" (8 ASCII bytes), major u16 = 1, minor u16 = 1,
-              operationRule str8 ("rpc-call-operation-v1"), peerRule str8 ("rpc-call-peer-v1"),
+header      = "ICATOPIX" (8 ASCII bytes), major u16 = 1, minor u16 = 2,
+              operationRule str8 ("rpc-call-operation-v1"), peerRule str8 ("rpc-call-peer-v2"),
               bindingRule str8 ("process-binding-v5"),
               session guid, derivedGeneration i64 (>= 1),
               clock guid, host guid
@@ -112,8 +113,10 @@ call        = origin i32 (an origin's place), ordinal u64,   ; the first record'
               [stop: ticks i64, segment i32, row i32],
               [procedure i64], [protocol i64], [status i64]
 peers       = alpcSends i64 (>= 0), alpcReceives i64 (>= 0),
-              (state u8 (EN-RpcPeerState), other i32 (-1 for none))*   ; one per call, in the calls' order,
-                                                                       ; only when sends and receives are not both 0
+              comCalls u8 (minor 2: 1 when the generation holds COM call records, 0 otherwise),
+              (state u8 (EN-RpcPeerState; 128 added for a call linked through the COM call it carries),
+               other i32 (-1 for none))*            ; one per call, in the calls' order, only when sends and
+                                                    ; receives are not both 0 or comCalls is 1
 http        = groupingRule str8 ("http-exchange-v1"), held u8 (1 when exchanges follow), [exchanges]
 exchanges   = withoutExchange i64 (>= 0),
               count u32, (stream u32, epoch u32)*   ; origins, each once, in the order the exchanges first name them
@@ -127,15 +130,16 @@ part        = buffers i32 (>= 0), bytes i64 (>= 0), whole u8 (0, 1; 1 only with 
 ```
 
 A segment is named by its position among the covered observation segments, which is the position the calls were
-paired and the exchanges grouped from. With no ALPC record every call's other end is unresolved for that (`NoAlpcEvidence`), and nothing per call
-is written.
+paired and the exchanges grouped from. With no ALPC record and no COM call record every call's other end is unresolved for that (`NoAlpcEvidence`), and
+nothing per call is written; with COM call records and no ALPC record, a call no COM link serves is `NoAlpcEvidence`.
+Every index of an earlier minor is of `rpc-call-peer-v1`, so it is refused by its rule and derived again.
 
 ## 4. Reading
 
 A reader refuses an index whose bytes do not hash to the digest its generation records, before interpreting any of them
 (store-v1 §6). It then refuses the index when:
 
-- the magic is wrong, the major version is not 1, or the minor is above 1;
+- the magic is wrong, the major version is not 1, or the minor is above 2;
 - a rule identity is not this build's, the exchanges' among them: an index derived under another rule describes other
   calls, other ends, other exchanges or other owners (§24), and is derived again;
 - its session, clock or host is not the generation's, or it names no generation;
@@ -153,6 +157,10 @@ A reader refuses an index whose bytes do not hash to the digest its generation r
   - an interface or an origin is named twice, or a call names an origin the index does not hold;
 - the other ends contradict the peer rule:
   - a state is undefined, or says no ALPC record was read while the index counts some;
+  - the COM call flag is neither 0 nor 1, or a call is marked linked through a COM call while it is not served, or in an
+    index whose generation holds no COM call record;
+  - two linked calls disagree on whether they are linked through a COM call;
+  - without ALPC records, a client call is neither served through a COM call nor unresolved for want of ALPC;
   - a call names a call the index does not hold;
   - a served call does not name a call of the other side that names it back;
   - a client call is said not to be reached, or names a call without being served;

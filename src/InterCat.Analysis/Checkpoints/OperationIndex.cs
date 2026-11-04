@@ -20,8 +20,12 @@ public sealed class OperationIndex
     private const string FilePrefix = "operation-index-";
     private const string FileSuffix = ".bin";
     private const ushort Major = 1;
-    /// <summary>Minor 1 adds the HTTP exchanges (revision 441); a minor-0 index is read without them.</summary>
-    private const ushort Minor = 1;
+    /// <summary>
+    /// Minor 1 adds the HTTP exchanges (revision 441); a minor-0 index is read without them. Minor 2 (revision 917) says
+    /// whether the generation holds COM call records and marks a call linked through one, under `rpc-call-peer-v2`, so
+    /// every earlier index is of an earlier peer rule and derived again.
+    /// </summary>
+    private const ushort Minor = 2;
     private const byte ObservationRole = 1;
     private const byte FieldRole = 2;
     private const string What = "operation index";
@@ -190,10 +194,13 @@ public sealed class OperationIndex
     /// bytes, with the calls paired as they are written rather than held (revision 882). It holds the calls in flight,
     /// the call records of the segments whose readings overlap, and up to <paramref name="heldBytes"/> of calls paired;
     /// past that they wait, sorted, in a file under <paramref name="spillDirectory"/>, by default the system's temporary
-    /// directory, deleted once they are written. Segments holding an ALPC send or receive are not written here, since
-    /// those calls' other ends are followed over calls held whole: <see cref="Write"/> writes those.
+    /// directory, deleted once they are written. Segments holding an ALPC send or receive, or a COM call record, are not
+    /// written here, since those calls' other ends are followed over calls held whole: <see cref="Write"/> writes those.
     /// </summary>
-    /// <returns>How many bytes were written; null, with nothing written, when the segments hold an ALPC send or receive.</returns>
+    /// <returns>
+    /// How many bytes were written; null, with nothing written, when the segments hold an ALPC send or receive or a COM
+    /// call record.
+    /// </returns>
     public static long? WriteFromSegments(
         Stream destination,
         Guid sessionId,

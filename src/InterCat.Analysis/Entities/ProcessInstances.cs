@@ -97,7 +97,7 @@ public enum ProcessBindingReason
     NoRelationRule = 11,
 
     /// <summary>
-    /// The contribution is an RPC call whose other end `rpc-call-peer-v1` did not link through ALPC
+    /// The contribution is an RPC call whose other end `rpc-call-peer-v2` did not link through ALPC or a COM call
     /// (`contracts/operations-v1.md` §5c). The call's own state says why; a message id is never a key by itself.
     /// </summary>
     CallNotLinked = 12,

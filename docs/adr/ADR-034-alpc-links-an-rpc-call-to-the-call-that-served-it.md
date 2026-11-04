@@ -1,7 +1,8 @@
 # ADR-034: ALPC links an RPC client call to the server call that served it
 
 - Status: accepted for M3; the capture (revisions 218 to 224) and the relation rule (revision 225,
-  `contracts/operations-v1.md` §5c) implement it
+  `contracts/operations-v1.md` §5c) implement it; since revision 917 `rpc-call-peer-v2` also links a call through the
+  COM call it carries (ADR-079)
 - Date: 2026-09-27
 - Decision owners: InterCat maintainers
 - Relates to: §4 (ALPC), §7.4 (RPC and ALPC correlation contracts), IC-006, P7, P8, ADR-002, ADR-004, ADR-031, FX-RPC-001,

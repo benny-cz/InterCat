@@ -251,7 +251,7 @@ internal sealed record MetricContributionsDocument
 
     /// <summary>
     /// For an answer that read RPC calls' other ends: the calls it disclosed or could not attribute because no link reached
-    /// them, by the reason `rpc-call-peer-v1` gives (`operations-v1` §5c).
+    /// them, by the reason `rpc-call-peer-v2` gives (`operations-v1` §5c).
     /// </summary>
     public required IReadOnlyDictionary<string, long> UnlinkedCalls { get; init; }
 }

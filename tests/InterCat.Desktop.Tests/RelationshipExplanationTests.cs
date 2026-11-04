@@ -117,9 +117,9 @@ public sealed class RelationshipExplanationTests
 
         string key = $"rpc:{First}:{Second}";
         CommunicationEdge rpc = many with { Key = key, Mechanism = Mechanism.Rpc, Rule = RelationRule.RpcCallPeer, Evidence = [key] };
-        Assert.Equal($"Correlated evidence, derived by rpc-call-peer, version 1, from the calls its links join: {key}.",
+        Assert.Equal($"Correlated evidence, derived by rpc-call-peer, version 2, from the calls its links join: {key}.",
             WorkspaceRowBuilder.Explain(rpc));
-        Assert.Equal("Correlated evidence, derived by rpc-call-peer, version 1, from no evidence this overview keeps.",
+        Assert.Equal("Correlated evidence, derived by rpc-call-peer, version 2, from no evidence this overview keeps.",
             WorkspaceRowBuilder.Explain(rpc with { Evidence = [] }));
     }
 }

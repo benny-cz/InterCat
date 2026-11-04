@@ -27,6 +27,12 @@ internal sealed record OperationsDocument
     public required long AlpcRecords { get; init; }
 
     /// <summary>
+    /// Whether the generation holds COM call records, through which a call carrying a COM call has its other end followed
+    /// (`contracts/com-calls-v1.md`); false for other ends read from an operation index, which says it only where it held one.
+    /// </summary>
+    public bool ComCalls { get; init; }
+
+    /// <summary>
     /// What the capture covered of the two mechanisms this listing reads, RPC and then ALPC, over the session (R21): whether
     /// a call it lists none of, or an other end it resolves none of, could have been seen at all. The ledger says it, never
     /// the records' absence.
@@ -321,6 +327,7 @@ internal static class OperationsCommand
             CallRecords = index.CallRecords,
             OtherRpcRecords = index.OtherRpcRecords,
             AlpcRecords = peers.AlpcSends + peers.AlpcReceives,
+            ComCalls = peers.HoldsComCalls,
             Coverage = coverage,
             Totals = index.Totals,
             Groups = groups,
@@ -329,9 +336,10 @@ internal static class OperationsCommand
                 "A call is its start and the stop that carries the same activity id, on one side of one process; nothing "
                 + "is paired by time (P8). A start with no stop is open at capture end, which is not a failure.",
                 "A client call and the server call that served it carry different activity ids (ADR-031). Its other end is "
-                + "found only through the one ALPC message the call sent, when the capture collected ALPC "
-                + "(rpc-call-peer-v1, ADR-034); otherwise it is stated unresolved, with its reason, never guessed (P7).",
-                "An RPC record names no process; it belongs to the process that raised it (process-binding-v3, ADR-030).",
+                + "found only through the one ALPC message the call sent, when the capture collected ALPC (ADR-034), or "
+                + $"through the COM call it carries, when the capture collected COM-Perf (ADR-079) - {RpcPeerIndex.PeerRule}; "
+                + "otherwise it is stated unresolved, with its reason, never guessed (P7).",
+                $"An RPC record names no process; it belongs to the process that raised it ({ProcessInstanceIndex.BindingRule}, ADR-030).",
                 "A duration is the session time between a call's start and stop records on one clock. Percentiles are "
                 + "durations calls took, by nearest rank.",
                 .. groups.Any(group => group.Calls?.Any(call => call.Protocol == OperationText.TcpProtocol) == true)
@@ -412,14 +420,20 @@ internal static class OperationsCommand
             + EvidencePolicyOption.Typed(document.EvidencePolicy));
         MechanismCoverage rpc = document.Coverage[0];
         MechanismCoverage alpc = document.Coverage[1];
+        // A call is linked through ALPC, or through the COM call it carries; with neither to follow, none is resolved.
+        string through = (document.AlpcRecords > 0, document.ComCalls) switch
+        {
+            (true, true) => string.Create(CultureInfo.CurrentCulture, $"{document.AlpcRecords:N0} ALPC sends and receives and the COM calls the calls carry"),
+            (true, false) => string.Create(CultureInfo.CurrentCulture, $"{document.AlpcRecords:N0} ALPC sends and receives"),
+            _ => "the COM calls the calls carry",
+        };
         ConsoleUi.Field(
             "Other ends",
-            document.AlpcRecords == 0
+            document.AlpcRecords == 0 && !document.ComCalls
                 ? $"{document.PeerRule}: none resolved, " + (alpc.State == CoverageState.NotCollected
                     ? "the capture did not collect ALPC (icat capture --profile rpc-peers does)"
                     : $"the generation holds no ALPC record (ALPC coverage: {CoverageStateText.Value(alpc.State)})")
-                : string.Create(CultureInfo.CurrentCulture,
-                    $"{document.PeerRule}, through {document.AlpcRecords:N0} ALPC sends and receives: {Linked(document.Groups)}"));
+                : $"{document.PeerRule}, through {through}: {Linked(document.Groups)}");
         ConsoleUi.Field(
             "Call records",
             document.OtherRpcRecords == 0

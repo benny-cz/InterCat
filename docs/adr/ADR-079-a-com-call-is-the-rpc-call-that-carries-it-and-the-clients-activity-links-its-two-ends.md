@@ -1,7 +1,8 @@
 # ADR-079: A COM call is the RPC call that carries it, and the client's activity links its two ends
 
 - Status: accepted for M6's COM/DCOM/WinRT work package; since revision 916 `com-call-link-v1` implements its second and
-  third decisions (`contracts/com-calls-v1.md`), though no reader uses it yet and no profile admits COM-Perf; since
+  third decisions (`contracts/com-calls-v1.md`), and since revision 917 `rpc-call-peer-v2` serves a call through it,
+  though no profile admits COM-Perf yet; since
   revision 914 a COM call's records bind to the process that raised them (ADR-077's fifth addendum), and since revision
   915 COM-Perf's call events are admitted, the process at a call's other end a source field of its own (its addendum)
 - Date: 2026-11-04
@@ -152,3 +153,25 @@ was measured: 195 calls at each end, every one completed, carried and linked, an
 RPC calls that served them, none reached twice. No reader uses the links yet: the RPC peer rule is to resolve a COM
 call's RPC call by them, and an opt-in profile is to collect COM-Perf beside RPC. Tests derive the rule over synthetic
 calls and over the ledger; eleven mutations are caught.
+
+## Addendum: `rpc-call-peer-v2` (revision 917)
+
+The fifth decision's relation rule has its second half. `rpc-call-peer-v2` (`contracts/operations-v1.md` §5c) serves a
+completed client RPC call carrying a COM call that `com-call-link-v1` links by the RPC call carrying the server's COM
+call, with or without ALPC. Where ALPC's chain reaches the same server call the call is ALPC's; where it reaches
+another, the two disagree and the call is conflicting, linked to neither, as the third decision's checks require. A
+call linked through the COM call it carries says so, at both ends.
+
+Its consequences reach every reader of RPC calls' other ends:
+
+- **A new rule identity.** An operation index of an earlier peer rule is refused and derived again. Its minor 2 says
+  whether the generation holds COM call records and marks each call linked through one, so a generation with COM links
+  and no ALPC keeps them. A generation holding a COM call record follows its other ends again from every segment, as
+  `com-call-link-v1` derives, never extended.
+- **Readers follow COM as they follow ALPC.** A metric, a channel's other ends and a call's row read the links where
+  the generation holds either; the texts naming the rule name both ways.
+
+FX-COM-001's ledger, made a session, has every one of its 195 client RPC calls carrying a COM call served through
+COM, the client's 18 other calls unresolved for want of ALPC. Tests serve a call through COM with no ALPC record, keep
+it ALPC's where ALPC agrees, conflict where ALPC reaches another call, decline to extend over a COM call record, and
+read the links back from an operation index; eleven mutations are caught.

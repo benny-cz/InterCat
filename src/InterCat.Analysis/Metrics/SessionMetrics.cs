@@ -725,7 +725,7 @@ public sealed record MetricResult
 
     /// <summary>
     /// For an answer that read RPC calls' other ends: the calls it disclosed or could not attribute because no link reached
-    /// them, by the reason `rpc-call-peer-v1` gives (`contracts/operations-v1.md` §5c). Empty for every other answer.
+    /// them, by the reason `rpc-call-peer-v2` gives (`contracts/operations-v1.md` §5c). Empty for every other answer.
     /// </summary>
     public IReadOnlyDictionary<RpcPeerState, long> UnlinkedCalls { get; init; } = new Dictionary<RpcPeerState, long>();
 

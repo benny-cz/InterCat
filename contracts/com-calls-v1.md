@@ -2,7 +2,7 @@
 
 Status: M6 additive contract, revision 916 (ADR-077, ADR-079)
 Owner: `InterCat.Analysis` (`ComCallIndex`)
-Produced by: no reader yet; `rpc-call-peer` is to read its links (ADR-079's fifth decision)
+Read by: `rpc-call-peer-v2` (`contracts/operations-v1.md` §5c), which serves a call carrying a linked COM call through it
 
 A COM call is a call made through COM's channel from one apartment to another, as Microsoft-Windows-COM-Perf records it
 at its client and its server (ADR-078). It is never an operation of its own: it is the RPC call that carries it, which
@@ -116,4 +116,4 @@ refused is a new rule identity (§24 `correlationRevision`).
 
 - Asynchronous COM calls (COM-Perf's 41, 42, 45 and 46), which no capture admits.
 - Keeping a derivation: it is computed from the segments on demand, never checkpointed or extended between generations.
-- Any reader: no view, metric or relation reads the links yet; `rpc-call-peer` is to (ADR-079's fifth decision).
+- A reader of the links beyond `rpc-call-peer-v2`: views, metrics and relations read them as the RPC calls' other ends.

@@ -5,7 +5,7 @@ namespace InterCat.Analysis;
 
 /// <summary>
 /// A call's other end on the logical-operations basis (`contracts/metrics-v1.md` §8a, revision 228): the process at the
-/// other end of each RPC call under `rpc-call-peer-v1`, read the way a process filter reads a record's (§5). A client
+/// other end of each RPC call under `rpc-call-peer-v2`, read the way a process filter reads a record's (§5). A client
 /// call's other end is the process of the server call that served it, and a server call's the process of the client call
 /// it served; a call no link reached has an unresolved one, and is disclosed with the reason its own state gives.
 /// </summary>
@@ -177,9 +177,9 @@ public static partial class SessionMetrics
         };
         var caveats = new List<string>
         {
-            "A peer is the process at a call's other end from the focus, linked through the call's one ALPC message "
-                + "(rpc-call-peer-v1): the server that served a call the focus made, or the client whose call it served. "
-                + "Each call is in scope by its first record's reading.",
+            "A peer is the process at a call's other end from the focus, linked through the call's one ALPC message or "
+                + $"through the COM call it carries ({RpcPeerIndex.PeerRule}): the server that served a call the focus made, "
+                + "or the client whose call it served. Each call is in scope by its first record's reading.",
         };
         if (unknownCount > 0)
         {
@@ -210,9 +210,9 @@ public static partial class SessionMetrics
 
     /// <summary>What an answer that read calls' other ends says about them, with how many it could not decide.</summary>
     private static string OtherEndCaveat(long undecided) =>
-        "A call's other end is the process of the call it is linked to through its one ALPC message (rpc-call-peer-v1): "
-        + "a client call's server, a server call's client; a message id is never a key by itself, and nothing is linked "
-        + "by time alone (P8)."
+        "A call's other end is the process of the call it is linked to through its one ALPC message, or through the COM "
+        + $"call it carries ({RpcPeerIndex.PeerRule}): a client call's server, a server call's client; a message id or an "
+        + "activity id is never a key by itself, and nothing is linked by time alone (P8)."
         + (undecided == 0
             ? string.Empty
             : $" {CountText.Of(undecided, "call")} in scope whose other end is not linked, or not admitted, could involve the "
