@@ -828,6 +828,7 @@ Revision 901 reads a Unix-domain socket's transfer bytes as the transport's (ADR
 Revision 902 measures the Unix sockets profile's cost through the product: on FX-UNIX-001's exchange it added a median 1.5 CPU pp over no capture and its own process used 3.9 pp, nothing lost, so it states Moderate, its source's class.
 Revision 903 adds FX-UNIX-002 (ADR-075's addendum): 64 AF_UNIX connections made one at a time, most of whose sockets the kernel created at an address an earlier one held, are each a socket of its own at both ends through the product, their operations paired with their rows by rank where every pair's bytes agree and placed in their connections by the truth's sequence.
 Revision 904 adds FX-UNIX-003, AF_UNIX's ambiguity case (ADR-073's addendum): of eight connections open before a capture began, not one call is a row of any process, while FX-UNIX-001's exchange made inside the same capture is observed whole.
+Revision 905 refuses a gated source whose machine's schema does not admit a field its gate decides by (ADR-074's addendum), AF_UNIX's schema-failure case: the Unix sockets profile does not start on such a build and says why, where its gate would have read the field as zero and followed no socket.
 
 ## Revisions, a paragraph each, in order
 
@@ -3516,3 +3517,13 @@ of their 512 operations a gap - while the control was observed whole, 512 of 512
 Unix-domain socket rows is of a socket whose create the session holds. The fixture carries no tier. A test checks the
 order of the run's events and each count from the committed evidence, a synthetic test holds the gate to a socket made
 before the capture, and three mutations are caught.
+
+Revision 905 gives AF_UNIX the schema-failure case M6's exit asks for. The admission plan compiler leaves out a field
+the machine's schema does not admit, and AFD's gate read such a field as zero, so on a build whose create carried no
+family a capture would have followed no socket and said it saw none, its coverage covered with nothing admitted - a
+value never observed (R3). A gated source whose compiled plan has a descriptor without a field its gate decides by is
+now refused, naming the descriptor, the field and what the gate could not tell without it: the Unix sockets profile
+does not start, `icat record` says why, and `icat capabilities` states the source's schema unknown. The check runs as
+the plan compiles, never on the callback path, and no contract changes. Tests take each field the gate decides by out
+of AFD's registered layout in turn and hold the plan, the capture's compilation, the profile and the capability
+report to the refusal; eight mutations are caught.

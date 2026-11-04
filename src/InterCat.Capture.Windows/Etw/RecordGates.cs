@@ -22,6 +22,18 @@ internal static class RecordGates
         ArgumentNullException.ThrowIfNull(table);
         return [.. table.SourceIds.Select(sourceId => sourceId == WindowsSourceCatalog.WinsockAfdSourceId ? new AfdRecordGate() : (IRecordGate?)null)];
     }
+
+    /// <summary>
+    /// Why a source's gate could not decide the records of its compiled plan, or null when it can - when every descriptor
+    /// admits each field the gate decides it by, or the source has no gate. A field the machine's schema does not admit
+    /// would be read as zero, a value never observed (R3): a gate reading its family as zero would follow no socket, and its
+    /// capture would say it saw none. Such a source is refused rather than admitted (ADR-074).
+    /// </summary>
+    public static string? Undecidable(SourceAdmissionPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        return plan.SourceId == WindowsSourceCatalog.WinsockAfdSourceId ? AfdRecordGate.Undecidable(plan) : null;
+    }
 }
 
 /// <summary>
@@ -32,6 +44,26 @@ internal static class RecordGates
 /// </summary>
 internal sealed class AfdRecordGate(int capacity = UnixSocketGate.DefaultCapacity) : IRecordGate
 {
+    private const int CreateEvent = 1000;
+    private const int SendEvent = 1003;
+
+    // The fields the gate decides every call's record by, and what it could not tell without each.
+    private static readonly (string Field, string Decides)[] EveryCall =
+    [
+        ("EnterExit", "a call's entry from its exit"),
+        ("Endpoint", "which socket a record is of"),
+        ("Process", "where a record's owner is written"),
+    ];
+
+    private static readonly (string Field, string Decides)[] Create =
+    [
+        .. EveryCall,
+        ("AddressFamily", "an AF_UNIX socket from another family's"),
+        ("ProcessId", "the process a socket was made for"),
+    ];
+
+    private static readonly (string Field, string Decides)[] Send = [.. EveryCall, ("Location", "a send's own exit from its other")];
+
     private readonly UnixSocketGate gate = new(capacity);
     private readonly Dictionary<AdmittedEventPlan, Slots> slots = new(ReferenceEqualityComparer.Instance);
 
@@ -70,6 +102,37 @@ internal sealed class AfdRecordGate(int capacity = UnixSocketGate.DefaultCapacit
 
     private static long Value(in AdmittedEvent admitted, int slot) => slot >= 0 && admitted.TryGetSlot(slot, out long value) ? value : 0;
 
+    /// <summary>
+    /// The first field a descriptor of <paramref name="plan"/> does not admit that the gate decides its records by, said
+    /// with what the gate could not tell without it; null when each descriptor admits every one. Compiled once, before a
+    /// capture starts, never on the callback path.
+    /// </summary>
+    internal static string? Undecidable(SourceAdmissionPlan plan)
+    {
+        foreach (AdmittedEventPlan descriptor in plan.Events)
+        {
+            (string Field, string Decides)[] deciding = descriptor.EventId switch
+            {
+                CreateEvent => Create,
+                SendEvent => Send,
+                _ => EveryCall,
+            };
+            foreach ((string field, string decides) in deciding)
+            {
+                if (Slots.Find(descriptor, field) < 0)
+                {
+                    string at = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                        $"event {descriptor.EventId} v{descriptor.Version}");
+                    return $"This machine's schema admits no {field} for {at} ({descriptor.Name}), by which the source's gate "
+                        + $"tells {decides}. Read as zero, it would be decided by a value never observed, so the source is "
+                        + "refused rather than admitted (R3).";
+                }
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Where a descriptor's admitted fields the gate reads and writes are, by name; -1 for one it does not admit.</summary>
     private readonly record struct Slots(int Phase, int Location, int Endpoint, int AddressFamily, int ProcessId, int Process)
     {
@@ -77,7 +140,7 @@ internal sealed class AfdRecordGate(int capacity = UnixSocketGate.DefaultCapacit
             Find(plan, "EnterExit"), Find(plan, "Location"), Find(plan, "Endpoint"), Find(plan, "AddressFamily"),
             Find(plan, "ProcessId"), Find(plan, "Process"));
 
-        private static int Find(AdmittedEventPlan plan, string field)
+        public static int Find(AdmittedEventPlan plan, string field)
         {
             for (int index = 0; index < plan.Slots.Count; index++)
             {

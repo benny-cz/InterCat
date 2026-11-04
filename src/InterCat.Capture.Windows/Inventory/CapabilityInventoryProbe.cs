@@ -250,8 +250,18 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
             SourceAdmissionPlan plan = AdmissionPlanCompiler.Compile(
                 definition,
                 schema,
-                index++,
+                index,
                 bodyPolicy: sourcePolicy);
+
+            // A gated source whose gate could not decide its records by the fields this schema admits is refused, never
+            // admitted to read what it decides by as zero (R3, ADR-074).
+            if (RecordGates.Undecidable(plan) is { } undecidable)
+            {
+                issues.Add(new(sourceId, SourcePlanIssueSeverity.Refusal, undecidable));
+                continue;
+            }
+
+            index++;
             plans.Add(plan);
             foreach (string diagnostic in plan.Diagnostics)
             {
@@ -335,7 +345,18 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
                             diagnostics.Add($"{definition.SourceId}: {diagnostic}");
                         }
 
-                        state = CapabilityState.Experimental;
+                        // A gate that could not decide its records by the fields this schema admits leaves the source's
+                        // schema unknown to it, as a capture refuses it (R3).
+                        if (RecordGates.Undecidable(plan) is { } undecidable)
+                        {
+                            unavailableReason = undecidable;
+                            state = CapabilityState.SchemaUnknown;
+                            diagnostics.Add($"{definition.SourceId}: {undecidable}");
+                        }
+                        else
+                        {
+                            state = CapabilityState.Experimental;
+                        }
                     }
                     catch (InvalidDataException exception)
                     {

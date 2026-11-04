@@ -2840,6 +2840,7 @@
         "R3: a clock reading pairs the counter with the precise wall clock, bracketed within a measured interval",
         "R3: a descriptor with no byte field reports it inapplicable, not zero",
         "R3: a follower mirrors a capture's clock calibration byte for byte",
+        "R3: a gated source whose schema does not admit a field its gate decides by is refused, never admitted to read it as zero - the Unix sockets profile does not start, and icat capabilities says its schema is unknown",
         "R3: a generation without a calibration states none, and two are refused",
         "R3: a group with only unknown contributions is unmeasured, never ranked below a measured zero",
         "R3: a grouped rate divides every group by the same whole interval",

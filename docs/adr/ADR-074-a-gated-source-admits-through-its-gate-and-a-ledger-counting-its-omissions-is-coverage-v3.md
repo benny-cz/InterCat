@@ -1,10 +1,10 @@
 # ADR-074: A gated source admits through its gate, and a ledger counting its omissions is coverage-v3
 
 - Status: accepted for M6's Unix-domain sockets work package; Winsock AFD admits through its gate, which the opt-in
-  Unix sockets profile requests (revision 899)
+  Unix sockets profile requests (revision 899), and is refused where its gate could not decide (revision 905)
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
-- Relates to: ADR-018, ADR-072, ADR-073, plan M6, §4.2, §9.3, §18.1, §20.6, R9, R21, R22, P12, FX-UNIX-001,
+- Relates to: ADR-018, ADR-072, ADR-073, plan M6, §4.2, §9.3, §18.1, §18.3, §20.6, R3, R9, R21, R22, P12, FX-UNIX-001,
   `contracts/coverage-v2.md`, `contracts/coverage-v3.md`
 
 ## Context
@@ -97,3 +97,25 @@ under `icat record --profile unix-sockets`, and under `icat record --profile exp
   ceiling of 1 point.
 - The profile states Moderate, its source's class, with this evidence, so `icat profiles unix-sockets` states its
   measured cost.
+
+## Addendum: a gate that could not decide refuses its source (revision 905)
+
+M6's exit asks each mechanism for a permission or schema failure case. A gate decides each record by fields of its
+descriptor: AFD's gate by a call's phase, its socket's address and the slot its owner is written to, a send's by its
+location as well, and a create's by its family and the process it was made for. The admission plan compiler leaves out
+a field the machine's schema does not admit, saying so in its field report (§18.3), and a gate reading that field read
+zero. A create of family zero is no AF_UNIX socket's, so on a build whose AFD create carried no family a capture would
+have followed no socket and said it saw none, its coverage covered with nothing admitted: a value never observed (R3).
+
+- **A gated source is refused when its gate could not decide.** When the plan a machine's schema compiles for a gated
+  source has a descriptor without a field its gate decides that descriptor's records by, the source is refused. The
+  refusal names the descriptor, the field and what the gate could not tell without it.
+- **Where it shows.** A profile requiring the source, as the Unix sockets profile requires AFD, does not start, and
+  `icat record` says why; `icat capabilities` states the source's schema unknown, for the same reason. The check runs
+  once, as the plan compiles, never on the callback path.
+- **No contract changes.** A refused source is not collected, so no capture states anything of its records.
+
+Tests take each field the gate decides by out of one template of AFD's registered layout in turn - a create's family
+and process, a close's phase and address, a send's location, an accept's owner slot - and hold the plan, the capture's
+compilation, the profile and the capability report to the refusal, the whole layout admitted; eight mutations are
+caught.

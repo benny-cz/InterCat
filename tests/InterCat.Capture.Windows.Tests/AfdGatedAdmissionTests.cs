@@ -225,6 +225,119 @@ public sealed class AfdGatedAdmissionTests
         Assert.Equal("unix-socket-operation", ObservationNormalizerV1.DiscriminatorFor(Mechanism.UnixDomainSocket));
     }
 
+    [Theory(DisplayName = "R3: a gated source whose schema does not admit a field its gate decides by is refused, never admitted to read it as zero - the Unix sockets profile does not start, and icat capabilities says its schema is unknown")]
+    [InlineData("AfdCreateOpenArgs", "AddressFamily", 1000)]
+    [InlineData("AfdCreateOpenArgs", "ProcessId", 1000)]
+    [InlineData("AfdCloseClosedArgs", "EnterExit", 1001)]
+    [InlineData("AfdCloseClosedArgs", "Endpoint", 1001)]
+    [InlineData("AfdSendConnectedArgs", "Location", 1003)]
+    [InlineData("AfdAcceptWithAddressConnectedArgs", "Process", 1027)]
+    public void AnUndecidableGatedSourceIsRefused(string template, string field, int eventId)
+    {
+        // The registered layout as another build might report it, one field the gate decides by gone from one template.
+        string manifest = Without(Manifest, template, field);
+        string reason = Assert.IsType<string>(RecordGates.Undecidable(AdmissionPlanCompiler.Compile(Source, ManifestParser.Parse(manifest), 0)));
+        Assert.Contains($"no {field} for event {eventId} v0", reason, StringComparison.Ordinal);
+        Assert.Null(RecordGates.Undecidable(Compiled()));
+
+        // A capture's compilation refuses the source with that reason, and compiles no plan of it.
+        var inventory = new CapabilityInventoryProbe(new AfdMetadata(manifest));
+        SourcePlanCompilation compilation = inventory.CompilePlanSet([WindowsSourceCatalog.WinsockAfdSourceId]);
+        Assert.Empty(compilation.Plans);
+        SourcePlanIssue refusal = Assert.Single(compilation.Issues, issue => issue.Severity == SourcePlanIssueSeverity.Refusal);
+        Assert.Equal((WindowsSourceCatalog.WinsockAfdSourceId, reason), (refusal.SourceId, refusal.Reason));
+
+        // So the Unix sockets profile does not start, its AFD blocking with that reason; with the whole layout it starts.
+        EffectiveCapturePlan refused = UnixSockets(compilation);
+        Assert.False(refused.CanStart);
+        ProfileSourceDecision afd = Assert.Single(refused.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.WinsockAfdSourceId);
+        Assert.Equal((ProfileSourceDecisionState.Blocking, true, reason), (afd.State, afd.Required, afd.Reason));
+        var whole = new CapabilityInventoryProbe(new AfdMetadata(Manifest));
+        Assert.True(UnixSockets(whole.CompilePlanSet([WindowsSourceCatalog.WinsockAfdSourceId])).CanStart);
+
+        // And the capability report says its schema is unknown, for that reason, where the whole layout is experimental.
+        ProbeEnvironment environment = CapabilityInventoryProbe.DescribeEnvironment(isElevated: false);
+        SourceCapability unknown = inventory.Probe(environment).Sources.Single(source => source.SourceId == WindowsSourceCatalog.WinsockAfdSourceId);
+        Assert.Equal((CapabilityState.SchemaUnknown, reason), (unknown.State, unknown.UnavailableReason));
+        Assert.Equal(CapabilityState.Experimental,
+            whole.Probe(environment).Sources.Single(source => source.SourceId == WindowsSourceCatalog.WinsockAfdSourceId).State);
+    }
+
+    /// <summary>The manifest with one field of one template taken out.</summary>
+    private static string Without(string manifest, string template, string field)
+    {
+        int start = manifest.IndexOf($"<template tid=\"{template}\">", StringComparison.Ordinal);
+        int end = manifest.IndexOf("</template>", start, StringComparison.Ordinal);
+        int at = manifest.IndexOf($"<data name=\"{field}\"", start, StringComparison.Ordinal);
+        Assert.InRange(at, start, end);
+        int close = manifest.IndexOf("/>", at, StringComparison.Ordinal) + 2;
+        return manifest[..at] + manifest[close..];
+    }
+
+    /// <summary>The Unix sockets profile compiled with lifecycle beside AFD's compilation: the profile asks for both.</summary>
+    private static EffectiveCapturePlan UnixSockets(SourcePlanCompilation afd)
+    {
+        Guid provider = Guid.Parse("22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716");
+        var lifecycle = new SourceAdmissionPlan
+        {
+            SourceId = WindowsSourceCatalog.KernelProcessSourceId,
+            ProviderGuid = provider,
+            SourceIndex = 0,
+            Events =
+            [
+                new AdmittedEventPlan
+                {
+                    SourceIndex = 0,
+                    ProviderGuid = provider,
+                    EventId = 1,
+                    Version = 0,
+                    Name = "fixture",
+                    Mechanism = Mechanism.ProcessLifecycle,
+                    Layer = ObservationLayer.Lifecycle,
+                    Kind = ObservationKind.Create,
+                    Direction = Direction.DirectionNotApplicable,
+                    MinimumBodyLength = 0,
+                    PointerSize = 8,
+                    SchemaFingerprint = "sha256:fixture-lifecycle",
+                    BodyPolicy = CaptureBodyAdmissionPolicies.MetadataOnly,
+                    Slots = [],
+                    FieldReport = [],
+                },
+            ],
+            Diagnostics = [],
+        };
+        return CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.UnixSockets),
+            new SourcePlanCompilation(
+                [lifecycle, .. afd.Plans.Select(plan => plan with
+                {
+                    SourceIndex = 1,
+                    Events = [.. plan.Events.Select(descriptor => descriptor with { SourceIndex = 1 })],
+                })],
+                afd.Issues));
+    }
+
+    /// <summary>A machine that registers Winsock AFD with the layout given, and nothing else.</summary>
+    private sealed class AfdMetadata(string manifest) : IEtwMetadataSource
+    {
+        private static readonly Guid Provider = Guid.Parse("e53c6823-7bb8-44bb-90dc-3f86090d48a6");
+
+        public bool IsAvailable => true;
+
+        public string? UnavailableReason => null;
+
+        public RegisteredProvider? TryResolveProvider(string providerName) =>
+            string.Equals(providerName, "Microsoft-Windows-Winsock-AFD", StringComparison.Ordinal) ? new(providerName, Provider) : null;
+
+        public int CountPublishedProviders() => 1;
+
+        public ManifestReadResult TryReadManifest(Guid providerGuid) => providerGuid == Provider
+            ? ManifestReadResult.Success(manifest)
+            : ManifestReadResult.Failure("not registered in this test");
+
+        public ProviderSchema? TryReadClassic(Guid classGuid, string className, int version, IReadOnlyList<int> opcodes) => null;
+    }
+
     private static AdmittedEventPlan Plan(SourceAdmissionPlan plan, int eventId) =>
         plan.Events.Single(descriptor => descriptor.EventId == eventId);
 
