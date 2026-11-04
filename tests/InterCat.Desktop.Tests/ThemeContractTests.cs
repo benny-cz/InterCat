@@ -195,6 +195,10 @@ public sealed class ThemeContractTests
         Assert.Equal(MechanismFamily.Lifecycle, ThemePalette.FamilyOf(Mechanism.ProcessLifecycle));
         Assert.Equal(MechanismFamily.Lifecycle, ThemePalette.FamilyOf(Mechanism.ThreadLifecycle));
         Assert.All(ThemePalette.Modes, mode => Assert.Equal("Lifecycle", ThemePalette.TokensFor(mode, MechanismFamily.Lifecycle).Label));
+
+        // COM's calls and its activations wear RPC's remote-call family, a COM call before any source collects it (ADR-078).
+        Assert.Equal([MechanismFamily.RemoteCall],
+            new[] { Mechanism.Rpc, Mechanism.ComActivation, Mechanism.ComCall }.Select(ThemePalette.FamilyOf).Distinct());
     }
 
     [Fact(DisplayName = "R20: theme/ holds exactly what the report tool writes from the palette today: its tokens, every measurement and the summary")]

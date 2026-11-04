@@ -52,6 +52,9 @@ public sealed class ObservationNormalizerV1
 
         // A family of its own from its first row: no capture admitted AF_UNIX before Winsock AFD's gate (ADR-074).
         Mechanism.UnixDomainSocket => "unix-socket-operation",
+
+        // A family of its own before its first row: no capture has admitted a COM call (ADR-078), so none is re-keyed.
+        Mechanism.ComCall => "com-call",
         _ => "source-observation",
     };
 

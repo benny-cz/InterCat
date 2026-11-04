@@ -26,6 +26,7 @@ public static class MechanismText
         Mechanism.Dde => "DDE",
         Mechanism.ApplicationSdk => "Application SDK",
         Mechanism.Http => "HTTP",
+        Mechanism.ComCall => "COM call",
         Mechanism.UnknownMechanism => "Unknown mechanism",
         _ => mechanism.ToString(),
     };

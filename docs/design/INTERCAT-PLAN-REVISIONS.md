@@ -834,6 +834,7 @@ Revision 907 begins M6's COM/DCOM/WinRT package with its metadata inspection (§
 Revision 908 measures COM-Perf against FX-COM-001 (ADR-077): every out-of-process call of four runs was recorded at both ends with its interface, method and other end's process, each client call paired with the server's by causality and rank; its activations name nothing, and no source is inventoried until a mechanism for COM calls exists.
 Revision 909 measures what scopes COM-Perf's records (ADR-077's addendum): a session's process filter holds for it, and FX-COM-002's calls across an apartment within one process are recorded as out-of-process ones are, naming their own process at both ends, so a call is between processes only where the process it names is another.
 Revision 910 measures what collecting COM-Perf costs (ADR-077's second addendum): Low processor time, a median 0.3 to 0.6 points, but a COM-heavy workload ran 17 to 18% slower, past §12's 5% throughput target, so only an opt-in profile stating it may admit the source.
+Revision 911 gives a COM call a mechanism of its own (ADR-078): EN-Mechanism gains `ComCall`, code 22, a call through COM's channel from one apartment to another, never an activation, and a test now holds §23's table to the domain's enumeration (R5).
 
 ## Revisions, a paragraph each, in order
 
@@ -3590,3 +3591,12 @@ threads that make and serve it, about 27 microseconds a call. §12 targets under
 throughput regression; COM-Perf meets the first and misses the second on a COM-heavy workload, in proportion to a
 process's COM call rate. Its class is Low, stated beside its regression, and only an opt-in profile saying so may
 admit it; Explore never does. A test holds both series to their class and regression; two alterations are caught.
+
+Revision 911 gives a COM call a mechanism of its own. EN-Mechanism named COM only as `ComActivation`, and a call is not
+an activation: COM-Perf's activations carry no field, and M6's exit says one cannot become a call count. It gains
+`ComCall`, code 22, "COM call": a call through COM's channel from one apartment to another, as its client and server
+ends record it, with its interface and method. It is between processes only where its record names another, its fact
+family is `com-call` and its hue the remote-call family's; no capture has admitted one, so no row is re-keyed. Its
+records' binding by the process that raised them, measured but needing a binding rule identity of its own, and its
+layering over the RPC call that carries it (P4) come with its admission. A new test holds §23's EN-Mechanism table to
+the domain's enumeration by code and name (R5); it failed until the table had the row.

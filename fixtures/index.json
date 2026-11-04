@@ -3028,6 +3028,7 @@
         "R5: initial normative wire codes stay stable",
         "R5: the capture card counts a recording's published chunks, a capture's first publication in the singular",
         "R5: the manifest parser resolves descriptors, keyword masks and template fields",
+        "R5: the plan's EN-Mechanism table names every mechanism the domain defines, each by its code, and none it does not",
         "R5: the profiles a capture can ask for, and how one compiles, read in words, and the flight recorder says where it is",
         "R5: the timeline's spoken help and its gestures' tooltip say column and cell, as its cards and the inspector do, never bucket",
         "R5: what a workspace says names a session, capture, host or note by its first eight hex digits, as the investigation's window and icat do, never by all 32",

@@ -267,7 +267,7 @@ public static class ThemePalette
         Mechanism.Tcp => MechanismFamily.Tcp,
         Mechanism.Udp => MechanismFamily.Udp,
         Mechanism.NamedPipe or Mechanism.AnonymousPipe => MechanismFamily.Pipe,
-        Mechanism.Rpc or Mechanism.ComActivation => MechanismFamily.RemoteCall,
+        Mechanism.Rpc or Mechanism.ComActivation or Mechanism.ComCall => MechanismFamily.RemoteCall,
         Mechanism.Alpc => MechanismFamily.Alpc,
         Mechanism.SharedSection => MechanismFamily.SharedSection,
         Mechanism.UnixDomainSocket or Mechanism.Quic or Mechanism.RemoteFileOrSmb => MechanismFamily.OtherSocket,

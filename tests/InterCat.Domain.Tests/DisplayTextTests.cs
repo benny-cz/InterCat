@@ -20,6 +20,7 @@ public sealed class DisplayTextTests
         Assert.Equal(("Named pipe", "named pipe"), (MechanismText.Name(Mechanism.NamedPipe), MechanismText.InSentence(Mechanism.NamedPipe)));
         Assert.Equal(("Unix socket", "Unix socket"),
             (MechanismText.Name(Mechanism.UnixDomainSocket), MechanismText.InSentence(Mechanism.UnixDomainSocket)));
+        Assert.Equal(("COM call", "COM call"), (MechanismText.Name(Mechanism.ComCall), MechanismText.InSentence(Mechanism.ComCall)));
         Assert.Equal(("Application SDK", "application SDK"),
             (MechanismText.Name(Mechanism.ApplicationSdk), MechanismText.InSentence(Mechanism.ApplicationSdk)));
 

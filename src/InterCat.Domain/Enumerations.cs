@@ -28,6 +28,13 @@ public enum Mechanism
     /// carried by a TCP connection whose transfers stay the transport's records.
     /// </summary>
     Http = 21,
+
+    /// <summary>
+    /// A call made through COM's channel from one apartment to another, as its client and server ends record it, with its
+    /// interface and method (ADR-078). It is between processes only where its record names another process; an activation
+    /// is <see cref="ComActivation"/>'s, and never one of these.
+    /// </summary>
+    ComCall = 22,
     UnknownMechanism = 99,
 }
 
