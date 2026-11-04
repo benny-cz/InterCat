@@ -1,0 +1,118 @@
+{
+  "workload": "com-loopback --truth {truth} --calls 16384 --delay 0",
+  "pairs": [
+    {
+      "pair": 1,
+      "captureFirst": false,
+      "withoutBusyPercent": 16.719,
+      "withBusyPercent": 12.855,
+      "captureImpactPercentagePoints": 0,
+      "withoutSeconds": 2.692,
+      "withSeconds": 3.094,
+      "throughputRegressionPercent": 13.01,
+      "comPerfEventsPerSecond": 63489
+    },
+    {
+      "pair": 2,
+      "captureFirst": true,
+      "withoutBusyPercent": 12.421,
+      "withBusyPercent": 14.116,
+      "captureImpactPercentagePoints": 1.695,
+      "withoutSeconds": 2.587,
+      "withSeconds": 3.307,
+      "throughputRegressionPercent": 21.77,
+      "comPerfEventsPerSecond": 57958
+    },
+    {
+      "pair": 3,
+      "captureFirst": false,
+      "withoutBusyPercent": 12.431,
+      "withBusyPercent": 18.229,
+      "captureImpactPercentagePoints": 5.798,
+      "withoutSeconds": 2.592,
+      "withSeconds": 3.257,
+      "throughputRegressionPercent": 20.41,
+      "comPerfEventsPerSecond": 60435
+    },
+    {
+      "pair": 4,
+      "captureFirst": true,
+      "withoutBusyPercent": 12.647,
+      "withBusyPercent": 11.265,
+      "captureImpactPercentagePoints": 0,
+      "withoutSeconds": 2.546,
+      "withSeconds": 2.957,
+      "throughputRegressionPercent": 13.87,
+      "comPerfEventsPerSecond": 66608
+    },
+    {
+      "pair": 5,
+      "captureFirst": false,
+      "withoutBusyPercent": 10.797,
+      "withBusyPercent": 10.477,
+      "captureImpactPercentagePoints": 0,
+      "withoutSeconds": 2.487,
+      "withSeconds": 3.028,
+      "throughputRegressionPercent": 17.89,
+      "comPerfEventsPerSecond": 65272
+    },
+    {
+      "pair": 6,
+      "captureFirst": true,
+      "withoutBusyPercent": 11.105,
+      "withBusyPercent": 12.536,
+      "captureImpactPercentagePoints": 1.43,
+      "withoutSeconds": 2.517,
+      "withSeconds": 2.967,
+      "throughputRegressionPercent": 15.15,
+      "comPerfEventsPerSecond": 66365
+    },
+    {
+      "pair": 7,
+      "captureFirst": false,
+      "withoutBusyPercent": 13.57,
+      "withBusyPercent": 13.405,
+      "captureImpactPercentagePoints": 0,
+      "withoutSeconds": 2.626,
+      "withSeconds": 3.197,
+      "throughputRegressionPercent": 17.86,
+      "comPerfEventsPerSecond": 61868
+    },
+    {
+      "pair": 8,
+      "captureFirst": true,
+      "withoutBusyPercent": 11.047,
+      "withBusyPercent": 11.652,
+      "captureImpactPercentagePoints": 0.605,
+      "withoutSeconds": 2.501,
+      "withSeconds": 2.954,
+      "throughputRegressionPercent": 15.32,
+      "comPerfEventsPerSecond": 66892
+    },
+    {
+      "pair": 9,
+      "captureFirst": false,
+      "withoutBusyPercent": 12.078,
+      "withBusyPercent": 12.861,
+      "captureImpactPercentagePoints": 0.783,
+      "withoutSeconds": 2.536,
+      "withSeconds": 2.927,
+      "throughputRegressionPercent": 13.35,
+      "comPerfEventsPerSecond": 57852
+    }
+  ],
+  "medianObservedCpuDifferencePercentagePoints": 0.605,
+  "medianCaptureImpactPercentagePoints": 0.605,
+  "medianObservedWorkloadSlowdownPercent": 18.1,
+  "medianThroughputRegressionPercent": 15.32,
+  "overhead": "Low",
+  "cpuTargetMet": true,
+  "throughputTargetMet": false,
+  "medianComPerfEventsPerSecond": 63489,
+  "eventsLost": 0,
+  "notes": [
+    "Machine CPU is the GetSystemTimes busy share over the workload alone; the session\u0027s start and stop are outside it.",
+    "The session collects COM-Perf machine-wide at verbose with every keyword, and its consumer only counts events: this is the cost of collecting COM-Perf, not of admitting or storing it, a lower bound on a product capture; a capture scoped by a process filter, which holds for it, collects no more.",
+    "A pair\u0027s observed difference is kept signed; its impact, as the product classifies it, is the difference or none, and its regression the slowdown or none."
+  ]
+}

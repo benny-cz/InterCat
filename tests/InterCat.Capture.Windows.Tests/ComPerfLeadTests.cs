@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using InterCat.Domain;
 using Xunit;
 
 namespace InterCat.Capture.Windows.Tests;
@@ -153,6 +154,28 @@ public sealed class ComPerfLeadTests
             JsonElement invokes = run.GetProperty("invokes");
             Assert.Equal((calls, calls), (invokes.GetProperty("atTheClientNamingItsOwnProcess").GetInt32(), invokes.GetProperty("atTheServerNamingItsOwnProcess").GetInt32()));
             Assert.Equal(run.GetProperty("clientCalls").GetProperty("starts").GetInt32(), run.GetProperty("clientCalls").GetProperty("startsNamingTheirOwnProcess").GetInt32());
+        });
+    }
+
+    [Fact(DisplayName = "§12: COM-Perf's collection is measured in two series of pairs - Low in processor time, and a COM-heavy workload slower past §12's throughput target, so only an opt-in profile stating it may admit the source")]
+    public void TheCollectionCostIsMeasured()
+    {
+        string[] series = [.. Directory.EnumerateDirectories(Path.Combine(RepositoryRoot(), "bench", "results"), "com-perf-impact-*")
+            .Select(directory => Path.Combine(directory, "impact.json")).Where(File.Exists).Order(StringComparer.Ordinal)];
+        Assert.Equal(2, series.Length);
+        Assert.All(series, file =>
+        {
+            using JsonDocument impact = JsonDocument.Parse(File.ReadAllText(file));
+            JsonElement root = impact.RootElement;
+
+            // Nine pairs of FX-COM-001's exchange unpaced, nothing lost: processor time is Low, and the workload is slower
+            // than §12's 5% target in its median pair.
+            Assert.Equal((9, 0L), (root.GetProperty("pairs").GetArrayLength(), root.GetProperty("eventsLost").GetInt64()));
+            Assert.Equal(nameof(OverheadClass.Low), root.GetProperty("overhead").GetString());
+            Assert.Equal(OverheadClass.Low, OverheadClassCalculator.Classify(root.GetProperty("medianCaptureImpactPercentagePoints").GetDouble()));
+            Assert.True(root.GetProperty("medianThroughputRegressionPercent").GetDouble() > 5, file);
+            Assert.False(root.GetProperty("throughputTargetMet").GetBoolean());
+            Assert.Contains("com-loopback", root.GetProperty("workload").GetString(), StringComparison.Ordinal);
         });
     }
 

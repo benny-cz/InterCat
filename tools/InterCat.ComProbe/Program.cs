@@ -49,6 +49,8 @@ internal static class Program
             Console.Error.WriteLine("  calls, and with --ledger each of its records' metadata, never a pointer.");
             Console.Error.WriteLine("  --filter scopes the session to FX-COM-001's two processes beside a decoy pair outside it;");
             Console.Error.WriteLine("  --in-process runs FX-COM-002, one process's calls across an apartment, never a process.");
+            Console.Error.WriteLine("  --impact [--pairs n] [--calls n]: machine CPU and workload time with and without a session");
+            Console.Error.WriteLine("  collecting COM-Perf machine-wide, in pairs, over FX-COM-001's exchange unpaced.");
             return 2;
         }
 
@@ -60,6 +62,22 @@ internal static class Program
         }
 
         Directory.CreateDirectory(output);
+
+        // What collecting COM-Perf costs, in pairs with and without a session collecting it machine-wide, over FX-COM-001's
+        // exchange unpaced.
+        if (measure && args.Contains("--impact", StringComparer.Ordinal))
+        {
+            string workload = Measure.Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+            int pairs = int.Parse(Measure.Option(args, "--pairs") ?? "9", CultureInfo.InvariantCulture);
+            string calls = Measure.Option(args, "--calls") ?? "16384";
+            Dictionary<string, object?> impact = await Impact.MeasureAsync(workload,
+                ["com-loopback", "--truth", "{truth}", "--calls", calls, "--delay", "0"], pairs);
+            File.WriteAllText(Path.Combine(output, "impact.json"), JsonSerializer.Serialize(impact, Json));
+            Console.WriteLine(JsonSerializer.Serialize(impact, Json));
+            return 0;
+        }
+
         return !measure ? Inspect(output)
             : args.Contains("--filter", StringComparer.Ordinal) || args.Contains("--in-process", StringComparer.Ordinal)
                 ? await Scope.RunAsync(output, args)

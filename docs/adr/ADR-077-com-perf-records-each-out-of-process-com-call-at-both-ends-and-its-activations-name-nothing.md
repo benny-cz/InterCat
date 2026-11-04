@@ -5,7 +5,7 @@
 - Decision owners: InterCat maintainers
 - Relates to: plan §4.2, §9.4, M6, P7, P8, R22, ADR-034, ADR-072, FX-COM-001, FX-COM-002, `tools/InterCat.ComProbe`,
   `bench/results/com-provider-inspection-20261104T141555Z`, `bench/results/com-perf-feasibility-*`,
-  `bench/results/com-perf-scope-*`
+  `bench/results/com-perf-scope-*`, `bench/results/com-perf-impact-*`
 
 ## Context
 
@@ -93,3 +93,23 @@ naming its own process is that process's own work across an apartment, never IPC
 "in-process COM is not IPC" asks. What remains before a profile admits COM-Perf is a mechanism for COM calls and its
 collection's cost. Tests hold FX-COM-001's filter result and FX-COM-002's ledger to their truth; four alterations of
 them are caught.
+
+## Addendum: what collecting COM-Perf costs (revision 910)
+
+`tools/InterCat.ComProbe --measure --impact` ran FX-COM-001's exchange unpaced - 16,384 calls, about 2.5 seconds - in
+alternating pairs, once with no session and once while a session of its own collected COM-Perf machine-wide at verbose
+with every keyword, a consumer only counting the records, as AFD's cost was measured (ADR-072's addendum). Two series
+of nine pairs, about 65,000 records a second, nothing lost:
+
+| Series | Median CPU impact | Workload slower by | Throughput regression |
+|---|---|---|---|
+| `bench/results/com-perf-impact-20261104T160252Z` | 0.6 pp: Low | 18.1% | 15.3% |
+| `bench/results/com-perf-impact-20261104T160518Z` | 0.3 pp: Low | 17.3% | 14.8% |
+
+Seventeen of the eighteen pairs ran slower with the session, about 27 microseconds a call: a call raises four records,
+each written in the thread that makes or serves it, so the time is the call's own. §12 targets under 5 percentage
+points of machine processor time and under 5% workload-throughput regression. COM-Perf meets the first and misses the
+second on a COM-heavy workload, by an amount in proportion to a process's COM call rate. Its class is therefore Low,
+stated beside the regression it measured. A profile that admits it is opt-in and says what it costs, and Explore never
+admits it. What remains before a profile admits COM-Perf is a mechanism for COM calls. A test holds both series to
+their class and regression; two alterations of them are caught.

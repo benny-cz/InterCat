@@ -833,6 +833,7 @@ Revision 906 has `icat processes` name the `icat evidence` command that lists ea
 Revision 907 begins M6's COM/DCOM/WinRT package with its metadata inspection (§4.2): `Microsoft-Windows-COM-Perf` declares client and server call events, each start with the call's interface, method, causality GUID and other end's process, and activation events carrying no field; nothing is enabled or implemented.
 Revision 908 measures COM-Perf against FX-COM-001 (ADR-077): every out-of-process call of four runs was recorded at both ends with its interface, method and other end's process, each client call paired with the server's by causality and rank; its activations name nothing, and no source is inventoried until a mechanism for COM calls exists.
 Revision 909 measures what scopes COM-Perf's records (ADR-077's addendum): a session's process filter holds for it, and FX-COM-002's calls across an apartment within one process are recorded as out-of-process ones are, naming their own process at both ends, so a call is between processes only where the process it names is another.
+Revision 910 measures what collecting COM-Perf costs (ADR-077's second addendum): Low processor time, a median 0.3 to 0.6 points, but a COM-heavy workload ran 17 to 18% slower, past §12's 5% throughput target, so only an opt-in profile stating it may admit the source.
 
 ## Revisions, a paragraph each, in order
 
@@ -3579,3 +3580,13 @@ recorded as an out-of-process one is, both ends raised in the process and naming
 between processes only where the process its record names is another; one naming its own process is the process's
 own work across an apartment, never IPC. Each mode ran twice, 64 calls paced and 256 unpaced, nothing lost; tests hold
 both results to their truth, and four alterations of them are caught.
+
+Revision 910 measures what collecting COM-Perf costs, as AFD's was. `tools/InterCat.ComProbe --measure --impact` ran
+FX-COM-001's exchange unpaced, 16,384 calls, in alternating pairs with and without a session collecting COM-Perf
+machine-wide at verbose, a consumer only counting its records: two series of nine pairs, about 65,000 records a second,
+nothing lost. The median CPU impact was 0.6 and 0.3 points, Low, but the workload ran 18.1% and 17.3% slower, its
+throughput 15.3% and 14.8% lower, seventeen of eighteen pairs slower: a call's four records are written in the
+threads that make and serve it, about 27 microseconds a call. §12 targets under 5 points of processor time and under 5%
+throughput regression; COM-Perf meets the first and misses the second on a COM-heavy workload, in proportion to a
+process's COM call rate. Its class is Low, stated beside its regression, and only an opt-in profile saying so may
+admit it; Explore never does. A test holds both series to their class and regression; two alterations are caught.
