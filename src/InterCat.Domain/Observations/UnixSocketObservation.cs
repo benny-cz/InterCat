@@ -3,8 +3,8 @@ namespace InterCat.Domain;
 /// <summary>
 /// One Unix-domain socket row as a coverage evaluation reads it (ADR-074): a call Winsock AFD's gate admitted, owned by
 /// the process its socket's create named, its socket numbered in the capture rather than named by a kernel address
-/// (R22). A transfer's bytes are its call's completion, in the <c>CompletedIo</c> domain; a row of no transfer carries
-/// none, which is not a zero (R3).
+/// (R22). A transfer's bytes are what the socket's transport carried for its call, in the <c>TransportObserved</c> domain
+/// (ADR-076); a row of no transfer carries none, which is not a zero (R3).
 /// </summary>
 public sealed record UnixSocketObservation
 {
@@ -22,7 +22,7 @@ public sealed record UnixSocketObservation
     /// <summary>The socket's number in the capture: one incarnation, from its create to its close (ADR-073).</summary>
     public required long Socket { get; init; }
 
-    /// <summary>The bytes a send or receive completed; null for a row of no transfer.</summary>
+    /// <summary>The bytes a send or receive moved through the socket's transport; null for a row of no transfer.</summary>
     public long? Bytes { get; init; }
 
     public long? Status { get; init; }

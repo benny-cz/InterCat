@@ -125,6 +125,12 @@ internal sealed record ProcessActivityDocument
     /// </summary>
     public long? RpcRecords { get; init; }
 
+    /// <summary>
+    /// Its own Unix-domain socket records, when one PID was asked about; null otherwise, as <see cref="Peers"/> is. Their
+    /// bytes are in its sent and received, but no relation holds them: AF_UNIX names no socket's other end (ADR-075).
+    /// </summary>
+    public long? UnixSocketRecords { get; init; }
+
     /// <summary>How many instances held its PID in the capture; its <c>lifecycleEpoch</c> says which of them it was.</summary>
     public required int PidHolders { get; init; }
 
@@ -455,6 +461,8 @@ internal static class ProcessesCommand
                                 policy, cancellationToken),
                             RpcRecords = nodes[new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))].Activity
                                 .Where(count => count.Mechanism == Mechanism.Rpc).Sum(count => count.Records),
+                            UnixSocketRecords = nodes[new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))].Activity
+                                .Where(count => count.Mechanism == Mechanism.UnixDomainSocket).Sum(count => count.Records),
                         }),
                 ],
             };
@@ -953,6 +961,13 @@ internal static class ProcessesCommand
         {
             ConsoleUi.Field("RPC", CountText.Of(calls, "call record") + string.Create(CultureInfo.InvariantCulture,
                 $"; icat operations <directory> --pid {process.ProcessId} lists its calls, each with the process at its other end"));
+        }
+
+        // Its Unix-domain sockets, whose bytes its sent and received count, with no other end: AF_UNIX names none.
+        if (item.UnixSocketRecords is > 0 and var unix)
+        {
+            ConsoleUi.Field("Unix sockets", CountText.Of(unix, "record") + " of its AF_UNIX sockets, their bytes in its sent and received; "
+                + "AF_UNIX names no socket's other end, so theirs is unresolved");
         }
 
         if (item.Peers is not { } peers)

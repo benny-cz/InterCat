@@ -120,7 +120,7 @@ public sealed class AfdGatedAdmissionTests
             Assert.Contains(descriptor.Slots, slot => slot is { FieldName: "Process", Role: FieldRole.ProcessAttribution });
             Assert.Equal(
                 descriptor.EventId is 1003 or 1004,
-                descriptor.Slots.Any(slot => slot is { FieldName: "BufferLength", Role: FieldRole.ByteCount, ByteDomain: ByteDomain.CompletedIo }));
+                descriptor.Slots.Any(slot => slot is { FieldName: "BufferLength", Role: FieldRole.ByteCount, ByteDomain: ByteDomain.TransportObserved }));
         }
     }
 
@@ -214,7 +214,7 @@ public sealed class AfdGatedAdmissionTests
             (row.Mechanism, row.Layer, row.Kind, row.Direction));
         Assert.Equal((30, 40, QualityLevel.Proven), (row.OwnerProcessId, row.HeaderProcessId, row.AttributionQuality));
         Assert.Equal(
-            (96L, ByteDomain.CompletedIo, AccountingSide.ReceiveSide, FieldAvailability.Present),
+            (96L, ByteDomain.TransportObserved, AccountingSide.ReceiveSide, FieldAvailability.Present),
             (row.ByteValue, row.ByteDomain, row.AccountingSide, row.ByteAvailability));
         Assert.Equal((0L, FieldAvailability.Present), (row.StatusCode, row.StatusAvailability));
         Assert.Null(row.Validate());

@@ -261,8 +261,10 @@ public static class WindowsSourceCatalog
     private static readonly IReadOnlyList<AdmittedFieldIntent> AfdTransferFields =
     [
         .. AfdCallFields,
-        new("BufferLength", FieldRole.ByteCount, MeasurementUnit.Bytes, Domain.ByteDomain.CompletedIo,
-            Notes: "At the exit the gate admits, the bytes the call moved: a send's, and a receive's taken - its entry's is asked for - equal to the truth's on FX-UNIX-001."),
+        // The bytes a socket's transport carried, as a TCP or UDP record's are: a stream socket's call completes what its
+        // AF_UNIX transport took or gave, and Kernel-Network records none of it, so nothing is counted twice (ADR-076).
+        new("BufferLength", FieldRole.ByteCount, MeasurementUnit.Bytes, Domain.ByteDomain.TransportObserved,
+            Notes: "At the exit the gate admits, the bytes the socket's transport carried for the call: a send's, and a receive's taken - its entry's is asked for - equal to the truth's on FX-UNIX-001."),
     ];
 
     private static readonly IReadOnlyList<AdmittedFieldIntent> ProcessStartFields =

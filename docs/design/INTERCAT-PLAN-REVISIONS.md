@@ -824,6 +824,7 @@ Revision 897 adds the AF_UNIX gate (ADR-073): read as they arrive, AFD's records
 Revision 898 admits Winsock AFD through its gate (ADR-074): a source may have a gate that reads each record as it arrives, AFD's admitted calls carry the gate's socket number and owner in place of the kernel's addresses, and a ledger counting what a gate omitted - not counted, of no followed socket, beyond its bound - is `coverage-v3`.
 Revision 899 adds an opt-in Unix sockets profile (ADR-074's addendum): lifecycle and Winsock AFD, enabled for its socket-call keyword and each counted call by its event id, whose admitted calls derive Unix-domain socket rows of their socket's owner.
 Revision 900 measures AF_UNIX through the product (ADR-075): every truth send and receive of FX-UNIX-001 recorded by `icat record --profile unix-sockets` is a row of its owner with its bytes, 1,920 of 1,920, and with no peer named, a false-peer ceiling with nothing attributed is not measured, so the mechanism is ExperimentalEvidence.
+Revision 901 reads a Unix-domain socket's transfer bytes as the transport's (ADR-076): what its call moved through AFD is what the AF_UNIX transport carried, counted by no other source, so a process's traffic views count it beside TCP's and UDP's, with its other end unresolved.
 
 ## Revisions, a paragraph each, in order
 
@@ -3468,3 +3469,14 @@ counted a false-peer ceiling with nothing attributed as met, which would have ma
 no link between processes drawable. Under R3 that ceiling is now not measured, so the mechanism is ExperimentalEvidence
 on its build; no published tier changes. `icat processes` now says a process made no TCP or UDP record, where it said
 no transport record. Eleven mutations are caught.
+
+Revision 901 reads a Unix-domain socket's transfer bytes as the transport's (ADR-076). Admitted as completed I/O, they
+were missing from every traffic view, all of which ask for the transport's bytes, as I6 requires one domain, so a
+process that sent 268 KB over AF_UNIX was said to have sent nothing. A send's or receive's length is what the AF_UNIX
+transport took or gave for the call: AFD is the socket transport's own layer, a stream socket adds no framing, and
+FX-UNIX-001 sums the lengths to the truth's. Kernel-Network records no AF_UNIX traffic and the gate admits AF_UNIX
+alone, so the lengths are now `TransportObserved`, as TCP's and UDP's are, and nothing is counted twice. They join a
+process's sent and received, rankings, activity and timeline, never a relation: their other end is unresolved under
+`NoRelationRule`. `icat processes --pid` states a process's Unix-domain socket records and that their other end is
+unresolved. A fresh recording was checked through the process, metric, port, host and timeline commands; four mutations
+are caught.
