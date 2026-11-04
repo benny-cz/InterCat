@@ -22,30 +22,8 @@ public sealed class InvestigationDropTests : IDisposable
 {
     private readonly string folder = Directory.CreateTempSubdirectory("intercat-investigation-drop-").FullName;
 
-    /// <summary>
-    /// Removes the test's folder once its windows have let its sessions go: a window closed with a reading under way still
-    /// holds that session's lease until the reading ends, which a clean-worktree run met as the test ended. A folder still
-    /// held after five seconds is left to the temporary folder, as a test session's is.
-    /// </summary>
-    public void Dispose()
-    {
-        for (int attempt = 0; ; attempt++)
-        {
-            try
-            {
-                Directory.Delete(folder, recursive: true);
-                return;
-            }
-            catch (IOException) when (attempt < 50)
-            {
-                Thread.Sleep(100);
-            }
-            catch (IOException)
-            {
-                return;
-            }
-        }
-    }
+    /// <summary>Removes the test's folder once its windows have let its sessions go.</summary>
+    public void Dispose() => HeldFolders.Remove(folder);
 
     [AvaloniaFact(DisplayName = "§8.4: sessions' folders dropped on an investigation's window join it as Add sessions adds them; an investigation file opens in its own window, and anything else says it was not added")]
     public async Task FoldersDroppedJoinTheInvestigation()

@@ -104,7 +104,7 @@ public sealed class OriginalPackageWindowTests
         finally
         {
             window.Close();
-            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+            HeldFolders.Remove(destination);
         }
     }
 

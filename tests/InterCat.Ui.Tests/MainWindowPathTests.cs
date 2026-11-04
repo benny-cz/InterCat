@@ -149,7 +149,7 @@ public sealed class MainWindowPathTests
         finally
         {
             window.Close();
-            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+            HeldFolders.Remove(destination);
         }
     }
 
