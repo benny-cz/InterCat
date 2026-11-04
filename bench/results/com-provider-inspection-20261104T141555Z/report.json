@@ -1,0 +1,7148 @@
+{
+  "schema": "intercat.com-provider-inspection.v1",
+  "inspectedUtc": "2026-11-04T14:15:55.6308471+00:00",
+  "build": "10.0.26220.0-x64",
+  "note": "Read-only: each provider\u0027s registered schema as TDH gives it, read as the product\u0027s inventory reads one. No provider was enabled and no session started, so nothing here says what a provider emits.",
+  "providers": [
+    {
+      "name": "Microsoft-Windows-COM",
+      "guid": "d4263c98-310c-4d97-ba39-b55354f08584",
+      "registered": true,
+      "schemaFingerprint": "d4a1729b2b399ea9baeebc034cea629b69d02b3b82b0afd66752dccef617deb8",
+      "keywords": [
+        {
+          "name": "COM_CLASSNOTREG_ERROR",
+          "mask": "0x10"
+        }
+      ],
+      "events": [
+        {
+          "id": 1,
+          "version": 0,
+          "symbol": "task_0",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "COM_CLASSNOTREG_ERROR"
+          ],
+          "keywordMask": "0x10",
+          "fields": [
+            {
+              "name": "CLSID",
+              "inType": "win:GUID",
+              "outType": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-COMRuntime",
+      "guid": "bf406804-6afa-46e7-8a48-6c357e1d6d61",
+      "registered": true,
+      "schemaFingerprint": "cb28d29198e55df424667df074ba0294a7fe48f2a3857a5c34c460a41b07f01e",
+      "keywords": [
+        {
+          "name": "CliModalLoop",
+          "mask": "0x1"
+        },
+        {
+          "name": "ComCallWaitAnalysis",
+          "mask": "0x2"
+        },
+        {
+          "name": "DropInputMessage",
+          "mask": "0x4"
+        },
+        {
+          "name": "PrematureStubRundown",
+          "mask": "0x8"
+        }
+      ],
+      "events": [
+        {
+          "id": 1,
+          "version": 0,
+          "symbol": "CliModalLoopDelay",
+          "task": "CliModalLoopDelay",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "CliModalLoop"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "Flags",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "BlockTimeMs",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TotalTimeMs",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "version": 0,
+          "symbol": "ComCallDelay",
+          "task": "ComCallDelay",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "ComCallWaitAnalysis"
+          ],
+          "keywordMask": "0x2",
+          "fields": [
+            {
+              "name": "Flags",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "CallTimeMs",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "CallResult",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetThreadId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetMethod",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetInterface",
+              "inType": "win:GUID",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "version": 0,
+          "symbol": "DropKeyboardMessage",
+          "task": "DropKeyboardMessage",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "DropInputMessage"
+          ],
+          "keywordMask": "0x4",
+          "fields": [
+            {
+              "name": "ApartmentType",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "version": 0,
+          "symbol": "DropMouseMessage",
+          "task": "DropMouseMessage",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "DropInputMessage"
+          ],
+          "keywordMask": "0x4",
+          "fields": [
+            {
+              "name": "ApartmentType",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "version": 0,
+          "symbol": "DropQueueSyncMessage",
+          "task": "DropQueueSyncMessage",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "DropInputMessage"
+          ],
+          "keywordMask": "0x4",
+          "fields": [
+            {
+              "name": "ApartmentType",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "version": 0,
+          "symbol": "DropPointerMessage",
+          "task": "DropPointerMessage",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "DropInputMessage"
+          ],
+          "keywordMask": "0x4",
+          "fields": [
+            {
+              "name": "ApartmentType",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "Message",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "version": 0,
+          "symbol": "PrematureStubRundown",
+          "task": "PrematureStubRundown",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "PrematureStubRundown"
+          ],
+          "keywordMask": "0x8",
+          "fields": [
+            {
+              "name": "IID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "Method",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "IPID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "CallType",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18205,
+          "version": 0,
+          "symbol": "task_0",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18207,
+          "version": 0,
+          "symbol": "task_018207",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param6",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param7",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param8",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param9",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param10",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18208,
+          "version": 0,
+          "symbol": "task_018208",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param6",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param7",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param8",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param9",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param10",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param11",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18209,
+          "version": 0,
+          "symbol": "task_018209",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param6",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param7",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param8",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param9",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param10",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18210,
+          "version": 0,
+          "symbol": "task_018210",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param6",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param7",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param8",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param9",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18211,
+          "version": 0,
+          "symbol": "task_018211",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param6",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param7",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param8",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param9",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18212,
+          "version": 0,
+          "symbol": "task_018212",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18213,
+          "version": 0,
+          "symbol": "task_018213",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18214,
+          "version": 0,
+          "symbol": "task_018214",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18215,
+          "version": 0,
+          "symbol": "task_018215",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18216,
+          "version": 0,
+          "symbol": "task_018216",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18219,
+          "version": 0,
+          "symbol": "task_018219",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param6",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param7",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param8",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18220,
+          "version": 0,
+          "symbol": "task_0PCODE_192pcode_192",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18221,
+          "version": 0,
+          "symbol": "task_018221",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param6",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 32769,
+          "version": 0,
+          "symbol": "task_032769",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-COM-Perf",
+      "guid": "b8d6861b-d20f-4eec-bbae-87e0dd80602b",
+      "registered": true,
+      "schemaFingerprint": "aea275ddb15664fd863bb34ae7140ffdf410e05415f830b2ba170dc6a748f670",
+      "keywords": [],
+      "events": [
+        {
+          "id": 1,
+          "version": 0,
+          "symbol": "Windows_Runtime_ActivateInstance_InProcStart",
+          "task": "Windows_Runtime_ActivateInstance_InProc",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 2,
+          "version": 0,
+          "symbol": "Windows_Runtime_ActivateInstance_InProcStop",
+          "task": "Windows_Runtime_ActivateInstance_InProc",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 3,
+          "version": 0,
+          "symbol": "Windows_Runtime_ActivateInstance_OutOfProcStart",
+          "task": "Windows_Runtime_ActivateInstance_OutOfProc",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 4,
+          "version": 0,
+          "symbol": "Windows_Runtime_ActivateInstance_OutOfProcStop",
+          "task": "Windows_Runtime_ActivateInstance_OutOfProc",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 5,
+          "version": 0,
+          "symbol": "COM_CreateInstanceStart",
+          "task": "COM_CreateInstance",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 6,
+          "version": 0,
+          "symbol": "COM_CreateInstanceStop",
+          "task": "COM_CreateInstance",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 7,
+          "version": 0,
+          "symbol": "Windows_Runtime_GetActivationFactory_InProcStart",
+          "task": "Windows_Runtime_GetActivationFactory_InProc",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 8,
+          "version": 0,
+          "symbol": "Windows_Runtime_GetActivationFactory_InProcStop",
+          "task": "Windows_Runtime_GetActivationFactory_InProc",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 9,
+          "version": 0,
+          "symbol": "Windows_Runtime_GetActivationFactory_OutOfProcStart",
+          "task": "Windows_Runtime_GetActivationFactory_OutOfProc",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 10,
+          "version": 0,
+          "symbol": "Windows_Runtime_GetActivationFactory_OutOfProcStop",
+          "task": "Windows_Runtime_GetActivationFactory_OutOfProc",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 11,
+          "version": 0,
+          "symbol": "COM_GetClassObjectStart",
+          "task": "COM_GetClassObject",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 12,
+          "version": 0,
+          "symbol": "COM_GetClassObjectStop",
+          "task": "COM_GetClassObject",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 13,
+          "version": 0,
+          "symbol": "ExtensionCatalog_RoGetExtensionRegistrationStart",
+          "task": "ExtensionCatalog_RoGetExtensionRegistration",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ContractId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "PackageId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ActivatableClassId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "version": 0,
+          "symbol": "ExtensionCatalog_RoGetExtensionRegistrationStop",
+          "task": "ExtensionCatalog_RoGetExtensionRegistration",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "ContractId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "PackageId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ActivatableClassId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "InboxAppsRegistrationScope",
+              "inType": "win:Boolean",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "version": 0,
+          "symbol": "ExtensionCatalog_RoGetExtensionRegistrationByExtensionIdStart",
+          "task": "ExtensionCatalog_RoGetExtensionRegistrationByExtensionId",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ContractId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ExtensionId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "version": 0,
+          "symbol": "ExtensionCatalog_RoGetExtensionRegistrationByExtensionIdStop",
+          "task": "ExtensionCatalog_RoGetExtensionRegistrationByExtensionId",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "ContractId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ExtensionId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "InboxAppsRegistrationScope",
+              "inType": "win:Boolean",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 17,
+          "version": 0,
+          "symbol": "ExtensionCatalog_QueryCatalogStart",
+          "task": "ExtensionCatalog_QueryCatalog",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ContractId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "version": 0,
+          "symbol": "ExtensionCatalog_QueryCatalogStop",
+          "task": "ExtensionCatalog_QueryCatalog",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "ContractId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 19,
+          "version": 0,
+          "symbol": "ExtensionCatalog_QueryCatalogByPackageFamilyStart",
+          "task": "ExtensionCatalog_QueryCatalogByPackageFamily",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ContractId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "PackageFamilyName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 20,
+          "version": 0,
+          "symbol": "ExtensionCatalog_QueryCatalogByPackageFamilyStop",
+          "task": "ExtensionCatalog_QueryCatalogByPackageFamily",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "ContractId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "PackageFamilyName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "version": 0,
+          "symbol": "ExtensionCatalog_CustomPropertyLookupStart",
+          "task": "ExtensionCatalog_CustomPropertyLookup",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "CustomPropertyKey",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 22,
+          "version": 0,
+          "symbol": "ExtensionCatalog_CustomPropertyLookupStop",
+          "task": "ExtensionCatalog_CustomPropertyLookup",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "CustomPropertyKey",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 23,
+          "version": 0,
+          "symbol": "ExtensionCatalog_MoveNextStart",
+          "task": "ExtensionCatalog_MoveNext",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ContractId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 24,
+          "version": 0,
+          "symbol": "ExtensionCatalog_MoveNextStop",
+          "task": "ExtensionCatalog_MoveNext",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "ContractId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "PackageId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ActivatableClassId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "InboxAppsRegistrationScope",
+              "inType": "win:Boolean",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 25,
+          "version": 0,
+          "symbol": "COM_CreateInstance_AppStart",
+          "task": "COM_CreateInstance_App",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 26,
+          "version": 0,
+          "symbol": "COM_CreateInstance_AppStop",
+          "task": "COM_CreateInstance_App",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 27,
+          "version": 0,
+          "symbol": "Windows_Runtime_BrokeredActivateInstanceStart",
+          "task": "Windows_Runtime_BrokeredActivateInstance",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 28,
+          "version": 0,
+          "symbol": "Windows_Runtime_BrokeredActivateInstanceStop",
+          "task": "Windows_Runtime_BrokeredActivateInstance",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 29,
+          "version": 0,
+          "symbol": "Windows_Runtime_BrokeredGetActivationFactoryStart",
+          "task": "Windows_Runtime_BrokeredGetActivationFactory",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 30,
+          "version": 0,
+          "symbol": "Windows_Runtime_BrokeredGetActivationFactoryStop",
+          "task": "Windows_Runtime_BrokeredGetActivationFactory",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 31,
+          "version": 0,
+          "symbol": "Windows_Runtime_GetActivationFactory_InprocServerImplStart",
+          "task": "Windows_Runtime_GetActivationFactory_InprocServerImpl",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 32,
+          "version": 0,
+          "symbol": "Windows_Runtime_GetActivationFactory_InprocServerImplStop",
+          "task": "Windows_Runtime_GetActivationFactory_InprocServerImpl",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 33,
+          "version": 0,
+          "symbol": "Windows_Runtime_ActivateInstance_InprocServerImplStart",
+          "task": "Windows_Runtime_ActivateInstance_InprocServerImpl",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 34,
+          "version": 0,
+          "symbol": "Windows_Runtime_ActivateInstance_InprocServerImplStop",
+          "task": "Windows_Runtime_ActivateInstance_InprocServerImpl",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 35,
+          "version": 0,
+          "symbol": "COM_GetClassFactory_InprocServerImplStart",
+          "task": "COM_GetClassFactory_InprocServerImpl",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 36,
+          "version": 0,
+          "symbol": "COM_GetClassFactory_InprocServerImplStop",
+          "task": "COM_GetClassFactory_InprocServerImpl",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 37,
+          "version": 0,
+          "symbol": "COM_CreateInstance_InprocServerImplStart",
+          "task": "COM_CreateInstance_InprocServerImpl",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 38,
+          "version": 0,
+          "symbol": "COM_CreateInstance_InprocServerImplStop",
+          "task": "COM_CreateInstance_InprocServerImpl",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 39,
+          "version": 1,
+          "symbol": "COM_ClientSyncCallStart_V1",
+          "task": "COM_ClientSyncCall",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "CallTraceId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetThreadId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "CausalityId",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "TargetMethod",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetInterface",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "ProxyInterfacePointer",
+              "inType": "win:Pointer",
+              "outType": null
+            },
+            {
+              "name": "ProxyManagerIUnknown",
+              "inType": "win:Pointer",
+              "outType": null
+            },
+            {
+              "name": "IPID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "CallerLogicalThreadId",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "CallerReturnAddress",
+              "inType": "win:Pointer",
+              "outType": null
+            },
+            {
+              "name": "WinrtAsyncPatternMethodIndicator",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "FakeSync",
+              "inType": "win:Boolean",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 40,
+          "version": 0,
+          "symbol": "COM_ClientSyncCallStop",
+          "task": "COM_ClientSyncCall",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "CallTraceId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "SourceOfHRESULT",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 41,
+          "version": 1,
+          "symbol": "COM_ClientAsyncCallStart_V1",
+          "task": "COM_ClientAsyncCall",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "CallTraceId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetThreadId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "CausalityId",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "TargetMethod",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetInterface",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "TargetInterfaceAsyncUuid",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "ProxyInterfacePointer",
+              "inType": "win:Pointer",
+              "outType": null
+            },
+            {
+              "name": "ProxyManagerIUnknown",
+              "inType": "win:Pointer",
+              "outType": null
+            },
+            {
+              "name": "IPID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "CallerLogicalThreadId",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "CallerReturnAddress",
+              "inType": "win:Pointer",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 42,
+          "version": 0,
+          "symbol": "COM_ClientAsyncCallStop",
+          "task": "COM_ClientAsyncCall",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "CallTraceId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "SourceOfHRESULT",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 43,
+          "version": 2,
+          "symbol": "COM_ServerSyncCallStart_V2",
+          "task": "COM_ServerSyncCall",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "CallTraceId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "SourceProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "SourceThreadId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "CausalityId",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "TargetMethod",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetInterface",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "InterfacePointer",
+              "inType": "win:Pointer",
+              "outType": null
+            },
+            {
+              "name": "MethodAddress",
+              "inType": "win:Pointer",
+              "outType": null
+            },
+            {
+              "name": "ServerIUnknown",
+              "inType": "win:Pointer",
+              "outType": null
+            },
+            {
+              "name": "IPID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "WinrtAsyncPatternMethodIndicator",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 44,
+          "version": 0,
+          "symbol": "COM_ServerSyncCallStop",
+          "task": "COM_ServerSyncCall",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "CallTraceId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "ServerException",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 45,
+          "version": 1,
+          "symbol": "COM_ServerAsyncCallStart_V1",
+          "task": "COM_ServerAsyncCall",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "CallTraceId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "SourceProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "SourceThreadId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "CausalityId",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "TargetMethod",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetInterface",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "TargetInterfaceAsyncUuid",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "InterfacePointer",
+              "inType": "win:Pointer",
+              "outType": null
+            },
+            {
+              "name": "MethodAddress",
+              "inType": "win:Pointer",
+              "outType": null
+            },
+            {
+              "name": "ServerIUnknown",
+              "inType": "win:Pointer",
+              "outType": null
+            },
+            {
+              "name": "IPID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 46,
+          "version": 0,
+          "symbol": "COM_ServerAsyncCallStop",
+          "task": "COM_ServerAsyncCall",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "CallTraceId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "ServerException",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 47,
+          "version": 0,
+          "symbol": "COM_FreeUnusedLibrary",
+          "task": "COM_FreeUnusedLibrary",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ApartmentId64",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "AptId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "AptKind",
+              "inType": "win:UInt8",
+              "outType": null
+            },
+            {
+              "name": "UnloadDelay",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 48,
+          "version": 0,
+          "symbol": "COM_ApartmentUninitialize",
+          "task": "COM_ApartmentUninitialize",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ApartmentId64",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "AptId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "AptKind",
+              "inType": "win:UInt8",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 49,
+          "version": 0,
+          "symbol": "COM_ApartmentInitialize",
+          "task": "COM_ApartmentInitialize",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ApartmentId64",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "AptId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "AptKind",
+              "inType": "win:UInt8",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 50,
+          "version": 0,
+          "symbol": "Windows_Runtime_DesktopBrokeredActivateInstanceStart",
+          "task": "Windows_Runtime_DesktopBrokeredActivateInstance",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 51,
+          "version": 0,
+          "symbol": "Windows_Runtime_DesktopBrokeredActivateInstanceStop",
+          "task": "Windows_Runtime_DesktopBrokeredActivateInstance",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 52,
+          "version": 0,
+          "symbol": "Windows_Runtime_DesktopBrokeredGetActivationFactoryStart",
+          "task": "Windows_Runtime_DesktopBrokeredGetActivationFactory",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 53,
+          "version": 0,
+          "symbol": "Windows_Runtime_DesktopBrokeredGetActivationFactoryStop",
+          "task": "Windows_Runtime_DesktopBrokeredGetActivationFactory",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 54,
+          "version": 0,
+          "symbol": "ExtensionCatalog_RoGetExtensionRegistrationForLaunchContractsStart",
+          "task": "ExtensionCatalog_RoGetExtensionRegistrationForLaunchContracts",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ContractId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "PackageId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 55,
+          "version": 0,
+          "symbol": "ExtensionCatalog_RoGetExtensionRegistrationForLaunchContractsStop",
+          "task": "ExtensionCatalog_RoGetExtensionRegistrationForLaunchContracts",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "ContractId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "PackageId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ActivatableClassId",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "InboxAppsRegistrationScope",
+              "inType": "win:Boolean",
+              "outType": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-COM-RundownInstrumentation",
+      "guid": "2957313d-fcaa-5d4a-2f69-32ce5f0ac44e",
+      "registered": true,
+      "schemaFingerprint": "fe96cb3a5c6ca1101af8a2bb15e4c86de930e4b46d9a4ff172d7b0726e259ba7",
+      "keywords": [
+        {
+          "name": "RundownInstrumentation",
+          "mask": "0x1"
+        }
+      ],
+      "events": [
+        {
+          "id": 1,
+          "version": 0,
+          "symbol": "RundownInstrumentation",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "IID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "IPID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "IsFastRundown",
+              "inType": "win:Boolean",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "version": 0,
+          "symbol": "RundownInstrumentation2",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "IID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "IPID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "ProxyManagerIUnknown",
+              "inType": "win:Pointer",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "version": 0,
+          "symbol": "RundownInstrumentation3",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "version": 0,
+          "symbol": "RundownInstrumentation4",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "version": 0,
+          "symbol": "RundownInstrumentation5",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "version": 0,
+          "symbol": "RundownInstrumentation6",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "version": 1,
+          "symbol": "RundownInstrumentation7_V1",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "TargetInterface",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "TargetMethod",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "IPID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "ProxyManagerIUnknown",
+              "inType": "win:Pointer",
+              "outType": null
+            },
+            {
+              "name": "ImplementedInterface1",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "ImplementedInterface2",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "ImplementedInterface3",
+              "inType": "win:GUID",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "version": 0,
+          "symbol": "RundownInstrumentation8",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "TargetInterface",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "TargetMethod",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "IPID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "ProxyManagerIUnknown",
+              "inType": "win:Pointer",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "version": 0,
+          "symbol": "RundownInstrumentation9",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "Flags",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "version": 1,
+          "symbol": "RundownInstrumentation10_V1",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "ClientProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "WhereDetected",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "version": 0,
+          "symbol": "RundownInstrumentation12",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "ClientProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "version": 0,
+          "symbol": "RundownInstrumentation13",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "ClientProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "Error",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "version": 0,
+          "symbol": "RundownInstrumentation14",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "ClientProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "version": 0,
+          "symbol": "RundownInstrumentation15",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "ClientProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "version": 0,
+          "symbol": "RundownInstrumentation21",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "WhereIssued",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 22,
+          "version": 0,
+          "symbol": "RundownInstrumentation22",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "DisconnectionType",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 23,
+          "version": 0,
+          "symbol": "RundownInstrumentation23",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "DisconnectionType",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 24,
+          "version": 0,
+          "symbol": "RundownInstrumentation24",
+          "task": "RundownInstrumentation",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "RundownInstrumentation"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OID",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "ClientProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-Complus",
+      "guid": "0f177893-4a9c-4709-b921-f432d67f43d5",
+      "registered": true,
+      "schemaFingerprint": "cc3f4277443008a9ed701baab791e8066d6733f9c736e8e4abadce61a73a02f3",
+      "keywords": [],
+      "events": [
+        {
+          "id": 771,
+          "version": 2,
+          "symbol": "task_0PCODE_64pcode_64771_V2",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 772,
+          "version": 2,
+          "symbol": "task_0PCODE_64pcode_64772_V2",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 773,
+          "version": 2,
+          "symbol": "task_0PCODE_64pcode_64773_V2",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 774,
+          "version": 0,
+          "symbol": "task_0PCODE_64pcode_64",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 775,
+          "version": 0,
+          "symbol": "task_0PCODE_64pcode_64775",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 776,
+          "version": 0,
+          "symbol": "task_0PCODE_64pcode_64776",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 777,
+          "version": 0,
+          "symbol": "task_0PCODE_64pcode_64777",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 778,
+          "version": 0,
+          "symbol": "task_0PCODE_64pcode_64778",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 779,
+          "version": 0,
+          "symbol": "task_0PCODE_64pcode_64779",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 780,
+          "version": 0,
+          "symbol": "task_0PCODE_64pcode_64780",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 781,
+          "version": 0,
+          "symbol": "task_0PCODE_64pcode_64781",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 782,
+          "version": 0,
+          "symbol": "task_0PCODE_64pcode_64782",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 783,
+          "version": 0,
+          "symbol": "task_0PCODE_64pcode_64783",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4433,
+          "version": 0,
+          "symbol": "task_0PCODE_128pcode_128",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4434,
+          "version": 0,
+          "symbol": "task_0PCODE_128pcode_1284434",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4435,
+          "version": 0,
+          "symbol": "task_0PCODE_128pcode_1284435",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 4440,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284440_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4441,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284441_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4442,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284442_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4443,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284443_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4444,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284444_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4445,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284445_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4446,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284446_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4448,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284448_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4449,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284449_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4450,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284450_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4451,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284451_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4452,
+          "version": 0,
+          "symbol": "task_0PCODE_128pcode_1284452",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4453,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284453_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4454,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284454_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4455,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284455_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4456,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284456_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4457,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284457_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4458,
+          "version": 0,
+          "symbol": "task_0PCODE_128pcode_1284458",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4459,
+          "version": 0,
+          "symbol": "task_0PCODE_128pcode_1284459",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4460,
+          "version": 0,
+          "symbol": "task_0PCODE_128pcode_1284460",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4462,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284462_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4463,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284463_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 4464,
+          "version": 0,
+          "symbol": "task_0PCODE_128pcode_1284464",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4465,
+          "version": 0,
+          "symbol": "task_0PCODE_128pcode_1284465",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4689,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924689_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4690,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924690_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4691,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924691_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4697,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924697_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4698,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924698_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4724,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924724_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4729,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924729_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4741,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924741_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4767,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924767_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 4769,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924769_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4771,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924771_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4772,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924772_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4773,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924773_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4786,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924786_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4788,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924788_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4789,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924789_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4790,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924790_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4791,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924791_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4792,
+          "version": 0,
+          "symbol": "task_0PCODE_192pcode_192",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4794,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924794_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4796,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284796_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4797,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924797_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4798,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924798_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4799,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924799_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4800,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924800_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4801,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924801_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4802,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924802_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4803,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924803_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4804,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924804_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4805,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924805_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4806,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924806_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4808,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924808_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4810,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924810_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4811,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924811_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4816,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924816_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4817,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924817_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4818,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924818_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4819,
+          "version": 0,
+          "symbol": "task_0PCODE_192pcode_1924819",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 4820,
+          "version": 0,
+          "symbol": "task_0PCODE_192pcode_1924820",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 4821,
+          "version": 0,
+          "symbol": "task_0PCODE_192pcode_1924821",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 4822,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924822_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4823,
+          "version": 0,
+          "symbol": "task_0PCODE_192pcode_1924823",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4825,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924825_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4826,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924826_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4827,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284827_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4828,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284828_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4829,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924829_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4830,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284830_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4831,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284831_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4832,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924832_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4833,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924833_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4834,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1284834_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4835,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924835_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4836,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924836_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4837,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924837_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4838,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924838_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4839,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924839_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4840,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924840_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4841,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924841_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4842,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924842_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4843,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924843_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4844,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924844_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4848,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924848_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4849,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924849_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4850,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924850_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4851,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924851_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4852,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924852_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4853,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924853_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4854,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924854_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4855,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924855_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4856,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924856_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4857,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924857_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4858,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924858_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4859,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924859_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4860,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924860_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4861,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924861_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4862,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924862_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 4863,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924863_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4864,
+          "version": 0,
+          "symbol": "task_0PCODE_192pcode_1924864",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4865,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924865_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4866,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924866_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4867,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924867_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4868,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924868_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4869,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1924869_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 5376,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1925376_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 5377,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1925377_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 5378,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1285378_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 5379,
+          "version": 2,
+          "symbol": "task_0PCODE_128pcode_1285379_V2",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 5380,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1925380_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 5381,
+          "version": 2,
+          "symbol": "task_0PCODE_192pcode_1925381_V2",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 5485,
+          "version": 0,
+          "symbol": "task_0PCODE_128pcode_1285485",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 5486,
+          "version": 0,
+          "symbol": "task_0PCODE_128pcode_1285486",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 5488,
+          "version": 0,
+          "symbol": "task_0PCODE_128pcode_1285488",
+          "task": "task_0",
+          "opcode": "opcode_128",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-DistributedCOM",
+      "guid": "1b562e86-b7aa-4131-badc-b6f3a001407e",
+      "registered": true,
+      "schemaFingerprint": "3b488efa5c21732218161444dca3a896464667d737f7389a73ad5931e14830eb",
+      "keywords": [],
+      "events": [
+        {
+          "id": 10000,
+          "version": 0,
+          "symbol": "task_0",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10001,
+          "version": 0,
+          "symbol": "task_010001",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10002,
+          "version": 0,
+          "symbol": "task_0PCODE_192pcode_192",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10003,
+          "version": 0,
+          "symbol": "task_0PCODE_192pcode_19210003",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10004,
+          "version": 0,
+          "symbol": "task_010004",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10005,
+          "version": 0,
+          "symbol": "task_010005",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10006,
+          "version": 0,
+          "symbol": "task_010006",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10007,
+          "version": 0,
+          "symbol": "task_0PCODE_192pcode_19210007",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10008,
+          "version": 0,
+          "symbol": "task_010008",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10009,
+          "version": 0,
+          "symbol": "task_0PCODE_192pcode_19210009",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "__binLength",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "binary",
+              "inType": "win:Binary",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10010,
+          "version": 0,
+          "symbol": "task_010010",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10011,
+          "version": 0,
+          "symbol": "task_0PCODE_192pcode_19210011",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10012,
+          "version": 0,
+          "symbol": "task_0PCODE_192pcode_19210012",
+          "task": "task_0",
+          "opcode": "opcode_192",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10014,
+          "version": 0,
+          "symbol": "task_010014",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10015,
+          "version": 0,
+          "symbol": "task_010015",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param6",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param7",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param8",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param9",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param10",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10016,
+          "version": 0,
+          "symbol": "task_010016",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param6",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param7",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param8",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param9",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param10",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param11",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10017,
+          "version": 0,
+          "symbol": "task_010017",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param6",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param7",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param8",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param9",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param10",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10018,
+          "version": 0,
+          "symbol": "task_010018",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param6",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param7",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param8",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param9",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10019,
+          "version": 0,
+          "symbol": "task_010019",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param6",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param7",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param8",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param9",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10020,
+          "version": 0,
+          "symbol": "task_010020",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10021,
+          "version": 0,
+          "symbol": "task_010021",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10022,
+          "version": 0,
+          "symbol": "task_010022",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10023,
+          "version": 0,
+          "symbol": "task_010023",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10024,
+          "version": 0,
+          "symbol": "task_010024",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10026,
+          "version": 0,
+          "symbol": "task_0PCODE_64pcode_64",
+          "task": "task_0",
+          "opcode": "opcode_64",
+          "level": "win:Always",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10027,
+          "version": 0,
+          "symbol": "task_010027",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param5",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param6",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param7",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param8",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10028,
+          "version": 0,
+          "symbol": "task_010028",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param4",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "__binLength",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "binary",
+              "inType": "win:Binary",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10029,
+          "version": 0,
+          "symbol": "task_010029",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10030,
+          "version": 0,
+          "symbol": "task_010030",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param2",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "param3",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10031,
+          "version": 0,
+          "symbol": "task_010031",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10032,
+          "version": 0,
+          "symbol": "task_010032",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10033,
+          "version": 0,
+          "symbol": "task_010033",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10034,
+          "version": 0,
+          "symbol": "task_010034",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "param1",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10035,
+          "version": 0,
+          "symbol": "task_010035",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ProvidedIid",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "RequestedIid",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "HandlerClsid",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "HRESULT",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10036,
+          "version": 0,
+          "symbol": "task_010036",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "DomainName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "UserName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "SID",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ClientIPAddress",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10037,
+          "version": 0,
+          "symbol": "task_010037",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ApplicationName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "PID",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "CLSID",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ComputerName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ActivationAuthenticationLevel",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10038,
+          "version": 0,
+          "symbol": "task_010038",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ApplicationName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "PID",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "CLSID",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ComputerName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ActivationAuthenticationLevel",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-OLE-Perf",
+      "guid": "84958368-7da7-49a0-b33d-07fabb879626",
+      "registered": true,
+      "schemaFingerprint": "8525dd04f00c661bb4476195cf013711563c32b3b0994d71fe28338f94cf6301",
+      "keywords": [],
+      "events": [
+        {
+          "id": 1,
+          "version": 0,
+          "symbol": "OLE_Clipboard_GetClipboardStart",
+          "task": "OLE_Clipboard_GetClipboard",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 2,
+          "version": 0,
+          "symbol": "OLE_Clipboard_GetClipboardStop",
+          "task": "OLE_Clipboard_GetClipboard",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 3,
+          "version": 0,
+          "symbol": "OLE_Clipboard_SetClipboardStart",
+          "task": "OLE_Clipboard_SetClipboard",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 4,
+          "version": 0,
+          "symbol": "OLE_Clipboard_SetClipboardStop",
+          "task": "OLE_Clipboard_SetClipboard",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 5,
+          "version": 0,
+          "symbol": "OLE_Clipboard_FlushStart",
+          "task": "OLE_Clipboard_Flush",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 6,
+          "version": 0,
+          "symbol": "OLE_Clipboard_FlushStop",
+          "task": "OLE_Clipboard_Flush",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 7,
+          "version": 0,
+          "symbol": "OLE_Clipboard_IsCurrentClipboardStart",
+          "task": "OLE_Clipboard_IsCurrentClipboard",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 8,
+          "version": 0,
+          "symbol": "OLE_Clipboard_IsCurrentClipboardStop",
+          "task": "OLE_Clipboard_IsCurrentClipboard",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 9,
+          "version": 0,
+          "symbol": "OLE_DragDrop_DoDragDropStart",
+          "task": "OLE_DragDrop_DoDragDrop",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 10,
+          "version": 0,
+          "symbol": "OLE_DragDrop_DoDragDropStop",
+          "task": "OLE_DragDrop_DoDragDrop",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HResult",
+              "inType": "win:Int32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "version": 0,
+          "symbol": "OLE_DragDrop_RegisterStart",
+          "task": "OLE_DragDrop_Register",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 12,
+          "version": 0,
+          "symbol": "OLE_DragDrop_RegisterStop",
+          "task": "OLE_DragDrop_Register",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HResult",
+              "inType": "win:Int32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "version": 0,
+          "symbol": "OLE_DragDrop_UnregisterStart",
+          "task": "OLE_DragDrop_Unregister",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 14,
+          "version": 0,
+          "symbol": "OLE_DragDrop_UnregisterStop",
+          "task": "OLE_DragDrop_Unregister",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HResult",
+              "inType": "win:Int32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "version": 0,
+          "symbol": "OLE_DragDrop_RegisterInternalStart",
+          "task": "OLE_DragDrop_RegisterInternal",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 16,
+          "version": 0,
+          "symbol": "OLE_DragDrop_RegisterInternalStop",
+          "task": "OLE_DragDrop_RegisterInternal",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HResult",
+              "inType": "win:Int32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 17,
+          "version": 0,
+          "symbol": "OLE_DragDrop_UnregisterInternalStart",
+          "task": "OLE_DragDrop_UnregisterInternal",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 18,
+          "version": 0,
+          "symbol": "OLE_DragDrop_UnregisterInternalStop",
+          "task": "OLE_DragDrop_UnregisterInternal",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HResult",
+              "inType": "win:Int32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 19,
+          "version": 0,
+          "symbol": "OLE_DragDrop_CreateDragOperationInternalStart",
+          "task": "OLE_DragDrop_CreateDragOperationInternal",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 20,
+          "version": 0,
+          "symbol": "OLE_DragDrop_CreateDragOperationInternalStop",
+          "task": "OLE_DragDrop_CreateDragOperationInternal",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HResult",
+              "inType": "win:Int32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "version": 0,
+          "symbol": "OLE_DragDrop_DragOperation_UpdatePositionStart",
+          "task": "OLE_DragDrop_DragOperation_UpdatePosition",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 22,
+          "version": 0,
+          "symbol": "OLE_DragDrop_DragOperation_UpdatePositionStop",
+          "task": "OLE_DragDrop_DragOperation_UpdatePosition",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HResult",
+              "inType": "win:Int32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 23,
+          "version": 0,
+          "symbol": "OLE_DragDrop_DragOperation_SetDataObjectStart",
+          "task": "OLE_DragDrop_DragOperation_SetDataObject",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 24,
+          "version": 0,
+          "symbol": "OLE_DragDrop_DragOperation_SetDataObjectStop",
+          "task": "OLE_DragDrop_DragOperation_SetDataObject",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HResult",
+              "inType": "win:Int32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 25,
+          "version": 0,
+          "symbol": "OLE_DragDrop_DragOperation_DoDropStart",
+          "task": "OLE_DragDrop_DragOperation_DoDrop",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 26,
+          "version": 0,
+          "symbol": "OLE_DragDrop_DragOperation_DoDropStop",
+          "task": "OLE_DragDrop_DragOperation_DoDrop",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HResult",
+              "inType": "win:Int32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 27,
+          "version": 0,
+          "symbol": "OLE_DragDrop_DragOperation_CancelStart",
+          "task": "OLE_DragDrop_DragOperation_Cancel",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": []
+        },
+        {
+          "id": 28,
+          "version": 0,
+          "symbol": "OLE_DragDrop_DragOperation_CancelStop",
+          "task": "OLE_DragDrop_DragOperation_Cancel",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "HResult",
+              "inType": "win:Int32",
+              "outType": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-RPCSS",
+      "guid": "d8975f88-7ddb-4ed0-91bf-3adf48c48e0c",
+      "registered": true,
+      "schemaFingerprint": "b2bc1dfea0bf12a83e24894b4a7adccb25801e417efb89e8a4cf50cf1020958e",
+      "keywords": [
+        {
+          "name": "EpmapDebug",
+          "mask": "0x100"
+        },
+        {
+          "name": "EpmapInterfaceRegister",
+          "mask": "0x200"
+        },
+        {
+          "name": "EpmapInterfaceUnregister",
+          "mask": "0x400"
+        }
+      ],
+      "events": [
+        {
+          "id": 1,
+          "version": 1,
+          "symbol": "task_0_V1",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [
+            "EpmapDebug"
+          ],
+          "keywordMask": "0x100",
+          "fields": [
+            {
+              "name": "DetectionLocation",
+              "inType": "win:UInt16",
+              "outType": null
+            },
+            {
+              "name": "Status",
+              "inType": "win:HexInt32",
+              "outType": null
+            },
+            {
+              "name": "AdditionalData1",
+              "inType": "win:HexInt32",
+              "outType": null
+            },
+            {
+              "name": "AdditionalData2",
+              "inType": "win:HexInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "version": 1,
+          "symbol": "task_02_V1",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "EpmapInterfaceRegister"
+          ],
+          "keywordMask": "0x200",
+          "fields": [
+            {
+              "name": "InterfaceUUID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "ObjectUUID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "Protocol",
+              "inType": "win:AnsiString",
+              "outType": null
+            },
+            {
+              "name": "EndPoint",
+              "inType": "win:AnsiString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "version": 1,
+          "symbol": "task_03_V1",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "EpmapInterfaceUnregister"
+          ],
+          "keywordMask": "0x400",
+          "fields": [
+            {
+              "name": "InterfaceUUID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "ObjectUUID",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "Protocol",
+              "inType": "win:AnsiString",
+              "outType": null
+            },
+            {
+              "name": "EndPoint",
+              "inType": "win:AnsiString",
+              "outType": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-WinRT-Error",
+      "guid": "a86f8471-c31d-4fbc-a035-665d06047b03",
+      "registered": true,
+      "schemaFingerprint": "80e0be680170f53caf7c90e1ae331f492789ca48e058d786d21c0ff66b47fe0d",
+      "keywords": [
+        {
+          "name": "WinRTError",
+          "mask": "0x1"
+        }
+      ],
+      "events": [
+        {
+          "id": 1,
+          "version": 0,
+          "symbol": "OriginateError",
+          "task": "OriginateError",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "WinRTError"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "ErrorMesage",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "version": 0,
+          "symbol": "OriginateLanguageError",
+          "task": "OriginateLanguageError",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "WinRTError"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "HRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "ErrorMesage",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "LanguageErrorPointer",
+              "inType": "win:Pointer",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "version": 0,
+          "symbol": "TransformError",
+          "task": "TransformError",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "WinRTError"
+          ],
+          "keywordMask": "0x1",
+          "fields": [
+            {
+              "name": "OriginalHRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "NewHRESULT",
+              "inType": "win:Int32",
+              "outType": null
+            },
+            {
+              "name": "ErrorMesage",
+              "inType": "win:UnicodeString",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "version": 0,
+          "symbol": "ClearError",
+          "task": "ClearError",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [
+            "WinRTError"
+          ],
+          "keywordMask": "0x1",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-RPC",
+      "guid": "6ad52b32-d609-4be9-ae07-ce8dae937e39",
+      "registered": true,
+      "schemaFingerprint": "dd59e85a27fc17caf550c49bf2bd9cac69f6b281514c0b97e8ea4f5634c07b47",
+      "keywords": [],
+      "events": [
+        {
+          "id": 1,
+          "version": 1,
+          "symbol": "RpcClientCallStop_V1",
+          "task": "RpcClientCall",
+          "opcode": "win:Stop",
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ImageName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ComputerName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ProcessID",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TimeStamp",
+              "inType": "win:SYSTEMTIME",
+              "outType": null
+            },
+            {
+              "name": "GeneratingComponent",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "Status",
+              "inType": "win:HexInt32",
+              "outType": null
+            },
+            {
+              "name": "DetectionLocation",
+              "inType": "win:UInt16",
+              "outType": null
+            },
+            {
+              "name": "Flags",
+              "inType": "win:UInt16",
+              "outType": null
+            },
+            {
+              "name": "NumberOfParameters",
+              "inType": "win:UInt16",
+              "outType": null
+            },
+            {
+              "name": "Params",
+              "inType": "win:UInt64",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "version": 1,
+          "symbol": "RpcServerCall_V1",
+          "task": "RpcServerCall",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ImangeName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "InterfaceUuid",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "FilterKey",
+              "inType": "win:GUID",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "version": 1,
+          "symbol": "task_0_V1",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Error",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ImageName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "DetectionLocation",
+              "inType": "win:UInt16",
+              "outType": null
+            },
+            {
+              "name": "Status",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "AdditionalData1",
+              "inType": "win:HexInt32",
+              "outType": null
+            },
+            {
+              "name": "AdditionalData2",
+              "inType": "win:HexInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "version": 1,
+          "symbol": "Debug_V1",
+          "task": "Debug",
+          "opcode": null,
+          "level": "win:Verbose",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "Subject",
+              "inType": "win:UInt8",
+              "outType": null
+            },
+            {
+              "name": "Verb",
+              "inType": "win:UInt8",
+              "outType": null
+            },
+            {
+              "name": "SubjectPointer",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "ObjectPointer",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "DataPointer",
+              "inType": "win:UInt64",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "version": 1,
+          "symbol": "RpcClientCallStart_V1",
+          "task": "RpcClientCall",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "InterfaceUuid",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "ProcNum",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "Protocol",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "NetworkAddress",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "Endpoint",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "Options",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "AuthenticationLevel",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "AuthenticationService",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "ImpersonationLevel",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "version": 1,
+          "symbol": "RpcServerCallStart_V1",
+          "task": "RpcServerCall",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "InterfaceUuid",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "ProcNum",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "Protocol",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "NetworkAddress",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "Endpoint",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "Options",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "AuthenticationLevel",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "AuthenticationService",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "ImpersonationLevel",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "version": 1,
+          "symbol": "RpcClientCallStop7_V1",
+          "task": "RpcClientCall",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "Status",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "version": 1,
+          "symbol": "RpcServerCallStop_V1",
+          "task": "RpcServerCall",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "Status",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "version": 1,
+          "symbol": "task_09_V1",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Verbose",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "Status",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "version": 1,
+          "symbol": "Debug10_V1",
+          "task": "Debug",
+          "opcode": null,
+          "level": "win:Verbose",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "SubjectPointer",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "FragmentSize",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "Fragment",
+              "inType": "win:Binary",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "version": 1,
+          "symbol": "Debug11_V1",
+          "task": "Debug",
+          "opcode": null,
+          "level": "win:Verbose",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "SubjectPointer",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "FragmentSize",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "Fragment",
+              "inType": "win:Binary",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "version": 1,
+          "symbol": "DebugStart_V1",
+          "task": "Debug",
+          "opcode": "win:Start",
+          "level": "win:Verbose",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ObjectType",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "Operation",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "Address",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "Data",
+              "inType": "win:UInt64",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "version": 1,
+          "symbol": "DebugStop_V1",
+          "task": "Debug",
+          "opcode": "win:Stop",
+          "level": "win:Verbose",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "ObjectType",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "Operation",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "Address",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "Data",
+              "inType": "win:UInt64",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "version": 1,
+          "symbol": "FunctionTraceStart_V1",
+          "task": "FunctionTrace",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "InterfaceUuid",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "TypeMgrUuid",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "Flags",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "MaxCalls",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "SDSize",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "SD",
+              "inType": "win:Binary",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "version": 1,
+          "symbol": "FunctionTraceStop_V1",
+          "task": "FunctionTrace",
+          "opcode": "win:Stop",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "InterfaceUuid",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "TypeMgrUuid",
+              "inType": "win:GUID",
+              "outType": null
+            },
+            {
+              "name": "Flags",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "MaxCalls",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "version": 1,
+          "symbol": "FunctionTraceStart16_V1",
+          "task": "FunctionTrace",
+          "opcode": "win:Start",
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "Protocol",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "Endpoint",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "NetworkAddress",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "PendingQueueSize",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "EndpointFlags",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "NicFlags",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 17,
+          "version": 1,
+          "symbol": "task_017_V1",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "keywordMask": "0x0",
+          "fields": [
+            {
+              "name": "RPCStatus",
+              "inType": "win:HexInt32",
+              "outType": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -830,6 +830,7 @@ Revision 903 adds FX-UNIX-002 (ADR-075's addendum): 64 AF_UNIX connections made 
 Revision 904 adds FX-UNIX-003, AF_UNIX's ambiguity case (ADR-073's addendum): of eight connections open before a capture began, not one call is a row of any process, while FX-UNIX-001's exchange made inside the same capture is observed whole.
 Revision 905 refuses a gated source whose machine's schema does not admit a field its gate decides by (ADR-074's addendum), AF_UNIX's schema-failure case: the Unix sockets profile does not start on such a build and says why, where its gate would have read the field as zero and followed no socket.
 Revision 906 has `icat processes` name the `icat evidence` command that lists each of a process's AF_UNIX records with its source record (ADR-076's addendum): the drill-down is exact, 413 of 413 records and every byte on a recording, and with it the Unix-domain sockets package meets M6's exit tests.
+Revision 907 begins M6's COM/DCOM/WinRT package with its metadata inspection (§4.2): `Microsoft-Windows-COM-Perf` declares client and server call events, each start with the call's interface, method, causality GUID and other end's process, and activation events carrying no field; nothing is enabled or implemented.
 
 ## Revisions, a paragraph each, in order
 
@@ -3539,3 +3540,15 @@ another process's AF_UNIX send, and finds each counted record and no other; five
 evidence query's own scoping. With it the Unix-domain sockets package meets M6's exit tests: two instance and
 lifetime fixtures, an ambiguity case, a schema-failure case, exact source drill-down and the baseline overhead
 comparison.
+
+Revision 907 begins M6's COM/DCOM/WinRT package as the plan begins every package, with what the machine declares.
+`tools/InterCat.ComProbe --inspect` reads, without enabling any, the registered schema of each provider this build
+has for COM, DCOM, OLE, COM+, RPCSS and WinRT, as the product's inventory reads one, and writes each one's keywords
+and every event's task, opcode, level and fields. Nine were found beside `Microsoft-Windows-RPC`.
+`Microsoft-Windows-COM-Perf` declares client and server call starts and stops, synchronous and asynchronous, each start
+with the call's interface IID and method number, a causality GUID, a call trace number its stop repeats with the
+HRESULT, and the other end's process and thread; and COM and WinRT activation starts and stops carrying no field.
+COMRuntime declares a call-delay event under a wait-analysis keyword, COM-RundownInstrumentation object-exporter
+events by OID and IPID, and RPCSS the endpoint mapper's registrations; DistributedCOM's and COM+'s events are
+event-log messages of string parameters. §4.2 records it as evidence of schemas on one machine, not of emission:
+COM-Perf is measured against a truth fixture before any field is implemented.
