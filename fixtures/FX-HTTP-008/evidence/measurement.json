@@ -1,0 +1,29 @@
+{
+  "workload": "FX-HTTP-008",
+  "question": "Whether WinINet's capture keeps a response body in the deflate or br content coding as it keeps one in gzip - as its client read it, coded, or decoded where the client had WinINet decode it - and what it keeps where WinINet cannot decode one.",
+  "answer": "As its client read it, as for gzip: the coded bytes where the client read them; the body before its coding where the client had WinINet decode it, which WinINet does for br and for deflate written as RFC 1951's raw data. Deflate in the zlib format RFC 9110 names, WinINet could not decode: every read failed with ERROR_INTERNET_DECODING_FAILED (12175), and the capture kept each response body as one buffer of no byte, flagged first and last, whole by its places and ends, which no record tells from a body decoded to nothing. The heads were kept as the wire carried them, declaring the coded length either way.",
+  "probe": {
+    "tool": "tools/InterCat.WinInetProbe --coding br|deflate|deflate-raw [--decode] [--chunked], 16 exchanges each, bodies up to 98,304 bytes, beside a decoy outside the process filter; deflate-raw is a body its head declares deflate in, written as raw deflate data",
+    "runs": [
+      { "run": "br, read coded", "exchanges": 16, "responseBodiesMatchingTheCodedBytes": 16, "responseBodiesMatchingWhatTheClientRead": 16, "headsWhole": 32, "events": 101, "eventsLost": 0, "recordsOfTheDecoy": 0, "evidence": "bench/results/wininet-capture-br-20261104T003204Z" },
+      { "run": "br, decoded by WinINet", "exchanges": 16, "responseBodiesMatchingTheBodyBeforeItsCoding": 16, "responseBodiesMatchingWhatTheClientRead": 16, "headsWhole": 32, "events": 108, "eventsLost": 0, "recordsOfTheDecoy": 0, "evidence": "bench/results/wininet-capture-br-decoded-20261104T003209Z" },
+      { "run": "br, chunked, decoded by WinINet", "exchanges": 16, "responseBodiesMatchingTheBodyBeforeItsCoding": 16, "responseBodiesMatchingTheChunkedFraming": 0, "events": 108, "eventsLost": 0, "recordsOfTheDecoy": 0, "evidence": "bench/results/wininet-capture-br-chunked-decoded-20261104T003214Z" },
+      { "run": "deflate (zlib), read coded", "exchanges": 16, "responseBodiesMatchingTheCodedBytes": 16, "responseBodiesMatchingWhatTheClientRead": 16, "headsWhole": 32, "events": 101, "eventsLost": 0, "recordsOfTheDecoy": 0, "evidence": "bench/results/wininet-capture-deflate-20261104T003218Z" },
+      { "run": "deflate (zlib), WinINet asked to decode", "exchanges": 16, "readsFailedWithDecodingFailed12175": 16, "responseBodiesKeptAsOneBufferOfNoByte": 16, "responseBodiesWholeByTheirEnds": 16, "headsWhole": 32, "events": 79, "eventsLost": 0, "recordsOfTheDecoy": 0, "evidence": "bench/results/wininet-capture-deflate-decoded-20261104T003223Z" },
+      { "run": "deflate (raw), read coded", "exchanges": 16, "responseBodiesMatchingTheCodedBytes": 16, "responseBodiesMatchingWhatTheClientRead": 16, "headsWhole": 32, "events": 101, "eventsLost": 0, "recordsOfTheDecoy": 0, "evidence": "bench/results/wininet-capture-deflate-raw-20261104T003227Z" },
+      { "run": "deflate (raw), decoded by WinINet", "exchanges": 16, "responseBodiesMatchingTheBodyBeforeItsCoding": 16, "responseBodiesMatchingWhatTheClientRead": 16, "headsWhole": 32, "events": 108, "eventsLost": 0, "recordsOfTheDecoy": 0, "evidence": "bench/results/wininet-capture-deflate-raw-decoded-20261104T003232Z" }
+    ]
+  },
+  "capture": {
+    "command": "icat record --profile content --source etw/manifest/Microsoft-Windows-WinINet-Capture --mechanism http --pid <workload> --channel * --max-record-bytes 65536 --max-session-bytes 67108864 --inspection hex-text --duration 25, beside InterCat.TestWorkloads http-wininet --requests 64 --bytes 98304 --start-after 8 --coding br|deflate|deflate-raw --decode; then icat exchanges --exchanges 10000 --decode, and each part of each exchange saved by icat content --part and matched by SHA-256",
+    "policy": "scoped-content-request-v1",
+    "runs": [
+      { "run": "br, decoded by WinINet", "evidence": "fixtures/FX-HTTP-008/evidence/br-decoded", "journaledRecords": 871, "httpRecords": 406, "contentKeptBytes": 1204061, "lost": "nothing reported", "exchanges": 64, "exchangesRecordedWhole": 64, "headsDecodedToTheirEnd": 128, "partsAsLongAsTheTruth": 256, "partsSavedByIcatContentMatchingTheTruth": 254, "emptyRequestBodiesWithoutARecord": 1, "emptyResponseBodiesHoldingNoByte": 1, "bodiesSaidToDisagree": 0 },
+      { "run": "deflate (zlib), WinINet asked to decode", "evidence": "fixtures/FX-HTTP-008/evidence/deflate-decoded", "journaledRecords": 783, "httpRecords": 319, "contentKeptBytes": 657630, "lost": "nothing reported", "exchanges": 64, "readsTheClientCompleted": 0, "exchangesRecordedWhole": 64, "responseBodiesKeptAsNoByte": 64, "headsDecodedToTheirEnd": 128, "requestHeadsBodiesAndResponseHeadsSavedMatchingTheTruth": 191, "bodiesSaidToDisagree": 0 },
+      { "run": "deflate (raw), decoded by WinINet", "evidence": "fixtures/FX-HTTP-008/evidence/deflate-raw-decoded", "journaledRecords": 879, "httpRecords": 406, "contentKeptBytes": 1204730, "lost": "nothing reported", "exchanges": 64, "exchangesRecordedWhole": 64, "headsDecodedToTheirEnd": 128, "partsAsLongAsTheTruth": 256, "partsSavedByIcatContentMatchingTheTruth": 254, "emptyRequestBodiesWithoutARecord": 1, "emptyResponseBodiesHoldingNoByte": 1, "bodiesSaidToDisagree": 0 }
+    ]
+  },
+  "note": "Bodies are compared by SHA-256 with the server's truth, which names the body before its coding and the coded bytes apart; neither the truth nor this file holds a byte of them. The deflate (zlib) run's client recorded each failed read in its truth, and its exchanges stay 64 in the capture, each response body one buffer of no byte. Request 1's response is empty before its coding, so a deflate body decoded to nothing and one WinINet could not decode look alike.",
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-11-04"
+}

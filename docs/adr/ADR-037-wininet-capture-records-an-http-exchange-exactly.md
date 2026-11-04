@@ -6,11 +6,12 @@
   measured, and an exchange's number bound to its use in time (revision 244); its scope held to the named processes
   themselves (revision 245); a process's exchanges on its rung (revision 247, `contracts/http-exchanges-v1.md`);
   asynchronous clients measured, and the thread each record is raised on (revision 886); HTTP/2 measured, its heads kept
-  in HTTP/1.1's form (revision 887); a request body written in pieces measured (revision 888)
+  in HTTP/1.1's form (revision 887); a request body written in pieces measured (revision 888); responses in deflate and
+  br measured (revision 889)
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
 - Relates to: §3.7, §11, §11.1, §11.2, M3, M8, I21, R21, R22, ADR-030, ADR-036, FX-HTTP-001, FX-HTTP-002,
-  FX-HTTP-003, FX-HTTP-005, FX-HTTP-006, FX-HTTP-007, `contracts/content-v1.md`, `contracts/decoders-v1.md`,
+  FX-HTTP-003, FX-HTTP-005, FX-HTTP-006, FX-HTTP-007, FX-HTTP-008, `contracts/content-v1.md`, `contracts/decoders-v1.md`,
   `tools/InterCat.WinInetProbe`,
   `bench/results/wininet-capture-feasibility-20260928T102426Z`,
   `bench/results/wininet-capture-feasibility-tls-20260928T120408Z`,
@@ -21,7 +22,10 @@
   `bench/results/wininet-capture-http2-20261103T214430Z`,
   `bench/results/wininet-capture-http2-paced-eight-20261103T215057Z`,
   `bench/results/wininet-capture-written-20261103T223930Z`,
-  `bench/results/wininet-capture-written-eight-20261103T223954Z`
+  `bench/results/wininet-capture-written-eight-20261103T223954Z`,
+  `bench/results/wininet-capture-br-decoded-20261104T003209Z`,
+  `bench/results/wininet-capture-deflate-decoded-20261104T003223Z`,
+  `bench/results/wininet-capture-deflate-raw-decoded-20261104T003232Z`
 
 ## Context
 
@@ -177,6 +181,27 @@ clients at once.
   the 63 bodies of each run in as many buffers as its writes made and one to end it, and every part `icat content
   --part` saved matched the server's bytes, 254 of 254 that held any.
 
+## Measurement of responses in deflate and br (revision 889)
+
+FX-HTTP-004 measured gzip alone. FX-HTTP-008's server codes every response body in br, Brotli, or in deflate - as the
+zlib format RFC 9110 names deflate, or as the raw data of RFC 1951 that servers which read deflate so write under the
+same name - declared by Content-Encoding beside the coded length; the client accepts the coding and reads each body as
+it came, or has WinINet decode it first. The probe ran each of the five ways, br chunked too, beside a decoy.
+
+- **As its client read it, as gzip's.** Read coded, every body kept was the coded bytes, 16 of 16 in each coding; where
+  the client had WinINet decode it, every br body and every raw deflate body kept was the body before its coding, 16 of
+  16, under a head kept as the wire carried it, declaring the coded length. No record says which the client did.
+- **A body WinINet cannot decode is kept as no byte.** WinINet decodes deflate only as raw data: asked to decode the
+  zlib format, every read failed with `ERROR_INTERNET_DECODING_FAILED` (12175), and the capture kept each response body
+  as one buffer of no byte, flagged first and last - whole by its places and ends, and alike to a body decoded to
+  nothing.
+- **Through `icat record`** (FX-HTTP-008: 64 exchanges each, decoded by WinINet in br, raw deflate and the zlib
+  format): every exchange recorded whole and every head decoded to its end; each br and raw deflate body `icat content
+  --part` saved was the body before its coding, 63 of 63 that held any, and each zlib body was kept as no byte. So the
+  comparison revision 778 added sets a body in deflate or br beside its head as one in gzip: one holding its declared
+  length agrees, one holding another is not said to disagree, and a deflate body holding no byte is said to be
+  possibly one WinINet could not decode.
+
 ## Decision
 
 1. **The source contract, for its admission to implement.** An exchange is a `SessionId`; a part is its event, which
@@ -244,8 +269,10 @@ clients at once.
   connection keep their own numbers.
 - A request body written in pieces is measured (revision 888, FX-HTTP-007): it is kept a buffer to a write, a write past
   64,511 bytes cut there, and ended by an empty buffer, as a body handed over whole is.
-- Not measured: content codings other than gzip; redirects, proxies and authentication. Each is measured before a
-  profile claims it.
+- Responses in deflate and br are measured (revision 889, FX-HTTP-008): each is kept as its client read it, as gzip's
+  is, and a zlib-format deflate body WinINet cannot decode is kept as no byte.
+- Not measured: content codings other than gzip, deflate and br; redirects, proxies and authentication. Each is
+  measured before a profile claims it.
 - The scope is the named processes themselves (revision 245): the provider's filter holds their IDs by number, and the
   capture holds each process open while it runs, so a named process's exit ends its content and no process started
   after it can take its ID.

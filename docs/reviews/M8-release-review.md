@@ -316,3 +316,12 @@ an exchange, the version a decoded head names is WinINet's, and the command line
 head is decoded: beneath `icat content --part --decode`'s decoding, among `icat exchanges --decode`'s caveats, beneath
 the content viewer's decoding and in an exchange's conversation (`decoders-v1` §4, §5, §5a). A table's version columns
 are the heads' own. Nothing else above changes.
+
+## Addendum, revision 889
+
+Bodies in the deflate and br content codings are measured (FX-HTTP-008, ADR-037): WinINet keeps each as its client read
+it, coded, or decoded where the client had WinINet decode it, which it does for br and for deflate written as RFC 1951's
+raw data; deflate in the zlib format RFC 9110 names it cannot decode, and the capture keeps such a body as one buffer of
+no byte. So such a body is set beside its declared length as one in gzip is: one holding another length is not said to
+disagree, and a deflate body holding no byte is said to be possibly one WinINet could not decode. Nothing else above
+changes.

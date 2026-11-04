@@ -53,7 +53,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Tls = args.Contains("--tls", StringComparer.Ordinal) || args.Contains("--http2", StringComparer.Ordinal),
         Concurrency = Integer(args, "--concurrency") ?? 1,
         Chunked = args.Contains("--chunked", StringComparer.Ordinal),
-        Gzip = args.Contains("--gzip", StringComparer.Ordinal),
+        Coding = Option(args, "--coding") ?? (args.Contains("--gzip", StringComparer.Ordinal) ? "gzip" : null),
         Decode = args.Contains("--decode", StringComparer.Ordinal),
         Async = args.Contains("--async", StringComparer.Ordinal),
         PaceMilliseconds = Integer(args, "--pace") ?? 0,
@@ -200,7 +200,8 @@ static void PrintHelp()
     Console.WriteLine("      truth log names each message's length and SHA-256, never its bytes.");
     Console.WriteLine();
     Console.WriteLine("  http-wininet --truth <dir> [--seed n] [--requests n] [--bytes n] [--wait-for-start | --start-after s] [--tls]");
-    Console.WriteLine("               [--concurrency n] [--chunked] [--gzip [--decode]] [--async] [--pace ms] [--http2] [--write n]");
+    Console.WriteLine("               [--concurrency n] [--chunked] [--gzip | --coding gzip|deflate|br [--decode]] [--async] [--pace ms]");
+    Console.WriteLine("               [--http2] [--write n]");
     Console.WriteLine("      FX-HTTP-001: seeded HTTP/1.1 requests through WinINet to a server this process runs on");
     Console.WriteLine("      loopback, bodies from empty to past 64 KiB both ways. The server logs every head and body");
     Console.WriteLine("      it received and sent by length and SHA-256, never the bytes. --wait-for-start waits for a");
@@ -212,7 +213,8 @@ static void PrintHelp()
     Console.WriteLine("      bytes apart; either makes the run FX-HTTP-003. --gzip has the server code every response body in");
     Console.WriteLine("      gzip, declared by Content-Encoding, and the client accept it; the server logs the body before its");
     Console.WriteLine("      coding and the coded bytes apart. --decode has WinINet decode each response before the client reads");
-    Console.WriteLine("      it; without it the client reads the coded bytes. --gzip makes the run FX-HTTP-004. --async has");
+    Console.WriteLine("      it; without it the client reads the coded bytes. --gzip makes the run FX-HTTP-004; --coding deflate");
+    Console.WriteLine("      or --coding br codes the bodies in deflate (zlib) or Brotli instead, and makes it FX-HTTP-008. --async has");
     Console.WriteLine("      the client work WinINet asynchronously, each send and read it cannot finish at once completing");
     Console.WriteLine("      on WinINet's own threads, told by its status callback; it makes the run FX-HTTP-005, with any");
     Console.WriteLine("      of the others. --pace has the server wait that many milliseconds before each 16 KiB of a");

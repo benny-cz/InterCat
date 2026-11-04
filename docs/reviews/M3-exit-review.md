@@ -58,3 +58,10 @@ through `icat record` two runs of 64 exchanges, one at a time and eight at once 
 whole. No record says which protocol carried an exchange, so a decoded head's version is said to be WinINet's. Of the
 semantics the verdict names unmeasured, RPC over TCP transport remains, and of compressed responses all but the gzip
 coding. Nothing else above changes.
+
+## Addendum, revision 889
+
+Compressed responses beside gzip are measured (FX-HTTP-008, ADR-037): a body in deflate or br is kept as its client
+read it, coded or decoded by WinINet, and a deflate body in the zlib format RFC 9110 names, which WinINet cannot decode,
+is kept as one buffer of no byte. Of the semantics the verdict names unmeasured, RPC over TCP transport remains. Nothing
+else above changes.

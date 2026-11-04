@@ -289,7 +289,7 @@ processes chosen from the person's own and the broker's review shown before anyt
 |---|---|
 | Source | `etw/manifest/Microsoft-Windows-WinINet-Capture`, events 2001 to 2004: a request head and body sent, a response head and body received |
 | Layout | `SessionId`, `SequenceNumber`, `Flags`, `PayloadByteLength` (u32 each), then that many bytes of `Payload`; the first three are kept as source fields 16 to 18 |
-| Kept as | `ApplicationPayload`, encoding binary, one buffer a record: a part is its buffers in sequence order, from the one flagged first to the one flagged last. A body is what its client sent or read: a chunked response's without its chunk framing, which only its head names (FX-HTTP-003); a response in the gzip content coding coded where its client read the coded bytes, and decoded where its client had WinINet decode it, under a head that declares the coding and the coded length either way, and no record says which (FX-HTTP-004, revision 859). An exchange WinINet made over HTTP/2 is kept as over HTTP/1.1: its bodies as its client sent and read them, and its heads in HTTP/1.1's form, which no wire carried - a request line naming HTTP/1.1 above the fields WinINet sent, a status line naming HTTP/1.1 and no reason above the fields it received, in lower case - and no record says which protocol carried it (FX-HTTP-006, revision 887). A request body its client writes in pieces with InternetWriteFile is kept a buffer to a write, one past 64,511 bytes cut there as a body handed over whole is, and ended by an empty buffer flagged last (FX-HTTP-007, revision 888) |
+| Kept as | `ApplicationPayload`, encoding binary, one buffer a record: a part is its buffers in sequence order, from the one flagged first to the one flagged last. A body is what its client sent or read: a chunked response's without its chunk framing, which only its head names (FX-HTTP-003); a response in the gzip content coding coded where its client read the coded bytes, and decoded where its client had WinINet decode it, under a head that declares the coding and the coded length either way, and no record says which (FX-HTTP-004, revision 859); one in deflate or br alike, but for deflate in the zlib format RFC 9110 names, which WinINet cannot decode and keeps as one buffer of no byte, whole by its ends (FX-HTTP-008, revision 889). An exchange WinINet made over HTTP/2 is kept as over HTTP/1.1: its bodies as its client sent and read them, and its heads in HTTP/1.1's form, which no wire carried - a request line naming HTTP/1.1 above the fields WinINet sent, a status line naming HTTP/1.1 and no reason above the fields it received, in lower case - and no record says which protocol carried it (FX-HTTP-006, revision 887). A request body its client writes in pieces with InternetWriteFile is kept a buffer to a write, one past 64,511 bytes cut there as a body handed over whole is, and ended by an empty buffer flagged last (FX-HTTP-007, revision 888) |
 | Exchange | `SessionId`: the client process's own count from 1, so it names an exchange only within one run of its client; exchanges at once keep their own (FX-HTTP-003, revision 244); a client working WinINet asynchronously raises the same records as one working it synchronously (FX-HTTP-005, revision 886) |
 | Thread | none stated: a record is raised on whichever of its client's threads finished the step it records - every head and sent body on one of WinINet's own, a read's bytes on the reading thread where they were waiting and on WinINet's where the read waited - for a synchronous client as for an asynchronous one, so its header's thread is not the thread that made the request (FX-HTTP-005, revision 886) |
 | Scope | the named processes, by the provider's process filter, each held open while the capture runs so no other process can be given its ID; a process not running is refused (revision 245); every exchange of theirs (`*`) |
@@ -315,13 +315,17 @@ that held any, every head in HTTP/1.1's form, holding the fields the server deco
 And on revision 888: FX-HTTP-007's 64 exchanges whose request bodies were written in pieces, recorded twice - bodies to
 256 KiB in pieces of up to 80,000 bytes, and eight at once in pieces of up to 4,096 - each kept every exchange whole,
 each body in a buffer to a write and one to end it, and every part `icat content --part` saved matched the server's
-bytes, 254 of 254 that held any.
+bytes, 254 of 254 that held any. And on revision 889: FX-HTTP-008's responses in br and deflate, recorded three times
+with WinINet asked to decode them - br, raw deflate and the zlib format - each kept every exchange whole; each br and
+raw deflate body `icat content --part` saved was the body before its coding, 63 of 63 that held any, and each zlib
+deflate body WinINet could not decode, its client's read failing, was kept as no byte.
 
 ## 6. What is not defined at this version
 
-- Content codings other than gzip are unmeasured, and so are the other client libraries, which raise no such records.
-  Asynchronous WinINet is measured since revision 886 (FX-HTTP-005), HTTP/2 since revision 887 (FX-HTTP-006), and a
-  request body written in pieces since revision 888 (FX-HTTP-007).
+- Content codings other than gzip, deflate and br are unmeasured, and so are redirects, proxies, authentication and the
+  other client libraries, which raise no such records. Asynchronous WinINet is measured since revision 886
+  (FX-HTTP-005), HTTP/2 since revision 887 (FX-HTTP-006), a request body written in pieces since revision 888
+  (FX-HTTP-007), and deflate and br since revision 889 (FX-HTTP-008).
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
 - A broker content capture of another user's, another sign-in's or a higher integrity's process: the broker keeps
   content only from its client's own processes (`contracts/broker-v1.md` §2.1, ADR-049).

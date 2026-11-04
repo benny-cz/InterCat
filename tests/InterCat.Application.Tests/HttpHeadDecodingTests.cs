@@ -317,8 +317,14 @@ public sealed class HttpHeadDecodingTests
     [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: GZip\r\nContent-Length: 30\r\n\r\n", "GET", 1, 12, true, "Its head declares 30 bytes in the GZip content coding, and its recorded buffers hold 12 bytes: WinINet keeps a coded body as its client read it, decoded where the client had WinINet decode it (FX-HTTP-004), so a body of another length is not said to disagree.", false)]
     [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: X-GZIP\r\nContent-Length: 20\r\n\r\n", "GET", 1, 0, true, "Its head declares 20 bytes in the X-GZIP content coding, and its recorded buffers hold no byte: WinINet keeps a coded body as its client read it, decoded where the client had WinINet decode it (FX-HTTP-004), so a body of another length is not said to disagree.", false)]
     [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: 30\r\n\r\n", "GET", 0, 0, false, "Its head declares 30 bytes in the gzip content coding, and no buffer of its body was recorded.", true)]
-    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: br\r\nContent-Length: 30\r\n\r\n", "GET", 1, 120, true, "Its head declares 30 bytes in the br content coding, and its recorded buffers hold 120 bytes; how WinINet's capture keeps a body in that coding was not measured, so its length is not compared.", false)]
-    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Encoding: deflate\r\nContent-Length: 30\r\n\r\n", "GET", 1, 12, true, "Its head declares 30 bytes in the gzip, deflate content coding, and its recorded buffers hold 12 bytes; how WinINet's capture keeps a body in that coding was not measured, so its length is not compared.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: br\r\nContent-Length: 30\r\n\r\n", "GET", 1, 120, true, "Its head declares 30 bytes in the br content coding, and its recorded buffers hold 120 bytes: WinINet keeps a coded body as its client read it, decoded where the client had WinINet decode it (FX-HTTP-008), so a body of another length is not said to disagree.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: br\r\nContent-Length: 30\r\n\r\n", "GET", 1, 30, true, "Its head declares 30 bytes in the br content coding, and its recorded buffers hold them all.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: Deflate\r\nContent-Length: 30\r\n\r\n", "GET", 2, 95, true, "Its head declares 30 bytes in the Deflate content coding, and its recorded buffers hold 95 bytes: WinINet keeps a coded body as its client read it, decoded where the client had WinINet decode it (FX-HTTP-008), so a body of another length is not said to disagree.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: deflate\r\nContent-Length: 30\r\n\r\n", "GET", 1, 0, true, "Its head declares 30 bytes in the deflate content coding, and its recorded buffers hold no byte: WinINet keeps a coded body as its client read it, decoded where the client had WinINet decode it, and keeps a deflate body it could not decode as no byte (FX-HTTP-008), so a body of another length is not said to disagree.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: br\r\nContent-Length: 30\r\n\r\n", "GET", 1, 0, true, "Its head declares 30 bytes in the br content coding, and its recorded buffers hold no byte: WinINet keeps a coded body as its client read it, decoded where the client had WinINet decode it (FX-HTTP-008), so a body of another length is not said to disagree.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Encoding: deflate\r\nContent-Length: 30\r\n\r\n", "GET", 1, 12, true, "Its head declares 30 bytes in the gzip, deflate content coding, and its recorded buffers hold 12 bytes: WinINet keeps a coded body as its client read it, decoded where the client had WinINet decode it (FX-HTTP-004, FX-HTTP-008), so a body of another length is not said to disagree.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: zstd\r\nContent-Length: 30\r\n\r\n", "GET", 1, 12, true, "Its head declares 30 bytes in the zstd content coding, and its recorded buffers hold 12 bytes; how WinINet's capture keeps a body in that coding was not measured, so its length is not compared.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: gzip, compress\r\nContent-Length: 30\r\n\r\n", "GET", 1, 12, true, "Its head declares 30 bytes in the gzip, compress content coding, and its recorded buffers hold 12 bytes; how WinINet's capture keeps a body in that coding was not measured, so its length is not compared.", false)]
     [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: identity\r\ncontent-length: 5, 5\r\n\r\n", "GET", 1, 5, true, "Its head declares 5 bytes, and its recorded buffers hold them all.", false)]
     [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\n", "GET", 1, 5, true, "Its Content-Length, 5, 6, is not one length, so its body is not compared.", false)]
     [InlineData("HTTP/1.1 200 OK\r\nContent-Length: 99999999999999999999\r\n\r\n", "GET", 1, 5, true, "Its Content-Length, 99999999999999999999, is not one length, so its body is not compared.", false)]
@@ -396,6 +402,60 @@ public sealed class HttpHeadDecodingTests
             }
 
             Assert.Equal(decoded ? (0, 64) : (64, 0), (agreed, notSaid));
+        }
+    }
+
+    /// <summary>
+    /// FX-HTTP-008 measured that WinINet's capture keeps a body in deflate or br as its client read it: decoded where the
+    /// client had WinINet decode it, for br and for deflate written as RFC 1951's raw data - and, for deflate in the zlib
+    /// format RFC 9110 names, which WinINet could not decode, as one buffer of no byte. Each of the three recorded runs'
+    /// responses, its head rebuilt and checked against the server's truth byte for byte, is set beside its body as the
+    /// capture kept it: none is said to disagree, and a deflate body kept as no byte is said to be possibly one WinINet could
+    /// not decode.
+    /// </summary>
+    [Fact(DisplayName = "P2: FX-HTTP-008's responses in deflate and br, kept as WinINet decoded them or as no byte where it could not, are not said to disagree with the length their heads declare")]
+    public void DeflateAndBrotliResponsesAreSetBesideTheirHeadsAsTheirCaptureKeptThem()
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-HTTP-008", "evidence");
+        foreach ((string run, string coding, bool undecodable) in new[] { ("br-decoded", "br", false), ("deflate-raw-decoded", "deflate", false), ("deflate-decoded", "deflate", true) })
+        {
+            var sent = new Dictionary<(long Call, string Part), (long Length, string Hash)>();
+            foreach (string line in File.ReadLines(Path.Combine(evidence, run, "truth-http-server.jsonl")))
+            {
+                TruthRecord record = System.Text.Json.JsonSerializer.Deserialize<TruthRecord>(line, TruthJson)!;
+                if (record is { CallId: { } call, Status: { } part, DeclaredBytes: { } length, ResourceName: { } hash })
+                {
+                    sent[(call, part)] = (length, hash);
+                }
+            }
+
+            long[] calls = [.. sent.Keys.Where(key => key.Part == "response-head").Select(key => key.Call).Order()];
+            Assert.Equal(64, calls.Length);
+            int agreed = 0, notSaid = 0, undecoded = 0, keptEmpty = 0;
+            foreach (long call in calls)
+            {
+                (long coded, _) = sent[(call, "response-body-coded")];
+                (long before, _) = sent[(call, "response-body")];
+                keptEmpty += coding == "deflate" && (undecodable || before == 0) ? 1 : 0;
+                byte[] head = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
+                    $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Encoding: {coding}\r\nContent-Length: {coded}\r\nX-InterCat-Fixture: FX-HTTP-008\r\n\r\n"));
+                Assert.Equal(sent[(call, "response-head")], (head.LongLength, "sha256:" + Convert.ToHexStringLower(SHA256.HashData(head))));
+
+                // As the capture kept it: the body before its coding where WinINet decoded it, one buffer of no byte where it
+                // could not.
+                var heads = new HttpExchangeHeads(Head(string.Create(CultureInfo.InvariantCulture, $"POST /fx/{call} HTTP/1.1\r\n\r\n"), request: true),
+                    Head(head, request: false));
+                HttpBodyDeclaration declaration = heads.ResponseBody(new HttpPartRecord(1, undecodable ? 0 : before, true))!;
+                Assert.False(declaration.Contradicts, declaration.Statement);
+                agreed += declaration.Statement.EndsWith("and its recorded buffers hold them all.", StringComparison.Ordinal) ? 1 : 0;
+                notSaid += declaration.Statement.EndsWith("(FX-HTTP-008), so a body of another length is not said to disagree.", StringComparison.Ordinal) ? 1 : 0;
+                undecoded += declaration.Statement.Contains("keeps a deflate body it could not decode as no byte", StringComparison.Ordinal) ? 1 : 0;
+            }
+
+            // Every body decoded is another length than its coded bytes; every deflate body kept as no byte - each one WinINet
+            // could not decode, and one decoded to nothing, which no record tells apart - is said to be possibly the first.
+            Assert.Equal((0, 64, keptEmpty), (agreed, notSaid, undecoded));
+            Assert.Equal(undecodable ? 64 : coding == "deflate" ? 1 : 0, keptEmpty);
         }
     }
 

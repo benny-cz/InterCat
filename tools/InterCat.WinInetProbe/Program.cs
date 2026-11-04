@@ -45,7 +45,7 @@ internal static partial class Program
         int bytes = int.Parse(Option(args, "--bytes") ?? "98304", CultureInfo.InvariantCulture);
         bool tls = args.Contains("--tls", StringComparer.Ordinal);
         bool chunked = args.Contains("--chunked", StringComparer.Ordinal);
-        bool gzip = args.Contains("--gzip", StringComparer.Ordinal);
+        string? coding = Option(args, "--coding") ?? (args.Contains("--gzip", StringComparer.Ordinal) ? "gzip" : null);
         bool decode = args.Contains("--decode", StringComparer.Ordinal);
         bool async = args.Contains("--async", StringComparer.Ordinal);
         bool http2 = args.Contains("--http2", StringComparer.Ordinal);
@@ -60,6 +60,7 @@ internal static partial class Program
         {
             Console.Error.WriteLine("InterCat.WinInetProbe --output <new directory> [--requests n] [--seed n] [--bytes n] [--tls] [--concurrency n] [--chunked]");
             Console.Error.WriteLine("  [--gzip [--decode]]: responses coded in gzip, read coded or decoded by WinINet (FX-HTTP-004)");
+            Console.Error.WriteLine("  [--coding deflate|br [--decode]]: responses coded in deflate (zlib) or Brotli instead (FX-HTTP-008)");
             Console.Error.WriteLine("  [--async]: the client works WinINet asynchronously, with any of the others (FX-HTTP-005)");
             Console.Error.WriteLine("  [--http2]: the client enables HTTP/2 and Kestrel serves it over TLS (FX-HTTP-006)");
             Console.Error.WriteLine("  [--write n]: the client writes each request body in seeded pieces of 1 to n bytes (FX-HTTP-007)");
@@ -136,7 +137,12 @@ internal static partial class Program
             };
             if (tls) start.ArgumentList.Add("--tls");
             if (chunked) start.ArgumentList.Add("--chunked");
-            if (gzip) start.ArgumentList.Add("--gzip");
+            if (coding is not null)
+            {
+                start.ArgumentList.Add("--coding");
+                start.ArgumentList.Add(coding);
+            }
+
             if (decode) start.ArgumentList.Add("--decode");
             if (async) start.ArgumentList.Add("--async");
             if (http2) start.ArgumentList.Add("--http2");
@@ -244,7 +250,7 @@ internal static partial class Program
             .Count(line => line.Contains("\"kind\":\"CallCompleted\"", StringComparison.Ordinal));
         object report = new
         {
-            exchange = Compare(captured, truth, process.Id, requests, bytes, tls || http2, concurrency, chunked, gzip, decode, async, http2, write, pace, eventsLost, others,
+            exchange = Compare(captured, truth, process.Id, requests, bytes, tls || http2, concurrency, chunked, coding, decode, async, http2, write, pace, eventsLost, others,
                 malformed, ledger ? Path.Combine(output, "buffers.csv") : null),
             processFilter = new
             {
@@ -267,7 +273,7 @@ internal static partial class Program
     /// with the body before its coding and with the coded bytes.
     /// </summary>
     private static object Compare(List<Buffer> captured, string truth, int processId, int requests, int maximumBodyBytes, bool tls,
-        int concurrency, bool chunked, bool gzip, bool decode, bool async, bool http2, int write, int pace, int eventsLost, long others, long malformed,
+        int concurrency, bool chunked, string? coding, bool decode, bool async, bool http2, int write, int pace, int eventsLost, long others, long malformed,
         string? ledger)
     {
         // The threads that made the requests, by the workload's own account: a record raised on any other thread of its
@@ -575,8 +581,10 @@ internal static partial class Program
             providerGuid = Provider,
             keywords = "0x" + Keywords.ToString("X16", CultureInfo.InvariantCulture),
             processFilter = "EVENT_FILTER_TYPE_PID: the workload's process alone",
-            workload = write > 0 ? "FX-HTTP-007" : http2 ? "FX-HTTP-006" : async ? "FX-HTTP-005" : gzip ? "FX-HTTP-004"
+            workload = coding is not (null or "gzip") ? "FX-HTTP-008" : write > 0 ? "FX-HTTP-007" : http2 ? "FX-HTTP-006"
+                : async ? "FX-HTTP-005" : coding is "gzip" ? "FX-HTTP-004"
                 : concurrency > 1 || chunked ? "FX-HTTP-003" : tls ? "FX-HTTP-002" : "FX-HTTP-001",
+            coding,
             writeBytes = write,
             requestBodiesWritten = write > 0
                 ? new { bodiesAsWritten, bodiesCutWhereAWriteWasLonger, bodiesOtherwise, writesPastTheLimit, otherwise }
@@ -595,7 +603,6 @@ internal static partial class Program
             tls,
             concurrency,
             chunked,
-            gzip,
             decode,
             requests,
             maximumBodyBytes,

@@ -71,8 +71,10 @@ public sealed record HttpBodyDeclaration(string Statement, bool Contradicts);
 /// buffers of the body measured. WinINet keeps a chunked response's body without its chunk framing (FX-HTTP-003), so a
 /// chunked body's length is its buffers' alone; and it keeps a body in the gzip content coding as its client read it,
 /// coded, or decoded where the client had WinINet decode it (FX-HTTP-004), which no record says, so such a body agrees
-/// where it holds the coded length its head declares and is not said to disagree where it holds another. A body in any
-/// other coding is compared only where it holds that length. Nothing of the body's content is read.
+/// where it holds the coded length its head declares and is not said to disagree where it holds another. So it keeps
+/// one in deflate or br (FX-HTTP-008), and a deflate body it could not decode - the zlib data RFC 9110 names deflate - as
+/// one buffer of no byte. A body in any other coding is compared only where it holds that length. Nothing of the body's
+/// content is read.
 /// </summary>
 internal static class HttpBodies
 {
@@ -147,13 +149,22 @@ internal static class HttpBodies
         if (coded.Length > 0)
         {
             string holds = body.Bytes == 0 ? "no byte" : held;
-            return new(coded.All(coding => coding.Equals("gzip", StringComparison.OrdinalIgnoreCase)
-                    || coding.Equals("x-gzip", StringComparison.OrdinalIgnoreCase))
-                ? $"Its head declares {length}, and its recorded buffers hold {holds}: WinINet keeps a coded body as its client "
-                    + "read it, decoded where the client had WinINet decode it (FX-HTTP-004), so a body of another length is not "
-                    + "said to disagree."
-                : $"Its head declares {length}, and its recorded buffers hold {holds}; how WinINet's capture keeps a body in that "
-                    + "coding was not measured, so its length is not compared.", false);
+            if (!coded.All(coding => IsGzip(coding) || IsMeasuredBesideGzip(coding)))
+            {
+                return new($"Its head declares {length}, and its recorded buffers hold {holds}; how WinINet's capture keeps a body in "
+                    + "that coding was not measured, so its length is not compared.", false);
+            }
+
+            // Measured: WinINet keeps the body as its client read it - coded, or decoded where the client had WinINet decode
+            // it - in gzip (FX-HTTP-004), deflate and br (FX-HTTP-008); and a deflate body it could not decode, as the zlib
+            // data RFC 9110 names deflate are, as one buffer of no byte, whole, which no record tells from an empty body.
+            string measured = coded.All(IsGzip) ? "FX-HTTP-004" : coded.Any(IsGzip) ? "FX-HTTP-004, FX-HTTP-008" : "FX-HTTP-008";
+            string undecoded = body.Bytes == 0 && coded.Any(coding => coding.Equals("deflate", StringComparison.OrdinalIgnoreCase))
+                ? ", and keeps a deflate body it could not decode as no byte"
+                : string.Empty;
+            return new($"Its head declares {length}, and its recorded buffers hold {holds}: WinINet keeps a coded body as its client "
+                + $"read it, decoded where the client had WinINet decode it{undecoded} ({measured}), so a body of another length is "
+                + "not said to disagree.", false);
         }
 
         return body.Bytes < declared
@@ -161,6 +172,13 @@ internal static class HttpBodies
                 + "of them" + (body.Whole ? ", though their places and ends make the body whole." : "."), true)
             : new($"Its head declares {length}, and its recorded buffers hold {held}, more than it declared.", true);
     }
+
+    private static bool IsGzip(string coding) =>
+        coding.Equals("gzip", StringComparison.OrdinalIgnoreCase) || coding.Equals("x-gzip", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The codings FX-HTTP-008 measured beside gzip: deflate, raw or zlib, and br.</summary>
+    private static bool IsMeasuredBesideGzip(string coding) =>
+        coding.Equals("deflate", StringComparison.OrdinalIgnoreCase) || coding.Equals("br", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// The values of every field line <paramref name="name"/> names, in any case, each list element apart (RFC 9110 §5.3);

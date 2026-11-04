@@ -1025,6 +1025,52 @@
         "I21: a recording keeps each WinINet buffer beside its journal chunk, with its exchange, its place and its ends",
         "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone"
       ]
+    },
+    {
+      "id": "FX-HTTP-008",
+      "title": "WinINet responses in the deflate and br content codings, read coded and decoded",
+      "scenario": "Content codings beside gzip (ADR-037, revision 889): the loopback server codes every response body in br (Brotli), in deflate as the zlib format RFC 9110 names, or under deflate as RFC 1951's raw data, declared by Content-Encoding beside the coded length, and the client, accepting the coding, reads each body as the wire carried it or, with --decode, has WinINet decode it first (INTERNET_OPTION_HTTP_DECODING); WinINet's capture provider is enabled for the workload's process alone.",
+      "milestone": "M3",
+      "mechanism": "Http",
+      "backlog": [
+        "IC-011",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [],
+        "invariants": [],
+        "prohibitions": [
+          "P2"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads http-wininet --coding br, --coding deflate and --coding deflate-raw, each with --decode",
+        "seed": 20260929,
+        "log": "fixtures/FX-HTTP-008/evidence/br-decoded/truth-http-server.jsonl",
+        "independence": "The loopback server is the witness: it logs every request head and body it received and every response head it sent, and each response body twice - the body before its coding and the coded bytes the wire carried - by length and SHA-256, never the bytes. The client logs what it sent and read, and each read that failed with its error. Neither reads InterCat state."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-HTTP-008/evidence/measurement.json",
+        "note": "A body in br or deflate is kept as its client read it, as gzip's is: where the client had WinINet decode it, 64 of 64 br bodies and 64 of 64 raw deflate bodies were the body before its coding, saved by icat content --part; where the head declared deflate over the zlib format RFC 9110 names, WinINet could not decode a single body - every read failed with ERROR_INTERNET_DECODING_FAILED - and the capture kept each as one buffer of no byte, whole by its ends. The lab probe found the same of seven runs, read coded too. So a body in any of these codings holding another length than its head declares is not said to disagree, and a deflate body holding no byte is said to be possibly one WinINet could not decode."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-04",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record --profile content scoped to the workload's process, three times: 871, 783 and 879 records journaled, 1,204,061, 657,630 and 1,204,730 bytes of content kept, nothing lost. Every exchange recorded whole and every head decoded to its end; each br and raw deflate body saved by icat content matched the body before its coding, each zlib deflate body WinINet could not decode was kept as no byte, and none was said to disagree with its head. Tier ExperimentalEvidence: redirects, proxies and authentication are unmeasured (ADR-037)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The server's and the client's truth logs and the scenario of each run - ports, thread IDs, lengths and SHA-256 of synthetic requests and responses, never their bytes, and the errors of the reads that failed - and the measurement's counters. The captures themselves are not kept."
+      },
+      "tests": [
+        "P2: a body is set beside the length its head declares, and said to disagree with it only where its recorded bytes do",
+        "P2: FX-HTTP-008's responses in deflate and br, kept as WinINet decoded them or as no byte where it could not, are not said to disagree with the length their heads declare"
+      ]
     }
   ],
   "retired": [
@@ -1553,6 +1599,7 @@
       "P2": [
         "P2: C on an HTTP exchange opens its conversation, which says what each head said only once asked, and Show its buffers opens them",
         "P2: FX-HTTP-004's responses, kept coded or as WinINet decoded them, agree with the length their heads declare or are not said to disagree",
+        "P2: FX-HTTP-008's responses in deflate and br, kept as WinINet decoded them or as no byte where it could not, are not said to disagree with the length their heads declare",
         "P2: Find in kept content exports the records listed, asking first where the bytes around each match were shown, since the table is then content",
         "P2: Find in kept content finds a text the buffers of one HTTP part split, saying how far before the last it began",
         "P2: Find in kept content lists the records holding a text without a byte of them unless asked, and a record found opens in the content viewer",

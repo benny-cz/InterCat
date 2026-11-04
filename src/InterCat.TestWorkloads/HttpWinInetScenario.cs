@@ -44,6 +44,9 @@ internal sealed record HttpWinInetOptions
     /// <summary>Each request body written in seeded pieces after its head is sent: FX-HTTP-007.</summary>
     public const string WrittenScenarioId = "FX-HTTP-007";
 
+    /// <summary>Responses in the deflate or br content coding, which the client reads coded or has WinINet decode: FX-HTTP-008.</summary>
+    public const string CodingsScenarioId = "FX-HTTP-008";
+
     public required string TruthDirectory { get; init; }
     public int Seed { get; init; } = 20_260_929;
     public int Requests { get; init; } = 16;
@@ -76,10 +79,11 @@ internal sealed record HttpWinInetOptions
     public bool Chunked { get; init; }
 
     /// <summary>
-    /// Whether the server codes every response body in gzip (RFC 9110 §8.4), declaring it by Content-Encoding, and the client
-    /// says it accepts gzip.
+    /// The content coding the server codes every response body in (RFC 9110 §8.4), declaring it by Content-Encoding, and which
+    /// the client says it accepts: gzip (FX-HTTP-004), deflate - the zlib format RFC 9110 §8.4.1.2 names - or br, Brotli
+    /// (FX-HTTP-008); null sends each body as it is.
     /// </summary>
-    public bool Gzip { get; init; }
+    public string? Coding { get; init; }
 
     /// <summary>
     /// Whether the client has WinINet decode a coded response before it reads it (INTERNET_OPTION_HTTP_DECODING), so what it
@@ -115,12 +119,22 @@ internal sealed record HttpWinInetOptions
     public int WriteBytes { get; init; }
 
     /// <summary>
-    /// The scenario this run is: FX-HTTP-007 with bodies written in pieces, else FX-HTTP-006 over HTTP/2, else FX-HTTP-005
-    /// made asynchronously, else FX-HTTP-004 with coded responses, else FX-HTTP-003 with several clients at once or chunked
-    /// responses, else FX-HTTP-002 over TLS, else FX-HTTP-001.
+    /// The scenario this run is: FX-HTTP-008 with responses in deflate or br, else FX-HTTP-007 with bodies written in pieces,
+    /// else FX-HTTP-006 over HTTP/2, else FX-HTTP-005 made asynchronously, else FX-HTTP-004 with responses in gzip, else
+    /// FX-HTTP-003 with several clients at once or chunked responses, else FX-HTTP-002 over TLS, else FX-HTTP-001.
     /// </summary>
-    public string Scenario => WriteBytes > 0 ? WrittenScenarioId : Http2 ? Http2ScenarioId : Async ? AsyncScenarioId
-        : Gzip ? CodedScenarioId : Concurrency > 1 || Chunked ? InterleavedScenarioId : Tls ? TlsScenarioId : ScenarioId;
+    public string Scenario => Coding is not (null or "gzip") ? CodingsScenarioId : WriteBytes > 0 ? WrittenScenarioId
+        : Http2 ? Http2ScenarioId : Async ? AsyncScenarioId : Coding is "gzip" ? CodedScenarioId
+        : Concurrency > 1 || Chunked ? InterleavedScenarioId : Tls ? TlsScenarioId : ScenarioId;
+
+    /// <summary>
+    /// The content codings the workload writes: deflate-raw is a body its head declares deflate in, written as deflate data
+    /// without the zlib wrapper RFC 9110 asks for, as servers that read RFC 1951 for deflate write one.
+    /// </summary>
+    public static IReadOnlyList<string> Codings { get; } = ["gzip", "deflate", "deflate-raw", "br"];
+
+    /// <summary>The coding a head names for <see cref="Coding"/>: deflate for raw deflate data too.</summary>
+    public string? DeclaredCoding => Coding is "deflate-raw" ? "deflate" : Coding;
 }
 
 /// <summary>
@@ -141,7 +155,7 @@ internal static partial class HttpWinInetScenario
 
     // What the client's request adds to the fixture's header: that it accepts gzip, when the server codes its responses.
     private static string RequestHeaders(HttpWinInetOptions options) =>
-        FixtureHeader(options) + (options.Gzip ? "Accept-Encoding: gzip\r\n" : string.Empty);
+        FixtureHeader(options) + (options.DeclaredCoding is { } coding ? $"Accept-Encoding: {coding}\r\n" : string.Empty);
 
     // Over TLS: a secure request whose certificate errors - an unknown issuer, a name, dates, revocation - WinINet is told to
     // accept for this request alone, so a self-signed certificate installed nowhere serves the loopback server.
@@ -262,6 +276,13 @@ internal static partial class HttpWinInetScenario
 
     public static async Task<int> RunAsync(HttpWinInetOptions options, CancellationToken cancellationToken)
     {
+        if (options.Coding is { } coding && !HttpWinInetOptions.Codings.Contains(coding, StringComparer.Ordinal))
+        {
+            await Console.Error.WriteLineAsync($"--coding takes {string.Join(", ", HttpWinInetOptions.Codings)}; '{coding}' is none of them.")
+                .ConfigureAwait(false);
+            return 2;
+        }
+
         if (options.Http2 && options.Chunked)
         {
             await Console.Error.WriteLineAsync("HTTP/2 frames a body itself and has no chunked transfer coding; --chunked is refused with --http2.")
@@ -338,7 +359,7 @@ internal static partial class HttpWinInetScenario
             options.Tls,
             options.Concurrency,
             options.Chunked,
-            options.Gzip,
+            options.Coding,
             options.Decode,
             options.Async,
             options.PaceMilliseconds,
@@ -878,12 +899,12 @@ internal static partial class HttpWinInetScenario
                     server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: body.Length, status: "request-body",
                         resourceName: Sha256(body));
 
-                    // A chunked response frames its body in seeded chunks, and a coded one codes it in gzip first; the truth
-                    // names the body before either, which a decoding client reads, and apart the coded bytes and the framed
-                    // bytes the wire carried, so a capture can be matched with any of them.
+                    // A chunked response frames its body in seeded chunks, and a coded one codes it first; the truth names the
+                    // body before either, which a decoding client reads, and apart the coded bytes and the framed bytes the
+                    // wire carried, so a capture can be matched with any of them.
                     byte[] responseBody = Body(options.Seed, index, options.MaximumBodyBytes, request: false);
-                    byte[] coded = options.Gzip ? Gzip(responseBody) : responseBody;
-                    string framing = (options.Gzip ? "Content-Encoding: gzip\r\n" : string.Empty) + (options.Chunked
+                    byte[] coded = options.Coding is { } coding ? Code(responseBody, coding) : responseBody;
+                    string framing = (options.DeclaredCoding is { } declared ? $"Content-Encoding: {declared}\r\n" : string.Empty) + (options.Chunked
                         ? "Transfer-Encoding: chunked"
                         : string.Create(CultureInfo.InvariantCulture, $"Content-Length: {coded.Length}"));
                     byte[] responseHead = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
@@ -908,7 +929,7 @@ internal static partial class HttpWinInetScenario
                         resourceName: Sha256(responseHead));
                     server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: responseBody.Length, status: "response-body",
                         resourceName: Sha256(responseBody));
-                    if (options.Gzip)
+                    if (options.Coding is not null)
                     {
                         server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: coded.Length,
                             status: "response-body-coded", resourceName: Sha256(coded));
@@ -975,10 +996,10 @@ internal static partial class HttpWinInetScenario
             resourceName: Sha256(body));
 
         byte[] responseBody = Body(options.Seed, index, options.MaximumBodyBytes, request: false);
-        byte[] coded = options.Gzip ? Gzip(responseBody) : responseBody;
+        byte[] coded = options.Coding is { } coding ? Code(responseBody, coding) : responseBody;
         context.Response.StatusCode = StatusCodes.Status200OK;
         context.Response.ContentType = "application/octet-stream";
-        if (options.Gzip) context.Response.Headers.ContentEncoding = "gzip";
+        if (options.DeclaredCoding is not null) context.Response.Headers.ContentEncoding = options.DeclaredCoding;
         context.Response.ContentLength = coded.Length;
         context.Response.Headers["X-InterCat-Fixture"] = options.Scenario;
         if (options.PaceMilliseconds > 0)
@@ -999,7 +1020,7 @@ internal static partial class HttpWinInetScenario
 
         server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: responseBody.Length, status: "response-body",
             resourceName: Sha256(responseBody));
-        if (options.Gzip)
+        if (options.Coding is not null)
         {
             server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: coded.Length, status: "response-body-coded",
                 resourceName: Sha256(coded));
@@ -1057,6 +1078,73 @@ internal static partial class HttpWinInetScenario
     }
 
     private static string Sha256(byte[] bytes) => "sha256:" + Convert.ToHexStringLower(SHA256.HashData(bytes));
+
+    /// <summary><paramref name="body"/> in the content coding <paramref name="coding"/> names, one of <see cref="HttpWinInetOptions.Codings"/>.</summary>
+    private static byte[] Code(byte[] body, string coding) => coding switch
+    {
+        "gzip" => Gzip(body),
+        "deflate" => Deflate(body),
+        "deflate-raw" => RawDeflate(body),
+        "br" => Brotli(body),
+        _ => throw new ArgumentOutOfRangeException(nameof(coding), coding, "The workload writes no such content coding."),
+    };
+
+    /// <summary>
+    /// <paramref name="body"/> in the deflate content coding: the zlib format (RFC 9110 §8.4.1.2, RFC 1950), its deflate data
+    /// between a two-byte header and an Adler-32. An empty body is one zlib stream of an empty final block, written out, as
+    /// for gzip, since .NET's stream may write nothing for one.
+    /// </summary>
+    private static byte[] Deflate(byte[] body)
+    {
+        if (body.Length == 0)
+        {
+            // The header (deflate, a 32 KiB window, default level), an empty final block of fixed codes, and Adler-32 of nothing.
+            return [0x78, 0x9C, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01];
+        }
+
+        using var coded = new MemoryStream();
+        using (var zlib = new ZLibStream(coded, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            zlib.Write(body);
+        }
+
+        return coded.ToArray();
+    }
+
+    /// <summary>
+    /// <paramref name="body"/> as raw deflate data (RFC 1951), without the zlib wrapper: what a server that reads deflate as
+    /// RFC 1951 sends under Content-Encoding: deflate. An empty body is one empty final block.
+    /// </summary>
+    private static byte[] RawDeflate(byte[] body)
+    {
+        if (body.Length == 0)
+        {
+            return [0x03, 0x00];
+        }
+
+        using var coded = new MemoryStream();
+        using (var deflate = new DeflateStream(coded, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            deflate.Write(body);
+        }
+
+        return coded.ToArray();
+    }
+
+    /// <summary>
+    /// <paramref name="body"/> in the br content coding: Brotli (RFC 7932), at its best quality and a 4 MiB window, an empty
+    /// body included, which Brotli writes as a stream of its own.
+    /// </summary>
+    private static byte[] Brotli(byte[] body)
+    {
+        byte[] coded = new byte[BrotliEncoder.GetMaxCompressedLength(body.Length)];
+        if (!BrotliEncoder.TryCompress(body, coded, out int written, quality: 11, window: 22))
+        {
+            throw new InvalidOperationException("Brotli could not code a response body.");
+        }
+
+        return coded[..written];
+    }
 
     /// <summary>
     /// <paramref name="body"/> in the gzip content coding (RFC 9110 §8.4.1.3). An empty body is one gzip member holding no

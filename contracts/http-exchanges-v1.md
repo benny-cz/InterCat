@@ -177,8 +177,11 @@ response's whose request's method was not decoded, holding none, could be a resp
 disagree. Nor is a body in a content coding other than identity that holds some other length, though recorded (revision
 859): WinINet keeps a body in the gzip coding as its client read it - coded, or decoded where the client had WinINet
 decode it - under a head declaring the coded length either way, and no record says which (FX-HTTP-004), so such a body
-is said to be possibly the decoded one, and a body in any other coding, which was not measured, is said not to be
-compared. A response declaring no length ran until its connection closed. A head not decoded to the empty
+is said to be possibly the decoded one. Since revision 889 so is a body in deflate or br, which WinINet keeps alike
+(FX-HTTP-008); and a deflate body holding no byte is said to be possibly one WinINet could not decode, which it keeps as
+one buffer of no byte, whole by its ends, as it kept every body in the zlib format RFC 9110 names deflate, decoding only
+deflate written as RFC 1951's raw data. A body in any other coding, which was not measured, is said not to be compared.
+A response declaring no length ran until its connection closed. A head not decoded to the empty
 line that ends it declares nothing known of its body. A disagreement is what a body's buffers cannot show: buffers
 whose places and ends make a body whole can hold fewer bytes than its head declared. The window says each body's
 declaration beneath it, a disagreement in the caution colour; `icat exchanges --decode` says each disagreement beneath
@@ -221,6 +224,7 @@ how many heads were not decoded. It writes no JSON: the command line's document 
 - An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
   asked for reads, and only `http-exchange-heads-v1` writes, asked for with them (§5c, §5d, §5f,
   `contracts/decoders-v1.md` §2).
-- How WinINet's capture keeps a body in a content coding other than gzip (§5e). Asynchronous WinINet is measured
-  since revision 886 (FX-HTTP-005), HTTP/2 since revision 887 (FX-HTTP-006), whose heads no record tells from
-  HTTP/1.1's, and a request body written in pieces since revision 888 (FX-HTTP-007).
+- How WinINet's capture keeps a body in a content coding other than gzip, deflate and br (§5e), and a response it
+  redirected, or one through a proxy or past authentication. Asynchronous WinINet is measured since revision 886
+  (FX-HTTP-005), HTTP/2 since revision 887 (FX-HTTP-006), whose heads no record tells from HTTP/1.1's, a request body
+  written in pieces since revision 888 (FX-HTTP-007), and deflate and br since revision 889 (FX-HTTP-008).

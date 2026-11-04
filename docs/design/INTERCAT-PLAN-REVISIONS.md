@@ -804,6 +804,8 @@ Revision 887 measures HTTP/2 through WinINet's capture (FX-HTTP-006): an exchang
 
 Revision 888 measures a request body written in pieces through WinINet's capture (FX-HTTP-007): it is kept a buffer to a write, a write past 64,511 bytes cut as a whole body is, and ended by an empty buffer, so the grouping needs nothing new.
 
+Revision 889 measures responses in deflate and br through WinINet's capture (FX-HTTP-008): each is kept as its client read it, as gzip's is, and a zlib-format deflate body WinINet cannot decode is kept as no byte, so a body in either coding is set beside its head as one in gzip.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3249,3 +3251,21 @@ beside it - two tests' session folders under the shared test temp folder vanishe
 chunked-recording test that trusted a 400 ms pause published once - and passed whole when rerun alone; the three
 fixtures of that shape now hold their scripted capture until a generation is published rather than sleep. Content
 codings other than gzip, and redirects, proxies and authentication, remain unmeasured.
+
+Revision 889 measures responses in deflate and br through WinINet's capture (FX-HTTP-008), where revision 859 had
+measured gzip alone. The truth workload's server can code each response in Brotli, in deflate as the zlib format RFC
+9110 names, or under deflate as RFC 1951's raw data, which servers that read deflate so write; the client accepts the
+coding and reads each body coded or has WinINet decode it. Read coded, every body kept was the coded bytes; decoded by
+WinINet, every br and raw deflate body kept was the body before its coding, chunked too, under heads kept as the wire
+carried them. WinINet could not decode the zlib format: every read failed with `ERROR_INTERNET_DECODING_FAILED`, and the
+capture kept each response body as one buffer of no byte, flagged first and last, whole by its places and ends and alike
+to a body decoded to nothing. Three `icat record --profile content` runs of 64 exchanges found the same through the
+product. So revision 778's comparison now sets a body in deflate or br beside its head as one in gzip - one holding
+another length is not said to disagree, citing FX-HTTP-008, and a deflate body holding no byte is said to be possibly one
+WinINet could not decode - while gzip's statements stay word for word and a body in any other coding is still not
+compared. A test sets each of the fixture's 192 responses, its head rebuilt and checked against the server's truth,
+beside its body as the capture kept it; six mutations of the rule are caught. Revision 888's clean-worktree runs had
+failed two more fixtures under load, each its own commit: an investigation drop test removed its folder while a closing
+window still held a session's lease, and two broker fixtures recorded for one second, which could pass before their
+starts were acknowledged; with the tests' temporary folders moved off `C:\WINDOWS\Temp`, where files kept vanishing, the
+third run passed whole. Redirects, proxies and authentication remain unmeasured.
