@@ -321,14 +321,18 @@ raw deflate body `icat content --part` saved was the body before its coding, 63 
 deflate body WinINet could not decode, its client's read failing, was kept as no byte. And on revision 890:
 FX-HTTP-009's 64 requests eight at once, redirected by 302 and again by 307, recorded twice, each kept as two exchanges -
 the request redirected and its redirect, and the request WinINet made to the location - every one whole, and every
-part `icat content --part` saved matched the server's bytes of its leg, 382 of 382 and 445 of 445 that held any.
+part `icat content --part` saved matched the server's bytes of its leg, 382 of 382 and 445 of 445 that held any. And on
+revision 891: FX-HTTP-010's 64 requests eight at once through a proxy, recorded over HTTP and over TLS, each kept every
+exchange whole - over TLS a CONNECT's too, one before every request - and every part `icat content --part` saved matched
+the server's bytes, 254 of 254 that held any in each, each CONNECT's head and answer the server's log of it, 128 of 128.
 
 ## 6. What is not defined at this version
 
-- Content codings other than gzip, deflate and br are unmeasured, and so are proxies, authentication and the other
-  client libraries, which raise no such records. Asynchronous WinINet is measured since revision 886 (FX-HTTP-005),
-  HTTP/2 since revision 887 (FX-HTTP-006), a request body written in pieces since revision 888 (FX-HTTP-007), deflate
-  and br since revision 889 (FX-HTTP-008), and redirects WinINet follows since revision 890 (FX-HTTP-009).
+- Content codings other than gzip, deflate and br are unmeasured, and so are authentication and the other client
+  libraries, which raise no such records. Asynchronous WinINet is measured since revision 886 (FX-HTTP-005), HTTP/2
+  since revision 887 (FX-HTTP-006), a request body written in pieces since revision 888 (FX-HTTP-007), deflate and br
+  since revision 889 (FX-HTTP-008), redirects WinINet follows since revision 890 (FX-HTTP-009), and requests through a
+  proxy since revision 891 (FX-HTTP-010).
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
 - A broker content capture of another user's, another sign-in's or a higher integrity's process: the broker keeps
   content only from its client's own processes (`contracts/broker-v1.md` §2.1, ADR-049).

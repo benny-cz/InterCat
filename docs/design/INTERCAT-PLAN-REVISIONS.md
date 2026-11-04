@@ -808,6 +808,8 @@ Revision 889 measures responses in deflate and br through WinINet's capture (FX-
 
 Revision 890 measures redirects through WinINet's capture (FX-HTTP-009): a redirect WinINet follows is kept as two exchanges, the request it made to the location numbered apart and begun once the redirect's response ended, so a decoded redirect names its location and a listing the exchange that followed it.
 
+Revision 891 measures requests through a proxy through WinINet's capture (FX-HTTP-010): one over HTTP is kept as WinINet sent it to the proxy, its target the whole address, and over TLS the CONNECT before it as an exchange of its own, so a decoded request says how it went to a proxy and a 2xx answer to CONNECT is said to hold no body.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3290,3 +3292,24 @@ location of its host - or its location where none listed did, while an exchange'
 redirects and what WinINet does with a redirect (`http-exchanges-v1` §5g). A test rebuilds the heads of the fixture's
 two ledgers, checks each against the server's truth byte for byte, and finds each of the 128 redirects followed by its
 own request there; twenty-one mutations of the rule are caught. Proxies and authentication remain unmeasured.
+
+Revision 891 measures requests through a proxy through WinINet's capture (FX-HTTP-010), where every client measured
+before had reached its server directly. The truth workload's client can name its own loopback server as its WinINet
+session's proxy and ask for `fx.invalid`, a host no resolver knows, so every request goes to the proxy: over HTTP in
+absolute form, and over TLS after a CONNECT that the server answers before serving the TLS inside the tunnel itself,
+the origin too, logging each CONNECT and its answer. Five probe runs, asynchronously and eight clients at once too, and
+two `icat record --profile content` runs of 64 requests eight at once found each request kept as WinINet sent it there:
+over HTTP its target the whole address, with Proxy-Connection and Pragma fields; over TLS after a CONNECT before every
+request, naming HTTP/1.0, which the capture kept as an exchange of its own - its head, the proxy's answer of no field
+and one buffer of no byte for that answer's body - while the request through the tunnel was kept as over TLS directly,
+another exchange that no record ties to the CONNECT, its number taken before the CONNECT's though recorded after it.
+Every part matched the server's truth, and each CONNECT's head and answer its log. The grouping needs nothing new, but
+revision 778's comparison read a CONNECT's answer, which declares no length, as a body that ran until its connection
+closed; a 2xx answer to CONNECT holds no body, its connection a tunnel from its head's end (RFC 9112 §6.3), and is now
+said so. Where heads are decoded a request naming its target's whole address, as only a request to a proxy does, and a
+CONNECT each say they went to a proxy and how, `icat exchanges --decode` saying once what that means for what was kept
+and giving each request's kind in its JSON and its table, as the window's Export with their heads… does, and the
+conversation saying it beneath the request (`http-exchanges-v1` §5h); and a redirect a proxy was asked for resolves a
+location against the request's whole address. A test groups the fixture's two ledgers, their heads rebuilt and checked
+against the server's truth byte for byte, as an exchange to each request and each CONNECT; the head decoder's corpus
+holds the three new heads; twelve mutations are caught. Authentication remains unmeasured.

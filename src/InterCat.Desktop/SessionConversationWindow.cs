@@ -233,7 +233,8 @@ internal sealed class SessionConversationWindow : Window, IDisposable
         ]);
         request.Show(exchange.RequestHead, exchange.RequestBody, read.Heads?.Request, read.Heads is not null,
             read.Heads?.Asked is { } asked ? asked + (read.Heads.Host is { } host ? ", of " + host : string.Empty) : null,
-            read.Heads?.RequestBody(exchange.RequestBody), bodyNone: "none recorded, as for a request without one");
+            read.Heads?.RequestBody(exchange.RequestBody), bodyNone: "none recorded, as for a request without one",
+            proxy: read.Heads?.Proxy?.Statement);
         response.Show(exchange.ResponseHead, exchange.ResponseBody, read.Heads?.Response, read.Heads is not null,
             read.Heads?.Answered, read.Heads?.ResponseBody(exchange.ResponseBody), bodyNone: "none recorded",
             redirect: read.Heads?.Redirect is { } redirect ? $"It redirects to {redirect.Location}. {HttpRedirects.Statement}" : null);
@@ -328,6 +329,7 @@ internal sealed class SessionConversationWindow : Window, IDisposable
         private readonly TextBlock decoder = new() { FontSize = 11, TextWrapping = TextWrapping.Wrap, IsVisible = false };
         private readonly SelectableTextBlock said = new() { FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, IsVisible = false };
         private readonly TextBlock redirected = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
+        private readonly TextBlock proxied = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
         private readonly Grid fields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*"), ColumnSpacing = 12, RowSpacing = 3, IsVisible = false };
         private readonly TextBlock notDecoded = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
 
@@ -341,7 +343,7 @@ internal sealed class SessionConversationWindow : Window, IDisposable
             View = new ScrollViewer
             {
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                Content = new StackPanel { Spacing = 6, Children = { heading, head, body, declared, decoder, said, redirected, fields, notDecoded } },
+                Content = new StackPanel { Spacing = 6, Children = { heading, head, body, declared, decoder, said, redirected, proxied, fields, notDecoded } },
             };
             AutomationProperties.SetName(View, $"The exchange's {name}: what was recorded of it, and what its head says once decoded");
         }
@@ -353,21 +355,26 @@ internal sealed class SessionConversationWindow : Window, IDisposable
         public void Clear()
         {
             head.Text = body.Text = string.Empty;
-            declared.IsVisible = decoder.IsVisible = said.IsVisible = redirected.IsVisible = fields.IsVisible = notDecoded.IsVisible = false;
+            declared.IsVisible = decoder.IsVisible = said.IsVisible = redirected.IsVisible = proxied.IsVisible = false;
+            fields.IsVisible = notDecoded.IsVisible = false;
         }
 
         /// <summary>
         /// Shows what was recorded of the side's head and body and, where its head was decoded (<paramref name="asked"/>),
         /// what its decoding made of it: <paramref name="summary"/> above its fields, or why it decoded none; and what the
         /// head declares of the body beside what was recorded of it, in the caution colour where the two disagree. A
-        /// response that redirects says where, and what WinINet does with it, beneath its summary (<paramref name="redirect"/>).
+        /// response that redirects says where, and what WinINet does with it, beneath its summary (<paramref name="redirect"/>);
+        /// a request that went to a proxy says how, and what WinINet kept of it (<paramref name="proxy"/>).
         /// </summary>
         public void Show(HttpPartRecord headRecord, HttpPartRecord bodyRecord, DecodedContent? decoded, bool asked, string? summary,
-            HttpBodyDeclaration? declaration, string bodyNone, string? redirect = null)
+            HttpBodyDeclaration? declaration, string bodyNone, string? redirect = null, string? proxy = null)
         {
             redirected.Text = redirect ?? string.Empty;
             redirected.IsVisible = redirect is not null;
             AutomationProperties.SetName(redirected, $"Its {name} redirects: {redirect}");
+            proxied.Text = proxy ?? string.Empty;
+            proxied.IsVisible = proxy is not null;
+            AutomationProperties.SetName(proxied, $"Its {name} went to a proxy: {proxy}");
             head.Text = "Head: " + Recorded(headRecord, "none recorded");
             body.Text = "Body: " + Recorded(bodyRecord, bodyNone);
             AutomationProperties.SetName(head, $"Its {name} head: " + Recorded(headRecord, "none recorded"));

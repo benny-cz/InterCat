@@ -107,6 +107,9 @@ internal sealed record ExchangeHeadsDocument
     /// <summary>Where its response redirects, and the listed exchange that followed it (§5g); null where it does not redirect.</summary>
     public required HttpRedirectDocument? Redirect { get; init; }
 
+    /// <summary>How its request went to a proxy, and what that means for what was kept (§5h); null where it did not.</summary>
+    public required HttpProxyUse? Proxy { get; init; }
+
     public static ExchangeHeadsDocument From(HttpExchangeHeads heads, ExchangeDocument exchange, HttpFollowUp? followedBy) => new()
     {
         Asked = heads.Asked,
@@ -119,6 +122,7 @@ internal sealed record ExchangeHeadsDocument
         Redirect = heads.Redirect is { } redirect
             ? new(redirect.Status, redirect.Location, redirect.Target, redirect.Host, followedBy)
             : null,
+        Proxy = heads.Proxy,
     };
 }
 
@@ -432,6 +436,9 @@ internal static class ExchangesCommand
                 .. heads is null ? Array.Empty<string>() : [ContentDecoders.HttpHeadVersionStatement],
                 .. heads?.Any(group => group.Any(exchange => exchange.Redirect is not null)) == true
                     ? [HttpRedirects.Statement, HttpRedirects.FollowUpStatement]
+                    : Array.Empty<string>(),
+                .. heads?.Any(group => group.Any(exchange => exchange.Proxy is not null)) == true
+                    ? [HttpProxies.Statement]
                     : Array.Empty<string>(),
             ],
         };

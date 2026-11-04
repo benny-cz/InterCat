@@ -428,6 +428,65 @@ public sealed class ConversationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "P2: a CONNECT's conversation says, once its heads are decoded, that it asked a proxy to open a tunnel and that its answer holds no body, legibly and heard")]
+    public async Task ACONNECTsConversationSaysItOpenedATunnel()
+    {
+        // Process 4242's exchange 9: a CONNECT a proxy answered, its response's body empty.
+        string[] messages = ["CONNECT p.test:443 HTTP/1.0\r\nHost: p.test:443\r\nContent-Length: 0\r\n\r\n", "HTTP/1.1 200 Connection Established\r\n\r\n"];
+        ObservationRowV1[] rows = [Http(10, 2001, 1, messages[0].Length), Http(11, 2003, 2, messages[1].Length), Http(12, 2004, 3, 0)];
+        using var session = new TemporarySession();
+        Publish(session.Store, [Lifecycle(1, ObservationKind.Create, 4_242, 1_000_000), .. rows],
+            fields: [.. rows.SelectMany(row => new[]
+            {
+                Field(row, SourceField.HttpExchangeId, 9),
+                Field(row, SourceField.ContentBufferSequence, 0),
+                Field(row, SourceField.ContentBufferFlags, 3),
+            })],
+            content: (ContentHeader(recordLimit: 128),
+                [.. messages.Select((message, index) => Content(rows[index], Encoding.ASCII.GetBytes(message), 128, ContentEncodingV1.Binary))]));
+        session.Store.ReleaseSegmentReaders();
+        ProcessInstanceId client = SessionOverviewProjector.Project(session.Store).Nodes.Single(node => node.ProcessId == 4_242).Id;
+        string key = Assert.Single(SessionHttpExchanges.Exchanges(session.Store, HttpExchangeKeys.Channel(client)).Exchanges).Key;
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            using var conversation = new SessionConversationWindow(session.Path, session.Store.SessionId, key,
+                EvidencePolicy.IncludeCorrelated, "client.exe · PID 4242", SessionClock.Session(TimeZoneInfo.Utc));
+            conversation.Width = conversation.MinWidth;
+            conversation.Height = conversation.MinHeight;
+            _ = conversation.ShowDialog<bool>(owner);
+            await Until(() => Status(conversation).StartsWith("Read from generation", StringComparison.Ordinal));
+
+            // Until its heads are decoded, nothing is said of a proxy.
+            TextBlock proxy = Named<TextBlock>(conversation, name => name.StartsWith("Its request went to a proxy", StringComparison.Ordinal));
+            Assert.False(proxy.IsVisible);
+
+            // Decoded, its request says it asked a proxy to open a tunnel, and what WinINet keeps of what went through it;
+            // its answer holds no body, which is no disagreement; its response went to no proxy.
+            Labelled(conversation, "Decode its heads").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(conversation).Contains("decoded", StringComparison.Ordinal));
+            Assert.Contains("CONNECT p.test:443, of p.test:443", Texts(conversation));
+            Assert.StartsWith("It asked a proxy to open a tunnel to p.test:443. WinINet keeps a CONNECT as an exchange of its own",
+                proxy.Text, StringComparison.Ordinal);
+            Assert.True(proxy.IsEffectivelyVisible);
+            Assert.Equal("Its request went to a proxy: " + proxy.Text, AutomationProperties.GetName(proxy));
+            Assert.False(Named<TextBlock>(conversation, name => name.StartsWith("Its response went to a proxy", StringComparison.Ordinal)).IsVisible);
+            TextBlock held = Named<TextBlock>(conversation, name => name.StartsWith("Its response body, as its head declares it", StringComparison.Ordinal));
+            Assert.Equal("As a 200 response to CONNECT, it holds no body - its connection became a tunnel - and its recorded buffers hold none.",
+                held.Text);
+            Assert.DoesNotContain("caution", held.Classes);
+            Dispatch();
+            Assert.Empty(LegibleTextTests.CutOff(conversation, "a CONNECT's conversation"));
+            Assert.Empty(AccessibilityAuditTests.Unheard(conversation, out _));
+            conversation.Close();
+        }
+        finally
+        {
+            owner.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "P2: a process's exchanges export with what their heads say only once the window has said the table is content, each exchange of the scope a line")]
     public async Task ExchangesExportWithTheirHeadsOnceTheTableIsSaidToBeContent()
     {

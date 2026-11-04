@@ -44,7 +44,12 @@ exchange to a request, each body in its writes' buffers and one to end it (revis
 two exchanges, grouped as any: WinINet makes the request to the location by itself, and its capture keeps that request
 as an exchange of its own, numbered apart and begun once the redirect's response ended. FX-HTTP-009's eight clients' 64
 requests, redirected by 302 and again by 307, are two exchanges to a request, each part whole (revision 890); no record
-ties the two, so where heads are decoded the listing names the one that followed a redirect (§5g).
+ties the two, so where heads are decoded the listing names the one that followed a redirect (§5g). So is an exchange
+made through a proxy, grouped as any: over HTTP its request is kept as WinINet sent it to the proxy, its target the
+whole address; over TLS WinINet first asks the proxy to CONNECT a tunnel, and keeps the CONNECT as an exchange of its
+own - its head and the proxy's answer of no body - and the request it then sends through the tunnel as an exchange of
+its own too, as over TLS directly. FX-HTTP-010's eight clients' 64 requests through a proxy are one exchange to a
+request, and over TLS one more to each CONNECT, each part whole (revision 891; §5h).
 
 A release of a session's oldest interval (`contracts/store-v1.md` §8, ADR-043, revision 435) keeps every buffer of an
 exchange one of whose buffers stays, and the use before a use opened only by repeating one of its buffers, so every
@@ -147,7 +152,8 @@ exchanges. The figures above the exchanges are read as without `--decode`. Since
 decoded says among its caveats that the version a head names is WinINet's: it keeps an exchange it made over HTTP/2
 with heads in HTTP/1.1's form, so no head says which protocol carried its exchange (FX-HTTP-006,
 `contracts/decoders-v1.md` §4). Since revision 890 a response that redirects is listed with the exchange that followed
-it, or with its location where none listed did (§5g).
+it, or with its location where none listed did (§5g), and since revision 891 a listing that holds a request to a proxy
+says among its caveats, once, what that means for what was kept (§5h).
 
 ## 5d. An exchange's conversation (revision 777)
 
@@ -173,7 +179,10 @@ does not admit or no instance binds, says why it has none.
 
 Where an exchange's heads are decoded (§5c, §5d), each body is set beside what its head declares of it, as RFC 9112
 §6.3 has a recipient read a body's length, and compared with the bytes its buffers measured; nothing of the body's
-content is read. A response to HEAD, or of status 1xx, 204 or 304, holds no body. A head declaring a transfer coding
+content is read. A response to HEAD, or of status 1xx, 204 or 304, holds no body; nor, since revision 891, does a 2xx
+response to CONNECT, whatever its head says of one, its connection a tunnel from the end of its head - WinINet keeps
+its body as one buffer of no byte (FX-HTTP-010) - where before it was read as a body that ran until its connection
+closed. A head declaring a transfer coding
 is not compared: WinINet keeps a chunked response's body without its chunk framing (`contracts/content-v1.md` §5.1,
 FX-HTTP-003), so that body's end is its last buffer's, and no other transfer coding, nor a request's, was measured.
 Otherwise its Content-Length - one length, or a list of the same one (RFC 9110 §8.6) - is compared: a body holding all
@@ -205,7 +214,9 @@ recorded, else its `part`, the bytes it `read` (`first` and `last`, null where i
 null where the head was not decoded; and since revision 890 `redirect`, where its response redirects (§5g) - its
 `status`, its `location` as its head gave it, the `target` and `host` a request there names, each null where it could
 not be resolved, and `followedBy`, the listed exchange that followed it, by `key` and `number`, null where none listed
-did - null where it does not. A file written says beside it that it holds content. Without `--decode` none of these is
+did - null where it does not; and since revision 891 `proxy`, how its request went to a proxy (§5h) - its `kind`,
+`request` or `tunnel`, and its `statement` - null where it went to none. A file written says beside it that it holds
+content. Without `--decode` none of these is
 written, not even as null: `http-exchanges-v1` never holds a head's value.
 
 `--output` writes JSON; `--format csv`, or a path ending `.csv`, writes the listed exchanges as a table instead, one
@@ -216,7 +227,8 @@ With `--decode` it adds `decoder`, `decoder_version`, `method`, `target`, `reque
 `reason`, `response_version`, `request_head_decoded_to_end` and `response_head_decoded_to_end`,
 `request_head_not_decoded` and `response_head_not_decoded`, where a head no buffer of which was recorded says so,
 each body's `_declared` statement and `_contradicts`, and since revision 890 `redirect_location`, where a response
-redirects, and `redirect_followed_by`, the number of the listed exchange that followed it (§5g). Numbers are
+redirects, and `redirect_followed_by`, the number of the listed exchange that followed it (§5g), and since revision 891
+`proxy`, the kind of its going to a proxy (§5h). Numbers are
 invariant, flags `true` or `false`, and what is not known is empty. A cell holding a comma, a quote or a line end is
 quoted, its quotes doubled; a text cell beginning
 with `=`, `+`, `-`, `@`, a tab or a carriage return begins with an apostrophe, so a spreadsheet shows it rather than
@@ -255,13 +267,35 @@ listed did, and says among its caveats, once, what WinINet does with a redirect 
 JSON and its table give each redirect (§5f). The window's conversation says, beneath a redirect's answer, where it
 redirects and what WinINet does with a redirect; it reads one exchange, and names no follow-up.
 
+## 5h. Requests through a proxy (revision 891)
+
+Where an exchange's heads are decoded (§5c, §5d, §5f), a request whose target is an absolute HTTP or HTTPS address
+went to a proxy, as only a request to one names its target so (RFC 9112 §3.2.2): its `kind` is `request`, and it says
+it asked a proxy for that address, which WinINet keeps as it sent it there. A CONNECT asked a proxy to open a tunnel
+(RFC 9110 §9.3.6): its `kind` is `tunnel`, and it says so, and that WinINet keeps the requests it then sends through the
+tunnel as over TLS directly, each an exchange of its own that no record ties to the CONNECT. Any other request went to
+no proxy that is known - a request sent through a tunnel is in origin form, as one sent to its origin is - and a request
+line not decoded says nothing of one.
+
+FX-HTTP-010 measured both, with the workload's own server as the proxy: over HTTP WinINet sent each request to the proxy
+in absolute form, with Proxy-Connection and Pragma fields, and its capture kept the head as sent; over TLS WinINet asked
+the proxy to CONNECT before every request, naming HTTP/1.0 and declaring an empty body, and the capture kept the CONNECT
+as an exchange of its own, its answer's body as one buffer of no byte (§5e), numbered apart from the request it opened
+the tunnel for - eight clients' requests took the first numbers, their CONNECTs the next - though each CONNECT was
+recorded before its request.
+
+`icat exchanges --decode` lists a request to a proxy by what it asked for - its whole address, or the host and port a
+CONNECT named - and says among its caveats, once, what going to a proxy means for what was kept; its JSON and its table
+give each request's kind (§5f). The window's conversation says, beneath a request's head, how it went to a proxy and
+what was kept.
+
 ## 6. Not defined at this version
 
 - An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
   asked for reads, and only `http-exchange-heads-v1` writes, asked for with them (§5c, §5d, §5f,
   `contracts/decoders-v1.md` §2).
-- How WinINet's capture keeps a body in a content coding other than gzip, deflate and br (§5e), and an exchange
-  through a proxy or past authentication. Asynchronous WinINet is measured since revision 886 (FX-HTTP-005), HTTP/2
-  since revision 887 (FX-HTTP-006), whose heads no record tells from HTTP/1.1's, a request body written in pieces since
-  revision 888 (FX-HTTP-007), deflate and br since revision 889 (FX-HTTP-008), and redirects WinINet follows since
-  revision 890 (FX-HTTP-009, §5g).
+- How WinINet's capture keeps a body in a content coding other than gzip, deflate and br (§5e), and an exchange past
+  authentication. Asynchronous WinINet is measured since revision 886 (FX-HTTP-005), HTTP/2 since revision 887
+  (FX-HTTP-006), whose heads no record tells from HTTP/1.1's, a request body written in pieces since revision 888
+  (FX-HTTP-007), deflate and br since revision 889 (FX-HTTP-008), redirects WinINet follows since revision 890
+  (FX-HTTP-009, §5g), and requests through a proxy since revision 891 (FX-HTTP-010, §5h).

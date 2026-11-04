@@ -338,3 +338,15 @@ found; the window's conversation says where a response redirects and what WinINe
 Export with their heads… writes gives each redirect's location and the exchange that followed it
 (`http-exchanges-v1` §5g). FX-HTTP-009's 128 redirects through `icat record` were each followed so by its own request
 there. Nothing else above changes.
+
+## Addendum, revision 891
+
+Requests through a proxy are measured (FX-HTTP-010, ADR-037), and with them a CONNECT, which WinINet's capture keeps as
+an exchange of its own. Where heads are decoded a request naming its target's whole address, which only a request to a
+proxy does, and a CONNECT, asking a proxy for a tunnel, each say so and how, and `icat exchanges --decode` says once
+what that means for what was kept, giving each request's kind in its JSON and its table, as the window's Export with
+their heads… does; the conversation says it beneath the request (`http-exchanges-v1` §5h). The comparison of §5e read a
+CONNECT's answer, which declares no length, as a body that ran until its connection closed: a 2xx answer to CONNECT
+holds no body, its connection a tunnel from its head's end, and is now said so. The head decoder's corpus holds the
+three heads WinINet kept of a request to a proxy, of a CONNECT and of its answer, each decoded as before. Nothing else
+above changes.

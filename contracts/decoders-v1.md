@@ -74,10 +74,12 @@ its version and no other:
 
 A corpus pins its cases, not every input: a decoding changed only for bytes no case holds passes it, so a change to a
 decoder brings the case that shows it, which then fails at the old version. The HTTP/1.1 head decoder's corpus holds
-24 heads: request and status lines, with a reason, an empty one and none; lines ended by CRLF and by LF alone; values
+29 heads: request and status lines, with a reason, an empty one and none; lines ended by CRLF and by LF alone; values
 between optional spaces and tabs, empty, or holding bytes outside visible ASCII; bytes after the empty line; each line
-§4 refuses; and heads that end early. The content fixture decoder's holds 5 messages: one whole, one cut by its record
-limit, one cut inside its header, one not the fixture's, and one whose filler breaks.
+§4 refuses; heads that end early; the two WinINet kept of an exchange over HTTP/2 (FX-HTTP-006); and, since revision
+891, three WinINet kept of requests through a proxy (FX-HTTP-010) - one naming its whole address, a CONNECT naming
+HTTP/1.0, and the proxy's answer to it, of no field. The content fixture decoder's holds 5 messages: one whole, one
+cut by its record limit, one cut inside its header, one not the fixture's, and one whose filler breaks.
 
 ## 4. The HTTP/1.1 head decoder
 
@@ -86,7 +88,10 @@ every kept part equal to the bytes on the wire (ADR-037). Over HTTP/2, which car
 compresses its fields, WinINet keeps both heads in HTTP/1.1's form all the same (FX-HTTP-006, revision 887): a request
 line naming HTTP/1.1 above the fields it sent, and a status line naming HTTP/1.1 and no reason above the fields it
 received, named in lower case. So the version a head names is WinINet's, not the protocol that carried its exchange,
-which nothing kept says; the command line and the window say so wherever a head is decoded (§5, §5a). The decoder
+which nothing kept says; the command line and the window say so wherever a head is decoded (§5, §5a). Through a proxy,
+WinINet keeps a request as it sent it there (FX-HTTP-010, revision 891): over HTTP its target the whole address, and
+over TLS first a CONNECT naming HTTP/1.0 and its target a host and port, whose answer holds no field; each reads as any
+head does. The decoder
 reads a request or response head's whole part as HTTP/1.1 defines a head (RFC 9112 §2 to §5), line by line, each line
 ended by CRLF or by LF alone:
 

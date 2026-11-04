@@ -3214,6 +3214,91 @@ public sealed class CommandLineTests : IDisposable
             };
     }
 
+    [Fact(DisplayName = "P2: icat exchanges --decode says which listed requests went to a proxy and how, in its JSON and its table, and that a CONNECT's answer holds no body")]
+    public async Task ExchangesSayWhichWentToAProxy()
+    {
+        // PID 4242: exchange 1 a POST a proxy was asked for, its target the whole address; exchange 2 a CONNECT, answered
+        // with no body; exchange 3 the request then sent through the tunnel, in origin form. PID 4141's exchange 1 went to
+        // no proxy.
+        using var kept = new TemporarySession();
+        using var files = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        ObservationRowV1[] rows =
+        [
+            Wininet(10, 2001, 1), Wininet(11, 2003, 2), Wininet(12, 2004, 3),
+            Wininet(20, 2001, 4), Wininet(21, 2003, 5), Wininet(22, 2004, 6),
+            Wininet(30, 2001, 7), Wininet(31, 2003, 8), Wininet(32, 2004, 9),
+            Wininet(5, 2001, 10) with { HeaderProcessId = 4_141 }, Wininet(6, 2003, 11) with { HeaderProcessId = 4_141 },
+        ];
+        (int Row, long Exchange)[] parts = [(0, 1), (1, 1), (2, 1), (3, 2), (4, 2), (5, 2), (6, 3), (7, 3), (8, 3), (9, 1), (10, 1)];
+        string[] messages =
+        [
+            "POST http://p.test/a HTTP/1.1\r\nHost: p.test\r\nContent-Length: 0\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", "hello",
+            "CONNECT p.test:443 HTTP/1.0\r\nHost: p.test:443\r\nContent-Length: 0\r\n\r\n", "HTTP/1.1 200 Connection Established\r\n\r\n", "",
+            "GET /b HTTP/1.1\r\nHost: p.test\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n", "ok",
+            "GET /x HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 204 No Content\r\n\r\n",
+        ];
+        rows = [.. rows.Select((row, index) => row with { ByteValue = messages[index].Length })];
+        Publish(kept.Store, rows,
+            fields: [.. parts.SelectMany(part => new[]
+            {
+                Field(rows[part.Row], SourceField.HttpExchangeId, part.Exchange),
+                Field(rows[part.Row], SourceField.ContentBufferSequence, 0),
+                Field(rows[part.Row], SourceField.ContentBufferFlags, 3),
+            })],
+            content: (ContentHeader(recordLimit: 128),
+                [.. messages.Select((message, index) => (message, index)).Where(entry => entry.message.Length > 0)
+                    .Select(entry => Content(rows[entry.index], System.Text.Encoding.ASCII.GetBytes(entry.message), 128, ContentEncodingV1.Binary))]));
+        kept.Store.ReleaseSegmentReaders();
+
+        // Listed, what each asked for says it; what going to a proxy means is said once beneath, and a CONNECT's answer of
+        // no body is no disagreement.
+        (InterCatExitCode code, string output, string said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  \S+ +1 +no end +POST http://p.test/a +p.test +200 OK +whole\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +2 +no end +CONNECT p.test:443 +p.test:443 +200 Connection Established +whole\r?$", output);
+        Assert.Equal(2, output.Split(HttpProxies.Statement).Length);
+        Assert.DoesNotContain("its response body:", output, StringComparison.Ordinal);
+
+        // A listing of no request to a proxy says nothing of them.
+        (code, output, said) = await Run("exchanges", kept.Path, "--pid", "4141", "--decode");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.DoesNotContain(HttpProxies.Statement, output, StringComparison.Ordinal);
+
+        // In JSON each request a proxy was asked for, and each CONNECT, says how and what was kept; the rest say nothing.
+        (code, output, said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using (JsonDocument document = JsonDocument.Parse(output))
+        {
+            JsonElement[] listed = [.. document.RootElement.GetProperty("groups").EnumerateArray().Single().GetProperty("list").EnumerateArray()];
+            Assert.Equal(("request", "tunnel", JsonValueKind.Null), (listed[0].GetProperty("heads").GetProperty("proxy").GetProperty("kind").GetString(),
+                listed[1].GetProperty("heads").GetProperty("proxy").GetProperty("kind").GetString(), listed[2].GetProperty("heads").GetProperty("proxy").ValueKind));
+            Assert.StartsWith("It asked a proxy to open a tunnel to p.test:443.",
+                listed[1].GetProperty("heads").GetProperty("proxy").GetProperty("statement").GetString(), StringComparison.Ordinal);
+            Assert.Equal(("As a 200 response to CONNECT, it holds no body - its connection became a tunnel - and its recorded buffers hold none.", false),
+                (listed[1].GetProperty("heads").GetProperty("responseBody").GetProperty("statement").GetString(),
+                    listed[1].GetProperty("heads").GetProperty("responseBody").GetProperty("contradicts").GetBoolean()));
+            Assert.Contains(HttpProxies.Statement, document.RootElement.GetProperty("caveats").EnumerateArray().Select(caveat => caveat.GetString()));
+        }
+
+        // In a table, how each went to a proxy.
+        string table = Path.Combine(files.Path, "proxies.csv");
+        (code, _, said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode", "--output", table);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(["request", "tunnel", ""], Csv(File.ReadAllText(table)).Select(line => line["proxy"]));
+
+        static ObservationRowV1 Wininet(long ticks, ushort eventId, ulong ordinal) =>
+            Transfer(ticks, eventId <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
+                eventId <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, 1, null, ordinal) with
+            {
+                Mechanism = Mechanism.Http,
+                Layer = ObservationLayer.Application,
+                EventId = eventId,
+                HeaderProcessId = 4_242,
+                Direction = eventId <= 2002 ? Direction.Outbound : Direction.Inbound,
+                ByteDomain = ByteDomain.ApplicationPayload,
+            };
+    }
+
     [Fact(DisplayName = "P2: icat exchanges writes the listed exchanges' heads only when asked, as content, in JSON or as a table whose cells a spreadsheet will not evaluate")]
     public async Task ExchangesHeadsAreWrittenOnlyWhenAsked()
     {

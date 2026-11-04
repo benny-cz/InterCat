@@ -761,6 +761,9 @@ public static class WindowsSourceCatalog
                 "Measured on FX-HTTP-009 (ADR-037): a redirect WinINet follows is kept as two exchanges - the request redirected "
                 + "and its redirect, and the request WinINet made to the location under a number of its own, begun once the "
                 + "redirect's response ended - and no record ties the two.",
+                "Measured on FX-HTTP-010 (ADR-037): a request through a proxy is kept as WinINet sent it there - over HTTP its "
+                + "target the whole address; over TLS after a CONNECT, which is kept as an exchange of its own, its answer of no "
+                + "body, the request through the tunnel kept as over TLS directly.",
                 "Only WinINet's clients raise these records: .NET's HTTP client, WinHTTP and browsers' own stacks do not.",
                 "Its message bytes are kept only under a scoped content policy; under any other, the buffer's length is.",
                 "Capture impact, seven pairs of FX-HTTP-001 on 2026-09-28 with 4,096 exchanges each: a median of 0.71 CPU "

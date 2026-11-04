@@ -236,6 +236,33 @@
       "fields": [["version", 0, 7, "HTTP/1.1"], ["status", 9, 11, "200"], ["content-type", 15, 52, "application/octet-stream"], ["date", 55, 89, "Tue, 03 Nov 2026 21:44:26 GMT"], ["content-length", 92, 112, "98304"], ["x-intercat-fixture", 115, 145, "FX-HTTP-006"]],
       "notDecoded": null,
       "reachedEnd": true
+    },
+    {
+      "name": "the request head WinINet kept of a request it sent a proxy over HTTP (FX-HTTP-010): its target the whole address, with Proxy-Connection and Pragma fields",
+      "head": "request",
+      "bytes": "POST http://fx.invalid/fx/0 HTTP/1.1\r\nX-InterCat-Fixture: FX-HTTP-010\r\nUser-Agent: InterCat-FX-HTTP-010\r\nHost: fx.invalid\r\nContent-Length: 0\r\nProxy-Connection: Keep-Alive\r\nPragma: no-cache\r\n\r\n",
+      "read": [0, 191],
+      "fields": [["method", 0, 3, "POST"], ["target", 5, 26, "http://fx.invalid/fx/0"], ["version", 28, 35, "HTTP/1.1"], ["X-InterCat-Fixture", 38, 68, "FX-HTTP-010"], ["User-Agent", 71, 102, "InterCat-FX-HTTP-010"], ["Host", 105, 120, "fx.invalid"], ["Content-Length", 123, 139, "0"], ["Proxy-Connection", 142, 169, "Keep-Alive"], ["Pragma", 172, 187, "no-cache"]],
+      "notDecoded": null,
+      "reachedEnd": true
+    },
+    {
+      "name": "the request head WinINet kept of a CONNECT it asked a proxy to open a tunnel with (FX-HTTP-010): its target a host and its port, naming HTTP/1.0",
+      "head": "request",
+      "bytes": "CONNECT fx.invalid:443 HTTP/1.0\r\nUser-Agent: InterCat-FX-HTTP-010\r\nHost: fx.invalid:443\r\nContent-Length: 0\r\nProxy-Connection: Keep-Alive\r\nPragma: no-cache\r\n\r\n",
+      "read": [0, 157],
+      "fields": [["method", 0, 6, "CONNECT"], ["target", 8, 21, "fx.invalid:443"], ["version", 23, 30, "HTTP/1.0"], ["User-Agent", 33, 64, "InterCat-FX-HTTP-010"], ["Host", 67, 86, "fx.invalid:443"], ["Content-Length", 89, 105, "0"], ["Proxy-Connection", 108, 135, "Keep-Alive"], ["Pragma", 138, 153, "no-cache"]],
+      "notDecoded": null,
+      "reachedEnd": true
+    },
+    {
+      "name": "the response head WinINet kept of a proxy's answer to a CONNECT (FX-HTTP-010): a status line and no field",
+      "head": "response",
+      "bytes": "HTTP/1.1 200 Connection Established\r\n\r\n",
+      "read": [0, 38],
+      "fields": [["version", 0, 7, "HTTP/1.1"], ["status", 9, 11, "200"], ["reason", 13, 34, "Connection Established"]],
+      "notDecoded": null,
+      "reachedEnd": true
     }
   ]
 }

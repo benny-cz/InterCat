@@ -61,7 +61,8 @@ public sealed record HttpExchangeLine
 /// listed, its numbers invariant, its text cells quoted where they hold a comma, a quote or a line end and neutralized
 /// where a spreadsheet would evaluate them, since names and decoded values come from the observed machine. With decoded
 /// heads it adds what they say, each value the decoding's own, and why a head was not decoded in that head's own cell;
-/// and, where a response redirects, its location and the number of the listed exchange that followed it (§5g).
+/// and, where a response redirects, its location and the number of the listed exchange that followed it (§5g), and how
+/// its request went to a proxy (§5h).
 /// </summary>
 public static class HttpExchangeTable
 {
@@ -84,7 +85,7 @@ public static class HttpExchangeTable
         "decoder", "decoder_version", "method", "target", "request_version", "host", "status", "reason", "response_version",
         "request_head_decoded_to_end", "response_head_decoded_to_end", "request_head_not_decoded", "response_head_not_decoded",
         "request_body_declared", "request_body_contradicts", "response_body_declared", "response_body_contradicts",
-        "redirect_location", "redirect_followed_by",
+        "redirect_location", "redirect_followed_by", "proxy",
     ];
 
     /// <summary>
@@ -154,6 +155,7 @@ public static class HttpExchangeTable
             response is null ? string.Empty : Flag(response.Contradicts),
             Text(heads.Redirect?.Location),
             line.FollowedBy is { } followUp ? Number(followUp.Number) : string.Empty,
+            Text(heads.Proxy?.Kind),
         ];
     }
 

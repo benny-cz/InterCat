@@ -24,7 +24,9 @@ namespace InterCat.WinInetProbe;
 /// With --http2 the exchange runs over HTTP/2 as FX-HTTP-006, served by Kestrel, whose truth holds no head's bytes: the
 /// heads kept are described by their start lines' shapes and their fields' names, against the fields the server decoded.
 /// With --redirect the server first answers each request with a redirect of no body, which WinINet follows by itself, as
-/// FX-HTTP-009, and each request's two legs are compared apart.
+/// FX-HTTP-009, and each request's two legs are compared apart. With --proxy the client reaches the server through a
+/// proxy, which the server is too, as FX-HTTP-010, and each CONNECT that opens a tunnel for TLS is compared with the
+/// server's log of it.
 /// </summary>
 internal static partial class Program
 {
@@ -54,6 +56,7 @@ internal static partial class Program
         int write = int.Parse(Option(args, "--write") ?? "0", CultureInfo.InvariantCulture);
         int pace = int.Parse(Option(args, "--pace") ?? "0", CultureInfo.InvariantCulture);
         int redirect = int.Parse(Option(args, "--redirect") ?? "0", CultureInfo.InvariantCulture);
+        bool proxy = args.Contains("--proxy", StringComparer.Ordinal);
         bool ledger = args.Contains("--ledger", StringComparer.Ordinal);
         int concurrency = int.Parse(Option(args, "--concurrency") ?? "1", CultureInfo.InvariantCulture);
         string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(
@@ -70,6 +73,8 @@ internal static partial class Program
             Console.Error.WriteLine("  [--pace ms]: the server waits that long before each 16 KiB of a response body, so reads wait or pend");
             Console.Error.WriteLine("  [--redirect 301|302|303|307|308]: the server first answers each request with that redirect, which");
             Console.Error.WriteLine("             WinINet follows by itself, and each leg is compared apart (FX-HTTP-009)");
+            Console.Error.WriteLine("  [--proxy]: the client reaches the server through a proxy, the server itself, over HTTP in absolute form");
+            Console.Error.WriteLine("             and over TLS through a CONNECT tunnel, each CONNECT compared too (FX-HTTP-010)");
             Console.Error.WriteLine("  [--ledger]: writes each captured buffer's metadata - time, event, exchange, place, ends, length, thread -");
             Console.Error.WriteLine("             never its bytes, as buffers.csv beside the report");
             Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]");
@@ -169,6 +174,8 @@ internal static partial class Program
                 start.ArgumentList.Add(redirect.ToString(CultureInfo.InvariantCulture));
             }
 
+            if (proxy) start.ArgumentList.Add("--proxy");
+
             if (concurrency > 1)
             {
                 start.ArgumentList.Add("--concurrency");
@@ -262,7 +269,7 @@ internal static partial class Program
         object report = new
         {
             exchange = Compare(captured, truth, process.Id, requests, bytes, tls || http2, concurrency, chunked, coding, decode, async, http2, write, pace, redirect,
-                eventsLost, others, malformed, ledger ? Path.Combine(output, "buffers.csv") : null),
+                proxy, eventsLost, others, malformed, ledger ? Path.Combine(output, "buffers.csv") : null),
             processFilter = new
             {
                 decoyExchangedByTruth = decoyExchanged,
@@ -283,11 +290,12 @@ internal static partial class Program
     /// server's truth; a chunked response body is compared both with the body and with its framed bytes, and a coded one
     /// with the body before its coding and with the coded bytes. Redirected, a request is two legs, told apart by the path
     /// each head names: the one the server answered with its redirect, compared with what it logged of that leg, and the
-    /// one WinINet made to the path moved, compared with the rest.
+    /// one WinINet made to the path moved, compared with the rest. Through a proxy, an exchange whose head asks to CONNECT
+    /// is no request's, and is compared with the server's log of each CONNECT it answered.
     /// </summary>
     private static object Compare(List<Buffer> captured, string truth, int processId, int requests, int maximumBodyBytes, bool tls,
-        int concurrency, bool chunked, string? coding, bool decode, bool async, bool http2, int write, int pace, int redirect, int eventsLost,
-        long others, long malformed, string? ledger)
+        int concurrency, bool chunked, string? coding, bool decode, bool async, bool http2, int write, int pace, int redirect, bool proxy,
+        int eventsLost, long others, long malformed, string? ledger)
     {
         // The threads that made the requests, by the workload's own account: a record raised on any other thread of its
         // process was raised by WinINet working a request on a thread of its own.
@@ -364,10 +372,15 @@ internal static partial class Program
         // server answered with its redirect.
         var byRequest = new Dictionary<int, List<List<Buffer>>>();
         var byRedirected = new Dictionary<int, List<List<Buffer>>>();
+        var connects = new List<List<Buffer>>();
         int unmatched = 0;
         foreach (List<Buffer> exchange in exchanges)
         {
-            if (RequestOf(exchange) is { } index)
+            if (StartLine(exchange).StartsWith("CONNECT ", StringComparison.Ordinal))
+            {
+                connects.Add(exchange);
+            }
+            else if (RequestOf(exchange) is { } index)
             {
                 Dictionary<int, List<List<Buffer>>> legs = redirect > 0 && !Moved(exchange) ? byRedirected : byRequest;
                 if (!legs.TryGetValue(index, out List<List<Buffer>>? found)) legs[index] = found = [];
@@ -603,6 +616,53 @@ internal static partial class Program
             };
         }
 
+        // Through a proxy, each CONNECT the server answered, by its head's length and SHA-256 and its answer's, against the
+        // exchanges captured whose heads ask to CONNECT, matched one to one by their heads' hashes.
+        object Connects()
+        {
+            var logged = new List<(string Status, string Hash)>();
+            foreach (string line in File.ReadLines(Path.Combine(truth, "truth-http-server.jsonl")))
+            {
+                if (!line.Contains("\"status\":\"connect-", StringComparison.Ordinal)) continue;
+                JsonElement record = JsonDocument.Parse(line).RootElement;
+                logged.Add((record.GetProperty("status").GetString()!, record.GetProperty("resourceName").GetString()!));
+            }
+
+            int Matched(int id, string status)
+            {
+                List<string> left = [.. logged.Where(entry => entry.Status == status).Select(entry => entry.Hash)];
+                return connects.Count(exchange => left.Remove("sha256:" + Convert.ToHexStringLower(SHA256.HashData(
+                    [.. exchange.Where(buffer => buffer.EventId == id).OrderBy(buffer => buffer.Sequence).SelectMany(buffer => buffer.Bytes)]))));
+            }
+
+            return new
+            {
+                connectsTheServerAnswered = logged.Count(entry => entry.Status == "connect-request-head"),
+                connectExchangesCaptured = connects.Count,
+                requestHeadsMatchingAConnect = Matched(2001, "connect-request-head"),
+                responseHeadsMatchingItsAnswer = Matched(2003, "connect-response-head"),
+                withARequestBodyBuffer = connects.Count(exchange => exchange.Any(buffer => buffer.EventId == 2002)),
+                withAResponseHead = connects.Count(exchange => exchange.Any(buffer => buffer.EventId == 2003)),
+                withAResponseBodyBuffer = connects.Count(exchange => exchange.Any(buffer => buffer.EventId == 2004)),
+                partsWhole = connects.Sum(exchange => Parts.Count(part =>
+                {
+                    List<Buffer> buffers = [.. exchange.Where(buffer => buffer.EventId == part.Id).OrderBy(buffer => buffer.Sequence)];
+                    return buffers.Count > 0 && buffers[0].Flags % 2 == 1 && (buffers[^1].Flags & 2) != 0
+                        && buffers.Select((buffer, at) => buffer.Sequence == at).All(inOrder => inOrder);
+                })),
+            };
+        }
+
+        if (connects.Count > 0)
+        {
+            foreach (int id in (int[])[2001, 2003])
+            {
+                byte[] head = [.. connects[0].Where(buffer => buffer.EventId == id).SelectMany(buffer => buffer.Bytes)];
+                Console.Error.WriteLine($"--- the first CONNECT, event {id}, {head.Length} bytes:");
+                Console.Error.WriteLine(Encoding.ASCII.GetString(head).Replace("\r", "\\r", StringComparison.Ordinal));
+            }
+        }
+
         // The first exchange's heads as text, for the person running the probe - redirected, each leg's: they are the
         // fixture's own requests to its own server on loopback, and are printed here, never written.
         foreach ((Dictionary<int, List<List<Buffer>>> legs, string leg) in new[] { (byRedirected, " redirected"), (byRequest, string.Empty) })
@@ -666,7 +726,7 @@ internal static partial class Program
             providerGuid = Provider,
             keywords = "0x" + Keywords.ToString("X16", CultureInfo.InvariantCulture),
             processFilter = "EVENT_FILTER_TYPE_PID: the workload's process alone",
-            workload = redirect > 0 ? "FX-HTTP-009" : coding is not (null or "gzip") ? "FX-HTTP-008" : write > 0 ? "FX-HTTP-007" : http2 ? "FX-HTTP-006"
+            workload = proxy ? "FX-HTTP-010" : redirect > 0 ? "FX-HTTP-009" : coding is not (null or "gzip") ? "FX-HTTP-008" : write > 0 ? "FX-HTTP-007" : http2 ? "FX-HTTP-006"
                 : async ? "FX-HTTP-005" : coding is "gzip" ? "FX-HTTP-004"
                 : concurrency > 1 || chunked ? "FX-HTTP-003" : tls ? "FX-HTTP-002" : "FX-HTTP-001",
             coding,
@@ -676,6 +736,8 @@ internal static partial class Program
                 : null,
             redirectStatus = redirect,
             redirected = redirect > 0 ? Redirects() : null,
+            proxy,
+            connects = proxy ? Connects() : null,
             http2,
             requestsOverHttp2ByTheClient = http2 ? ProtocolCount("truth-http-client.jsonl", "protocol-used", "HTTP/2") : (int?)null,
             requestsOverHttp2ByTheServer = http2 ? ProtocolCount("truth-http-server.jsonl", "request-protocol", "HTTP/2") : (int?)null,

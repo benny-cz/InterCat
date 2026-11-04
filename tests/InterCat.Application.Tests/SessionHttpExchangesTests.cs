@@ -298,25 +298,8 @@ public sealed class SessionHttpExchangesTests
     public void RedirectsAreTwoExchangesEachFollowedByItsOwn(string run, int status, string reason, string method)
     {
         string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-HTTP-009", "evidence", run);
-        (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes, int Request, bool Client, bool Moved)[] ledger =
-        [
-            .. File.ReadLines(Path.Combine(evidence, "buffers.csv")).Skip(1).Select(line => line.Split(',')).Select(field => (
-                long.Parse(field[0], CultureInfo.InvariantCulture), ushort.Parse(field[1], CultureInfo.InvariantCulture),
-                long.Parse(field[2], CultureInfo.InvariantCulture), long.Parse(field[3], CultureInfo.InvariantCulture),
-                long.Parse(field[4], CultureInfo.InvariantCulture), long.Parse(field[5], CultureInfo.InvariantCulture),
-                int.Parse(field[6], CultureInfo.InvariantCulture), field[7] == "client", field[8] == "moved")),
-        ];
-        var truth = new Dictionary<(long Call, string Part), (long Length, string Hash)>();
-        foreach (string line in File.ReadLines(Path.Combine(evidence, "truth-http-server.jsonl")))
-        {
-            using var record = System.Text.Json.JsonDocument.Parse(line);
-            if (record.RootElement.TryGetProperty("callId", out var call) && call.ValueKind == System.Text.Json.JsonValueKind.Number
-                && record.RootElement.TryGetProperty("status", out var part) && part.ValueKind == System.Text.Json.JsonValueKind.String)
-            {
-                truth[(call.GetInt64(), part.GetString()!)] = (record.RootElement.GetProperty("declaredBytes").GetInt64(),
-                    record.RootElement.GetProperty("resourceName").GetString()!);
-            }
-        }
+        LedgerBuffer[] ledger = LedgerOf(evidence);
+        Dictionary<(long Call, string Part), (long Length, string Hash)> truth = ServerTruthOf(evidence);
 
         using var scenario = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "scenario.json")));
         string host = string.Create(CultureInfo.InvariantCulture, $"127.0.0.1:{scenario.RootElement.GetProperty("port").GetInt32()}");
@@ -343,43 +326,12 @@ public sealed class SessionHttpExchangesTests
             };
             byte[] bytes = System.Text.Encoding.ASCII.GetBytes(text);
             string logged = (moved ? string.Empty : response ? "redirect-" : "redirected-") + (response ? "response-head" : "request-head");
-            Assert.Equal(truth[(request, logged)], (bytes.LongLength, "sha256:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes))));
+            Assert.Equal(truth[(request, logged)], (bytes.LongLength, Sha256(bytes)));
             return bytes;
         }
 
-        // Each buffer a record of the client, process 4242, raised on one of its threads that made requests or on another,
-        // and each head - every one a single buffer - kept with consent to inspect it.
-        ObservationRowV1[] buffers =
-        [
-            .. ledger.Select((buffer, index) => HttpBuffer(buffer.Ticks + 10, buffer.Event, (ulong)(index + 1), buffer.Bytes) with
-            {
-                HeaderThreadId = buffer.Client ? 4_243 : 4_244,
-            }),
-        ];
-        SourceFieldRowV1[] fields =
-        [
-            .. ledger.SelectMany((buffer, index) => new[]
-            {
-                Field(buffers[index], SourceField.HttpExchangeId, buffer.Number),
-                Field(buffers[index], SourceField.ContentBufferSequence, buffer.Sequence),
-                Field(buffers[index], SourceField.ContentBufferFlags, buffer.Flags),
-            }),
-        ];
-        var heads = new List<(ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes)>();
-        for (int index = 0; index < ledger.Length; index++)
-        {
-            if (ledger[index].Event is 2001 or 2003)
-            {
-                byte[] head = Head(ledger[index].Request, ledger[index].Moved, response: ledger[index].Event == 2003);
-                Assert.Equal((head.LongLength, 3L), (ledger[index].Bytes, ledger[index].Flags));
-                heads.Add(Content(buffers[index], head, 1_024, ContentEncodingV1.Binary));
-            }
-        }
-
-        Assert.Equal(256, heads.Count);
-        using var session = new TemporarySession();
-        Publish(session.Store, [Lifecycle(1, ObservationKind.Create, 4_242, 100_000), .. buffers], fields: fields,
-            content: (ContentHeader(recordLimit: 1_024), heads));
+        Assert.Equal(256, ledger.Count(buffer => buffer.Event is 2001 or 2003));
+        using TemporarySession session = Published(ledger, buffer => Head(buffer.Request, buffer.Moved, response: buffer.Event == 2003));
 
         HttpChannelSummary channel = Assert.Single(SessionHttpExchanges.Channels(session.Store, Client(session.Store)).Channels);
         Assert.Equal((128L, 128L, (long)ledger.Length), (channel.Exchanges, channel.Complete, channel.Records));
@@ -429,6 +381,198 @@ public sealed class SessionHttpExchangesTests
                 Assert.False(leg.Item1.Heads.ResponseBody(leg.Item2.Exchange.ResponseBody)!.Contradicts);
             });
         }
+    }
+
+    /// <summary>
+    /// FX-HTTP-010 measured that WinINet's capture keeps a request it makes through a proxy as it sent it there: over HTTP
+    /// in absolute form, its target the whole address; over TLS through a tunnel it first asks the proxy to CONNECT, which
+    /// it keeps as an exchange of its own - a head, and an answer of no body - and the request it then sends through the
+    /// tunnel as over TLS directly, an exchange of its own too, which no record ties to the CONNECT. Each run's ledger of
+    /// eight clients' 64 requests, grouped as a session's records are, each head rebuilt and checked against the server's
+    /// truth byte for byte, is one exchange to a request and, over TLS, one to each CONNECT: every part whole and as long as
+    /// the server's truth, each request a proxy was asked for and each CONNECT said so, and each CONNECT's answer said to
+    /// hold no body.
+    /// </summary>
+    [Theory(DisplayName = "R22: FX-HTTP-010's requests through a proxy, eight clients at once, are each one exchange and over TLS each CONNECT one more, every part whole and each said to have gone to a proxy")]
+    [InlineData("http-eight-at-once", false)]
+    [InlineData("tls-eight-at-once", true)]
+    public void RequestsThroughAProxyAreTheirExchanges(string run, bool tls)
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-HTTP-010", "evidence", run);
+        LedgerBuffer[] ledger = LedgerOf(evidence);
+        var connects = new List<(string Part, long Length, string Hash)>();
+        Dictionary<(long Call, string Part), (long Length, string Hash)> truth = ServerTruthOf(evidence, connects);
+
+        // Each head as the wire to the proxy carried it, rebuilt and checked against the server's truth byte for byte: over
+        // HTTP each request in absolute form; over TLS each CONNECT and its answer, alike every time, then each request in
+        // origin form.
+        const string Fixture = "X-InterCat-Fixture: FX-HTTP-010\r\n";
+        byte[] connect = "CONNECT fx.invalid:443 HTTP/1.0\r\nUser-Agent: InterCat-FX-HTTP-010\r\nHost: fx.invalid:443\r\nContent-Length: 0\r\nProxy-Connection: Keep-Alive\r\nPragma: no-cache\r\n\r\n"u8.ToArray();
+        byte[] established = "HTTP/1.1 200 Connection Established\r\n\r\n"u8.ToArray();
+        Assert.Equal((tls ? 64 : 0, tls ? 64 : 0), (connects.Count(entry => entry.Part == "connect-request-head"),
+            connects.Count(entry => entry.Part == "connect-response-head")));
+        Assert.All(connects, entry => Assert.Equal(
+            entry.Part == "connect-request-head" ? (connect.LongLength, Sha256(connect)) : (established.LongLength, Sha256(established)),
+            (entry.Length, entry.Hash)));
+        byte[] Head(LedgerBuffer buffer)
+        {
+            if (buffer.Request < 0)
+            {
+                return buffer.Event == 2001 ? connect : established;
+            }
+
+            int request = buffer.Request;
+            string text = buffer.Event == 2003
+                ? string.Create(CultureInfo.InvariantCulture,
+                    $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {truth[(request, "response-body")].Length}\r\n{Fixture}\r\n")
+                : tls
+                    ? string.Create(CultureInfo.InvariantCulture,
+                        $"POST /fx/{request} HTTP/1.1\r\n{Fixture}User-Agent: InterCat-FX-HTTP-010\r\nHost: fx.invalid\r\nContent-Length: {truth[(request, "request-body")].Length}\r\nConnection: Keep-Alive\r\nCache-Control: no-cache\r\n\r\n")
+                    : string.Create(CultureInfo.InvariantCulture,
+                        $"POST http://fx.invalid/fx/{request} HTTP/1.1\r\n{Fixture}User-Agent: InterCat-FX-HTTP-010\r\nHost: fx.invalid\r\nContent-Length: {truth[(request, "request-body")].Length}\r\nProxy-Connection: Keep-Alive\r\nPragma: no-cache\r\n\r\n");
+            byte[] bytes = System.Text.Encoding.ASCII.GetBytes(text);
+            Assert.Equal(truth[(request, buffer.Event == 2003 ? "response-head" : "request-head")], (bytes.LongLength, Sha256(bytes)));
+            return bytes;
+        }
+
+        using TemporarySession session = Published(ledger, Head);
+        HttpChannelSummary channel = Assert.Single(SessionHttpExchanges.Channels(session.Store, Client(session.Store)).Channels);
+        long exchanges = tls ? 128 : 64;
+        Assert.Equal((exchanges, exchanges, (long)ledger.Length), (channel.Exchanges, channel.Complete, channel.Records));
+        HttpExchangePage page = SessionHttpExchanges.ExchangesUpTo(session.Store, channel.Key, 1_000);
+        HttpExchangeTableRead table = SessionHttpExchanges.Table(session.Store, page.SessionId, channel.Key, 1_000);
+        Assert.Equal(page.Exchanges.Select(row => row.Key), table.Lines.Select(line => line.Key));
+
+        // Each exchange is one request's or one CONNECT's, by its first buffer, every buffer of it its own and each part
+        // whole and as long as the server's truth: a request in absolute form said to have asked a proxy for it, a CONNECT
+        // to have opened a tunnel and its answer to hold no body, and a request through the tunnel nothing of a proxy.
+        var requests = new HashSet<int>();
+        int tunnels = 0;
+        foreach ((HttpExchangeRow row, HttpExchangeLine line) in page.Exchanges.Zip(table.Lines))
+        {
+            LedgerBuffer first = ledger[(int)row.Exchange.First.Ordinal - 1];
+            HttpExchange exchange = row.Exchange;
+            Assert.True(exchange.Complete, row.Parts(CultureInfo.InvariantCulture));
+            SessionEvidencePage records = SessionEvidenceQuery.Read(session.Store, operationKey: row.Key);
+            Assert.Equal(exchange.Records, records.Records.Count);
+            Assert.All(records.Records, record => Assert.Equal(first.Number, ledger[(int)record.Observation.RawRecordOrdinal - 1].Number));
+            HttpExchangeHeads heads = line.Heads!;
+            if (first.Request < 0)
+            {
+                tunnels++;
+                Assert.Equal((connect.LongLength, 0L, established.LongLength, 0L),
+                    (exchange.RequestHead.Bytes, exchange.RequestBody.Bytes, exchange.ResponseHead.Bytes, exchange.ResponseBody.Bytes));
+                Assert.Equal(("CONNECT fx.invalid:443", "tunnel"), (heads.Asked, heads.Proxy?.Kind));
+                Assert.Equal(new HttpBodyDeclaration("As a 200 response to CONNECT, it holds no body - its connection became a tunnel - and "
+                    + "its recorded buffers hold none.", false), heads.ResponseBody(exchange.ResponseBody));
+                continue;
+            }
+
+            Assert.True(requests.Add(first.Request));
+            Assert.Equal(
+                (truth[(first.Request, "request-head")].Length, truth[(first.Request, "request-body")].Length,
+                    truth[(first.Request, "response-head")].Length, truth[(first.Request, "response-body")].Length),
+                (exchange.RequestHead.Bytes, exchange.RequestBody.Bytes, exchange.ResponseHead.Bytes, exchange.ResponseBody.Bytes));
+            Assert.Equal(tls ? null : "request", heads.Proxy?.Kind);
+            Assert.False(heads.RequestBody(exchange.RequestBody)!.Contradicts);
+            Assert.False(heads.ResponseBody(exchange.ResponseBody)!.Contradicts);
+        }
+
+        Assert.Equal((64, tls ? 64 : 0), (requests.Count, tunnels));
+    }
+
+    /// <summary>
+    /// One buffer a lab probe's ledger holds, in time order, never its bytes: its 100 ns readings after the first, event,
+    /// exchange number, place, ends and length, the request its exchange's head named (-1 for none), whether a thread that
+    /// made a request raised it, and, where the run was redirected, its leg.
+    /// </summary>
+    private readonly record struct LedgerBuffer(long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes, int Request,
+        bool Client, string? Leg)
+    {
+        /// <summary>Whether it is of the leg WinINet made to a redirect's location.</summary>
+        public bool Moved => Leg == "moved";
+    }
+
+    private static LedgerBuffer[] LedgerOf(string evidence) =>
+    [
+        .. File.ReadLines(Path.Combine(evidence, "buffers.csv")).Skip(1).Select(line => line.Split(',')).Select(field => new LedgerBuffer(
+            long.Parse(field[0], CultureInfo.InvariantCulture), ushort.Parse(field[1], CultureInfo.InvariantCulture),
+            long.Parse(field[2], CultureInfo.InvariantCulture), long.Parse(field[3], CultureInfo.InvariantCulture),
+            long.Parse(field[4], CultureInfo.InvariantCulture), long.Parse(field[5], CultureInfo.InvariantCulture),
+            int.Parse(field[6], CultureInfo.InvariantCulture), field[7] == "client", field.Length > 8 ? field[8] : null)),
+    ];
+
+    /// <summary>
+    /// The server's truth of a run: each request's parts by length and SHA-256; and, into <paramref name="unnumbered"/>, in
+    /// order, each part it logged of no request.
+    /// </summary>
+    private static Dictionary<(long Call, string Part), (long Length, string Hash)> ServerTruthOf(string evidence,
+        List<(string Part, long Length, string Hash)>? unnumbered = null)
+    {
+        var truth = new Dictionary<(long Call, string Part), (long Length, string Hash)>();
+        foreach (string line in File.ReadLines(Path.Combine(evidence, "truth-http-server.jsonl")))
+        {
+            using var record = System.Text.Json.JsonDocument.Parse(line);
+            if (!record.RootElement.TryGetProperty("status", out var part) || part.ValueKind != System.Text.Json.JsonValueKind.String)
+            {
+                continue;
+            }
+
+            (long Length, string Hash) logged = (record.RootElement.GetProperty("declaredBytes").GetInt64(),
+                record.RootElement.GetProperty("resourceName").GetString()!);
+            if (record.RootElement.TryGetProperty("callId", out var call) && call.ValueKind == System.Text.Json.JsonValueKind.Number)
+            {
+                truth[(call.GetInt64(), part.GetString()!)] = logged;
+            }
+            else
+            {
+                unnumbered?.Add((part.GetString()!, logged.Length, logged.Hash));
+            }
+        }
+
+        return truth;
+    }
+
+    private static string Sha256(byte[] bytes) => "sha256:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
+
+    /// <summary>
+    /// A ledger's buffers published as records of the client, process 4242, each raised on one of its threads that made
+    /// requests or on another, and each head - every one a single buffer - kept with consent to inspect it, as
+    /// <paramref name="head"/> rebuilds it.
+    /// </summary>
+    private static TemporarySession Published(LedgerBuffer[] ledger, Func<LedgerBuffer, byte[]> head)
+    {
+        ObservationRowV1[] buffers =
+        [
+            .. ledger.Select((buffer, index) => HttpBuffer(buffer.Ticks + 10, buffer.Event, (ulong)(index + 1), buffer.Bytes) with
+            {
+                HeaderThreadId = buffer.Client ? 4_243 : 4_244,
+            }),
+        ];
+        SourceFieldRowV1[] fields =
+        [
+            .. ledger.SelectMany((buffer, index) => new[]
+            {
+                Field(buffers[index], SourceField.HttpExchangeId, buffer.Number),
+                Field(buffers[index], SourceField.ContentBufferSequence, buffer.Sequence),
+                Field(buffers[index], SourceField.ContentBufferFlags, buffer.Flags),
+            }),
+        ];
+        var heads = new List<(ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes)>();
+        for (int index = 0; index < ledger.Length; index++)
+        {
+            if (ledger[index].Event is 2001 or 2003)
+            {
+                byte[] bytes = head(ledger[index]);
+                Assert.Equal((bytes.LongLength, 3L), (ledger[index].Bytes, ledger[index].Flags));
+                heads.Add(Content(buffers[index], bytes, 1_024, ContentEncodingV1.Binary));
+            }
+        }
+
+        var session = new TemporarySession();
+        Publish(session.Store, [Lifecycle(1, ObservationKind.Create, 4_242, 100_000), .. buffers], fields: fields,
+            content: (ContentHeader(recordLimit: 1_024), heads));
+        return session;
     }
 
     /// <summary>

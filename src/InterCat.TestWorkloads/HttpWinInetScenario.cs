@@ -50,6 +50,12 @@ internal sealed record HttpWinInetOptions
     /// <summary>Each request redirected once, which WinINet follows by itself: FX-HTTP-009.</summary>
     public const string RedirectScenarioId = "FX-HTTP-009";
 
+    /// <summary>Every request through a proxy, which the loopback server is as well as the origin: FX-HTTP-010.</summary>
+    public const string ProxyScenarioId = "FX-HTTP-010";
+
+    /// <summary>The host a proxied client asks for: one no resolver knows (RFC 6761), so only the proxy can reach it.</summary>
+    public const string ProxiedHost = "fx.invalid";
+
     public required string TruthDirectory { get; init; }
     public int Seed { get; init; } = 20_260_929;
     public int Requests { get; init; } = 16;
@@ -128,12 +134,20 @@ internal sealed record HttpWinInetOptions
     public int RedirectStatus { get; init; }
 
     /// <summary>
-    /// The scenario this run is: FX-HTTP-009 with each request redirected once, else FX-HTTP-008 with responses in deflate
-    /// or br, else FX-HTTP-007 with bodies written in pieces,
+    /// Whether the client reaches the server through a proxy (RFC 9110 §3.7): its WinINet session is opened with the
+    /// server's own listener as its proxy (INTERNET_OPEN_TYPE_PROXY), and it asks for <see cref="ProxiedHost"/>, so every
+    /// request goes to the proxy - over HTTP in absolute form, over TLS through a tunnel CONNECT opens, inside which the
+    /// server, the origin too, decrypts what it reads.
+    /// </summary>
+    public bool Proxy { get; init; }
+
+    /// <summary>
+    /// The scenario this run is: FX-HTTP-010 through a proxy, else FX-HTTP-009 with each request redirected once, else
+    /// FX-HTTP-008 with responses in deflate or br, else FX-HTTP-007 with bodies written in pieces,
     /// else FX-HTTP-006 over HTTP/2, else FX-HTTP-005 made asynchronously, else FX-HTTP-004 with responses in gzip, else
     /// FX-HTTP-003 with several clients at once or chunked responses, else FX-HTTP-002 over TLS, else FX-HTTP-001.
     /// </summary>
-    public string Scenario => RedirectStatus > 0 ? RedirectScenarioId : Coding is not (null or "gzip") ? CodingsScenarioId
+    public string Scenario => Proxy ? ProxyScenarioId : RedirectStatus > 0 ? RedirectScenarioId : Coding is not (null or "gzip") ? CodingsScenarioId
         : WriteBytes > 0 ? WrittenScenarioId
         : Http2 ? Http2ScenarioId : Async ? AsyncScenarioId : Coding is "gzip" ? CodedScenarioId
         : Concurrency > 1 || Chunked ? InterleavedScenarioId : Tls ? TlsScenarioId : ScenarioId;
@@ -158,6 +172,7 @@ internal sealed record HttpWinInetOptions
 internal static partial class HttpWinInetScenario
 {
     private const int OpenTypeDirect = 1;
+    private const int OpenTypeProxy = 3;
     private const int ServiceHttp = 3;
 
     // No cache, no cookies, no prompts, and one kept-alive connection: every request goes to the server as it was made.
@@ -302,6 +317,13 @@ internal static partial class HttpWinInetScenario
             return 2;
         }
 
+        if (options.Proxy && options.Http2)
+        {
+            await Console.Error.WriteLineAsync("The proxy is the workload's own HTTP/1.1 server, so --proxy is refused with --http2.")
+                .ConfigureAwait(false);
+            return 2;
+        }
+
         if (options.Http2 && options.Chunked)
         {
             await Console.Error.WriteLineAsync("HTTP/2 frames a body itself and has no chunked transfer coding; --chunked is refused with --http2.")
@@ -386,6 +408,7 @@ internal static partial class HttpWinInetScenario
             requestsOverHttp2 = options.Http2 ? requestsOverHttp2 : (int?)null,
             options.WriteBytes,
             options.RedirectStatus,
+            options.Proxy,
             asynchronous = options.Async ? new { sendsAtOnce, sendsPending, writesAtOnce, writesPending, readsAtOnce, readsPending } : null,
             processId = Environment.ProcessId,
             clientThreads = clientThreads.Order().ToArray(),
@@ -417,7 +440,9 @@ internal static partial class HttpWinInetScenario
     private static (int Completed, long Sent, long Read) Exchange(int port, TruthLog client, HttpWinInetOptions options,
         ConcurrentBag<uint> clientThreads, CancellationToken cancellationToken)
     {
-        IntPtr internet = InternetOpen("InterCat-" + options.Scenario, OpenTypeDirect, null, null, options.Async ? FlagAsync : 0);
+        // Through a proxy, the session names the server's own listener as its proxy, for every scheme, this process alone.
+        IntPtr internet = InternetOpen("InterCat-" + options.Scenario, options.Proxy ? OpenTypeProxy : OpenTypeDirect,
+            options.Proxy ? string.Create(CultureInfo.InvariantCulture, $"127.0.0.1:{port}") : null, null, options.Async ? FlagAsync : 0);
         if (internet == IntPtr.Zero)
         {
             client.Write(TruthEventKind.Failure, status: $"InternetOpen failed: {Marshal.GetLastPInvokeError()}");
@@ -498,7 +523,10 @@ internal static partial class HttpWinInetScenario
         using AsyncCalls? calls = options.Async ? new AsyncCalls(context) : null;
         try
         {
-            connect = InternetConnect(internet, "127.0.0.1", (ushort)port, null, null, ServiceHttp, 0, context);
+            // Through a proxy, the client asks for a host only the proxy can reach, at its scheme's own port.
+            connect = options.Proxy
+                ? InternetConnect(internet, HttpWinInetOptions.ProxiedHost, (ushort)(options.Tls ? 443 : 80), null, null, ServiceHttp, 0, context)
+                : InternetConnect(internet, "127.0.0.1", (ushort)port, null, null, ServiceHttp, 0, context);
             if (connect == IntPtr.Zero)
             {
                 client.Write(TruthEventKind.Failure, status: $"InternetConnect failed: {Marshal.GetLastPInvokeError()}");
@@ -869,27 +897,12 @@ internal static partial class HttpWinInetScenario
     {
         using (connection)
         {
-            // Over TLS the server reads and writes the decrypted stream, so its truth is the bytes above the encryption.
+            // Over TLS the server reads and writes the decrypted stream, so its truth is the bytes above the encryption;
+            // through a proxy, the TLS begins inside the tunnel a CONNECT opens.
             Stream stream = connection.GetStream();
-            if (certificate is not null)
+            if (certificate is not null && !options.Proxy)
             {
-                var secure = new SslStream(stream, leaveInnerStreamOpen: false);
-                try
-                {
-                    await secure.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
-                    {
-                        ServerCertificate = certificate,
-                        EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                        ClientCertificateRequired = false,
-                    }, cancellationToken).ConfigureAwait(false);
-                }
-                catch (Exception exception) when (exception is AuthenticationException or IOException)
-                {
-                    server.Write(TruthEventKind.Failure, status: "TLS handshake failed: " + exception.Message);
-                    await secure.DisposeAsync().ConfigureAwait(false);
-                    return;
-                }
-
+                if (await SecureAsync(stream, certificate, server, cancellationToken).ConfigureAwait(false) is not { } secure) return;
                 stream = secure;
             }
 
@@ -911,6 +924,29 @@ internal static partial class HttpWinInetScenario
 
                     byte[] head = pending.WrittenSpan[..(headEnd + 4)].ToArray();
                     string headText = Encoding.ASCII.GetString(head);
+
+                    // Through a proxy over TLS, the client first asks the proxy - this server - to open a tunnel to its host
+                    // (RFC 9110 §9.3.6); answered, the tunnel carries the TLS that the server, the origin too, decrypts.
+                    if (headText.StartsWith("CONNECT ", StringComparison.Ordinal))
+                    {
+                        server.Write(TruthEventKind.MessageReceived, declaredBytes: head.Length, status: "connect-request-head",
+                            resourceName: Sha256(head));
+                        byte[] established = "HTTP/1.1 200 Connection Established\r\n\r\n"u8.ToArray();
+                        await stream.WriteAsync(established, cancellationToken).ConfigureAwait(false);
+                        server.Write(TruthEventKind.MessageSent, declaredBytes: established.Length, status: "connect-response-head",
+                            resourceName: Sha256(established));
+                        if (pending.WrittenCount > head.Length || certificate is null)
+                        {
+                            server.Write(TruthEventKind.Failure, status: "A tunnel's bytes came before its CONNECT was answered, or no TLS was to begin in it.");
+                            return;
+                        }
+
+                        pending.Clear();
+                        if (await SecureAsync(stream, certificate, server, cancellationToken).ConfigureAwait(false) is not { } tunnel) return;
+                        stream = tunnel;
+                        continue;
+                    }
+
                     int index = RequestIndex(headText);
                     int length = ContentLength(headText);
                     while (pending.WrittenCount < head.Length + length)
@@ -995,6 +1031,32 @@ internal static partial class HttpWinInetScenario
             {
                 // The client closed its connection, or the run ended; what was exchanged is already logged.
             }
+        }
+    }
+
+    /// <summary>
+    /// The server's side of TLS over <paramref name="stream"/>, with the run's certificate: the stream it then reads and
+    /// writes decrypted, or null, logged, where the handshake failed.
+    /// </summary>
+    private static async Task<Stream?> SecureAsync(Stream stream, X509Certificate2 certificate, TruthLog server,
+        CancellationToken cancellationToken)
+    {
+        var secure = new SslStream(stream, leaveInnerStreamOpen: false);
+        try
+        {
+            await secure.AuthenticateAsServerAsync(new SslServerAuthenticationOptions
+            {
+                ServerCertificate = certificate,
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                ClientCertificateRequired = false,
+            }, cancellationToken).ConfigureAwait(false);
+            return secure;
+        }
+        catch (Exception exception) when (exception is AuthenticationException or IOException)
+        {
+            server.Write(TruthEventKind.Failure, status: "TLS handshake failed: " + exception.Message);
+            await secure.DisposeAsync().ConfigureAwait(false);
+            return null;
         }
     }
 

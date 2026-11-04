@@ -7,11 +7,12 @@
   themselves (revision 245); a process's exchanges on its rung (revision 247, `contracts/http-exchanges-v1.md`);
   asynchronous clients measured, and the thread each record is raised on (revision 886); HTTP/2 measured, its heads kept
   in HTTP/1.1's form (revision 887); a request body written in pieces measured (revision 888); responses in deflate and
-  br measured (revision 889); redirects WinINet follows measured, each leg an exchange of its own (revision 890)
+  br measured (revision 889); redirects WinINet follows measured, each leg an exchange of its own (revision 890);
+  requests through a proxy measured, a CONNECT an exchange of its own (revision 891)
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
 - Relates to: §3.7, §11, §11.1, §11.2, M3, M8, I21, R21, R22, ADR-030, ADR-036, FX-HTTP-001, FX-HTTP-002,
-  FX-HTTP-003, FX-HTTP-005, FX-HTTP-006, FX-HTTP-007, FX-HTTP-008, FX-HTTP-009, `contracts/content-v1.md`,
+  FX-HTTP-003, FX-HTTP-005, FX-HTTP-006, FX-HTTP-007, FX-HTTP-008, FX-HTTP-009, FX-HTTP-010, `contracts/content-v1.md`,
   `contracts/decoders-v1.md`, `contracts/http-exchanges-v1.md`,
   `tools/InterCat.WinInetProbe`,
   `bench/results/wininet-capture-feasibility-20260928T102426Z`,
@@ -28,7 +29,9 @@
   `bench/results/wininet-capture-deflate-decoded-20261104T003223Z`,
   `bench/results/wininet-capture-deflate-raw-decoded-20261104T003232Z`,
   `bench/results/wininet-capture-redirect-302-eight-20261104T013021Z`,
-  `bench/results/wininet-capture-redirect-307-eight-20261104T013026Z`
+  `bench/results/wininet-capture-redirect-307-eight-20261104T013026Z`,
+  `bench/results/wininet-capture-proxy-http-eight-20261104T023404Z`,
+  `bench/results/wininet-capture-proxy-tls-eight-20261104T023409Z`
 
 ## Context
 
@@ -229,6 +232,30 @@ decoy.
   decoded heads names as its follow-up the first exchange listed after it, begun once its response ended, that asked
   for its location of its host - in both runs, each of the 128 redirects its own request there.
 
+## Measurement through a proxy (revision 891)
+
+Every client measured before reached its server directly. FX-HTTP-010's client names a proxy for its WinINet session -
+the workload's own loopback server, which is the origin too - and asks for `fx.invalid`, a host no resolver knows, so
+every request goes to the proxy. The probe ran it over HTTP and over TLS, asynchronously too, and both eight clients at
+once, beside a decoy.
+
+- **Over HTTP, as sent to the proxy.** Each request head was kept as WinINet sent it there: its target the whole
+  address, `POST http://fx.invalid/fx/n`, with Proxy-Connection and Pragma fields where a direct request has Connection
+  and Cache-Control. Every part matched what the proxy received.
+- **Over TLS, a CONNECT of its own.** Before every request WinINet asked the proxy to CONNECT a tunnel to
+  `fx.invalid:443`, its request line naming HTTP/1.0 and its head an empty body, and the capture kept each CONNECT as an
+  exchange of its own: its head, the proxy's answer of no field, and one buffer of no byte for the answer's body, each
+  whole. The
+  request WinINet then sent through the tunnel was kept as over TLS directly, in origin form - another exchange, under a
+  number of its own, which no record ties to the CONNECT. Eight clients at once, their requests took the first numbers
+  and their CONNECTs the next, though each CONNECT was recorded before the request it opened the tunnel for.
+- **Through `icat record`** (FX-HTTP-010: 64 requests eight at once, over HTTP and over TLS): every exchange recorded
+  whole, 64 and 128 of them, every head decoded to its end, and every part `icat content --part` saved matching the
+  server's bytes, 254 of 254 that held any in each, and each CONNECT's head and answer its log, 128 of 128. The grouping
+  needs nothing new. Revision 778's comparison read a CONNECT's answer, which declares no length, as a body that ran
+  until its connection closed; a 2xx answer to CONNECT holds no body, its connection a tunnel from its head's end (RFC
+  9112 §6.3), and is now said so.
+
 ## Decision
 
 1. **The source contract, for its admission to implement.** An exchange is a `SessionId`; a part is its event, which
@@ -283,6 +310,12 @@ decoy.
    listing names the first exchange listed after it, begun once its response ended, that asked for that location of
    its host as the one that followed it - an inference from what was asked and when, said as such, never a record's
    claim; one no listed exchange followed names none (`contracts/http-exchanges-v1.md` §5g).
+11. **A request to a proxy says so, by its own request line** (revision 891). Only a request to a proxy names its
+   target's whole address (RFC 9112 §3.2.2), and a CONNECT asks a proxy for a tunnel (RFC 9110 §9.3.6), so where heads
+   are decoded each says it went to a proxy, and how, and a listing says once what that means for what was kept: a
+   CONNECT is an exchange of its own, and a request through its tunnel one of its own too, kept as over TLS directly,
+   which no record ties to it - so nothing says which tunnel a request went through. A request in origin form says
+   nothing of a proxy (`contracts/http-exchanges-v1.md` §5h).
 
 ## Consequences
 
@@ -307,8 +340,11 @@ decoy.
 - Redirects WinINet follows are measured (revision 890, FX-HTTP-009): each leg is an exchange of its own, the request
   made to the location numbered apart and begun once the redirect's response ended, and a listing of decoded heads
   names the one that followed a redirect.
-- Not measured: content codings other than gzip, deflate and br; proxies and authentication. Each is measured before a
-  profile claims it.
+- Requests through a proxy are measured (revision 891, FX-HTTP-010): one over HTTP is kept as WinINet sent it to the
+  proxy, in absolute form, and over TLS the CONNECT before it is an exchange of its own, its answer of no body, and the
+  request through the tunnel one of its own too.
+- Not measured: content codings other than gzip, deflate and br; authentication. Each is measured before a profile
+  claims it.
 - The scope is the named processes themselves (revision 245): the provider's filter holds their IDs by number, and the
   capture holds each process open while it runs, so a named process's exit ends its content and no process started
   after it can take its ID.

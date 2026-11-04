@@ -9,7 +9,7 @@ says so, and never borrows another build's tier (P27).
 
 | Mechanism | Tier | Fixture | Measured | Build support |
 |---|---|---|---|---|
-| Http | ExperimentalEvidence | FX-HTTP-009 | 2026-11-04 | Primary |
+| Http | ExperimentalEvidence | FX-HTTP-010 | 2026-11-04 | Primary |
 | NamedPipe | Unsupported | FX-PIPE-001 | 2026-09-21 | Untested at the time of the run; ADR-007 later added this build |
 | Rpc | ExperimentalEvidence | FX-RPC-001 | 2026-09-27 | Primary |
 | Tcp | TrafficVisualization | FX-TCP-002 | 2026-09-27 | Primary |

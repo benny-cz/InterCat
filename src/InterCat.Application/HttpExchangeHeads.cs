@@ -62,6 +62,12 @@ public sealed record HttpExchangeHeads(DecodedContent? Request, DecodedContent? 
     /// one Location; null otherwise.
     /// </summary>
     public HttpRedirect? Redirect => HttpRedirects.Of(this);
+
+    /// <summary>
+    /// How its request went to a proxy (§5h): naming its target's whole address, or asking it with CONNECT to open a
+    /// tunnel; null where its request line was not decoded, or names neither.
+    /// </summary>
+    public HttpProxyUse? Proxy => HttpProxies.Of(this);
 }
 
 /// <summary>
@@ -79,8 +85,8 @@ public sealed record HttpBodyDeclaration(string Statement, bool Contradicts);
 /// coded, or decoded where the client had WinINet decode it (FX-HTTP-004), which no record says, so such a body agrees
 /// where it holds the coded length its head declares and is not said to disagree where it holds another. So it keeps
 /// one in deflate or br (FX-HTTP-008), and a deflate body it could not decode - the zlib data RFC 9110 names deflate - as
-/// one buffer of no byte. A body in any other coding is compared only where it holds that length. Nothing of the body's
-/// content is read.
+/// one buffer of no byte. A body in any other coding is compared only where it holds that length. A 2xx response to
+/// CONNECT holds none, its connection a tunnel from its head's end (FX-HTTP-010). Nothing of the body's content is read.
 /// </summary>
 internal static class HttpBodies
 {
@@ -97,6 +103,18 @@ internal static class HttpBodies
         }
 
         string held = CountText.Of(body.Bytes, "byte");
+
+        // A 2xx response to CONNECT holds no body, whatever its head says of one: its connection is a tunnel from the end of
+        // its head (RFC 9112 §6.3), and WinINet keeps its body as one buffer of no byte (FX-HTTP-010).
+        if (response && method == "CONNECT" && status is ['2', _, _])
+        {
+            return body.Bytes > 0
+                ? new($"As a {status} response to CONNECT, it holds no body - its connection became a tunnel - yet its recorded "
+                    + $"buffers hold {held}.", true)
+                : new($"As a {status} response to CONNECT, it holds no body - its connection became a tunnel - and "
+                    + (body.Recorded ? "its recorded buffers hold none." : "none was recorded."), false);
+        }
+
         if (response && (method == "HEAD" || status is ['1', _, _] or "204" or "304"))
         {
             string kind = method == "HEAD" ? "a response to HEAD" : $"a {status} response";

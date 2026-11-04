@@ -61,8 +61,16 @@ public static class HttpRedirects
             return new(line.Status, location, PathAndQuery(absolute), absolute.Authority);
         }
 
+        // A request to a proxy names its whole address (FX-HTTP-010), against which any other location resolves, host and all.
         string? host = heads.Host;
         string? target = heads.RequestLine?.Target;
+        if (target is not null && Uri.TryCreate(target, UriKind.Absolute, out Uri? whole) && whole.Scheme is "http" or "https")
+        {
+            return Uri.TryCreate(whole, location, out Uri? onward) && onward.Scheme is "http" or "https"
+                ? new(line.Status, location, PathAndQuery(onward), onward.Authority)
+                : new(line.Status, location, null, null);
+        }
+
         string from = location.StartsWith('/') ? "/" : target is not null && target.StartsWith('/') ? target : string.Empty;
         if (from.Length == 0 || !Uri.TryCreate("http://" + (host ?? NoHost) + from, UriKind.Absolute, out Uri? origin)
             || !Uri.TryCreate(origin, location, out Uri? resolved) || resolved.Scheme is not ("http" or "https"))

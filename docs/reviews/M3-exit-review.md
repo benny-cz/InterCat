@@ -73,3 +73,11 @@ kept as one exchange, and the request WinINet made to the location as another, n
 redirect's response ended, each whole; through `icat record` two runs of 64 requests eight at once, redirected by 302
 and by 307, kept 128 exchanges each, every one whole. Of the semantics the verdict names unmeasured, RPC over TCP
 transport remains. Nothing else above changes.
+
+## Addendum, revision 891
+
+Requests through a proxy are measured (FX-HTTP-010, ADR-037): over HTTP a request is kept as WinINet sent it to the
+proxy, its target the whole address, and over TLS the CONNECT WinINet first asks the proxy for is kept as an exchange of
+its own, its answer of no body, and the request then sent through the tunnel as over TLS directly; through `icat record`
+two runs of 64 requests eight at once kept every exchange whole. Of the semantics the verdict names unmeasured, RPC over
+TCP transport remains. Nothing else above changes.

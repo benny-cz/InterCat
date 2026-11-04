@@ -310,6 +310,11 @@ public sealed class HttpHeadDecodingTests
     [InlineData("HTTP/1.1 204 No Content\r\n\r\n", "GET", 1, 0, true, "As a 204 response, it holds no body, and its recorded buffers hold none.", false)]
     [InlineData("HTTP/1.1 304 Not Modified\r\nContent-Length: 20\r\n\r\n", "GET", 0, 0, false, "As a 304 response, it holds no body, and none was recorded.", false)]
     [InlineData("HTTP/1.1 101 Switching Protocols\r\n\r\n", "GET", 1, 4, true, "As a 101 response, it holds no body, yet its recorded buffers hold 4 bytes.", true)]
+    [InlineData("HTTP/1.1 200 Connection Established\r\n\r\n", "CONNECT", 1, 0, true, "As a 200 response to CONNECT, it holds no body - its connection became a tunnel - and its recorded buffers hold none.", false)]
+    [InlineData("HTTP/1.1 204 No Content\r\nContent-Length: 10\r\n\r\n", "CONNECT", 0, 0, false, "As a 204 response to CONNECT, it holds no body - its connection became a tunnel - and none was recorded.", false)]
+    [InlineData("HTTP/1.1 200 Connection Established\r\nTransfer-Encoding: chunked\r\n\r\n", "CONNECT", 1, 7, true, "As a 200 response to CONNECT, it holds no body - its connection became a tunnel - yet its recorded buffers hold 7 bytes.", true)]
+    [InlineData("HTTP/1.1 407 Proxy Authentication Required\r\nContent-Length: 5\r\n\r\n", "CONNECT", 1, 5, true, "Its head declares 5 bytes, and its recorded buffers hold them all.", false)]
+    [InlineData("HTTP/1.1 200 OK\r\n\r\n", "GET", 1, 0, true, "Its head declares no length, so its body ran until its connection closed; its end is its last buffer's.", false)]
     [InlineData("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n", "GET", 3, 900, true, "Its head declares the chunked transfer coding, which WinINet removes before it keeps a body (FX-HTTP-003), so the body's end is its last buffer's, not a length its head declared.", false)]
     [InlineData("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip, chunked\r\n\r\n", "GET", 1, 9, true, "Its head declares the gzip, chunked transfer coding, which WinINet's capture was not measured to keep framed or unframed, so its body's length is not compared.", false)]
     [InlineData("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: 30\r\n\r\n", "GET", 2, 30, true, "Its head declares 30 bytes in the gzip content coding, and its recorded buffers hold them all.", false)]
@@ -363,6 +368,9 @@ public sealed class HttpHeadDecodingTests
     [InlineData(null, "HTTP/1.1 308 Permanent Redirect\r\nLocation: /c\r\n\r\n", "308", "/c", "/c", null)]
     [InlineData("OPTIONS * HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: c\r\n\r\n", "302", "c", null, null)]
     [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: ftp://example.test/x\r\n\r\n", "302", "ftp://example.test/x", null, null)]
+    [InlineData("GET http://Proxied.Test/a/b HTTP/1.1\r\nHost: proxied.test\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: c\r\n\r\n", "302", "c", "/a/c", "proxied.test")]
+    [InlineData("GET http://proxied.test:8080/a/b HTTP/1.1\r\n\r\n", "HTTP/1.1 307 Temporary Redirect\r\nLocation: /d?e\r\n\r\n", "307", "/d?e", "/d?e", "proxied.test:8080")]
+    [InlineData("GET http://proxied.test/a HTTP/1.1\r\n\r\n", "HTTP/1.1 301 Moved Permanently\r\nLocation: ftp://proxied.test/x\r\n\r\n", "301", "ftp://proxied.test/x", null, null)]
     [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 200 OK\r\nLocation: /b\r\n\r\n", null, null, null, null)]
     [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 304 Not Modified\r\nLocation: /b\r\n\r\n", null, null, null, null)]
     [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 300 Multiple Choices\r\nLocation: /b\r\n\r\n", null, null, null, null)]
@@ -377,6 +385,23 @@ public sealed class HttpHeadDecodingTests
 
         // A response no buffer of whose head was recorded redirects nowhere that is known.
         Assert.Null(new HttpExchangeHeads(heads.Request, null).Redirect);
+    }
+
+    [Theory(DisplayName = "P2: a request naming its whole address went to a proxy, and a CONNECT asked one to open a tunnel, each said so; any other went to none known")]
+    [InlineData("POST http://fx.invalid/fx/0 HTTP/1.1\r\nHost: fx.invalid\r\n\r\n", "request", "It asked a proxy for http://fx.invalid/fx/0: a client names a request's whole address only to a proxy (RFC 9112 §3.2.2), and WinINet keeps the request as it sent it there (FX-HTTP-010).")]
+    [InlineData("GET https://a.test/x?y HTTP/1.1\r\n\r\n", "request", "It asked a proxy for https://a.test/x?y: a client names a request's whole address only to a proxy (RFC 9112 §3.2.2), and WinINet keeps the request as it sent it there (FX-HTTP-010).")]
+    [InlineData("CONNECT fx.invalid:443 HTTP/1.0\r\nHost: fx.invalid:443\r\n\r\n", "tunnel", "It asked a proxy to open a tunnel to fx.invalid:443. WinINet keeps a CONNECT as an exchange of its own, and the requests it then sends through the tunnel over TLS as over TLS directly, each an exchange of its own that no record ties to this one (FX-HTTP-010).")]
+    [InlineData("POST /fx/0 HTTP/1.1\r\nHost: fx.invalid\r\n\r\n", null, null)]
+    [InlineData("GET ftp://a.test/x HTTP/1.1\r\n\r\n", null, null)]
+    [InlineData("OPTIONS * HTTP/1.1\r\n\r\n", null, null)]
+    [InlineData("GET  http://a.test/x HTTP/1.1\r\n\r\n", null, null)]
+    public void AProxiedRequestSaysHowItWentToAProxy(string request, string? kind, string? statement)
+    {
+        var heads = new HttpExchangeHeads(Head(request, request: true), Head("HTTP/1.1 200 OK\r\n\r\n", request: false));
+        Assert.Equal(kind is null ? null : new HttpProxyUse(kind, statement!), heads.Proxy);
+
+        // A request no buffer of whose head was recorded went to no proxy that is known.
+        Assert.Null(new HttpExchangeHeads(null, heads.Response).Proxy);
     }
 
     /// <summary>
@@ -404,6 +429,9 @@ public sealed class HttpHeadDecodingTests
             (219, 222, "GET /x/../g HTTP/1.1\r\nHost: h:80\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
             (300, null, "GET /self HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: /self\r\n\r\n"),
             (320, 330, "GET /self HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (400, 410, "GET http://p.test/r HTTP/1.1\r\nHost: p.test\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: s\r\n\r\n"),
+            (420, 425, "GET http://P.test:80/s HTTP/1.1\r\nHost: p.test\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (430, 435, "GET /s HTTP/1.1\r\nHost: p.test\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
         ];
         HttpExchange[] exchanges =
         [
@@ -435,9 +463,11 @@ public sealed class HttpHeadDecodingTests
         // of no host it named - not one begun before, nor one of another host, nor a later one; an absolute location names
         // its own host, in any case; a redirect that none listed followed has none; one whose response's end was not
         // recorded is followed by the next asking; a request names its target and host as a location does, its dot
-        // segments and its scheme's own port aside; and a redirect to its own target is followed by a later exchange,
-        // never by itself, even where its response's end, which it began before, was not recorded.
-        Assert.Equal([3, -1, -1, -1, 6, -1, -1, -1, -1, 10, -1, 12, -1, 14, -1], HttpRedirects.FollowUps(exchanges, heads));
+        // segments and its scheme's own port aside; a redirect to its own target is followed by a later exchange, never by
+        // itself, even where its response's end, which it began before, was not recorded; and one a proxy was asked for,
+        // its target the whole address, resolves against it and is followed by the first asking for its location, a whole
+        // address too, its host in any case and its scheme's own port aside.
+        Assert.Equal([3, -1, -1, -1, 6, -1, -1, -1, -1, 10, -1, 12, -1, 14, -1, 16, -1, -1], HttpRedirects.FollowUps(exchanges, heads));
         Assert.Throws<ArgumentException>(() => HttpRedirects.FollowUps(exchanges, heads[1..]));
     }
 
