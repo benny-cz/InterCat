@@ -96,3 +96,14 @@ A proxy's Basic challenge is measured (FX-HTTP-012, ADR-037): met as a server's,
 TLS its CONNECT - and the one WinINet then sends with the proxy's credentials are kept as an exchange each; through
 `icat record` two runs of 64 requests eight at once, over HTTP and over TLS, kept every exchange whole. Of the semantics
 the verdict names unmeasured, RPC over TCP transport remains. Nothing else above changes.
+
+## Addendum, revision 894
+
+RPC over TCP is measured (FX-RPC-002, ADR-004): a call to the endpoint mapper over TCP is a call as over ALPC, paired
+by its activity id and carrying no byte, and its request and answer are its TCP connection's sends and receives, whose
+bytes are that connection's alone; through `icat record` five runs of 64 calls from one client and 256 from eight at
+once found every byte on the TCP records, alike at both ends. So the gate's first item, RPC layered over transport
+without duplicate volume, is met over TCP too. The endpoint mapper's records of the calls it served over TCP carry no
+activity id and pair with nothing, which `icat operations` says beside them, and no ALPC message carries a call over
+TCP, so its other end stays unresolved, saying why. Of the semantics the verdict names unmeasured, none remains; RPC over
+named pipes or HTTP is unmeasured. Nothing else above changes.

@@ -64,3 +64,39 @@ session on build `10.0.26220.0-x64`, with descriptors 5, 6, 7 and 8 admitted and
   sources with different domains, so summing them was never possible by accident.
 - The capability report's RPC entry carries this measurement, so a reader sees the gaps rather than a
   provider name.
+
+## Addendum: RPC over TCP (revision 894)
+
+M3's exit review left RPC over TCP unmeasured. Fixture `FX-RPC-002`'s client asks the endpoint mapper on 127.0.0.1,
+port 135, where the service control manager listens over TCP, through the documented `RpcEpResolveBinding` and with no
+credentials: each resolution is one call to the endpoint mapper's map procedure over `ncacn_ip_tcp`. The client logs
+each call and, from the system's TCP table, the connections beneath them. `icat record` recorded it five times on build
+`10.0.26220.0-x64`, under Explore and RPC peers, 64 calls from one client and 256 from eight clients at once
+(`bench/results/rpc-tcp-*-20261104T*`):
+
+| Quantity | Result |
+|---|---|
+| Truth calls observed as a client call to the endpoint mapper, procedure 3 | every one: 64 of 64, 256 of 256 |
+| The protocol its start carried | 1 on every one, where FX-RPC-001's local calls carry 3 |
+| Completions paired through the activity id | every one, none failed |
+| TCP connections beneath, to the endpoint mapper's host on port 135 | one a client: 1, and 8 from eight clients |
+| Bytes | on TCP records alone, alike at both ends: 10,912 and 11,116 of 64 calls, 44,288 and 44,728 of 256 |
+| The endpoint mapper's records of the calls it served | a start and a stop each, none carrying an activity id |
+| Other ends found through ALPC, under RPC peers | none: no send on any call's thread, 320 of 320 |
+
+1. **RPC over TCP adds no volume.** A call's request and answer are its TCP connection's sends and receives - one each,
+   and a bind's on each connection - and every byte is theirs; the call records state none. Over TCP as over ALPC, RPC
+   layered over its transport adds no volume (I11, P4).
+2. **A call's protocol says its transport.** 1 is a call over TCP and 3 a local one; any other value is unmeasured.
+3. **A server's records over TCP carry no activity id.** Each of the endpoint mapper's starts and stops is a call of its
+   own that pairs with nothing, so a call served over TCP reads as two unpaired records. Each start was followed on its
+   thread by its stop, on as many as seven worker threads eight at once, but a stop names no interface or procedure, so
+   a pair made so could not be checked, and a server answering on another thread would join two calls' records (P8).
+4. **No ALPC message carries a call over TCP**, so ADR-034's chain finds no other end for one, as it should. The TCP
+   connection beneath joins the client to the endpoint mapper's host, but no RPC record names its connection.
+
+Decision: a reader names a call's protocol - TCP or LRPC, any other by its number - and says of a call over TCP whose
+other end is unresolved that it went over TCP, which ALPC does not carry (`contracts/operations-v1.md` §4, §5c). Pairing
+and the peer rule are unchanged, and the server records left unpaired are stated as such (§6). RPC stays at
+`ExperimentalEvidence`: the gaps above are still the source's. RPC over named pipes or HTTP, and a call to another host,
+remain unmeasured.

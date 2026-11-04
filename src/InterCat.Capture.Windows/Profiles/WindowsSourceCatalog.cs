@@ -548,6 +548,9 @@ public static class WindowsSourceCatalog
                 "A call is paired with its completion through the event activity id, not by time proximity (P8).",
                 "Measured on FX-RPC-001: every record is raised in the process it describes - a client call in the "
                 + "caller, a served call in the host - so a record binds to its header's process (ADR-030).",
+                "Measured on FX-RPC-002: a call whose client bound ncacn_ip_tcp names Protocol 1, where a "
+                + "local call names 3, and its bytes are its TCP connection's alone; the endpoint mapper's records of the "
+                + "calls it served over TCP carried no activity id, so they pair with nothing (ADR-004).",
                 "Capture impact alone, seven pairs on 2026-09-27: a median of 0.52 CPU pp (pairs from -4.2 to +4.7) "
                 + "with no throughput regression, loss-free, so the class is Low. It was recorded once the records "
                 + "bind to a process, pair into calls and reach the ladder (revisions 177 to 179).",

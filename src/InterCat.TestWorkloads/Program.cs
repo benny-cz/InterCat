@@ -33,6 +33,15 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         ServiceName = Option(args, "--service") ?? "Schedule",
     };
 
+    var rpcTcpOptions = new RpcTcpOptions
+    {
+        TruthDirectory = truth,
+        Calls = Integer(args, "--calls") ?? 12,
+        InterCallDelayMilliseconds = Integer(args, "--delay") ?? 40,
+        StartAfterSeconds = Integer(args, "--start-after") ?? 0,
+        Concurrency = Integer(args, "--concurrency") ?? 1,
+    };
+
     var contentOptions = new ContentFixtureOptions
     {
         TruthDirectory = truth,
@@ -121,6 +130,11 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             "rpc-local-client" when OperatingSystem.IsWindows() =>
                 await RpcLocalScenario.RunClientAsync(rpcOptions, cancellationToken).ConfigureAwait(false),
             "rpc-local" or "rpc-local-client" => await UnsupportedPlatformAsync().ConfigureAwait(false),
+            "rpc-tcp" when OperatingSystem.IsWindows() =>
+                await RpcTcpScenario.RunCoordinatorAsync(rpcTcpOptions, cancellationToken).ConfigureAwait(false),
+            "rpc-tcp-client" when OperatingSystem.IsWindows() =>
+                await RpcTcpScenario.RunClientAsync(rpcTcpOptions, cancellationToken).ConfigureAwait(false),
+            "rpc-tcp" or "rpc-tcp-client" => await UnsupportedPlatformAsync().ConfigureAwait(false),
             "content-fixture" => await ContentFixtureScenario.RunAsync(contentOptions, cancellationToken).ConfigureAwait(false),
             "http-wininet" when OperatingSystem.IsWindows() =>
                 await HttpWinInetScenario.RunAsync(httpOptions, cancellationToken).ConfigureAwait(false),
@@ -196,6 +210,14 @@ static void PrintHelp()
     Console.WriteLine("  rpc-local --truth <dir> [--calls n] [--service <name>]");
     Console.WriteLine("      FX-RPC-001: a known number of local RPC calls to the Windows service control");
     Console.WriteLine("      manager through the ordinary service API, with the client logging every call.");
+    Console.WriteLine();
+    Console.WriteLine("  rpc-tcp --truth <dir> [--calls n] [--delay ms] [--start-after s] [--concurrency n]");
+    Console.WriteLine("      FX-RPC-002: a known number of RPC calls over TCP - the client asks the endpoint mapper on");
+    Console.WriteLine("      127.0.0.1, port 135, where the service control manager listens over TCP, through the ordinary");
+    Console.WriteLine("      RPC runtime API and with no credentials - logging every call and, from the system's TCP table,");
+    Console.WriteLine("      its connections to port 135 while each call's binding is held. --start-after waits that many");
+    Console.WriteLine("      seconds before the first call, so a capture is in place first; --concurrency deals the calls to");
+    Console.WriteLine("      that many client threads at once.");
     Console.WriteLine();
     Console.WriteLine("  content-fixture --truth <dir> [--seed n] [--messages n] [--bytes n] [--delay ms]");
     Console.WriteLine("      FX-CONTENT-001: raises InterCat's own content fixture provider with seeded messages, some");

@@ -132,6 +132,34 @@ public sealed class RpcScopeTests
         Assert.Equal(first.OtherEndKey, workspace.SelectedRung?.Key);
     });
 
+    [Fact(DisplayName = "§7.4: a call's row names the transport its start named, and one over TCP says ALPC does not carry it")]
+    public void ACallRowNamesItsTransport() => SingleThreadedContext.Run(async () =>
+    {
+        // The call no ALPC send was found for went over TCP, as FX-RPC-002's calls did; the others name no transport.
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedCalls();
+        ObservationRowV1 overTcp = rows.Single(row => row is { Kind: ObservationKind.RequestStart, Direction: Direction.Outbound, RawRecordOrdinal: 20 });
+        Publish(session.Store, rows, fields: [.. fields, Field(overTcp, SourceField.RpcProtocolSequence, 1)]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 400);
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        workspace.SelectedRung = Scm(workspace);
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        Assert.Equal(["procedure 7", "procedure 7 · TCP", "procedure 7"], workspace.RungRows.Select(row => row.Label.Split(" · ", 2)[1]));
+        Assert.Equal("other end unresolved: no ALPC send: it went over TCP, which ALPC does not carry",
+            workspace.RungRows[1].Detail.Split(" · ", 3)[2]);
+        Assert.Contains("it went over TCP", workspace.RungRows[1].SpokenName, StringComparison.Ordinal);
+    });
+
     [Fact(DisplayName = "§6.4: a call's records at the evidence rung widen to its channel's calls once the call's filter is removed")]
     public void ACallsFilterRemovedWidensToItsChannel() => SingleThreadedContext.Run(async () =>
     {

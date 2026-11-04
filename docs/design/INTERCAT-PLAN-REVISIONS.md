@@ -814,6 +814,8 @@ Revision 892 measures Basic authentication through WinINet's capture (FX-HTTP-01
 
 Revision 893 measures a proxy's Basic challenge through WinINet's capture (FX-HTTP-012): it is met as a server's, over TLS on its CONNECT, so a challenge to a CONNECT is now answered in a listing by the CONNECT after it to the same host and port that carried the proxy's credentials.
 
+Revision 894 measures RPC over TCP (FX-RPC-002): a call over TCP is paired and carries no byte as over ALPC, its bytes its TCP connection's alone, and no ALPC message carries it; a call now names the transport its start named, TCP or LRPC, and one over TCP says so where its other end is unresolved, while the endpoint mapper's records of calls it served over TCP carry no activity id and pair with nothing.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3356,3 +3358,22 @@ answered by the first CONNECT after it to the same host and port carrying the pr
 fixture's two ledgers, their heads rebuilt and checked against the server's truth byte for byte, each challenge answered
 by the proxy's credentials; two mutations of the rule are caught. Other schemes remain unmeasured: NTLM and Negotiate
 take the user's own credentials.
+
+Revision 894 measures RPC over TCP (FX-RPC-002), which M3's exit review had left unmeasured. The truth workload's
+client asks the endpoint mapper on 127.0.0.1, port 135, where the service control manager listens over TCP, through
+`RpcEpResolveBinding` and with no credentials, each resolution one call to the endpoint mapper's map procedure over
+`ncacn_ip_tcp`, and logs each call and, from the system's TCP table, the connections beneath them. Five `icat record`
+runs under Explore and RPC peers, 64 calls from one client and 256 from eight at once, found every truth call a client
+call to the map procedure, its start naming protocol 1 where FX-RPC-001's local calls name 3, paired with its stop by
+activity id and carrying no byte; beneath them one TCP connection a client to the endpoint mapper's host on 135 held
+every byte, alike at both ends, so RPC layered over TCP adds no volume, as over ALPC. No ALPC message carried a call, so
+under RPC peers each of 320 found no send on its thread; and the endpoint mapper's records of the calls it served over
+TCP carried no activity id, so each start and stop paired with nothing, each start followed on its thread by its stop.
+A call now names its transport: `icat operations` lists TCP or LRPC beside each call's procedure, in its JSON too, and
+says once beside calls over TCP what one is, and a call over TCP whose other end ALPC left unresolved says it went over
+TCP, which ALPC does not carry, in the listing, the window's call rows and their export (`operations-v1` §4, §5c).
+Pairing is unchanged: a stop names no interface or procedure, so a pair made by thread could not be checked, and a
+server answering on another thread would join two calls' records (P8). A test reads the fixture's two ledgers as a
+session's records - 256 client calls paired, the endpoint mapper's 512 records pairing with nothing, one TCP
+relationship of 8 connections holding every byte; thirteen mutations are caught. RPC over named pipes or HTTP, a call
+to another host and a pairing for a server's records over TCP remain unmeasured.

@@ -31,8 +31,8 @@
       "mechanism": "Rpc",
       "build": "10.0.26220.0-x64",
       "tier": "ExperimentalEvidence",
-      "fixture": "FX-RPC-001",
-      "date": "2026-09-27",
+      "fixture": "FX-RPC-002",
+      "date": "2026-11-04",
       "supportTier": "Primary"
     },
     {

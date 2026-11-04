@@ -373,6 +373,59 @@
       ]
     },
     {
+      "id": "FX-RPC-002",
+      "title": "RPC calls over TCP to the endpoint mapper on loopback",
+      "scenario": "Section 13.1 scenario 5, RPC over a network transport (ADR-004, revision 894): the client asks the endpoint mapper on 127.0.0.1, port 135, where the service control manager listens over TCP, through RpcEpResolveBinding and with no credentials - each resolution one call to the endpoint mapper's map procedure over ncacn_ip_tcp - one client at a time or eight at once; the server is the RpcSs service's host, which the scenario file names.",
+      "milestone": "M3",
+      "mechanism": "Rpc",
+      "backlog": [
+        "IC-006"
+      ],
+      "covers": {
+        "rules": [
+          "R18",
+          "R5"
+        ],
+        "invariants": [],
+        "prohibitions": [
+          "P2",
+          "P4",
+          "P8"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads rpc-tcp --calls 256 --concurrency 8 --delay 0",
+        "seed": 0,
+        "log": "fixtures/FX-RPC-002/evidence/truth-client.jsonl",
+        "independence": "The client logs every call it issues through the documented RPC runtime API, the endpoint it was resolved to, and from the system's TCP table each connection of its own to port 135 while a call's binding was held; it never reads InterCat state. The server is a Windows service host, which the scenario file states explicitly."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-RPC-002/evidence/measurement.json",
+        "note": "Every truth call observed as a client call to the endpoint mapper's map procedure, its start naming protocol 1, paired by activity id and carrying no byte: 64 of 64 and 256 of 256 in five icat record runs. Beneath them one TCP connection a client to the endpoint mapper's host on 135, holding every byte, alike at both ends - 44,288 and 44,728 of 256 calls - so nothing is counted twice. No ALPC message carried a call, 320 of 320 under RPC peers; and the endpoint mapper's records of the calls it served carried no activity id, each pairing with nothing. The ledgers of the run eight at once are read by a test as a session's records."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-04",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record, machine-wide, five times under Explore and RPC peers, nothing lost: every truth call a client call over TCP, completion-paired, every byte on its connection's TCP records. Tier ExperimentalEvidence: the gaps are still the source's - no byte domain and no interface lifetime - and a server's records of a call over TCP carry no activity id (ADR-004)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The client's truth log and the scenario of the run eight at once - call ids, the endpoint each resolved to on loopback, and its connections' local ports - its two ledgers, each call record's reading, side, process, thread, activity number, interface, procedure, protocol and status, and each TCP record's reading, kind, bytes, ports and thread, of the client's connections to port 135 at both ends, and the measurement's counters. A server record names no client, so the endpoint mapper's records kept are those of its interface in the client's window and its records there carrying no activity id; no other machine RPC is kept (P16)."
+      },
+      "tests": [
+        "P4: FX-RPC-002's calls over TCP are counted once - 256 client calls paired by activity id, the endpoint mapper's 512 records pairing with nothing, and every byte the 8 connections' beneath them",
+        "R5: a call names the transport its start named, and one over TCP says ALPC does not carry it where ALPC found no other end",
+        "R18: icat operations names the transport a call's start named, and says once beside them what a call over TCP is",
+        "P2: an RPC call never reports a byte value, and the byte criterion stays not measured",
+        "P8: a completion is paired by activity id, and an unpaired call keeps its status unknown"
+      ]
+    },
+    {
       "id": "FX-IDENTITY-001",
       "title": "Process, resource and clock identity collisions",
       "scenario": "Section 7.2 and 8.1: PID and resource-key reuse, a late record carrying the earlier start key, an equal key on another host, and a fixed QPC conversion.",
@@ -1917,6 +1970,7 @@
         "P3: requested and completed pipe bytes stay in separate domains"
       ],
       "P4": [
+        "P4: FX-RPC-002's calls over TCP are counted once - 256 client calls paired by activity id, the endpoint mapper's 512 records pairing with nothing, and every byte the 8 connections' beneath them",
         "P4: started, completed and failed calls are counted from the calls, never from the records beneath them",
         "P4: what no derived operation can answer is unavailable with its reason, never a zero"
       ],
@@ -2679,6 +2733,7 @@
         "R4: the tour's relationships name a rule of their own and rest on the tour's channels, so none passes for a capture's"
       ],
       "R5": [
+        "R5: a call names the transport its start named, and one over TCP says ALPC does not carry it where ALPC found no other end",
         "R5: a capture profile names the process it is asked to keep, or the processes, and counts what it compiled",
         "R5: a channel row names its mechanism and direction in words, never an enumeration name",
         "R5: a compaction counts what it coalesces, a single source field in the singular",
@@ -2877,6 +2932,7 @@
         "R18: icat metric says RPC calls started, completed, failed and timed in words, with what each call's records establish",
         "R18: icat metric says when its --interval holds no reading, where its readings lie, and what bare numbers name elsewhere",
         "R18: icat operations lists a process's calls, each with its other end named as its group's is",
+        "R18: icat operations names the transport a call's start named, and says once beside them what a call over TCP is",
         "R18: icat operations needs a session's folder, and says so of none and of one that is not there",
         "R18: icat operations refuses an option it cannot read, saying what it expects",
         "R18: icat outliers and icat compare write a process's connections to another host, and by executable an executable's, in words and as JSON",

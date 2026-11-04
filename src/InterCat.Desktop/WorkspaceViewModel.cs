@@ -6805,9 +6805,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         RpcCall call = row.Call;
         string when = clock.Record((call.Start ?? call.Stop)!.SessionRelativeTicks, CultureInfo.CurrentCulture);
-        string procedure = call.Procedure is { } number
-            ? string.Create(CultureInfo.CurrentCulture, $" · procedure {number:N0}")
-            : string.Empty;
+        string procedure = (call.Procedure is { } number
+                ? string.Create(CultureInfo.CurrentCulture, $" · procedure {number:N0}")
+                : string.Empty)
+            + (OperationText.ProtocolName(call.Protocol) is { } protocol ? " · " + protocol : string.Empty);
 
         // The row leads with how the call went, which is what a list of calls is scanned for; the rung names the channel.
         string label = (call.State == RpcCallState.Completed
@@ -6816,7 +6817,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         string status = call.Status is { } code
             ? code == 0 ? "succeeded" : string.Create(CultureInfo.CurrentCulture, $"failed, status {code:N0}")
             : "no status";
-        string? otherEnd = row.OtherEnd?.Describe(call.Side);
+        string? otherEnd = row.OtherEnd?.Describe(call.Side, call.Protocol);
         string detail = otherEnd is null ? $"{when} · {status}" : $"{when} · {status} · {otherEnd}";
         long records = (call.Start is null ? 0 : 1) + (call.Stop is null ? 0 : 1);
         var source = new LadderRow(row.Key, $"RPC call at {when}", detail, records, null, Mechanism.Rpc,

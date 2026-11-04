@@ -87,6 +87,36 @@ public static class OperationText
         _ => string.Create(CultureInfo.InvariantCulture, $"state {(int)state}"),
     };
 
+    /// <summary>The protocol a call's start names when the call went over TCP: its client bound ncacn_ip_tcp (FX-RPC-002).</summary>
+    public const long TcpProtocol = 1;
+
+    /// <summary>The protocol a call's start names when the call stayed local: ncalrpc, which ALPC carries (FX-RPC-001).</summary>
+    public const long LocalProtocol = 3;
+
+    /// <summary>
+    /// The transport a call's start names (`operations-v1` §4): "TCP" for a call over TCP and "LRPC" for a local one, as
+    /// FX-RPC-002 and FX-RPC-001 measured them; any other value by its number, never guessed; null where it named none.
+    /// </summary>
+    public static string? ProtocolName(long? protocol) => protocol switch
+    {
+        null => null,
+        TcpProtocol => "TCP",
+        LocalProtocol => "LRPC",
+        _ => string.Create(CultureInfo.InvariantCulture, $"protocol {protocol}"),
+    };
+
+    /// <summary>
+    /// What a call's other end is, in words, for a call whose start named <paramref name="protocol"/>: one that went over
+    /// TCP, which no ALPC message carries (FX-RPC-002), says so where no ALPC send was found for it or no client call
+    /// reached it; any other is said as <see cref="PeerState(RpcPeerState)"/> says it.
+    /// </summary>
+    public static string CallPeerState(RpcPeerState state, long? protocol) => (state, protocol) switch
+    {
+        (RpcPeerState.NoSend, TcpProtocol) => "no ALPC send: it went over TCP, which ALPC does not carry",
+        (RpcPeerState.NotReached, TcpProtocol) => "no linked client call reached it: it came over TCP, which ALPC does not carry",
+        _ => PeerState(state),
+    };
+
     /// <summary>What a client call's other end is, in words (`contracts/operations-v1.md` §5c).</summary>
     public static string PeerState(RpcPeerState state) => state switch
     {

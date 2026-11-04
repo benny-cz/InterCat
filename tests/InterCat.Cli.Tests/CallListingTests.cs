@@ -66,29 +66,29 @@ public sealed class CallListingTests : IDisposable
             StringComparison.Ordinal);
         Assert.Contains("  executable not witnessed · 400, client calls to 367abb81-9844-35f1-ad32-98f038001003: the first 3 of 3",
             client, StringComparison.Ordinal);
-        Assert.Matches(@"(?m)^  Start +Duration +Status +State +Procedure +Other end\r?$", client);
+        Assert.Matches(@"(?m)^  Start +Duration +Status +State +Procedure +Protocol +Other end\r?$", client);
         Assert.Matches(@"(?m)^  executable not witnessed · 400 +client +.* +services\.exe: 2/3\r?$", client);
-        Assert.Matches(@"(?m)^  0\.000010 s +2\.0 µs +0 +completed +7 +services\.exe · 1960\r?$", client);
-        Assert.Matches(@"(?m)^  0\.000020 s +1\.0 µs +0 +completed +7 +no ALPC send on its thread during the call\r?$", client);
-        Assert.Matches(@"(?m)^  0\.000030 s +4\.0 µs +5 +completed +7 +services\.exe · 1960\r?$", client);
+        Assert.Matches(@"(?m)^  0\.000010 s +2\.0 µs +0 +completed +7 +none +services\.exe · 1960\r?$", client);
+        Assert.Matches(@"(?m)^  0\.000020 s +1\.0 µs +0 +completed +7 +none +no ALPC send on its thread during the call\r?$", client);
+        Assert.Matches(@"(?m)^  0\.000030 s +4\.0 µs +5 +completed +7 +none +services\.exe · 1960\r?$", client);
 
         // The host's calls: two a client call reached - one whose executable was not witnessed, named by its PID as a
         // group's other end is - and one none did; a listing of servers alone counts no client call.
         (_, string server, _) = await Run("operations", session.Path, "--pid", "1960");
         Assert.Contains("ALPC sends and receives: 2 of the 3 server calls listed were reached by a client call\n",
             server.ReplaceLineEndings("\n"), StringComparison.Ordinal);
-        Assert.Matches(@"(?m)^  0\.000011 s +500 ns +0 +completed +7 +PID 400\r?$", server);
+        Assert.Matches(@"(?m)^  0\.000011 s +500 ns +0 +completed +7 +none +PID 400\r?$", server);
         Assert.Contains("  services.exe · 1960, server calls to 367abb81-9844-35f1-ad32-98f038001003: the first 3 of 3", server,
             StringComparison.Ordinal);
         Assert.DoesNotContain("PID ·", server, StringComparison.Ordinal);
-        Assert.Matches(@"(?m)^  0\.000021 s +200 ns +0 +completed +7 +no linked client call reached it\r?$", server);
+        Assert.Matches(@"(?m)^  0\.000021 s +200 ns +0 +completed +7 +none +no linked client call reached it\r?$", server);
         Assert.DoesNotContain("client calls listed", server, StringComparison.Ordinal);
 
         // None of a lone server call reached is said as none, agreeing with its total.
         (_, string unreached, _) = await Run("operations", session.Path, "--pid", "2020");
         Assert.Contains("ALPC sends and receives: none of the 1 server call listed was reached by a client call\n",
             unreached.ReplaceLineEndings("\n"), StringComparison.Ordinal);
-        Assert.Matches(@"(?m)^  0\.000040 s +untimed +none +open at capture end +none +no linked client call reached it\r?$", unreached);
+        Assert.Matches(@"(?m)^  0\.000040 s +untimed +none +open at capture end +none +none +no linked client call reached it\r?$", unreached);
 
         // Every group listed says both sides, and --calls bounds each group's calls.
         (_, string both, _) = await Run("operations", session.Path, "--interface", ServiceControlInterface.ToString(), "--calls", "1");
@@ -103,6 +103,62 @@ public sealed class CallListingTests : IDisposable
             + "call", all, StringComparison.Ordinal);
         Assert.Contains("  2 more groups; --top 0 lists every one.", all, StringComparison.Ordinal);
         Assert.DoesNotContain("Start ", all, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R18: icat operations names the transport a call's start named, and says once beside them what a call over TCP is")]
+    public async Task ACallOverTcpSaysSo()
+    {
+        // A caller's call to the endpoint mapper over TCP, which sent no ALPC message, and the endpoint mapper's records of
+        // it, which carry no activity id (FX-RPC-002); beside them the linked local calls, which name no transport.
+        using var tcp = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedRpcCalls();
+        Guid mapper = Guid.Parse("e1af8308-5d1f-11c9-91a4-08002b14a0fa");
+        ObservationRowV1 start = RpcCall(400, ObservationKind.RequestStart, Direction.Outbound, 400, 80,
+            Guid.Parse("31313131-2222-4333-8444-555555555555"), mapper);
+        ObservationRowV1 served = RpcCall(404, ObservationKind.RequestStart, Direction.Inbound, 1_960, 82, interfaceUuid: mapper);
+        Publish(tcp.Store,
+        [
+            .. rows,
+            start,
+            served,
+            RpcCall(410, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 83, status: 0),
+            RpcCall(420, ObservationKind.RequestEnd, Direction.Outbound, 400, 81,
+                Guid.Parse("31313131-2222-4333-8444-555555555555"), status: 0),
+        ],
+        fields:
+        [
+            .. fields,
+            Field(start, SourceField.RpcProcedureNumber, 3),
+            Field(start, SourceField.RpcProtocolSequence, 1),
+            Field(served, SourceField.RpcProcedureNumber, 3),
+            Field(served, SourceField.RpcProtocolSequence, 1),
+        ],
+        coverage: RpcLedger(alpc: true));
+        tcp.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string client, string said) = await Run("operations", tcp.Path, "--pid", "400");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  0\.000040 s +2\.0 µs +0 +completed +3 +TCP +no ALPC send: it went over TCP, which ALPC does not carry\r?$",
+            client);
+        Assert.Matches(@"(?m)^  0\.000010 s +2\.0 µs +0 +completed +7 +none +PID 1960\r?$", client);
+        Assert.Contains(OperationsCommand.OverTcp, client, StringComparison.Ordinal);
+        (_, string server, _) = await Run("operations", tcp.Path, "--pid", "1960", "--interface", mapper.ToString());
+        Assert.Matches(@"(?m)^  0\.000040 s +untimed +none +no activity id +3 +TCP +no linked client call reached it: it came over TCP, "
+            + @"which ALPC does not carry\r?$", server);
+
+        // The JSON names it as the table does, beside the number the start carried; a listing of no call over TCP says nothing
+        // of TCP.
+        (_, string json, _) = await Run("operations", tcp.Path, "--pid", "400", "--json");
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement[] calls = [.. document.RootElement.GetProperty("groups").EnumerateArray()
+            .SelectMany(group => group.GetProperty("calls").EnumerateArray())];
+        JsonElement overTcp = Assert.Single(calls, call => call.GetProperty("protocol").ValueKind == JsonValueKind.Number);
+        Assert.Equal((1L, "TCP"), (overTcp.GetProperty("protocol").GetInt64(), overTcp.GetProperty("protocolName").GetString()));
+        Assert.All(calls.Where(call => call.GetProperty("protocol").ValueKind == JsonValueKind.Null),
+            call => Assert.Equal(JsonValueKind.Null, call.GetProperty("protocolName").ValueKind));
+        Assert.Contains(document.RootElement.GetProperty("caveats").EnumerateArray(), caveat => caveat.GetString() == OperationsCommand.OverTcp);
+        (_, string local, _) = await Run("operations", session.Path, "--pid", "400");
+        Assert.DoesNotContain("over TCP", local, StringComparison.Ordinal);
     }
 
     [Theory(DisplayName = "R18: icat operations refuses an option it cannot read, saying what it expects")]

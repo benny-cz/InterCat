@@ -67,6 +67,26 @@ public sealed class OperationTextTests
         _ = Assert.Throws<ArgumentOutOfRangeException>(() => OperationText.PeerState((RpcPeerState)99));
     }
 
+    [Fact(DisplayName = "R5: a call names the transport its start named, and one over TCP says ALPC does not carry it where ALPC found no other end")]
+    public void ACallNamesItsTransport()
+    {
+        // The two values measured are named (FX-RPC-002, FX-RPC-001), any other by its number, and none where none was named.
+        long?[] protocols = [1, 3, 2, null];
+        Assert.Equal(["TCP", "LRPC", "protocol 2", null], protocols.Select(OperationText.ProtocolName));
+
+        // A call over TCP says why ALPC found nothing for it, at either end; any other reason, and any other transport, reads
+        // as the reason alone does.
+        Assert.Equal("no ALPC send: it went over TCP, which ALPC does not carry",
+            OperationText.CallPeerState(RpcPeerState.NoSend, OperationText.TcpProtocol));
+        Assert.Equal("no linked client call reached it: it came over TCP, which ALPC does not carry",
+            OperationText.CallPeerState(RpcPeerState.NotReached, OperationText.TcpProtocol));
+        RpcPeerState[] states = [.. Enum.GetValues<RpcPeerState>()];
+        Assert.All(states, state => Assert.Equal(OperationText.PeerState(state), OperationText.CallPeerState(state, OperationText.LocalProtocol)));
+        Assert.All(states, state => Assert.Equal(OperationText.PeerState(state), OperationText.CallPeerState(state, null)));
+        Assert.All(states.Except([RpcPeerState.NoSend, RpcPeerState.NotReached]),
+            state => Assert.Equal(OperationText.PeerState(state), OperationText.CallPeerState(state, OperationText.TcpProtocol)));
+    }
+
     [Fact(DisplayName = "R5: an operation's state reads as a call's does, and the tour's operations name their kind, direction and state in words")]
     public void AnOperationReadsInWords()
     {

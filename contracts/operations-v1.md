@@ -93,6 +93,12 @@ A call is **started** when it has a start, and **completed** when it has both. A
 whose status is not 0. Calls with an unpaired record are counted by their reason, and none is counted twice: every call
 record belongs to exactly one call.
 
+Revision 894: a call's protocol is the number its start carried, which names the transport the call went over.
+FX-RPC-002 measured 1 on every call whose client bound `ncacn_ip_tcp`, and FX-RPC-001 3 on the local calls `ncalrpc`
+carries, which ALPC delivers; a reader names the two TCP and LRPC and any other value by its number, never guessed. A
+call over TCP holds no byte, as no call does: its request and answer are its TCP connection's sends and receives, whose
+bytes are that connection's alone (§5.1, P4).
+
 ## 5. Groups
 
 A derivation's calls are grouped by process binding, side and interface. A call binds to an instance with the strength
@@ -166,6 +172,10 @@ Every other shape leaves the call's other end unresolved, with its reason:
 - A served call's other end is the server call's process binding; the server call's other end is the client call.
   A server call reached by no client call is unresolved, and has no reason of its own: its client may be remote, may
   not use ALPC, or may not be in the capture.
+- A call over TCP is carried by no ALPC message (revision 894): FX-RPC-002's 320 calls over TCP, recorded with ALPC,
+  each found no send on its thread in its window, and the endpoint mapper's records of the calls it served were reached
+  by none. The rule is unchanged; a reader says of such a call, where its other end is unresolved, that it went over TCP,
+  which ALPC does not carry, and of such a server call that it came over TCP.
 
 Revision 226: a reader of §5a's channels also names who is at the other end of a channel's calls - for a client
 channel the processes that served them, the most first, and why the rest are unresolved; for a server channel the
@@ -203,6 +213,11 @@ call whose start its capture never saw is still `StartNotObserved` (I20).
   one with no start, and the start as open.
 - An activity id is unique to one call on one side until its stop. FX-RPC-001 held no reuse; a reuse is stated as
   ambiguity rather than paired.
+- A server's records may carry no activity id. FX-RPC-002 measured it of every call the endpoint mapper served over
+  TCP: each start and each stop is a call of its own that pairs with nothing (§3), so a call served over TCP reads as
+  two unpaired records, the stop naming no interface. Each start was followed on its thread by its stop, but nothing
+  pairs them so: a stop names no interface or procedure to check a pair by, and a server that answers on another thread
+  would pair two calls' records (P8).
 - A call record the capture lost leaves its call unpaired, stated by the state above. No generation publishes which
   record was lost.
 
@@ -219,7 +234,9 @@ derivation they rest on, and the generation; a change to what links, how, or whe
 - Durations of any interval but a client call and a server execution: those two are measured by
   `contracts/metrics-v1.md` §8a since revision 186.
 - Linking a client call to its server call other than through §5c's ALPC chain: by thread nesting, by time, or across
-  machines.
+  machines; and through the TCP connection a call over TCP went over, which none of its records names.
+- Pairing a server's records that carry no activity id (§6), and protocols other than TCP and LRPC: RPC over named
+  pipes or HTTP is unmeasured.
 - Extending calls or their other ends from a derivation checkpoint or an operation index: a finished generation keeps
   both in its operation index since revision 440 (`contracts/operation-index-v1.md`), so a reopen pairs none, but
   only a derivation made in memory extends to a later live generation (§3a).

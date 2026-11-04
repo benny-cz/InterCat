@@ -1,0 +1,78 @@
+{
+  "fixture": "FX-RPC-002",
+  "run": "tcp-peers-eight",
+  "profile": "rpc-peers",
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-11-04",
+  "workload": "InterCat.TestWorkloads rpc-tcp --calls 256 --concurrency 8",
+  "recorded": {
+    "journaledRecords": 20475,
+    "lossFree": true,
+    "coverage": {
+      "Tcp": "Covered",
+      "Rpc": "Covered",
+      "Alpc": "Covered"
+    }
+  },
+  "truth": {
+    "calls": 256,
+    "resolvedOverTcp": 256,
+    "connectionsListed": 8
+  },
+  "clientCalls": {
+    "interface": "epmapper",
+    "counts": {
+      "calls": 256,
+      "started": 256,
+      "completed": 256,
+      "failed": 0,
+      "openAtCaptureEnd": 0,
+      "startNotObserved": 0,
+      "noActivityId": 0,
+      "ambiguous": 0
+    },
+    "byProcedureProtocolAndStatus": {
+      "procedure 3, protocol 1, status 0": 256
+    },
+    "otherEnds": {
+      "NoSend": 256
+    },
+    "linked": 0
+  },
+  "endpointMapperRecords": {
+    "startsOfTheInterface": {
+      "Completed, protocol 3": 2,
+      "NoActivityId, protocol 1": 256
+    },
+    "stopsNamingNoInterface": {
+      "NoActivityId, status 0": 256
+    },
+    "otherEnds": {
+      "startsOfTheInterface": {
+        "NotReached": 256
+      },
+      "stopsNamingNoInterface": {
+        "NotReached": 256
+      }
+    },
+    "threads": {
+      "unkeyedStarts": 256,
+      "unkeyedStartsFollowedOnTheirThreadByAnUnkeyedStop": 256,
+      "threadsHoldingThem": 7
+    }
+  },
+  "transport": {
+    "clientRpcRecords": 512,
+    "clientSent": 44288,
+    "clientReceived": 44728,
+    "clientSends": 264,
+    "clientReceives": 264,
+    "connectionsMadeToTheEndpointMapper": 8,
+    "portsMadeTo": [
+      135
+    ],
+    "endpointMapperSent": 44728,
+    "endpointMapperReceived": 44288,
+    "endpointMapperAccepted": 8
+  }
+}

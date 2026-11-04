@@ -99,10 +99,14 @@ public sealed record RpcCallPeerView(RpcPeerState? Unresolved, RpcChannelPeer? P
     /// <summary>When the call at the other end began - its start, or its stop without one - in session nanoseconds.</summary>
     public long? FirstNanoseconds { get; init; }
 
-    /// <summary>The other end in one phrase, or null for a server call no client call is known to have made.</summary>
-    public string? Describe(RpcCallSide side) => Process is { } peer
+    /// <summary>
+    /// The other end in one phrase, or null for a server call no client call is known to have made; a call whose start
+    /// named <paramref name="protocol"/> says why it is unresolved as <see cref="OperationText.CallPeerState"/>
+    /// does.
+    /// </summary>
+    public string? Describe(RpcCallSide side, long? protocol = null) => Process is { } peer
         ? (side == RpcCallSide.Client ? "served by " : "called by ") + peer.Name
-        : Unresolved is { } state ? "other end unresolved: " + OperationText.PeerState(state) : null;
+        : Unresolved is { } state ? "other end unresolved: " + OperationText.CallPeerState(state, protocol) : null;
 }
 
 /// <summary>

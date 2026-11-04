@@ -57,8 +57,8 @@ public static class ChannelRungRows
     }
 
     /// <summary>
-    /// One call: when it began, how it went - how long it took, or why that is not known - with its procedure, its status,
-    /// and who is at its other end where the capture followed it.
+    /// One call: when it began, how it went - how long it took, or why that is not known - with its procedure and the
+    /// transport its start named, its status, and who is at its other end where the capture followed it.
     /// </summary>
     public static LadderRow RpcCall(RpcCallRow row)
     {
@@ -68,11 +68,12 @@ public static class ChannelRungRows
         string outcome = (call.State == RpcCallState.Completed
                 ? OperationText.Duration(call.DurationNanoseconds!.Value, culture)
                 : OperationText.State(call.State))
-            + (call.Procedure is { } number ? string.Create(culture, $" · procedure {number:N0}") : string.Empty);
+            + (call.Procedure is { } number ? string.Create(culture, $" · procedure {number:N0}") : string.Empty)
+            + (OperationText.ProtocolName(call.Protocol) is { } protocol ? " · " + protocol : string.Empty);
         string status = call.Status is { } code
             ? code == 0 ? "succeeded" : string.Create(culture, $"failed, status {code:N0}")
             : "no status";
-        string? otherEnd = row.OtherEnd?.Describe(call.Side);
+        string? otherEnd = row.OtherEnd?.Describe(call.Side, call.Protocol);
         return new(row.Key, "RPC call at " + SessionTime.Record((call.Start ?? call.Stop)!.SessionRelativeTicks, culture),
             otherEnd is null ? $"{outcome} · {status}" : $"{outcome} · {status} · {otherEnd}",
             (call.Start is null ? 0 : 1) + (call.Stop is null ? 0 : 1), null, Mechanism.Rpc, CoverageState.UnknownCoverage,

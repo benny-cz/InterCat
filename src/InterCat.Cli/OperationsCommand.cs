@@ -91,6 +91,10 @@ internal sealed record OperationsCallDocument
     public required Guid? ActivityId { get; init; }
     public required long? Procedure { get; init; }
     public required long? Protocol { get; init; }
+
+    /// <summary>The transport its start named, in words: TCP, LRPC, or another value by its number; null for none.</summary>
+    public required string? ProtocolName { get; init; }
+
     public required long? Status { get; init; }
     public required long? DurationNanoseconds { get; init; }
     public required ObservationId? Start { get; init; }
@@ -330,9 +334,19 @@ internal static class OperationsCommand
                 "An RPC record names no process; it belongs to the process that raised it (process-binding-v3, ADR-030).",
                 "A duration is the session time between a call's start and stop records on one clock. Percentiles are "
                 + "durations calls took, by nearest rank.",
+                .. groups.Any(group => group.Calls?.Any(call => call.Protocol == OperationText.TcpProtocol) == true)
+                    ? [OverTcp]
+                    : Array.Empty<string>(),
             ],
         };
     }
+
+    /// <summary>What a call listed as over TCP is, said once beside the calls (FX-RPC-002).</summary>
+    internal const string OverTcp =
+        "A call over TCP adds no byte: its bytes are its TCP connection's sends and receives, never the call's (P4). No ALPC "
+        + "message carries it, so no other end is found for it. And where FX-RPC-002 measured a server's records of the calls "
+        + "it served over TCP, they carried no activity id, so each paired with nothing: such a served call reads as a start "
+        + "and a stop unpaired.";
 
     /// <summary>The calls at a group's other end in one process, named as the group's own process is.</summary>
     private static OperationsPeerDocument Peer(
@@ -380,6 +394,7 @@ internal static class OperationsCommand
         ActivityId = call.ActivityId,
         Procedure = call.Procedure,
         Protocol = call.Protocol,
+        ProtocolName = OperationText.ProtocolName(call.Protocol),
         Status = call.Status,
         DurationNanoseconds = call.DurationNanoseconds,
         Start = call.Start?.Observation,
@@ -456,7 +471,7 @@ internal static class OperationsCommand
                 ConsoleUi.Line(string.Create(CultureInfo.CurrentCulture,
                     $"  {ProcessName(group)}, {group.Side.ToLowerInvariant()} calls to {group.Interface?.ToString() ?? "an interface no start named"}: the first {group.Calls!.Count:N0} of {group.Counts.Calls:N0}"));
                 ConsoleUi.Table(
-                    ["Start", "Duration", "Status", "State", "Procedure", "Other end"],
+                    ["Start", "Duration", "Status", "State", "Procedure", "Protocol", "Other end"],
                     [.. group.Calls.Select(call => (IReadOnlyList<string>)
                     [
                         call.StartSeconds is { } seconds ? LocalSeconds(seconds) : "not observed",
@@ -464,6 +479,7 @@ internal static class OperationsCommand
                         call.Status?.ToString(CultureInfo.CurrentCulture) ?? "none",
                         OperationText.State(Enum.Parse<RpcCallState>(call.State)),
                         call.Procedure?.ToString(CultureInfo.CurrentCulture) ?? "none",
+                        call.ProtocolName ?? "none",
                         OtherEnd(call),
                     ])]);
             }
@@ -537,7 +553,7 @@ internal static class OperationsCommand
         { OtherEndProcessId: { } other } => call.OtherEndImage is { } image
             ? string.Create(CultureInfo.CurrentCulture, $"{image} · {other}")
             : string.Create(CultureInfo.CurrentCulture, $"PID {other}"),
-        { OtherEndState: { } state } => OperationText.PeerState(Enum.Parse<RpcPeerState>(state)),
+        { OtherEndState: { } state } => OperationText.CallPeerState(Enum.Parse<RpcPeerState>(state), call.Protocol),
         _ => "-",
     };
 
@@ -564,8 +580,10 @@ internal static class OperationsCommand
         ConsoleUi.Line("  side of one process (contracts/operations-v1.md). Calls are grouped by process, side and");
         ConsoleUi.Line("  interface, with completions, failures, open calls and durations, and every call that could");
         ConsoleUi.Line("  not be paired is counted by its reason. When the capture collected ALPC (--profile rpc-peers),");
-        ConsoleUi.Line("  each client call's other end is the server call its one ALPC message reached (ADR-034). What the");
-        ConsoleUi.Line("  capture covered of RPC and ALPC is said from its coverage ledger, never from a count of none.");
+        ConsoleUi.Line("  each client call's other end is the server call its one ALPC message reached (ADR-034). A call");
+        ConsoleUi.Line("  listed names the transport its start named - TCP or LRPC - and one over TCP, which no ALPC message");
+        ConsoleUi.Line("  carries, says so where its other end is unresolved (FX-RPC-002). What the capture covered of RPC");
+        ConsoleUi.Line("  and ALPC is said from its coverage ledger, never from a count of none.");
         ConsoleUi.Line();
         ConsoleUi.Line("  --pid <id>             Only the groups of this PID, with their first calls.");
         ConsoleUi.Line("  --interface <uuid>     Only the groups of this RPC interface, with their first calls.");

@@ -1,0 +1,14 @@
+{
+  "scenarioId": "FX-RPC-002",
+  "calls": 256,
+  "concurrency": 8,
+  "protocolSequence": "ncacn_ip_tcp",
+  "networkAddress": "127.0.0.1",
+  "endpoint": 135,
+  "expectedInterfaceUuid": "e1af8308-5d1f-11c9-91a4-08002b14a0fa",
+  "resolvedInterfaceUuid": "367abb81-9844-35f1-ad32-98f038001003",
+  "clientProcessId": 59664,
+  "expectedServerProcessId": 2560,
+  "serverNote": "The RPC server is the endpoint mapper, in the host of the RpcSs service, not a workload process. Its process id is recorded so peer attribution can be checked, not assumed.",
+  "clientExitCode": 0
+}

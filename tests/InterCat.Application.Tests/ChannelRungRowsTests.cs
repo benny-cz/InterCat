@@ -78,4 +78,23 @@ public sealed class ChannelRungRowsTests
             (ChannelRungRows.Counted(channel, 1), ChannelRungRows.Counted(channel, 2), ChannelRungRows.Counted("http:x", 1),
                 ChannelRungRows.Counted("http:x", 1_500)));
     }
+
+    [Fact(DisplayName = "§6.4: a call's row names the transport its start named, and one over TCP says why ALPC found no other end for it")]
+    public void ACallsRowNamesItsTransport()
+    {
+        // The second call, for which no ALPC send was found, went over TCP, as FX-RPC-002's calls did; the others name none.
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedRpcCalls();
+        ObservationRowV1 overTcp = rows.Single(row => row is { Kind: ObservationKind.RequestStart, Direction: Direction.Outbound, RawRecordOrdinal: 20 });
+        Publish(session.Store, [.. rows.Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })],
+            fields: [.. fields, Field(overTcp, SourceField.RpcProtocolSequence, 1)], coverage: RpcLedger(alpc: true));
+        ProcessNode client = SessionOverviewProjector.Project(session.Store).Nodes.Single(node => node.ProcessId == 400);
+        string channel = Assert.Single(SessionRpcCalls.Channels(session.Store, client.Id).Channels).Key;
+        Assert.Equal(
+        [
+            "2.0 µs · procedure 7 · succeeded · served by PID 1960",
+            "1.0 µs · procedure 7 · TCP · succeeded · other end unresolved: no ALPC send: it went over TCP, which ALPC does not carry",
+            "4.0 µs · procedure 7 · failed, status 5 · served by PID 1960",
+        ], ChannelRungRows.Read(session.Store, channel, null, 3).Rows.Select(row => row.Detail));
+    }
 }
