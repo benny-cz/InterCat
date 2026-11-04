@@ -54,6 +54,29 @@ public sealed class UnixSocketGateTests
         Assert.Equal((AfdGateOutcome.Admitted, 50), (gate.Read(Call(1004, 1, 4116, Accepted)).Outcome, gate.Read(Call(1004, 1, 4116, Accepted)).Socket!.Value.Owner));
     }
 
+    [Fact(DisplayName = "R22: the AF_UNIX gate binds a socket made before the capture to none, whichever process raised its records - its own or its peer's - until a create names its address")]
+    public void ASocketMadeBeforeTheCaptureIsNone()
+    {
+        var gate = new UnixSocketGate();
+
+        // A connection made before the capture began: the client's send exits in its own process, the server's receive
+        // completes on the client's thread, as AFD raises it, and the server's reply the other way; then both close. No
+        // create named either address, so no record is a socket's, whichever process raised it.
+        Assert.Equal(AfdGateOutcome.NoUnixSocket, gate.Read(Call(1003, 1, 3051, Socket, raisedBy: 30)).Outcome);
+        Assert.Equal(AfdGateOutcome.NoUnixSocket, gate.Read(Call(1004, 1, 4123, Accepted, raisedBy: 30)).Outcome);
+        Assert.Equal(AfdGateOutcome.NoUnixSocket, gate.Read(Call(1003, 1, 3051, Accepted, raisedBy: 40)).Outcome);
+        Assert.Equal(AfdGateOutcome.NoUnixSocket, gate.Read(Call(1004, 1, 4123, Socket, raisedBy: 40)).Outcome);
+        Assert.Equal(AfdGateOutcome.NoUnixSocket, gate.Read(Call(1001, 1, 2001, Socket, raisedBy: 30)).Outcome);
+        Assert.Equal(AfdGateOutcome.NoUnixSocket, gate.Read(Call(1001, 1, 2001, Accepted, raisedBy: 40)).Outcome);
+        Assert.Equal(AfdGateOutcome.NoUnixSocket, gate.Read(Call(3006, 3, 12001, Accepted, raisedBy: 30)).Outcome);
+        Assert.Equal((0, 0), (gate.Following, gate.Remembered));
+
+        // A create at the address begins a socket there, its create's process's, the first the gate numbered.
+        (AfdGateOutcome created, UnixSocketIncarnation? socket) = gate.Read(Create(Socket, family: 1, madeFor: 50));
+        Assert.Equal((AfdGateOutcome.Admitted, new UnixSocketIncarnation(1, 50)), (created, socket!.Value));
+        Assert.Equal((AfdGateOutcome.Admitted, socket), gate.Read(Call(1003, 1, 3051, Socket, raisedBy: 50)));
+    }
+
     [Fact(DisplayName = "R22: the AF_UNIX gate follows no more sockets than it may, says of a create beyond them that it was not followed, and remembers only the last few it saw closed")]
     public void TheGateHoldsABoundedNumberOfSockets()
     {

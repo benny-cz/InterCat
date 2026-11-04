@@ -94,18 +94,22 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Port = Integer(args, "--port") ?? 0,
     };
 
-    // --churn runs FX-UNIX-002: sixty-four short connections one at a time, two small messages each, unpaced.
+    // --churn runs FX-UNIX-002: sixty-four short connections one at a time, two small messages each, unpaced. --hold runs
+    // FX-UNIX-003: eight connections opened at once, each waiting that long before its first message, then unpaced.
     bool churn = args.Contains("--churn", StringComparer.Ordinal);
+    int hold = Integer(args, "--hold") ?? 0;
+    int unixConnections = Integer(args, "--connections") ?? (churn ? 64 : hold > 0 ? 8 : 2);
     var unixOptions = new UnixLoopbackOptions
     {
         TruthDirectory = truth,
         Churn = churn,
+        HoldMilliseconds = hold,
         Seed = Integer(args, "--seed") ?? 20_261_104,
-        Connections = Integer(args, "--connections") ?? (churn ? 64 : 2),
-        MessagesPerConnection = Integer(args, "--messages") ?? (churn ? 2 : 8),
+        Connections = unixConnections,
+        MessagesPerConnection = Integer(args, "--messages") ?? (churn ? 2 : hold > 0 ? 16 : 8),
         MaximumMessageBytes = Integer(args, "--bytes") ?? (churn ? 256 : 4_096),
-        InterMessageDelayMilliseconds = Integer(args, "--delay") ?? (churn ? 0 : 15),
-        Concurrency = Integer(args, "--concurrency") ?? 1,
+        InterMessageDelayMilliseconds = Integer(args, "--delay") ?? (churn || hold > 0 ? 0 : 15),
+        Concurrency = Integer(args, "--concurrency") ?? (hold > 0 ? unixConnections : 1),
         SocketPath = Option(args, "--socket"),
         ReadBufferBytes = Integer(args, "--read-buffer") ?? 0,
         WaitForStart = args.Contains("--wait-for-start", StringComparer.Ordinal),
@@ -123,6 +127,13 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Ipv6 = args.Contains("--ipv6", StringComparer.Ordinal),
         Port = Integer(args, "--port") ?? 0,
     };
+
+    if (args[0].StartsWith("unix-loopback", StringComparison.Ordinal) && churn && hold > 0)
+    {
+        await Console.Error.WriteLineAsync("--churn and --hold are two fixtures, FX-UNIX-002 and FX-UNIX-003: a run is one of them.")
+            .ConfigureAwait(false);
+        return 2;
+    }
 
     try
     {
@@ -224,7 +235,7 @@ static void PrintHelp()
     Console.WriteLine("      IPv6 loopback (::1) as FX-UDP-002.");
     Console.WriteLine();
     Console.WriteLine("  unix-loopback --truth <dir> [--seed n] [--connections n] [--messages n] [--bytes n] [--delay ms]");
-    Console.WriteLine("                [--concurrency n] [--socket <path>] [--wait-for-start] [--read-buffer n] [--churn]");
+    Console.WriteLine("                [--concurrency n] [--socket <path>] [--wait-for-start] [--read-buffer n] [--churn | --hold ms]");
     Console.WriteLine("      FX-UNIX-001: FX-TCP-001's two-process exchange over an AF_UNIX stream socket bound to a path -");
     Console.WriteLine("      by default fx.sock in the truth directory - each process logging every message by the path,");
     Console.WriteLine("      as a Unix-domain socket has no port. --wait-for-start has each process wait for a line on");
@@ -232,7 +243,9 @@ static void PrintHelp()
     Console.WriteLine("      --read-buffer has the server read each message in reads that ask for that many bytes, taking what");
     Console.WriteLine("      has arrived, so a read asks for more than it receives. --churn runs it as FX-UNIX-002: by default");
     Console.WriteLine("      64 short connections one at a time, two messages of up to 256 bytes each, unpaced, whose sockets");
-    Console.WriteLine("      the kernel creates at addresses earlier ones held.");
+    Console.WriteLine("      the kernel creates at addresses earlier ones held. --hold runs it as FX-UNIX-003: by default eight");
+    Console.WriteLine("      connections opened at once, each waiting that many milliseconds before its first of 16 messages,");
+    Console.WriteLine("      unpaced, so a capture started meanwhile finds them open.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

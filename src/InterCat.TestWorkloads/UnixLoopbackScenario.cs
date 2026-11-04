@@ -14,14 +14,22 @@ internal sealed record UnixLoopbackOptions
 
     public const string ChurnScenarioId = "FX-UNIX-002";
 
+    public const string HeldScenarioId = "FX-UNIX-003";
+
     /// <summary>
     /// Whether the run is FX-UNIX-002's churn: many short connections one at a time, whose sockets the kernel creates at
     /// addresses earlier ones held; otherwise FX-UNIX-001's exchange.
     /// </summary>
     public bool Churn { get; init; }
 
-    /// <summary>The fixture this run is: FX-UNIX-001's exchange, or FX-UNIX-002's churn.</summary>
-    public string ScenarioId => Churn ? ChurnScenarioId : ExchangeScenarioId;
+    /// <summary>
+    /// When above zero, how long each connection, once open, waits before its first message, so that a capture started
+    /// meanwhile finds every one of them open: FX-UNIX-003.
+    /// </summary>
+    public int HoldMilliseconds { get; init; }
+
+    /// <summary>The fixture this run is: FX-UNIX-001's exchange, FX-UNIX-002's churn, or FX-UNIX-003's connections held open.</summary>
+    public string ScenarioId => Churn ? ChurnScenarioId : HoldMilliseconds > 0 ? HeldScenarioId : ExchangeScenarioId;
 
     /// <summary>The longest path a Windows <c>sockaddr_un</c> holds, its terminator included.</summary>
     public const int MaximumPathLength = 108;
@@ -101,6 +109,7 @@ internal static class UnixLoopbackScenario
             options.MaximumMessageBytes,
             options.InterMessageDelayMilliseconds,
             options.Concurrency,
+            options.HoldMilliseconds,
             socketPath = path,
             serverProcessId = server.Id,
             clientProcessId = client.Id,
@@ -269,6 +278,11 @@ internal static class UnixLoopbackScenario
         using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         await socket.ConnectAsync(new UnixDomainSocketEndPoint(path), cancellationToken).ConfigureAwait(false);
         truth.Write(TruthEventKind.ConnectionEstablished, callId: connection, resourceName: path);
+        if (options.HoldMilliseconds > 0)
+        {
+            await Task.Delay(options.HoldMilliseconds, cancellationToken).ConfigureAwait(false);
+        }
+
         for (int message = 0; message < options.MessagesPerConnection; message++)
         {
             int payload = sizes.Next(options.MinimumMessageBytes, options.MaximumMessageBytes + 1);
@@ -338,6 +352,12 @@ internal static class UnixLoopbackScenario
         if (options.Churn)
         {
             start.ArgumentList.Add("--churn");
+        }
+
+        if (options.HoldMilliseconds > 0)
+        {
+            start.ArgumentList.Add("--hold");
+            start.ArgumentList.Add(options.HoldMilliseconds.ToString(CultureInfo.InvariantCulture));
         }
 
         return Process.Start(start)

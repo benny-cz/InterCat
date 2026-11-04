@@ -1,0 +1,207 @@
+{
+  "fixture": "FX-UNIX-003",
+  "question": "Whether a capture through the product, started while AF_UNIX connections are already open, binds any of their calls to a socket or a process - their sockets' creates came before it, and AFD raises a completion on whichever thread finished it, often the peer's - while it follows the connections made inside it whole.",
+  "answer": "In two runs through icat record under the Unix sockets profile, machine-wide and loss-free, eight connections opened before the capture was launched and holding until after AFD delivered its first row exchanged 512 truth sends and receives inside the capture, and not one of their calls was a row of any process: the held processes' ledger is empty, and each operation is a gap. FX-UNIX-001's exchange of eight connections at once made inside the same capture, its control, was every operation its owner's row with its bytes and each connection a socket created and closed. Every Unix-domain socket row of the session is of a socket whose create the session holds: the control's, and another process's own.",
+  "throughTheProduct": {
+    "runs": [
+      {
+        "run": "held-1",
+        "capture": {
+          "profile": "unix-sockets",
+          "lossFree": true,
+          "admittedThroughTheGate": 707,
+          "gateOmissions": {
+            "notCounted": 1203,
+            "noFollowedResource": 9572,
+            "beyondBound": 0
+          },
+          "coverage": "Covered"
+        },
+        "order": {
+          "heldConnectionsOpen": "2026-11-04T12:39:58.1074735+00:00",
+          "captureLaunched": "2026-11-04T12:40:00.6087530+00:00",
+          "firstUnixSocketRow": "2026-11-04T12:40:08.9114406+00:00",
+          "heldExchangeFrom": "2026-11-04T12:40:18.1206167+00:00",
+          "heldExchangeTo": "2026-11-04T12:40:18.1352373+00:00",
+          "calibratedTo": "2026-11-04T12:40:46.7288443+00:00",
+          "secondsAfterTheHeldWorkloadsFirstRecord": {
+            "heldConnectionsOpen": 0.261,
+            "captureLaunched": 2.763,
+            "firstUnixSocketRow": 11.065,
+            "heldExchangeFrom": 20.275,
+            "heldExchangeTo": 20.289,
+            "calibratedTo": 48.883
+          }
+        },
+        "held": {
+          "workload": {
+            "scenarioId": "FX-UNIX-003",
+            "connections": 8,
+            "messagesPerConnection": 16,
+            "maximumMessageBytes": 4096,
+            "concurrency": 8,
+            "holdMilliseconds": 20000
+          },
+          "evaluation": {
+            "truthOperations": 512,
+            "observed": 0,
+            "withBytes": 0,
+            "operationsWithAGap": 512,
+            "rows": 0,
+            "truthConnections": 16,
+            "socketsCreatedAndClosed": 0,
+            "truthBytesSent": 269735,
+            "observedBytesSent": 0,
+            "truthBytesReceived": 269735,
+            "observedBytesReceived": 0,
+            "tier": "Unsupported",
+            "gaps": [
+              "Admitted observations: measured 0.0 % of 512, below the required 95 %.",
+              "Resource instance binding: measured 0.0 % of 512, below the required 90 %.",
+              "False peer attribution: not measured; the capture attributed no peer, so none could be checked.",
+              "Byte measurement: measured 0.0 % of 512, below the required 90 %.",
+              "Resource discovery: measured 0.0 % of 16, below the required 95 %.",
+              "Membership resolution: measured 0.0 % of 16, below the required 100 %.",
+              "No admitted observation and no discovered resource was measured for this mechanism."
+            ]
+          }
+        },
+        "control": {
+          "workload": {
+            "scenarioId": "FX-UNIX-001",
+            "connections": 8,
+            "messagesPerConnection": 16,
+            "maximumMessageBytes": 4096,
+            "concurrency": 8,
+            "holdMilliseconds": 0
+          },
+          "evaluation": {
+            "truthOperations": 512,
+            "observed": 512,
+            "withBytes": 512,
+            "operationsWithAGap": 0,
+            "rows": 703,
+            "truthConnections": 16,
+            "socketsCreatedAndClosed": 16,
+            "truthBytesSent": 269735,
+            "observedBytesSent": 269735,
+            "truthBytesReceived": 269735,
+            "observedBytesReceived": 269735,
+            "tier": "ExperimentalEvidence",
+            "gaps": [
+              "False peer attribution: not measured; the capture attributed no peer, so none could be checked.",
+              "Membership resolution: measured 0.0 % of 16, below the required 100 %."
+            ]
+          }
+        },
+        "session": {
+          "rows": 707,
+          "rowsOfTheHeldProcesses": 0,
+          "rowsOfTheControl": 703,
+          "rowsOfOtherProcesses": 4,
+          "rowsOnASocketWithNoCreate": 0
+        }
+      },
+      {
+        "run": "held-2",
+        "capture": {
+          "profile": "unix-sockets",
+          "lossFree": true,
+          "admittedThroughTheGate": 707,
+          "gateOmissions": {
+            "notCounted": 1203,
+            "noFollowedResource": 8867,
+            "beyondBound": 0
+          },
+          "coverage": "Covered"
+        },
+        "order": {
+          "heldConnectionsOpen": "2026-11-04T12:43:00.9101490+00:00",
+          "captureLaunched": "2026-11-04T12:43:03.4166505+00:00",
+          "firstUnixSocketRow": "2026-11-04T12:43:11.7598212+00:00",
+          "heldExchangeFrom": "2026-11-04T12:43:20.9179032+00:00",
+          "heldExchangeTo": "2026-11-04T12:43:20.9348170+00:00",
+          "calibratedTo": "2026-11-04T12:43:49.3126842+00:00",
+          "secondsAfterTheHeldWorkloadsFirstRecord": {
+            "heldConnectionsOpen": 0.264,
+            "captureLaunched": 2.771,
+            "firstUnixSocketRow": 11.114,
+            "heldExchangeFrom": 20.272,
+            "heldExchangeTo": 20.289,
+            "calibratedTo": 48.667
+          }
+        },
+        "held": {
+          "workload": {
+            "scenarioId": "FX-UNIX-003",
+            "connections": 8,
+            "messagesPerConnection": 16,
+            "maximumMessageBytes": 4096,
+            "concurrency": 8,
+            "holdMilliseconds": 20000
+          },
+          "evaluation": {
+            "truthOperations": 512,
+            "observed": 0,
+            "withBytes": 0,
+            "operationsWithAGap": 512,
+            "rows": 0,
+            "truthConnections": 16,
+            "socketsCreatedAndClosed": 0,
+            "truthBytesSent": 269735,
+            "observedBytesSent": 0,
+            "truthBytesReceived": 269735,
+            "observedBytesReceived": 0,
+            "tier": "Unsupported",
+            "gaps": [
+              "Admitted observations: measured 0.0 % of 512, below the required 95 %.",
+              "Resource instance binding: measured 0.0 % of 512, below the required 90 %.",
+              "False peer attribution: not measured; the capture attributed no peer, so none could be checked.",
+              "Byte measurement: measured 0.0 % of 512, below the required 90 %.",
+              "Resource discovery: measured 0.0 % of 16, below the required 95 %.",
+              "Membership resolution: measured 0.0 % of 16, below the required 100 %.",
+              "No admitted observation and no discovered resource was measured for this mechanism."
+            ]
+          }
+        },
+        "control": {
+          "workload": {
+            "scenarioId": "FX-UNIX-001",
+            "connections": 8,
+            "messagesPerConnection": 16,
+            "maximumMessageBytes": 4096,
+            "concurrency": 8,
+            "holdMilliseconds": 0
+          },
+          "evaluation": {
+            "truthOperations": 512,
+            "observed": 512,
+            "withBytes": 512,
+            "operationsWithAGap": 0,
+            "rows": 703,
+            "truthConnections": 16,
+            "socketsCreatedAndClosed": 16,
+            "truthBytesSent": 269735,
+            "observedBytesSent": 269735,
+            "truthBytesReceived": 269735,
+            "observedBytesReceived": 269735,
+            "tier": "ExperimentalEvidence",
+            "gaps": [
+              "False peer attribution: not measured; the capture attributed no peer, so none could be checked.",
+              "Membership resolution: measured 0.0 % of 16, below the required 100 %."
+            ]
+          }
+        },
+        "session": {
+          "rows": 707,
+          "rowsOfTheHeldProcesses": 0,
+          "rowsOfTheControl": 703,
+          "rowsOfOtherProcesses": 4,
+          "rowsOnASocketWithNoCreate": 0
+        }
+      }
+    ],
+    "ledger": "fixtures/FX-UNIX-003/evidence/held and control: the first run's truth logs and scenario of each workload, and the ledger of its rows that InterCat.AfdProbe --session wrote - each row's ordinal, its time on the capture's calibrated wall clock, its owner's role, kind, its socket's number in the capture, bytes and status, never a PID, a path, an address or another process's row. The held processes' ledger is its header alone.",
+    "order": "Each run's times are on the machine's wall clock: the last held connection to open, as its truth logged it; the capture's launch, as the recording script read it; the session's first Unix-domain socket row, of whichever process, on the capture's calibrated clock; the held exchange, as its truth logged it; and the capture calibration's last reading. Each comes before the next."
+  }
+}

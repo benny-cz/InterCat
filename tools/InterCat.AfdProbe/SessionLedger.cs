@@ -46,6 +46,17 @@ internal static class SessionLedger
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session));
         var lines = new List<(long Utc, ulong Ordinal, string Line)>();
         int others = 0;
+
+        // The session's first Unix-domain socket row, whoever's, on the calibrated wall clock: AFD was delivering by then;
+        // and the wall clock its calibration read first and last, the capture running between.
+        long? firstRow = null;
+        long calibratedFrom;
+        long calibratedTo;
+
+        // Every Unix-domain socket row's socket, whoever's, and the sockets whose create the session holds: a row on a
+        // socket with no create would be a socket the capture never saw made, bound by a guess.
+        List<long> rowSockets = [];
+        HashSet<long> created = [];
         using (EvidenceLease lease = store.AcquireLease())
         {
             SessionManifestV1 manifest = lease.Manifest;
@@ -57,6 +68,8 @@ internal static class SessionLedger
             {
                 throw new InvalidDataException("The session's calibration holds no two readings apart to read its rows between.");
             }
+
+            (calibratedFrom, calibratedTo) = (first.Utc.UtcTicks, last.Utc.UtcTicks);
 
             // Each row's socket is its connection id, a source field of its own record.
             var sockets = new Dictionary<(uint, uint, ulong), long>();
@@ -84,15 +97,22 @@ internal static class SessionLedger
                         continue;
                     }
 
+                    long utc = first.Utc.UtcTicks + (long)((Int128)(row.NativeTicks - first.NativeTicks)
+                        * (last.Utc.UtcTicks - first.Utc.UtcTicks) / (last.NativeTicks - first.NativeTicks));
+                    firstRow = Math.Min(firstRow ?? long.MaxValue, utc);
+                    long socket = sockets.GetValueOrDefault((row.RawStreamId, row.RawSourceEpoch, row.RawRecordOrdinal));
+                    rowSockets.Add(socket);
+                    if (row.Kind == ObservationKind.Open)
+                    {
+                        created.Add(socket);
+                    }
+
                     if (row.OwnerProcessId is not { } owner || !roles.TryGetValue(owner, out string? role))
                     {
                         others++;
                         continue;
                     }
 
-                    long utc = first.Utc.UtcTicks + (long)((Int128)(row.NativeTicks - first.NativeTicks)
-                        * (last.Utc.UtcTicks - first.Utc.UtcTicks) / (last.NativeTicks - first.NativeTicks));
-                    long socket = sockets.GetValueOrDefault((row.RawStreamId, row.RawSourceEpoch, row.RawRecordOrdinal));
                     lines.Add((utc, row.RawRecordOrdinal, string.Join(',',
                         row.RawRecordOrdinal.ToString(CultureInfo.InvariantCulture),
                         utc.ToString(CultureInfo.InvariantCulture),
@@ -148,6 +168,12 @@ internal static class SessionLedger
             Unmatched = result.Operations.Count(operation => operation.Gap is not null),
             result.OperationsPairedByRank,
             ClockOffsetMilliseconds = result.ClockOffset.TotalMilliseconds,
+            OtherProcessesRows = others,
+            SessionRows = rowSockets.Count,
+            SessionRowsOnASocketWithNoCreate = rowSockets.Count(socket => !created.Contains(socket)),
+            FirstUnixSocketRowUtcTicks = firstRow,
+            CalibratedFromUtcTicks = calibratedFrom,
+            CalibratedToUtcTicks = calibratedTo,
         }, json));
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"{result.Measurement.TruthOperationsWithAdmittedObservation} of {result.Measurement.TruthOperations} truth operations observed, "

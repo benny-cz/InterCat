@@ -302,6 +302,61 @@ public sealed class UnixSocketCoverageEvaluatorTests
         Assert.True(File.Exists(Path.Combine(RepositoryRoot(), reuse.GetProperty("bench").GetString()!, "report.json")));
     }
 
+    [Fact(DisplayName = "R22: FX-UNIX-003's connections, open before the capture began, bind to no socket - not one of their calls is a row of any process - while the same capture follows its own connections whole")]
+    public void ConnectionsOpenBeforeTheCaptureBindToNone()
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-UNIX-003", "evidence");
+        TruthRecord[] held = [.. ReadTruth(Path.Combine(evidence, "held", "truth-server.jsonl")), .. ReadTruth(Path.Combine(evidence, "held", "truth-client.jsonl"))];
+        TruthRecord[] control = [.. ReadTruth(Path.Combine(evidence, "control", "truth-server.jsonl")), .. ReadTruth(Path.Combine(evidence, "control", "truth-client.jsonl"))];
+        UnixSocketObservation[] heldRows = [.. ReadLedger(Path.Combine(evidence, "held", "rows.csv"), Roles(held))];
+        UnixSocketObservation[] controlRows = [.. ReadLedger(Path.Combine(evidence, "control", "rows.csv"), Roles(control))];
+
+        using System.Text.Json.JsonDocument measurement = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "measurement.json")));
+        System.Text.Json.JsonElement run = measurement.RootElement.GetProperty("throughTheProduct").GetProperty("runs").EnumerateArray()
+            .Single(run => run.GetProperty("run").GetString() == "held-1");
+        System.Text.Json.JsonElement order = run.GetProperty("order");
+        long At(string name) => DateTimeOffset.Parse(order.GetProperty(name).GetString()!, System.Globalization.CultureInfo.InvariantCulture).UtcTicks;
+
+        // Every held connection was open at both ends before the capture was launched, and its every send and receive was
+        // made after AFD delivered the session's first row and before the capture's calibration last read the clock.
+        Assert.All(held.Where(record => record.Kind is TruthEventKind.ConnectionEstablished or TruthEventKind.ConnectionAccepted),
+            record => Assert.True(record.RecordedUtc.UtcTicks < At("captureLaunched"), $"connection {record.CallId} of the {record.Role} opened in the capture"));
+        TruthRecord[] exchanged = [.. held.Where(record => record.Kind is TruthEventKind.MessageSent or TruthEventKind.MessageReceived)];
+        Assert.All(exchanged, record => Assert.InRange(record.RecordedUtc.UtcTicks, At("firstUnixSocketRow"), At("calibratedTo")));
+
+        // Not one of their calls is a row: their processes' ledger is empty, and every one of their operations is a gap.
+        Assert.Empty(heldRows);
+        UnixSocketCoverageResult unseen = UnixSocketCoverageEvaluator.Evaluate(held, heldRows, Settings() with { FixtureId = "FX-UNIX-003" });
+        Assert.Equal((512L, 0L, 16L, 0L), (unseen.Measurement.TruthOperations, unseen.Measurement.TruthOperationsWithAdmittedObservation,
+            unseen.Measurement.TruthResources, unseen.Measurement.DiscoveredResourcesWithLifetime));
+        Assert.All(unseen.Operations, operation => Assert.Equal(
+            "No admitted Unix-domain socket row of this kind and owner was found inside the match window.", operation.Gap));
+        Assert.Equal(CapabilityTier.Unsupported, unseen.Assessment.Tier);
+
+        // The same capture followed the control's every socket from its create to its close, each call its owner's row.
+        UnixSocketCoverageResult seen = UnixSocketCoverageEvaluator.Evaluate(control, controlRows, Settings());
+        Assert.Equal((512L, 512L, 512L, 16L, 16L), (seen.Measurement.TruthOperations, seen.Measurement.TruthOperationsWithAdmittedObservation,
+            seen.Measurement.ByteMeasuredOperations, seen.Measurement.TruthResources, seen.Measurement.DiscoveredResourcesWithLifetime));
+        Assert.Equal((seen.TruthBytesSent, seen.TruthBytesReceived), (seen.ObservedBytesSent, seen.ObservedBytesReceived));
+        Assert.Equal(CapabilityTier.ExperimentalEvidence, seen.Assessment.Tier);
+
+        // As the measurement states it; and every Unix-domain socket row of the session is of a socket whose create the
+        // session holds - the control's, and another process's own - so none is a held socket's under any process.
+        System.Text.Json.JsonElement stated = run.GetProperty("held").GetProperty("evaluation");
+        Assert.Equal((stated.GetProperty("truthOperations").GetInt64(), stated.GetProperty("observed").GetInt64(), stated.GetProperty("tier").GetString()!),
+            (unseen.Measurement.TruthOperations, unseen.Measurement.TruthOperationsWithAdmittedObservation, unseen.Assessment.Tier.ToString()));
+        System.Text.Json.JsonElement session = run.GetProperty("session");
+        Assert.Equal((controlRows.Length, 0, 0), (session.GetProperty("rowsOfTheControl").GetInt32(), session.GetProperty("rowsOfTheHeldProcesses").GetInt32(),
+            session.GetProperty("rowsOnASocketWithNoCreate").GetInt32()));
+        Assert.Equal(session.GetProperty("rows").GetInt32(), controlRows.Length + session.GetProperty("rowsOfOtherProcesses").GetInt32());
+        Assert.All(measurement.RootElement.GetProperty("throughTheProduct").GetProperty("runs").EnumerateArray(), each => Assert.Equal(
+            (true, 0L, 0, 0), (each.GetProperty("capture").GetProperty("lossFree").GetBoolean(), each.GetProperty("held").GetProperty("evaluation").GetProperty("observed").GetInt64(),
+                each.GetProperty("session").GetProperty("rowsOfTheHeldProcesses").GetInt32(), each.GetProperty("session").GetProperty("rowsOnASocketWithNoCreate").GetInt32())));
+    }
+
+    private static Dictionary<string, int> Roles(TruthRecord[] truth) =>
+        truth.GroupBy(record => record.Role).ToDictionary(group => group.Key, group => group.First().ProcessId);
+
     private static IEnumerable<TruthRecord> ReadTruth(string path)
     {
         var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);

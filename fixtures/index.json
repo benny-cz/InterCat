@@ -338,6 +338,49 @@
       ]
     },
     {
+      "id": "FX-UNIX-003",
+      "title": "AF_UNIX connections open before a capture began: none of their calls bound to a socket or a process",
+      "scenario": "Plan M6's Unix-domain sockets work package (§4.2, ADR-073): FX-UNIX-001's eight connections opened at once before a capture is launched, each holding 20 seconds before its first of 16 messages, then unpaced, and FX-UNIX-001's exchange of eight connections at once made inside the same capture as its control. Recorded through icat record under the Unix sockets profile: the ambiguity case M6's exit asks for, sockets whose creates the capture never saw and whose completions are raised on whichever thread finished them, often the peer's.",
+      "milestone": "M6",
+      "mechanism": "UnixDomainSocket",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads unix-loopback --hold 20000 (eight connections at once, 16 messages each, unpaced), and unix-loopback --connections 8 --concurrency 8 --messages 16 --bytes 4096 --delay 0 as its control, under icat record --profile unix-sockets",
+        "seed": 20261104,
+        "log": "fixtures/FX-UNIX-003/evidence/held/truth-client.jsonl",
+        "independence": "Each process of each workload logs every connection and every message it sent and read, by the socket's path and its length, through ordinary sockets; none reads InterCat state, and the capture reads the provider's records apart from them."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-UNIX-003/evidence/measurement.json",
+        "note": "Two runs through icat record, machine-wide and nothing lost: every held connection open before the capture was launched and its 512 sends and receives made after the session's first Unix-domain socket row, not one of them a row of any process - the held processes' ledger is empty - while the control's every operation was its owner's row with its bytes, 512 of 512, and each of the session's Unix-domain socket rows is of a socket whose create the session holds. A test checks the first run's order of events and its two ledgers against their truth."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-04",
+          "result": "Recorded by icat record under the opt-in Unix sockets profile, twice, machine-wide and nothing lost: of eight connections open before the capture began, not one call was a row of any process, while FX-UNIX-001's exchange made inside the same capture was observed whole. No tier is assigned: the fixture measures what a capture omits, not how much of the mechanism it observes."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two workloads' truth logs and scenarios of the first run - connections and messages by the socket's path in a local output folder and their lengths, of synthetic messages - the ledgers of their Unix-domain socket rows, each row's ordinal, its time on the capture's calibrated wall clock, its owner's role, kind, its socket's number in the capture, bytes and status, never a PID, a path, an address or another process's row, and the measurement's counters and times."
+      },
+      "tests": [
+        "R22: FX-UNIX-003's connections, open before the capture began, bind to no socket - not one of their calls is a row of any process - while the same capture follows its own connections whole"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -2652,6 +2695,7 @@
         "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
         "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other",
         "R22: FX-UNIX-002's rows through the product keep each of sixty-four connections made one at a time on its own socket at both ends, while the kernel reused their addresses",
+        "R22: FX-UNIX-003's connections, open before the capture began, bind to no socket - not one of their calls is a row of any process - while the same capture follows its own connections whole",
         "R22: Winsock AFD's admitted calls compile from its registered layout to fixed slots, none an address the kernel reuses or a buffer's",
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
         "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused",
@@ -2750,6 +2794,7 @@
         "R22: peer(P,Q) narrows a focus to one counterpart and is never a filter on its own",
         "R22: per-peer channel counts use connection incarnations and a remainder unions their identities",
         "R22: sender(P) and receiver(P) follow the data direction, measured at either end",
+        "R22: the AF_UNIX gate binds a socket made before the capture to none, whichever process raised its records - its own or its peer's - until a create names its address",
         "R22: the AF_UNIX gate follows a socket from its create to its close, owned by the process its create names, and none of another family at its address",
         "R22: the AF_UNIX gate follows no more sockets than it may, says of a create beyond them that it was not followed, and remembers only the last few it saw closed",
         "R22: the Compare window knows a comparison its investigation saved alike, the one it opened as first, and says why it can keep no note",

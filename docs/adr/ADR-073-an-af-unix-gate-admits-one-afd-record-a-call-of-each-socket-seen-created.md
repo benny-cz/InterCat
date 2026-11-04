@@ -1,9 +1,10 @@
 # ADR-073: An AF_UNIX gate admits one Winsock AFD record a call of each socket a capture saw created
 
-- Status: accepted for M6's Unix-domain sockets work package; the gate exists, and no profile compiles it yet
+- Status: accepted for M6's Unix-domain sockets work package; the Unix sockets profile admits through the gate (ADR-074),
+  and FX-UNIX-003 measures through the product what it omits
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
-- Relates to: ADR-072, plan M6, §4.2, §12, R22, P8, FX-UNIX-001, `tools/InterCat.AfdProbe`,
+- Relates to: ADR-072, ADR-074, plan M6, §4.2, §12, R22, P8, FX-UNIX-001, FX-UNIX-003, `tools/InterCat.AfdProbe`,
   `bench/results/afd-unix-feasibility-arrival-*`, `bench/results/afd-unix-feasibility-oversized-reads-*`
 
 ## Context
@@ -55,3 +56,32 @@ close.
   another.
 - A record arriving before its socket's create would be omitted as of no socket; none did, and the gate's count of such
   omissions is what would show one.
+
+## Addendum: connections open before a capture (revision 904)
+
+M6's exit asks each mechanism for an ambiguity case. A capture started while AF_UNIX connections are open holds no create
+of their sockets, and a record's header names the thread that raised it, which for a completion is whichever finished
+it - often the peer's. Such a record's owner is ambiguous, and its address alone names no socket (R22), so the first
+decision omits it as of no followed socket. FX-UNIX-003 measures that through the product.
+
+`InterCat.TestWorkloads unix-loopback --hold 20000` opens FX-UNIX-001's eight connections at once and holds each 20
+seconds before its first of 16 messages. In two runs, `icat record --profile unix-sockets` was launched once all
+sixteen ends were open, and FX-UNIX-001's exchange of eight connections at once was made inside the capture as its
+control. Both runs were machine-wide and loss-free:
+
+- Every held connection was open 2.5 s before the capture was launched. The held exchange of 512 sends and receives came
+  about 9 s after the session's first Unix-domain socket row, and about 28 s before its calibration last read the clock.
+- Not one held call was a row of any process: the held processes' ledger is empty, and each of their 512 operations is a
+  gap. The gate omitted 9,572 and 8,867 records as of no socket it followed, the held sockets' among every other family's.
+- The control's every operation was its owner's row with its bytes, 512 of 512, and each of its 16 connection ends was a
+  socket created and closed.
+- Each of the session's 707 Unix-domain socket rows is of a socket whose create the session holds: the control's 703,
+  and 4 of another process's own.
+
+The first run is committed under `fixtures/FX-UNIX-003/evidence/`: each workload's truth logs, scenario and ledger. The
+ledger `InterCat.AfdProbe --session` wrote now also states the session's rows of other processes, those on a socket
+with no create, its first row and its calibration's first and last readings. A test checks the order of the run's
+events and each count from them. The fixture carries no tier: it measures what a capture omits, not how much of the
+mechanism it observes. A synthetic test holds the gate to the case - a socket made before the capture binds to none,
+whichever process raised its records, until a create names its address - and three mutations adopting such a socket
+under the process that raised its record are caught, one only by it.

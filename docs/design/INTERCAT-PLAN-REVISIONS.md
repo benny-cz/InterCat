@@ -827,6 +827,7 @@ Revision 900 measures AF_UNIX through the product (ADR-075): every truth send an
 Revision 901 reads a Unix-domain socket's transfer bytes as the transport's (ADR-076): what its call moved through AFD is what the AF_UNIX transport carried, counted by no other source, so a process's traffic views count it beside TCP's and UDP's, with its other end unresolved.
 Revision 902 measures the Unix sockets profile's cost through the product: on FX-UNIX-001's exchange it added a median 1.5 CPU pp over no capture and its own process used 3.9 pp, nothing lost, so it states Moderate, its source's class.
 Revision 903 adds FX-UNIX-002 (ADR-075's addendum): 64 AF_UNIX connections made one at a time, most of whose sockets the kernel created at an address an earlier one held, are each a socket of its own at both ends through the product, their operations paired with their rows by rank where every pair's bytes agree and placed in their connections by the truth's sequence.
+Revision 904 adds FX-UNIX-003, AF_UNIX's ambiguity case (ADR-073's addendum): of eight connections open before a capture began, not one call is a row of any process, while FX-UNIX-001's exchange made inside the same capture is observed whole.
 
 ## Revisions, a paragraph each, in order
 
@@ -3503,3 +3504,15 @@ operation in its connection by the truth's sequence when a process's connections
 with its bytes, 512 of 512 a run, 384 of them paired by rank, and each of the 64 connections at each end a socket of
 its own, created and closed. The tier stays ExperimentalEvidence, the build's coverage names FX-UNIX-002, and
 FX-UNIX-001's runs keep their counters. Nine mutations are caught.
+
+Revision 904 gives AF_UNIX the ambiguity case M6's exit asks for, FX-UNIX-003. A capture started while connections are
+open holds no create of their sockets, and AFD raises a completion on whichever thread finished it, often the peer's,
+so such a record's owner is ambiguous and its address alone names no socket; the gate omits it as of no followed
+socket. `InterCat.TestWorkloads unix-loopback --hold` opens eight connections at once and holds each 20 seconds before
+its first of 16 messages. In two runs `icat record --profile unix-sockets` was launched once all sixteen ends were
+open, and FX-UNIX-001's exchange of eight connections at once was made inside the capture as its control; both runs
+were machine-wide and loss-free. Not one held call was a row of any process - their processes' ledger is empty and each
+of their 512 operations a gap - while the control was observed whole, 512 of 512, and each of the session's 707
+Unix-domain socket rows is of a socket whose create the session holds. The fixture carries no tier. A test checks the
+order of the run's events and each count from the committed evidence, a synthetic test holds the gate to a socket made
+before the capture, and three mutations are caught.
