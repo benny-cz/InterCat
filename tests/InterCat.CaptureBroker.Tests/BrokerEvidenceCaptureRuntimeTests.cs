@@ -135,18 +135,22 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
     {
         using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
         var host = new ScriptedEtwHost();
-        PreparedCapturePlan plan = SmallPlan(seconds: 1);
+
+        // Three seconds, so the capture is acknowledged before it ends: its duration runs from before its session starts,
+        // and a one-second capture on a loaded clean-worktree run had ended before its start was acknowledged.
+        PreparedCapturePlan plan = SmallPlan(seconds: 3);
         BrokerCaptureOwnership ownership = Ownership(plan) with { State = CaptureLifecycle.Recording };
 
         await using (var first = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host))
         {
-            // Its second passes and the capture publishes its final evidence and ends; a loaded machine does so later, so its
+            // Its seconds pass and the capture publishes its final evidence and ends; a loaded machine does so later, so its
             // end is waited for rather than slept past (§13.6).
-            Assert.True((await first.StartAsync(ownership, plan, null, CancellationToken.None)).Started);
+            BrokerRuntimeStartOutcome started = await first.StartAsync(ownership, plan, null, CancellationToken.None);
+            Assert.True(started.Started, started.FailureReason);
             DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(30);
             while (!await first.HasCompletedAsync(ownership.CaptureId, CancellationToken.None))
             {
-                Assert.True(DateTimeOffset.UtcNow < deadline, "the capture has not ended 30 s after its one-second duration");
+                Assert.True(DateTimeOffset.UtcNow < deadline, "the capture has not ended 30 s after its three-second duration");
                 await Task.Delay(TimeSpan.FromMilliseconds(50));
             }
         }
@@ -336,16 +340,19 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
         var host = new ScriptedEtwHost();
         await using var runtime = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
-        PreparedCapturePlan plan = SmallPlan(seconds: 1);
-        BrokerCaptureOwnership ownership = Ownership(plan);
-        Assert.True((await runtime.StartAsync(ownership, plan, null, CancellationToken.None)).Started);
 
-        // The capture ends itself once its second has passed; a loaded machine does so later, so its end is waited for
+        // Three seconds, so the capture is acknowledged before it ends, however loaded the machine (as above).
+        PreparedCapturePlan plan = SmallPlan(seconds: 3);
+        BrokerCaptureOwnership ownership = Ownership(plan);
+        BrokerRuntimeStartOutcome started = await runtime.StartAsync(ownership, plan, null, CancellationToken.None);
+        Assert.True(started.Started, started.FailureReason);
+
+        // The capture ends itself once its seconds have passed; a loaded machine does so later, so its end is waited for
         // rather than slept past (§13.6).
         DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(30);
         while (!await runtime.HasCompletedAsync(ownership.CaptureId, CancellationToken.None))
         {
-            Assert.True(DateTimeOffset.UtcNow < deadline, "the capture has not ended 30 s after its one-second duration");
+            Assert.True(DateTimeOffset.UtcNow < deadline, "the capture has not ended 30 s after its three-second duration");
             await Task.Delay(TimeSpan.FromMilliseconds(50));
         }
 
