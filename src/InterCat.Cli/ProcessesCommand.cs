@@ -960,9 +960,10 @@ internal static class ProcessesCommand
             return;
         }
 
+        // The ends it exchanged with are TCP's and UDP's: a Unix-domain socket names no peer, so it made none of them.
         if (peers.Count == 0)
         {
-            ConsoleUi.Note("It made no transport send or receive record in this session, which is not proof it sent or "
+            ConsoleUi.Note("It made no TCP or UDP send or receive record in this session, which is not proof it sent or "
                 + "received nothing.");
         }
         else

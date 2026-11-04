@@ -864,6 +864,9 @@ public static class WindowsSourceCatalog
                 + "names no owner; its socket's create does.",
                 "A bind's or connect's address holds 16 bytes, an AF_UNIX path's first 14 characters, so a socket's name is "
                 + "not observed whole and no peer is resolved by it.",
+                "Measured through the product on FX-UNIX-001, under the Unix sockets profile: every truth send and receive a row "
+                + "of its owner, bound to its socket with the bytes it moved, 1,920 of 1,920, and every connection a socket created "
+                + "and closed. No peer is named, so its tier is experimental evidence (ADR-075).",
                 "Registration is not evidence of traffic; only a measured fixture assigns a tier.",
             ],
         };

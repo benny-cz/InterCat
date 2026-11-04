@@ -114,6 +114,18 @@ public sealed class CoverageTierCalculatorTests
         Assert.Contains(assessment.Gaps, gap => gap.StartsWith("False peer attribution: ", StringComparison.Ordinal));
     }
 
+    [Fact(DisplayName = "R3: a capture that attributes no peer has its false-peer ceiling not measured, never met, and stays below traffic visualization")]
+    public void NoPeerAttributionIsNotAPass()
+    {
+        // Every other threshold met: no peer attributed, so no false one either, which proves nothing about peers.
+        TierAssessment assessment = CoverageTierCalculator.Assess(FullyMeasured() with { PeerAttributions = 0, FalsePeerAttributions = 0 });
+
+        TierCriterion peers = assessment.Criteria.Single(criterion => criterion.Name == "FalsePeerAttribution");
+        Assert.Equal((false, (decimal?)null), (peers.Satisfied, peers.Measured));
+        Assert.Contains("False peer attribution: not measured; the capture attributed no peer, so none could be checked.", assessment.Gaps);
+        Assert.Equal(CapabilityTier.ExperimentalEvidence, assessment.Tier);
+    }
+
     [Fact(DisplayName = "R5: a criterion's gap names it in words, and counts a single false attribution in the singular")]
     public void AGapNamesItsCriterionInWords()
     {

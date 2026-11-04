@@ -309,5 +309,188 @@
       }
     ],
     "ledger": "fixtures/FX-UNIX-001/evidence/oversized-reads/records.csv and its two truth logs, of the run reading in oversized reads, in the main ledger's columns."
+  },
+  "throughTheProduct": {
+    "question": "Whether a capture through the product - icat record under the opt-in Unix sockets profile, Winsock AFD admitted through its gate (ADR-074) - records every AF_UNIX send and receive of the truth exchange as a Unix-domain socket row of its owner, bound to its socket with its bytes, and which tier that measures.",
+    "answer": "In four runs, machine-wide and loss-free, every truth send and receive was a row of its owner, bound to its socket with the bytes it moved - 1,920 of 1,920 - each byte sent and received counted exactly, and every truth connection a socket created and closed; the event-ID filter held, no descriptor beyond the ten counted calls being delivered, and the gate admitted exactly the workload's rows. AF_UNIX names no peer, so none was attributed and no socket's peer resolved: the tier is ExperimentalEvidence (ADR-075).",
+    "runs": [
+      {
+        "run": "eight-at-once-short",
+        "workload": {
+          "connections": 8,
+          "messagesPerConnection": 16,
+          "maximumMessageBytes": 4096,
+          "concurrency": 8,
+          "interMessageDelayMilliseconds": 0
+        },
+        "capture": {
+          "profile": "unix-sockets",
+          "lossFree": true,
+          "afdRecordsDelivered": 6473,
+          "admittedThroughTheGate": 703,
+          "gateOmissions": {
+            "notCounted": 1199,
+            "noFollowedResource": 4571,
+            "beyondBound": 0
+          },
+          "descriptorsNotAdmitted": 0,
+          "coverage": "Covered"
+        },
+        "evaluation": {
+          "truthOperations": 512,
+          "observed": 512,
+          "boundToTheirSocket": 512,
+          "withBytes": 512,
+          "truthConnections": 16,
+          "socketsCreatedAndClosed": 16,
+          "peerAttributions": 0,
+          "resolvedPeers": 0,
+          "truthBytesSent": 269735,
+          "observedBytesSent": 269735,
+          "truthBytesReceived": 269735,
+          "observedBytesReceived": 269735,
+          "transfersBeyondTruth": 128,
+          "rowsOfOtherProcesses": 0,
+          "tier": "ExperimentalEvidence",
+          "gaps": [
+            "False peer attribution: not measured; the capture attributed no peer, so none could be checked.",
+            "Membership resolution: measured 0,0 % of 16, below the required 100 %."
+          ]
+        }
+      },
+      {
+        "run": "one-at-a-time",
+        "workload": {
+          "connections": 4,
+          "messagesPerConnection": 16,
+          "maximumMessageBytes": 4096,
+          "concurrency": 1,
+          "interMessageDelayMilliseconds": 15
+        },
+        "capture": {
+          "profile": "unix-sockets",
+          "lossFree": true,
+          "afdRecordsDelivered": 3358,
+          "admittedThroughTheGate": 355,
+          "gateOmissions": {
+            "notCounted": 603,
+            "noFollowedResource": 2400,
+            "beyondBound": 0
+          },
+          "descriptorsNotAdmitted": 0,
+          "coverage": "Covered"
+        },
+        "evaluation": {
+          "truthOperations": 256,
+          "observed": 256,
+          "boundToTheirSocket": 256,
+          "withBytes": 256,
+          "truthConnections": 8,
+          "socketsCreatedAndClosed": 8,
+          "peerAttributions": 0,
+          "resolvedPeers": 0,
+          "truthBytesSent": 135413,
+          "observedBytesSent": 135413,
+          "truthBytesReceived": 135413,
+          "observedBytesReceived": 135413,
+          "transfersBeyondTruth": 64,
+          "rowsOfOtherProcesses": 0,
+          "tier": "ExperimentalEvidence",
+          "gaps": [
+            "False peer attribution: not measured; the capture attributed no peer, so none could be checked.",
+            "Membership resolution: measured 0.0 % of 8, below the required 100 %."
+          ]
+        }
+      },
+      {
+        "run": "eight-at-once",
+        "workload": {
+          "connections": 8,
+          "messagesPerConnection": 32,
+          "maximumMessageBytes": 4096,
+          "concurrency": 8,
+          "interMessageDelayMilliseconds": 0
+        },
+        "capture": {
+          "profile": "unix-sockets",
+          "lossFree": true,
+          "afdRecordsDelivered": 6117,
+          "admittedThroughTheGate": 1343,
+          "gateOmissions": {
+            "notCounted": 2351,
+            "noFollowedResource": 2423,
+            "beyondBound": 0
+          },
+          "descriptorsNotAdmitted": 0,
+          "coverage": "Covered"
+        },
+        "evaluation": {
+          "truthOperations": 1024,
+          "observed": 1024,
+          "boundToTheirSocket": 1024,
+          "withBytes": 1024,
+          "truthConnections": 16,
+          "socketsCreatedAndClosed": 16,
+          "peerAttributions": 0,
+          "resolvedPeers": 0,
+          "truthBytesSent": 540423,
+          "observedBytesSent": 540423,
+          "truthBytesReceived": 540423,
+          "observedBytesReceived": 540423,
+          "transfersBeyondTruth": 256,
+          "rowsOfOtherProcesses": 0,
+          "tier": "ExperimentalEvidence",
+          "gaps": [
+            "False peer attribution: not measured; the capture attributed no peer, so none could be checked.",
+            "Membership resolution: measured 0.0 % of 16, below the required 100 %."
+          ]
+        }
+      },
+      {
+        "run": "large-messages",
+        "workload": {
+          "connections": 2,
+          "messagesPerConnection": 16,
+          "maximumMessageBytes": 262144,
+          "concurrency": 1,
+          "interMessageDelayMilliseconds": 15
+        },
+        "capture": {
+          "profile": "unix-sockets",
+          "lossFree": true,
+          "afdRecordsDelivered": 2867,
+          "admittedThroughTheGate": 181,
+          "gateOmissions": {
+            "notCounted": 305,
+            "noFollowedResource": 2381,
+            "beyondBound": 0
+          },
+          "descriptorsNotAdmitted": 0,
+          "coverage": "Covered"
+        },
+        "evaluation": {
+          "truthOperations": 128,
+          "observed": 128,
+          "boundToTheirSocket": 128,
+          "withBytes": 128,
+          "truthConnections": 4,
+          "socketsCreatedAndClosed": 4,
+          "peerAttributions": 0,
+          "resolvedPeers": 0,
+          "truthBytesSent": 4614621,
+          "observedBytesSent": 4614621,
+          "truthBytesReceived": 4614621,
+          "observedBytesReceived": 4614621,
+          "transfersBeyondTruth": 32,
+          "rowsOfOtherProcesses": 0,
+          "tier": "ExperimentalEvidence",
+          "gaps": [
+            "False peer attribution: not measured; the capture attributed no peer, so none could be checked.",
+            "Membership resolution: measured 0.0 % of 4, below the required 100 %."
+          ]
+        }
+      }
+    ],
+    "ledger": "fixtures/FX-UNIX-001/evidence/product/rows.csv and its truth logs and scenario, of the run eight at once: each row's ordinal, its time on the capture's calibrated wall clock, its owner's role, kind, its socket's number in the capture, bytes and status - never a PID, a path, an address or another process's row."
   }
 }

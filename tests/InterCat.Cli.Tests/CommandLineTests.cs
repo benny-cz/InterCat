@@ -1220,7 +1220,7 @@ public sealed class CommandLineTests : IDisposable
         Publish(quiet.Store, [Lifecycle(10, ObservationKind.Create, 400, 1) with { ResourceName = @"C:\Tools\idle.exe" }]);
         quiet.Store.ReleaseSegmentReaders();
         string idleDetail = (await Run("processes", quiet.Path, "--pid", "400")).Output;
-        Assert.Contains("It made no transport send or receive record in this session, which is not proof it sent or received "
+        Assert.Contains("It made no TCP or UDP send or receive record in this session, which is not proof it sent or received "
             + "nothing.", idleDetail, StringComparison.Ordinal);
         Assert.DoesNotContain("icat operations", idleDetail, StringComparison.Ordinal);
     }

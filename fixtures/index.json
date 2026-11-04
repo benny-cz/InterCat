@@ -264,7 +264,7 @@
       },
       "expected": {
         "artifact": "fixtures/FX-UNIX-001/evidence/measurement.json",
-        "note": "Every send and receive of three runs recorded with its length, summing to the truth's bytes at both ends exactly, and every socket created with its family, bound, connected, accepted and closed; Kernel-Network named neither process. The process filter did not hold - the decoy's every record was delivered - a socket's kernel address was reused by 8 to 11 later sockets a run, so a socket is read from its create to the next create at its address, and a path is cut to its first 14 characters. No record arrived before its socket's create, of 36,088 in three more runs, and a receive's exit named what it took, its entry what it asked for. The ledgers of the run eight at once and of a run reading in oversized reads, never their pointers, addresses or bytes, are counted by tests against the truth, and read through the AF_UNIX gate (ADR-073) as they arrived."
+        "note": "Every send and receive of three runs recorded with its length, summing to the truth's bytes at both ends exactly, and every socket created with its family, bound, connected, accepted and closed; Kernel-Network named neither process. The process filter did not hold - the decoy's every record was delivered - a socket's kernel address was reused by 8 to 11 later sockets a run, so a socket is read from its create to the next create at its address, and a path is cut to its first 14 characters. No record arrived before its socket's create, of 36,088 in three more runs, and a receive's exit named what it took, its entry what it asked for. The ledgers of the run eight at once and of a run reading in oversized reads, never their pointers, addresses or bytes, are counted by tests against the truth, and read through the AF_UNIX gate (ADR-073) as they arrived. Through icat record under the Unix sockets profile, four runs had every truth send and receive a row of its owner, bound to its socket with its bytes, 1,920 of 1,920, and no peer named; the run eight at once's ledger is evaluated by a test against its truth, reproducing its tier (ADR-075)."
       },
       "environment": [
         {
@@ -272,17 +272,25 @@
           "supportTier": "Primary",
           "date": "2026-11-04",
           "result": "Measured by tools/InterCat.AfdProbe, three runs, nothing lost: every AF_UNIX socket call of the exchange recorded by Winsock AFD with its exact length, none by Kernel-Network. No tier is assigned: no profile admits the source, whose collection machine-wide costs Moderate (ADR-072), and a socket's name and peer are not observed."
+        },
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-04",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record under the opt-in Unix sockets profile, four times, machine-wide and nothing lost: every truth send and receive a Unix-domain socket row of its owner, bound to its socket with the bytes it moved, 1,920 of 1,920, and every connection a socket created and closed. Tier ExperimentalEvidence: AF_UNIX names no peer, so none is attributed and no socket's peer resolved (ADR-075)."
         }
       ],
       "provenance": {
         "adapter": "windows-etw-inventory-0.8.0",
         "shareable": true,
-        "contents": "The two processes' truth logs of the run eight at once, and of the run reading in oversized reads under oversized-reads/ - connections and messages by the socket's path in the probe's own output folder and their lengths, of synthetic messages - their ledgers of each record on the workload's sockets, by its time, owner, the process that raised it, thread, event, phase, location, a number standing for its socket's incarnation, family, length and status, never a pointer, an address or a byte, and the measurement's counters."
+        "contents": "The two processes' truth logs of the run eight at once, and of the run reading in oversized reads under oversized-reads/ - connections and messages by the socket's path in the probe's own output folder and their lengths, of synthetic messages - their ledgers of each record on the workload's sockets, by its time, owner, the process that raised it, thread, event, phase, location, a number standing for its socket's incarnation, family, length and status, never a pointer, an address or a byte,; of the run eight at once through icat record, under product/, its truth logs and scenario and the ledger of its Unix-domain socket rows - each row's ordinal, its time on the capture's calibrated wall clock, its owner's role, kind, its socket's number in the capture, bytes and status, never a PID, a path, an address or another process's row - and the measurement's counters."
       },
       "tests": [
         "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
-        "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and no tier on any build until a fixture measures one through it",
-        "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other"
+        "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and the tier FX-UNIX-001 measured through the product",
+        "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other",
+        "P27: FX-UNIX-001's rows through the product reproduce its measured tier - every truth send and receive its owner's row, bound to its socket with its bytes, and no peer named"
       ]
     },
     {
@@ -1992,7 +2000,8 @@
         "P26: a live preview never reaches the ranking, the interval table, a step, a brush or an export"
       ],
       "P27": [
-        "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and no tier on any build until a fixture measures one through it",
+        "P27: FX-UNIX-001's rows through the product reproduce its measured tier - every truth send and receive its owner's row, bound to its socket with its bytes, and no peer named",
+        "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and the tier FX-UNIX-001 measured through the product",
         "P27: a build outside the matrix is untested, never probably working",
         "P27: a build's coverage names a tier measured on it, and names another build's evidence as another's",
         "P27: a fixture's tiers are tiers, agree with what its results say, and belong to its mechanism",
@@ -2000,6 +2009,8 @@
         "P27: a release is listed by exact build numbers, so a near build is not accepted",
         "P27: a source that registers and enables but emits nothing stays unsupported",
         "P27: a supported build states its release and whether it is a pre-release branch",
+        "P27: a truth message with no row of its owner and kind inside the window is a gap, never matched by another process's row or another kind",
+        "P27: an AF_UNIX evaluation matches each truth message to its owner's nearest row of its kind, bound to its socket with its bytes, and names no peer",
         "P27: an IPv6 loopback workload is matched on its own flows, never on the same ports over IPv4",
         "P27: an impact run captures only the sources it names, the Explore pair unless told otherwise",
         "P27: an operation seen only with its endpoints mirrored is an orientation gap, not a miss",
@@ -2656,6 +2667,7 @@
         "R22: a session that published a newer generation reads as advanced, and one an earlier copy was put in place of as replaced, each saying what to do",
         "R22: a tile index whose bindings are not the derivation's is not counted by a brush, which reads its segments, and a checkpoint publishes it again",
         "R22: a tile index's derivation is its rules, instances and channels: another instance, paired channel or unpaired channel is another derivation",
+        "R22: a truth connection is discovered with its lifetime only as a socket its process both created and closed in the capture",
         "R22: an AF_UNIX record admitted through its gate derives a Unix-domain socket row of its socket's owner, its socket its connection, with the bytes it moved",
         "R22: an IPv6 connection relates its two ends as an IPv4 one does, and never meets an end of the other family",
         "R22: an RPC record binds to the process that raised it, and a kernel record's header stays context",
@@ -2730,6 +2742,7 @@
         "R3: a call served by a process the evidence policy does not admit names no server, and its server's time is said only where admitted",
         "R3: a capture impact with no elapsed time is unmeasured rather than infinite",
         "R3: a capture names its boot and start from its first publication, so one that ends before its last still has them",
+        "R3: a capture that attributes no peer has its false-peer ceiling not measured, never met, and stays below traffic visualization",
         "R3: a clock calibration round-trips its samples and boot, and refuses what it cannot hold",
         "R3: a clock reading pairs the counter with the precise wall clock, bracketed within a measured interval",
         "R3: a descriptor with no byte field reports it inapplicable, not zero",

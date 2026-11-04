@@ -5,6 +5,10 @@
   <ItemGroup>
     <!-- For the provider's registered schema, read as the product's inventory reads it. -->
     <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+    <!-- For a session icat record recorded, whose Unix-domain socket rows it writes as a fixture's ledger. -->
+    <ProjectReference Include="../../src/InterCat.Storage/InterCat.Storage.csproj" />
+    <!-- And evaluates that ledger against its truth as the product evaluates AF_UNIX coverage. -->
+    <ProjectReference Include="../../src/InterCat.Analysis/InterCat.Analysis.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- A lab probe, not a product adapter: its own session, scoped to the workload's processes, reads the Winsock AFD

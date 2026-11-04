@@ -204,6 +204,8 @@ public static class CoverageTierCalculator
         long denominator,
         decimal ceiling)
     {
+        // A ceiling with nothing to measure against is not measured, never met: a capture that attributes no peer has no
+        // false attribution to count, and none true either (R3, ADR-075).
         if (denominator <= 0)
         {
             return new(
@@ -212,9 +214,9 @@ public static class CoverageTierCalculator
                 numerator,
                 denominator,
                 null,
-                numerator == 0,
+                false,
                 numerator == 0
-                    ? null
+                    ? $"{Sentence(name)}: not measured; the capture attributed no peer, so none could be checked."
                     : $"{Sentence(name)}: {CountText.Of(numerator, "false attribution")} "
                         + $"{CountText.Agree(numerator, "was", "were")} recorded without any attribution denominator.");
         }

@@ -823,6 +823,7 @@ Revision 896 measures what collecting Winsock AFD machine-wide costs: at about 4
 Revision 897 adds the AF_UNIX gate (ADR-073): read as they arrive, AFD's records of each socket a capture saw created AF_UNIX, followed from its create to its close and owned by the process its create names, one record a call, and none of another family's - no record arrived before its create, of 36,088, and a receive's exit holds what it took.
 Revision 898 admits Winsock AFD through its gate (ADR-074): a source may have a gate that reads each record as it arrives, AFD's admitted calls carry the gate's socket number and owner in place of the kernel's addresses, and a ledger counting what a gate omitted - not counted, of no followed socket, beyond its bound - is `coverage-v3`.
 Revision 899 adds an opt-in Unix sockets profile (ADR-074's addendum): lifecycle and Winsock AFD, enabled for its socket-call keyword and each counted call by its event id, whose admitted calls derive Unix-domain socket rows of their socket's owner.
+Revision 900 measures AF_UNIX through the product (ADR-075): every truth send and receive of FX-UNIX-001 recorded by `icat record --profile unix-sockets` is a row of its owner with its bytes, 1,920 of 1,920, and with no peer named, a false-peer ceiling with nothing attributed is not measured, so the mechanism is ExperimentalEvidence.
 
 ## Revisions, a paragraph each, in order
 
@@ -3454,3 +3455,16 @@ capture had admitted AF_UNIX before, so no row is re-keyed. An import that admit
 gate omitted, and `icat import` says it when there is any. Tests compile the profile with and without AFD, hold the keyword
 to the registered layout, derive a row from a record admitted through the gate, and check both commands' profile
 lists and help; eleven mutations are caught. On this machine the preview compiles AFD's ten calls and can start.
+
+Revision 900 measures AF_UNIX through the product (ADR-075). FX-UNIX-001 was recorded four times by `icat record
+--profile unix-sockets`, machine-wide and loss-free: one connection at a time, eight at once twice, and messages of up
+to 256 KiB. `UnixSocketCoverageEvaluator` matches each truth send and receive to its owner's nearest row of its kind,
+binds it to its socket with the bytes the call completed, and counts a message a reader took in two calls once.
+Every operation was observed with its bytes, 1,920 of 1,920, every byte counted exactly and every connection a socket
+created and closed. The event-ID filter held, and the gate admitted exactly the workload's rows.
+`InterCat.AfdProbe --session` writes a session's ledger of the workload's rows, by role and never by PID, and the run
+eight at once is committed with its truth for a test to reproduce. AF_UNIX names no peer, and the tier calculator had
+counted a false-peer ceiling with nothing attributed as met, which would have made AF_UNIX traffic visualization with
+no link between processes drawable. Under R3 that ceiling is now not measured, so the mechanism is ExperimentalEvidence
+on its build; no published tier changes. `icat processes` now says a process made no TCP or UDP record, where it said
+no transport record. Eleven mutations are caught.

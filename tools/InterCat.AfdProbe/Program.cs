@@ -54,6 +54,12 @@ internal static class Program
 
     private static async Task<int> Main(string[] args)
     {
+        // A session icat record recorded is read, not captured: the ledger of its workload's Unix-domain socket rows.
+        if (Option(args, "--session") is { } recorded)
+        {
+            return SessionLedger.Write(recorded, Option(args, "--truth"), Option(args, "--out"));
+        }
+
         string? output = Option(args, "--output");
         int connections = int.Parse(Option(args, "--connections") ?? "4", CultureInfo.InvariantCulture);
         int messages = int.Parse(Option(args, "--messages") ?? "16", CultureInfo.InvariantCulture);

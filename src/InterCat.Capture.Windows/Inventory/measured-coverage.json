@@ -66,6 +66,14 @@
       "fixture": "FX-UDP-002",
       "date": "2026-09-27",
       "supportTier": "Primary"
+    },
+    {
+      "mechanism": "UnixDomainSocket",
+      "build": "10.0.26220.0-x64",
+      "tier": "ExperimentalEvidence",
+      "fixture": "FX-UNIX-001",
+      "date": "2026-11-04",
+      "supportTier": "Primary"
     }
   ]
 }

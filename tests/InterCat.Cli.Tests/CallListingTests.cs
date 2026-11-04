@@ -44,7 +44,7 @@ public sealed class CallListingTests : IDisposable
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Matches(@"(?m)^  RPC +6 call records; icat operations <directory> --pid 400 lists its calls, each with the process at its "
             + @"other end\r?$", caller);
-        Assert.Contains("It made no transport send or receive record in this session", caller, StringComparison.Ordinal);
+        Assert.Contains("It made no TCP or UDP send or receive record in this session", caller, StringComparison.Ordinal);
 
         // The JSON counts them for the PID asked about, and for no other.
         (_, string json, _) = await Run("processes", session.Path, "--pid", "1960", "--json");

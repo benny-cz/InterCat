@@ -8,13 +8,13 @@ namespace InterCat.Capture.Windows.Tests;
 /// <summary>
 /// The Unix-domain sockets work package (plan M6, §4.2): Winsock AFD is inventoried as their lead, which FX-UNIX-001 measured
 /// through a lab probe, and admits through its gate the calls the gate counts (ADR-074); the opt-in Unix sockets profile
-/// alone requests it, and nothing claims more for it - no build carries a tier for them until a fixture measures one through
-/// the product (P27). The fixture's ledger holds each record on the workload's sockets, each
+/// alone requests it, and the tier a build carries for them is the one FX-UNIX-001 measured through the product (P27,
+/// ADR-075). The fixture's ledger holds each record on the workload's sockets, each
 /// the socket's from its create to the next create at its address (R22), and counts the truth's every send and receive.
 /// </summary>
 public sealed class UnixDomainSocketLeadTests
 {
-    [Fact(DisplayName = "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and no tier on any build until a fixture measures one through it")]
+    [Fact(DisplayName = "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and the tier FX-UNIX-001 measured through the product")]
     public void UnixDomainSocketsHaveALeadAndNoTier()
     {
         WindowsSourceDefinition afd = WindowsSourceCatalog.Find(WindowsSourceCatalog.WinsockAfdSourceId)!;
@@ -50,8 +50,10 @@ public sealed class UnixDomainSocketLeadTests
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != WindowsSourceCatalog.WinsockAfdSourceId),
             source => Assert.DoesNotContain(Mechanism.UnixDomainSocket, source.Mechanisms));
 
-        // The build carries no tier for them, though the fixture measured the source.
-        Assert.DoesNotContain(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.UnixDomainSocket);
+        // The build carries the tier FX-UNIX-001 measured through the product, experimental evidence: AF_UNIX names no
+        // peer, so none is attributed (ADR-075); no other build carries one.
+        MeasuredCoverageEntry measured = Assert.Single(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.UnixDomainSocket);
+        Assert.Equal(("10.0.26220.0-x64", CapabilityTier.ExperimentalEvidence, "FX-UNIX-001"), (measured.Build, measured.Tier, measured.Fixture));
     }
 
     [Fact(DisplayName = "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends")]
