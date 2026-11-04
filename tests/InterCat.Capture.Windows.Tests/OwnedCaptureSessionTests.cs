@@ -394,6 +394,25 @@ public sealed class OwnedCaptureSessionTests
         Assert.Equal(9_999, health.ConsumerReportedBufferLoss);
     }
 
+    [Fact(DisplayName = "R21: a gate's omissions are counted by reason, apart from the policy's and from every loss")]
+    public void AGatesOmissionsAreCountedByReason()
+    {
+        var ledger = new CaptureHealthLedger();
+        foreach ((GateOmission reason, int times) in new[] { (GateOmission.NotCounted, 3), (GateOmission.NoFollowedResource, 2), (GateOmission.BeyondBound, 1) })
+        {
+            for (int index = 0; index < times; index++)
+            {
+                ledger.RecordGated(reason);
+            }
+        }
+
+        CaptureHealthSnapshot health = ledger.Read(0, 1);
+        Assert.Equal((3L, 2L, 1L), (health.GateOmissionsNotCounted, health.GateOmissionsNoFollowedResource, health.GateOmissionsBeyondBound));
+        Assert.Equal((0L, 0L, 0L), (health.PolicyOmissionsUnrequestedProvider, health.PolicyOmissionsDescriptorNotAdmitted, health.PolicyOmissionsDescriptorDenied));
+        Assert.True(health.IsLossFree);
+        _ = Assert.Throws<ArgumentOutOfRangeException>(() => ledger.RecordGated((GateOmission)9));
+    }
+
     [Fact(DisplayName = "R21: a loss read that races the session's stop leaves the final reading standing")]
     public async Task ALossReadRacingTheStopIsNotUnreadableLoss()
     {

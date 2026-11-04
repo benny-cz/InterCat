@@ -15,6 +15,34 @@ public sealed class ReportCountsTests
     public void ARecordingSaysHowItPublished(int publications, string said) =>
         Assert.Equal(said, RecordCommand.Published(publications));
 
+    [Theory(DisplayName = "R21: icat record says what it did not admit by policy and by a source's gate, neither of them loss, and a gate that could follow no more")]
+    [InlineData(0L, 0L, 0L, "6 by policy, which is not loss")]
+    [InlineData(40L, 2L, 0L, "6 by policy and 42 by a source's gate, neither of which is loss")]
+    [InlineData(40L, 2L, 1L, "6 by policy and 43 by a source's gate, neither of which is loss; the gate followed as many resources as it may, and not 1 more")]
+    [InlineData(0L, 0L, 3L, "6 by policy and 3 by a source's gate, neither of which is loss; the gate followed as many resources as it may, and not 3 more")]
+    public void ARecordingSaysWhatItDidNotAdmit(long notCounted, long noFollowedResource, long beyondBound, string said) =>
+        Assert.Equal(said, RecordCommand.NotAdmitted(new Capture.Windows.CaptureHealthSnapshot
+        {
+            AdmittedRecords = 10,
+            ObservedRecords = 16 + notCounted + noFollowedResource + beyondBound,
+            PolicyOmissionsUnrequestedProvider = 1,
+            PolicyOmissionsDescriptorNotAdmitted = 2,
+            PolicyOmissionsDescriptorDenied = 3,
+            UndecodableBodyShorterThanSchema = 0,
+            UndecodableUnknownDescriptorVersion = 0,
+            UndecodableAdmissionReadFailed = 0,
+            UndecodablePointerWidthMismatch = 0,
+            GateOmissionsNotCounted = notCounted,
+            GateOmissionsNoFollowedResource = noFollowedResource,
+            GateOmissionsBeyondBound = beyondBound,
+            ProviderReportedEventLoss = 0,
+            ConsumerReportedBufferLoss = 0,
+            ApplicationDrops = 0,
+            QuarantinedTimestamps = 0,
+            QueueDepth = 0,
+            QueueCapacity = 1,
+        }));
+
     [Theory(DisplayName = "§18.4: icat import says it spilled nothing, or how many runs and bytes, each in words that agree with its count")]
     [InlineData(0, 0L, "nothing; the index fitted in memory")]
     [InlineData(1, 1L, "1 run, 1 byte")]

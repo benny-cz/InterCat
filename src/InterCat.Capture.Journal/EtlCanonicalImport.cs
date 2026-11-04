@@ -414,6 +414,9 @@ public static class EtlCanonicalImport
             coverage.Undecodable(reason, in delivered);
         }
 
+        // A gate's omissions are the file's coverage, never a loss (ADR-074).
+        public void OnGated(GateOmission reason, in DeliveredRecord delivered) => coverage.Gated(reason, in delivered);
+
         public void Rethrow()
         {
             if (failure is not null)

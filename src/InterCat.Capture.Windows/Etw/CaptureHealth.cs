@@ -17,6 +17,15 @@ public sealed record CaptureHealthSnapshot
     /// <summary>Records whose pointer width did not match the compiled offsets (section 18.3).</summary>
     public required long UndecodablePointerWidthMismatch { get; init; }
 
+    /// <summary>Records of a resource a source's gate follows that count nothing of it (ADR-074): not a loss.</summary>
+    public long GateOmissionsNotCounted { get; init; }
+
+    /// <summary>Records of no resource a source's gate followed (ADR-074): not a loss.</summary>
+    public long GateOmissionsNoFollowedResource { get; init; }
+
+    /// <summary>Resources a source's gate did not follow, holding as many as it may (ADR-074).</summary>
+    public long GateOmissionsBeyondBound { get; init; }
+
     /// <summary>Loss the ETW session itself reported. It bounds loss to a polling interval, not to exact records.</summary>
     public required long ProviderReportedEventLoss { get; init; }
 
@@ -58,6 +67,9 @@ public sealed class CaptureHealthLedger
     private long undecodableVersion;
     private long undecodableRead;
     private long undecodablePointerWidth;
+    private long gatedNotCounted;
+    private long gatedNoFollowed;
+    private long gatedBeyondBound;
     private long applicationDrops;
     private long quarantinedTimestamps;
     private long providerLoss;
@@ -110,6 +122,24 @@ public sealed class CaptureHealthLedger
         }
     }
 
+    public void RecordGated(GateOmission reason)
+    {
+        switch (reason)
+        {
+            case GateOmission.NotCounted:
+                Interlocked.Increment(ref gatedNotCounted);
+                break;
+            case GateOmission.NoFollowedResource:
+                Interlocked.Increment(ref gatedNoFollowed);
+                break;
+            case GateOmission.BeyondBound:
+                Interlocked.Increment(ref gatedBeyondBound);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(reason));
+        }
+    }
+
     /// <summary>
     /// Records source-reported loss. Both quantities are monotonic and are stored, not added. Readers race (the health
     /// sampler, a live status request, the final stop), so an older reading never replaces a newer, larger one.
@@ -146,6 +176,9 @@ public sealed class CaptureHealthLedger
         UndecodableUnknownDescriptorVersion = Interlocked.Read(ref undecodableVersion),
         UndecodableAdmissionReadFailed = Interlocked.Read(ref undecodableRead),
         UndecodablePointerWidthMismatch = Interlocked.Read(ref undecodablePointerWidth),
+        GateOmissionsNotCounted = Interlocked.Read(ref gatedNotCounted),
+        GateOmissionsNoFollowedResource = Interlocked.Read(ref gatedNoFollowed),
+        GateOmissionsBeyondBound = Interlocked.Read(ref gatedBeyondBound),
         ProviderReportedEventLoss = Interlocked.Read(ref providerLoss),
         ConsumerReportedBufferLoss = Interlocked.Read(ref consumerBufferLoss),
         ApplicationDrops = Interlocked.Read(ref applicationDrops),

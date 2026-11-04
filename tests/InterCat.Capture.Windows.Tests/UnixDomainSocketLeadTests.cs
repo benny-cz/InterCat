@@ -7,19 +7,27 @@ namespace InterCat.Capture.Windows.Tests;
 
 /// <summary>
 /// The Unix-domain sockets work package (plan M6, §4.2): Winsock AFD is inventoried as their lead, which FX-UNIX-001 measured
-/// through a lab probe, and nothing claims more for it - no profile requests it and no build carries a tier for them until
-/// a fixture measures one through the product (P27). The fixture's ledger holds each record on the workload's sockets, each
+/// through a lab probe, and admits through its gate the calls the gate counts (ADR-074); nothing claims more for it - no
+/// profile requests it and no build carries a tier for them until a fixture measures one through the product (P27). The fixture's ledger holds each record on the workload's sockets, each
 /// the socket's from its create to the next create at its address (R22), and counts the truth's every send and receive.
 /// </summary>
 public sealed class UnixDomainSocketLeadTests
 {
-    [Fact(DisplayName = "P27: Unix-domain sockets have an inventoried source that no profile requests, its cost measured, and no tier on any build until a fixture measures one through it")]
+    [Fact(DisplayName = "P27: Unix-domain sockets have an inventoried source that admits through its gate and that no profile requests, its cost measured, and no tier on any build until a fixture measures one through it")]
     public void UnixDomainSocketsHaveALeadAndNoTier()
     {
         WindowsSourceDefinition afd = WindowsSourceCatalog.Find(WindowsSourceCatalog.WinsockAfdSourceId)!;
         Assert.Equal("Microsoft-Windows-Winsock-AFD", afd.ProviderName);
         Assert.Equal([Mechanism.UnixDomainSocket], afd.Mechanisms);
-        Assert.Empty(afd.AdmittedEvents);
+
+        // It admits the calls its gate counts, each a Unix-domain socket's at the transport layer, and no buffer's address
+        // or socket's address: an AF_UNIX path is cut to 14 characters (ADR-072).
+        Assert.Equal([1000, 1001, 1003, 1004, 1017, 1020, 1023, 1027, 1029, 1030], afd.AdmittedEvents.Select(admitted => admitted.EventId));
+        Assert.All(afd.AdmittedEvents, admitted =>
+        {
+            Assert.Equal((Mechanism.UnixDomainSocket, ObservationLayer.Transport), (admitted.Mechanism, admitted.Layer));
+            Assert.DoesNotContain(admitted.Fields, field => field.FieldName is "Buffer" or "Address" or "AcceptEndpoint");
+        });
         Assert.Equal((SourceContractStatus.Experimental, false, 0UL),
             (afd.ContractStatus, afd.SupportsCaptureSideProcessFilter, afd.MatchAnyKeyword));
         Assert.Contains(afd.Notes, note => note.Contains("FX-UNIX-001", StringComparison.Ordinal));

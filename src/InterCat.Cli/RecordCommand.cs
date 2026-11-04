@@ -381,12 +381,7 @@ internal static class RecordCommand
         {
             ConsoleUi.Field("Delivered", ConsoleUi.Count(health.ObservedRecords));
             ConsoleUi.Field("Admitted", ConsoleUi.Count(health.AdmittedRecords));
-            ConsoleUi.Field(
-                "Not admitted",
-                ConsoleUi.Count(
-                    health.PolicyOmissionsUnrequestedProvider + health.PolicyOmissionsDescriptorNotAdmitted
-                    + health.PolicyOmissionsDescriptorDenied)
-                + " by policy, which is not loss");
+            ConsoleUi.Field("Not admitted", NotAdmitted(health));
             ConsoleUi.Field(
                 "Lost",
                 health.IsLossFree
@@ -432,6 +427,27 @@ internal static class RecordCommand
         1 => "once, when the capture stopped",
         _ => string.Create(CultureInfo.CurrentCulture, $"{publications:N0} generations, one journal chunk each; the last holds them all"),
     };
+
+    /// <summary>
+    /// What a recording delivered and did not admit: by its policy, and by a gated source's gate (ADR-074). Neither is loss;
+    /// a gate that followed as many resources as it may and no more is said, as its coverage is a partial gap.
+    /// </summary>
+    internal static string NotAdmitted(CaptureHealthSnapshot health)
+    {
+        ArgumentNullException.ThrowIfNull(health);
+        string policy = ConsoleUi.Count(health.PolicyOmissionsUnrequestedProvider + health.PolicyOmissionsDescriptorNotAdmitted
+            + health.PolicyOmissionsDescriptorDenied);
+        long gated = health.GateOmissionsNotCounted + health.GateOmissionsNoFollowedResource + health.GateOmissionsBeyondBound;
+        if (gated == 0)
+        {
+            return policy + " by policy, which is not loss";
+        }
+
+        return $"{policy} by policy and {ConsoleUi.Count(gated)} by a source's gate, neither of which is loss"
+            + (health.GateOmissionsBeyondBound > 0
+                ? $"; the gate followed as many resources as it may, and not {CountText.Of(health.GateOmissionsBeyondBound, "more", "more")}"
+                : string.Empty);
+    }
 
     private static void PrintHelp()
     {

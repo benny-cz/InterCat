@@ -276,6 +276,27 @@ public enum OmissionReason
 }
 
 /// <summary>
+/// <c>EN-GateOmission</c> (`contracts/coverage-v3.md` §1): why a gated source's gate did not admit a record of an admitted
+/// descriptor (ADR-074). A source whose records of one descriptor are not all of one resource or one count - Winsock AFD,
+/// every socket's calls of every family, several records a call (ADR-073) - admits through a gate that reads them as they
+/// arrive. A gated omission is not a loss, and is counted beside the descriptor's other outcomes, never folded into them.
+/// </summary>
+public enum GateOmission
+{
+    /// <summary>A record of a resource the gate follows that counts nothing of it: one of a call's other records.</summary>
+    NotCounted = 1,
+
+    /// <summary>A record of no resource the gate followed: another kind's, or one made before the capture began.</summary>
+    NoFollowedResource = 2,
+
+    /// <summary>
+    /// The record that began a resource the gate did not follow, holding as many as it may; that resource's later records
+    /// are of none it followed.
+    /// </summary>
+    BeyondBound = 3,
+}
+
+/// <summary>
 /// <c>EN-UndecodableReason</c> (section 23): why a record of an admitted descriptor could not be read. A guessed layout
 /// is never used instead (section 18.3); the record is the decode layer's loss, attributed to its descriptor.
 /// </summary>

@@ -1083,6 +1083,33 @@ internal static class SessionCommand
                     ]);
             }
 
+            // A gated source's records its gate did not admit, by reason: neither lost nor the policy's (ADR-074).
+            List<(CoverageDeliveryV1 Delivery, GateOmission Reason, long Records)> gated =
+            [
+                .. epoch.Deliveries.SelectMany(delivery => (delivery.Gated ?? new Dictionary<GateOmission, long>())
+                    .OrderBy(entry => entry.Key)
+                    .Select(entry => (delivery, entry.Key, entry.Value))),
+            ];
+            if (gated.Count > 0)
+            {
+                ConsoleUi.Line();
+                ConsoleUi.Line("  Delivered and not admitted by the source's gate - not lost; the gate admits one record of each count:");
+                ConsoleUi.Table(
+                    ["Provider", "Event", "Version", "Records", "Why"],
+                    [
+                        .. gated.Select(entry => new[]
+                        {
+                            names.GetValueOrDefault(entry.Delivery.ProviderId) ?? entry.Delivery.ProviderId.ToString("D"),
+                            entry.Delivery.Opcode is { } opcode
+                                ? string.Create(CultureInfo.InvariantCulture, $"{entry.Delivery.EventId}, opcode {opcode}")
+                                : (entry.Delivery.EventId ?? 0).ToString(CultureInfo.InvariantCulture),
+                            entry.Delivery.Version?.ToString(CultureInfo.InvariantCulture) ?? "any",
+                            ConsoleUi.Count(entry.Records),
+                            CoverageLedgerText.Gate(entry.Reason),
+                        }),
+                    ]);
+            }
+
             long undecodable = epoch.Deliveries.Sum(delivery => delivery.Undecodable?.Values.Sum() ?? 0);
             // What each loss layer reported, a zero included, in the words a coverage reason says it in (R5, R21).
             string losses = string.Join("; ", epoch.Losses.OrderBy(loss => loss.Layer)

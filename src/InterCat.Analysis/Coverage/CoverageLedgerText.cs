@@ -6,7 +6,8 @@ namespace InterCat.Analysis;
 
 /// <summary>
 /// A coverage ledger's facts in words, one mapping for each of its dimensions (R5): how an epoch's evidence was acquired,
-/// what each loss layer reported, and why a delivered record was not admitted. A coverage reason says a loss in these
+/// what each loss layer reported, and why a delivered record was not admitted, by the policy or by its source's gate. A
+/// coverage reason says a loss in these
 /// words, and <c>icat session</c> lists the ledger in them. A value this version does not know is named by its number.
 /// </summary>
 public static class CoverageLedgerText
@@ -46,6 +47,18 @@ public static class CoverageLedgerText
         OmissionReason.DescriptorNotAdmitted => "not in the profile's allowlist",
         OmissionReason.DescriptorDenied => "denied by the profile",
         _ => string.Create(CultureInfo.InvariantCulture, $"omission {(int)reason}"),
+    };
+
+    /// <summary>
+    /// Why a gated source's gate did not admit a record of an admitted descriptor (ADR-074): not lost, and no wider policy
+    /// would admit it, as the gate admits one record of each count of a resource it follows.
+    /// </summary>
+    public static string Gate(GateOmission reason) => reason switch
+    {
+        GateOmission.NotCounted => "of a resource its gate follows, and counting nothing of it",
+        GateOmission.NoFollowedResource => "of no resource its gate followed",
+        GateOmission.BeyondBound => "began a resource beyond as many as its gate may follow",
+        _ => string.Create(CultureInfo.InvariantCulture, $"gate omission {(int)reason}"),
     };
 
     private static string Count(long count, string noun) =>

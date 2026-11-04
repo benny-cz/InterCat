@@ -734,6 +734,12 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
             owner.observer?.Undecodable(reason, in delivered);
         }
 
+        public void OnGated(GateOmission reason, in DeliveredRecord delivered)
+        {
+            owner.ledger.RecordGated(reason);
+            owner.observer?.Gated(reason, in delivered);
+        }
+
         public void OnCallbackCompleted(in CallbackCost cost) => owner.stages.RecordCallback(in cost);
     }
 }

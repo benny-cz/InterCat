@@ -19,8 +19,8 @@ public sealed class CallbackPathTests
     /// <summary>Each allocation the callback can make outside a throw, and why it is bounded: none recurs per record.</summary>
     private static readonly string[] ReviewedAllocations =
     [
-        // The coverage tally's entry for a descriptor and its counts of undecodable records by reason, made the first time
-        // the descriptor is delivered: at most the ledger's 4,096 descriptors, and past them one overflow entry.
+        // The coverage tally's entry for a descriptor and its counts of undecodable and gated records by reason, made the
+        // first time the descriptor is delivered: at most the ledger's 4,096 descriptors, and past them one overflow entry.
         "InterCat.Capture.Recording.CaptureCoverageTally+Entry..ctor: new System.Collections.Generic.Dictionary",
         "InterCat.Capture.Recording.CaptureCoverageTally.EntryFor: new InterCat.Capture.Recording.CaptureCoverageTally+Entry",
 
@@ -37,6 +37,7 @@ public sealed class CallbackPathTests
         // The coverage tally's, which a publication holds only while it reads the tally into a ledger.
         "InterCat.Capture.Recording.CaptureCoverageTally.Admitted: Lock",
         "InterCat.Capture.Recording.CaptureCoverageTally.Delivered: Lock",
+        "InterCat.Capture.Recording.CaptureCoverageTally.Gated: Lock",
         "InterCat.Capture.Recording.CaptureCoverageTally.Omitted: Lock",
         "InterCat.Capture.Recording.CaptureCoverageTally.Undecodable: Lock",
 
@@ -105,6 +106,11 @@ public sealed class CallbackPathTests
         Assert.Contains("InterCat.Capture.Windows.OwnedCaptureSession+QueueSink.Admit", walk.Reached);
         Assert.Contains("InterCat.Capture.Windows.OwnedCaptureSession.Enqueue", walk.Reached);
         Assert.Contains("InterCat.Capture.Recording.CaptureCoverageTally.Admitted", walk.Reached);
+
+        // And a gated source's gate, whose sockets are held to its bound (ADR-074).
+        Assert.Contains("InterCat.Capture.Windows.AfdRecordGate.Read", walk.Reached);
+        Assert.Contains("InterCat.Capture.Windows.UnixSocketGate.Read", walk.Reached);
+        Assert.Contains("InterCat.Capture.Recording.CaptureCoverageTally.Gated", walk.Reached);
         return walk;
     }
 

@@ -28,11 +28,18 @@ public sealed record LedgerRelease(long NativeTicks, long Nanoseconds);
 /// </summary>
 public sealed record CoverageLedgerV1
 {
-    /// <summary>The contract this version writes.</summary>
+    /// <summary>The contract this version writes for a capture that admitted through no gate.</summary>
     public const string ContractName = "coverage-v2";
 
     /// <summary>The first contract, which a reader still takes: its epochs state no recorded readings.</summary>
     public const string FirstContractName = "coverage-v1";
+
+    /// <summary>
+    /// The contract a capture that admitted through a gate writes: its deliveries may count the records a gate omitted
+    /// (`coverage-v3`). A `coverage-v2` file is read as one whose deliveries count none, and is still what every other
+    /// capture writes.
+    /// </summary>
+    public const string GatedContractName = "coverage-v3";
     public const int MaximumBytes = 1_048_576;
     public const int MaximumEpochs = 64;
     public const int MaximumDescriptors = 4_096;
@@ -86,7 +93,7 @@ public sealed record CoverageLedgerV1
         }
         catch (JsonException exception)
         {
-            throw new InvalidDataException("The coverage ledger is not valid coverage-v2 JSON.", exception);
+            throw new InvalidDataException("The coverage ledger is not valid coverage JSON.", exception);
         }
 
         ledger.Validate();
@@ -97,7 +104,8 @@ public sealed record CoverageLedgerV1
     public void Validate()
     {
         bool first = string.Equals(Contract, FirstContractName, StringComparison.Ordinal);
-        if (!(first || string.Equals(Contract, ContractName, StringComparison.Ordinal))
+        bool gated = string.Equals(Contract, GatedContractName, StringComparison.Ordinal);
+        if (!(first || gated || string.Equals(Contract, ContractName, StringComparison.Ordinal))
             || Epochs is null or { Count: < 1 or > MaximumEpochs })
         {
             throw new InvalidDataException($"A coverage file names its contract and 1-{MaximumEpochs} epochs.");
@@ -111,7 +119,7 @@ public sealed record CoverageLedgerV1
                 throw new InvalidDataException("Coverage epochs are numbered 1, 2, ... in the order they occurred.");
             }
 
-            Validate(epoch);
+            Validate(epoch, gated);
             if (epoch.RecordedFromNativeTicks.HasValue && first)
             {
                 throw new InvalidDataException($"Coverage epoch {epoch.Epoch} states recorded readings, which coverage-v1 has not.");
@@ -119,7 +127,7 @@ public sealed record CoverageLedgerV1
         }
     }
 
-    private static void Validate(CoverageEpochV1 epoch)
+    private static void Validate(CoverageEpochV1 epoch, bool gated)
     {
         string at = $"Coverage epoch {epoch.Epoch}";
         if (!Enum.IsDefined(epoch.Acquisition)
@@ -196,12 +204,33 @@ public sealed record CoverageLedgerV1
                 undecodable += records;
             }
 
+            // A gate's omissions are a descriptor's records its gate did not admit (coverage-v3): only a gated ledger
+            // counts them. A whole provider's records all met one policy, so it counts none, as the sum below says.
+            Int128 gatedOut = 0;
+            if (delivery.Gated is { } gates)
+            {
+                if (!gated)
+                {
+                    throw new InvalidDataException($"{at} counts a gate's omissions, which only a {GatedContractName} ledger does.");
+                }
+
+                foreach ((GateOmission reason, long records) in gates)
+                {
+                    if (!Enum.IsDefined(reason) || records < 1)
+                    {
+                        throw new InvalidDataException($"{at} counts a gate's omissions under an undefined reason or none at all.");
+                    }
+
+                    gatedOut += records;
+                }
+            }
+
             totalDelivered += delivery.Delivered;
             if (totalDelivered > long.MaxValue
                 || delivery.Delivered < 1
                 || delivery.Admitted < 0
                 || delivery.Omitted < 0
-                || (Int128)delivery.Admitted + delivery.Omitted + undecodable != delivery.Delivered
+                || (Int128)delivery.Admitted + delivery.Omitted + undecodable + gatedOut != delivery.Delivered
                 || (delivery.Omitted > 0) != delivery.Omission.HasValue
                 || (delivery.Omission is { } omission && !Enum.IsDefined(omission))
                 || wholeProvider != (delivery.Omission == OmissionReason.UnrequestedProvider)
@@ -329,6 +358,12 @@ public sealed record CoverageDeliveryV1
 
     /// <summary>The records that could not be read, by reason: the decode layer's loss.</summary>
     public IReadOnlyDictionary<UndecodableReason, long>? Undecodable { get; init; }
+
+    /// <summary>
+    /// The records of an admitted descriptor its source's gate did not admit, by reason (`coverage-v3`, ADR-074): not a
+    /// loss, and never in a `coverage-v2` file. Null when the gate omitted none, or the descriptor has no gate.
+    /// </summary>
+    public IReadOnlyDictionary<GateOmission, long>? Gated { get; init; }
 }
 
 /// <summary>

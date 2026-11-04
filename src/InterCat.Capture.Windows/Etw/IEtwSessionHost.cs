@@ -54,6 +54,12 @@ public interface IAdmittedEventSink
     void OnUndecodable(UndecodableReason reason, in DeliveredRecord delivered);
 
     /// <summary>
+    /// The record of an admitted descriptor was read by its source's gate, which did not admit it (ADR-074). A gated
+    /// omission is not a loss, and is counted apart from the policy's.
+    /// </summary>
+    void OnGated(GateOmission reason, in DeliveredRecord delivered);
+
+    /// <summary>
     /// Reports what one completed callback cost and what it copied. The default does nothing, so a sink
     /// that does not measure overhead is unchanged; a measuring sink gets the cost at the only place it
     /// can be attributed to the callback rather than to the process (section 12).
@@ -79,6 +85,8 @@ public interface IDeliveryObserver
     void Omitted(OmissionReason reason, in DeliveredRecord delivered);
 
     void Undecodable(UndecodableReason reason, in DeliveredRecord delivered);
+
+    void Gated(GateOmission reason, in DeliveredRecord delivered);
 }
 
 /// <summary>

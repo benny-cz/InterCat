@@ -432,6 +432,63 @@ public sealed partial class RedactedSessionPackageTests
             shared.Current!.Dependencies.Single(dependency => dependency.Kind == StoreDependencyKind.CoverageLedger).Digest);
     }
 
+    [Fact(DisplayName = "I22: a gated ledger stays a coverage-v3 one in the package, its gate's omissions counted as they were")]
+    public void AGatedLedgerKeepsItsGatesOmissions()
+    {
+        using var source = new TemporarySession();
+        Publish(source.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 1_000 },
+            Transfer(20, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 2)
+                .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 2_000 },
+        ], coverage: new CoverageLedgerV1
+        {
+            Contract = CoverageLedgerV1.GatedContractName,
+            Epochs =
+            [
+                new CoverageEpochV1
+                {
+                    Epoch = 1,
+                    Acquisition = CoverageAcquisition.EtlImport,
+                    FirstDeliveredNativeTicks = 10,
+                    LastDeliveredNativeTicks = 20,
+                    Collected =
+                    [
+                        new CoverageCollectedV1
+                        {
+                            ProviderId = NetworkProvider, ProviderName = "Microsoft-Windows-Kernel-Network",
+                            EventId = 10, Version = 0, Mechanism = Mechanism.Tcp,
+                        },
+                    ],
+                    Deliveries =
+                    [
+                        new CoverageDeliveryV1
+                        {
+                            ProviderId = NetworkProvider, EventId = 10, Version = 0, Delivered = 5, Admitted = 2, Omitted = 0,
+                            Gated = new Dictionary<GateOmission, long> { [GateOmission.NotCounted] = 2, [GateOmission.NoFollowedResource] = 1 },
+                        },
+                    ],
+                    Losses = [new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 0 }],
+                },
+            ],
+        });
+        using var package = new PackageDirectory();
+        RedactedSessionPackage.Create(source.Store, package.Path, Committed);
+
+        SessionStore shared = SessionStore.OpenExisting(LocalOwnedDirectory.Open(package.Path));
+        CoverageLedgerV1 after = SessionSegments.CoverageLedger(shared.Root, shared.Current!)!;
+        Assert.Equal(CoverageLedgerV1.GatedContractName, after.Contract);
+        Assert.Equal(
+            [(GateOmission.NotCounted, 2L), (GateOmission.NoFollowedResource, 1L)],
+            Assert.Single(Assert.Single(after.Epochs).Deliveries).Gated!.OrderBy(entry => entry.Key).Select(entry => (entry.Key, entry.Value)));
+
+        // Public providers and a zero-epoch clock leave it byte-identical to the source's, as an ungated one is.
+        Assert.Equal(
+            source.Store.Current!.Dependencies.Single(dependency => dependency.Kind == StoreDependencyKind.CoverageLedger).Digest,
+            shared.Current!.Dependencies.Single(dependency => dependency.Kind == StoreDependencyKind.CoverageLedger).Digest);
+    }
+
     [Fact(DisplayName = "I22: two packages of one session share no pseudonym")]
     public void PseudonymsAreFreshPerPackage()
     {

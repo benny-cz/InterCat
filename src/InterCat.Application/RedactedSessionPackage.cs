@@ -1185,7 +1185,10 @@ public static class RedactedSessionPackage
     /// <summary>The coverage ledger under the package's pseudonyms and clock. Counts and states are unchanged.</summary>
     private static CoverageLedgerV1 Project(CoverageLedgerV1 ledger, SourceScan scan, RedactedSessionPseudonyms pseudonyms) => new()
     {
-        Contract = CoverageLedgerV1.ContractName,
+        // A ledger that counts a gate's omissions stays a coverage-v3 one; every other is written coverage-v2 (ADR-074).
+        Contract = ledger.Epochs.Any(epoch => epoch.Deliveries.Any(delivery => delivery.Gated is not null))
+            ? CoverageLedgerV1.GatedContractName
+            : CoverageLedgerV1.ContractName,
         Epochs =
         [
             .. ledger.Epochs.Select(epoch => new CoverageEpochV1
@@ -1223,6 +1226,7 @@ public static class RedactedSessionPackage
                         Undecodable = delivery.Undecodable is { } undecodable
                             ? new Dictionary<UndecodableReason, long>(undecodable)
                             : null,
+                        Gated = delivery.Gated is { } gated ? new Dictionary<GateOmission, long>(gated) : null,
                     }),
                 ],
                 Losses = [.. epoch.Losses.Select(loss => new CoverageLossV1 { Layer = loss.Layer, Lost = loss.Lost })],

@@ -253,6 +253,62 @@ public sealed class CoverageLedgerTests
         Assert.Throws<InvalidDataException>(() => (ledger with { Epochs = [live with { RecordedToNativeTicks = 4 }] }).Encode());
     }
 
+    [Fact(DisplayName = "R21: a coverage-v3 ledger counts a gate's omissions of a descriptor beside its other outcomes, and no other ledger counts them")]
+    public void AGatedLedgerCountsAGatesOmissions()
+    {
+        CoverageEpochV1 epoch = Assert.Single(Example().Epochs);
+        CoverageDeliveryV1 delivery = Assert.Single(epoch.Deliveries);
+        CoverageLedgerV1 Gated(CoverageDeliveryV1 of, string contract = CoverageLedgerV1.GatedContractName) =>
+            Example() with { Contract = contract, Epochs = [epoch with { Deliveries = [of] }] };
+
+        // Admitted, omitted and undecodable as before, and seven records the gate did not admit, by reason.
+        CoverageDeliveryV1 gated = delivery with
+        {
+            Delivered = 10,
+            Gated = new Dictionary<GateOmission, long>
+            {
+                [GateOmission.NotCounted] = 4,
+                [GateOmission.NoFollowedResource] = 2,
+                [GateOmission.BeyondBound] = 1,
+            },
+        };
+        byte[] bytes = Gated(gated).Encode();
+        string json = Encoding.UTF8.GetString(bytes);
+        Assert.Contains("\"contract\":\"coverage-v3\"", json, StringComparison.Ordinal);
+        CoverageDeliveryV1 decoded = Assert.Single(Assert.Single(CoverageLedgerV1.Decode(bytes).Epochs).Deliveries);
+        Assert.Equal(
+            [(GateOmission.NotCounted, 4L), (GateOmission.NoFollowedResource, 2L), (GateOmission.BeyondBound, 1L)],
+            decoded.Gated!.OrderBy(entry => entry.Key).Select(entry => (entry.Key, entry.Value)));
+
+        // A coverage-v3 ledger whose gates omitted nothing reads as a coverage-v2 one, whose deliveries count none.
+        Assert.Null(Assert.Single(Assert.Single(CoverageLedgerV1.Decode(Gated(delivery).Encode()).Epochs).Deliveries).Gated);
+
+        // Refused: in a coverage-v2 or coverage-v1 ledger, under a reason this version does not define or a count of none,
+        // when the outcomes do not add up to what was delivered, and on a whole provider, which no gate reads.
+        Assert.Throws<InvalidDataException>(() => Gated(gated, CoverageLedgerV1.ContractName).Encode());
+        Assert.Throws<InvalidDataException>(() => Gated(gated, CoverageLedgerV1.FirstContractName).Encode());
+        Assert.Throws<InvalidDataException>(() => CoverageLedgerV1.Decode(
+            Encoding.UTF8.GetBytes(json.Replace("\"BeyondBound\"", "\"Surprise\"", StringComparison.Ordinal))));
+        Assert.Throws<InvalidDataException>(() => Gated(gated with
+        {
+            Gated = new Dictionary<GateOmission, long> { [(GateOmission)9] = 7 },
+        }).Encode());
+        Assert.Throws<InvalidDataException>(() => Gated(delivery with
+        {
+            Gated = new Dictionary<GateOmission, long> { [GateOmission.NotCounted] = 0 },
+        }).Encode());
+        Assert.Throws<InvalidDataException>(() => Gated(gated with { Delivered = 9 }).Encode());
+        Assert.Throws<InvalidDataException>(() => Gated(new CoverageDeliveryV1
+        {
+            ProviderId = Guid.Parse("9b111111-2222-4333-8444-555555555555"),
+            Delivered = 2,
+            Admitted = 0,
+            Omitted = 1,
+            Omission = OmissionReason.UnrequestedProvider,
+            Gated = new Dictionary<GateOmission, long> { [GateOmission.NoFollowedResource] = 1 },
+        }).Encode());
+    }
+
     private static CoverageLedgerV1 Example() => new()
     {
         Contract = CoverageLedgerV1.ContractName,

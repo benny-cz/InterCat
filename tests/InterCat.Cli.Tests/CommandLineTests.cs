@@ -4848,6 +4848,47 @@ public sealed class CommandLineTests : IDisposable
         Assert.DoesNotContain("Etl", answer, StringComparison.Ordinal);
         Assert.Matches(@"(?m)^  10 +TCP +send +100 ", answer);
 
+        // A gated source's records its gate did not admit, apart from the policy's, each reason in the words the
+        // coverage ledger's text has for it, and the coverage reason saying what the gate admitted (ADR-074).
+        using var gated = new TemporarySession();
+        Publish(gated.Store,
+            [Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080")],
+            coverage: new CoverageLedgerV1
+            {
+                Contract = CoverageLedgerV1.GatedContractName,
+                Epochs =
+                [
+                    new CoverageEpochV1
+                    {
+                        Epoch = 1,
+                        Acquisition = CoverageAcquisition.EtlImport,
+                        FirstDeliveredNativeTicks = 10,
+                        LastDeliveredNativeTicks = 10,
+                        Collected =
+                        [
+                            new CoverageCollectedV1 { ProviderId = NetworkProvider, ProviderName = "network", EventId = 10, Version = 0, Mechanism = Mechanism.Tcp },
+                        ],
+                        Deliveries =
+                        [
+                            new CoverageDeliveryV1
+                            {
+                                ProviderId = NetworkProvider, EventId = 10, Version = 0, Delivered = 6, Admitted = 1, Omitted = 0,
+                                Gated = new Dictionary<GateOmission, long> { [GateOmission.NotCounted] = 3, [GateOmission.NoFollowedResource] = 2 },
+                            },
+                        ],
+                        Losses = [new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 0 }],
+                    },
+                ],
+            });
+        gated.Store.ReleaseSegmentReaders();
+        (code, answer, _) = await Run("session", gated.Path);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  TCP +covered +6 records from its 1 admitted descriptor, of which its gate admitted 1 record, and nothing was reported lost\r?$", answer);
+        Assert.Matches(@"(?m)^  Delivered and not admitted by the source's gate - not lost; the gate admits one record of each count:\r?$", answer);
+        Assert.Matches(@"(?m)^  network +10 +0 +3 +of a resource its gate follows, and counting nothing of it\r?$", answer);
+        Assert.Matches(@"(?m)^  network +10 +0 +2 +of no resource its gate followed\r?$", answer);
+        Assert.DoesNotContain("Delivered and not admitted by the policy", answer, StringComparison.Ordinal);
+
         // A record without a size says why, as the window does: its source withheld it, or a package redacted it.
         using var unsized = new TemporarySession();
         Publish(unsized.Store,

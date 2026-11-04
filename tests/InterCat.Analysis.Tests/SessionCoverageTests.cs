@@ -93,6 +93,39 @@ public sealed class SessionCoverageTests
         Assert.Equal(CoverageLedgerText.Loss(lost, CoverageAcquisition.EtlImport), SessionCoverage.Of(lossy, Mechanism.Tcp).Reason);
     }
 
+    [Fact(DisplayName = "R21: a gate's omissions are no loss, and its coverage says what its gate admitted; a resource the gate could not follow makes it a partial gap")]
+    public void AGatesOmissionsAreNoLossButItsBoundIsAGap()
+    {
+        CoverageLedgerV1 ledger = Ledger(CoverageAcquisition.LiveCapture) with { Contract = CoverageLedgerV1.GatedContractName };
+        CoverageEpochV1 epoch = Assert.Single(ledger.Epochs);
+        CoverageDeliveryV1 delivery = Assert.Single(epoch.Deliveries) with
+        {
+            Delivered = 1_204,
+            Admitted = 4,
+            Gated = new Dictionary<GateOmission, long> { [GateOmission.NotCounted] = 200, [GateOmission.NoFollowedResource] = 1_000 },
+        };
+        var covered = SessionCoverage.Of(ledger with { Epochs = [epoch with { Deliveries = [delivery] }] }, Mechanism.Tcp);
+        Assert.Equal(
+            (CoverageState.Covered, "1,204 records from its 1 admitted descriptor, of which its gate admitted 4 records, and nothing was reported lost"),
+            (covered.State, covered.Reason));
+
+        CoverageDeliveryV1 bounded = delivery with
+        {
+            Delivered = 1_205,
+            Gated = new Dictionary<GateOmission, long>(delivery.Gated!) { [GateOmission.BeyondBound] = 1 },
+        };
+        var gap = SessionCoverage.Of(ledger with { Epochs = [epoch with { Deliveries = [bounded] }] }, Mechanism.Tcp);
+        Assert.Equal(
+            (CoverageState.PartialGap, "its gate, following as many resources as it may, did not follow 1 more resource or admit their records"),
+            (gap.State, gap.Reason));
+
+        // Each reason a gate omits a record for has its words, and one this version does not know is named by its number.
+        Assert.Equal(
+            ["of a resource its gate follows, and counting nothing of it", "of no resource its gate followed", "began a resource beyond as many as its gate may follow"],
+            Enum.GetValues<GateOmission>().Select(CoverageLedgerText.Gate));
+        Assert.Equal("gate omission 9", CoverageLedgerText.Gate((GateOmission)9));
+    }
+
     [Fact(DisplayName = "R21: live quiet enablement is covered, unlike a quiet imported file")]
     public void LiveQuietIsCovered()
     {

@@ -821,6 +821,7 @@ Revision 895 begins M6 with Unix-domain sockets' capability result (ADR-072, FX-
 Revision 896 measures what collecting Winsock AFD machine-wide costs: at about 490,000 records a second, a median of 0.5 to 1.6 CPU percentage points over two series of nine pairs a traffic, near the Low ceiling, so the catalog states Moderate and a profile admitting it is opt-in.
 
 Revision 897 adds the AF_UNIX gate (ADR-073): read as they arrive, AFD's records of each socket a capture saw created AF_UNIX, followed from its create to its close and owned by the process its create names, one record a call, and none of another family's - no record arrived before its create, of 36,088, and a receive's exit holds what it took.
+Revision 898 admits Winsock AFD through its gate (ADR-074): a source may have a gate that reads each record as it arrives, AFD's admitted calls carry the gate's socket number and owner in place of the kernel's addresses, and a ledger counting what a gate omitted - not counted, of no followed socket, beyond its bound - is `coverage-v3`.
 
 ## Revisions, a paragraph each, in order
 
@@ -3425,3 +3426,17 @@ receive's exit. It omits every other record and every record of no followed sock
 and remembering 4,096 closed. Tests hold it on synthetic records and on FX-UNIX-001's two ledgers read through it as
 delivered, one record a call of every AF_UNIX socket and none of another; nine mutations are caught. No profile compiles
 it yet.
+
+Revision 898 wires ADR-073's gate into admission (ADR-074). Admission had decided a record by its descriptor alone, and
+the ledger counted a descriptor's records as admitted, omitted for one reason, or undecodable, but AFD's records of one
+descriptor are not alike. A source may now have a gate, which the admitter calls once a record's slots are read.
+Winsock AFD's gate admits a record with the socket's number in the capture as its endpoint and the owner its create
+named as its process, never the kernel's addresses, or omits it as counting nothing, of no socket it followed, or
+beyond its bound. AFD admits the ten calls the gate counts, each before any address in its registered layout, and no
+buffer's or socket's address. An accept's new socket follows a variable-length address, so an accepted socket is
+followed from its own create. A gate's omissions are counted apart: by reason in the capture's health ledger, which
+`icat record` reports, and under their descriptor in a `coverage-v3` ledger, which only a capture that admitted through
+a gate writes. They are not loss, and a covered mechanism's reason says what the gate admitted, while a socket beyond
+the bound is a partial gap. `icat session` lists them, and a redacted package keeps them. Tests compile AFD's plan from
+its registered layout, drive the gate on records built from it and check each reader of the counts, and the callback
+walk reaches the gate; twenty mutations are caught. No profile requests AFD yet.

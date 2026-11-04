@@ -27,7 +27,7 @@ public sealed class UnixSocketGateTests
 
         // An AF_UNIX socket at the same address, reused: owned by the process its create names, whichever thread raises a call.
         (AfdGateOutcome created, UnixSocketIncarnation? socket) = gate.Read(Create(Socket, family: 1, madeFor: 30, raisedBy: 31));
-        Assert.Equal((AfdGateOutcome.Admitted, 30), (created, socket!.Owner));
+        Assert.Equal((AfdGateOutcome.Admitted, 30), (created, socket!.Value.Owner));
         Assert.Equal((AfdGateOutcome.Admitted, socket), gate.Read(Call(1003, 1, 3051, Socket, raisedBy: 40)));
         Assert.Equal((AfdGateOutcome.NotCounted, socket), gate.Read(Call(1003, 1, 3024, Socket, raisedBy: 40)));
         Assert.Equal((AfdGateOutcome.NotCounted, socket), gate.Read(Call(1003, 0, 3047, Socket)));
@@ -41,20 +41,20 @@ public sealed class UnixSocketGateTests
         Assert.Equal((AfdGateOutcome.Admitted, socket), gate.Read(Call(1001, 1, 2001, Socket)));
         Assert.Equal(0, gate.Following);
         Assert.Equal((AfdGateOutcome.NotCounted, socket), gate.Read(Call(3006, 3, 12001, Socket)));
-        UnixSocketIncarnation again = gate.Read(Create(Socket, family: 1, madeFor: 32)).Socket!;
-        Assert.NotEqual(socket.Number, again.Number);
+        UnixSocketIncarnation again = gate.Read(Create(Socket, family: 1, madeFor: 32)).Socket!.Value;
+        Assert.NotEqual(socket!.Value.Number, again.Number);
 
         // A create of another family at its address ends it unseen.
         Assert.Equal(AfdGateOutcome.NoUnixSocket, gate.Read(Create(Socket, family: 23, madeFor: 33)).Outcome);
         Assert.Equal(AfdGateOutcome.NoUnixSocket, gate.Read(Call(1004, 1, 4116, Socket)).Outcome);
 
         // An accept's new socket, raised on the peer's thread, is its listener's owner's.
-        UnixSocketIncarnation listening = gate.Read(Create(Listener, family: 1, madeFor: 50)).Socket!;
+        UnixSocketIncarnation listening = gate.Read(Create(Listener, family: 1, madeFor: 50)).Socket!.Value;
         Assert.Equal((AfdGateOutcome.Admitted, listening), gate.Read(Call(1027, 1, 6101, Listener, raisedBy: 60) with { AcceptEndpoint = Accepted }));
-        Assert.Equal((AfdGateOutcome.Admitted, 50), (gate.Read(Call(1004, 1, 4116, Accepted)).Outcome, gate.Read(Call(1004, 1, 4116, Accepted)).Socket!.Owner));
+        Assert.Equal((AfdGateOutcome.Admitted, 50), (gate.Read(Call(1004, 1, 4116, Accepted)).Outcome, gate.Read(Call(1004, 1, 4116, Accepted)).Socket!.Value.Owner));
     }
 
-    [Fact(DisplayName = "R22: the AF_UNIX gate follows no more sockets than it may, and says of a create beyond them that it was not followed")]
+    [Fact(DisplayName = "R22: the AF_UNIX gate follows no more sockets than it may, says of a create beyond them that it was not followed, and remembers only the last few it saw closed")]
     public void TheGateHoldsABoundedNumberOfSockets()
     {
         var gate = new UnixSocketGate(capacity: 2);
@@ -64,6 +64,19 @@ public sealed class UnixSocketGateTests
         Assert.Equal(AfdGateOutcome.NoUnixSocket, gate.Read(Call(1003, 1, 3051, Other)).Outcome);
         Assert.Equal(2, gate.Following);
         _ = Assert.Throws<ArgumentOutOfRangeException>(() => new UnixSocketGate(capacity: 0));
+
+        // Of the sockets it saw closed it remembers the last few, for the indications that arrive after a close: a socket
+        // closed before them is of none, as one it never followed.
+        var closing = new UnixSocketGate();
+        for (ulong endpoint = 1; endpoint <= UnixSocketGate.ClosedRemembered + 10; endpoint++)
+        {
+            Assert.Equal(AfdGateOutcome.Admitted, closing.Read(Create(endpoint, 1, 70)).Outcome);
+            Assert.Equal(AfdGateOutcome.Admitted, closing.Read(Call(1001, 1, 2001, endpoint)).Outcome);
+        }
+
+        Assert.Equal((0, UnixSocketGate.ClosedRemembered), (closing.Following, closing.Remembered));
+        Assert.Equal(AfdGateOutcome.NoUnixSocket, closing.Read(Call(3006, 3, 12001, 10)).Outcome);
+        Assert.Equal(AfdGateOutcome.NotCounted, closing.Read(Call(3006, 3, 12001, 11)).Outcome);
     }
 
     [Theory(DisplayName = "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other")]
@@ -91,7 +104,7 @@ public sealed class UnixSocketGateTests
             Assert.Equal(family == 1, outcome != AfdGateOutcome.NoUnixSocket);
             if (outcome == AfdGateOutcome.Admitted)
             {
-                Assert.Equal(processes[field[1]], owned!.Owner);
+                Assert.Equal(processes[field[1]], owned!.Value.Owner);
                 admitted.Add((field[1], record.EventId, field[9].Length == 0 ? 0 : long.Parse(field[9], CultureInfo.InvariantCulture)));
             }
         }

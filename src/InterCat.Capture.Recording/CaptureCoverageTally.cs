@@ -126,6 +126,15 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
         }
     }
 
+    public void Gated(GateOmission reason, in DeliveredRecord delivered)
+    {
+        lock (gate)
+        {
+            Entry entry = EntryFor(delivered.ProviderId, delivered.EventId, delivered.Version, delivered.Opcode);
+            entry.Gated[reason] = entry.Gated.GetValueOrDefault(reason) + 1;
+        }
+    }
+
     /// <summary>
     /// The one-epoch ledger of what was tallied, with the losses the source and InterCat reported, and for a live capture
     /// that delivered through its stop the readings it recorded between (`coverage-v2` §2).
@@ -152,7 +161,8 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
         Dictionary<Guid, string> names = ProviderNames();
         CoverageLedgerV1 ledger = new()
         {
-            Contract = CoverageLedgerV1.ContractName,
+            // A ledger counting a gate's omissions is a coverage-v3 one; every other stays coverage-v2 (ADR-074).
+            Contract = entries.Values.Any(entry => entry.Gated.Count > 0) ? CoverageLedgerV1.GatedContractName : CoverageLedgerV1.ContractName,
             Epochs =
             [
                 new()
@@ -203,6 +213,7 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
                                 Undecodable = entry.Value.Undecodable.Count > 0
                                     ? new Dictionary<UndecodableReason, long>(entry.Value.Undecodable)
                                     : null,
+                                Gated = entry.Value.Gated.Count > 0 ? new Dictionary<GateOmission, long>(entry.Value.Gated) : null,
                             }),
                     ],
                     Losses = losses,
@@ -267,5 +278,7 @@ public sealed class CaptureCoverageTally : IDeliveryObserver
         public OmissionReason? Omission { get; set; }
 
         public Dictionary<UndecodableReason, long> Undecodable { get; } = [];
+
+        public Dictionary<GateOmission, long> Gated { get; } = [];
     }
 }

@@ -1215,6 +1215,39 @@ public sealed class LiveSessionRecorderTests
         Assert.Equal("Microsoft-Windows-Kernel-Network", Assert.Single(ledger.Epochs[0].Collected).ProviderName);
     }
 
+    [Fact(DisplayName = "R21: a tally that counted a gate's omissions writes them in a coverage-v3 ledger beside the descriptor's other outcomes, and one that counted none a coverage-v2 one")]
+    public void AGatesOmissionsMakeACoverageV3Ledger()
+    {
+        var tally = new CaptureCoverageTally(Plan(), CoverageAcquisition.LiveCapture);
+        var delivered = new DeliveredRecord(Provider, 10, 0, 1_000);
+        CoverageLossV1[] losses =
+        [
+            new() { Layer = LossLayer.SourceSession, Lost = 0 },
+            new() { Layer = LossLayer.ConsumerBuffers, Lost = 0 },
+            new() { Layer = LossLayer.CallbackQueue, Lost = 0 },
+            new() { Layer = LossLayer.Storage, Lost = 0 },
+        ];
+        tally.Delivered(in delivered);
+        tally.Admitted(Provider, 10, 0, EventAdmissionTable.ManifestOpcode, queued: true);
+        CoverageLedgerV1 ungated = tally.ToLedger(losses);
+        Assert.Equal(CoverageLedgerV1.ContractName, ungated.Contract);
+        Assert.Null(Assert.Single(Assert.Single(ungated.Epochs).Deliveries).Gated);
+
+        foreach (GateOmission reason in new[] { GateOmission.NotCounted, GateOmission.NotCounted, GateOmission.NoFollowedResource })
+        {
+            tally.Delivered(in delivered);
+            tally.Gated(reason, in delivered);
+        }
+
+        CoverageLedgerV1 gated = CoverageLedgerV1.Decode(tally.ToLedger(losses).Encode());
+        Assert.Equal(CoverageLedgerV1.GatedContractName, gated.Contract);
+        CoverageDeliveryV1 delivery = Assert.Single(Assert.Single(gated.Epochs).Deliveries);
+        Assert.Equal((4L, 1L, 0L), (delivery.Delivered, delivery.Admitted, delivery.Omitted));
+        Assert.Equal(
+            [(GateOmission.NotCounted, 2L), (GateOmission.NoFollowedResource, 1L)],
+            delivery.Gated!.OrderBy(entry => entry.Key).Select(entry => (entry.Key, entry.Value)));
+    }
+
     /// <summary>A generation's observation and source-field rows, in journal order.</summary>
     private static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) RowsOf(SessionStore store, SessionManifestV1 manifest)
     {

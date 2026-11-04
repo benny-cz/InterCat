@@ -28,6 +28,10 @@ internal sealed class CountingSink : IAdmittedEventSink
     public void OnUndecodable(UndecodableReason reason, in DeliveredRecord delivered)
     {
     }
+
+    public void OnGated(GateOmission reason, in DeliveredRecord delivered)
+    {
+    }
 }
 
 /// <summary>
@@ -60,6 +64,8 @@ internal sealed class ReplaySink(int recordBudget) : IAdmittedEventSink
     public void OnOmitted(OmissionReason reason, in DeliveredRecord delivered) => ledger.RecordOmission(reason);
 
     public void OnUndecodable(UndecodableReason reason, in DeliveredRecord delivered) => ledger.RecordUndecodable(reason);
+
+    public void OnGated(GateOmission reason, in DeliveredRecord delivered) => ledger.RecordGated(reason);
 
     public void OnCallbackCompleted(in CallbackCost cost) => stages.RecordCallback(in cost);
 

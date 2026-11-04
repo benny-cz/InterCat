@@ -32,7 +32,7 @@ public enum AfdGateOutcome
 }
 
 /// <summary>A socket the gate follows: its number in the capture, never its address, and the process its create named.</summary>
-public sealed record UnixSocketIncarnation(long Number, int Owner);
+public readonly record struct UnixSocketIncarnation(long Number, int Owner);
 
 /// <summary>
 /// Admits Winsock AFD's records of the AF_UNIX sockets a capture saw created, one record a call (ADR-073). AFD delivers every
@@ -89,6 +89,9 @@ public sealed class UnixSocketGate
     /// <summary>How many sockets the gate follows now.</summary>
     public int Following => followed.Count;
 
+    /// <summary>How many closed sockets the gate remembers now: never more than <see cref="ClosedRemembered"/>.</summary>
+    public int Remembered => closed.Count;
+
     /// <summary>
     /// Whether <paramref name="record"/> counts its socket's life or one of its calls: a create's entry, a close's exit -
     /// a socket's last call, after its cleanup - the exit of a bind, a listen, a connect or an accept, a send's own exit,
@@ -131,10 +134,10 @@ public sealed class UnixSocketGate
             return (AfdGateOutcome.Admitted, made);
         }
 
-        if (!followed.TryGetValue(record.Endpoint, out UnixSocketIncarnation? socket))
+        if (!followed.TryGetValue(record.Endpoint, out UnixSocketIncarnation socket))
         {
             // The transport can indicate a disconnect after the close: such a record is its socket's, and counts nothing.
-            return closed.TryGetValue(record.Endpoint, out UnixSocketIncarnation? ended)
+            return closed.TryGetValue(record.Endpoint, out UnixSocketIncarnation ended)
                 ? (AfdGateOutcome.NotCounted, ended)
                 : (AfdGateOutcome.NoUnixSocket, null);
         }
@@ -161,7 +164,7 @@ public sealed class UnixSocketGate
             while (closing.Count > ClosedRemembered)
             {
                 (ulong endpoint, long number) = closing.Dequeue();
-                if (closed.TryGetValue(endpoint, out UnixSocketIncarnation? remembered) && remembered.Number == number)
+                if (closed.TryGetValue(endpoint, out UnixSocketIncarnation remembered) && remembered.Number == number)
                 {
                     closed.Remove(endpoint);
                 }

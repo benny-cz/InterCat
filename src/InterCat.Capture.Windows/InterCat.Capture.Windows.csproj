@@ -8,6 +8,9 @@
     <EmbeddedResource Include="Inventory/measured-coverage.json" LogicalName="InterCat.Capture.Windows.measured-coverage.json" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="InterCat.Capture.Windows.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
   </ItemGroup>

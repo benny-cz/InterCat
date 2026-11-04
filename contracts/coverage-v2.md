@@ -9,6 +9,10 @@ Revision 275 made this `coverage-v2`: a live epoch may state the readings it rec
 every reading between them. A `coverage-v1` file, which every earlier generation publishes, is read as a `coverage-v2`
 file whose epochs state none, and nothing else about it changed.
 
+Revision 898 added `coverage-v3` (`contracts/coverage-v3.md`, ADR-074), which a capture that admitted through a gate
+writes: this contract, with a delivery's counts of the records its source's gate did not admit. Every other capture
+still writes `coverage-v2`, and nothing here changed.
+
 This contract is §7.1's `CoverageInterval` and the "capture configuration epochs and health/loss ledger" of §10: what
 a capture's sources could observe, over which readings, and what they are known to have lost. R21 is why it exists.
 Coverage is stated independently from data, so an absence of records is never an observed zero. A session without

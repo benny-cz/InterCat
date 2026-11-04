@@ -239,6 +239,32 @@ public static class WindowsSourceCatalog
         new("Status", FieldRole.Status, Notes: "Call status. The descriptor carries no size, so no byte value exists to report (R3)."),
     ];
 
+    // Every Winsock AFD call record's fields the AF_UNIX gate reads and writes (ADR-073, ADR-074). The gate writes into
+    // Process and Endpoint its own values, so no record keeps the kernel addresses the source raised.
+    private static readonly IReadOnlyList<AdmittedFieldIntent> AfdCallFields =
+    [
+        new("EnterExit", FieldRole.Unclassified, Notes: "The call's phase: 0 on its entry, 1 on its exit. The gate counts each call at one."),
+        new("Location", FieldRole.Unclassified, Notes: "Where in the provider the record was raised; the gate counts a send at one of its two exits by it."),
+        new("Process", FieldRole.ProcessAttribution, Notes: "Written by the gate: the process the socket's create named, never the source's kernel address."),
+        new("Endpoint", FieldRole.CorrelationKey, Notes: "Written by the gate: the socket's number in the capture, never its reused kernel address (R22).", SourceField: SourceField.ConnectionId),
+        new("Status", FieldRole.Status, Notes: "The call's status at its phase."),
+    ];
+
+    private static readonly IReadOnlyList<AdmittedFieldIntent> AfdCreateFields =
+    [
+        .. AfdCallFields,
+        new("AddressFamily", FieldRole.Unclassified, Notes: "The socket's family: the gate follows a socket created AF_UNIX, 1."),
+        new("SocketType", FieldRole.Unclassified, Notes: "The socket's type, 1 for a stream."),
+        new("ProcessId", FieldRole.Unclassified, Notes: "The process the socket was made for, which owns it whichever thread raises a record of it."),
+    ];
+
+    private static readonly IReadOnlyList<AdmittedFieldIntent> AfdTransferFields =
+    [
+        .. AfdCallFields,
+        new("BufferLength", FieldRole.ByteCount, MeasurementUnit.Bytes, Domain.ByteDomain.CompletedIo,
+            Notes: "At the exit the gate admits, the bytes the call moved: a send's, and a receive's taken - its entry's is asked for - equal to the truth's on FX-UNIX-001."),
+    ];
+
     private static readonly IReadOnlyList<AdmittedFieldIntent> ProcessStartFields =
     [
         new("ProcessID", FieldRole.ProcessAttribution),
@@ -802,6 +828,22 @@ public static class WindowsSourceCatalog
             ContractStatus = SourceContractStatus.Experimental,
             Overhead = OverheadClass.Moderate,
             OverheadEvidence = "bench/results/afd-impact-unix-20261104T063455Z/impact.json",
+
+            // The calls the AF_UNIX gate counts: no buffer address and no socket address is admitted, the path being
+            // cut to 14 characters (ADR-072, ADR-073).
+            AdmittedEvents =
+            [
+                new(1000, 0, "Socket created", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Open, Direction.DirectionNotApplicable, AfdCreateFields),
+                new(1001, 0, "Socket closed", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Close, Direction.DirectionNotApplicable, AfdCallFields),
+                new(1003, 0, "Socket send", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, AfdTransferFields),
+                new(1004, 0, "Socket receive", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, AfdTransferFields),
+                new(1017, 0, "Socket connected", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Connect, Direction.Outbound, AfdCallFields),
+                new(1020, 0, "Socket connected (ConnectEx)", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Connect, Direction.Outbound, AfdCallFields),
+                new(1023, 0, "Connection accepted", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Accept, Direction.Inbound, AfdCallFields),
+                new(1027, 0, "Connection accepted (AcceptEx)", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Accept, Direction.Inbound, AfdCallFields),
+                new(1029, 0, "Socket bound", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Bind, Direction.DirectionNotApplicable, AfdCallFields),
+                new(1030, 0, "Socket bound to an address", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Bind, Direction.DirectionNotApplicable, AfdCallFields),
+            ],
             Notes =
             [
                 "Collection alone, nine pairs each over AF_UNIX and TCP traffic at about 490,000 records a second machine-wide, "

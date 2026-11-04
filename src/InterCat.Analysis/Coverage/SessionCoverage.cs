@@ -342,6 +342,14 @@ public static class SessionCoverage
             losses.Add(string.Create(CultureInfo.InvariantCulture, $"{undecodable:N0} of its records could not be decoded"));
         }
 
+        // A gate that followed as many resources as it may followed no more: their records are a gap, never a loss the
+        // source reported (ADR-074). The records it omitted otherwise are of nothing it follows, or count nothing.
+        long beyondBound = deliveries.Sum(delivery => delivery.Gated?.GetValueOrDefault(GateOmission.BeyondBound) ?? 0);
+        if (beyondBound > 0)
+        {
+            losses.Add($"its gate, following as many resources as it may, did not follow {Count(beyondBound, "more resource")} or admit their records");
+        }
+
         if (losses.Count > 0)
         {
             return new(mechanism, CoverageState.PartialGap, string.Join("; ", losses));
@@ -352,7 +360,10 @@ public static class SessionCoverage
             CoverageState.Covered,
             delivered == 0
                 ? $"its {admitted} delivered nothing while the session recorded them, and nothing was reported lost"
-                : $"{Count(delivered, "record")} from its {admitted}, and nothing was reported lost");
+                : deliveries.Any(delivery => delivery.Gated is not null)
+                    ? $"{Count(delivered, "record")} from its {admitted}, of which its gate admitted "
+                        + $"{Count(deliveries.Sum(delivery => delivery.Admitted), "record")}, and nothing was reported lost"
+                    : $"{Count(delivered, "record")} from its {admitted}, and nothing was reported lost");
     }
 
     /// <summary>Whether the epochs' readings hold the whole interval; with no interval, the epochs are the scope.</summary>

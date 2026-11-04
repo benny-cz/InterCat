@@ -15,6 +15,9 @@ internal sealed class TraceEventRecordAdmitter
     private readonly EventAdmissionTable table;
     private readonly IAdmittedEventSink sink;
     private readonly HashSet<DeniedKey> denied;
+
+    // Each source's gate, by its index in the table; most have none (ADR-074).
+    private readonly IRecordGate?[] gates;
     private readonly TraceEventRecordAccessor? recordAccessor;
     private long ordinal;
 
@@ -31,6 +34,7 @@ internal sealed class TraceEventRecordAdmitter
 
         this.table = table;
         this.sink = sink;
+        gates = RecordGates.For(table);
         this.recordAccessor = preserveExtendedData ? recordAccessor ?? TraceEventRecordAccessor.Shared : null;
         denied = [];
         foreach (ProviderEnablementRequest request in providers)
@@ -213,6 +217,18 @@ internal sealed class TraceEventRecordAdmitter
                     ReportRejectedCallback(callbackStarted);
                     return;
             }
+        }
+
+        // A gated source's gate reads the record as it arrives, its slots read: it admits it, its gated slots rewritten,
+        // or omits it with the reason, which is no loss (ADR-074).
+        if ((uint)descriptorPlan.SourceIndex < (uint)gates.Length
+            && gates[descriptorPlan.SourceIndex] is { } gate
+            && gate.Read(ref admitted, descriptorPlan) is { } omission)
+        {
+            Release(ref admitted);
+            sink.OnGated(omission, in delivered);
+            ReportRejectedCallback(callbackStarted);
+            return;
         }
 
         CopyExtendedData(data, ref admitted);
