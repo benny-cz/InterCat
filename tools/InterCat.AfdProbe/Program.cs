@@ -135,6 +135,31 @@ internal static class Program
             return 0;
         }
 
+        // What the Unix sockets profile costs through the product: icat record itself, beside Explore and no capture.
+        if (args.Contains("--product-impact", StringComparer.Ordinal))
+        {
+            int rounds = int.Parse(Option(args, "--rounds") ?? "9", CultureInfo.InvariantCulture);
+            string icat = Option(args, "--icat") ?? Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "InterCat.Cli", "bin", "Release", "net10.0", "InterCat.Cli.exe"));
+            string scratch = Path.Combine(output, "scratch");
+            Directory.CreateDirectory(scratch);
+            Dictionary<string, object?> impact = await ProductImpact.MeasureAsync(workload, icat, messages, rounds, scratch);
+            Directory.Delete(scratch, recursive: true);
+            var document = new Dictionary<string, object?>
+            {
+                ["schema"] = "intercat.unix-sockets-product-impact.v1",
+                ["measuredUtc"] = DateTimeOffset.UtcNow,
+            };
+            foreach ((string key, object? value) in impact)
+            {
+                document[key] = value;
+            }
+
+            await File.WriteAllTextAsync(Path.Combine(output, "product-impact.json"), JsonSerializer.Serialize(document, Json));
+            Console.WriteLine(JsonSerializer.Serialize(document, Json));
+            return 0;
+        }
+
         string truth = Path.Combine(output, "truth");
         string decoyTruth = Path.Combine(output, "decoy-truth");
         string socket = Path.Combine(truth, "fx.sock");

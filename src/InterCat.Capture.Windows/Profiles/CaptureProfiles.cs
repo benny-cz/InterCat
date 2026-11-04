@@ -143,6 +143,13 @@ public static class CaptureProfileCatalog
                 + "AF_UNIX: the process that created it, its number in the capture, and each send's and receive's length. It "
                 + "keeps no socket's path or peer, which the source does not name whole, retains no payload bytes and "
                 + "requests no call stacks.",
+            Overhead = OverheadClass.Moderate,
+            OverheadStatement =
+                "its sources measured Moderate at most (Winsock AFD's collection alone 1.6 CPU pp). Through the product, on "
+                + "FX-UNIX-001's exchange of eight connections at once unpaced, it added a median 1.5 pp to no capture, Explore "
+                + "0.8, and its own process used 3.9 pp where Explore's used 0.8, the workload 4.9% slower and nothing lost, "
+                + "while this workstation was 14.5% busy without any capture: the whole profile keeps its sources' class.",
+            OverheadEvidence = "bench/results/unix-sockets-impact-20261104T110457Z/product-impact.json",
         },
         Unavailable(
             CaptureProfileKind.Timing,

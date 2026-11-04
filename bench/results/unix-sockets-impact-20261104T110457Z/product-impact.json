@@ -1,0 +1,379 @@
+{
+  "schema": "intercat.unix-sockets-product-impact.v1",
+  "measuredUtc": "2026-11-04T11:10:18.6493631+00:00",
+  "quietMachineBusyPercent": 14.544,
+  "workload": {
+    "verb": "unix-loopback",
+    "connections": 8,
+    "concurrency": 8,
+    "messagesPerConnection": 2048,
+    "delayMilliseconds": 0
+  },
+  "trials": [
+    {
+      "round": 1,
+      "kind": "none",
+      "busyPercent": 39.745,
+      "workloadSeconds": 1.543,
+      "capture": null
+    },
+    {
+      "round": 1,
+      "kind": "unix-sockets",
+      "busyPercent": 35.903,
+      "workloadSeconds": 1.639,
+      "capture": {
+        "observedPerSecond": 16374,
+        "admittedPerSecond": 5838,
+        "unixAdmittedPerSecond": 5798,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 4.092
+      }
+    },
+    {
+      "round": 1,
+      "kind": "explore",
+      "busyPercent": 48.048,
+      "workloadSeconds": 1.732,
+      "capture": {
+        "observedPerSecond": 330,
+        "admittedPerSecond": 330,
+        "unixAdmittedPerSecond": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.677
+      }
+    },
+    {
+      "round": 2,
+      "kind": "unix-sockets",
+      "busyPercent": 30.17,
+      "workloadSeconds": 1.686,
+      "capture": {
+        "observedPerSecond": 16251,
+        "admittedPerSecond": 5792,
+        "unixAdmittedPerSecond": 5760,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 4.21
+      }
+    },
+    {
+      "round": 2,
+      "kind": "explore",
+      "busyPercent": 26.643,
+      "workloadSeconds": 1.638,
+      "capture": {
+        "observedPerSecond": 380,
+        "admittedPerSecond": 380,
+        "unixAdmittedPerSecond": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.835
+      }
+    },
+    {
+      "round": 2,
+      "kind": "none",
+      "busyPercent": 30.56,
+      "workloadSeconds": 1.651,
+      "capture": null
+    },
+    {
+      "round": 3,
+      "kind": "explore",
+      "busyPercent": 39.545,
+      "workloadSeconds": 1.72,
+      "capture": {
+        "observedPerSecond": 371,
+        "admittedPerSecond": 371,
+        "unixAdmittedPerSecond": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.681
+      }
+    },
+    {
+      "round": 3,
+      "kind": "none",
+      "busyPercent": 24.259,
+      "workloadSeconds": 1.548,
+      "capture": null
+    },
+    {
+      "round": 3,
+      "kind": "unix-sockets",
+      "busyPercent": 33.445,
+      "workloadSeconds": 1.758,
+      "capture": {
+        "observedPerSecond": 16239,
+        "admittedPerSecond": 5787,
+        "unixAdmittedPerSecond": 5755,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 3.704
+      }
+    },
+    {
+      "round": 4,
+      "kind": "none",
+      "busyPercent": 32.354,
+      "workloadSeconds": 1.634,
+      "capture": null
+    },
+    {
+      "round": 4,
+      "kind": "unix-sockets",
+      "busyPercent": 33.864,
+      "workloadSeconds": 1.714,
+      "capture": {
+        "observedPerSecond": 16243,
+        "admittedPerSecond": 5798,
+        "unixAdmittedPerSecond": 5767,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 4.215
+      }
+    },
+    {
+      "round": 4,
+      "kind": "explore",
+      "busyPercent": 33.129,
+      "workloadSeconds": 1.598,
+      "capture": {
+        "observedPerSecond": 536,
+        "admittedPerSecond": 536,
+        "unixAdmittedPerSecond": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.774
+      }
+    },
+    {
+      "round": 5,
+      "kind": "unix-sockets",
+      "busyPercent": 25.968,
+      "workloadSeconds": 1.549,
+      "capture": {
+        "observedPerSecond": 16219,
+        "admittedPerSecond": 5785,
+        "unixAdmittedPerSecond": 5753,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 3.993
+      }
+    },
+    {
+      "round": 5,
+      "kind": "explore",
+      "busyPercent": 31.082,
+      "workloadSeconds": 1.615,
+      "capture": {
+        "observedPerSecond": 605,
+        "admittedPerSecond": 605,
+        "unixAdmittedPerSecond": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.766
+      }
+    },
+    {
+      "round": 5,
+      "kind": "none",
+      "busyPercent": 22.354,
+      "workloadSeconds": 1.589,
+      "capture": null
+    },
+    {
+      "round": 6,
+      "kind": "explore",
+      "busyPercent": 26.6,
+      "workloadSeconds": 1.489,
+      "capture": {
+        "observedPerSecond": 309,
+        "admittedPerSecond": 309,
+        "unixAdmittedPerSecond": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.743
+      }
+    },
+    {
+      "round": 6,
+      "kind": "none",
+      "busyPercent": 49.836,
+      "workloadSeconds": 1.593,
+      "capture": null
+    },
+    {
+      "round": 6,
+      "kind": "unix-sockets",
+      "busyPercent": 25.245,
+      "workloadSeconds": 1.601,
+      "capture": {
+        "observedPerSecond": 16354,
+        "admittedPerSecond": 5806,
+        "unixAdmittedPerSecond": 5774,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 3.741
+      }
+    },
+    {
+      "round": 7,
+      "kind": "none",
+      "busyPercent": 23.848,
+      "workloadSeconds": 1.457,
+      "capture": null
+    },
+    {
+      "round": 7,
+      "kind": "unix-sockets",
+      "busyPercent": 29.095,
+      "workloadSeconds": 1.568,
+      "capture": {
+        "observedPerSecond": 16289,
+        "admittedPerSecond": 5801,
+        "unixAdmittedPerSecond": 5769,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 3.861
+      }
+    },
+    {
+      "round": 7,
+      "kind": "explore",
+      "busyPercent": 21.993,
+      "workloadSeconds": 1.45,
+      "capture": {
+        "observedPerSecond": 526,
+        "admittedPerSecond": 526,
+        "unixAdmittedPerSecond": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.853
+      }
+    },
+    {
+      "round": 8,
+      "kind": "unix-sockets",
+      "busyPercent": 28.283,
+      "workloadSeconds": 1.552,
+      "capture": {
+        "observedPerSecond": 16351,
+        "admittedPerSecond": 5830,
+        "unixAdmittedPerSecond": 5798,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 3.816
+      }
+    },
+    {
+      "round": 8,
+      "kind": "explore",
+      "busyPercent": 21.432,
+      "workloadSeconds": 1.481,
+      "capture": {
+        "observedPerSecond": 642,
+        "admittedPerSecond": 642,
+        "unixAdmittedPerSecond": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.923
+      }
+    },
+    {
+      "round": 8,
+      "kind": "none",
+      "busyPercent": 33.965,
+      "workloadSeconds": 1.548,
+      "capture": null
+    },
+    {
+      "round": 9,
+      "kind": "explore",
+      "busyPercent": 30.198,
+      "workloadSeconds": 1.584,
+      "capture": {
+        "observedPerSecond": 584,
+        "admittedPerSecond": 584,
+        "unixAdmittedPerSecond": 0,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 0.699
+      }
+    },
+    {
+      "round": 9,
+      "kind": "none",
+      "busyPercent": 21.986,
+      "workloadSeconds": 1.45,
+      "capture": null
+    },
+    {
+      "round": 9,
+      "kind": "unix-sockets",
+      "busyPercent": 23.876,
+      "workloadSeconds": 1.545,
+      "capture": {
+        "observedPerSecond": 16262,
+        "admittedPerSecond": 5805,
+        "unixAdmittedPerSecond": 5773,
+        "lost": 0,
+        "captureProcessCpuPercentagePoints": 3.793
+      }
+    }
+  ],
+  "profiles": {
+    "unix-sockets": {
+      "against": "none",
+      "busyDifferencesPercentagePoints": [
+        -3.843,
+        -0.39,
+        9.186,
+        1.51,
+        3.614,
+        -24.591,
+        5.248,
+        -5.682,
+        1.889
+      ],
+      "medianCpuPercentagePoints": 1.51,
+      "overhead": "Moderate",
+      "medianObservedPerSecond": 16262,
+      "medianAdmittedPerSecond": 5801,
+      "medianUnixAdmittedPerSecond": 5769,
+      "lossFree": true,
+      "medianCaptureProcessCpuPercentagePoints": 3.861,
+      "medianWorkloadSecondsSlowdownPercent": 4.9
+    },
+    "explore": {
+      "against": "none",
+      "busyDifferencesPercentagePoints": [
+        8.303,
+        -3.917,
+        15.286,
+        0.775,
+        8.728,
+        -23.236,
+        -1.855,
+        -12.533,
+        8.212
+      ],
+      "medianCpuPercentagePoints": 0.775,
+      "overhead": "Low",
+      "medianObservedPerSecond": 526,
+      "medianAdmittedPerSecond": 526,
+      "medianUnixAdmittedPerSecond": 0,
+      "lossFree": true,
+      "medianCaptureProcessCpuPercentagePoints": 0.766,
+      "medianWorkloadSecondsSlowdownPercent": -0.48
+    }
+  },
+  "unixSocketsOverExplore": {
+    "against": "explore",
+    "busyDifferencesPercentagePoints": [
+      -12.145,
+      3.527,
+      -6.101,
+      0.735,
+      -5.114,
+      -1.355,
+      7.103,
+      6.851,
+      -6.322
+    ],
+    "medianCpuPercentagePoints": -1.355
+  },
+  "notes": [
+    "Machine CPU is the GetSystemTimes busy share over the workload alone. A capture\u0027s start (profile compilation, session enablement) and its stop, last publication and checkpoint are outside it; its live publications every 5 s are inside it.",
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once its counters are read.",
+    "A profile\u0027s cost is the median over rounds of its busy share minus the same round\u0027s no-capture share; signed differences are kept, and only the class clamps a negative median at zero.",
+    "unixSocketsOverExplore is the same median between the two captures: what the opt-in adds to Explore on this workload.",
+    "captureProcessCpuPercentagePoints is the icat record process\u0027s own processor time over the same window, as a share of the whole machine. It excludes the kernel\u0027s work of raising events in other processes\u0027 threads, so it is a lower bound on the capture\u0027s cost."
+  ]
+}

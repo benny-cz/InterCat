@@ -329,7 +329,7 @@ public sealed class CaptureProfileCompilerTests
         Assert.Contains("Explore", profile.OverheadStatement, StringComparison.Ordinal);
     }
 
-    [Fact(DisplayName = "§9.4: Unix sockets admits Winsock AFD beside lifecycle, both required, its cost its sources', and AFD is never Explore's")]
+    [Fact(DisplayName = "§9.4: Unix sockets admits Winsock AFD beside lifecycle, both required, its cost measured through the product, and AFD is never Explore's")]
     public void UnixSocketsAdmitsAfdBesideLifecycle()
     {
         SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
@@ -346,11 +346,13 @@ public sealed class CaptureProfileCompilerTests
         Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.WinsockAfdSourceId
             && decision is { State: ProfileSourceDecisionState.Included, Required: true, Overhead: OverheadClass.Moderate });
 
-        // Nothing measured the profile whole, so its cost is its sources', each stated with its own; AFD collects every
-        // socket call of the machine, which the profile says, and so Explore never admits it.
+        // The profile states its own cost, measured through the product beside Explore's, Moderate as its source's; AFD
+        // collects every socket call of the machine, which the profile says, and so Explore never admits it.
         CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("unix-sockets")!;
-        Assert.Equal((CaptureProfileKind.UnixSockets, OverheadClass.Unmeasured, AdmissionMode.MetadataOnly),
+        Assert.Equal((CaptureProfileKind.UnixSockets, OverheadClass.Moderate, AdmissionMode.MetadataOnly),
             (profile.Kind, profile.Overhead, profile.Admission));
+        Assert.Contains("Through the product", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.Contains("Explore", profile.OverheadStatement, StringComparison.Ordinal);
         Assert.Contains("every socket call of the machine", profile.Summary, StringComparison.Ordinal);
         Assert.DoesNotContain(CaptureProfileCatalog.Find("explore")!.Sources,
             source => source.SourceId == WindowsSourceCatalog.WinsockAfdSourceId);

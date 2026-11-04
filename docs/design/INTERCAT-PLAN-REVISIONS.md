@@ -825,6 +825,7 @@ Revision 898 admits Winsock AFD through its gate (ADR-074): a source may have a 
 Revision 899 adds an opt-in Unix sockets profile (ADR-074's addendum): lifecycle and Winsock AFD, enabled for its socket-call keyword and each counted call by its event id, whose admitted calls derive Unix-domain socket rows of their socket's owner.
 Revision 900 measures AF_UNIX through the product (ADR-075): every truth send and receive of FX-UNIX-001 recorded by `icat record --profile unix-sockets` is a row of its owner with its bytes, 1,920 of 1,920, and with no peer named, a false-peer ceiling with nothing attributed is not measured, so the mechanism is ExperimentalEvidence.
 Revision 901 reads a Unix-domain socket's transfer bytes as the transport's (ADR-076): what its call moved through AFD is what the AF_UNIX transport carried, counted by no other source, so a process's traffic views count it beside TCP's and UDP's, with its other end unresolved.
+Revision 902 measures the Unix sockets profile's cost through the product: on FX-UNIX-001's exchange it added a median 1.5 CPU pp over no capture and its own process used 3.9 pp, nothing lost, so it states Moderate, its source's class.
 
 ## Revisions, a paragraph each, in order
 
@@ -3480,3 +3481,12 @@ process's sent and received, rankings, activity and timeline, never a relation: 
 `NoRelationRule`. `icat processes --pid` states a process's Unix-domain socket records and that their other end is
 unresolved. A fresh recording was checked through the process, metric, port, host and timeline commands; four mutations
 are caught.
+
+Revision 902 measures what the Unix sockets profile costs through the product, as RPC peers' was.
+`InterCat.AfdProbe --product-impact` ran FX-UNIX-001's exchange of eight connections at once, unpaced, in nine rounds:
+with no capture, under `icat record --profile unix-sockets`, and under Explore, in an order rotating each round. The
+profile added a median 1.5 CPU pp over no capture, where Explore added 0.8. Its own process used 3.9 pp against
+Explore's 0.8, the workload was 4.9% slower, and nothing was lost. On a machine 14.5% busy without any capture, single
+rounds ranged widely, but the process's own share is a lower bound no background load moves, and it too is above Low.
+The profile states Moderate, its source's class, with its evidence, and `icat profiles unix-sockets` says it. Three
+mutations are caught.

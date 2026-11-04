@@ -82,3 +82,18 @@ not start, rather than record lifecycle alone. `icat record --profile unix-socke
 
 A fixture measured through the product is still the next step: FX-UNIX-001 recorded by `icat record --profile
 unix-sockets`, which could give the mechanism a tier.
+
+## Addendum: what the Unix sockets profile costs (revision 902)
+
+The profile's cost was measured through the product, as RPC peers' was (ADR-035's fifth decision), in
+`bench/results/unix-sockets-impact-20261104T110457Z/product-impact.json`. `InterCat.AfdProbe --product-impact` ran
+FX-UNIX-001's exchange - eight connections at once, unpaced, 2,048 messages each - in nine rounds: with no capture,
+under `icat record --profile unix-sockets`, and under `icat record --profile explore`, in an order rotating each round.
+
+- The profile added a median 1.5 CPU percentage points over no capture, where Explore added 0.8. Its own process used
+  3.9 points, against Explore's 0.8. The workload was 4.9% slower, and nothing was lost.
+- The machine was 14.5% busy with no capture, so a single round's difference ranged from 25 points below to 9 above.
+  The capture process's own share is a lower bound that background load cannot move, and it too is above the Low
+  ceiling of 1 point.
+- The profile states Moderate, its source's class, with this evidence, so `icat profiles unix-sockets` states its
+  measured cost.

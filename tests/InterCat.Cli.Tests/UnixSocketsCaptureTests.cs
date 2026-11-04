@@ -77,6 +77,15 @@ public sealed class UnixSocketsCaptureTests
         }
     }
 
+    [Fact(DisplayName = "R18: icat profiles unix-sockets states the cost measured through the product and the evidence it rests on")]
+    public async Task ItsPreviewStatesItsMeasuredCost()
+    {
+        (InterCatExitCode code, string preview) = await Run("profiles", "unix-sockets");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"Measured cost\s+moderate: its sources measured Moderate at most", preview);
+        Assert.Matches(@"(?m)^  Cost evidence +bench/results/unix-sockets-impact-\d{8}T\d{6}Z/product-impact\.json\r?$", preview);
+    }
+
     private static ContentRequestOptions Options(string[] words) => ContentRequestOptions.Take(new CommandLine(words));
 
     private static async Task<(InterCatExitCode Code, string Output)> Run(params string[] args)
