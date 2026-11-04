@@ -427,7 +427,8 @@
         "P7: FX-COM-001's every COM-Perf call names the other workload process at both ends, its threads pairing nothing, and its activations name nothing to count as a call",
         "R21: a session's process filter holds for COM-Perf - FX-COM-001's filtered pair has its every call recorded at both ends, and a decoy pair making as many calls beside it, and every other process, none: outside the filter is not collected, never quiet",
         "P4: FX-COM-001's every COM call is carried by one RPC call at each end - at the client the RPC call of its activity on its thread, at the server the one around it on its thread - on its interface and method, so a COM call beside RPC is one call, never two",
-        "P7: FX-COM-001's every client COM call has its activity carried by one server COM call naming the client, on its interface and method inside the client's call, which links the RPC call that carried it to the RPC call that served it"
+        "P7: FX-COM-001's every client COM call has its activity carried by one server COM call naming the client, on its interface and method inside the client's call, which links the RPC call that carried it to the RPC call that served it",
+        "P7: FX-COM-001's layering run, its ledger made a session, has every call's two ends linked under com-call-link-v1 as measured, and every client RPC call carrying a COM call related to the RPC call that served it"
       ]
     },
     {
@@ -2212,6 +2213,7 @@
       "P4": [
         "P4: FX-COM-001's every COM call is carried by one RPC call at each end - at the client the RPC call of its activity on its thread, at the server the one around it on its thread - on its interface and method, so a COM call beside RPC is one call, never two",
         "P4: FX-RPC-002's calls over TCP are counted once - 256 client calls paired by activity id, the endpoint mapper's 512 records pairing with nothing, and every byte the 8 connections' beneath them",
+        "P4: a COM call is carried by one RPC call - at the client the one of its activity, at the server the one around it on its thread - and one naming another procedure, none or two carry nothing, each with its reason",
         "P4: started, completed and failed calls are counted from the calls, never from the records beneath them",
         "P4: what no derived operation can answer is unavailable with its reason, never a zero"
       ],
@@ -2233,7 +2235,10 @@
       "P7": [
         "P7: FX-COM-001's every COM-Perf call names the other workload process at both ends, its threads pairing nothing, and its activations name nothing to count as a call",
         "P7: FX-COM-001's every client COM call has its activity carried by one server COM call naming the client, on its interface and method inside the client's call, which links the RPC call that carried it to the RPC call that served it",
+        "P7: FX-COM-001's layering run, its ledger made a session, has every call's two ends linked under com-call-link-v1 as measured, and every client RPC call carrying a COM call related to the RPC call that served it",
         "P7: FX-COM-002's calls across an apartment are recorded as an out-of-process call is, each naming its own process at both ends, so a call is between processes only where the process it names is another",
+        "P7: a COM call's ends are never linked by an activity alone - a server in the client's own process, two server calls of one activity, ends that do not name each other, or a served call outside the client's link nothing, each with its reason",
+        "P7: a client COM call is linked to the one server COM call carrying its activity, each naming the other's process and the served one inside it, and so its RPC call to the RPC call that served it",
         "P7: a client call and a server call are never paired, even when they carry one activity id",
         "P7: a peer is claimed only when the two sides share an activity, and is checked against truth",
         "P7: a pipe peer pairing is checked against the truth log rather than assumed",
@@ -2243,6 +2248,7 @@
       "P8": [
         "P8: FX-COM-001's COM-Perf records pair as measured - each truth call one invoke at the client and one at the server, of its causality and rank, the server's inside the client's call, each start joined to its stop by its trace number",
         "P8: FX-RPC-001's calls pair as measured - 62 client calls by activity id, 61 served ones",
+        "P8: a COM call's records pair by process, side and trace number - a stop without its start, a start without its stop, a record without a number and a number used again before its stop pair nothing",
         "P8: a channel's calls page in reading order, and each call's key finds it again",
         "P8: a completion is paired by I/O request identity, not by time proximity",
         "P8: a completion is paired by activity id, and an unpaired call keeps its status unknown",

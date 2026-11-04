@@ -214,9 +214,20 @@ internal static class TestSessions
     /// <summary>
     /// A COM call record raised in <paramref name="raisedBy"/>, as COM-Perf raises one: a client call's start and stop in
     /// the calling process, a served call's in the serving one, with the descriptor of each (39 and 40 at the client, 43
-    /// and 44 at the server). Its payload names no owner, so only its header says whose it is (ADR-077's fifth addendum).
+    /// and 44 at the server). Its payload names no owner, so only its header says whose it is (ADR-077's fifth addendum). A
+    /// start carries the interface and a stop its HRESULT; its thread is <paramref name="raisedBy"/> + 1 unless named, as an
+    /// RPC call record's is.
     /// </summary>
-    public static ObservationRowV1 ComCall(long ticks, ObservationKind kind, Direction direction, int raisedBy, ulong ordinal) => new()
+    public static ObservationRowV1 ComCall(
+        long ticks,
+        ObservationKind kind,
+        Direction direction,
+        int raisedBy,
+        ulong ordinal,
+        Guid? activity = null,
+        Guid? interfaceUuid = null,
+        long? hresult = null,
+        int? thread = null) => new()
     {
         RawStreamId = 1,
         RawSourceEpoch = 1,
@@ -229,14 +240,17 @@ internal static class TestSessions
         Opcode = kind == ObservationKind.RequestStart ? (byte)1 : (byte)2,
         NativeTicks = ticks,
         HeaderProcessId = raisedBy,
-        HeaderThreadId = raisedBy + 1,
+        HeaderThreadId = thread ?? raisedBy + 1,
         ProcessorNumber = 0,
         Mechanism = Mechanism.ComCall,
         Layer = ObservationLayer.Application,
         Kind = kind,
         Direction = direction,
+        ActivityId = activity,
+        SourceIdentifier = kind == ObservationKind.RequestStart ? interfaceUuid : null,
         ByteAvailability = FieldAvailability.NotApplicable,
-        StatusAvailability = FieldAvailability.NotApplicable,
+        StatusCode = kind == ObservationKind.RequestEnd ? hresult : null,
+        StatusAvailability = kind == ObservationKind.RequestEnd && hresult is not null ? FieldAvailability.Present : FieldAvailability.NotApplicable,
         AttributionQuality = QualityLevel.UnknownQuality,
         CorrelationQuality = QualityLevel.UnknownQuality,
         MeasurementQuality = QualityLevel.UnknownQuality,

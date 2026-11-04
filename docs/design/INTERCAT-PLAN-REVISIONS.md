@@ -839,6 +839,7 @@ Revision 912 inventories COM-Perf as COM calls' lead (ADR-077's third addendum):
 Revision 913 measures what carries a COM call and decides it (ADR-079): with RPC collected beside COM-Perf, every COM call of FX-COM-001's four runs was carried by one RPC call at each end, so the RPC call stays the operation and COM-Perf's records annotate it, never a second call; the server's COM call carries the client's activity id, which links a call's two ends and so the RPC calls carrying them, replacing causality and rank as the link.
 Revision 914 binds a COM call's records to the process that raised them, as `process-binding-v5` (ADR-077's fifth addendum): COM-Perf's records name no owner, FX-COM-001 measured each raised in the process it describes, and a checkpoint of an earlier rule is read as version 5's wherever every record named its owner.
 Revision 915 admits COM-Perf's four synchronous call events (ADR-079's addendum): a call's trace number, the process at its other end as `PeerProcessId`, never its owner, its method and interface, and its HRESULT, with three new source fields and nothing of its threads, causality or pointers; no profile requests it yet.
+Revision 916 implements ADR-079's carriers and links as `com-call-link-v1` (`contracts/com-calls-v1.md`): a generation's COM calls are paired by process, side and trace number, each joined to the RPC call carrying it and each client call linked to the server call carrying its activity, which relates the RPC calls they ride; over FX-COM-001's ledger it derives every call as measured.
 
 ## Revisions, a paragraph each, in order
 
@@ -3652,3 +3653,16 @@ are not admitted, nor the asynchronous calls, which no fixture made. An admitted
 names no owner, so the process that raised it owns it under `process-binding-v5`. No profile requests COM-Perf yet.
 Tests compile the four events to their slots and normalize a client's start and stop; a new test holds the plan's
 EN-SourceField list to the domain's enumeration (R5); eleven mutations are caught.
+
+Revision 916 implements ADR-079's second and third decisions as `com-call-link-v1`, in a new contract,
+`contracts/com-calls-v1.md`, and `ComCallIndex`. A generation's COM call records pair by process, side and trace
+number, as an RPC call's do by activity id, a stop without its start, a start without its stop, a record without a
+number and a number used again before its stop pairing nothing. Each call is joined to its carrier - at the client the
+one RPC client call of its activity, at the server the one RPC server call around it on its thread - on its interface
+with its method as the procedure, and each client call is linked to the one server call carrying its activity, a
+server in the client's own process never linked; every other shape is stated with its reason. A linked call carried
+at both ends relates the client's RPC call to the RPC call that served it, and a server RPC call two relations reach is
+related to neither. FX-COM-001's layering ledger, made a session of the rows the capture admits, derives what was
+measured: 195 calls at each end, all carried and linked, and 195 client RPC calls related to the calls that served
+them, none twice. No reader uses the links yet. Tests derive the rule over synthetic calls and the ledger; eleven
+mutations are caught.

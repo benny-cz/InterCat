@@ -1,6 +1,7 @@
 # ADR-079: A COM call is the RPC call that carries it, and the client's activity links its two ends
 
-- Status: accepted for M6's COM/DCOM/WinRT work package; no rule implements it yet, and no profile admits COM-Perf; since
+- Status: accepted for M6's COM/DCOM/WinRT work package; since revision 916 `com-call-link-v1` implements its second and
+  third decisions (`contracts/com-calls-v1.md`), though no reader uses it yet and no profile admits COM-Perf; since
   revision 914 a COM call's records bind to the process that raised them (ADR-077's fifth addendum), and since revision
   915 COM-Perf's call events are admitted, the process at a call's other end a source field of its own (its addendum)
 - Date: 2026-11-04
@@ -130,3 +131,24 @@ owner, so the process that raised it owns it (`process-binding-v5`), and its act
 No profile requests COM-Perf yet: what remains is a relation rule implementing the third decision and an opt-in profile
 collecting RPC beside it. Tests compile the four events to their slots and normalize a client's start and stop, and
 the plan's EN-SourceField list is now held to the domain's enumeration (R5); eleven mutations are caught.
+
+## Addendum: `com-call-link-v1` (revision 916)
+
+The fifth decision's relation rule has its first half. `com-call-link-v1` (`contracts/com-calls-v1.md`, `ComCallIndex`)
+reads a generation's COM call records and the RPC calls paired from the same segments:
+
+- **It pairs** a COM call's start with its stop by process, side and trace number, as an RPC call's are by activity id: a
+  stop without its start, a start without its stop, a record without a number and a number used again before its stop
+  pair nothing, each stated.
+- **It carries** each call as the second decision measured: at the client the one RPC client call of its activity, at the
+  server the one RPC server call around it on its thread, either on its interface with its method as the procedure.
+- **It links** each client call to the one server call carrying its activity, as the third decision does. A server in
+  the client's own process is never linked, and every other shape is stated with its reason. A linked call carried at
+  both ends relates the client's RPC call to the RPC call that served it; a server RPC call two relations reach is
+  related to neither.
+
+FX-COM-001's layering ledger, made a session of RPC and COM call rows as the capture admits them, derives under it what
+was measured: 195 calls at each end, every one completed, carried and linked, and 195 client RPC calls related to the
+RPC calls that served them, none reached twice. No reader uses the links yet: the RPC peer rule is to resolve a COM
+call's RPC call by them, and an opt-in profile is to collect COM-Perf beside RPC. Tests derive the rule over synthetic
+calls and over the ledger; eleven mutations are caught.

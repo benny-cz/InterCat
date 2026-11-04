@@ -4,7 +4,7 @@ using InterCat.Storage;
 namespace InterCat.Analysis;
 
 /// <summary>
-/// The owner column of one segment read under `process-binding-v3` (`contracts/entities-v1.md` §2): the owner a record's
+/// The owner column of one segment read under `process-binding-v5` (`contracts/entities-v1.md` §2a): the owner a record's
 /// payload names, or, for a mechanism whose records are raised in the process they describe, the process that raised it
 /// (<see cref="RecordAttribution"/>). The header column is read only in a segment where such a record names no owner, so
 /// a segment of transfers, which always name theirs, reads no more than it did.
