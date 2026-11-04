@@ -14,7 +14,7 @@ says so, and never borrows another build's tier (P27).
 | Rpc | ExperimentalEvidence | FX-RPC-002 | 2026-11-04 | Primary |
 | Tcp | TrafficVisualization | FX-TCP-002 | 2026-09-27 | Primary |
 | Udp | TrafficVisualization | FX-UDP-002 | 2026-09-27 | Primary |
-| UnixDomainSocket | ExperimentalEvidence | FX-UNIX-001 | 2026-11-04 | Primary |
+| UnixDomainSocket | ExperimentalEvidence | FX-UNIX-002 | 2026-11-04 | Primary |
 
 ## 10.0.26220.9223-x64
 

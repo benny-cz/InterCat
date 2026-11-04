@@ -127,6 +127,107 @@ public sealed class UnixSocketCoverageEvaluatorTests
         Assert.Equal((2L, 0L), (result.Measurement.TruthResources, result.Measurement.DiscoveredResourcesWithLifetime));
     }
 
+    [Fact(DisplayName = "R22: when a process's connections never overlap, a connection is its own socket only if all its operations landed on one socket no other connection's did")]
+    public void SequentialConnectionsAreTheirOwnSockets()
+    {
+        TruthRecord[] truth =
+        [
+            Truth("client", Client, 1, TruthEventKind.ConnectionEstablished, 0, callId: 0),
+            Truth("client", Client, 2, TruthEventKind.MessageSent, 5, callId: 0, bytes: 10),
+            Truth("client", Client, 3, TruthEventKind.ConnectionClosed, 9, callId: 0),
+            Truth("client", Client, 4, TruthEventKind.ConnectionEstablished, 20, callId: 1),
+            Truth("client", Client, 5, TruthEventKind.MessageSent, 25, callId: 1, bytes: 10),
+            Truth("client", Client, 6, TruthEventKind.ConnectionClosed, 29, callId: 1),
+            Truth("client", Client, 7, TruthEventKind.ConnectionEstablished, 40, callId: 2),
+            Truth("client", Client, 8, TruthEventKind.MessageSent, 45, callId: 2, bytes: 10),
+            Truth("client", Client, 9, TruthEventKind.ConnectionClosed, 49, callId: 2),
+            Truth("client", Client, 10, TruthEventKind.ConnectionEstablished, 60, callId: 3),
+            Truth("client", Client, 11, TruthEventKind.MessageSent, 62, callId: 3, bytes: 10),
+            Truth("client", Client, 12, TruthEventKind.MessageSent, 65, callId: 3, bytes: 10),
+            Truth("client", Client, 13, TruthEventKind.ConnectionClosed, 69, callId: 3),
+        ];
+
+        // The first two connections each their own socket; the third's row names the first's socket again, and the
+        // fourth's two rows name two sockets of no other connection.
+        UnixSocketObservation[] rows =
+        [
+            Row(1, 5, Client, ObservationKind.Send, socket: 1, bytes: 10),
+            Row(2, 25, Client, ObservationKind.Send, socket: 2, bytes: 10),
+            Row(3, 45, Client, ObservationKind.Send, socket: 1, bytes: 10),
+            Row(4, 62, Client, ObservationKind.Send, socket: 3, bytes: 10),
+            Row(5, 65, Client, ObservationKind.Send, socket: 4, bytes: 10),
+        ];
+        UnixSocketProcessCoverage process = Assert.Single(UnixSocketCoverageEvaluator.Evaluate(truth, rows, Settings()).Processes);
+        Assert.Equal((4, 4, 1), (process.TruthConnections, process.SocketsWithMatchedTransfers, process.ConnectionsOnTheirOwnSocket));
+
+        // Connections overlapping in time do not name an operation's connection, so the count is not known, never a guess.
+        TruthRecord[] overlapping =
+        [
+            Truth("client", Client, 1, TruthEventKind.ConnectionEstablished, 0, callId: 0),
+            Truth("client", Client, 2, TruthEventKind.ConnectionEstablished, 10, callId: 1),
+            Truth("client", Client, 3, TruthEventKind.MessageSent, 15, callId: 0, bytes: 10),
+            Truth("client", Client, 4, TruthEventKind.ConnectionClosed, 30, callId: 0),
+            Truth("client", Client, 5, TruthEventKind.ConnectionClosed, 40, callId: 1),
+        ];
+        Assert.Null(Assert.Single(UnixSocketCoverageEvaluator.Evaluate(overlapping, rows, Settings()).Processes).ConnectionsOnTheirOwnSocket);
+    }
+
+    [Fact(DisplayName = "R22: a kind's operations are paired with its rows by rank only when every pair's bytes agree; otherwise each is its nearest row on the truth's time moved by the ranked pairs' median offset")]
+    public void RanksPairOnlyWhereTheBytesAgree()
+    {
+        // Two sends the truth logged a fraction of a millisecond apart, and two rows: by rank the first would be the earlier
+        // row, whose bytes are the second's, so each is matched to its nearest row instead.
+        TruthRecord[] truth =
+        [
+            Truth("client", Client, 1, TruthEventKind.MessageSent, 10, callId: 0, bytes: 100),
+            Truth("client", Client, 2, TruthEventKind.MessageSent, 11, callId: 1, bytes: 200),
+        ];
+        UnixSocketObservation[] rows =
+        [
+            Row(1, 0, Client, ObservationKind.Send, socket: 1, bytes: 200),
+            Row(2, 10, Client, ObservationKind.Send, socket: 1, bytes: 100),
+        ];
+        UnixSocketCoverageResult result = UnixSocketCoverageEvaluator.Evaluate(truth, rows, Settings());
+        Assert.Equal([(100L, 100L, false), (200L, 200L, false)],
+            result.Operations.Select(operation => (operation.TruthCompletedBytes!.Value, operation.ObservedBytes!.Value, operation.PairedByRank)));
+        Assert.Equal(0, result.OperationsPairedByRank);
+
+        // In the same order with the same bytes they are paired by rank, whichever row is nearer.
+        UnixSocketObservation[] ordered =
+        [
+            Row(1, 11, Client, ObservationKind.Send, socket: 1, bytes: 100),
+            Row(2, 12, Client, ObservationKind.Send, socket: 1, bytes: 200),
+        ];
+        UnixSocketCoverageResult ranked = UnixSocketCoverageEvaluator.Evaluate(truth, ordered, Settings());
+        Assert.Equal([(100L, 100L, true), (200L, 200L, true)],
+            ranked.Operations.Select(operation => (operation.TruthCompletedBytes!.Value, operation.ObservedBytes!.Value, operation.PairedByRank)));
+        Assert.Equal((2, TimeSpan.FromMilliseconds(1)), (ranked.OperationsPairedByRank, ranked.ClockOffset));
+
+        // A capture's clock reading 290, 300 and 400 ms ahead at three sends paired by rank reads 300 ms ahead, their median.
+        // A receive read in two calls is not paired by rank: it is its nearest row on its time moved by that offset, never
+        // the row nearest its own time, which on the capture's clock came long before it.
+        TruthRecord[] offset =
+        [
+            Truth("client", Client, 1, TruthEventKind.MessageSent, 10, callId: 0, bytes: 100),
+            Truth("client", Client, 2, TruthEventKind.MessageSent, 11, callId: 0, bytes: 200),
+            Truth("client", Client, 3, TruthEventKind.MessageSent, 12, callId: 0, bytes: 300),
+            Truth("client", Client, 4, TruthEventKind.MessageReceived, 50, callId: 0, bytes: 8),
+        ];
+        UnixSocketObservation[] ahead =
+        [
+            Row(1, 60, Client, ObservationKind.Receive, socket: 2, bytes: 3),
+            Row(2, 300, Client, ObservationKind.Send, socket: 1, bytes: 100),
+            Row(3, 311, Client, ObservationKind.Send, socket: 1, bytes: 200),
+            Row(4, 350, Client, ObservationKind.Receive, socket: 1, bytes: 8),
+            Row(5, 412, Client, ObservationKind.Send, socket: 1, bytes: 300),
+        ];
+        UnixSocketCoverageResult moved = UnixSocketCoverageEvaluator.Evaluate(offset, ahead, Settings());
+        Assert.Equal((3, TimeSpan.FromMilliseconds(300)), (moved.OperationsPairedByRank, moved.ClockOffset));
+        UnixSocketOperationCoverage receive = Assert.Single(moved.Operations, operation => operation.ExpectedKind == ObservationKind.Receive);
+        Assert.Equal((1L, 8L, false), (receive.Socket!.Value, receive.ObservedBytes!.Value, receive.PairedByRank));
+        Assert.Equal(1, moved.TransfersBeyondTruth);
+    }
+
     [Fact(DisplayName = "P27: FX-UNIX-001's rows through the product reproduce its measured tier - every truth send and receive its owner's row, bound to its socket with its bytes, and no peer named")]
     public void CommittedEvidenceReproducesItsTier()
     {
@@ -161,6 +262,44 @@ public sealed class UnixSocketCoverageEvaluatorTests
             measured.TruthOperationsBoundToResourceInstance, measured.ByteMeasuredOperations, measured.TruthResources, measured.DiscoveredResourcesWithLifetime));
         Assert.Equal((result.TruthBytesSent, result.TruthBytesReceived), (result.ObservedBytesSent, result.ObservedBytesReceived));
         Assert.Equal((0L, 0L, CapabilityTier.ExperimentalEvidence), (measured.PeerAttributions, measured.ResolvedMemberships, result.Assessment.Tier));
+    }
+
+    [Fact(DisplayName = "R22: FX-UNIX-002's rows through the product keep each of sixty-four connections made one at a time on its own socket at both ends, while the kernel reused their addresses")]
+    public void ChurnedConnectionsAreTheirOwnSockets()
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-UNIX-002", "evidence");
+        TruthRecord[] truth = [.. ReadTruth(Path.Combine(evidence, "truth-server.jsonl")), .. ReadTruth(Path.Combine(evidence, "truth-client.jsonl"))];
+        Dictionary<string, int> processes = truth.GroupBy(record => record.Role).ToDictionary(group => group.Key, group => group.First().ProcessId);
+        UnixSocketObservation[] rows = [.. ReadLedger(Path.Combine(evidence, "rows.csv"), processes)];
+        UnixSocketCoverageResult result = UnixSocketCoverageEvaluator.Evaluate(truth, rows, Settings() with { FixtureId = "FX-UNIX-002" });
+
+        using System.Text.Json.JsonDocument measurement = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "measurement.json")));
+        System.Text.Json.JsonElement stated = measurement.RootElement.GetProperty("throughTheProduct").GetProperty("runs").EnumerateArray()
+            .Single(run => run.GetProperty("run").GetString() == "churn-1").GetProperty("evaluation");
+        MechanismMeasurement measured = result.Measurement;
+        Assert.Equal(
+            (stated.GetProperty("truthOperations").GetInt64(), stated.GetProperty("observed").GetInt64(), stated.GetProperty("withBytes").GetInt64(),
+                stated.GetProperty("truthConnections").GetInt64(), stated.GetProperty("socketsCreatedAndClosed").GetInt64(), stated.GetProperty("transfersBeyondTruth").GetInt32()),
+            (measured.TruthOperations, measured.TruthOperationsWithAdmittedObservation, measured.ByteMeasuredOperations,
+                measured.TruthResources, measured.DiscoveredResourcesWithLifetime, result.TransfersBeyondTruth));
+        Assert.Equal(Enum.Parse<CapabilityTier>(stated.GetProperty("tier").GetString()!), result.Assessment.Tier);
+
+        // Every operation its owner's row, and each connection at each end a socket of its own, created and closed, none of
+        // its operations on another connection's socket.
+        Assert.Equal((512L, 512L, 128L, 128L), (measured.TruthOperations, measured.TruthOperationsWithAdmittedObservation,
+            measured.TruthResources, measured.DiscoveredResourcesWithLifetime));
+        Assert.Equal([("client", 64, 64, 64), ("server", 64, 64, 64)],
+            result.Processes.Select(process => (process.Role, process.TruthConnections, process.SocketsCreatedAndClosed, process.ConnectionsOnTheirOwnSocket!.Value)));
+        Assert.Equal([64, 64], result.Processes.Select(process =>
+            stated.GetProperty("connectionsOnTheirOwnSocket").GetProperty(process.Role).GetInt32()));
+
+        // While the kernel created most of the churn's sockets at an address an earlier socket held, which the lab probe
+        // counted: the product names a socket by its number alone.
+        System.Text.Json.JsonElement reuse = measurement.RootElement.GetProperty("addressReuse");
+        int sockets = reuse.GetProperty("socketsWithACreate").GetInt32();
+        int reused = reuse.GetProperty("socketsCreatedAtAnAddressAnEarlierSocketHad").GetInt32();
+        Assert.True(reused > sockets / 2 && reused < sockets, $"{reused} of {sockets} sockets were created at a reused address.");
+        Assert.True(File.Exists(Path.Combine(RepositoryRoot(), reuse.GetProperty("bench").GetString()!, "report.json")));
     }
 
     private static IEnumerable<TruthRecord> ReadTruth(string path)

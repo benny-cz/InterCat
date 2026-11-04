@@ -10,7 +10,18 @@ namespace InterCat.TestWorkloads;
 /// <summary>Parameters of one seeded AF_UNIX run. The same seed and counts reproduce the same declared sizes (I14).</summary>
 internal sealed record UnixLoopbackOptions
 {
-    public const string ScenarioId = "FX-UNIX-001";
+    public const string ExchangeScenarioId = "FX-UNIX-001";
+
+    public const string ChurnScenarioId = "FX-UNIX-002";
+
+    /// <summary>
+    /// Whether the run is FX-UNIX-002's churn: many short connections one at a time, whose sockets the kernel creates at
+    /// addresses earlier ones held; otherwise FX-UNIX-001's exchange.
+    /// </summary>
+    public bool Churn { get; init; }
+
+    /// <summary>The fixture this run is: FX-UNIX-001's exchange, or FX-UNIX-002's churn.</summary>
+    public string ScenarioId => Churn ? ChurnScenarioId : ExchangeScenarioId;
 
     /// <summary>The longest path a Windows <c>sockaddr_un</c> holds, its terminator included.</summary>
     public const int MaximumPathLength = 108;
@@ -82,7 +93,7 @@ internal static class UnixLoopbackScenario
 
         var summary = new
         {
-            scenarioId = UnixLoopbackOptions.ScenarioId,
+            scenarioId = options.ScenarioId,
             options.Seed,
             options.Connections,
             options.MessagesPerConnection,
@@ -109,7 +120,7 @@ internal static class UnixLoopbackScenario
         Directory.CreateDirectory(options.TruthDirectory);
         await using var truth = new TruthLog(
             Path.Combine(options.TruthDirectory, "truth-server.jsonl"),
-            UnixLoopbackOptions.ScenarioId,
+            options.ScenarioId,
             "server");
         truth.Write(TruthEventKind.ProcessStarted);
         await WaitForStartAsync(options, cancellationToken).ConfigureAwait(false);
@@ -222,7 +233,7 @@ internal static class UnixLoopbackScenario
         Directory.CreateDirectory(options.TruthDirectory);
         await using var truth = new TruthLog(
             Path.Combine(options.TruthDirectory, "truth-client.jsonl"),
-            UnixLoopbackOptions.ScenarioId,
+            options.ScenarioId,
             "client");
         truth.Write(TruthEventKind.ProcessStarted);
         await WaitForStartAsync(options, cancellationToken).ConfigureAwait(false);
@@ -324,6 +335,11 @@ internal static class UnixLoopbackScenario
         start.ArgumentList.Add(options.ResolvedSocketPath);
         start.ArgumentList.Add("--read-buffer");
         start.ArgumentList.Add(options.ReadBufferBytes.ToString(CultureInfo.InvariantCulture));
+        if (options.Churn)
+        {
+            start.ArgumentList.Add("--churn");
+        }
+
         return Process.Start(start)
             ?? throw new InvalidOperationException($"The {verb} process could not be started.");
     }

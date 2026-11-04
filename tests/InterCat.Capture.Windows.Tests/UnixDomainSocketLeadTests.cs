@@ -14,7 +14,7 @@ namespace InterCat.Capture.Windows.Tests;
 /// </summary>
 public sealed class UnixDomainSocketLeadTests
 {
-    [Fact(DisplayName = "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and the tier FX-UNIX-001 measured through the product")]
+    [Fact(DisplayName = "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and the tier its latest fixture measured through the product")]
     public void UnixDomainSocketsHaveALeadAndNoTier()
     {
         WindowsSourceDefinition afd = WindowsSourceCatalog.Find(WindowsSourceCatalog.WinsockAfdSourceId)!;
@@ -50,10 +50,10 @@ public sealed class UnixDomainSocketLeadTests
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != WindowsSourceCatalog.WinsockAfdSourceId),
             source => Assert.DoesNotContain(Mechanism.UnixDomainSocket, source.Mechanisms));
 
-        // The build carries the tier FX-UNIX-001 measured through the product, experimental evidence: AF_UNIX names no
-        // peer, so none is attributed (ADR-075); no other build carries one.
+        // The build carries the tier its fixtures measured through the product, experimental evidence, the latest of them
+        // FX-UNIX-002's: AF_UNIX names no peer, so none is attributed (ADR-075); no other build carries one.
         MeasuredCoverageEntry measured = Assert.Single(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.UnixDomainSocket);
-        Assert.Equal(("10.0.26220.0-x64", CapabilityTier.ExperimentalEvidence, "FX-UNIX-001"), (measured.Build, measured.Tier, measured.Fixture));
+        Assert.Equal(("10.0.26220.0-x64", CapabilityTier.ExperimentalEvidence, "FX-UNIX-002"), (measured.Build, measured.Tier, measured.Fixture));
     }
 
     [Fact(DisplayName = "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends")]

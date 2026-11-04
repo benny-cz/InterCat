@@ -32,8 +32,10 @@ internal static class SessionLedger
         // The evaluation's words are the invariant culture's, as a fixture's committed measurement states them.
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         Dictionary<int, string> roles;
+        string fixture;
         using (JsonDocument scenario = JsonDocument.Parse(File.ReadAllText(Path.Combine(truth, "scenario.json"))))
         {
+            fixture = scenario.RootElement.GetProperty("scenarioId").GetString()!;
             roles = new()
             {
                 [scenario.RootElement.GetProperty("serverProcessId").GetInt32()] = "server",
@@ -126,7 +128,7 @@ internal static class SessionLedger
         Dictionary<string, int> processes = records.GroupBy(record => record.Role).ToDictionary(group => group.Key, group => group.First().ProcessId);
         UnixSocketCoverageResult result = UnixSocketCoverageEvaluator.Evaluate(records, Read(output, processes), new()
         {
-            FixtureId = "FX-UNIX-001",
+            FixtureId = fixture,
             BuildId = "10.0.26220.0-x64",
             BuildIsSupported = true,
             Reproduced = true,
@@ -144,6 +146,8 @@ internal static class SessionLedger
             result.TransfersBeyondTruth,
             result.ObservationsOutsideScope,
             Unmatched = result.Operations.Count(operation => operation.Gap is not null),
+            result.OperationsPairedByRank,
+            ClockOffsetMilliseconds = result.ClockOffset.TotalMilliseconds,
         }, json));
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"{result.Measurement.TruthOperationsWithAdmittedObservation} of {result.Measurement.TruthOperations} truth operations observed, "

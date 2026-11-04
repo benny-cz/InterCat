@@ -826,6 +826,7 @@ Revision 899 adds an opt-in Unix sockets profile (ADR-074's addendum): lifecycle
 Revision 900 measures AF_UNIX through the product (ADR-075): every truth send and receive of FX-UNIX-001 recorded by `icat record --profile unix-sockets` is a row of its owner with its bytes, 1,920 of 1,920, and with no peer named, a false-peer ceiling with nothing attributed is not measured, so the mechanism is ExperimentalEvidence.
 Revision 901 reads a Unix-domain socket's transfer bytes as the transport's (ADR-076): what its call moved through AFD is what the AF_UNIX transport carried, counted by no other source, so a process's traffic views count it beside TCP's and UDP's, with its other end unresolved.
 Revision 902 measures the Unix sockets profile's cost through the product: on FX-UNIX-001's exchange it added a median 1.5 CPU pp over no capture and its own process used 3.9 pp, nothing lost, so it states Moderate, its source's class.
+Revision 903 adds FX-UNIX-002 (ADR-075's addendum): 64 AF_UNIX connections made one at a time, most of whose sockets the kernel created at an address an earlier one held, are each a socket of its own at both ends through the product, their operations paired with their rows by rank where every pair's bytes agree and placed in their connections by the truth's sequence.
 
 ## Revisions, a paragraph each, in order
 
@@ -3490,3 +3491,15 @@ Explore's 0.8, the workload was 4.9% slower, and nothing was lost. On a machine 
 rounds ranged widely, but the process's own share is a lower bound no background load moves, and it too is above Low.
 The profile states Moderate, its source's class, with its evidence, and `icat profiles unix-sockets` says it. Three
 mutations are caught.
+
+Revision 903 gives AF_UNIX the second instance and lifetime fixture M6's exit asks for, FX-UNIX-002.
+`InterCat.TestWorkloads unix-loopback --churn` runs FX-UNIX-001's exchange in 64 short connections made one at a time,
+two messages each, unpaced, and the lab probe found 234 of the 277 sockets it saw created at an address an earlier
+socket held. The truth's wall clock read up to 65 µs out of its own sequence, with connections a millisecond long, so
+the evaluator now pairs a kind's operations with its rows by rank where they are as many and every pair's bytes agree.
+It matches the rest by nearness on the truth's time moved by the ranked pairs' median distance, and places each
+operation in its connection by the truth's sequence when a process's connections never overlap. Three runs through
+`icat record --profile unix-sockets`, machine-wide and loss-free, had every truth send and receive a row of its owner
+with its bytes, 512 of 512 a run, 384 of them paired by rank, and each of the 64 connections at each end a socket of
+its own, created and closed. The tier stays ExperimentalEvidence, the build's coverage names FX-UNIX-002, and
+FX-UNIX-001's runs keep their counters. Nine mutations are caught.

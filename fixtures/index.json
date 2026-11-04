@@ -288,9 +288,53 @@
       },
       "tests": [
         "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
-        "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and the tier FX-UNIX-001 measured through the product",
+        "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and the tier its latest fixture measured through the product",
         "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other",
         "P27: FX-UNIX-001's rows through the product reproduce its measured tier - every truth send and receive its owner's row, bound to its socket with its bytes, and no peer named"
+      ]
+    },
+    {
+      "id": "FX-UNIX-002",
+      "title": "AF_UNIX sockets churned: sixty-four short connections one at a time, each its own socket",
+      "scenario": "Plan M6's Unix-domain sockets work package (§4.2, ADR-073): FX-UNIX-001's two-process exchange in 64 short connections made one at a time, two messages each, unpaced, whose sockets the kernel creates at addresses earlier sockets held. Recorded through icat record under the Unix sockets profile; the lab probe counts the addresses reused, which the product keeps none of.",
+      "milestone": "M6",
+      "mechanism": "UnixDomainSocket",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads unix-loopback --churn --connections 64 --concurrency 1 --messages 2 --bytes 256 --delay 0, under icat record --profile unix-sockets",
+        "seed": 20261104,
+        "log": "fixtures/FX-UNIX-002/evidence/truth-client.jsonl",
+        "independence": "Each process logs every connection and every message it sent and read, by the socket's path and its length, through ordinary sockets; neither reads InterCat state, and the capture reads the provider's records apart from both."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-UNIX-002/evidence/measurement.json",
+        "note": "Three runs through icat record, machine-wide and nothing lost: every truth send and receive a row of its owner with its bytes, 512 of 512 a run, and each of the 64 connections at each end a socket of its own, created and closed, none of its operations on another connection's socket. The lab probe found 234 of 277 sockets created at an address an earlier socket held. The truth's wall clock read out of its own sequence by fractions of a millisecond, so its records are placed by sequence and paired with rows by rank where their bytes agree; the first run's ledger is evaluated by a test against its truth."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-04",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record under the opt-in Unix sockets profile, three times, machine-wide and nothing lost: every truth send and receive a row of its owner with its bytes, 512 of 512 a run, and each of the 64 connections at each end a socket of its own, created and closed, while the lab probe found 234 of 277 sockets created at an address an earlier one held. Tier ExperimentalEvidence: AF_UNIX names no peer (ADR-075)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two processes' truth logs and scenario of the first churn run - connections and messages by the socket's path in a local output folder and their lengths, of synthetic messages - the ledger of its Unix-domain socket rows, each row's ordinal, its time on the capture's calibrated wall clock, its owner's role, kind, its socket's number in the capture, bytes and status, never a PID, a path, an address or another process's row, and the measurement's counters."
+      },
+      "tests": [
+        "R22: FX-UNIX-002's rows through the product keep each of sixty-four connections made one at a time on its own socket at both ends, while the kernel reused their addresses"
       ]
     },
     {
@@ -2001,7 +2045,7 @@
       ],
       "P27": [
         "P27: FX-UNIX-001's rows through the product reproduce its measured tier - every truth send and receive its owner's row, bound to its socket with its bytes, and no peer named",
-        "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and the tier FX-UNIX-001 measured through the product",
+        "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and the tier its latest fixture measured through the product",
         "P27: a build outside the matrix is untested, never probably working",
         "P27: a build's coverage names a tier measured on it, and names another build's evidence as another's",
         "P27: a fixture's tiers are tiers, agree with what its results say, and belong to its mechanism",
@@ -2607,6 +2651,7 @@
         "R22: FX-HTTP-012's requests through a proxy that challenges, eight clients at once, are an exchange to each leg and each CONNECT, each part whole, and each challenge answered by the proxy's credentials",
         "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
         "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other",
+        "R22: FX-UNIX-002's rows through the product keep each of sixty-four connections made one at a time on its own socket at both ends, while the kernel reused their addresses",
         "R22: Winsock AFD's admitted calls compile from its registered layout to fixed slots, none an address the kernel reuses or a buffer's",
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
         "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused",
@@ -2627,6 +2672,7 @@
         "R22: a content plan is refused without each of its processes named by its start, and a plan keeping no content is refused one naming processes",
         "R22: a file an earlier version wrote keeps reading, with everything that version could hold",
         "R22: a kernel record whose payload names no owner binds to no instance, whatever its header says",
+        "R22: a kind's operations are paired with its rows by rank only when every pair's bytes agree; otherwise each is its nearest row on the truth's time moved by the ranked pairs' median offset",
         "R22: a known address translation lets mirrored endpoints meet through it, and the candidate rests on it",
         "R22: a live capture's host is its installation's, and a name alone never makes two machines one host",
         "R22: a member is aligned to the workspace's one time reference, and a file whose time contradicts itself is refused",
@@ -2730,6 +2776,7 @@
         "R22: two host identities are one host only by a person's confirmation, kept as revisions and withdrawn as one",
         "R22: two identities a person confirms are one host have their captures compared as one host's, and say why",
         "R22: what an evidence policy leaves unattributed is said as what it is, a reused PID's candidates or all but lifecycle records",
+        "R22: when a process's connections never overlap, a connection is its own socket only if all its operations landed on one socket no other connection's did",
         "R22: without a relation a participant is its own records, with every undecided record disclosed"
       ],
       "R3": [

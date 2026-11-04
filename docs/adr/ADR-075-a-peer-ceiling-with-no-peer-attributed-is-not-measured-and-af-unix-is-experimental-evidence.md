@@ -1,11 +1,11 @@
 # ADR-075: A peer ceiling with no peer attributed is not measured, and AF_UNIX is experimental evidence
 
-- Status: accepted; FX-UNIX-001 measured through the product, and Unix-domain sockets carry its tier on
-  `10.0.26220.0-x64`
+- Status: accepted; FX-UNIX-001 and FX-UNIX-002 measured through the product, and Unix-domain sockets carry their tier
+  on `10.0.26220.0-x64`
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
-- Relates to: ADR-072, ADR-073, ADR-074, §14.2, R3, P16, P27, FX-UNIX-001, `CoverageTierCalculator`,
-  `UnixSocketCoverageEvaluator`, `tools/InterCat.AfdProbe`
+- Relates to: ADR-072, ADR-073, ADR-074, §14.2, R3, R22, P16, P27, FX-UNIX-001, FX-UNIX-002,
+  `CoverageTierCalculator`, `UnixSocketCoverageEvaluator`, `tools/InterCat.AfdProbe`
 
 ## Context
 
@@ -54,3 +54,43 @@ peer ceiling. It had never mattered: every fixture at traffic visualization, TCP
   owner contradicts. It now names TCP and UDP. The views do not yet show a process's Unix-domain socket traffic beside its
   TCP and UDP traffic; that is the next step.
 - AF_UNIX reaches traffic visualization only through a source that names a socket's peer, which AFD does not.
+
+## Addendum: many short connections, one at a time (revision 903)
+
+FX-UNIX-001's connections were few, one at a time or eight at once. M6's exit asks for a second instance and lifetime
+fixture, and the kernel creates a socket at an address an earlier socket held (ADR-072), so FX-UNIX-002 churns them:
+`InterCat.TestWorkloads unix-loopback --churn` runs FX-UNIX-001's exchange in 64 connections made one at a time, two
+messages of up to 256 bytes each, unpaced. The lab probe, reading AFD in a session of its own, found 234 of the 277
+sockets it saw created at an address an earlier socket held, in
+`bench/results/afd-unix-feasibility-churn-20261104T114827Z/report.json`.
+
+Matched by nearness alone, the churn's connections were not each found on a socket of its own. The time the workload
+stamps on a truth record can read as much as 65 µs earlier than the record before it in its sequence, and a connection
+lasts about a millisecond, so nearness on that clock can take a row of the wrong operation. The second decision is
+amended:
+
+- **By rank, where a kind's operations and rows agree.** Where a process's truth operations of one kind are as many as
+  its rows of that kind, and, taken in order - the operations by their sequence, the rows by the capture's - every
+  pair's bytes agree and every pair lies inside the window, each operation is the row of its rank. The truth's clock
+  then decides nothing.
+- **Otherwise by nearness, on the truth's time moved.** Every other operation is matched to its owner's nearest
+  unmatched row of its kind inside the window, on its truth time moved by the median distance of the ranked pairs.
+- **Each operation in its connection by the truth's sequence.** When a process's connections never overlap in its own
+  sequence, an operation belongs to the connection between whose open and close it was recorded. A connection is a
+  socket of its own when every matched operation of it landed on one socket that no other connection's operation is
+  on. When connections overlap, as concurrent ones do, that count is not known, never a guess.
+
+Three runs on `10.0.26220.0-x64` under `icat record --profile unix-sockets` were machine-wide and loss-free: two
+unpaced, and one with 5 ms between messages.
+
+- Every truth send and receive was a row of its owner with its bytes, 512 of 512 a run, and each of the 64 connections
+  at each end was a socket of its own, created and closed.
+- Each run's sends at both ends and the client's receives were paired by rank, 384 of 512. The server reads each message
+  in two calls, so its receives were matched by nearness; the ranked pairs put the two clocks a few microseconds apart.
+- The tier stays ExperimentalEvidence, and the build's coverage names FX-UNIX-002, its latest fixture.
+- FX-UNIX-001's four runs, evaluated again, keep their counters. The connections of its runs one at a time are each a
+  socket of its own; those of its runs eight at once overlap, so they are not counted.
+
+The first run is committed under `fixtures/FX-UNIX-002/evidence/`: its truth logs and scenario, and the ledger
+`InterCat.AfdProbe --session` wrote, whose evaluation now names its fixture from the truth's scenario and states the
+operations paired by rank and the clocks' offset. A test reproduces the run's counters and tier from them.

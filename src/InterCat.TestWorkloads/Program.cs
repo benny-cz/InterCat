@@ -94,14 +94,17 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Port = Integer(args, "--port") ?? 0,
     };
 
+    // --churn runs FX-UNIX-002: sixty-four short connections one at a time, two small messages each, unpaced.
+    bool churn = args.Contains("--churn", StringComparer.Ordinal);
     var unixOptions = new UnixLoopbackOptions
     {
         TruthDirectory = truth,
+        Churn = churn,
         Seed = Integer(args, "--seed") ?? 20_261_104,
-        Connections = Integer(args, "--connections") ?? 2,
-        MessagesPerConnection = Integer(args, "--messages") ?? 8,
-        MaximumMessageBytes = Integer(args, "--bytes") ?? 4_096,
-        InterMessageDelayMilliseconds = Integer(args, "--delay") ?? 15,
+        Connections = Integer(args, "--connections") ?? (churn ? 64 : 2),
+        MessagesPerConnection = Integer(args, "--messages") ?? (churn ? 2 : 8),
+        MaximumMessageBytes = Integer(args, "--bytes") ?? (churn ? 256 : 4_096),
+        InterMessageDelayMilliseconds = Integer(args, "--delay") ?? (churn ? 0 : 15),
         Concurrency = Integer(args, "--concurrency") ?? 1,
         SocketPath = Option(args, "--socket"),
         ReadBufferBytes = Integer(args, "--read-buffer") ?? 0,
@@ -221,13 +224,15 @@ static void PrintHelp()
     Console.WriteLine("      IPv6 loopback (::1) as FX-UDP-002.");
     Console.WriteLine();
     Console.WriteLine("  unix-loopback --truth <dir> [--seed n] [--connections n] [--messages n] [--bytes n] [--delay ms]");
-    Console.WriteLine("                [--concurrency n] [--socket <path>] [--wait-for-start] [--read-buffer n]");
+    Console.WriteLine("                [--concurrency n] [--socket <path>] [--wait-for-start] [--read-buffer n] [--churn]");
     Console.WriteLine("      FX-UNIX-001: FX-TCP-001's two-process exchange over an AF_UNIX stream socket bound to a path -");
     Console.WriteLine("      by default fx.sock in the truth directory - each process logging every message by the path,");
     Console.WriteLine("      as a Unix-domain socket has no port. --wait-for-start has each process wait for a line on");
     Console.WriteLine("      standard input before it opens a socket, so a capture scoped to it is in place first.");
     Console.WriteLine("      --read-buffer has the server read each message in reads that ask for that many bytes, taking what");
-    Console.WriteLine("      has arrived, so a read asks for more than it receives.");
+    Console.WriteLine("      has arrived, so a read asks for more than it receives. --churn runs it as FX-UNIX-002: by default");
+    Console.WriteLine("      64 short connections one at a time, two messages of up to 256 bytes each, unpaced, whose sockets");
+    Console.WriteLine("      the kernel creates at addresses earlier ones held.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

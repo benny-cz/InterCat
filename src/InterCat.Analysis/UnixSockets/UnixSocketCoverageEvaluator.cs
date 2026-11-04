@@ -14,25 +14,33 @@ public sealed record UnixSocketCoverageSettings
     public bool Reproduced { get; init; }
 }
 
-/// <summary>One truth operation and what the capture showed for it.</summary>
+/// <summary>One truth operation and what the capture showed for it: matched by its rank, by nearness, or not at all.</summary>
 public sealed record UnixSocketOperationCoverage(
     string Role,
     int ProcessId,
+    long Sequence,
     long? CallId,
     ObservationKind ExpectedKind,
     long? TruthCompletedBytes,
     int MatchedObservations,
     long? Socket,
     long? ObservedBytes,
+    bool PairedByRank,
     string? Gap);
 
-/// <summary>What the capture followed of one truth process's sockets.</summary>
+/// <summary>
+/// What the capture followed of one truth process's sockets. When its connections never overlap in its own order, as a
+/// churn's do, each operation's connection is the one whose records hold it, and <see cref="ConnectionsOnTheirOwnSocket"/>
+/// counts the connections whose matched operations all landed on one socket no other connection's operation is on; null
+/// when they overlap, as concurrent connections do, and an operation's connection is not known from the truth (R22).
+/// </summary>
 public sealed record UnixSocketProcessCoverage(
     string Role,
     int ProcessId,
     int TruthConnections,
     int SocketsWithMatchedTransfers,
-    int SocketsCreatedAndClosed);
+    int SocketsCreatedAndClosed,
+    int? ConnectionsOnTheirOwnSocket);
 
 /// <summary>The evaluation result: the section 14.2 counters plus the evidence behind every one of them.</summary>
 public sealed record UnixSocketCoverageResult
@@ -61,15 +69,29 @@ public sealed record UnixSocketCoverageResult
     /// <summary>Rows of processes the truth does not name. A capture of the whole machine sees them; they are scope, not error.</summary>
     public required int ObservationsOutsideScope { get; init; }
 
+    /// <summary>The truth operations matched to the row of their owner and kind of the same rank, their bytes the row's.</summary>
+    public required int OperationsPairedByRank { get; init; }
+
+    /// <summary>
+    /// How far the capture's calibrated clock read ahead of the truth's: the median distance of the operations paired by
+    /// rank to their rows. The operations matched by nearness are matched on the truth's time moved by it; zero when none
+    /// paired by rank.
+    /// </summary>
+    public required TimeSpan ClockOffset { get; init; }
+
     public required IReadOnlyList<string> Notes { get; init; }
 }
 
 /// <summary>
 /// Compares an independent AF_UNIX truth log with the Unix-domain socket rows a capture admitted through Winsock AFD's
-/// gate (ADR-073, ADR-074) and computes the section 14.2 counters. A row is its socket's owner's and is matched by owner,
-/// kind and time, never by the thread that raised it. AF_UNIX names no peer, so the capture attributes none: no peer
-/// attribution is counted, and each socket's peer is a membership left unresolved. It is pure and portable: the same
-/// evaluation runs in a test on committed evidence (R19, R18).
+/// gate (ADR-073, ADR-074) and computes the section 14.2 counters. A row is its socket's owner's, never the thread's that
+/// raised it. Where a process's truth operations of one kind are as many as its rows of that kind, and the rows taken in
+/// order carry exactly the bytes the operations completed in the truth's order, each operation is the row of its rank: the
+/// truth's wall clock, which can read a fraction of a millisecond out of order (FX-UNIX-002), then decides nothing. Every
+/// other operation is matched to its owner's nearest row of its kind, on the truth's time moved by the offset the ranked
+/// pairs measured. AF_UNIX names no peer, so the capture attributes none: no peer attribution is counted, and each
+/// socket's peer is a membership left unresolved. It is pure and portable: the same evaluation runs in a test on committed
+/// evidence (R19, R18).
 /// </summary>
 public static class UnixSocketCoverageEvaluator
 {
@@ -104,22 +126,45 @@ public static class UnixSocketCoverageEvaluator
             }
         }
 
+        TruthRecord[] messages = [.. truth.Where(static record => record.Kind is TruthEventKind.MessageSent or TruthEventKind.MessageReceived)];
+
+        // Each process's operations of one kind against its rows of that kind, both in their own order: paired by rank
+        // when they are as many, every pair's bytes agree and every pair lies inside the window, which no clock reorders.
         long window = settings.MatchWindow.Ticks;
+        var paired = new Dictionary<TruthRecord, UnixSocketObservation>(ReferenceEqualityComparer.Instance);
         var matched = new HashSet<long>();
-        var operations = new List<UnixSocketOperationCoverage>();
-        long truthBytesSent = 0;
-        long truthBytesReceived = 0;
-        foreach (TruthRecord record in truth
-            .OrderBy(static record => record.RecordedUtc.UtcTicks)
-            .ThenBy(static record => record.ProcessId)
-            .ThenBy(static record => record.Sequence))
+        List<long> rankedDistances = [];
+        foreach (IGrouping<(int Process, ObservationKind Kind), TruthRecord> group in messages.GroupBy(record => (record.ProcessId, KindOf(record))))
         {
-            if (record.Kind is not (TruthEventKind.MessageSent or TruthEventKind.MessageReceived))
+            TruthRecord[] operations = [.. group.OrderBy(static record => record.Sequence)];
+            UnixSocketObservation[] rows = [.. inScope.Where(row => row.OwnerProcessId == group.Key.Process && row.Kind == group.Key.Kind)];
+            if (operations.Length != rows.Length
+                || operations.Where((operation, index) => operation.CompletedBytes is null || operation.CompletedBytes != rows[index].Bytes
+                    || Math.Abs(rows[index].TimestampUtcTicks - operation.RecordedUtc.UtcTicks) > window).Any())
             {
                 continue;
             }
 
-            ObservationKind expected = record.Kind == TruthEventKind.MessageSent ? ObservationKind.Send : ObservationKind.Receive;
+            for (int index = 0; index < operations.Length; index++)
+            {
+                paired[operations[index]] = rows[index];
+                matched.Add(rows[index].RecordOrdinal);
+                rankedDistances.Add(rows[index].TimestampUtcTicks - operations[index].RecordedUtc.UtcTicks);
+            }
+        }
+
+        rankedDistances.Sort();
+        long offset = rankedDistances.Count == 0 ? 0 : rankedDistances[rankedDistances.Count / 2];
+
+        var coverage = new List<UnixSocketOperationCoverage>();
+        long truthBytesSent = 0;
+        long truthBytesReceived = 0;
+        foreach (TruthRecord record in messages
+            .OrderBy(static record => record.RecordedUtc.UtcTicks)
+            .ThenBy(static record => record.ProcessId)
+            .ThenBy(static record => record.Sequence))
+        {
+            ObservationKind expected = KindOf(record);
             if (expected == ObservationKind.Send)
             {
                 truthBytesSent += record.CompletedBytes ?? 0;
@@ -129,42 +174,47 @@ public static class UnixSocketCoverageEvaluator
                 truthBytesReceived += record.CompletedBytes ?? 0;
             }
 
-            long at = record.RecordedUtc.UtcTicks;
-            UnixSocketObservation? nearest = null;
-            long nearestDistance = long.MaxValue;
-            foreach (UnixSocketObservation candidate in inScope)
+            bool byRank = paired.TryGetValue(record, out UnixSocketObservation? nearest);
+            if (!byRank)
             {
-                if (candidate.Kind != expected
-                    || candidate.OwnerProcessId != record.ProcessId
-                    || matched.Contains(candidate.RecordOrdinal))
+                long at = record.RecordedUtc.UtcTicks + offset;
+                long nearestDistance = long.MaxValue;
+                foreach (UnixSocketObservation candidate in inScope)
                 {
-                    continue;
+                    if (candidate.Kind != expected
+                        || candidate.OwnerProcessId != record.ProcessId
+                        || matched.Contains(candidate.RecordOrdinal))
+                    {
+                        continue;
+                    }
+
+                    long distance = Math.Abs(candidate.TimestampUtcTicks - at);
+                    if (distance > window || distance >= nearestDistance)
+                    {
+                        continue;
+                    }
+
+                    nearest = candidate;
+                    nearestDistance = distance;
                 }
 
-                long distance = Math.Abs(candidate.TimestampUtcTicks - at);
-                if (distance > window || distance >= nearestDistance)
+                if (nearest is not null)
                 {
-                    continue;
+                    matched.Add(nearest.RecordOrdinal);
                 }
-
-                nearest = candidate;
-                nearestDistance = distance;
             }
 
-            if (nearest is not null)
-            {
-                matched.Add(nearest.RecordOrdinal);
-            }
-
-            operations.Add(new(
+            coverage.Add(new(
                 record.Role,
                 record.ProcessId,
+                record.Sequence,
                 record.CallId,
                 expected,
                 record.CompletedBytes,
                 nearest is null ? 0 : 1,
                 nearest?.Socket,
                 nearest?.Bytes,
+                byRank,
                 nearest is null
                     ? "No admitted Unix-domain socket row of this kind and owner was found inside the match window."
                     : nearest.Bytes is null
@@ -208,30 +258,31 @@ public static class UnixSocketCoverageEvaluator
         {
             int connections = truth.Count(record => record.ProcessId == processId
                 && record.Kind is TruthEventKind.ConnectionEstablished or TruthEventKind.ConnectionAccepted);
-            HashSet<long> sockets = [.. operations
+            HashSet<long> sockets = [.. coverage
                 .Where(operation => operation.ProcessId == processId && operation.Socket is not null)
                 .Select(operation => operation.Socket!.Value)];
             int lived = sockets.Count(socket => created.Contains(socket) && closed.Contains(socket));
-            processes.Add(new(role, processId, connections, sockets.Count, lived));
+            processes.Add(new(role, processId, connections, sockets.Count, lived, OnTheirOwnSocket(truth, coverage, processId)));
             truthConnections += connections;
             discovered += Math.Min(lived, connections);
         }
 
-        long withObservation = operations.Count(static operation => operation.MatchedObservations > 0);
-        long bound = operations.Count(static operation => operation.Socket is > 0);
-        long byteMeasured = operations.Count(static operation => operation.ObservedBytes is not null);
+        long withObservation = coverage.Count(static operation => operation.MatchedObservations > 0);
+        long bound = coverage.Count(static operation => operation.Socket is > 0);
+        long byteMeasured = coverage.Count(static operation => operation.ObservedBytes is not null);
+        int byRankCount = coverage.Count(static operation => operation.PairedByRank);
         var measurement = new MechanismMeasurement
         {
             FixtureId = settings.FixtureId,
             BuildId = settings.BuildId,
             Reproduced = settings.Reproduced,
             MeasuredOnSupportedBuild = settings.BuildIsSupported,
-            TruthOperations = operations.Count,
+            TruthOperations = coverage.Count,
             TruthOperationsWithAdmittedObservation = withObservation,
             TruthOperationsBoundToResourceInstance = bound,
             PeerAttributions = 0,
             FalsePeerAttributions = 0,
-            ByteEligibleOperations = operations.Count,
+            ByteEligibleOperations = coverage.Count,
             ByteMeasuredOperations = byteMeasured,
             TruthResources = truthConnections,
             DiscoveredResourcesWithLifetime = discovered,
@@ -242,8 +293,11 @@ public static class UnixSocketCoverageEvaluator
 
         var notes = new List<string>
         {
-            $"Operations were matched inside a {settings.MatchWindow.TotalMilliseconds:N0} ms window on the same owner process "
-            + "and observation kind; a row's owner is the process its socket's create named.",
+            $"{byRankCount} of {coverage.Count} operations were the row of their owner and kind of the same rank, their bytes "
+            + "the row's; the rest were matched to their owner's nearest row of their kind inside a "
+            + $"{settings.MatchWindow.TotalMilliseconds:N0} ms window, a row's owner being the process its socket's create named.",
+            $"The capture's calibrated clock read {TimeSpan.FromTicks(offset).TotalMilliseconds:F3} ms ahead of the truth's, the "
+            + "median distance of the ranked pairs; the operations matched by nearness were matched on the truth's time moved by it.",
             "AF_UNIX names no peer, and the capture attributes none: no peer attribution is counted, and each socket's peer is "
             + "left unresolved.",
             "Byte totals are reported beside the truth's as evidence, every transfer row of the workload's processes counted, "
@@ -265,7 +319,7 @@ public static class UnixSocketCoverageEvaluator
         {
             Measurement = measurement,
             Assessment = CoverageTierCalculator.Assess(measurement),
-            Operations = operations,
+            Operations = coverage,
             Processes = processes,
             TruthBytesSent = truthBytesSent,
             TruthBytesReceived = truthBytesReceived,
@@ -273,7 +327,70 @@ public static class UnixSocketCoverageEvaluator
             ObservedBytesReceived = observedBytesReceived,
             TransfersBeyondTruth = beyondTruth,
             ObservationsOutsideScope = outsideScope,
+            OperationsPairedByRank = byRankCount,
+            ClockOffset = TimeSpan.FromTicks(offset),
             Notes = notes,
         };
+    }
+
+    private static ObservationKind KindOf(TruthRecord record) =>
+        record.Kind == TruthEventKind.MessageSent ? ObservationKind.Send : ObservationKind.Receive;
+
+    /// <summary>
+    /// How many of a process's connections are their own socket, when no two of them overlap in the process's own order of
+    /// records - its sequence, which no clock reorders: every matched operation between a connection's open and close on
+    /// one socket, which no other connection's operation is on. Null when a connection is not known whole or two overlap,
+    /// so an operation's connection is not known.
+    /// </summary>
+    private static int? OnTheirOwnSocket(IReadOnlyList<TruthRecord> truth, List<UnixSocketOperationCoverage> operations, int processId)
+    {
+        var spans = new List<(long Connection, long From, long To)>();
+        foreach (TruthRecord opened in truth.Where(record => record.ProcessId == processId
+            && record.Kind is TruthEventKind.ConnectionEstablished or TruthEventKind.ConnectionAccepted))
+        {
+            TruthRecord? ended = truth.FirstOrDefault(record => record.ProcessId == processId
+                && record.Kind == TruthEventKind.ConnectionClosed && record.CallId == opened.CallId
+                && record.Sequence > opened.Sequence);
+            if (opened.CallId is not { } connection || ended is null)
+            {
+                return null;
+            }
+
+            spans.Add((connection, opened.Sequence, ended.Sequence));
+        }
+
+        spans.Sort(static (left, right) => left.From.CompareTo(right.From));
+        if (spans.Count == 0 || spans.Zip(spans.Skip(1)).Any(static pair => pair.Second.From < pair.First.To))
+        {
+            return null;
+        }
+
+        var socketsOf = new Dictionary<long, HashSet<long>>();
+        foreach (UnixSocketOperationCoverage operation in operations)
+        {
+            if (operation.ProcessId != processId || operation.Socket is not { } socket)
+            {
+                continue;
+            }
+
+            foreach ((long connection, long from, long to) in spans)
+            {
+                if (operation.Sequence > from && operation.Sequence < to)
+                {
+                    if (!socketsOf.TryGetValue(connection, out HashSet<long>? sockets))
+                    {
+                        socketsOf[connection] = sockets = [];
+                    }
+
+                    sockets.Add(socket);
+                    break;
+                }
+            }
+        }
+
+        Dictionary<long, int> connectionsOn = socketsOf.Values.SelectMany(static sockets => sockets)
+            .GroupBy(static socket => socket).ToDictionary(static group => group.Key, static group => group.Count());
+        return spans.Count(span => socketsOf.TryGetValue(span.Connection, out HashSet<long>? sockets)
+            && sockets.Count == 1 && connectionsOn[sockets.Single()] == 1);
     }
 }

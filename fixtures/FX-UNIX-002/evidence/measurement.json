@@ -1,0 +1,166 @@
+{
+  "fixture": "FX-UNIX-002",
+  "question": "Whether a capture through the product keeps each of many short AF_UNIX connections made one at a time on its own socket at both ends, from its create to its close, while the kernel creates their sockets at addresses earlier sockets held.",
+  "answer": "In three runs through icat record under the Unix sockets profile, machine-wide and loss-free, every truth send and receive was a row of its owner with the bytes it moved, 512 of 512 a run, and each of the 64 connections at each end was a socket of its own, created and closed, none of its operations on another connection's socket. The lab probe found the churn's sockets created at an address an earlier socket held: 234 of 277. AF_UNIX names no peer, so the tier is ExperimentalEvidence (ADR-075).",
+  "addressReuse": {
+    "bench": "bench/results/afd-unix-feasibility-churn-20261104T114827Z",
+    "workload": {
+      "connections": 64,
+      "messages": 2,
+      "bytes": 256,
+      "concurrency": 1,
+      "delay": 0,
+      "readBuffer": 0
+    },
+    "socketsWithACreate": 277,
+    "socketsCreatedAtAnAddressAnEarlierSocketHad": 234,
+    "note": "The probe reads AFD in a session of its own, beside a decoy pair, and counts kernel addresses; the product keeps none, so its rows name a socket by its number in the capture alone."
+  },
+  "throughTheProduct": {
+    "runs": [
+      {
+        "run": "churn-1",
+        "workload": {
+          "scenarioId": "FX-UNIX-002",
+          "connections": 64,
+          "messagesPerConnection": 2,
+          "maximumMessageBytes": 256,
+          "concurrency": 1,
+          "interMessageDelayMilliseconds": 0
+        },
+        "capture": {
+          "profile": "unix-sockets",
+          "lossFree": true,
+          "admittedThroughTheGate": 1095,
+          "gateOmissions": {
+            "notCounted": 1479,
+            "noFollowedResource": 2867,
+            "beyondBound": 0
+          },
+          "coverage": "Covered"
+        },
+        "evaluation": {
+          "truthOperations": 512,
+          "observed": 512,
+          "boundToTheirSocket": 512,
+          "withBytes": 512,
+          "truthConnections": 128,
+          "socketsCreatedAndClosed": 128,
+          "connectionsOnTheirOwnSocket": {
+            "client": 64,
+            "server": 64
+          },
+          "truthBytesSent": 22113,
+          "observedBytesSent": 22113,
+          "truthBytesReceived": 22113,
+          "observedBytesReceived": 22113,
+          "transfersBeyondTruth": 128,
+          "pairedByRank": 384,
+          "clockOffsetMilliseconds": -0.0025,
+          "rowsOfOtherProcesses": 0,
+          "tier": "ExperimentalEvidence",
+          "gaps": [
+            "False peer attribution: not measured; the capture attributed no peer, so none could be checked.",
+            "Membership resolution: measured 0.0 % of 128, below the required 100 %."
+          ]
+        }
+      },
+      {
+        "run": "churn-2",
+        "workload": {
+          "scenarioId": "FX-UNIX-002",
+          "connections": 64,
+          "messagesPerConnection": 2,
+          "maximumMessageBytes": 256,
+          "concurrency": 1,
+          "interMessageDelayMilliseconds": 0
+        },
+        "capture": {
+          "profile": "unix-sockets",
+          "lossFree": true,
+          "admittedThroughTheGate": 1099,
+          "gateOmissions": {
+            "notCounted": 1483,
+            "noFollowedResource": 2918,
+            "beyondBound": 0
+          },
+          "coverage": "Covered"
+        },
+        "evaluation": {
+          "truthOperations": 512,
+          "observed": 512,
+          "boundToTheirSocket": 512,
+          "withBytes": 512,
+          "truthConnections": 128,
+          "socketsCreatedAndClosed": 128,
+          "connectionsOnTheirOwnSocket": {
+            "client": 64,
+            "server": 64
+          },
+          "truthBytesSent": 22113,
+          "observedBytesSent": 22113,
+          "truthBytesReceived": 22113,
+          "observedBytesReceived": 22113,
+          "transfersBeyondTruth": 128,
+          "pairedByRank": 384,
+          "clockOffsetMilliseconds": -0.0022,
+          "rowsOfOtherProcesses": 0,
+          "tier": "ExperimentalEvidence",
+          "gaps": [
+            "False peer attribution: not measured; the capture attributed no peer, so none could be checked.",
+            "Membership resolution: measured 0.0 % of 128, below the required 100 %."
+          ]
+        }
+      },
+      {
+        "run": "churn-paced",
+        "workload": {
+          "scenarioId": "FX-UNIX-002",
+          "connections": 64,
+          "messagesPerConnection": 2,
+          "maximumMessageBytes": 256,
+          "concurrency": 1,
+          "interMessageDelayMilliseconds": 5
+        },
+        "capture": {
+          "profile": "unix-sockets",
+          "lossFree": true,
+          "admittedThroughTheGate": 1095,
+          "gateOmissions": {
+            "notCounted": 1479,
+            "noFollowedResource": 2335,
+            "beyondBound": 0
+          },
+          "coverage": "Covered"
+        },
+        "evaluation": {
+          "truthOperations": 512,
+          "observed": 512,
+          "boundToTheirSocket": 512,
+          "withBytes": 512,
+          "truthConnections": 128,
+          "socketsCreatedAndClosed": 128,
+          "connectionsOnTheirOwnSocket": {
+            "client": 64,
+            "server": 64
+          },
+          "truthBytesSent": 22113,
+          "observedBytesSent": 22113,
+          "truthBytesReceived": 22113,
+          "observedBytesReceived": 22113,
+          "transfersBeyondTruth": 128,
+          "pairedByRank": 384,
+          "clockOffsetMilliseconds": -0.0036,
+          "rowsOfOtherProcesses": 0,
+          "tier": "ExperimentalEvidence",
+          "gaps": [
+            "False peer attribution: not measured; the capture attributed no peer, so none could be checked.",
+            "Membership resolution: measured 0.0 % of 128, below the required 100 %."
+          ]
+        }
+      }
+    ],
+    "ledger": "fixtures/FX-UNIX-002/evidence/rows.csv and its truth logs and scenario, of the first run: each row's ordinal, its time on the capture's calibrated wall clock, its owner's role, kind, its socket's number in the capture, bytes and status - never a PID, a path, an address or another process's row.",
+    "truthClock": "The truth's wall clock can read a fraction of a millisecond out of its own sequence, so with connections a millisecond apart its records are placed in their connections by sequence, and paired with rows by rank where a kind's operations are as many as its rows and every pair's bytes agree: each run's sends at both ends and the client's receives, 384 of 512. The server reads each message in two calls, so its receives are matched to their nearest row on the truth's time moved by the ranked pairs' median distance, a few microseconds."
+  }
+}
