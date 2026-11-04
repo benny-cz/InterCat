@@ -317,7 +317,41 @@ public static class WindowsSourceCatalog
         },
     ];
 
+    // A COM call's start at each end and its stop (ADR-077, ADR-079): the client's start names the process at the other end
+    // as its target, the server's as its source. Declared before All, whose initializer reads them.
+    private static readonly IReadOnlyList<AdmittedFieldIntent> ComClientCallStartFields = ComCallStartFields("TargetProcessId");
+
+    private static readonly IReadOnlyList<AdmittedFieldIntent> ComServerCallStartFields = ComCallStartFields("SourceProcessId");
+
+    private static readonly IReadOnlyList<AdmittedFieldIntent> ComCallStopFields =
+    [
+        new("CallTraceId", FieldRole.CorrelationKey, SourceField: SourceField.ComCallTraceId,
+            Notes: "The number its start carried, which joins the two in the process that raised them."),
+        new("HRESULT", FieldRole.Status,
+            Notes: "The method's answer, which the RPC call carrying it does not report: a call answered E_NOINTERFACE "
+                + "completes as an RPC call with status 0 (ADR-079)."),
+    ];
+
     public static IReadOnlyList<WindowsSourceDefinition> All { get; } = Build();
+
+    /// <summary>
+    /// A COM call start's fields, as COM-Perf lays out a client's and a server's start: its trace number, the process at its
+    /// other end, its method and its interface. Its thread fields name nothing the other end recorded and its causality is
+    /// no call's identity (ADR-077), and every field after the interface is a pointer, an IPID, an OID or an address, so
+    /// none of them is admitted.
+    /// </summary>
+    private static IReadOnlyList<AdmittedFieldIntent> ComCallStartFields(string otherEnd) =>
+    [
+        new("CallTraceId", FieldRole.CorrelationKey, SourceField: SourceField.ComCallTraceId,
+            Notes: "The call's number within the process that raised it, which its stop repeats: it joins the two there, "
+                + "never one process's records to another's."),
+        new(otherEnd, FieldRole.CorrelationKey, SourceField: SourceField.PeerProcessId,
+            Notes: "The process at the call's other end, never the record's own: a peer only where ADR-079's link checks it."),
+        new("TargetMethod", FieldRole.CorrelationKey, SourceField: SourceField.ComMethodNumber,
+            Notes: "The method's number within its interface, which the RPC call carrying it names as its procedure (ADR-079)."),
+        new("TargetInterface", FieldRole.CorrelationKey,
+            Notes: "The interface the call targets. It identifies an interface, never a process (R22)."),
+    ];
 
     /// <summary>The content fixture's source: InterCat's own provider, raised only by its content-fixture workload (ADR-036).</summary>
     public const string ContentFixtureSourceId = "etw/eventsource/InterCat-Fixture-Content";
@@ -874,9 +908,9 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        // COM calls' lead (ADR-077, ADR-078, ADR-079): inventoried and requested by no profile, admitting no event until a COM
-        // call's records have a binding of their own and a rule joining them to the RPC calls that carry them; its measured
-        // notes are what icat capabilities states of it.
+        // COM calls' lead (ADR-077, ADR-078, ADR-079): inventoried, admitting its four synchronous call events, and requested
+        // by no profile until a rule joins its records to the RPC calls that carry them; its measured notes are what icat
+        // capabilities states of it.
         var comPerf = new WindowsSourceDefinition
         {
             SourceId = ComPerfSourceId,
@@ -898,6 +932,13 @@ public static class WindowsSourceCatalog
             ContractStatus = SourceContractStatus.Experimental,
             Overhead = OverheadClass.Low,
             OverheadEvidence = "bench/results/com-perf-impact-20261104T160252Z/impact.json",
+            AdmittedEvents =
+            [
+                new(39, 1, "COM client call start", Mechanism.ComCall, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Outbound, ComClientCallStartFields),
+                new(40, 0, "COM client call stop", Mechanism.ComCall, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Outbound, ComCallStopFields),
+                new(43, 2, "COM server call start", Mechanism.ComCall, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Inbound, ComServerCallStartFields),
+                new(44, 0, "COM server call stop", Mechanism.ComCall, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Inbound, ComCallStopFields),
+            ],
             Notes =
             [
                 "Collection alone, two series of nine pairs over 16,384 unpaced calls at about 65,000 records a second, "
@@ -917,7 +958,10 @@ public static class WindowsSourceCatalog
                 "A call across an apartment within one process is recorded as an out-of-process one is, both ends naming the "
                 + "process itself (FX-COM-002): a call is between processes only where the process it names is another.",
                 "Its activation events carry no field, so none names what was activated or becomes a call count.",
-                "Registration is not evidence of traffic; only a measured fixture assigns a tier, and no profile admits this source.",
+                "Its four synchronous call events are admitted: a call's trace number, interface and method, the process at "
+                + "its other end and its HRESULT - never a thread, a pointer, an IPID, an OID or an address. Its "
+                + "asynchronous calls, which no fixture made, are not.",
+                "Registration is not evidence of traffic; only a measured fixture assigns a tier, and no profile requests this source.",
             ],
         };
 

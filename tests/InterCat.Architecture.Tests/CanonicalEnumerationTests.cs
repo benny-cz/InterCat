@@ -5,8 +5,8 @@ using Xunit;
 namespace InterCat.Architecture.Tests;
 
 /// <summary>
-/// One canonical enumeration per semantic dimension, defined in the plan's §23 (R5): the plan's table and the domain's
-/// enumeration name the same members by the same codes, so a mechanism added to one is never missing from the other.
+/// One canonical enumeration per semantic dimension, defined in the plan's §23 (R5): the plan's table or list and the
+/// domain's enumeration name the same members by the same codes, so a member added to one is never missing from the other.
 /// </summary>
 public sealed partial class CanonicalEnumerationTests
 {
@@ -14,17 +14,7 @@ public sealed partial class CanonicalEnumerationTests
     public void TheMechanismTableIsTheEnumeration()
     {
         string root = RepositoryRoot();
-        string source = File.ReadAllText(Path.Combine(root, "src", "InterCat.Domain", "Enumerations.cs"));
-        int start = source.IndexOf("public enum Mechanism", StringComparison.Ordinal);
-        Assert.True(start >= 0, "The domain defines no Mechanism enumeration.");
-        int open = source.IndexOf('{', start);
-        int close = source.IndexOf('}', open);
-        (int Code, string Name)[] defined =
-        [
-            .. MemberPattern().Matches(source[open..close])
-                .Select(member => (int.Parse(member.Groups["code"].Value, CultureInfo.InvariantCulture), member.Groups["name"].Value))
-                .OrderBy(member => member.Item1),
-        ];
+        (int Code, string Name)[] defined = Members(root, "public enum Mechanism");
         Assert.Contains(defined, member => member.Name == "UnknownMechanism");
 
         string plan = File.ReadAllText(Path.Combine(root, "docs", "design", "INTERCAT-IMPLEMENTATION-PLAN.md"));
@@ -56,11 +46,50 @@ public sealed partial class CanonicalEnumerationTests
         Assert.Equal(defined, rows.OrderBy(row => row.Code));
     }
 
+    [Fact(DisplayName = "R5: the plan's EN-SourceField list names every source field the domain defines, each by its code, and none it does not")]
+    public void TheSourceFieldListIsTheEnumeration()
+    {
+        string root = RepositoryRoot();
+        (int Code, string Name)[] defined = Members(root, "public enum SourceField");
+        Assert.Contains((1, "ProcessStartSequence"), defined);
+
+        string plan = File.ReadAllText(Path.Combine(root, "docs", "design", "INTERCAT-IMPLEMENTATION-PLAN.md"));
+        int list = plan.IndexOf("**`EN-SourceField`**:", StringComparison.Ordinal);
+        Assert.True(list >= 0, "§23 no longer defines EN-SourceField.");
+
+        // The list is one line: each member's code and name, then what the members are.
+        string line = plan[list..plan.IndexOf('\n', list)];
+        (int Code, string Name)[] listed =
+        [
+            .. ItemPattern().Matches(line).Select(item => (int.Parse(item.Groups["code"].Value, CultureInfo.InvariantCulture), item.Groups["name"].Value)),
+        ];
+        Assert.Equal(defined, listed.OrderBy(item => item.Code));
+    }
+
+    // An enumeration's members as the domain declares them, each with its code, in the order of their codes.
+    private static (int Code, string Name)[] Members(string root, string declaration)
+    {
+        string source = File.ReadAllText(Path.Combine(root, "src", "InterCat.Domain", "Enumerations.cs"));
+        int start = source.IndexOf(declaration, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"The domain declares no '{declaration}'.");
+        int open = source.IndexOf('{', start);
+        int close = source.IndexOf('}', open);
+        return
+        [
+            .. MemberPattern().Matches(source[open..close])
+                .Select(member => (int.Parse(member.Groups["code"].Value, CultureInfo.InvariantCulture), member.Groups["name"].Value))
+                .OrderBy(member => member.Item1),
+        ];
+    }
+
     [GeneratedRegex(@"^\s*(?<name>[A-Za-z]+)\s*=\s*(?<code>\d+),", RegexOptions.Multiline)]
     private static partial Regex MemberPattern();
 
     [GeneratedRegex(@"^\| (?<code>\d+) \| `(?<name>[A-Za-z]+)` \|")]
     private static partial Regex RowPattern();
+
+    [GeneratedRegex(@"(?<code>\d+) `(?<name>[A-Za-z]+)`")]
+    private static partial Regex ItemPattern();
 
     private static string RepositoryRoot()
     {

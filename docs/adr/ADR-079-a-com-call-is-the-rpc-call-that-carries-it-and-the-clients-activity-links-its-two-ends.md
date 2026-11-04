@@ -1,7 +1,8 @@
 # ADR-079: A COM call is the RPC call that carries it, and the client's activity links its two ends
 
 - Status: accepted for M6's COM/DCOM/WinRT work package; no rule implements it yet, and no profile admits COM-Perf; since
-  revision 914 a COM call's records bind to the process that raised them (ADR-077's fifth addendum)
+  revision 914 a COM call's records bind to the process that raised them (ADR-077's fifth addendum), and since revision
+  915 COM-Perf's call events are admitted, the process at a call's other end a source field of its own (its addendum)
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
 - Relates to: plan §4.2, §5.1, §7.4, M6, P4, P7, P8, ADR-030, ADR-031, ADR-034, ADR-077, ADR-078, FX-COM-001,
@@ -105,3 +106,27 @@ by activity id (ADR-031).
 - **Join at the server by activity id.** Not possible: the server's RPC call has an id of its own.
 - **Keep ADR-077's causality and rank.** Rejected as the link: it agreed on every invoke, but a rank is a position in a
   chain, which one lost record shifts for every later call.
+
+## Addendum: COM-Perf's call events admitted (revision 915)
+
+The fifth decision listed a field for the process at a call's other end among what remains before a profile admits
+COM-Perf. Its four synchronous call events are now admitted, compiled from the provider's registered layout: a start's
+trace number, the process at its other end, its method and its interface, and a stop's trace number and HRESULT. Three
+source fields are new:
+
+- `ComCallTraceId` (19) joins a call's start to its stop in the process that raised them, never one process's records
+  to another's.
+- `PeerProcessId` (20) is the process a record names at its other end - the client's target, the server's source - and
+  never the record's owner: a peer only where the third decision's link checks it.
+- `ComMethodNumber` (21) is a method's number within its interface, which the RPC call carrying it names as its
+  procedure.
+
+The interface is a start's one identifier, as an RPC call's is. Nothing else is admitted: not the threads, which name
+nothing the other end recorded; not the causality, since a descriptor keeps one identifier and the activity, not the
+causality, links a call's ends; and none of the pointers, IPIDs, OIDs and addresses after the interface. The
+asynchronous calls, which no fixture made, are not admitted. An admitted record is a COM call row whose payload names no
+owner, so the process that raised it owns it (`process-binding-v5`), and its activity is its header's.
+
+No profile requests COM-Perf yet: what remains is a relation rule implementing the third decision and an opt-in profile
+collecting RPC beside it. Tests compile the four events to their slots and normalize a client's start and stop, and
+the plan's EN-SourceField list is now held to the domain's enumeration (R5); eleven mutations are caught.

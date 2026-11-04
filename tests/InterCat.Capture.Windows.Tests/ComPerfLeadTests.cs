@@ -157,14 +157,18 @@ public sealed class ComPerfLeadTests
         });
     }
 
-    [Fact(DisplayName = "P27: COM calls have an inventoried source, requested by no profile and admitting no event, its process filter and cost measured, and no tier on any build")]
+    [Fact(DisplayName = "P27: COM calls have an inventoried source admitting its four synchronous call events, requested by no profile, its process filter and cost measured, and no tier on any build")]
     public void ComCallsHaveALeadAndNoTier()
     {
         WindowsSourceDefinition comPerf = WindowsSourceCatalog.Find(WindowsSourceCatalog.ComPerfSourceId)!;
         Assert.Equal(("Microsoft-Windows-COM-Perf", SourceKind.ManifestProvider), (comPerf.ProviderName, comPerf.Kind));
         Assert.Equal([Mechanism.ComCall], comPerf.Mechanisms);
         Assert.Equal((SourceContractStatus.Experimental, true), (comPerf.ContractStatus, comPerf.SupportsCaptureSideProcessFilter));
-        Assert.Empty(comPerf.AdmittedEvents);
+
+        // Its synchronous calls' starts and stops at both ends are admitted as COM calls, and nothing else: no activation,
+        // and no asynchronous call, which no fixture made.
+        Assert.Equal([(39, 1), (40, 0), (43, 2), (44, 0)], comPerf.AdmittedEvents.Select(intent => (intent.EventId, intent.Version)));
+        Assert.All(comPerf.AdmittedEvents, intent => Assert.Equal((Mechanism.ComCall, ObservationLayer.Application), (intent.Mechanism, intent.Layer)));
 
         // Its cost is measured, Low in processor time, with the throughput regression its notes state beside the class.
         Assert.Equal(OverheadClass.Low, comPerf.Overhead);

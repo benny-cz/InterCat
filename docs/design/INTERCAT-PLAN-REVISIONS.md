@@ -838,6 +838,7 @@ Revision 911 gives a COM call a mechanism of its own (ADR-078): EN-Mechanism gai
 Revision 912 inventories COM-Perf as COM calls' lead (ADR-077's third addendum): experimental, requested by no profile and admitting no event, its measured notes and its Low cost, with the throughput regression beside it, stated by `icat capabilities`; no build carries a tier for COM calls.
 Revision 913 measures what carries a COM call and decides it (ADR-079): with RPC collected beside COM-Perf, every COM call of FX-COM-001's four runs was carried by one RPC call at each end, so the RPC call stays the operation and COM-Perf's records annotate it, never a second call; the server's COM call carries the client's activity id, which links a call's two ends and so the RPC calls carrying them, replacing causality and rank as the link.
 Revision 914 binds a COM call's records to the process that raised them, as `process-binding-v5` (ADR-077's fifth addendum): COM-Perf's records name no owner, FX-COM-001 measured each raised in the process it describes, and a checkpoint of an earlier rule is read as version 5's wherever every record named its owner.
+Revision 915 admits COM-Perf's four synchronous call events (ADR-079's addendum): a call's trace number, the process at its other end as `PeerProcessId`, never its owner, its method and interface, and its HRESULT, with three new source fields and nothing of its threads, causality or pointers; no profile requests it yet.
 
 ## Revisions, a paragraph each, in order
 
@@ -3640,3 +3641,14 @@ operation index, metrics, relations, query identity and HTTP exchange contracts 
 caveat and the checkpoint's refusal name COM calls. No COM call is recorded yet: COM-Perf admits no event until a field
 for the other end's process exists. Tests pin the mechanisms that bind by their header, bind a session's COM call
 records to their caller and their server, and read a version 4 checkpoint; six mutations are caught.
+
+Revision 915 admits COM-Perf's call events. Its four synchronous call events compile from the provider's registered
+layout: a start's trace number, the process at its other end, its method and its interface, and a stop's trace number
+and HRESULT. EN-SourceField gains `ComCallTraceId` (19), which joins a call's start to its stop in the process that
+raised them; `PeerProcessId` (20), the process a record names at its other end and never its owner; and
+`ComMethodNumber` (21), the method's number, which the RPC call carrying it names as its procedure. The interface is a
+start's one identifier. The threads, the causality and the pointers, IPIDs, OIDs and addresses after the interface
+are not admitted, nor the asynchronous calls, which no fixture made. An admitted record is a COM call row whose payload
+names no owner, so the process that raised it owns it under `process-binding-v5`. No profile requests COM-Perf yet.
+Tests compile the four events to their slots and normalize a client's start and stop; a new test holds the plan's
+EN-SourceField list to the domain's enumeration (R5); eleven mutations are caught.

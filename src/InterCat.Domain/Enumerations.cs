@@ -177,6 +177,24 @@ public enum SourceField : ushort
 
     /// <summary>Which end of its message part a buffer is: 1 the first, 2 the last, 3 both, 0 neither (ADR-037).</summary>
     ContentBufferFlags = 18,
+
+    /// <summary>
+    /// A COM call's trace number within the process that raised its records, which its stop repeats: it joins a call's
+    /// start to its stop at one end, never one process's records to another's (ADR-077).
+    /// </summary>
+    ComCallTraceId = 19,
+
+    /// <summary>
+    /// The process a record names at its other end, as the source names it: never the record's owner, and a peer only
+    /// where a relation rule checks it (ADR-079).
+    /// </summary>
+    PeerProcessId = 20,
+
+    /// <summary>
+    /// A COM method's number within its interface, which the RPC call carrying it names as its procedure (ADR-079): a
+    /// grouping key, never a call identity.
+    /// </summary>
+    ComMethodNumber = 21,
 }
 
 /// <summary><c>EN-TimeScope</c> (section 23): the interval a result is scoped to.</summary>

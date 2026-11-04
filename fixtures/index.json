@@ -2179,7 +2179,7 @@
         "P26: a live preview never reaches the ranking, the interval table, a step, a brush or an export"
       ],
       "P27": [
-        "P27: COM calls have an inventoried source, requested by no profile and admitting no event, its process filter and cost measured, and no tier on any build",
+        "P27: COM calls have an inventoried source admitting its four synchronous call events, requested by no profile, its process filter and cost measured, and no tier on any build",
         "P27: FX-UNIX-001's rows through the product reproduce its measured tier - every truth send and receive its owner's row, bound to its socket with its bytes, and no peer named",
         "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and the tier its latest fixture measured through the product",
         "P27: a build outside the matrix is untested, never probably working",
@@ -2784,6 +2784,7 @@
         "R21: when the capture did not collect RPC, no call ranks the rows, and the export says why"
       ],
       "R22": [
+        "R22: COM-Perf's call events compile from its registered layout to fixed slots - a call's trace number, the other end's process, its method and interface, its HRESULT - never a thread, a pointer, an IPID, an OID or an address",
         "R22: FX-HTTP-005's asynchronous exchanges, eight at once and raised on the client's threads and WinINet's, are one exchange to a request, each part whole and as long as the server's truth",
         "R22: FX-HTTP-006's exchanges over HTTP/2, eight clients' multiplexed on one connection, are one exchange to a request, each part whole and each body as long as the server's truth",
         "R22: FX-HTTP-007's request bodies, written in pieces eight clients at once, are each its exchange's, a buffer to a write and one to end it, every part whole and as long as the server's truth",
@@ -2863,6 +2864,7 @@
         "R22: an IPv6 connection relates its two ends as an IPv4 one does, and never meets an end of the other family",
         "R22: an RPC record binds to the process that raised it, and a kernel record's header stays context",
         "R22: an RPC server no lifecycle record names is a process of its own calls, and its rows name it",
+        "R22: an admitted COM call record is a COM call row whose payload names no owner, so the process that raised it owns it, the process it names at its other end a source field and never its owner",
         "R22: an exchange number used again in one process ID is two parts, told apart in time, never one",
         "R22: an exchange whose request body's last buffer was not recorded says that body is not whole",
         "R22: an instance's records are exactly the rows its owner binding gives it, under each policy",
@@ -3036,6 +3038,7 @@
         "R5: the capture card counts a recording's published chunks, a capture's first publication in the singular",
         "R5: the manifest parser resolves descriptors, keyword masks and template fields",
         "R5: the plan's EN-Mechanism table names every mechanism the domain defines, each by its code, and none it does not",
+        "R5: the plan's EN-SourceField list names every source field the domain defines, each by its code, and none it does not",
         "R5: the profiles a capture can ask for, and how one compiles, read in words, and the flight recorder says where it is",
         "R5: the timeline's spoken help and its gestures' tooltip say column and cell, as its cards and the inspector do, never bucket",
         "R5: what a workspace says names a session, capture, host or note by its first eight hex digits, as the investigation's window and icat do, never by all 32",
