@@ -4,6 +4,14 @@
   "note": "Generated from the fixture index by MeasuredCoverageTests; each entry is the latest fixture evidence of one mechanism on one build.",
   "entries": [
     {
+      "mechanism": "ComCall",
+      "build": "10.0.26220.0-x64",
+      "tier": "ExperimentalEvidence",
+      "fixture": "FX-COM-001",
+      "date": "2026-11-04",
+      "supportTier": "Primary"
+    },
+    {
       "mechanism": "Http",
       "build": "10.0.26220.0-x64",
       "tier": "ExperimentalEvidence",

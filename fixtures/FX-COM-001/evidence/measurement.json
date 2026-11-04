@@ -868,5 +868,227 @@
     ],
     "ledger": "fixtures/FX-COM-001/evidence/layering/ledger.csv, of the paced run, its truth logs and scenario beside it: each workload record's time, the role of the process it was raised in, its provider and event, its thread and activity as ordinals of the run, its call trace number, the role at its other end, its interface, its method or procedure, its protocol and its HRESULT or status - never a PID, a thread id, an activity id, a pointer or an endpoint.",
     "session": "COM-Perf enabled machine-wide at verbose, every keyword, and Microsoft-Windows-RPC at informational with no keyword mask, as the product's profiles request it, in one real-time session of the probe's own, drained after its stop before it was disposed."
+  },
+  "throughTheProduct": {
+    "question": "Whether a capture through the product - icat record under the opt-in COM calls profile, COM-Perf collected beside RPC - records every call of the truth exchange as a COM call of its client, on the interface and method the workload called, linked under com-call-link-v1 to the server's call of the same truth call and carried by an RPC call served through it under rpc-call-peer-v2, and which tier that measures.",
+    "answer": "In 5 runs, machine-wide and loss-free, every truth call was its client's COM call on IDispatch::Invoke, its start and stop paired with the HRESULT the client logged, linked to the server's call of the same truth call in the truth's server, and carried by one RPC call that rpc-call-peer-v2 served through it by the RPC call carrying the server's - 1,920 of 1,920 - and every call the server logged serving was a server call of its process; no call was attributed to another process. A COM call carries no byte and names no object, so the byte criterion is not measured and the interface it is bound to has no lifetime: the tier is ExperimentalEvidence (ADR-080).",
+    "runs": [
+      {
+        "run": "paced-1",
+        "workload": {
+          "calls": 64,
+          "interCallDelayMilliseconds": 5,
+          "burst": 0
+        },
+        "capture": {
+          "profile": "com-calls",
+          "lossFree": true,
+          "journaledRecords": 13962,
+          "comCallRecords": 3144,
+          "coverage": {
+            "ProcessLifecycle": "Covered",
+            "Rpc": "Covered",
+            "ComCall": "Covered"
+          }
+        },
+        "evaluation": {
+          "truthCalls": 64,
+          "observed": 64,
+          "boundToTheirInterface": 64,
+          "completed": 64,
+          "hresultsAgreeing": 64,
+          "carried": 64,
+          "peerAttributions": 64,
+          "falsePeerAttributions": 0,
+          "linkedToTheirServedCall": 64,
+          "carriersServedThroughCom": 64,
+          "truthCallsServed": 64,
+          "servedCallsObserved": 64,
+          "callsBeyondTruth": 262,
+          "callsPairedByRank": 128,
+          "clockOffsetMilliseconds": 0.185,
+          "sessionComCalls": 1572,
+          "otherProcessesCalls": 1182,
+          "tier": "ExperimentalEvidence",
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion.",
+            "Resource discovery: measured 0.0 % of 1, below the required 95 %."
+          ]
+        }
+      },
+      {
+        "run": "paced-2",
+        "workload": {
+          "calls": 64,
+          "interCallDelayMilliseconds": 5,
+          "burst": 0
+        },
+        "capture": {
+          "profile": "com-calls",
+          "lossFree": true,
+          "journaledRecords": 21061,
+          "comCallRecords": 9048,
+          "coverage": {
+            "ProcessLifecycle": "Covered",
+            "Rpc": "Covered",
+            "ComCall": "Covered"
+          }
+        },
+        "evaluation": {
+          "truthCalls": 64,
+          "observed": 64,
+          "boundToTheirInterface": 64,
+          "completed": 64,
+          "hresultsAgreeing": 64,
+          "carried": 64,
+          "peerAttributions": 64,
+          "falsePeerAttributions": 0,
+          "linkedToTheirServedCall": 64,
+          "carriersServedThroughCom": 64,
+          "truthCallsServed": 64,
+          "servedCallsObserved": 64,
+          "callsBeyondTruth": 262,
+          "callsPairedByRank": 128,
+          "clockOffsetMilliseconds": 0.179,
+          "sessionComCalls": 4524,
+          "otherProcessesCalls": 4134,
+          "tier": "ExperimentalEvidence",
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion.",
+            "Resource discovery: measured 0.0 % of 1, below the required 95 %."
+          ]
+        }
+      },
+      {
+        "run": "unpaced",
+        "workload": {
+          "calls": 256,
+          "interCallDelayMilliseconds": 0,
+          "burst": 0
+        },
+        "capture": {
+          "profile": "com-calls",
+          "lossFree": true,
+          "journaledRecords": 25736,
+          "comCallRecords": 5452,
+          "coverage": {
+            "ProcessLifecycle": "Covered",
+            "Rpc": "Covered",
+            "ComCall": "Covered"
+          }
+        },
+        "evaluation": {
+          "truthCalls": 256,
+          "observed": 256,
+          "boundToTheirInterface": 256,
+          "completed": 256,
+          "hresultsAgreeing": 256,
+          "carried": 256,
+          "peerAttributions": 256,
+          "falsePeerAttributions": 0,
+          "linkedToTheirServedCall": 256,
+          "carriersServedThroughCom": 256,
+          "truthCallsServed": 256,
+          "servedCallsObserved": 256,
+          "callsBeyondTruth": 1030,
+          "callsPairedByRank": 512,
+          "clockOffsetMilliseconds": 0.097,
+          "sessionComCalls": 2726,
+          "otherProcessesCalls": 1184,
+          "tier": "ExperimentalEvidence",
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion.",
+            "Resource discovery: measured 0.0 % of 1, below the required 95 %."
+          ]
+        }
+      },
+      {
+        "run": "long",
+        "workload": {
+          "calls": 1024,
+          "interCallDelayMilliseconds": 0,
+          "burst": 0
+        },
+        "capture": {
+          "profile": "com-calls",
+          "lossFree": true,
+          "journaledRecords": 35545,
+          "comCallRecords": 13312,
+          "coverage": {
+            "ProcessLifecycle": "Covered",
+            "Rpc": "Covered",
+            "ComCall": "Covered"
+          }
+        },
+        "evaluation": {
+          "truthCalls": 1024,
+          "observed": 1024,
+          "boundToTheirInterface": 1024,
+          "completed": 1024,
+          "hresultsAgreeing": 1024,
+          "carried": 1024,
+          "peerAttributions": 1024,
+          "falsePeerAttributions": 0,
+          "linkedToTheirServedCall": 1024,
+          "carriersServedThroughCom": 1024,
+          "truthCallsServed": 1024,
+          "servedCallsObserved": 1024,
+          "callsBeyondTruth": 4102,
+          "callsPairedByRank": 2048,
+          "clockOffsetMilliseconds": 0.089,
+          "sessionComCalls": 6656,
+          "otherProcessesCalls": 506,
+          "tier": "ExperimentalEvidence",
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion.",
+            "Resource discovery: measured 0.0 % of 1, below the required 95 %."
+          ]
+        }
+      },
+      {
+        "run": "bursts",
+        "workload": {
+          "calls": 512,
+          "interCallDelayMilliseconds": 1000,
+          "burst": 128
+        },
+        "capture": {
+          "profile": "com-calls",
+          "lossFree": true,
+          "journaledRecords": 30569,
+          "comCallRecords": 9395,
+          "coverage": {
+            "ProcessLifecycle": "Covered",
+            "Rpc": "Covered",
+            "ComCall": "Covered"
+          }
+        },
+        "evaluation": {
+          "truthCalls": 512,
+          "observed": 512,
+          "boundToTheirInterface": 512,
+          "completed": 512,
+          "hresultsAgreeing": 512,
+          "carried": 512,
+          "peerAttributions": 512,
+          "falsePeerAttributions": 0,
+          "linkedToTheirServedCall": 512,
+          "carriersServedThroughCom": 512,
+          "truthCallsServed": 512,
+          "servedCallsObserved": 512,
+          "callsBeyondTruth": 2054,
+          "callsPairedByRank": 1024,
+          "clockOffsetMilliseconds": 0.09,
+          "sessionComCalls": 4698,
+          "otherProcessesCalls": 1620,
+          "tier": "ExperimentalEvidence",
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion.",
+            "Resource discovery: measured 0.0 % of 1, below the required 95 %."
+          ]
+        }
+      }
+    ],
+    "ledger": "fixtures/FX-COM-001/evidence/product/calls.csv and its truth logs and scenario, of the paced run: each COM call of the workload's two processes as the product derives it - its ordinal among the capture's COM calls, end, its process's role and the role its start names at its other end, state, interface, method, start and stop on the capture's calibrated wall clock, HRESULT, carrier and link states, the ordinal and role of the call at its other end, and the other end its RPC call reached with whether through it and the role of the process that served it - never a PID, a thread, an activity id or another process's call."
   }
 }

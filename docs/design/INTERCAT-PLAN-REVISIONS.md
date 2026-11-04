@@ -842,6 +842,7 @@ Revision 915 admits COM-Perf's four synchronous call events (ADR-079's addendum)
 Revision 916 implements ADR-079's carriers and links as `com-call-link-v1` (`contracts/com-calls-v1.md`): a generation's COM calls are paired by process, side and trace number, each joined to the RPC call carrying it and each client call linked to the server call carrying its activity, which relates the RPC calls they ride; over FX-COM-001's ledger it derives every call as measured.
 Revision 917 makes the RPC peer rule `rpc-call-peer-v2` (ADR-079's third addendum): a client call carrying a COM call that `com-call-link-v1` links is served by the RPC call carrying the server's, with or without ALPC, a disagreement with ALPC conflicting; an operation index of minor 2 keeps those links.
 Revision 918 adds the opt-in COM calls profile (ADR-079's fourth addendum): Kernel-Process, RPC and COM-Perf, all required, its class Moderate as its sources' and its statement naming COM-Perf's throughput regression; Explore never admits the source.
+Revision 919 measures FX-COM-001 through `icat record --profile com-calls` (ADR-080): every truth call its client's COM call, linked to the server's call of the same truth call and carried by one RPC call served through it, 1,920 of 1,920, with no byte and no object named, so COM calls carry ExperimentalEvidence.
 
 ## Revisions, a paragraph each, in order
 
@@ -3691,3 +3692,19 @@ Kernel-Process, and its statement names what ADR-077's second addendum measured:
 is opt-in and Explore never admits the source, which COM-Perf's catalog notes now say. Nothing has measured the profile
 whole yet, and no build carries a tier for COM calls. Tests compile the profile with and without each call source and
 check both commands' profile lists, help and preview; a catalog test now counts eight profiles.
+
+Revision 919 measures COM calls through the product (ADR-080). FX-COM-001 was recorded five times by `icat record
+--profile com-calls`, machine-wide and loss-free: paced twice, 64 calls 5 ms apart, 256 and 1,024 unpaced, and 512 in
+bursts of 128 a second apart. `ComCallCoverageEvaluator` matches each call the client logged to a client COM call of
+its process on the interface and method it called, and each call the server logged to a server call of its process,
+by rank where an end's records are as many as its calls inside 500 ms, otherwise by nearness on the truth's time moved
+by the ranked pairs' offset. A call is bound to the interface it names, as an RPC call is, never to its object, whose
+IPID and OID are not admitted; its peer is the process of the server call its link reached; it carries no size, so the
+byte criterion is not measured. Every truth call was its client's call on `IDispatch::Invoke` with the HRESULT it
+logged, linked to the server's call of the same truth call and carried by one RPC call served through it by the RPC
+call carrying the server's, 1,920 of 1,920; no call was attributed to another process, and each end paired by rank in
+every run. COM calls carry ExperimentalEvidence on `10.0.26220.0-x64`. `InterCat.ComProbe --session` derives a
+session's COM calls as the product does and writes the workload's as a ledger by role, never by PID; the first paced
+run is committed under `fixtures/FX-COM-001/evidence/product/` with its truth, and a test reproduces its counters and
+tier. Tests match calls by rank and by nearness, count a link to another process as a false attribution, and refuse
+another process's call, another method or the server's end as a client's.

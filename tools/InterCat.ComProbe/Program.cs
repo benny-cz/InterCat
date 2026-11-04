@@ -35,6 +35,13 @@ internal static class Program
 
     private static async Task<int> Main(string[] args)
     {
+        // A session icat record recorded is read, not captured: the ledger of its workload's COM calls as the product
+        // derives them, evaluated against the workload's truth.
+        if (Option(args, "--session") is { } recorded)
+        {
+            return SessionLedger.Write(recorded, Option(args, "--truth"), Option(args, "--out"));
+        }
+
         string? output = Option(args, "--output");
         bool inspect = args.Contains("--inspect", StringComparer.Ordinal);
         bool measure = args.Contains("--measure", StringComparer.Ordinal);
@@ -53,6 +60,9 @@ internal static class Program
             Console.Error.WriteLine("  profiles request it, and sets each COM call beside the RPC calls of its process and thread.");
             Console.Error.WriteLine("  --impact [--pairs n] [--calls n]: machine CPU and workload time with and without a session");
             Console.Error.WriteLine("  collecting COM-Perf machine-wide, in pairs, over FX-COM-001's exchange unpaced.");
+            Console.Error.WriteLine("InterCat.ComProbe --session <recorded session> --truth <its workload's truth> --out <calls.csv>");
+            Console.Error.WriteLine("  Derives the COM calls of a session icat record recorded under the COM calls profile, as the");
+            Console.Error.WriteLine("  product does, writes the ledger of the workload's own by role, never by PID, and evaluates it.");
             return 2;
         }
 

@@ -961,6 +961,10 @@ public static class WindowsSourceCatalog
                 "Its four synchronous call events are admitted: a call's trace number, interface and method, the process at "
                 + "its other end and its HRESULT - never a thread, a pointer, an IPID, an OID or an address. Its "
                 + "asynchronous calls, which no fixture made, are not.",
+                "Measured through the product on FX-COM-001, under the COM calls profile: every truth call its client's COM call "
+                + "with the HRESULT it logged, linked to the server's call of the same truth call, and carried by one RPC call "
+                + "served through it, 1,920 of 1,920. A COM call carries no byte and names no object, so its tier is experimental "
+                + "evidence (ADR-080).",
                 "Registration is not evidence of traffic; only a measured fixture assigns a tier, and only the opt-in COM calls "
                 + "profile requests this source, beside RPC, never Explore.",
             ],

@@ -157,8 +157,8 @@ public sealed class ComPerfLeadTests
         });
     }
 
-    [Fact(DisplayName = "P27: COM calls have an inventoried source admitting its four synchronous call events, requested by the opt-in COM calls profile alone, its process filter and cost measured, and no tier on any build")]
-    public void ComCallsHaveALeadAndNoTier()
+    [Fact(DisplayName = "P27: COM calls have an inventoried source admitting its four synchronous call events, requested by the opt-in COM calls profile alone, its process filter and cost measured, and the tier its fixture measured through the product")]
+    public void ComCallsHaveALeadAndTheirMeasuredTier()
     {
         WindowsSourceDefinition comPerf = WindowsSourceCatalog.Find(WindowsSourceCatalog.ComPerfSourceId)!;
         Assert.Equal(("Microsoft-Windows-COM-Perf", SourceKind.ManifestProvider), (comPerf.ProviderName, comPerf.Kind));
@@ -194,8 +194,12 @@ public sealed class ComPerfLeadTests
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != WindowsSourceCatalog.ComPerfSourceId),
             source => Assert.DoesNotContain(Mechanism.ComCall, source.Mechanisms));
 
-        // And no build carries a tier for COM calls: no fixture has measured them through the product.
-        Assert.DoesNotContain(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.ComCall);
+        // The build carries the tier FX-COM-001 measured through the product, experimental evidence: a COM call carries no
+        // byte and names no object (ADR-080); its notes say so, and no other build carries one.
+        MeasuredCoverageEntry measured = Assert.Single(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.ComCall);
+        Assert.Equal(("10.0.26220.0-x64", CapabilityTier.ExperimentalEvidence, "FX-COM-001"), (measured.Build, measured.Tier, measured.Fixture));
+        Assert.Contains(comPerf.Notes, note => note.Contains("Measured through the product on FX-COM-001", StringComparison.Ordinal)
+            && note.Contains("experimental evidence (ADR-080)", StringComparison.Ordinal));
     }
 
     [Fact(DisplayName = "§12: COM-Perf's collection is measured in two series of pairs - Low in processor time, and a COM-heavy workload slower past §12's throughput target, so only an opt-in profile stating it may admit the source")]

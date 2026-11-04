@@ -2,7 +2,8 @@
 
 - Status: accepted for M6's COM/DCOM/WinRT work package; since revision 916 `com-call-link-v1` implements its second and
   third decisions (`contracts/com-calls-v1.md`), and since revision 917 `rpc-call-peer-v2` serves a call through it,
-  and since revision 918 the opt-in COM calls profile collects COM-Perf beside RPC; since
+  and since revision 918 the opt-in COM calls profile collects COM-Perf beside RPC, and since revision 919 COM calls
+  measured through it carry ExperimentalEvidence (ADR-080); since
   revision 914 a COM call's records bind to the process that raised them (ADR-077's fifth addendum), and since revision
   915 COM-Perf's call events are admitted, the process at a call's other end a source field of its own (its addendum)
 - Date: 2026-11-04
