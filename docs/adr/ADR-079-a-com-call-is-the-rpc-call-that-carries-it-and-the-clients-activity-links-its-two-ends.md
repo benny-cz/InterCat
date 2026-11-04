@@ -1,6 +1,7 @@
 # ADR-079: A COM call is the RPC call that carries it, and the client's activity links its two ends
 
-- Status: accepted for M6's COM/DCOM/WinRT work package; no rule implements it yet, and no profile admits COM-Perf
+- Status: accepted for M6's COM/DCOM/WinRT work package; no rule implements it yet, and no profile admits COM-Perf; since
+  revision 914 a COM call's records bind to the process that raised them (ADR-077's fifth addendum)
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
 - Relates to: plan §4.2, §5.1, §7.4, M6, P4, P7, P8, ADR-030, ADR-031, ADR-034, ADR-077, ADR-078, FX-COM-001,

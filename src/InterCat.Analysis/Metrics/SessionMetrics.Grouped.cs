@@ -371,8 +371,8 @@ public static partial class SessionMetrics
         caveats.Add(
             $"Records are bound to process instances by {ProcessInstanceIndex.BindingRule}: a record names its owner in "
             + "its own payload, and binds to the instance of that PID whose witnessed lifetime holds its reading. The "
-            + "event header's process is used only for an RPC or HTTP record, which names none and is raised in the "
-            + "process it describes (ADR-030, ADR-037); a kernel record's header is context (§4.1). Start keys "
+            + "event header's process is used only for an RPC, HTTP or COM call record, which names none and is raised in "
+            + "the process it describes (ADR-030, ADR-037, ADR-077); a kernel record's header is context (§4.1). Start keys "
             + "distinguish lifecycle instances when present; records without a key still rely on complete lifecycle "
             + "evidence.");
         if (request.Grouping == LaneGrouping.UserSession)

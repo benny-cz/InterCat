@@ -253,6 +253,53 @@ public sealed class ProcessInstanceTests
         Assert.Equal((1L, 1L), (activity.RecordsWithoutOwner, activity.RecordsNotBound));
     }
 
+    [Fact(DisplayName = "R22: a COM call record binds to the process that raised it - a client call's to the caller, a served call's to the server - as an RPC record does")]
+    public void AComCallRecordBindsToTheProcessThatRaisedIt()
+    {
+        using var session = new TemporarySession();
+        Publish(
+            session.Store,
+            [
+                Lifecycle(100, ObservationKind.Create, 400, 1),
+                ComCall(150, ObservationKind.RequestStart, Direction.Outbound, raisedBy: 400, 2),
+                ComCall(160, ObservationKind.RequestStart, Direction.Inbound, raisedBy: 700, 3),
+                ComCall(170, ObservationKind.RequestEnd, Direction.Inbound, raisedBy: 700, 4),
+                ComCall(180, ObservationKind.RequestEnd, Direction.Outbound, raisedBy: 400, 5),
+            ]);
+
+        ProcessInstanceIndex index = Derive(session.Store);
+
+        // The server no lifecycle record names is witnessed by the call it served, as an RPC server is (P6).
+        Assert.Equal([400, 700], index.Instances.Select(instance => instance.ProcessId).Order());
+        ProcessInstance server = index.Instances.Single(instance => instance.ProcessId == 700);
+        Assert.Equal(ProcessWitness.ActivityOnly, server.Witness);
+        Assert.Equal(new RawRecordId(Capture, 1, 1, 3), server.Key.ProvisionalWitness);
+
+        // The caller's start and stop are its own, the server's are the server's: no record is left without an owner.
+        int client = index.Instances.ToList().FindIndex(instance => instance.ProcessId == 400);
+        int served = index.Instances.ToList().IndexOf(server);
+        ProcessBinding[] owners = index.OwnersOf(Assert.Single(TestSessions.Segments(session.Store)));
+        Assert.Equal(new ProcessBinding(client, RelationStrength.Correlated, ProcessBindingReason.Bound), owners[1]);
+        Assert.Equal(new ProcessBinding(client, RelationStrength.Correlated, ProcessBindingReason.Bound), owners[4]);
+        Assert.Equal((served, served), (owners[2].Instance, owners[3].Instance));
+        ProcessActivityIndex activity = ProcessActivityIndex.Derive(TestSessions.Segments(session.Store), index);
+        Assert.Equal(
+            [(Mechanism.ComCall, 2L), (Mechanism.ProcessLifecycle, 1L)],
+            activity.MechanismsOf(client, EvidencePolicy.IncludeCorrelated));
+        Assert.Equal((0L, 0L), (activity.RecordsWithoutOwner, activity.RecordsNotBound));
+
+        // A grouped answer reads the same rule, and its caveat names COM calls among the records a header binds.
+        MetricResult grouped = SessionMetrics.Evaluate(session.Store, new()
+        {
+            Basis = AnalysisBasis.SourceObservations,
+            Metric = Metric.Observations,
+            Grouping = LaneGrouping.InstanceOnly,
+        });
+        Assert.Equal(5, grouped.Value);
+        Assert.Contains(grouped.Caveats, caveat => caveat.Contains(
+            "used only for an RPC, HTTP or COM call record, which names none", StringComparison.Ordinal));
+    }
+
     [Fact(DisplayName = "I14: instance identities do not depend on how the evidence was split into segments")]
     public void IdentitiesDoNotDependOnSegmentation()
     {

@@ -14,8 +14,12 @@ public static class RecordAttribution
     /// that served them. Measured for HTTP on FX-HTTP-001 (ADR-037): 444 of 444 of WinINet's capture records were raised
     /// in the client process that made the exchange, and none of a decoy's reached a session scoped to that client; and on
     /// FX-HTTP-005, an asynchronous client's too, raised on whichever of its threads WinINet finished each step on.
+    /// Measured for COM calls on FX-COM-001 (ADR-077): in four runs every call's client start and stop were raised in the
+    /// calling process and its served start and stop in the serving one; under a session's process filter the two
+    /// processes' every call arrived and none of a decoy pair's; and FX-COM-002's calls across an apartment were raised in
+    /// their own process at both ends.
     /// </summary>
-    public static bool RaisedByTheirProcess(Mechanism mechanism) => mechanism is Mechanism.Rpc or Mechanism.Http;
+    public static bool RaisedByTheirProcess(Mechanism mechanism) => mechanism is Mechanism.Rpc or Mechanism.Http or Mechanism.ComCall;
 
     /// <summary>
     /// The PID a record belongs to: the owner its payload names, or the process that raised it when its mechanism's

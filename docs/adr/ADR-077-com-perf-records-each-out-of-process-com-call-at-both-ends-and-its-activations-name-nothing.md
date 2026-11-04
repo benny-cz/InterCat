@@ -141,3 +141,21 @@ each COM call is carried by one RPC call at each end, on its interface with its 
 server's COM call carries the client's activity id. So a COM call and its RPC call are one call, COM-Perf annotating
 it (ADR-079's first decision). The second decision's pairing by causality and rank agreed with the activity on every
 invoke; the activity is now the link, this record's checks its checks (ADR-079's fourth decision).
+
+## Addendum: a COM call's records bind to the process that raised them (revision 914)
+
+ADR-079's fifth decision names first, of what remains before a profile admits COM-Perf, its records' binding. Their
+payload names no owner: a start names the process at the call's other end, never its own, so that field is never an
+owner. FX-COM-001 measured where each is raised: in four runs every call's client start and stop were raised in the
+calling process and its served start and stop in the serving one, and under a session's process filter the two
+processes' every call arrived and none of a decoy pair's; FX-COM-002's calls across an apartment were raised in their
+own process at both ends. So ADR-030's header binding reaches COM calls: a COM call record whose payload names no owner
+belongs to the process its header names. An activation is not a call, carries no field and stays unbound.
+
+That changes what binds, so it is a new rule identity, `process-binding-v5`, as `contracts/entities-v1.md` §7 requires.
+A checkpoint derived under version 2, 3 or 4 is read as version 5's wherever every record named its owner, which its
+counts show, since each earlier rule differs only in binding fewer records that name none; one counting any record
+without an owner is derived again, its refusal naming the rule it was derived under. No COM call is recorded yet:
+COM-Perf admits no event until a field for the other end's process exists. Tests pin the mechanisms that bind by
+their header, bind a session's COM call records to their caller and their server, and read a version 4 checkpoint;
+six mutations are caught.

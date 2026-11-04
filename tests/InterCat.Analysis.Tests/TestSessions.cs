@@ -16,6 +16,7 @@ internal static class TestSessions
     public static readonly Guid ProcessProvider = Guid.Parse("22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716");
     public static readonly Guid RpcProvider = Guid.Parse("6ad52b32-d609-4be9-ae07-ce8dae937e39");
     public static readonly Guid AlpcClass = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
+    public static readonly Guid ComPerfProvider = Guid.Parse("b8d6861b-d20f-4eec-bbae-87e0dd80602b");
     public static readonly DateTimeOffset Committed = new(2026, 9, 22, 16, 0, 0, TimeSpan.Zero);
 
     public static SourceClockDescriptor TestClock { get; } = ClockFor(Clock, "session-metrics-tests");
@@ -204,6 +205,38 @@ internal static class TestSessions
         StatusAvailability = kind == ObservationKind.RequestEnd && status is not null
             ? FieldAvailability.Present
             : FieldAvailability.NotApplicable,
+        AttributionQuality = QualityLevel.UnknownQuality,
+        CorrelationQuality = QualityLevel.UnknownQuality,
+        MeasurementQuality = QualityLevel.UnknownQuality,
+        TimingQuality = QualityLevel.Proven,
+    };
+
+    /// <summary>
+    /// A COM call record raised in <paramref name="raisedBy"/>, as COM-Perf raises one: a client call's start and stop in
+    /// the calling process, a served call's in the serving one, with the descriptor of each (39 and 40 at the client, 43
+    /// and 44 at the server). Its payload names no owner, so only its header says whose it is (ADR-077's fifth addendum).
+    /// </summary>
+    public static ObservationRowV1 ComCall(long ticks, ObservationKind kind, Direction direction, int raisedBy, ulong ordinal) => new()
+    {
+        RawStreamId = 1,
+        RawSourceEpoch = 1,
+        RawRecordOrdinal = ordinal,
+        FactKey = FactKey.Create("com-call"),
+        ProviderId = ComPerfProvider,
+        EventId = (ushort)((direction == Direction.Outbound ? 39 : 43) + (kind == ObservationKind.RequestStart ? 0 : 1)),
+        DescriptorVersion = kind != ObservationKind.RequestStart ? (byte)0 : direction == Direction.Outbound ? (byte)1 : (byte)2,
+        SchemaFingerprint = "sha256:" + new string('d', 64),
+        Opcode = kind == ObservationKind.RequestStart ? (byte)1 : (byte)2,
+        NativeTicks = ticks,
+        HeaderProcessId = raisedBy,
+        HeaderThreadId = raisedBy + 1,
+        ProcessorNumber = 0,
+        Mechanism = Mechanism.ComCall,
+        Layer = ObservationLayer.Application,
+        Kind = kind,
+        Direction = direction,
+        ByteAvailability = FieldAvailability.NotApplicable,
+        StatusAvailability = FieldAvailability.NotApplicable,
         AttributionQuality = QualityLevel.UnknownQuality,
         CorrelationQuality = QualityLevel.UnknownQuality,
         MeasurementQuality = QualityLevel.UnknownQuality,

@@ -75,7 +75,7 @@ public sealed class WinInetCaptureAdmissionTests
             Assert.Contains(descriptor.FieldReport, field => field is { Name: "Payload", Availability: FieldAvailability.ProfileDisabled });
         }
 
-        // Its records bind to the client process that raised them (ADR-030, process-binding-v4).
+        // Its records bind to the client process that raised them (ADR-030, since process-binding-v4).
         Assert.True(RecordAttribution.RaisedByTheirProcess(Mechanism.Http));
     }
 

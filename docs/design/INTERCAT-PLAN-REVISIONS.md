@@ -837,6 +837,7 @@ Revision 910 measures what collecting COM-Perf costs (ADR-077's second addendum)
 Revision 911 gives a COM call a mechanism of its own (ADR-078): EN-Mechanism gains `ComCall`, code 22, a call through COM's channel from one apartment to another, never an activation, and a test now holds §23's table to the domain's enumeration (R5).
 Revision 912 inventories COM-Perf as COM calls' lead (ADR-077's third addendum): experimental, requested by no profile and admitting no event, its measured notes and its Low cost, with the throughput regression beside it, stated by `icat capabilities`; no build carries a tier for COM calls.
 Revision 913 measures what carries a COM call and decides it (ADR-079): with RPC collected beside COM-Perf, every COM call of FX-COM-001's four runs was carried by one RPC call at each end, so the RPC call stays the operation and COM-Perf's records annotate it, never a second call; the server's COM call carries the client's activity id, which links a call's two ends and so the RPC calls carrying them, replacing causality and rank as the link.
+Revision 914 binds a COM call's records to the process that raised them, as `process-binding-v5` (ADR-077's fifth addendum): COM-Perf's records name no owner, FX-COM-001 measured each raised in the process it describes, and a checkpoint of an earlier rule is read as version 5's wherever every record named its owner.
 
 ## Revisions, a paragraph each, in order
 
@@ -3626,3 +3627,16 @@ method's answer, which RPC's status is not - and the causality, never a second c
 between a call's ends; and a single-threaded apartment's server, unmeasured, finds no carrier. FX-COM-001 holds the paced
 run's ledger, its threads and activities as ordinals, never an id, and its truth; two tests hold them and the four runs,
 COM-Perf's catalog notes state the result, and eleven alterations of the evidence and the notes are caught.
+
+Revision 914 binds a COM call's records to the process that raised them. COM-Perf's records name no owner - a start
+names the process at the call's other end, never its own - and FX-COM-001 measured each raised in the process it
+describes: in four runs every call's client start and stop in the caller and its served start and stop in the server,
+and under a session's process filter none of a decoy pair's; FX-COM-002's calls across an apartment were raised in
+their own process. So ADR-030's header binding reaches COM calls (ADR-077's fifth addendum), while an activation stays
+unbound. That changes what binds, so it is a new rule identity, `process-binding-v5`: a checkpoint derived under version
+2, 3 or 4 is read as version 5's wherever every record named its owner, since each earlier rule binds fewer records
+that name none, and is derived again otherwise, its refusal naming its rule. The entities, checkpoint, operations,
+operation index, metrics, relations, query identity and HTTP exchange contracts name the new rule; the grouped answer's
+caveat and the checkpoint's refusal name COM calls. No COM call is recorded yet: COM-Perf admits no event until a field
+for the other end's process exists. Tests pin the mechanisms that bind by their header, bind a session's COM call
+records to their caller and their server, and read a version 4 checkpoint; six mutations are caught.

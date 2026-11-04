@@ -2796,6 +2796,7 @@
         "R22: FX-UNIX-002's rows through the product keep each of sixty-four connections made one at a time on its own socket at both ends, while the kernel reused their addresses",
         "R22: FX-UNIX-003's connections, open before the capture began, bind to no socket - not one of their calls is a row of any process - while the same capture follows its own connections whole",
         "R22: Winsock AFD's admitted calls compile from its registered layout to fixed slots, none an address the kernel reuses or a buffer's",
+        "R22: a COM call record binds to the process that raised it - a client call's to the caller, a served call's to the server - as an RPC record does",
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
         "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused",
         "R22: a boot is named by a token kept only until the machine restarts, and its count is no identity",
