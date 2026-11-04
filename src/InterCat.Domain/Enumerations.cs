@@ -355,6 +355,12 @@ public enum CaptureProfileKind
     /// that carries content end to end (ADR-036). It keeps no other application's bytes.
     /// </summary>
     ContentFixture = 7,
+
+    /// <summary>
+    /// Lifecycle and each AF_UNIX socket's calls, from Winsock AFD through its gate (ADR-073, ADR-074). Opt-in: AFD's
+    /// process filter does not hold, so it collects every socket call of the machine, which measured Moderate.
+    /// </summary>
+    UnixSockets = 8,
 }
 
 public enum CaptureLifecycle { Idle = 1, Probing = 2, Starting = 3, Recording = 4, Stopping = 5, Finalizing = 6, Closed = 7 }

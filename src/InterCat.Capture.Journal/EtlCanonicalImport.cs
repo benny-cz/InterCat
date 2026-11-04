@@ -20,6 +20,7 @@ public sealed record EtlImportResult(
     long AdmittedRecords,
     long OmittedRecords,
     long UndecodableRecords,
+    long GatedRecords,
     long SourceEventsLost,
     double ElapsedMilliseconds,
     CoverageLedgerV1 Coverage)
@@ -199,6 +200,7 @@ public static class EtlCanonicalImport
                     sink.Admitted,
                     sink.Omitted,
                     sink.Undecodable,
+                    sink.Gated,
                     replay.SourceEventsLost,
                     Stopwatch.GetElapsedTime(started).TotalMilliseconds,
                     coverage),
@@ -348,6 +350,8 @@ public static class EtlCanonicalImport
 
         public long Undecodable { get; private set; }
 
+        public long Gated { get; private set; }
+
         public void OnObserved(in DeliveredRecord delivered)
         {
             Observed++;
@@ -415,7 +419,11 @@ public static class EtlCanonicalImport
         }
 
         // A gate's omissions are the file's coverage, never a loss (ADR-074).
-        public void OnGated(GateOmission reason, in DeliveredRecord delivered) => coverage.Gated(reason, in delivered);
+        public void OnGated(GateOmission reason, in DeliveredRecord delivered)
+        {
+            Gated++;
+            coverage.Gated(reason, in delivered);
+        }
 
         public void Rethrow()
         {

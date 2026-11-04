@@ -120,6 +120,30 @@ public static class CaptureProfileCatalog
                 + "ranged from 1.9 to 3.8% busy: the whole profile keeps its sources' class rather than a finer one.",
             OverheadEvidence = "bench/results/rpc-peers-impact-20260928T052021Z/product-impact.json",
         },
+        new()
+        {
+            Kind = CaptureProfileKind.UnixSockets,
+            Id = "unix-sockets",
+            DisplayName = "Unix sockets",
+            Summary = "Lifecycle and each AF_UNIX socket's calls - its create, bind, connect, accept, sends and receives with the "
+                + "bytes each moved, and close - from Winsock AFD. Opt-in: AFD collects every socket call of the machine.",
+            Admission = AdmissionMode.MetadataOnly,
+            CompilationAvailable = true,
+            RequestPreviewAvailable = true,
+            Sources =
+            [
+                new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Process identity and PID-reuse-safe lifecycle context."),
+                new(WindowsSourceCatalog.WinsockAfdSourceId, true, true,
+                    "Each AF_UNIX socket's calls, owned by the process that created it and numbered in the capture (ADR-073, ADR-074)."),
+            ],
+            PreserveExtendedData = true,
+            RequestCallStacks = false,
+            CollectionStatement =
+                "Collects process lifecycle and, of every socket call the machine makes, the calls of each socket created "
+                + "AF_UNIX: the process that created it, its number in the capture, and each send's and receive's length. It "
+                + "keeps no socket's path or peer, which the source does not name whole, retains no payload bytes and "
+                + "requests no call stacks.",
+        },
         Unavailable(
             CaptureProfileKind.Timing,
             "timing",

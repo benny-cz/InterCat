@@ -231,7 +231,7 @@ internal static class Icat
         ConsoleUi.Line("      that served it; a content capture keeps your own processes' messages (icat capture --help).");
         ConsoleUi.Line("      Windows only, as the broker is.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat record <new-session-dir> [--profile explore|focused-transport|rpc-peers|content|content-fixture]");
+        ConsoleUi.Line("  icat record <new-session-dir> [--profile " + string.Join("|", RecordCommand.Profiles) + "]");
         ConsoleUi.Line("              [--mechanism tcp|udp|http] [--duration <seconds>] [--publish-every <seconds>]");
         ConsoleUi.Line("              [--evidence-only] [--json]");
         ConsoleUi.Line("      Captures live under an owned ETW session straight into a new session, which session,");

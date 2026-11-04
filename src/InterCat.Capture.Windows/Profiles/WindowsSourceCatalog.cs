@@ -816,13 +816,16 @@ public static class WindowsSourceCatalog
             Mechanisms = [Mechanism.UnixDomainSocket],
             RequiredPrivilege = PrivilegeRequirement.Administrator,
             Level = "win:Informational",
-            MatchAnyKeyword = 0,
-            RequestedKeywords = [],
+
+            // AFD_KW_SOURCE_WINSOCK: the socket calls, which every event the gate counts carries.
+            MatchAnyKeyword = 0x4,
+            RequestedKeywords = ["AFD_KW_SOURCE_WINSOCK"],
             SupportsCaptureSideProcessFilter = false,
             FilteringNotes =
-                "No capture profile requests it. Measured on FX-UNIX-001: a session's process filter does not hold it - a "
-                + "decoy outside the filter had its every record delivered - so a capture requesting it collects every socket "
-                + "call of every process, TCP's and UDP's too.",
+                "The opt-in Unix sockets profile alone requests it, for the ten calls its gate counts, each enabled by its "
+                + "event id. Measured on FX-UNIX-001: a session's process filter does not hold it - a decoy outside the filter "
+                + "had its every record delivered - so a capture requesting it collects every socket call of every process, "
+                + "TCP's and UDP's too.",
             StartupBehaviour = "No rundown: a socket made before a capture starts has no create in it, so its records belong to no socket (R22).",
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Experimental,
@@ -848,8 +851,9 @@ public static class WindowsSourceCatalog
             [
                 "Collection alone, nine pairs each over AF_UNIX and TCP traffic at about 490,000 records a second machine-wide, "
                 + "loss-free: a median of 1.6 CPU pp over AF_UNIX's, where an earlier nine measured none, and 0.5 over TCP's, "
-                + "the workload 2.8 and 4.1% slower; the class is the higher, Moderate, so only an opt-in profile could "
-                + "admit it, as ALPC's.",
+                + "the workload 2.8 and 4.1% slower; the class is the higher, Moderate, so only an opt-in profile admits "
+                + "it, as ALPC's. It was measured collecting both of AFD's source keywords and every event, more than the "
+                + "profile requests.",
                 "Measured on FX-UNIX-001: every AF_UNIX socket of the workload's two processes - created with its family, "
                 + "bound, listening, connected, accepted and closed - and every send and receive with its length, exactly "
                 + "the truth's at both ends; Kernel-Network held none of it.",
@@ -860,7 +864,7 @@ public static class WindowsSourceCatalog
                 + "names no owner; its socket's create does.",
                 "A bind's or connect's address holds 16 bytes, an AF_UNIX path's first 14 characters, so a socket's name is "
                 + "not observed whole and no peer is resolved by it.",
-                "Registration is not evidence of traffic; only a measured fixture assigns a tier, and no profile admits this source.",
+                "Registration is not evidence of traffic; only a measured fixture assigns a tier.",
             ],
         };
 

@@ -822,6 +822,7 @@ Revision 896 measures what collecting Winsock AFD machine-wide costs: at about 4
 
 Revision 897 adds the AF_UNIX gate (ADR-073): read as they arrive, AFD's records of each socket a capture saw created AF_UNIX, followed from its create to its close and owned by the process its create names, one record a call, and none of another family's - no record arrived before its create, of 36,088, and a receive's exit holds what it took.
 Revision 898 admits Winsock AFD through its gate (ADR-074): a source may have a gate that reads each record as it arrives, AFD's admitted calls carry the gate's socket number and owner in place of the kernel's addresses, and a ledger counting what a gate omitted - not counted, of no followed socket, beyond its bound - is `coverage-v3`.
+Revision 899 adds an opt-in Unix sockets profile (ADR-074's addendum): lifecycle and Winsock AFD, enabled for its socket-call keyword and each counted call by its event id, whose admitted calls derive Unix-domain socket rows of their socket's owner.
 
 ## Revisions, a paragraph each, in order
 
@@ -3440,3 +3441,16 @@ a gate writes. They are not loss, and a covered mechanism's reason says what the
 the bound is a partial gap. `icat session` lists them, and a redacted package keeps them. Tests compile AFD's plan from
 its registered layout, drive the gate on records built from it and check each reader of the counts, and the callback
 walk reaches the gate; twenty mutations are caught. No profile requests AFD yet.
+
+Revision 899 gives Winsock AFD a profile (ADR-074's addendum). `unix-sockets` requests Kernel-Process and AFD, both
+required, and is opt-in: AFD's process filter does not hold, so it collects every socket call of the machine, which
+measured Moderate. `icat record --profile unix-sockets` records it elevated, and `icat capture` asks the broker for it as
+for Explore. AFD is now requested for `AFD_KW_SOURCE_WINSOCK`, the keyword every counted call carries, and each of the
+ten calls by its event id; a keyword mask of 0, which ETW reads as every keyword, would also have enabled the
+transport's indications. The cost was measured collecting more than this, so its class bounds the profile's collection
+from above. An admitted record derives a Unix-domain socket row owned by its socket's creator, with its socket's number
+as its connection and its length as completed I/O, under a fact key of its family's own, `unix-socket-operation`. No
+capture had admitted AF_UNIX before, so no row is re-keyed. An import that admits through a gate now counts what the
+gate omitted, and `icat import` says it when there is any. Tests compile the profile with and without AFD, hold the keyword
+to the registered layout, derive a row from a record admitted through the gate, and check both commands' profile
+lists and help; eleven mutations are caught. On this machine the preview compiles AFD's ten calls and can start.

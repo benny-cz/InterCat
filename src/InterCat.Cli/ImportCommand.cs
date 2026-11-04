@@ -113,6 +113,10 @@ internal sealed record ImportCountsDocument
     public required long ObservedRecords { get; init; }
     public required long AdmittedRecords { get; init; }
     public required long PolicyOmissions { get; init; }
+
+    /// <summary>The records a gated source's gate did not admit (ADR-074): neither the policy's nor a loss.</summary>
+    public long GatedRecords { get; init; }
+
     public required long UndecodableRecords { get; init; }
     public required long SourceEventsLost { get; init; }
     public required long IndexedRecords { get; init; }
@@ -626,6 +630,7 @@ internal static partial class ImportCommand
                 ObservedRecords = result.ObservedRecords,
                 AdmittedRecords = result.AdmittedRecords,
                 PolicyOmissions = result.OmittedRecords,
+                GatedRecords = result.GatedRecords,
                 UndecodableRecords = result.UndecodableRecords,
                 SourceEventsLost = result.SourceEventsLost,
                 IndexedRecords = summary.RecordCount,
@@ -678,6 +683,28 @@ internal static partial class ImportCommand
         };
     }
 
+    /// <summary>
+    /// What the file carried, one row each: delivered, admitted, omitted by policy, undecodable and lost by the file, and
+    /// the records a source's gate did not admit when it omitted any - neither the policy's nor a loss (ADR-074).
+    /// </summary>
+    internal static IReadOnlyList<IReadOnlyList<string>> Carried(ImportCountsDocument counts)
+    {
+        ArgumentNullException.ThrowIfNull(counts);
+        List<IReadOnlyList<string>> rows =
+        [
+            ["Delivered by the file", counts.ObservedRecords.ToString("N0", CultureInfo.InvariantCulture)],
+            ["Admitted and indexed", counts.IndexedRecords.ToString("N0", CultureInfo.InvariantCulture)],
+            ["Omitted by policy", counts.PolicyOmissions.ToString("N0", CultureInfo.InvariantCulture)],
+        ];
+        if (counts.GatedRecords > 0)
+        {
+            rows.Add(["Not admitted by a source's gate", counts.GatedRecords.ToString("N0", CultureInfo.InvariantCulture)]);
+        }
+
+        rows.Add(["Undecodable", counts.UndecodableRecords.ToString("N0", CultureInfo.InvariantCulture)]);
+        rows.Add(["Lost by the file itself", counts.SourceEventsLost.ToString("N0", CultureInfo.InvariantCulture)]);
+        return rows;
+    }
     /// <summary>What an import spilled to disk, as its report says it: nothing, or its runs and their bytes, each counted.</summary>
     internal static string Spilled(ImportSpillDocument spill) => spill.RunsWritten == 0
         ? "nothing; the index fitted in memory"
@@ -699,15 +726,7 @@ internal static partial class ImportCommand
         ConsoleUi.Field("Rate", $"{document.Clock.TicksPerSecond:N0} {document.Clock.Encoding} ticks/second");
 
         ConsoleUi.Heading("What the file carried");
-        ConsoleUi.Table(
-            ["Quantity", "Records"],
-            [
-                ["Delivered by the file", document.Counts.ObservedRecords.ToString("N0", CultureInfo.InvariantCulture)],
-                ["Admitted and indexed", document.Counts.IndexedRecords.ToString("N0", CultureInfo.InvariantCulture)],
-                ["Omitted by policy", document.Counts.PolicyOmissions.ToString("N0", CultureInfo.InvariantCulture)],
-                ["Undecodable", document.Counts.UndecodableRecords.ToString("N0", CultureInfo.InvariantCulture)],
-                ["Lost by the file itself", document.Counts.SourceEventsLost.ToString("N0", CultureInfo.InvariantCulture)],
-            ]);
+        ConsoleUi.Table(["Quantity", "Records"], Carried(document.Counts));
         ConsoleUi.Field("Distinct facts", document.Counts.DistinctFacts.ToString("N0", CultureInfo.InvariantCulture));
         ConsoleUi.Field(
             "Largest repeat",

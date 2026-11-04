@@ -281,7 +281,7 @@
       },
       "tests": [
         "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
-        "P27: Unix-domain sockets have an inventoried source that admits through its gate and that no profile requests, its cost measured, and no tier on any build until a fixture measures one through it",
+        "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and no tier on any build until a fixture measures one through it",
         "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other"
       ]
     },
@@ -1992,7 +1992,7 @@
         "P26: a live preview never reaches the ranking, the interval table, a step, a brush or an export"
       ],
       "P27": [
-        "P27: Unix-domain sockets have an inventoried source that admits through its gate and that no profile requests, its cost measured, and no tier on any build until a fixture measures one through it",
+        "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and no tier on any build until a fixture measures one through it",
         "P27: a build outside the matrix is untested, never probably working",
         "P27: a build's coverage names a tier measured on it, and names another build's evidence as another's",
         "P27: a fixture's tiers are tiers, agree with what its results say, and belong to its mechanism",
@@ -2528,6 +2528,7 @@
         "R21: icat compare says why it states no change, each reason once beneath the table, never a zero",
         "R21: icat evidence states the capture's coverage over its time scope, in the inspector's words",
         "R21: icat export's CSV states what the capture covered on every line, and its sharing report keeps it",
+        "R21: icat import says what the file carried, and what a source's gate did not admit only when it omitted any",
         "R21: icat metric says what it cannot answer and why, never that a session without what a request needs holds nothing",
         "R21: icat operations and exchanges say a duration none was timed for, and a server call none reached, never a dash",
         "R21: icat operations, exchanges and channels say what the capture covered of what they list, never from a count of none",
@@ -2655,6 +2656,7 @@
         "R22: a session that published a newer generation reads as advanced, and one an earlier copy was put in place of as replaced, each saying what to do",
         "R22: a tile index whose bindings are not the derivation's is not counted by a brush, which reads its segments, and a checkpoint publishes it again",
         "R22: a tile index's derivation is its rules, instances and channels: another instance, paired channel or unpaired channel is another derivation",
+        "R22: an AF_UNIX record admitted through its gate derives a Unix-domain socket row of its socket's owner, its socket its connection, with the bytes it moved",
         "R22: an IPv6 connection relates its two ends as an IPv4 one does, and never meets an end of the other family",
         "R22: an RPC record binds to the process that raised it, and a kernel record's header stays context",
         "R22: an RPC server no lifecycle record names is a process of its own calls, and its rows name it",
@@ -2958,6 +2960,7 @@
         "R18: icat capabilities, compact and operations write their reports to --output as --json prints them, into a folder they make, and say so",
         "R18: icat capture projects a capture's stop from the limits the window does - the effective quota, and the window the broker releases for",
         "R18: icat capture records RPC peers through the broker as it records Explore, live, and refuses a focus or content it does not take",
+        "R18: icat capture records Unix sockets through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture takes a content request in icat record's words, and refuses what a content capture does not take",
         "R18: icat channels pages the busiest channels first, channels of as many records by key, and its JSON names that order",
         "R18: icat channels says how each channel was paired - its rule, strength, lifetime and coverage - in the inspector's words",
@@ -3021,6 +3024,8 @@
         "R18: icat programs names no port where the capture saw none of a pair's connections open",
         "R18: icat programs says no program talked with another where no relationship joins two processes",
         "R18: icat raw says a record's facts as the window does, in words - its provider named, its lengths counted - and its bytes only when asked",
+        "R18: icat record and icat capture say what Unix sockets records and that AFD collects every socket call of the machine",
+        "R18: icat record takes every profile its help names, each by the catalog's id, and refuses any other by the same list",
         "R18: icat rederive needs a session's folder, and says so of none and of one that is not there",
         "R18: icat rederive refuses an option it cannot read, saying what it expects",
         "R18: icat session states a session's size on disk, bytes per record and tier in the window's words",

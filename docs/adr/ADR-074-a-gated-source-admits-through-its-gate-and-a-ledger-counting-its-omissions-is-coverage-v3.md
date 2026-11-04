@@ -1,7 +1,7 @@
 # ADR-074: A gated source admits through its gate, and a ledger counting its omissions is coverage-v3
 
-- Status: accepted for M6's Unix-domain sockets work package; Winsock AFD admits through its gate, and no profile
-  requests it yet
+- Status: accepted for M6's Unix-domain sockets work package; Winsock AFD admits through its gate, which the opt-in
+  Unix sockets profile requests (revision 899)
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
 - Relates to: ADR-018, ADR-072, ADR-073, plan M6, §4.2, §9.3, §18.1, §20.6, R9, R21, R22, P12, FX-UNIX-001,
@@ -60,3 +60,25 @@ through its gate needs three things that model lacks:
   layout, and the measurement through `icat record` will hold the whole path.
 - The gate's state is bounded by the sockets it follows and the closed sockets it remembers (ADR-073). The dictionaries
   that hold them grow to that bound and no further.
+
+## Addendum: the Unix sockets profile (revision 899)
+
+An opt-in profile, `unix-sockets`, now requests Winsock AFD, beside Kernel-Process, both required. Without AFD it does
+not start, rather than record lifecycle alone. `icat record --profile unix-sockets` records it elevated, and
+`icat capture --profile unix-sockets` asks the broker for it as it asks for Explore, taking no focus.
+
+- **What it enables.** AFD is requested for `AFD_KW_SOURCE_WINSOCK` (`0x4`), the keyword every call the gate counts
+  carries, and each of the ten calls by its event id. A keyword mask of 0, which ETW reads as every keyword, would also
+  have enabled what the transport indicates. ADR-072's cost was measured collecting both source keywords and every event,
+  more than the profile requests, so the Moderate class it states bounds the profile's collection from above. The
+  profile itself is not measured whole, so its cost is its sources', each stated with its own.
+- **What it collects.** AFD's process filter does not hold, so the profile collects every socket call of the machine and
+  admits, through the gate, the calls of each socket created AF_UNIX. Its summary says so, and Explore never admits AFD.
+- **What its records become.** An admitted record derives a Unix-domain socket row owned by its socket's creator, with
+  its socket's number as its connection, and with a transfer's length as completed I/O on its side. Its fact key is its
+  family's own, `unix-socket-operation`: no capture had admitted AF_UNIX before, so no row is re-keyed.
+- **An import's counts.** An import that admits through a gate counts what the gate omitted, and `icat import` says it
+  when it omitted any. `icat import` itself admits lifecycle and Kernel-Network alone, so its imports omit none.
+
+A fixture measured through the product is still the next step: FX-UNIX-001 recorded by `icat record --profile
+unix-sockets`, which could give the mechanism a tier.

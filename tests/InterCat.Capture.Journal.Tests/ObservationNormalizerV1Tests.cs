@@ -559,13 +559,13 @@ public sealed class ObservationNormalizerV1Tests
         Assert.Equal(
             [
                 "process-lifecycle", "process-lifecycle", "network-transfer", "network-transfer", "rpc-call", "pipe-operation",
-                "pipe-operation", "alpc-message", "section-mapping", "source-observation", "source-observation",
+                "pipe-operation", "alpc-message", "section-mapping", "unix-socket-operation", "source-observation", "source-observation",
             ],
             new[]
             {
                 Mechanism.ProcessLifecycle, Mechanism.ThreadLifecycle, Mechanism.Tcp, Mechanism.Udp, Mechanism.Rpc,
-                Mechanism.NamedPipe, Mechanism.AnonymousPipe, Mechanism.Alpc, Mechanism.SharedSection, Mechanism.ComActivation,
-                Mechanism.Quic,
+                Mechanism.NamedPipe, Mechanism.AnonymousPipe, Mechanism.Alpc, Mechanism.SharedSection, Mechanism.UnixDomainSocket,
+                Mechanism.ComActivation, Mechanism.Quic,
             }.Select(ObservationNormalizerV1.DiscriminatorFor));
 
     [Fact(DisplayName = "I15: every derived row is writable into a segment as it stands")]

@@ -49,6 +49,9 @@ public sealed class ObservationNormalizerV1
         Mechanism.NamedPipe or Mechanism.AnonymousPipe => "pipe-operation",
         Mechanism.Alpc => "alpc-message",
         Mechanism.SharedSection => "section-mapping",
+
+        // A family of its own from its first row: no capture admitted AF_UNIX before Winsock AFD's gate (ADR-074).
+        Mechanism.UnixDomainSocket => "unix-socket-operation",
         _ => "source-observation",
     };
 

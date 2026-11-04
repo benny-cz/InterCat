@@ -43,6 +43,28 @@ public sealed class ReportCountsTests
             QueueCapacity = 1,
         }));
 
+    [Theory(DisplayName = "R21: icat import says what the file carried, and what a source's gate did not admit only when it omitted any")]
+    [InlineData(0L, new[] { "Delivered by the file", "Admitted and indexed", "Omitted by policy", "Undecodable", "Lost by the file itself" })]
+    [InlineData(7L, new[] { "Delivered by the file", "Admitted and indexed", "Omitted by policy", "Not admitted by a source's gate", "Undecodable", "Lost by the file itself" })]
+    public void AnImportSaysWhatTheFileCarried(long gated, string[] quantities)
+    {
+        IReadOnlyList<IReadOnlyList<string>> rows = ImportCommand.Carried(new ImportCountsDocument
+        {
+            ObservedRecords = 1_010 + gated,
+            AdmittedRecords = 1_000,
+            PolicyOmissions = 6,
+            GatedRecords = gated,
+            UndecodableRecords = 4,
+            SourceEventsLost = 2,
+            IndexedRecords = 1_000,
+            DistinctFacts = 1_000,
+            MaximumMultiplicity = 1,
+            ElapsedMilliseconds = 1,
+        });
+        Assert.Equal(quantities, rows.Select(row => row[0]));
+        Assert.Equal(gated > 0 ? ["1,017", "1,000", "6", "7", "4", "2"] : ["1,010", "1,000", "6", "4", "2"], rows.Select(row => row[1]));
+    }
+
     [Theory(DisplayName = "§18.4: icat import says it spilled nothing, or how many runs and bytes, each in words that agree with its count")]
     [InlineData(0, 0L, "nothing; the index fitted in memory")]
     [InlineData(1, 1L, "1 run, 1 byte")]

@@ -1,4 +1,7 @@
+using InterCat.Capture.Journal;
+using InterCat.Capture.Recording;
 using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
 
 namespace InterCat.Capture.Windows.Tests;
@@ -6,16 +9,22 @@ namespace InterCat.Capture.Windows.Tests;
 /// <summary>
 /// Winsock AFD admitted through its gate (ADR-073, ADR-074): the calls the gate counts compile from the provider's registered
 /// layout to fixed slots, none of them an address the kernel reuses or a buffer's; an admitted record carries the gate's
-/// socket number and owner in place of the kernel addresses the source raised; and every record of an admitted descriptor
-/// the gate does not admit is omitted with its reason, never admitted with an address.
+/// socket number and owner in place of the kernel addresses the source raised, and derives a Unix-domain socket row of that
+/// owner; and every record of an admitted descriptor the gate does not admit is omitted with its reason, never admitted with
+/// an address.
 /// </summary>
 public sealed class AfdGatedAdmissionTests
 {
-    // The provider's registered layout of the calls the gate counts, as TDH gave it on Windows 10.0.26220 (ADR-072).
+    // The provider's registered layout of the calls the gate counts, and its two source keywords, as TDH gave them on
+    // Windows 10.0.26220 (ADR-072).
     private const string Manifest = """
         <instrumentationManifest xmlns="http://schemas.microsoft.com/win/2004/08/events">
          <instrumentation><events>
           <provider name="Microsoft-Windows-Winsock-AFD" guid="{e53c6823-7bb8-44bb-90dc-3f86090d48a6}">
+           <keywords>
+            <keyword name="AFD_KW_SOURCE_WINSOCK" mask="0x4" />
+            <keyword name="AFD_KW_SOURCE_TRANSPORT" mask="0x8" />
+           </keywords>
            <templates>
             <template tid="AfdCreateOpenArgs">
              <data name="EnterExit" inType="win:UInt32" /><data name="Location" inType="win:UInt32" />
@@ -51,16 +60,16 @@ public sealed class AfdGatedAdmissionTests
             </template>
            </templates>
            <events>
-            <event value="1000" version="0" level="win:Informational" template="AfdCreateOpenArgs" />
-            <event value="1001" version="0" level="win:Informational" template="AfdCloseClosedArgs" />
-            <event value="1003" version="0" level="win:Informational" template="AfdSendConnectedArgs" />
-            <event value="1004" version="0" level="win:Informational" template="AfdSendConnectedArgs" />
-            <event value="1017" version="0" level="win:Informational" template="AfdCloseClosedArgs" />
-            <event value="1020" version="0" level="win:Informational" template="AfdCloseClosedArgs" />
-            <event value="1023" version="0" level="win:Informational" template="AfdCloseClosedArgs" />
-            <event value="1027" version="0" level="win:Informational" template="AfdAcceptWithAddressConnectedArgs" />
-            <event value="1029" version="0" level="win:Informational" template="AfdCloseClosedArgs" />
-            <event value="1030" version="0" level="win:Informational" template="AfdBindWithAddressConnectedArgs" />
+            <event value="1000" version="0" level="win:Informational" keywords="AFD_KW_SOURCE_WINSOCK" template="AfdCreateOpenArgs" />
+            <event value="1001" version="0" level="win:Informational" keywords="AFD_KW_SOURCE_WINSOCK" template="AfdCloseClosedArgs" />
+            <event value="1003" version="0" level="win:Informational" keywords="AFD_KW_SOURCE_WINSOCK" template="AfdSendConnectedArgs" />
+            <event value="1004" version="0" level="win:Informational" keywords="AFD_KW_SOURCE_WINSOCK" template="AfdSendConnectedArgs" />
+            <event value="1017" version="0" level="win:Informational" keywords="AFD_KW_SOURCE_WINSOCK" template="AfdCloseClosedArgs" />
+            <event value="1020" version="0" level="win:Informational" keywords="AFD_KW_SOURCE_WINSOCK" template="AfdCloseClosedArgs" />
+            <event value="1023" version="0" level="win:Informational" keywords="AFD_KW_SOURCE_WINSOCK" template="AfdCloseClosedArgs" />
+            <event value="1027" version="0" level="win:Informational" keywords="AFD_KW_SOURCE_WINSOCK" template="AfdAcceptWithAddressConnectedArgs" />
+            <event value="1029" version="0" level="win:Informational" keywords="AFD_KW_SOURCE_WINSOCK" template="AfdCloseClosedArgs" />
+            <event value="1030" version="0" level="win:Informational" keywords="AFD_KW_SOURCE_WINSOCK" template="AfdBindWithAddressConnectedArgs" />
            </events>
           </provider>
          </events></instrumentation>
@@ -83,6 +92,13 @@ public sealed class AfdGatedAdmissionTests
         SourceAdmissionPlan plan = Compiled();
         Assert.Empty(plan.Diagnostics);
         Assert.Equal([1000, 1001, 1003, 1004, 1017, 1020, 1023, 1027, 1029, 1030], plan.Events.Select(descriptor => descriptor.EventId).Order());
+
+        // Each is a socket call of AFD_KW_SOURCE_WINSOCK, the one keyword the source is requested for, so a capture enables
+        // none of what the transport indicates.
+        ProviderSchema schema = ManifestParser.Parse(Manifest);
+        Assert.Equal(["AFD_KW_SOURCE_WINSOCK"], Source.RequestedKeywords);
+        Assert.Equal(schema.Keywords["AFD_KW_SOURCE_WINSOCK"], Source.MatchAnyKeyword);
+        Assert.All(plan.Events, descriptor => Assert.Equal(Source.MatchAnyKeyword, schema.FindEvent(descriptor.EventId)!.KeywordMask));
 
         (string, int, int)[] call = [("EnterExit", 0, 4), ("Location", 4, 4), ("Process", 8, 8), ("Endpoint", 16, 8)];
         foreach (AdmittedEventPlan descriptor in plan.Events)
@@ -163,6 +179,50 @@ public sealed class AfdGatedAdmissionTests
         AdmittedEvent second = Record(plan, 1000, raisedBy: 30, ("EnterExit", 0), ("Location", 1006), ("Process", ProcessAddress),
             ("Endpoint", OtherEndpoint), ("AddressFamily", 1), ("SocketType", 1), ("ProcessId", 30), ("Status", 0));
         Assert.Equal(GateOmission.BeyondBound, full.Read(ref second, Plan(plan, 1000)));
+    }
+
+    [Fact(DisplayName = "R22: an AF_UNIX record admitted through its gate derives a Unix-domain socket row of its socket's owner, its socket its connection, with the bytes it moved")]
+    public void AnAdmittedRecordDerivesASocketRow()
+    {
+        SourceAdmissionPlan plan = Compiled();
+        var gate = new AfdRecordGate();
+        AdmittedEvent create = Record(plan, 1000, raisedBy: 31, ("EnterExit", 0), ("Location", 1006), ("Process", ProcessAddress),
+            ("Endpoint", UnixEndpoint), ("AddressFamily", 1), ("SocketType", 1), ("ProcessId", 30), ("Status", 0));
+        Assert.Null(gate.Read(ref create, Plan(plan, 1000)));
+        AdmittedEvent received = Record(plan, 1004, raisedBy: 40, ("EnterExit", 1), ("Location", 4123), ("Process", ProcessAddress),
+            ("Endpoint", UnixEndpoint), ("BufferLength", 96), ("Status", 0));
+        Assert.Null(gate.Read(ref received, Plan(plan, 1004)));
+
+        SourceClockDescriptor clock = new(
+            ClockId.Derive("afd-gated-admission-tests"),
+            HostId.Derive("afd-gated-admission-tests"),
+            SourceClockKind.Monotonic,
+            TimestampEncoding.Qpc,
+            10_000_000,
+            0,
+            TimestampRounding.NearestEven,
+            SourceClockMath.SessionTicksPerSecond * 3_600);
+        var mapper = new AdmittedEventEnvelopeMapper([plan], clock.Id);
+        received.TimestampQpc = 5_000;
+        received.RecordOrdinal = 2;
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(received, Plan(plan, 1004), CaptureId.New());
+        ObservationRowV1 row = new ObservationNormalizerV1(clock).ToRow(envelope, Plan(plan, 1004));
+
+        // A receive of the socket's owner, never of the thread that raised it, with the bytes it took and its status.
+        Assert.Equal(
+            (Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound),
+            (row.Mechanism, row.Layer, row.Kind, row.Direction));
+        Assert.Equal((30, 40, QualityLevel.Proven), (row.OwnerProcessId, row.HeaderProcessId, row.AttributionQuality));
+        Assert.Equal(
+            (96L, ByteDomain.CompletedIo, AccountingSide.ReceiveSide, FieldAvailability.Present),
+            (row.ByteValue, row.ByteDomain, row.AccountingSide, row.ByteAvailability));
+        Assert.Equal((0L, FieldAvailability.Present), (row.StatusCode, row.StatusAvailability));
+        Assert.Null(row.Validate());
+
+        // Its socket is its connection, numbered in the capture; no field of it is the kernel's address.
+        SourceFieldRowV1 connection = Assert.Single(ObservationNormalizerV1.FieldRows(envelope, Plan(plan, 1004), row));
+        Assert.Equal((SourceField.ConnectionId, (long?)1), (connection.Field, connection.Value));
+        Assert.Equal("unix-socket-operation", ObservationNormalizerV1.DiscriminatorFor(Mechanism.UnixDomainSocket));
     }
 
     private static AdmittedEventPlan Plan(SourceAdmissionPlan plan, int eventId) =>

@@ -9,8 +9,8 @@ public sealed class CaptureProfileCompilerTests
     [Fact(DisplayName = "IC-012: the profile catalog exposes every intent without pretending unfinished modes are available")]
     public void CatalogExposesUnavailableProfiles()
     {
-        Assert.Equal(6, CaptureProfileCatalog.All.Count);
-        Assert.Equal(6, CaptureProfileCatalog.All.Select(profile => profile.Id).Distinct().Count());
+        Assert.Equal(7, CaptureProfileCatalog.All.Count);
+        Assert.Equal(7, CaptureProfileCatalog.All.Select(profile => profile.Id).Distinct().Count());
 
         CaptureProfileDescriptor focused = CaptureProfileCatalog.Find("focused-transport")!;
         Assert.True(focused.CompilationAvailable);
@@ -327,6 +327,49 @@ public sealed class CaptureProfileCompilerTests
         CaptureProfileDescriptor profile = CaptureProfileCatalog.All.Single(candidate => candidate.Kind == CaptureProfileKind.RpcPeers);
         Assert.Equal(OverheadClass.Moderate, profile.Overhead);
         Assert.Contains("Explore", profile.OverheadStatement, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "§9.4: Unix sockets admits Winsock AFD beside lifecycle, both required, its cost its sources', and AFD is never Explore's")]
+    public void UnixSocketsAdmitsAfdBesideLifecycle()
+    {
+        SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
+        SourceAdmissionPlan afd = BuildPlan(WindowsSourceCatalog.WinsockAfdSourceId, 1, 1003);
+
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.UnixSockets),
+            new SourcePlanCompilation([process, afd], []));
+
+        Assert.True(plan.CanStart);
+        Assert.Equal("unix-sockets", plan.EffectiveProfileId);
+        Assert.Equal([WindowsSourceCatalog.KernelProcessSourceId, WindowsSourceCatalog.WinsockAfdSourceId],
+            plan.Providers.Select(provider => provider.SourceId));
+        Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.WinsockAfdSourceId
+            && decision is { State: ProfileSourceDecisionState.Included, Required: true, Overhead: OverheadClass.Moderate });
+
+        // Nothing measured the profile whole, so its cost is its sources', each stated with its own; AFD collects every
+        // socket call of the machine, which the profile says, and so Explore never admits it.
+        CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("unix-sockets")!;
+        Assert.Equal((CaptureProfileKind.UnixSockets, OverheadClass.Unmeasured, AdmissionMode.MetadataOnly),
+            (profile.Kind, profile.Overhead, profile.Admission));
+        Assert.Contains("every socket call of the machine", profile.Summary, StringComparison.Ordinal);
+        Assert.DoesNotContain(CaptureProfileCatalog.Find("explore")!.Sources,
+            source => source.SourceId == WindowsSourceCatalog.WinsockAfdSourceId);
+    }
+
+    [Fact(DisplayName = "§9.4: Unix sockets without Winsock AFD does not start, rather than record lifecycle alone")]
+    public void UnixSocketsWithoutAfdIsBlocked()
+    {
+        SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
+
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.UnixSockets),
+            new SourcePlanCompilation([process], [new(WindowsSourceCatalog.WinsockAfdSourceId, SourcePlanIssueSeverity.Refusal,
+                "The provider is not registered on this machine.")]));
+
+        Assert.False(plan.CanStart);
+        Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.WinsockAfdSourceId
+            && decision.State == ProfileSourceDecisionState.Blocking
+            && decision.Reason.Contains("not registered", StringComparison.Ordinal));
     }
 
     [Fact(DisplayName = "§9.4: RPC peers without ALPC does not start, rather than record calls it cannot resolve")]

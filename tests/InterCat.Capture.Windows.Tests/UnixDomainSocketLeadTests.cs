@@ -7,13 +7,14 @@ namespace InterCat.Capture.Windows.Tests;
 
 /// <summary>
 /// The Unix-domain sockets work package (plan M6, §4.2): Winsock AFD is inventoried as their lead, which FX-UNIX-001 measured
-/// through a lab probe, and admits through its gate the calls the gate counts (ADR-074); nothing claims more for it - no
-/// profile requests it and no build carries a tier for them until a fixture measures one through the product (P27). The fixture's ledger holds each record on the workload's sockets, each
+/// through a lab probe, and admits through its gate the calls the gate counts (ADR-074); the opt-in Unix sockets profile
+/// alone requests it, and nothing claims more for it - no build carries a tier for them until a fixture measures one through
+/// the product (P27). The fixture's ledger holds each record on the workload's sockets, each
 /// the socket's from its create to the next create at its address (R22), and counts the truth's every send and receive.
 /// </summary>
 public sealed class UnixDomainSocketLeadTests
 {
-    [Fact(DisplayName = "P27: Unix-domain sockets have an inventoried source that admits through its gate and that no profile requests, its cost measured, and no tier on any build until a fixture measures one through it")]
+    [Fact(DisplayName = "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and no tier on any build until a fixture measures one through it")]
     public void UnixDomainSocketsHaveALeadAndNoTier()
     {
         WindowsSourceDefinition afd = WindowsSourceCatalog.Find(WindowsSourceCatalog.WinsockAfdSourceId)!;
@@ -28,8 +29,9 @@ public sealed class UnixDomainSocketLeadTests
             Assert.Equal((Mechanism.UnixDomainSocket, ObservationLayer.Transport), (admitted.Mechanism, admitted.Layer));
             Assert.DoesNotContain(admitted.Fields, field => field.FieldName is "Buffer" or "Address" or "AcceptEndpoint");
         });
-        Assert.Equal((SourceContractStatus.Experimental, false, 0UL),
+        Assert.Equal((SourceContractStatus.Experimental, false, 0x4UL),
             (afd.ContractStatus, afd.SupportsCaptureSideProcessFilter, afd.MatchAnyKeyword));
+        Assert.Equal(["AFD_KW_SOURCE_WINSOCK"], afd.RequestedKeywords);
         Assert.Contains(afd.Notes, note => note.Contains("FX-UNIX-001", StringComparison.Ordinal));
 
         // Its collection's cost is measured, and Moderate: collected machine-wide, as its process filter does not hold.
@@ -41,9 +43,10 @@ public sealed class UnixDomainSocketLeadTests
             Assert.Equal(0, impact.RootElement.GetProperty("eventsLost").GetInt64());
         }
 
-        // No profile requests it, and no other source claims the mechanism.
-        Assert.DoesNotContain(CaptureProfileCatalog.All,
-            profile => profile.Sources.Any(source => source.SourceId == WindowsSourceCatalog.WinsockAfdSourceId));
+        // Only the opt-in Unix sockets profile requests it, and no other source claims the mechanism.
+        Assert.Equal(["unix-sockets"], CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures)
+            .Where(profile => profile.Sources.Any(source => source.SourceId == WindowsSourceCatalog.WinsockAfdSourceId))
+            .Select(profile => profile.Id));
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != WindowsSourceCatalog.WinsockAfdSourceId),
             source => Assert.DoesNotContain(Mechanism.UnixDomainSocket, source.Mechanisms));
 

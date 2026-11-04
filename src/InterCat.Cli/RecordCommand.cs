@@ -87,19 +87,11 @@ internal static class RecordCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        CaptureProfileKind? profile = profileOption.ToUpperInvariant() switch
-        {
-            "EXPLORE" => CaptureProfileKind.Explore,
-            "FOCUSED-TRANSPORT" or "FOCUSEDTRANSPORT" => CaptureProfileKind.FocusedTransport,
-            "RPC-PEERS" or "RPCPEERS" => CaptureProfileKind.RpcPeers,
-            "CONTENT-FIXTURE" or "CONTENTFIXTURE" => CaptureProfileKind.ContentFixture,
-            "CONTENT" => CaptureProfileKind.Content,
-            _ => null,
-        };
+        CaptureProfileKind? profile = Profile(profileOption);
         if (profile is null)
         {
             ConsoleUi.Failure(
-                CommandLine.Expects("--profile", profileOption, ["explore", "focused-transport", "rpc-peers", "content", "content-fixture"])
+                CommandLine.Expects("--profile", profileOption, Profiles)
                 + " icat profiles lists every intent and what it would collect.");
             return InterCatExitCode.InvalidInvocation;
         }
@@ -428,6 +420,22 @@ internal static class RecordCommand
         _ => string.Create(CultureInfo.CurrentCulture, $"{publications:N0} generations, one journal chunk each; the last holds them all"),
     };
 
+    /// <summary>The profiles icat record takes, as its help lists them and its refusal names them.</summary>
+    public static IReadOnlyList<string> Profiles { get; } =
+        ["explore", "focused-transport", "rpc-peers", "unix-sockets", "content", "content-fixture"];
+
+    /// <summary>The profile <paramref name="option"/> names, in any case and with or without its dash; null for none.</summary>
+    internal static CaptureProfileKind? Profile(string option) => option.ToUpperInvariant() switch
+    {
+        "EXPLORE" => CaptureProfileKind.Explore,
+        "FOCUSED-TRANSPORT" or "FOCUSEDTRANSPORT" => CaptureProfileKind.FocusedTransport,
+        "RPC-PEERS" or "RPCPEERS" => CaptureProfileKind.RpcPeers,
+        "UNIX-SOCKETS" or "UNIXSOCKETS" => CaptureProfileKind.UnixSockets,
+        "CONTENT-FIXTURE" or "CONTENTFIXTURE" => CaptureProfileKind.ContentFixture,
+        "CONTENT" => CaptureProfileKind.Content,
+        _ => null,
+    };
+
     /// <summary>
     /// What a recording delivered and did not admit: by its policy, and by a gated source's gate (ADR-074). Neither is loss;
     /// a gate that followed as many resources as it may and no more is said, as its coverage is a partial gap.
@@ -451,7 +459,7 @@ internal static class RecordCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat record <new-session-dir> [--profile explore|focused-transport|rpc-peers|content|content-fixture]");
+        ConsoleUi.Line("icat record <new-session-dir> [--profile " + string.Join("|", Profiles) + "]");
         ConsoleUi.Line("            [--mechanism tcp|udp|http] [--duration <seconds>] [--publish-every <seconds>] [--evidence-only] [--json]");
         ConsoleUi.Line("            content: " + ContentRequestOptions.Synopsis);
         ConsoleUi.Line("                     " + ContentRequestOptions.Limits);
@@ -469,6 +477,9 @@ internal static class RecordCommand
         ConsoleUi.Line("  --evidence-only publishes the admitted evidence alone - journal chunks with the content kept of");
         ConsoleUi.Line("  their records, plan and ledger - and derives nothing in the elevated process; icat follow");
         ConsoleUi.Line("  derives the session from it, mirroring the content with its chunks (ADR-027).");
+        ConsoleUi.Line("  --profile unix-sockets records each AF_UNIX socket's calls from Winsock AFD, owned by the");
+        ConsoleUi.Line("  process that created it, with the bytes each send and receive moved, and no path or peer:");
+        ConsoleUi.Line("  AFD collects every socket call of the machine, so icat profiles unix-sockets states its cost.");
         ConsoleUi.Line("  --profile content keeps the message bytes of a source admitted for content - WinINet's HTTP");
         ConsoleUi.Line("  exchanges, etw/manifest/Microsoft-Windows-WinINet-Capture (ADR-037) - from the processes --pid");
         ConsoleUi.Line("  names only, which the provider's own process filter holds before anything is kept; --channel *");
