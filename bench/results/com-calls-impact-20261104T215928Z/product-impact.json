@@ -1,0 +1,484 @@
+{
+  "schema": "intercat.com-calls-product-impact.v1",
+  "measuredUtc": "2026-11-04T22:07:29.2455135+00:00",
+  "quietMachineBusyPercent": 8.943,
+  "workload": {
+    "verb": "com-loopback",
+    "calls": 16384,
+    "delayMilliseconds": 0,
+    "burst": 0
+  },
+  "trials": [
+    {
+      "round": 1,
+      "kind": "none",
+      "busyPercent": 17.616,
+      "workloadSeconds": 2.814,
+      "capture": null
+    },
+    {
+      "round": 1,
+      "kind": "com-calls",
+      "busyPercent": 21.392,
+      "workloadSeconds": 4.076,
+      "capture": {
+        "observedPerSecond": 15053,
+        "admittedPerSecond": 15053,
+        "comAdmittedPerSecond": 7300,
+        "rpcAdmittedPerSecond": 7717,
+        "observedRecords": 409551,
+        "applicationDrops": 134497,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 2.364
+      }
+    },
+    {
+      "round": 1,
+      "kind": "explore",
+      "busyPercent": 29.84,
+      "workloadSeconds": 3.57,
+      "capture": {
+        "observedPerSecond": 11741,
+        "admittedPerSecond": 11741,
+        "comAdmittedPerSecond": 0,
+        "rpcAdmittedPerSecond": 11644,
+        "observedRecords": 213434,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 2.626
+      }
+    },
+    {
+      "round": 2,
+      "kind": "com-calls",
+      "busyPercent": 35.879,
+      "workloadSeconds": 4.287,
+      "capture": {
+        "observedPerSecond": 17116,
+        "admittedPerSecond": 17116,
+        "comAdmittedPerSecond": 8011,
+        "rpcAdmittedPerSecond": 9064,
+        "observedRecords": 422228,
+        "applicationDrops": 110474,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 3.007
+      }
+    },
+    {
+      "round": 2,
+      "kind": "explore",
+      "busyPercent": 32.011,
+      "workloadSeconds": 3.6,
+      "capture": {
+        "observedPerSecond": 11273,
+        "admittedPerSecond": 11273,
+        "comAdmittedPerSecond": 0,
+        "rpcAdmittedPerSecond": 11176,
+        "observedRecords": 223365,
+        "applicationDrops": 19278,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 2.659
+      }
+    },
+    {
+      "round": 2,
+      "kind": "none",
+      "busyPercent": 18.658,
+      "workloadSeconds": 3.684,
+      "capture": null
+    },
+    {
+      "round": 3,
+      "kind": "explore",
+      "busyPercent": 15.951,
+      "workloadSeconds": 3.26,
+      "capture": {
+        "observedPerSecond": 11540,
+        "admittedPerSecond": 11540,
+        "comAdmittedPerSecond": 0,
+        "rpcAdmittedPerSecond": 11431,
+        "observedRecords": 216172,
+        "applicationDrops": 6109,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 2.217
+      }
+    },
+    {
+      "round": 3,
+      "kind": "none",
+      "busyPercent": 14.074,
+      "workloadSeconds": 2.938,
+      "capture": null
+    },
+    {
+      "round": 3,
+      "kind": "com-calls",
+      "busyPercent": 14.629,
+      "workloadSeconds": 3.544,
+      "capture": {
+        "observedPerSecond": 13078,
+        "admittedPerSecond": 13078,
+        "comAdmittedPerSecond": 6130,
+        "rpcAdmittedPerSecond": 6905,
+        "observedRecords": 413210,
+        "applicationDrops": 176266,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 1.635
+      }
+    },
+    {
+      "round": 4,
+      "kind": "none",
+      "busyPercent": 14.618,
+      "workloadSeconds": 2.582,
+      "capture": null
+    },
+    {
+      "round": 4,
+      "kind": "com-calls",
+      "busyPercent": 18.378,
+      "workloadSeconds": 4.07,
+      "capture": {
+        "observedPerSecond": 15135,
+        "admittedPerSecond": 15135,
+        "comAdmittedPerSecond": 7337,
+        "rpcAdmittedPerSecond": 7767,
+        "observedRecords": 404823,
+        "applicationDrops": 129608,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 2.335
+      }
+    },
+    {
+      "round": 4,
+      "kind": "explore",
+      "busyPercent": 17.256,
+      "workloadSeconds": 3.212,
+      "capture": {
+        "observedPerSecond": 10615,
+        "admittedPerSecond": 10615,
+        "comAdmittedPerSecond": 0,
+        "rpcAdmittedPerSecond": 10525,
+        "observedRecords": 210758,
+        "applicationDrops": 17988,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 1.662
+      }
+    },
+    {
+      "round": 5,
+      "kind": "com-calls",
+      "busyPercent": 19.474,
+      "workloadSeconds": 3.726,
+      "capture": {
+        "observedPerSecond": 15129,
+        "admittedPerSecond": 15129,
+        "comAdmittedPerSecond": 7123,
+        "rpcAdmittedPerSecond": 7975,
+        "observedRecords": 415320,
+        "applicationDrops": 143690,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 2.394
+      }
+    },
+    {
+      "round": 5,
+      "kind": "explore",
+      "busyPercent": 43.935,
+      "workloadSeconds": 4.225,
+      "capture": {
+        "observedPerSecond": 8182,
+        "admittedPerSecond": 8182,
+        "comAdmittedPerSecond": 0,
+        "rpcAdmittedPerSecond": 8088,
+        "observedRecords": 217636,
+        "applicationDrops": 68571,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 1.988
+      }
+    },
+    {
+      "round": 5,
+      "kind": "none",
+      "busyPercent": 16.905,
+      "workloadSeconds": 2.772,
+      "capture": null
+    },
+    {
+      "round": 6,
+      "kind": "explore",
+      "busyPercent": 22.881,
+      "workloadSeconds": 3.217,
+      "capture": {
+        "observedPerSecond": 9859,
+        "admittedPerSecond": 9859,
+        "comAdmittedPerSecond": 0,
+        "rpcAdmittedPerSecond": 9808,
+        "observedRecords": 209921,
+        "applicationDrops": 32788,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 1.497
+      }
+    },
+    {
+      "round": 6,
+      "kind": "none",
+      "busyPercent": 14.6,
+      "workloadSeconds": 2.761,
+      "capture": null
+    },
+    {
+      "round": 6,
+      "kind": "com-calls",
+      "busyPercent": 19.939,
+      "workloadSeconds": 3.86,
+      "capture": {
+        "observedPerSecond": 14705,
+        "admittedPerSecond": 14705,
+        "comAdmittedPerSecond": 6906,
+        "rpcAdmittedPerSecond": 7768,
+        "observedRecords": 415545,
+        "applicationDrops": 147922,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 2.952
+      }
+    },
+    {
+      "round": 7,
+      "kind": "none",
+      "busyPercent": 14.867,
+      "workloadSeconds": 2.746,
+      "capture": null
+    },
+    {
+      "round": 7,
+      "kind": "com-calls",
+      "busyPercent": 19.839,
+      "workloadSeconds": 3.787,
+      "capture": {
+        "observedPerSecond": 15201,
+        "admittedPerSecond": 15201,
+        "comAdmittedPerSecond": 7397,
+        "rpcAdmittedPerSecond": 7775,
+        "observedRecords": 403534,
+        "applicationDrops": 132929,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 2.476
+      }
+    },
+    {
+      "round": 7,
+      "kind": "explore",
+      "busyPercent": 13.153,
+      "workloadSeconds": 3.076,
+      "capture": {
+        "observedPerSecond": 7406,
+        "admittedPerSecond": 7406,
+        "comAdmittedPerSecond": 0,
+        "rpcAdmittedPerSecond": 7321,
+        "observedRecords": 211574,
+        "applicationDrops": 76344,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 1.63
+      }
+    },
+    {
+      "round": 8,
+      "kind": "com-calls",
+      "busyPercent": 31.281,
+      "workloadSeconds": 4.247,
+      "capture": {
+        "observedPerSecond": 11763,
+        "admittedPerSecond": 11763,
+        "comAdmittedPerSecond": 5737,
+        "rpcAdmittedPerSecond": 5988,
+        "observedRecords": 418225,
+        "applicationDrops": 203983,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 2.836
+      }
+    },
+    {
+      "round": 8,
+      "kind": "explore",
+      "busyPercent": 29.601,
+      "workloadSeconds": 3.592,
+      "capture": {
+        "observedPerSecond": 11736,
+        "admittedPerSecond": 11736,
+        "comAdmittedPerSecond": 0,
+        "rpcAdmittedPerSecond": 11638,
+        "observedRecords": 216231,
+        "applicationDrops": 2944,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 2.556
+      }
+    },
+    {
+      "round": 8,
+      "kind": "none",
+      "busyPercent": 14.2,
+      "workloadSeconds": 2.71,
+      "capture": null
+    },
+    {
+      "round": 9,
+      "kind": "explore",
+      "busyPercent": 17.275,
+      "workloadSeconds": 3.172,
+      "capture": {
+        "observedPerSecond": 11775,
+        "admittedPerSecond": 11775,
+        "comAdmittedPerSecond": 0,
+        "rpcAdmittedPerSecond": 11714,
+        "observedRecords": 213641,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 1.847
+      }
+    },
+    {
+      "round": 9,
+      "kind": "none",
+      "busyPercent": 14.729,
+      "workloadSeconds": 2.687,
+      "capture": null
+    },
+    {
+      "round": 9,
+      "kind": "com-calls",
+      "busyPercent": 17.733,
+      "workloadSeconds": 3.723,
+      "capture": {
+        "observedPerSecond": 16104,
+        "admittedPerSecond": 16104,
+        "comAdmittedPerSecond": 7668,
+        "rpcAdmittedPerSecond": 8405,
+        "observedRecords": 412505,
+        "applicationDrops": 120679,
+        "sourceLoss": 0,
+        "captureProcessCpuPercentagePoints": 2.413
+      }
+    }
+  ],
+  "profiles": {
+    "com-calls": {
+      "against": "none",
+      "busyDifferencesPercentagePoints": [
+        3.776,
+        17.22,
+        0.556,
+        3.761,
+        2.569,
+        5.339,
+        4.971,
+        17.08,
+        3.005
+      ],
+      "medianCpuPercentagePoints": 3.776,
+      "workloadSlowdownsPercent": [
+        44.81,
+        16.38,
+        20.63,
+        57.61,
+        34.39,
+        39.79,
+        37.9,
+        56.71,
+        38.55
+      ],
+      "medianWorkloadSlowdownPercent": 38.55,
+      "medianThroughputRegressionPercent": 27.82,
+      "overhead": "Moderate",
+      "cpuTargetMet": true,
+      "throughputTargetMet": false,
+      "medianObservedPerSecond": 15129,
+      "medianAdmittedPerSecond": 15129,
+      "medianComAdmittedPerSecond": 7300,
+      "medianRpcAdmittedPerSecond": 7768,
+      "lossFree": false,
+      "capturesWithApplicationDrops": 9,
+      "capturesWithSourceLoss": 0,
+      "medianDroppedSharePercent": 32.94,
+      "medianCaptureProcessCpuPercentagePoints": 2.413
+    },
+    "explore": {
+      "against": "none",
+      "busyDifferencesPercentagePoints": [
+        12.224,
+        13.352,
+        1.878,
+        2.639,
+        27.031,
+        8.281,
+        -1.715,
+        15.401,
+        2.546
+      ],
+      "medianCpuPercentagePoints": 8.281,
+      "workloadSlowdownsPercent": [
+        26.86,
+        -2.28,
+        10.97,
+        24.4,
+        52.4,
+        16.52,
+        12.02,
+        32.52,
+        18.04
+      ],
+      "medianWorkloadSlowdownPercent": 18.04,
+      "medianThroughputRegressionPercent": 15.28,
+      "overhead": "High",
+      "cpuTargetMet": false,
+      "throughputTargetMet": false,
+      "medianObservedPerSecond": 11273,
+      "medianAdmittedPerSecond": 11273,
+      "medianComAdmittedPerSecond": 0,
+      "medianRpcAdmittedPerSecond": 11176,
+      "lossFree": false,
+      "capturesWithApplicationDrops": 7,
+      "capturesWithSourceLoss": 0,
+      "medianDroppedSharePercent": 8.53,
+      "medianCaptureProcessCpuPercentagePoints": 1.988
+    }
+  },
+  "comCallsOverExplore": {
+    "against": "explore",
+    "busyDifferencesPercentagePoints": [
+      -8.448,
+      3.868,
+      -1.322,
+      1.122,
+      -24.462,
+      -2.942,
+      6.686,
+      1.679,
+      0.459
+    ],
+    "medianCpuPercentagePoints": 0.459,
+    "workloadSlowdownsPercent": [
+      14.15,
+      19.1,
+      8.71,
+      26.7,
+      -11.82,
+      19.97,
+      23.11,
+      18.25,
+      17.38
+    ],
+    "medianWorkloadSlowdownPercent": 18.25,
+    "medianThroughputRegressionPercent": 15.43
+  },
+  "notes": [
+    "Machine CPU is the GetSystemTimes busy share over the workload alone. A capture\u0027s start (profile compilation, session enablement) and its stop, last publication and checkpoint are outside it; its live publications every 5 s are inside it.",
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once its counters are read.",
+    "A profile\u0027s cost is the median over rounds of its busy share minus the same round\u0027s no-capture share; signed differences are kept, and only the class clamps a negative median at zero.",
+    "A profile\u0027s throughput regression is the median over rounds of the workload\u0027s calls a second against the same round\u0027s no-capture run, a faster run counting none, as OverheadClassCalculator reads one; the signed slowdown is kept beside it.",
+    "comCallsOverExplore is the same medians between the two captures: what the opt-in adds to Explore on this workload.",
+    "A capture\u0027s observed and admitted rates are over the span its sources delivered in, from its first record to its last: the whole capture, longer than the workload, so they are averages, not the workload\u0027s peak.",
+    "applicationDrops are the records InterCat\u0027s own full queue dropped, and sourceLoss what ETW reported lost at a provider or in its buffers: different quantities, kept apart (\u00A79.3). A capture with either states the gap in its coverage; its cost figures are then those of a capture that did not keep every record.",
+    "captureProcessCpuPercentagePoints is the icat record process\u0027s own processor time over the same window, as a share of the whole machine. It excludes the kernel\u0027s and the workload\u0027s own threads\u0027 work of raising events, so it is a lower bound on the capture\u0027s cost."
+  ]
+}

@@ -178,10 +178,14 @@ public static class CaptureProfileCatalog
                 + "and requests no call stacks.",
             Overhead = OverheadClass.Moderate,
             OverheadStatement =
-                "its sources measured Moderate at most (Kernel-Process 1.75 CPU pp). COM-Perf's collection alone took a median "
-                + "0.3 to 0.6 CPU pp, Low, but a COM-heavy workload ran 17 to 18% slower, past the 5% throughput target, in "
-                + "proportion to a process's COM call rate. Nothing has measured the profile whole yet.",
-            OverheadEvidence = "bench/results/com-perf-impact-20261104T160252Z/impact.json",
+                "its sources measured Moderate at most (Kernel-Process 1.75 CPU pp; COM-Perf's collection alone 0.3 to 0.6, "
+                + "though it slowed a COM-heavy workload 17 to 18%). Through the product, on FX-COM-001's 16,384 calls unpaced, "
+                + "about 100,000 records a second, it added a median 3.8 pp to no capture, its own process 2.4, and the workload "
+                + "ran 38.6% slower, past the 5% throughput target, while its full queue dropped a median 32.9% of the records it "
+                + "observed, in every round, each capture stating the gap; Explore's dropped some in seven rounds of nine. In "
+                + "bursts of 64 calls 40 ms apart it added 2.6 pp and the workload ran 0.9% slower, nothing dropped or lost: the "
+                + "whole profile keeps its sources' class.",
+            OverheadEvidence = "bench/results/com-calls-impact-20261104T215928Z/product-impact.json",
         },
         Unavailable(
             CaptureProfileKind.Timing,

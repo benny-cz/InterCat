@@ -224,6 +224,50 @@ public sealed class ComPerfLeadTests
         });
     }
 
+    [Fact(DisplayName = "§12: the COM calls profile's cost is measured through the product in two series - unpaced, its full queue dropping records in every round and the workload past the throughput target, and in bursts, nothing dropped and the target met - and its statement says what each measured")]
+    public void TheProfilesCostIsMeasuredThroughTheProduct()
+    {
+        CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("com-calls")!;
+        string root = RepositoryRoot();
+        using JsonDocument unpaced = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, profile.OverheadEvidence!)));
+        string bursts = Assert.Single(Directory.EnumerateDirectories(Path.Combine(root, "bench", "results"), "com-calls-impact-bursts-*"));
+        using JsonDocument paced = JsonDocument.Parse(File.ReadAllText(Path.Combine(bursts, "product-impact.json")));
+
+        // Each series is nine rounds of three trials over FX-COM-001's 16,384 calls, its sources losing nothing.
+        foreach (JsonDocument series in new[] { unpaced, paced })
+        {
+            JsonElement document = series.RootElement;
+            Assert.Equal(27, document.GetProperty("trials").GetArrayLength());
+            Assert.Equal(("com-loopback", 16_384), (document.GetProperty("workload").GetProperty("verb").GetString(),
+                document.GetProperty("workload").GetProperty("calls").GetInt32()));
+            Assert.All(document.GetProperty("trials").EnumerateArray().Where(trial => trial.GetProperty("capture").ValueKind == JsonValueKind.Object),
+                trial => Assert.Equal(0, trial.GetProperty("capture").GetProperty("sourceLoss").GetInt64()));
+        }
+
+        // Unpaced, every capture's own full queue dropped records and the workload ran past the throughput target; in bursts
+        // none dropped and the target was met. Both classify as the profile states.
+        JsonElement fast = unpaced.RootElement.GetProperty("profiles").GetProperty("com-calls");
+        JsonElement slow = paced.RootElement.GetProperty("profiles").GetProperty("com-calls");
+        Assert.Equal((9, false, false), (fast.GetProperty("capturesWithApplicationDrops").GetInt32(),
+            fast.GetProperty("throughputTargetMet").GetBoolean(), fast.GetProperty("lossFree").GetBoolean()));
+        Assert.Equal((0, true, true), (slow.GetProperty("capturesWithApplicationDrops").GetInt32(),
+            slow.GetProperty("throughputTargetMet").GetBoolean(), slow.GetProperty("lossFree").GetBoolean()));
+        Assert.All(new[] { fast, slow }, series => Assert.Equal(profile.Overhead.ToString(), series.GetProperty("overhead").GetString()));
+        Assert.Equal(7, unpaced.RootElement.GetProperty("profiles").GetProperty("explore").GetProperty("capturesWithApplicationDrops").GetInt32());
+
+        // The statement says what each series measured, in tenths.
+        static string Tenths(JsonElement series, string name) =>
+            Math.Round(series.GetProperty(name).GetDecimal(), 1, MidpointRounding.AwayFromZero).ToString("0.0", CultureInfo.InvariantCulture);
+        string statement = profile.OverheadStatement!;
+        Assert.Contains($"added a median {Tenths(fast, "medianCpuPercentagePoints")} pp to no capture, its own process "
+            + Tenths(fast, "medianCaptureProcessCpuPercentagePoints"), statement, StringComparison.Ordinal);
+        Assert.Contains($"ran {Tenths(fast, "medianWorkloadSlowdownPercent")}% slower, past the 5% throughput target", statement, StringComparison.Ordinal);
+        Assert.Contains($"dropped a median {Tenths(fast, "medianDroppedSharePercent")}% of the records it observed", statement, StringComparison.Ordinal);
+        Assert.Contains("Explore's dropped some in seven rounds of nine", statement, StringComparison.Ordinal);
+        Assert.Contains($"it added {Tenths(slow, "medianCpuPercentagePoints")} pp and the workload ran {Tenths(slow, "medianWorkloadSlowdownPercent")}% "
+            + "slower, nothing dropped or lost", statement, StringComparison.Ordinal);
+    }
+
     private static Row[] Ledger(string? evidence = null) =>
     [
         .. File.ReadLines(Path.Combine(evidence ?? Evidence(), "ledger.csv")).Skip(1).Where(line => line.Length > 0).Select(line => line.Split(','))

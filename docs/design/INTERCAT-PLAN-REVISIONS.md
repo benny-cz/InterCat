@@ -843,6 +843,7 @@ Revision 916 implements ADR-079's carriers and links as `com-call-link-v1` (`con
 Revision 917 makes the RPC peer rule `rpc-call-peer-v2` (ADR-079's third addendum): a client call carrying a COM call that `com-call-link-v1` links is served by the RPC call carrying the server's, with or without ALPC, a disagreement with ALPC conflicting; an operation index of minor 2 keeps those links.
 Revision 918 adds the opt-in COM calls profile (ADR-079's fourth addendum): Kernel-Process, RPC and COM-Perf, all required, its class Moderate as its sources' and its statement naming COM-Perf's throughput regression; Explore never admits the source.
 Revision 919 measures FX-COM-001 through `icat record --profile com-calls` (ADR-080): every truth call its client's COM call, linked to the server's call of the same truth call and carried by one RPC call served through it, 1,920 of 1,920, with no byte and no object named, so COM calls carry ExperimentalEvidence.
+Revision 920 measures the COM calls profile's cost through the product (ADR-080's addendum): Moderate; unpaced, a COM-heavy workload 38.6% slower and a third of its records dropped by the capture's own full queue in every round; in bursts, 0.9% slower and nothing dropped.
 
 ## Revisions, a paragraph each, in order
 
@@ -3708,3 +3709,15 @@ session's COM calls as the product does and writes the workload's as a ledger by
 run is committed under `fixtures/FX-COM-001/evidence/product/` with its truth, and a test reproduces its counters and
 tier. Tests match calls by rank and by nearness, count a link to another process as a false attribution, and refuse
 another process's call, another method or the server's end as a client's.
+
+Revision 920 measures the COM calls profile's cost through the product (ADR-080's addendum). `InterCat.ComProbe
+--measure --product-impact` runs FX-COM-001's 16,384 calls in nine rounds, with no capture, under `icat record
+--profile com-calls` and under Explore, in an order rotating each round, keeping only counters, the records each
+capture's own queue dropped apart from what its sources lost. Unpaced, about 100,000 records a second, the profile
+added a median 3.8 CPU points and the workload ran 38.6% slower, past the 5% throughput target; its full queue dropped
+a median 32.9% of the records it observed in every round, nothing lost at the sources, and Explore's dropped some in
+seven rounds of nine. In bursts of 64 calls 40 ms apart the profile added 2.6 points and the workload ran 0.9% slower,
+nothing dropped or lost. The profile keeps its sources' class, Moderate, its statement giving both series and its
+evidence the unpaced one. The drops are the capture's: the recorder publishes each chunk on the thread that drains
+its queue, so at these rates the queue fills while a chunk is published, short of §12's ingest budget, which is the
+next step. Tests hold the statement to both series' evidence; seven mutations are caught.

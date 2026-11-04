@@ -1,6 +1,7 @@
 # ADR-080: A COM call is measured by its client's call and its link, and COM calls are experimental evidence
 
-- Status: accepted; FX-COM-001 measured through the product, and COM calls carry their tier on `10.0.26220.0-x64`
+- Status: accepted; FX-COM-001 measured through the product, and COM calls carry their tier on `10.0.26220.0-x64`;
+  since revision 920 the COM calls profile's cost is measured through the product (its addendum)
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
 - Relates to: ADR-004, ADR-075, ADR-077, ADR-078, ADR-079, §14.2, R3, P1, P4, P7, P8, P16, P27, FX-COM-001,
@@ -93,3 +94,34 @@ own, and its byte criterion as not measured (ADR-004).
 - **The peer read from the client's start.** The process a client's start names is the record's word, which the link
   checks against the server's (ADR-079's third decision). The link reached a call that process raised, so the peer is
   the process the link proved.
+
+## Addendum: the COM calls profile's cost through the product (revision 920)
+
+The profile's cost had been its sources': COM-Perf's collection alone measured Low in processor time, though it slowed
+a COM-heavy workload 17 to 18% (ADR-077's second addendum). `InterCat.ComProbe --measure --product-impact` ran
+FX-COM-001's 16,384 calls in nine rounds, with no capture, under `icat record --profile com-calls` and under
+`icat record --profile explore`, in an order rotating each round, keeping only counters. It ran two series:
+
+- **Unpaced** (`bench/results/com-calls-impact-20261104T215928Z`), about 100,000 records a second for four seconds,
+  the workload COM-Perf's collection was measured on alone:
+  - the profile added a median 3.8 CPU percentage points over no capture, and its own process used 2.4;
+  - the workload ran 38.6% slower, its throughput 27.8% lower, past §12's 5% target: COM-Perf's records and RPC's
+    are written in the threads that make and serve each call;
+  - the capture's own full queue dropped records in every round, a median 32.9% of those it observed, with nothing
+    lost at the sources, and each capture stated the gap in its coverage;
+  - Explore, recording only the RPC calls, dropped some in seven rounds of nine, a median 8.5%, and ran 18.0% slower.
+- **In bursts** of 64 calls 40 ms apart (`bench/results/com-calls-impact-bursts-20261104T220729Z`), about 28,000
+  records a second for sixteen seconds:
+  - the profile added a median 2.6 CPU percentage points, its own process 1.3, and the workload ran 0.9% slower;
+  - nothing was dropped or lost in any round, by it or by Explore.
+
+The profile keeps its sources' class, Moderate, and states both series, its evidence the unpaced one. Its cost to a
+workload is per call, so it slows a workload in proportion to its COM call rate: beyond the 5% target unpaced, within
+it in bursts.
+
+The drops are the capture's, not the sources'. The recorder publishes each chunk on the thread that drains the
+capture's queue, so while a chunk is published, nothing drains, and at these rates the queue's 65,536 records fill
+first. §12 asks a capture to sustain 100,000 records a second with no application drops and to survive a
+20-second analysis stall; unpaced, neither profile does. That is the next step, not COM's alone: a burst of RPC calls
+fills Explore's queue too. The drops never produced a false link: a recording that dropped a third of its records had
+10,226 of 16,384 truth calls observed and none attributed to another process.

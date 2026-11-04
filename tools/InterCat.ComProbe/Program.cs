@@ -60,6 +60,9 @@ internal static class Program
             Console.Error.WriteLine("  profiles request it, and sets each COM call beside the RPC calls of its process and thread.");
             Console.Error.WriteLine("  --impact [--pairs n] [--calls n]: machine CPU and workload time with and without a session");
             Console.Error.WriteLine("  collecting COM-Perf machine-wide, in pairs, over FX-COM-001's exchange unpaced.");
+            Console.Error.WriteLine("  --product-impact [--rounds n] [--calls n] [--delay ms] [--burst n] [--icat <InterCat.Cli.exe>]: machine");
+            Console.Error.WriteLine("  CPU and workload time over FX-COM-001's exchange, unpaced by default, in rounds with no capture, under");
+            Console.Error.WriteLine("  icat record --profile com-calls and under icat record --profile explore, keeping only counters.");
             Console.Error.WriteLine("InterCat.ComProbe --session <recorded session> --truth <its workload's truth> --out <calls.csv>");
             Console.Error.WriteLine("  Derives the COM calls of a session icat record recorded under the COM calls profile, as the");
             Console.Error.WriteLine("  product does, writes the ledger of the workload's own by role, never by PID, and evaluates it.");
@@ -87,6 +90,36 @@ internal static class Program
                 ["com-loopback", "--truth", "{truth}", "--calls", calls, "--delay", "0"], pairs);
             File.WriteAllText(Path.Combine(output, "impact.json"), JsonSerializer.Serialize(impact, Json));
             Console.WriteLine(JsonSerializer.Serialize(impact, Json));
+            return 0;
+        }
+
+        // What the COM calls profile costs through the product: icat record itself, beside Explore and no capture.
+        if (measure && args.Contains("--product-impact", StringComparer.Ordinal))
+        {
+            string workload = Measure.Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+            string icat = Measure.Option(args, "--icat") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.Cli", "bin", "Release", "net10.0", "InterCat.Cli.exe"));
+            int rounds = int.Parse(Measure.Option(args, "--rounds") ?? "9", CultureInfo.InvariantCulture);
+            int calls = int.Parse(Measure.Option(args, "--calls") ?? "16384", CultureInfo.InvariantCulture);
+            int delay = int.Parse(Measure.Option(args, "--delay") ?? "0", CultureInfo.InvariantCulture);
+            int burst = int.Parse(Measure.Option(args, "--burst") ?? "0", CultureInfo.InvariantCulture);
+            string scratch = Path.Combine(output, "scratch");
+            Directory.CreateDirectory(scratch);
+            Dictionary<string, object?> impact = await ProductImpact.MeasureAsync(workload, icat, calls, delay, burst, rounds, scratch);
+            Directory.Delete(scratch, recursive: true);
+            var document = new Dictionary<string, object?>
+            {
+                ["schema"] = "intercat.com-calls-product-impact.v1",
+                ["measuredUtc"] = DateTimeOffset.UtcNow,
+            };
+            foreach ((string key, object? value) in impact)
+            {
+                document[key] = value;
+            }
+
+            File.WriteAllText(Path.Combine(output, "product-impact.json"), JsonSerializer.Serialize(document, Json));
+            Console.WriteLine(JsonSerializer.Serialize(document, Json));
             return 0;
         }
 
