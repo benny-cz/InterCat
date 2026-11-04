@@ -264,7 +264,7 @@
       },
       "expected": {
         "artifact": "fixtures/FX-UNIX-001/evidence/measurement.json",
-        "note": "Every send and receive of three runs recorded with its length, summing to the truth's bytes at both ends exactly, and every socket created with its family, bound, connected, accepted and closed; Kernel-Network named neither process. The process filter did not hold - the decoy's every record was delivered - a socket's kernel address was reused by 8 to 11 later sockets a run, so a socket is read from its create to the next create at its address, and a path is cut to its first 14 characters. The ledger of the run eight at once, never its pointers, addresses or bytes, is counted by a test against the truth."
+        "note": "Every send and receive of three runs recorded with its length, summing to the truth's bytes at both ends exactly, and every socket created with its family, bound, connected, accepted and closed; Kernel-Network named neither process. The process filter did not hold - the decoy's every record was delivered - a socket's kernel address was reused by 8 to 11 later sockets a run, so a socket is read from its create to the next create at its address, and a path is cut to its first 14 characters. No record arrived before its socket's create, of 36,088 in three more runs, and a receive's exit named what it took, its entry what it asked for. The ledgers of the run eight at once and of a run reading in oversized reads, never their pointers, addresses or bytes, are counted by tests against the truth, and read through the AF_UNIX gate (ADR-073) as they arrived."
       },
       "environment": [
         {
@@ -277,11 +277,12 @@
       "provenance": {
         "adapter": "windows-etw-inventory-0.8.0",
         "shareable": true,
-        "contents": "The two processes' truth logs of the run eight at once - connections and messages by the socket's path in the probe's own output folder and their lengths, of synthetic messages - its ledger of each record on the workload's sockets, by its time, owner, the process that raised it, thread, event, phase, location, a number standing for its socket's incarnation, family, length and status, never a pointer, an address or a byte, and the measurement's counters."
+        "contents": "The two processes' truth logs of the run eight at once, and of the run reading in oversized reads under oversized-reads/ - connections and messages by the socket's path in the probe's own output folder and their lengths, of synthetic messages - their ledgers of each record on the workload's sockets, by its time, owner, the process that raised it, thread, event, phase, location, a number standing for its socket's incarnation, family, length and status, never a pointer, an address or a byte, and the measurement's counters."
       },
       "tests": [
         "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
-        "P27: Unix-domain sockets have an inventoried source that no profile requests, its cost measured, and no tier on any build until a fixture measures one through it"
+        "P27: Unix-domain sockets have an inventoried source that no profile requests, its cost measured, and no tier on any build until a fixture measures one through it",
+        "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other"
       ]
     },
     {
@@ -2586,6 +2587,7 @@
         "R22: FX-HTTP-011's requests challenged for credentials, eight clients at once, are an exchange to each leg, each part whole, each challenge answered by its own request and each request carrying credentials said to",
         "R22: FX-HTTP-012's requests through a proxy that challenges, eight clients at once, are an exchange to each leg and each CONNECT, each part whole, and each challenge answered by the proxy's credentials",
         "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
+        "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other",
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
         "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused",
         "R22: a boot is named by a token kept only until the machine restarts, and its count is no identity",
@@ -2680,6 +2682,8 @@
         "R22: peer(P,Q) narrows a focus to one counterpart and is never a filter on its own",
         "R22: per-peer channel counts use connection incarnations and a remainder unions their identities",
         "R22: sender(P) and receiver(P) follow the data direction, measured at either end",
+        "R22: the AF_UNIX gate follows a socket from its create to its close, owned by the process its create names, and none of another family at its address",
+        "R22: the AF_UNIX gate follows no more sockets than it may, and says of a create beyond them that it was not followed",
         "R22: the Compare window knows a comparison its investigation saved alike, the one it opened as first, and says why it can keep no note",
         "R22: the Compare window saves the comparison shown in its investigation by name, and a saved one opens as saved",
         "R22: the Compare window says the notes about the saved comparison it shows, marks each noted row, and adds one about it or its chosen row",

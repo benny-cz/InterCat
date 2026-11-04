@@ -60,6 +60,7 @@ internal static class Program
         int bytes = int.Parse(Option(args, "--bytes") ?? "4096", CultureInfo.InvariantCulture);
         int concurrency = int.Parse(Option(args, "--concurrency") ?? "1", CultureInfo.InvariantCulture);
         int delay = int.Parse(Option(args, "--delay") ?? "15", CultureInfo.InvariantCulture);
+        int readBuffer = int.Parse(Option(args, "--read-buffer") ?? "0", CultureInfo.InvariantCulture);
         bool ledger = args.Contains("--ledger", StringComparer.Ordinal);
         string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0",
@@ -67,7 +68,7 @@ internal static class Program
         if (output is null || connections < 1 || messages < 1)
         {
             Console.Error.WriteLine("InterCat.AfdProbe --output <new directory> [--connections n] [--messages n] [--bytes n] [--delay ms]");
-            Console.Error.WriteLine("  [--concurrency n] [--ledger] [--workload <InterCat.TestWorkloads.exe>]");
+            Console.Error.WriteLine("  [--concurrency n] [--read-buffer n] [--ledger] [--workload <InterCat.TestWorkloads.exe>]");
             Console.Error.WriteLine("  [--impact [--pairs n] [--traffic unix|tcp]]: machine CPU and workload time with and without a session");
             Console.Error.WriteLine("             collecting AFD machine-wide, in pairs, over eight connections at once unpaced");
             Console.Error.WriteLine("  Runs FX-UNIX-001's AF_UNIX exchange under a session of its own reading Winsock AFD, asked to scope it");
@@ -150,6 +151,7 @@ internal static class Program
                     "--bytes", bytes.ToString(CultureInfo.InvariantCulture),
                     "--delay", delay.ToString(CultureInfo.InvariantCulture),
                     "--concurrency", concurrency.ToString(CultureInfo.InvariantCulture),
+                    "--read-buffer", readBuffer.ToString(CultureInfo.InvariantCulture),
                     "--wait-for-start",
                 },
                 RedirectStandardInput = true,
@@ -267,7 +269,7 @@ internal static class Program
         {
             schema = Schema,
             measuredUtc = DateTimeOffset.UtcNow,
-            workload = new { connections, messages, bytes, concurrency, delay },
+            workload = new { connections, messages, bytes, concurrency, delay, readBuffer },
             session = new
             {
                 eventsLost,
@@ -279,6 +281,7 @@ internal static class Program
                 processesRaisingAfdRecords = records.Select(record => record.RaisedBy).Distinct().Count(),
                 recordsOfNoSocketCreatedInTheSession = unowned,
                 socketsCreatedAtAnAddressAnEarlierSocketHad = reused,
+                recordsArrivingBeforeTheirSocketsCreate = ArrivedEarly(sockets),
                 kernelNetworkRecordsNamingTheWorkload = networkOfTheWorkload,
                 kernelNetworkRecordsInAll = networkInAll,
                 note = "The session asked AFD for the workload's two processes alone, beside a decoy pair running the same exchange "
@@ -372,6 +375,40 @@ internal static class Program
                         raisedIn = group.GroupBy(Context).ToDictionary(context => context.Key, context => context.Count()),
                     }),
             addresses = Addresses(own, socket),
+        };
+    }
+
+    /// <summary>
+    /// Of the records a socket owns by time, those the session delivered before it delivered the socket's create: a filter
+    /// that admitted a record by the socket its create named, as records arrive, would have found no socket for them.
+    /// </summary>
+    private static object ArrivedEarly(Dictionary<Record, Incarnation> sockets)
+    {
+        var creates = new Dictionary<long, long>();
+        foreach ((Record record, Incarnation socket) in sockets)
+        {
+            if (record.Event == 1000 && record.Number("EnterExit") == 0) creates[socket.Number] = record.Arrival;
+        }
+
+        (int early, int ofAfUnix) counted = (0, 0);
+        var earlySockets = new HashSet<long>();
+        foreach ((Record record, Incarnation socket) in sockets)
+        {
+            if (creates.TryGetValue(socket.Number, out long arrived) && record.Arrival < arrived)
+            {
+                counted.early++;
+                if (socket.Family == AfUnix) counted.ofAfUnix++;
+                earlySockets.Add(socket.Number);
+            }
+        }
+
+        return new
+        {
+            records = counted.early,
+            ofAfUnixSockets = counted.ofAfUnix,
+            sockets = earlySockets.Count,
+            socketsWithACreate = creates.Count,
+            recordsOwnedByTime = sockets.Count,
         };
     }
 

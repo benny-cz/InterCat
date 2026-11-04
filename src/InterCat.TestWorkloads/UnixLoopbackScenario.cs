@@ -24,6 +24,12 @@ internal sealed record UnixLoopbackOptions
     public int InterMessageDelayMilliseconds { get; init; } = 15;
     public int Concurrency { get; init; } = 1;
 
+    /// <summary>
+    /// When above zero, how many bytes each of the server's reads asks for, taking what has arrived, rather than reading
+    /// each message's prefix and body exactly: a read's asked and received lengths then differ.
+    /// </summary>
+    public int ReadBufferBytes { get; init; }
+
     /// <summary>The path the server's socket is bound to; by default a file of the truth directory.</summary>
     public string? SocketPath { get; init; }
 
@@ -156,23 +162,42 @@ internal static class UnixLoopbackScenario
         string path,
         CancellationToken cancellationToken)
     {
-        byte[] buffer = new byte[options.MaximumMessageBytes + LengthPrefixBytes];
+        byte[] buffer = new byte[Math.Max(options.MaximumMessageBytes + LengthPrefixBytes, options.ReadBufferBytes)];
         byte[] ack = new byte[AckBytes];
         using (accepted)
         {
             truth.Write(TruthEventKind.ConnectionAccepted, callId: connection, resourceName: path);
             for (int message = 0; message < options.MessagesPerConnection; message++)
             {
-                int read = await ReadExactlyAsync(accepted, buffer, LengthPrefixBytes, cancellationToken).ConfigureAwait(false);
-                if (read < LengthPrefixBytes)
+                int declared;
+                int received;
+                if (options.ReadBufferBytes > 0)
                 {
-                    truth.Write(TruthEventKind.Failure, callId: message, resourceName: path,
-                        status: "the peer closed before the declared length arrived");
-                    break;
+                    // Each read asks for the whole buffer and takes what has arrived, as a reader not knowing a message's
+                    // length does; the client sends its next message only once this one is acknowledged, so a read never
+                    // takes bytes of another.
+                    (declared, received) = await ReadMessageInBufferAsync(accepted, buffer, options.ReadBufferBytes, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (declared < 0)
+                    {
+                        truth.Write(TruthEventKind.Failure, callId: message, resourceName: path,
+                            status: "the peer closed before the declared length arrived");
+                        break;
+                    }
                 }
+                else
+                {
+                    int read = await ReadExactlyAsync(accepted, buffer, LengthPrefixBytes, cancellationToken).ConfigureAwait(false);
+                    if (read < LengthPrefixBytes)
+                    {
+                        truth.Write(TruthEventKind.Failure, callId: message, resourceName: path,
+                            status: "the peer closed before the declared length arrived");
+                        break;
+                    }
 
-                int declared = BinaryPrimitives.ReadInt32LittleEndian(buffer);
-                int received = await ReadExactlyAsync(accepted, buffer, declared, cancellationToken).ConfigureAwait(false);
+                    declared = BinaryPrimitives.ReadInt32LittleEndian(buffer);
+                    received = await ReadExactlyAsync(accepted, buffer, declared, cancellationToken).ConfigureAwait(false);
+                }
 
                 // The prefix and the payload arrive as the sender wrote them, one message: the log counts both.
                 truth.Write(
@@ -297,8 +322,38 @@ internal static class UnixLoopbackScenario
         start.ArgumentList.Add(options.Concurrency.ToString(CultureInfo.InvariantCulture));
         start.ArgumentList.Add("--socket");
         start.ArgumentList.Add(options.ResolvedSocketPath);
+        start.ArgumentList.Add("--read-buffer");
+        start.ArgumentList.Add(options.ReadBufferBytes.ToString(CultureInfo.InvariantCulture));
         return Process.Start(start)
             ?? throw new InvalidOperationException($"The {verb} process could not be started.");
+    }
+
+    /// <summary>
+    /// Reads one message with reads that each ask for <paramref name="readBytes"/>, taking what has arrived: its declared
+    /// payload length and the payload bytes read, or a negative length when the peer closed before its prefix arrived.
+    /// </summary>
+    private static async Task<(int Declared, int Received)> ReadMessageInBufferAsync(
+        Socket socket, byte[] buffer, int readBytes, CancellationToken cancellationToken)
+    {
+        int total = 0;
+        int declared = -1;
+        while (declared < 0 || total < LengthPrefixBytes + declared)
+        {
+            int read = await socket.ReceiveAsync(buffer.AsMemory(total, Math.Min(readBytes, buffer.Length - total)), SocketFlags.None,
+                cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+            {
+                return declared < 0 ? (-1, 0) : (declared, total - LengthPrefixBytes);
+            }
+
+            total += read;
+            if (declared < 0 && total >= LengthPrefixBytes)
+            {
+                declared = BinaryPrimitives.ReadInt32LittleEndian(buffer);
+            }
+        }
+
+        return (declared, total - LengthPrefixBytes);
     }
 
     private static async Task<int> ReadExactlyAsync(Socket socket, byte[] buffer, int count, CancellationToken cancellationToken)

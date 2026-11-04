@@ -157,5 +157,157 @@
   "ledger": "fixtures/FX-UNIX-001/evidence/records.csv, of the run eight at once: each record on a socket the workload's two processes created, in time order - its milliseconds after the first, owner, the process whose thread raised it, thread, event, phase (EnterExit), location, a number standing for its socket's incarnation, never its address, the socket's family, its length and status - never a pointer, an address or a byte. A test counts it against the two truth logs.",
   "note": "A send is recorded four times - two entries and two exits, by location - and a receive twice, each record with the call's length; a reader counting calls takes one location of each. No profile admits the source. Collected machine-wide, as its process filter does not hold, it costs Moderate: nine pairs each over AF_UNIX and TCP traffic at about 490,000 records a second measured a median of 1.6 and 0.5 CPU percentage points, an earlier nine none (bench/results/afd-impact-*).",
   "build": "10.0.26220.0-x64",
-  "measuredDate": "2026-11-04"
+  "measuredDate": "2026-11-04",
+  "arrivalAndLengths": {
+    "question": "Whether a socket's records can arrive before its create, as a gate reading them as they arrive would need them not to, and which of a receive's records holds what it took.",
+    "answer": "None arrived before its create, of 36,088 records on 130 sockets; and with the server reading in reads asking for 65,536 bytes, every receive's entry named what it asked for and its exit what it took, the exits summing to the truth's bytes. A socket's cleanup came before its close, its last call, and the transport's indication of a disconnect could follow the close.",
+    "runs": [
+      {
+        "run": "arrival-eight-at-once",
+        "bench": "bench/results/afd-unix-feasibility-arrival-eight-at-once-20261104T070320Z",
+        "workload": {
+          "connections": 8,
+          "messages": 64,
+          "bytes": 4096,
+          "concurrency": 8,
+          "delay": 0
+        },
+        "recordsOwnedByTime": 15832,
+        "socketsWithACreate": 46,
+        "recordsArrivingBeforeTheirSocketsCreate": 0,
+        "serverReceives": {
+          "entries": {
+            "records": 1024,
+            "bytes": 1097545
+          },
+          "exits": {
+            "records": 1024,
+            "bytes": 1097545
+          }
+        },
+        "serverTruthBytesReceived": 1097545,
+        "clientReceives": {
+          "entries": {
+            "records": 512,
+            "bytes": 4096
+          },
+          "exits": {
+            "records": 512,
+            "bytes": 4096
+          }
+        },
+        "clientTruthBytesReceived": 4096
+      },
+      {
+        "run": "arrival-eight-at-once-again",
+        "bench": "bench/results/afd-unix-feasibility-arrival-eight-at-once-again-20261104T070325Z",
+        "workload": {
+          "connections": 8,
+          "messages": 64,
+          "bytes": 4096,
+          "concurrency": 8,
+          "delay": 0
+        },
+        "recordsOwnedByTime": 16121,
+        "socketsWithACreate": 54,
+        "recordsArrivingBeforeTheirSocketsCreate": 0,
+        "serverReceives": {
+          "entries": {
+            "records": 1024,
+            "bytes": 1097545
+          },
+          "exits": {
+            "records": 1024,
+            "bytes": 1097545
+          }
+        },
+        "serverTruthBytesReceived": 1097545,
+        "clientReceives": {
+          "entries": {
+            "records": 512,
+            "bytes": 4096
+          },
+          "exits": {
+            "records": 512,
+            "bytes": 4096
+          }
+        },
+        "clientTruthBytesReceived": 4096
+      },
+      {
+        "run": "arrival-large-messages",
+        "bench": "bench/results/afd-unix-feasibility-arrival-large-messages-20261104T070330Z",
+        "workload": {
+          "connections": 4,
+          "messages": 32,
+          "bytes": 262144,
+          "concurrency": 4,
+          "delay": 15
+        },
+        "recordsOwnedByTime": 4135,
+        "socketsWithACreate": 30,
+        "recordsArrivingBeforeTheirSocketsCreate": 0,
+        "serverReceives": {
+          "entries": {
+            "records": 256,
+            "bytes": 17424504
+          },
+          "exits": {
+            "records": 256,
+            "bytes": 17424504
+          }
+        },
+        "serverTruthBytesReceived": 17424504,
+        "clientReceives": {
+          "entries": {
+            "records": 128,
+            "bytes": 1024
+          },
+          "exits": {
+            "records": 128,
+            "bytes": 1024
+          }
+        },
+        "clientTruthBytesReceived": 1024
+      },
+      {
+        "run": "oversized-reads",
+        "bench": "bench/results/afd-unix-feasibility-oversized-reads-20261104T070455Z",
+        "workload": {
+          "connections": 4,
+          "messages": 64,
+          "bytes": 4096,
+          "concurrency": 4,
+          "delay": 15,
+          "readBuffer": 65536
+        },
+        "recordsOwnedByTime": 6595,
+        "socketsWithACreate": 33,
+        "recordsArrivingBeforeTheirSocketsCreate": 0,
+        "serverReceives": {
+          "entries": {
+            "records": 256,
+            "bytes": 16777216
+          },
+          "exits": {
+            "records": 256,
+            "bytes": 576729
+          }
+        },
+        "serverTruthBytesReceived": 576729,
+        "clientReceives": {
+          "entries": {
+            "records": 256,
+            "bytes": 2048
+          },
+          "exits": {
+            "records": 256,
+            "bytes": 2048
+          }
+        },
+        "clientTruthBytesReceived": 2048
+      }
+    ],
+    "ledger": "fixtures/FX-UNIX-001/evidence/oversized-reads/records.csv and its two truth logs, of the run reading in oversized reads, in the main ledger's columns."
+  }
 }

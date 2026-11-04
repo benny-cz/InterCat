@@ -820,6 +820,8 @@ Revision 895 begins M6 with Unix-domain sockets' capability result (ADR-072, FX-
 
 Revision 896 measures what collecting Winsock AFD machine-wide costs: at about 490,000 records a second, a median of 0.5 to 1.6 CPU percentage points over two series of nine pairs a traffic, near the Low ceiling, so the catalog states Moderate and a profile admitting it is opt-in.
 
+Revision 897 adds the AF_UNIX gate (ADR-073): read as they arrive, AFD's records of each socket a capture saw created AF_UNIX, followed from its create to its close and owned by the process its create names, one record a call, and none of another family's - no record arrived before its create, of 36,088, and a receive's exit holds what it took.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3409,3 +3411,17 @@ to 7.6 above on a machine 15-40% busy, so the class sits near the Low ceiling; t
 with its evidence, as ALPC's is, so a profile admitting AFD is opt-in, never Explore. A first series, which counted its
 records before the session flushed them over runs too short to measure, was discarded. Tests hold the class and that
 its evidence says the same; three mutations are caught.
+
+Revision 897 decides how a capture can choose among AFD's records as they arrive (ADR-073). A capture admits records one
+at a time, and AFD delivers every socket call of the machine, several records each, naming a socket by a reused address,
+so admitting it whole would journal every socket call to keep a few. Two measurements decided it: the lab probe found no
+record delivered before its socket's create, of 36,088 on 130 sockets in three runs, and the workload's new
+`--read-buffer`, the server reading in reads asking for 64 KiB, showed a receive's entry naming what it asked for and its
+exit what it took, the exits summing to the truth; a socket's cleanup came before its close, and a transport's
+disconnect indication could follow the close. `UnixSocketGate` follows a socket from the create naming its address as
+AF_UNIX to its close, or the next create there, owned by the process its create names, admits one record a call or
+step: a create, a close, a bind's, listen's, connect's or accept's exit, a send's exit in its own process and a
+receive's exit. It omits every other record and every record of no followed socket, following at most 65,536 sockets
+and remembering 4,096 closed. Tests hold it on synthetic records and on FX-UNIX-001's two ledgers read through it as
+delivered, one record a call of every AF_UNIX socket and none of another; nine mutations are caught. No profile compiles
+it yet.
