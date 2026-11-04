@@ -157,7 +157,7 @@ public sealed class ComPerfLeadTests
         });
     }
 
-    [Fact(DisplayName = "P27: COM calls have an inventoried source admitting its four synchronous call events, requested by no profile, its process filter and cost measured, and no tier on any build")]
+    [Fact(DisplayName = "P27: COM calls have an inventoried source admitting its four synchronous call events, requested by the opt-in COM calls profile alone, its process filter and cost measured, and no tier on any build")]
     public void ComCallsHaveALeadAndNoTier()
     {
         WindowsSourceDefinition comPerf = WindowsSourceCatalog.Find(WindowsSourceCatalog.ComPerfSourceId)!;
@@ -187,9 +187,10 @@ public sealed class ComPerfLeadTests
         Assert.Contains(comPerf.Notes, note => note.Contains("beside RPC", StringComparison.Ordinal) && note.Contains("one call, never two", StringComparison.Ordinal));
         Assert.Contains(comPerf.Notes, note => note.Contains("activity id, which the server's records carry", StringComparison.Ordinal));
 
-        // No profile requests it, and no other source claims COM calls.
-        Assert.DoesNotContain(CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures),
-            profile => profile.Sources.Any(source => source.SourceId == WindowsSourceCatalog.ComPerfSourceId));
+        // Only the opt-in COM calls profile requests it, and no other source claims COM calls.
+        Assert.Equal(["com-calls"], CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures)
+            .Where(profile => profile.Sources.Any(source => source.SourceId == WindowsSourceCatalog.ComPerfSourceId))
+            .Select(profile => profile.Id));
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != WindowsSourceCatalog.ComPerfSourceId),
             source => Assert.DoesNotContain(Mechanism.ComCall, source.Mechanisms));
 

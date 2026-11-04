@@ -1,8 +1,8 @@
 # ADR-077: COM-Perf records each out-of-process COM call at both ends, and its activations name nothing
 
 - Status: accepted for M6's COM/DCOM/WinRT work package; COM-Perf is inventoried as COM calls' lead (revision 912), a call
-  is the RPC call that carries it and its two ends are linked by the client's activity (ADR-079, revision 913), and no
-  profile requests it
+  is the RPC call that carries it and its two ends are linked by the client's activity (ADR-079, revision 913), and only
+  the opt-in COM calls profile requests it (revision 918)
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
 - Relates to: plan §4.2, §9.4, M6, P7, P8, R22, ADR-034, ADR-072, FX-COM-001, FX-COM-002, `tools/InterCat.ComProbe`,

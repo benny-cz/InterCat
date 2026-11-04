@@ -151,6 +151,38 @@ public static class CaptureProfileCatalog
                 + "while this workstation was 14.5% busy without any capture: the whole profile keeps its sources' class.",
             OverheadEvidence = "bench/results/unix-sockets-impact-20261104T110457Z/product-impact.json",
         },
+        new()
+        {
+            Kind = CaptureProfileKind.ComCalls,
+            Id = "com-calls",
+            DisplayName = "COM calls",
+            Summary = "Lifecycle, RPC calls and the COM calls they carry, from COM-Perf beside RPC, to find the process at a COM "
+                + "call's other end. Opt-in: collecting COM-Perf slows a COM-heavy workload.",
+            Admission = AdmissionMode.MetadataOnly,
+            CompilationAvailable = true,
+            RequestPreviewAvailable = true,
+            Sources =
+            [
+                new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Process identity and PID-reuse-safe lifecycle context."),
+                new(WindowsSourceCatalog.RpcSourceId, true, true,
+                    "The RPC calls that carry COM calls, each served by the call at its other end through them (ADR-079)."),
+                new(WindowsSourceCatalog.ComPerfSourceId, true, true,
+                    "Each COM call at both ends: its trace number, interface, method, HRESULT and the process at its other end (ADR-077)."),
+            ],
+            PreserveExtendedData = true,
+            RequestCallStacks = false,
+            CollectionStatement =
+                "Collects process lifecycle, RPC call metadata and, of every COM call the machine makes from one apartment to "
+                + "another, its start and stop at both ends: its trace number, interface, method, HRESULT and the process at "
+                + "its other end. It keeps no thread, pointer, IPID, OID or address of a COM call, retains no payload bytes "
+                + "and requests no call stacks.",
+            Overhead = OverheadClass.Moderate,
+            OverheadStatement =
+                "its sources measured Moderate at most (Kernel-Process 1.75 CPU pp). COM-Perf's collection alone took a median "
+                + "0.3 to 0.6 CPU pp, Low, but a COM-heavy workload ran 17 to 18% slower, past the 5% throughput target, in "
+                + "proportion to a process's COM call rate. Nothing has measured the profile whole yet.",
+            OverheadEvidence = "bench/results/com-perf-impact-20261104T160252Z/impact.json",
+        },
         Unavailable(
             CaptureProfileKind.Timing,
             "timing",

@@ -386,6 +386,13 @@ public enum CaptureProfileKind
     /// process filter does not hold, so it collects every socket call of the machine, which measured Moderate.
     /// </summary>
     UnixSockets = 8,
+
+    /// <summary>
+    /// Lifecycle, RPC calls and the COM calls they carry, from Microsoft-Windows-COM-Perf beside Microsoft-Windows-RPC, so a
+    /// COM call's RPC call has the process at its other end (ADR-079). Opt-in: COM-Perf's collection, Low in processor time,
+    /// slowed a COM-heavy workload 17 to 18%.
+    /// </summary>
+    ComCalls = 9,
 }
 
 public enum CaptureLifecycle { Idle = 1, Probing = 2, Starting = 3, Recording = 4, Stopping = 5, Finalizing = 6, Closed = 7 }

@@ -908,9 +908,9 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        // COM calls' lead (ADR-077, ADR-078, ADR-079): inventoried, admitting its four synchronous call events, and requested
-        // by no profile until a rule joins its records to the RPC calls that carry them; its measured notes are what icat
-        // capabilities states of it.
+        // COM calls' lead (ADR-077, ADR-078, ADR-079): inventoried, admitting its four synchronous call events, requested by
+        // the opt-in COM calls profile beside RPC, whose calls rpc-call-peer-v2 serves through them; its measured notes are
+        // what icat capabilities states of it.
         var comPerf = new WindowsSourceDefinition
         {
             SourceId = ComPerfSourceId,
@@ -924,7 +924,7 @@ public static class WindowsSourceCatalog
             RequestedKeywords = [],
             SupportsCaptureSideProcessFilter = true,
             FilteringNotes =
-                "No capture profile requests it. Measured on FX-COM-001: a session's process filter holds it - its two "
+                "Only the opt-in COM calls profile requests it. Measured on FX-COM-001: a session's process filter holds it - its two "
                 + "processes' every call arrived, and nothing of a decoy pair making as many calls outside the filter or of any "
                 + "other process - as it is raised in the process that makes or serves a call.",
             StartupBehaviour = "No rundown: a call made before a capture starts is not seen, nor an object exported before it.",
@@ -961,7 +961,8 @@ public static class WindowsSourceCatalog
                 "Its four synchronous call events are admitted: a call's trace number, interface and method, the process at "
                 + "its other end and its HRESULT - never a thread, a pointer, an IPID, an OID or an address. Its "
                 + "asynchronous calls, which no fixture made, are not.",
-                "Registration is not evidence of traffic; only a measured fixture assigns a tier, and no profile requests this source.",
+                "Registration is not evidence of traffic; only a measured fixture assigns a tier, and only the opt-in COM calls "
+                + "profile requests this source, beside RPC, never Explore.",
             ],
         };
 

@@ -14,7 +14,7 @@ internal static class CaptureRequests
     public const int DefaultSeconds = 60;
 
     /// <summary>The profiles icat capture asks the broker for, as its help lists them and its refusal names them.</summary>
-    public static IReadOnlyList<string> Profiles { get; } = ["explore", "focused-transport", "rpc-peers", "unix-sockets", "content"];
+    public static IReadOnlyList<string> Profiles { get; } = ["explore", "focused-transport", "rpc-peers", "unix-sockets", "com-calls", "content"];
     public const int MaximumSeconds = 86_400;
     private const long DefaultJournalMebibytes = 1_024;
     private const long DefaultFreeMebibytes = 1_024;
@@ -67,9 +67,9 @@ internal static class CaptureRequests
         var quota = new BrokerCaptureQuota(seconds, journal * 1024 * 1024, free * 1024 * 1024);
         switch (profile)
         {
-            // RPC peers records what Explore does and ALPC beside it (ADR-035), and Unix sockets lifecycle and AF_UNIX
-            // (ADR-074): neither takes a focus.
-            case "explore" or "focused-transport" or "rpc-peers" or "unix-sockets":
+            // RPC peers records what Explore does and ALPC beside it (ADR-035), Unix sockets lifecycle and AF_UNIX
+            // (ADR-074), and COM calls lifecycle, RPC and COM-Perf (ADR-079): none takes a focus.
+            case "explore" or "focused-transport" or "rpc-peers" or "unix-sockets" or "com-calls":
             {
                 bool focused = profile == "focused-transport";
                 if (content.AnyBesideProcesses)
@@ -87,7 +87,7 @@ internal static class CaptureRequests
                 if (focused ? mechanism != Mechanism.Tcp : mechanism is not null || processIds.Count > 0 || broader)
                 {
                     problem = "focused-transport takes --mechanism tcp and optionally --pid <id,...> and --allow-broader; "
-                        + "explore, rpc-peers and unix-sockets take neither.";
+                        + "explore, rpc-peers, unix-sockets and com-calls take neither.";
                     return null;
                 }
 
@@ -163,6 +163,9 @@ internal static class CaptureRequests
         ConsoleUi.Line("      --profile unix-sockets records lifecycle and each AF_UNIX socket's calls from Winsock AFD,");
         ConsoleUi.Line("      owned by the process that created it, with the bytes each send and receive moved; AFD");
         ConsoleUi.Line("      collects every socket call of the machine, so icat profiles unix-sockets states its cost.");
+        ConsoleUi.Line("      --profile com-calls records lifecycle, RPC calls and the COM calls they carry from COM-Perf,");
+        ConsoleUi.Line("      each RPC call carrying one linked to the process that served it; collecting COM-Perf slows");
+        ConsoleUi.Line("      a COM-heavy workload, so icat profiles com-calls states its cost.");
         ConsoleUi.Line("      --profile content keeps the messages of the processes --pid names - WinINet's HTTP");
         ConsoleUi.Line("      exchanges, etw/manifest/Microsoft-Windows-WinINet-Capture - as icat record does, through");
         ConsoleUi.Line("      the broker: only your own processes, in this sign-in and at no higher integrity, which it");

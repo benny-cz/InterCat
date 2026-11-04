@@ -422,7 +422,7 @@ internal static class RecordCommand
 
     /// <summary>The profiles icat record takes, as its help lists them and its refusal names them.</summary>
     public static IReadOnlyList<string> Profiles { get; } =
-        ["explore", "focused-transport", "rpc-peers", "unix-sockets", "content", "content-fixture"];
+        ["explore", "focused-transport", "rpc-peers", "unix-sockets", "com-calls", "content", "content-fixture"];
 
     /// <summary>The profile <paramref name="option"/> names, in any case and with or without its dash; null for none.</summary>
     internal static CaptureProfileKind? Profile(string option) => option.ToUpperInvariant() switch
@@ -431,6 +431,7 @@ internal static class RecordCommand
         "FOCUSED-TRANSPORT" or "FOCUSEDTRANSPORT" => CaptureProfileKind.FocusedTransport,
         "RPC-PEERS" or "RPCPEERS" => CaptureProfileKind.RpcPeers,
         "UNIX-SOCKETS" or "UNIXSOCKETS" => CaptureProfileKind.UnixSockets,
+        "COM-CALLS" or "COMCALLS" => CaptureProfileKind.ComCalls,
         "CONTENT-FIXTURE" or "CONTENTFIXTURE" => CaptureProfileKind.ContentFixture,
         "CONTENT" => CaptureProfileKind.Content,
         _ => null,
@@ -480,6 +481,9 @@ internal static class RecordCommand
         ConsoleUi.Line("  --profile unix-sockets records each AF_UNIX socket's calls from Winsock AFD, owned by the");
         ConsoleUi.Line("  process that created it, with the bytes each send and receive moved, and no path or peer:");
         ConsoleUi.Line("  AFD collects every socket call of the machine, so icat profiles unix-sockets states its cost.");
+        ConsoleUi.Line("  --profile com-calls records RPC calls and the COM calls they carry from COM-Perf, each RPC call");
+        ConsoleUi.Line("  carrying one linked to the process that served it (ADR-079); collecting COM-Perf slows a");
+        ConsoleUi.Line("  COM-heavy workload, so icat profiles com-calls states its cost.");
         ConsoleUi.Line("  --profile content keeps the message bytes of a source admitted for content - WinINet's HTTP");
         ConsoleUi.Line("  exchanges, etw/manifest/Microsoft-Windows-WinINet-Capture (ADR-037) - from the processes --pid");
         ConsoleUi.Line("  names only, which the provider's own process filter holds before anything is kept; --channel *");

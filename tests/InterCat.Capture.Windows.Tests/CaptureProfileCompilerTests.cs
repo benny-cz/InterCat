@@ -9,8 +9,8 @@ public sealed class CaptureProfileCompilerTests
     [Fact(DisplayName = "IC-012: the profile catalog exposes every intent without pretending unfinished modes are available")]
     public void CatalogExposesUnavailableProfiles()
     {
-        Assert.Equal(7, CaptureProfileCatalog.All.Count);
-        Assert.Equal(7, CaptureProfileCatalog.All.Select(profile => profile.Id).Distinct().Count());
+        Assert.Equal(8, CaptureProfileCatalog.All.Count);
+        Assert.Equal(8, CaptureProfileCatalog.All.Select(profile => profile.Id).Distinct().Count());
 
         CaptureProfileDescriptor focused = CaptureProfileCatalog.Find("focused-transport")!;
         Assert.True(focused.CompilationAvailable);
@@ -374,6 +374,55 @@ public sealed class CaptureProfileCompilerTests
             && decision.Reason.Contains("not registered", StringComparison.Ordinal));
     }
 
+    [Fact(DisplayName = "§9.4: COM calls admits COM-Perf beside lifecycle and RPC, all required, its cost stated with the throughput regression its source measured, and COM-Perf is never Explore's")]
+    public void ComCallsAdmitsComPerfBesideRpc()
+    {
+        SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
+        SourceAdmissionPlan rpc = BuildPlan(WindowsSourceCatalog.RpcSourceId, 1, 5);
+        SourceAdmissionPlan com = BuildPlan(WindowsSourceCatalog.ComPerfSourceId, 2, 39);
+
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.ComCalls),
+            new SourcePlanCompilation([process, rpc, com], []));
+
+        Assert.True(plan.CanStart);
+        Assert.Equal("com-calls", plan.EffectiveProfileId);
+        Assert.Equal([WindowsSourceCatalog.KernelProcessSourceId, WindowsSourceCatalog.RpcSourceId, WindowsSourceCatalog.ComPerfSourceId],
+            plan.Providers.Select(provider => provider.SourceId));
+        Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.ComPerfSourceId
+            && decision is { State: ProfileSourceDecisionState.Included, Required: true, Overhead: OverheadClass.Low });
+
+        // The profile keeps its sources' class and states, beside it, how much slower COM-Perf's collection made a COM-heavy
+        // workload, which is why it is opt-in and Explore never admits the source.
+        CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("com-calls")!;
+        Assert.Equal((CaptureProfileKind.ComCalls, OverheadClass.Moderate, AdmissionMode.MetadataOnly),
+            (profile.Kind, profile.Overhead, profile.Admission));
+        Assert.Contains("17 to 18% slower, past the 5% throughput target", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.Contains("slows a COM-heavy workload", profile.Summary, StringComparison.Ordinal);
+        Assert.Contains("no thread, pointer, IPID, OID or address", profile.CollectionStatement, StringComparison.Ordinal);
+        Assert.DoesNotContain(CaptureProfileCatalog.Find("explore")!.Sources,
+            source => source.SourceId == WindowsSourceCatalog.ComPerfSourceId);
+    }
+
+    [Fact(DisplayName = "§9.4: COM calls without COM-Perf, or without RPC, does not start, rather than record calls whose other ends it cannot follow")]
+    public void ComCallsWithoutItsSourcesIsBlocked()
+    {
+        SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
+        SourceAdmissionPlan rpc = BuildPlan(WindowsSourceCatalog.RpcSourceId, 1, 5);
+        SourceAdmissionPlan com = BuildPlan(WindowsSourceCatalog.ComPerfSourceId, 1, 39);
+        foreach ((SourceAdmissionPlan present, string missing) in new[] { (rpc, WindowsSourceCatalog.ComPerfSourceId), (com, WindowsSourceCatalog.RpcSourceId) })
+        {
+            EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+                new(CaptureProfileKind.ComCalls),
+                new SourcePlanCompilation([process, present], [new(missing, SourcePlanIssueSeverity.Refusal, "The provider is not registered on this machine.")]));
+
+            Assert.False(plan.CanStart);
+            Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == missing
+                && decision.State == ProfileSourceDecisionState.Blocking
+                && decision.Reason.Contains("not registered", StringComparison.Ordinal));
+        }
+    }
+
     [Fact(DisplayName = "§9.4: RPC peers without ALPC does not start, rather than record calls it cannot resolve")]
     public void RpcPeersWithoutAlpcIsBlocked()
     {
@@ -585,7 +634,9 @@ public sealed class CaptureProfileCompilerTests
             ? Guid.Parse("22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716")
             : sourceId == WindowsSourceCatalog.RpcSourceId
                 ? Guid.Parse("6ad52b32-d609-4be9-ae07-ce8dae937e39")
-                : Guid.Parse("7dd42a49-5329-4832-8dfd-43d979153a88");
+                : sourceId == WindowsSourceCatalog.ComPerfSourceId
+                    ? Guid.Parse("b8d6861b-d20f-4eec-bbae-87e0dd80602b")
+                    : Guid.Parse("7dd42a49-5329-4832-8dfd-43d979153a88");
         var admitted = new AdmittedEventPlan
         {
             SourceIndex = sourceIndex,

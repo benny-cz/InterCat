@@ -2,7 +2,7 @@
 
 - Status: accepted for M6's COM/DCOM/WinRT work package; since revision 916 `com-call-link-v1` implements its second and
   third decisions (`contracts/com-calls-v1.md`), and since revision 917 `rpc-call-peer-v2` serves a call through it,
-  though no profile admits COM-Perf yet; since
+  and since revision 918 the opt-in COM calls profile collects COM-Perf beside RPC; since
   revision 914 a COM call's records bind to the process that raised them (ADR-077's fifth addendum), and since revision
   915 COM-Perf's call events are admitted, the process at a call's other end a source field of its own (its addendum)
 - Date: 2026-11-04
@@ -175,3 +175,18 @@ FX-COM-001's ledger, made a session, has every one of its 195 client RPC calls c
 COM, the client's 18 other calls unresolved for want of ALPC. Tests serve a call through COM with no ALPC record, keep
 it ALPC's where ALPC agrees, conflict where ALPC reaches another call, decline to extend over a COM call record, and
 read the links back from an operation index; eleven mutations are caught.
+
+## Addendum: the COM calls profile (revision 918)
+
+The fifth decision's last requirement is met: an opt-in profile collecting COM-Perf beside RPC and stating its cost.
+`com-calls` requires Kernel-Process, Microsoft-Windows-RPC and COM-Perf, so without either call source it does not
+start, rather than record COM calls whose RPC calls it cannot serve or RPC calls whose COM calls it cannot follow. It
+takes no focus, as Explore takes none, and `icat capture` and `icat record` take it as they take the other opt-in
+profiles.
+
+Its class is its sources' at most, Moderate for Kernel-Process. Its statement says, beside it, what ADR-077's second
+addendum measured: COM-Perf's collection alone took a median 0.3 to 0.6 CPU points but a COM-heavy workload ran 17
+to 18% slower, past §12's throughput target, in proportion to its COM call rate. That is why it is opt-in and Explore
+never admits the source. Nothing has measured the profile whole yet, and no build carries a tier for COM calls: a
+fixture measured through the product is next. Tests compile the profile with and without each call source and check
+both commands' profile lists, help and preview.

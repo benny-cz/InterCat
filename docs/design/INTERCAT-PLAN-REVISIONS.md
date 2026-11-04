@@ -841,6 +841,7 @@ Revision 914 binds a COM call's records to the process that raised them, as `pro
 Revision 915 admits COM-Perf's four synchronous call events (ADR-079's addendum): a call's trace number, the process at its other end as `PeerProcessId`, never its owner, its method and interface, and its HRESULT, with three new source fields and nothing of its threads, causality or pointers; no profile requests it yet.
 Revision 916 implements ADR-079's carriers and links as `com-call-link-v1` (`contracts/com-calls-v1.md`): a generation's COM calls are paired by process, side and trace number, each joined to the RPC call carrying it and each client call linked to the server call carrying its activity, which relates the RPC calls they ride; over FX-COM-001's ledger it derives every call as measured.
 Revision 917 makes the RPC peer rule `rpc-call-peer-v2` (ADR-079's third addendum): a client call carrying a COM call that `com-call-link-v1` links is served by the RPC call carrying the server's, with or without ALPC, a disagreement with ALPC conflicting; an operation index of minor 2 keeps those links.
+Revision 918 adds the opt-in COM calls profile (ADR-079's fourth addendum): Kernel-Process, RPC and COM-Perf, all required, its class Moderate as its sources' and its statement naming COM-Perf's throughput regression; Explore never admits the source.
 
 ## Revisions, a paragraph each, in order
 
@@ -3680,3 +3681,13 @@ records, and the texts naming the rule name both ways. FX-COM-001's ledger, made
 calls carrying COM calls served through COM, its other 18 unresolved for want of ALPC. Tests serve a call through COM
 without ALPC, keep it ALPC's where ALPC agrees, conflict where ALPC reaches another call, decline to extend over a COM
 call record, and read the links back from an operation index; eleven mutations are caught.
+
+Revision 918 adds the opt-in COM calls profile, `com-calls`, the last of what ADR-079's fifth decision required before
+a profile admits COM-Perf. It requires Kernel-Process, Microsoft-Windows-RPC and COM-Perf, so without either call
+source it does not start, rather than record calls whose other ends it cannot follow; it takes no focus, and `icat
+capture` and `icat record` take it as they take the other opt-in profiles. Its class is its sources', Moderate for
+Kernel-Process, and its statement names what ADR-077's second addendum measured: COM-Perf's collection alone a median
+0.3 to 0.6 CPU points, but a COM-heavy workload 17 to 18% slower, past the throughput target. That is why the profile
+is opt-in and Explore never admits the source, which COM-Perf's catalog notes now say. Nothing has measured the profile
+whole yet, and no build carries a tier for COM calls. Tests compile the profile with and without each call source and
+check both commands' profile lists, help and preview; a catalog test now counts eight profiles.
