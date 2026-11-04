@@ -89,3 +89,10 @@ sends with credentials are kept as an exchange each, and once a challenge is ans
 every later request unasked, which the capture keeps as sent; through `icat record` two runs of 64 requests eight at
 once kept every exchange whole. Of the semantics the verdict names unmeasured, RPC over TCP transport remains. Nothing
 else above changes.
+
+## Addendum, revision 893
+
+A proxy's Basic challenge is measured (FX-HTTP-012, ADR-037): met as a server's, the request a proxy challenges - over
+TLS its CONNECT - and the one WinINet then sends with the proxy's credentials are kept as an exchange each; through
+`icat record` two runs of 64 requests eight at once, over HTTP and over TLS, kept every exchange whole. Of the semantics
+the verdict names unmeasured, RPC over TCP transport remains. Nothing else above changes.

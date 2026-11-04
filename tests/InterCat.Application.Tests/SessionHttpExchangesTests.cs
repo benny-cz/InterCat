@@ -594,6 +594,142 @@ public sealed class SessionHttpExchangesTests
     }
 
     /// <summary>
+    /// FX-HTTP-012 measured that a proxy's challenge for its own credentials is met as a server's is: WinINet answers it by
+    /// itself, and its capture keeps the request challenged - over HTTP, sent the proxy whole; over TLS, a CONNECT - and the
+    /// one sent with the credentials in Proxy-Authorization as an exchange each, then sends them with every later request
+    /// or CONNECT unasked; a request through a tunnel carries none. Each run's ledger of eight clients' 64 requests, grouped
+    /// as a session's records are, each head rebuilt and checked against the server's truth byte for byte, is an exchange
+    /// to each leg and each CONNECT, every part whole; each challenge - to a request or to a CONNECT - names what answers
+    /// it and is answered by a later exchange carrying the proxy's credentials, over HTTP its own request's.
+    /// </summary>
+    [Theory(DisplayName = "R22: FX-HTTP-012's requests through a proxy that challenges, eight clients at once, are an exchange to each leg and each CONNECT, each part whole, and each challenge answered by the proxy's credentials")]
+    [InlineData("http-eight-at-once", false)]
+    [InlineData("tls-eight-at-once", true)]
+    public void AProxysChallengesAreAnswered(string run, bool tls)
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-HTTP-012", "evidence", run);
+        LedgerBuffer[] ledger = LedgerOf(evidence);
+        var connects = new List<(string Part, long Length, string Hash)>();
+        Dictionary<(long Call, string Part), (long Length, string Hash)> truth = ServerTruthOf(evidence, connects);
+
+        // Each head as the wire to the proxy carried it, rebuilt and checked against the server's truth byte for byte: over
+        // HTTP each request sent whole, challenged or carrying the proxy's credentials last; over TLS each CONNECT, alike
+        // every time but for those credentials, and its answer, then each request in origin form through its tunnel.
+        const string Fixture = "X-InterCat-Fixture: FX-HTTP-012\r\n";
+        const string Credentials = "Proxy-Authorization: Basic aW50ZXJjYXQtZml4dHVyZTpmeC1odHRwLTAxMS1ub3QtYS1zZWNyZXQ=\r\n";
+        const string Connect = "CONNECT fx.invalid:443 HTTP/1.0\r\nUser-Agent: InterCat-FX-HTTP-012\r\nHost: fx.invalid:443\r\nContent-Length: 0\r\nProxy-Connection: Keep-Alive\r\nPragma: no-cache\r\n";
+        byte[] challengedConnect = System.Text.Encoding.ASCII.GetBytes(Connect + "\r\n");
+        byte[] connect = System.Text.Encoding.ASCII.GetBytes(Connect + Credentials + "\r\n");
+        byte[] challenge = System.Text.Encoding.ASCII.GetBytes(
+            "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"FX-HTTP-012\"\r\nContent-Length: 0\r\n" + Fixture + "\r\n");
+        byte[] established = "HTTP/1.1 200 Connection Established\r\n\r\n"u8.ToArray();
+        (string Part, byte[] Bytes)[] logged =
+        [
+            ("connect-challenged-request-head", challengedConnect), ("connect-request-head", connect),
+            ("connect-challenge-response-head", challenge), ("connect-response-head", established),
+        ];
+        Assert.Equal(tls ? (4, 64) : (0, 0), (connects.Count(entry => entry.Part == "connect-challenged-request-head"),
+            connects.Count(entry => entry.Part == "connect-request-head")));
+        Assert.All(connects, entry => Assert.Equal(logged.Single(each => each.Part == entry.Part).Bytes is var bytes
+            ? (bytes.LongLength, Sha256(bytes)) : default, (entry.Length, entry.Hash)));
+        byte[] Head(LedgerBuffer buffer)
+        {
+            bool carries = buffer.Leg == "authorized";
+            if (buffer.Request < 0)
+            {
+                return (buffer.Event, carries) switch
+                {
+                    (2001, true) => connect,
+                    (2001, false) => challengedConnect,
+                    (_, true) => established,
+                    (_, false) => challenge,
+                };
+            }
+
+            int request = buffer.Request;
+            bool challenged = !tls && !carries;
+            string length = string.Create(CultureInfo.InvariantCulture,
+                $"Content-Length: {truth[(request, challenged ? "challenged-request-body" : "request-body")].Length}\r\n");
+            byte[] bytes = (buffer.Event, challenged) switch
+            {
+                (2001, _) when tls => System.Text.Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
+                    $"POST /fx/{request} HTTP/1.1\r\n{Fixture}User-Agent: InterCat-FX-HTTP-012\r\nHost: fx.invalid\r\n{length}Connection: Keep-Alive\r\nCache-Control: no-cache\r\n\r\n")),
+                (2001, _) => System.Text.Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
+                    $"POST http://fx.invalid/fx/{request} HTTP/1.1\r\n{Fixture}User-Agent: InterCat-FX-HTTP-012\r\nHost: fx.invalid\r\n{length}Proxy-Connection: Keep-Alive\r\nPragma: no-cache\r\n{(challenged ? string.Empty : Credentials)}\r\n")),
+                (_, true) => challenge,
+                (_, false) => System.Text.Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
+                    $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {truth[(request, "response-body")].Length}\r\n{Fixture}\r\n")),
+            };
+            string part = (buffer.Event, challenged) switch
+            {
+                (2001, true) => "challenged-request-head",
+                (2001, false) => "request-head",
+                (_, true) => "challenge-response-head",
+                (_, false) => "response-head",
+            };
+            Assert.Equal(truth[(request, part)], (bytes.LongLength, Sha256(bytes)));
+            return bytes;
+        }
+
+        using TemporarySession session = Published(ledger, Head);
+        HttpChannelSummary channel = Assert.Single(SessionHttpExchanges.Channels(session.Store, Client(session.Store)).Channels);
+        long exchanges = tls ? 132 : 68;
+        Assert.Equal((exchanges, exchanges, (long)ledger.Length), (channel.Exchanges, channel.Complete, channel.Records));
+        HttpExchangePage page = SessionHttpExchanges.ExchangesUpTo(session.Store, channel.Key, 1_000);
+        HttpExchangeTableRead table = SessionHttpExchanges.Table(session.Store, page.SessionId, channel.Key, 1_000);
+        Assert.Equal(page.Exchanges.Select(row => row.Key), table.Lines.Select(line => line.Key));
+
+        // Each exchange is one request's leg or one CONNECT, every buffer of it its own, every part whole; each challenge
+        // names what answers it and is answered by a later exchange carrying the proxy's credentials - over HTTP its own
+        // request's - and each exchange carrying them says so; a request through a tunnel carries none.
+        var byKey = new Dictionary<string, (HttpExchangeRow Row, HttpExchangeLine Line)>(StringComparer.Ordinal);
+        foreach ((HttpExchangeRow row, HttpExchangeLine line) in page.Exchanges.Zip(table.Lines))
+        {
+            byKey[row.Key] = (row, line);
+            LedgerBuffer first = ledger[(int)row.Exchange.First.Ordinal - 1];
+            Assert.True(row.Exchange.Complete, row.Parts(CultureInfo.InvariantCulture));
+            SessionEvidencePage records = SessionEvidenceQuery.Read(session.Store, operationKey: row.Key);
+            Assert.Equal(row.Exchange.Records, records.Records.Count);
+            Assert.All(records.Records, record => Assert.Equal(first.Number, ledger[(int)record.Observation.RawRecordOrdinal - 1].Number));
+        }
+
+        int challenges = 0, carrying = 0, tunnelled = 0;
+        foreach ((HttpExchangeRow row, HttpExchangeLine line) in byKey.Values)
+        {
+            LedgerBuffer first = ledger[(int)row.Exchange.First.Ordinal - 1];
+            HttpExchangeHeads heads = line.Heads!;
+            if (tls && first.Request >= 0)
+            {
+                tunnelled++;
+                Assert.Equal(((HttpCredentials?)null, (HttpChallenge?)null), (heads.Credentials, heads.Challenge));
+                continue;
+            }
+
+            if (first.Leg == "authorized")
+            {
+                carrying++;
+                Assert.Equal(("Proxy-Authorization", "Basic", (HttpChallenge?)null), (heads.Credentials?.Field, heads.Credentials?.Scheme, heads.Challenge));
+                continue;
+            }
+
+            challenges++;
+            HttpChallenge challengeMade = heads.Challenge!;
+            Assert.Equal(("407", "Proxy-Authenticate", "Basic realm=\"FX-HTTP-012\"", "Proxy-Authorization"),
+                (challengeMade.Status, challengeMade.Field, challengeMade.Challenges, challengeMade.Answer));
+            (HttpExchangeRow answer, HttpExchangeLine answerLine) = byKey[line.AnsweredBy!.Key!];
+            Assert.Equal("Proxy-Authorization", answerLine.Heads!.Credentials!.Field);
+            Assert.Equal(heads.Asked, answerLine.Heads.Asked);
+            Assert.True(answer.Exchange.FirstNanoseconds >= row.Exchange.ResponseEndNanoseconds);
+            if (!tls)
+            {
+                Assert.Equal(first.Request, ledger[(int)answer.Exchange.First.Ordinal - 1].Request);
+            }
+        }
+
+        Assert.Equal(tls ? (4, 64, 64) : (4, 64, 0), (challenges, carrying, tunnelled));
+    }
+
+    /// <summary>
     /// One buffer a lab probe's ledger holds, in time order, never its bytes: its 100 ns readings after the first, event,
     /// exchange number, place, ends and length, the request its exchange's head named (-1 for none), whether a thread that
     /// made a request raised it, and, where the run was redirected, its leg.

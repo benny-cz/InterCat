@@ -59,6 +59,9 @@ internal sealed record HttpWinInetOptions
     /// <summary>Each request challenged for credentials until it carries them, which WinINet answers: FX-HTTP-011.</summary>
     public const string AuthScenarioId = "FX-HTTP-011";
 
+    /// <summary>Each request through a proxy challenged by the proxy for its own credentials: FX-HTTP-012.</summary>
+    public const string ProxyAuthScenarioId = "FX-HTTP-012";
+
     /// <summary>The run's credentials: test values made for the fixture's own loopback server, secret to nothing.</summary>
     public const string AuthUser = "intercat-fixture";
 
@@ -155,7 +158,9 @@ internal sealed record HttpWinInetOptions
     /// that does not carry the run's Basic credentials (RFC 7617) with a 401 of no body naming Basic. "basic" has the
     /// client give WinINet the credentials when it connects, so WinINet answers a challenge by itself; "basic-late" has
     /// it give them only once challenged, setting them on the request and sending it again, as a client that asks its user
-    /// does; null asks for none.
+    /// does; null asks for none. Through a <see cref="Proxy"/>, it is the proxy that challenges - with a 407 naming Basic
+    /// in Proxy-Authenticate, each request over HTTP and each CONNECT over TLS that does not carry the run's credentials in
+    /// Proxy-Authorization - and the client gives WinINet them as the proxy's.
     /// </summary>
     public string? Auth { get; init; }
 
@@ -163,13 +168,14 @@ internal sealed record HttpWinInetOptions
     public static IReadOnlyList<string> AuthModes { get; } = ["basic", "basic-late"];
 
     /// <summary>
-    /// The scenario this run is: FX-HTTP-011 challenged for credentials, else FX-HTTP-010 through a proxy, else FX-HTTP-009
-    /// with each request redirected once, else
+    /// The scenario this run is: FX-HTTP-012 challenged by its proxy for credentials, else FX-HTTP-011 challenged for them,
+    /// else FX-HTTP-010 through a proxy, else FX-HTTP-009 with each request redirected once, else
     /// FX-HTTP-008 with responses in deflate or br, else FX-HTTP-007 with bodies written in pieces,
     /// else FX-HTTP-006 over HTTP/2, else FX-HTTP-005 made asynchronously, else FX-HTTP-004 with responses in gzip, else
     /// FX-HTTP-003 with several clients at once or chunked responses, else FX-HTTP-002 over TLS, else FX-HTTP-001.
     /// </summary>
-    public string Scenario => Auth is not null ? AuthScenarioId : Proxy ? ProxyScenarioId : RedirectStatus > 0 ? RedirectScenarioId
+    public string Scenario => Auth is not null ? Proxy ? ProxyAuthScenarioId : AuthScenarioId : Proxy ? ProxyScenarioId
+        : RedirectStatus > 0 ? RedirectScenarioId
         : Coding is not (null or "gzip") ? CodingsScenarioId
         : WriteBytes > 0 ? WrittenScenarioId
         : Http2 ? Http2ScenarioId : Async ? AsyncScenarioId : Coding is "gzip" ? CodedScenarioId
@@ -226,11 +232,16 @@ internal static partial class HttpWinInetScenario
     private const int ErrorIoPending = 997;
     private const int ErrorTimeout = 1460;
     private const int ErrorRedirectNeedsConfirmation = 12168;
+    private const int ErrorInvalidCertificateAuthority = 12045;
 
     // A request's credentials, set once it is challenged (INTERNET_OPTION_USERNAME, INTERNET_OPTION_PASSWORD), and the
     // status its response gave, as a number (HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER).
     private const int OptionUsername = 28;
     private const int OptionPassword = 29;
+
+    // A request's credentials for its proxy (INTERNET_OPTION_PROXY_USERNAME, INTERNET_OPTION_PROXY_PASSWORD).
+    private const int OptionProxyUsername = 43;
+    private const int OptionProxyPassword = 44;
     private const uint QueryStatusCode = 19 | 0x20000000;
     private static readonly IntPtr InvalidStatusCallback = -1;
     private const uint IgnoreCertificateErrors = 0x00000100 | 0x00001000 | 0x00002000 | 0x00000080 | 0x00000200;
@@ -354,11 +365,11 @@ internal static partial class HttpWinInetScenario
             return 2;
         }
 
-        if (options.Auth is { } auth && (!HttpWinInetOptions.AuthModes.Contains(auth, StringComparer.Ordinal) || options.Http2 || options.Proxy
+        if (options.Auth is { } auth && (!HttpWinInetOptions.AuthModes.Contains(auth, StringComparer.Ordinal) || options.Http2
             || options.RedirectStatus != 0 || options.WriteBytes > 0))
         {
             await Console.Error.WriteLineAsync($"--auth takes {string.Join(" or ", HttpWinInetOptions.AuthModes)}, and is refused with "
-                + "--http2, --proxy, --redirect and --write.").ConfigureAwait(false);
+                + "--http2, --redirect and --write.").ConfigureAwait(false);
             return 2;
         }
 
@@ -609,6 +620,13 @@ internal static partial class HttpWinInetScenario
                         continue;
                     }
 
+                    // Through a proxy that challenges, credentials given up front are the proxy's, set on the request.
+                    if (options.Proxy && options.Auth == "basic" && !Credit(request, proxy: true))
+                    {
+                        client.Write(TruthEventKind.Failure, callId: index, status: $"InternetSetOption failed: {Marshal.GetLastPInvokeError()}");
+                        continue;
+                    }
+
                     client.Write(TruthEventKind.CallIssued, callId: index, declaredBytes: body.Length, status: "request-body",
                         resourceName: Sha256(body));
 
@@ -633,9 +651,10 @@ internal static partial class HttpWinInetScenario
                         requestSent = Send(calls, request, RequestHeaders(options), body, out sendError);
                     }
 
-                    // Challenged for credentials it was not given when it connected, the client reads the challenge to its end,
-                    // gives them once asked, as a client asking its user does, and sends the request again.
-                    if (requestSent && options.Auth == "basic-late" && StatusOf(request) == 401)
+                    // Challenged for credentials it was not given up front - by the server, or through a proxy by the proxy -
+                    // the client reads the challenge to its end, gives them once asked, as a client asking its user does, and
+                    // sends the request again.
+                    if (requestSent && options.Auth == "basic-late" && StatusOf(request) == (options.Proxy ? 407u : 401u))
                     {
                         while (Read(calls, request, buffer, out int drained, out _) && drained > 0)
                         {
@@ -643,14 +662,29 @@ internal static partial class HttpWinInetScenario
                         }
 
                         client.Write(TruthEventKind.MessageReceived, callId: index, status: "challenge-answered");
-                        if (!InternetSetOptionText(request, OptionUsername, HttpWinInetOptions.AuthUser, HttpWinInetOptions.AuthUser.Length)
-                            || !InternetSetOptionText(request, OptionPassword, HttpWinInetOptions.AuthPassword, HttpWinInetOptions.AuthPassword.Length))
+
+                        // Over TLS through a proxy, the request sent again opens a tunnel anew, whose certificate WinINet then
+                        // checks without the errors the client let pass before (measured: ERROR_INTERNET_INVALID_CA), so the
+                        // client lets them pass again, as it did for the first.
+                        uint again = IgnoreCertificateErrors;
+                        if (!Credit(request, options.Proxy) || (options.Tls && !InternetSetOption(request, OptionSecurityFlags, ref again, sizeof(uint))))
                         {
                             requestSent = false;
                             sendError = Marshal.GetLastPInvokeError();
                         }
                         else
                         {
+                            requestSent = Send(calls, request, RequestHeaders(options), body, out sendError);
+                        }
+
+                        // Sent again through a proxy over TLS, WinINet failed the new tunnel's certificate though its errors had
+                        // been let pass (ERROR_INTERNET_INVALID_CA); its documented answer is to let them pass then and send
+                        // once more, as the client does.
+                        uint once = IgnoreCertificateErrors;
+                        if (!requestSent && sendError == ErrorInvalidCertificateAuthority && options.Tls
+                            && InternetSetOption(request, OptionSecurityFlags, ref once, sizeof(uint)))
+                        {
+                            client.Write(TruthEventKind.MessageReceived, callId: index, status: "certificate-errors-let-pass-again");
                             requestSent = Send(calls, request, RequestHeaders(options), body, out sendError);
                         }
                     }
@@ -723,6 +757,12 @@ internal static partial class HttpWinInetScenario
 
         return (completed, sent, read);
     }
+
+    /// <summary>Gives a request the run's credentials, as its proxy's or its server's; false where WinINet refused them.</summary>
+    private static bool Credit(IntPtr request, bool proxy) =>
+        InternetSetOptionText(request, proxy ? OptionProxyUsername : OptionUsername, HttpWinInetOptions.AuthUser, HttpWinInetOptions.AuthUser.Length)
+        && InternetSetOptionText(request, proxy ? OptionProxyPassword : OptionPassword, HttpWinInetOptions.AuthPassword,
+            HttpWinInetOptions.AuthPassword.Length);
 
     /// <summary>The status a sent request's response gave, by WinINet's account; 0 where it gave none it could read.</summary>
     private static uint StatusOf(IntPtr request)
@@ -1012,6 +1052,22 @@ internal static partial class HttpWinInetScenario
                     // (RFC 9110 §9.3.6); answered, the tunnel carries the TLS that the server, the origin too, decrypts.
                     if (headText.StartsWith("CONNECT ", StringComparison.Ordinal))
                     {
+                        // A proxy that challenges answers a CONNECT without its credentials with a challenge alone, its
+                        // connection kept for the CONNECT that carries them.
+                        if (options.Auth is not null && !Authorized(headText, "Proxy-Authorization"))
+                        {
+                            server.Write(TruthEventKind.MessageReceived, declaredBytes: head.Length, status: "connect-challenged-request-head",
+                                resourceName: Sha256(head));
+                            byte[] refused = ProxyChallenge(options);
+                            await stream.WriteAsync(refused, cancellationToken).ConfigureAwait(false);
+                            server.Write(TruthEventKind.MessageSent, declaredBytes: refused.Length, status: "connect-challenge-response-head",
+                                resourceName: Sha256(refused));
+                            byte[] after = pending.WrittenSpan[head.Length..].ToArray();
+                            pending.Clear();
+                            pending.Write(after);
+                            continue;
+                        }
+
                         server.Write(TruthEventKind.MessageReceived, declaredBytes: head.Length, status: "connect-request-head",
                             resourceName: Sha256(head));
                         byte[] established = "HTTP/1.1 200 Connection Established\r\n\r\n"u8.ToArray();
@@ -1063,15 +1119,22 @@ internal static partial class HttpWinInetScenario
                     }
 
                     // Authenticated, a request that does not carry the run's credentials is answered by a challenge alone, of no
-                    // body, naming Basic (RFC 9110 §11.6.1, RFC 7617); each leg is logged apart.
-                    if (options.Auth is not null && !Authorized(headText))
+                    // body, naming Basic (RFC 9110 §11.6.1, RFC 7617); each leg is logged apart. Through a proxy it is the
+                    // proxy that challenges a request sent it whole, for credentials in Proxy-Authorization (§11.7.1), and the
+                    // origin challenges none - a request through a tunnel, in origin form, is the origin's.
+                    bool challenged = options.Auth is not null && (options.Proxy
+                        ? SentWhole(headText) && !Authorized(headText, "Proxy-Authorization")
+                        : !Authorized(headText, "Authorization"));
+                    if (challenged)
                     {
                         server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: head.Length,
                             status: "challenged-request-head", resourceName: Sha256(head));
                         server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: body.Length,
                             status: "challenged-request-body", resourceName: Sha256(body));
-                        byte[] challenge = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
-                            $"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"{options.Scenario}\"\r\nContent-Length: 0\r\n{FixtureHeader(options)}\r\n"));
+                        byte[] challenge = options.Proxy
+                            ? ProxyChallenge(options)
+                            : Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
+                                $"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"{options.Scenario}\"\r\nContent-Length: 0\r\n{FixtureHeader(options)}\r\n"));
                         await stream.WriteAsync(challenge, cancellationToken).ConfigureAwait(false);
                         server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: challenge.Length,
                             status: "challenge-response-head", resourceName: Sha256(challenge));
@@ -1248,15 +1311,18 @@ internal static partial class HttpWinInetScenario
         return int.Parse(head.AsSpan(start, end - start), NumberStyles.None, CultureInfo.InvariantCulture);
     }
 
-    /// <summary>Whether a request head carries the run's Basic credentials (RFC 7617) in an Authorization field.</summary>
-    private static bool Authorized(string head)
+    /// <summary>
+    /// Whether a request head carries the run's Basic credentials (RFC 7617) in <paramref name="field"/>: Authorization for
+    /// its server, Proxy-Authorization for its proxy.
+    /// </summary>
+    private static bool Authorized(string head, string field)
     {
         string expected = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(
             HttpWinInetOptions.AuthUser + ":" + HttpWinInetOptions.AuthPassword));
         foreach (string line in head.Split("\r\n"))
         {
             int colon = line.IndexOf(':', StringComparison.Ordinal);
-            if (colon > 0 && line[..colon].Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+            if (colon > 0 && line[..colon].Equals(field, StringComparison.OrdinalIgnoreCase)
                 && line[(colon + 1)..].Trim().Equals(expected, StringComparison.Ordinal))
             {
                 return true;
@@ -1265,6 +1331,18 @@ internal static partial class HttpWinInetScenario
 
         return false;
     }
+
+    /// <summary>Whether a request head names its target's whole address, as only a request to a proxy does (RFC 9112 §3.2.2).</summary>
+    private static bool SentWhole(string head)
+    {
+        int space = head.IndexOf(' ', StringComparison.Ordinal);
+        return space > 0 && (head.AsSpan(space + 1).StartsWith("http://", StringComparison.Ordinal)
+            || head.AsSpan(space + 1).StartsWith("https://", StringComparison.Ordinal));
+    }
+
+    /// <summary>A proxy's challenge for the run's credentials (RFC 9110 §11.7.1): a 407 of no body naming Basic.</summary>
+    private static byte[] ProxyChallenge(HttpWinInetOptions options) => Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
+        $"HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"{options.Scenario}\"\r\nContent-Length: 0\r\n{FixtureHeader(options)}\r\n"));
 
     /// <summary>The reason phrase of a redirect's status.</summary>
     private static string Reason(int status) => status switch

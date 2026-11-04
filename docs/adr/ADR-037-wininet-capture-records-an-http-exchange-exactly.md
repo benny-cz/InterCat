@@ -9,12 +9,13 @@
   in HTTP/1.1's form (revision 887); a request body written in pieces measured (revision 888); responses in deflate and
   br measured (revision 889); redirects WinINet follows measured, each leg an exchange of its own (revision 890);
   requests through a proxy measured, a CONNECT an exchange of its own (revision 891); Basic authentication measured,
-  a challenge and its answer an exchange each (revision 892)
+  a challenge and its answer an exchange each (revision 892); a proxy's challenge measured, to a request or a CONNECT
+  (revision 893)
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
 - Relates to: §3.7, §11, §11.1, §11.2, M3, M8, I21, R21, R22, ADR-030, ADR-036, FX-HTTP-001, FX-HTTP-002,
   FX-HTTP-003, FX-HTTP-005, FX-HTTP-006, FX-HTTP-007, FX-HTTP-008, FX-HTTP-009, FX-HTTP-010, FX-HTTP-011,
-  `contracts/content-v1.md`,
+  FX-HTTP-012, `contracts/content-v1.md`,
   `contracts/decoders-v1.md`, `contracts/http-exchanges-v1.md`,
   `tools/InterCat.WinInetProbe`,
   `bench/results/wininet-capture-feasibility-20260928T102426Z`,
@@ -35,7 +36,9 @@
   `bench/results/wininet-capture-proxy-http-eight-20261104T023404Z`,
   `bench/results/wininet-capture-proxy-tls-eight-20261104T023409Z`,
   `bench/results/wininet-capture-auth-basic-eight-20261104T031707Z`,
-  `bench/results/wininet-capture-auth-basic-late-eight-20261104T031712Z`
+  `bench/results/wininet-capture-auth-basic-late-eight-20261104T031712Z`,
+  `bench/results/wininet-capture-proxy-auth-http-basic-eight-20261104T040102Z`,
+  `bench/results/wininet-capture-proxy-auth-tls-basic-eight-20261104T040107Z`
 
 ## Context
 
@@ -283,6 +286,27 @@ both eight clients at once, beside a decoy.
   is answered, in a listing, by the first exchange listed after it carrying credentials for its target - each of the 16
   its own request - and each request carrying credentials says so, by their field and scheme.
 
+## Measurement of a proxy's challenge (revision 893)
+
+FX-HTTP-012's proxy - the server of FX-HTTP-010 - challenges for its own credentials with a 407 naming Basic in
+Proxy-Authenticate: over HTTP each request sent it whole, over TLS each CONNECT, that does not carry them in
+Proxy-Authorization; its client gives WinINet the credentials as the proxy's up front, or only once challenged. The probe
+ran each way over HTTP and over TLS, and both up front eight clients at once, beside a decoy.
+
+- **As a server's challenge.** WinINet answered the 407 by itself, or once its client sent the request again, and kept
+  each challenge and its answer as an exchange each - over TLS each CONNECT challenged and the CONNECT that then carried
+  the credentials - and then sent the credentials with every later request or CONNECT unasked: 4 of 68 exchanges to the
+  proxy were challenged eight clients at once. A request through a tunnel carried none. Every part matched the server's
+  truth, and every CONNECT its log.
+- **Once challenged, over TLS.** A client giving the credentials only once challenged, sending its request again, met
+  WinINet's check of the new tunnel's certificate anew (`ERROR_INTERNET_INVALID_CA`) though it had let such errors pass;
+  letting them pass again, it sent the request a third time - so one tunnel carried no request - and its reading of the
+  407's body raised one buffer of no byte under the request's own number.
+- **Through `icat record`** (FX-HTTP-012: 64 requests eight at once, over HTTP and over TLS): 68 and 132 exchanges, every
+  one recorded whole, every part `icat content --part` saved matching the server's bytes or log. The grouping needs
+  nothing new; a challenge to a CONNECT, whose target is a host and port, is now answered in a listing by the first
+  CONNECT after it to the same host and port carrying the proxy's credentials, where before it was answered by none.
+
 ## Decision
 
 1. **The source contract, for its admission to implement.** An exchange is a `SessionId`; a part is its event, which
@@ -378,9 +402,10 @@ both eight clients at once, beside a decoy.
   request through the tunnel one of its own too.
 - Basic authentication is measured (revision 892, FX-HTTP-011): a challenge and the request answering it are an
   exchange each, credentials are then sent unasked, and the capture keeps them as sent, which InterCat says.
+- A proxy's Basic challenge is measured (revision 893, FX-HTTP-012): met as a server's, each challenge and its answer an
+  exchange each, over TLS on its CONNECT.
 - Not measured: content codings other than gzip, deflate and br; authentication in another scheme - NTLM and Negotiate
-  take the user's own credentials and several exchanges - and a proxy's challenge. Each is measured before a profile
-  claims it.
+  take the user's own credentials and several exchanges. Each is measured before a profile claims it.
 - The scope is the named processes themselves (revision 245): the provider's filter holds their IDs by number, and the
   capture holds each process open while it runs, so a named process's exit ends its content and no process started
   after it can take its ID.

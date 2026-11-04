@@ -1226,6 +1226,55 @@
         "P2: icat exchanges --decode names each listed challenge for credentials and the exchange that answered it, and which requests carry credentials, never their value",
         "P2: a conversation says, once its heads are decoded, that its response challenged for credentials or that its request carried them, legibly and heard"
       ]
+    },
+    {
+      "id": "FX-HTTP-012",
+      "title": "WinINet requests through a proxy that challenges for its own Basic credentials, over HTTP and on CONNECT",
+      "scenario": "A proxy's challenge (ADR-037, revision 893): the proxy - the workload's own loopback server, the origin too - answers each request sent it whole and each CONNECT that does not carry the run's credentials in Proxy-Authorization - test values made for the fixture's own server, secret to nothing - with a 407 of no body naming Basic in Proxy-Authenticate; the client gives WinINet the credentials as the proxy's up front, or only once challenged, sending the request again. Over HTTP and over TLS, one request at a time or eight clients at once; WinINet's capture provider is enabled for the workload's process alone.",
+      "milestone": "M3",
+      "mechanism": "Http",
+      "backlog": [
+        "IC-011",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": [
+          "P2"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads http-wininet --proxy --auth basic and --auth basic-late, with --tls and --concurrency 8",
+        "seed": 20260929,
+        "log": "fixtures/FX-HTTP-012/evidence/tls-eight-at-once/truth-http-server.jsonl",
+        "independence": "The proxy is the witness, the origin too: it logs the head and body of each request it challenged and of its challenge, then of the request carrying the credentials and its response, and each CONNECT it challenged or let through and its answer, by length and SHA-256, never the bytes. The client logs what it sent and read, each challenge it answered and the status each response gave it. Neither reads InterCat state."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-HTTP-012/evidence/measurement.json",
+        "note": "A proxy's challenge is met as a server's: each 407 and its answer carrying Proxy-Authorization are an exchange each - over TLS each CONNECT challenged and the CONNECT that then carried the credentials - and the credentials are then sent unasked, a request through a tunnel carrying none. Through icat record, two runs of 64 requests eight at once kept every exchange whole, 68 over HTTP and 132 over TLS, and every part icat content --part saved matched the server's bytes or its log of each CONNECT, 265 of 265 and 390 of 390 that held any; each of the 8 challenges was answered by an exchange carrying the proxy's credentials, over HTTP its own request's. The lab probe found the same of seven runs. The ledgers of the two runs eight at once, never their bytes, are grouped by a test as a session's records are."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-04",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record --profile content scoped to the workload's process, twice: 845 and 1,039 records journaled, 1,240,052 and 1,220,319 bytes of content kept, nothing lost. Every exchange recorded whole and every head decoded to its end; each challenge answered by an exchange carrying the proxy's credentials, and every part saved by icat content matched the server's bytes or log. Tier ExperimentalEvidence: authentication in other schemes is unmeasured (ADR-037)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The server's and the client's truth logs and the scenario of two runs - ports, thread IDs, lengths and SHA-256 of synthetic requests, responses, CONNECTs and their answers and of each leg apart, never their bytes, and the statuses the client read - their buffer ledgers, each buffer's reading, event, exchange number, place, ends, length, request, kind of thread and leg, never its bytes, and the measurement's counters. The credentials are the fixture's own test values, held by no file here. The captures themselves are not kept."
+      },
+      "tests": [
+        "R22: FX-HTTP-012's requests through a proxy that challenges, eight clients at once, are an exchange to each leg and each CONNECT, each part whole, and each challenge answered by the proxy's credentials",
+        "P2: a 401 naming WWW-Authenticate, or a 407 naming Proxy-Authenticate, challenges its client for credentials, and names the field that answers it",
+        "P2: a listed challenge is answered by the first exchange listed after it, begun once its response ended, that asked for its target of its host carrying credentials"
+      ]
     }
   ],
   "retired": [
@@ -2434,6 +2483,7 @@
         "R22: FX-HTTP-009's redirected requests, eight clients at once, are two exchanges each - the redirect and the request WinINet made to its location - each part whole, and each redirect followed by its own",
         "R22: FX-HTTP-010's requests through a proxy, eight clients at once, are each one exchange and over TLS each CONNECT one more, every part whole and each said to have gone to a proxy",
         "R22: FX-HTTP-011's requests challenged for credentials, eight clients at once, are an exchange to each leg, each part whole, each challenge answered by its own request and each request carrying credentials said to",
+        "R22: FX-HTTP-012's requests through a proxy that challenges, eight clients at once, are an exchange to each leg and each CONNECT, each part whole, and each challenge answered by the proxy's credentials",
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
         "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused",
         "R22: a boot is named by a token kept only until the machine restarts, and its count is no identity",

@@ -812,6 +812,8 @@ Revision 891 measures requests through a proxy through WinINet's capture (FX-HTT
 
 Revision 892 measures Basic authentication through WinINet's capture (FX-HTTP-011): a challenge and the request answering it with credentials are an exchange each, credentials then sent unasked, so a decoded challenge names what answers it, a listing the exchange that did, and a request carrying credentials says so, never their value.
 
+Revision 893 measures a proxy's Basic challenge through WinINet's capture (FX-HTTP-012): it is met as a server's, over TLS on its CONNECT, so a challenge to a CONNECT is now answered in a listing by the CONNECT after it to the same host and port that carried the proxy's credentials.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3337,3 +3339,20 @@ conversation says each beneath its side (`http-exchanges-v1` §5i). A test group
 rebuilt and checked against the server's truth byte for byte, each of 16 challenges answered by its own request;
 twenty-six mutations are caught. Other schemes - NTLM and Negotiate, which take the user's own credentials - and a
 proxy's challenge remain unmeasured.
+
+Revision 893 measures a proxy's Basic challenge through WinINet's capture (FX-HTTP-012), where revision 892 had
+measured a server's alone. The truth workload's proxy - its own server, the origin too - can challenge with a 407 naming
+Basic each request sent it whole and each CONNECT that does not carry the run's credentials in Proxy-Authorization, and
+its client can give WinINet them as the proxy's up front or only once challenged. Six probe runs, eight clients at once
+too, and two `icat record --profile content` runs of 64 requests eight at once, over HTTP and over TLS, found it met as a
+server's challenge: WinINet answered the 407 by itself or once its client sent the request again, its capture kept each
+challenge and its answer as an exchange each - over TLS the CONNECT challenged and the CONNECT that then carried the
+credentials - and WinINet then sent the credentials with every later request or CONNECT unasked, while a request through
+a tunnel carried none. Over TLS a client sending its request again once challenged met WinINet's check of the new
+tunnel's certificate anew, and sent it a third time; and its reading of the 407's body raised one buffer of no byte under
+the request's own number. The grouping needs nothing new, and a 407 and Proxy-Authorization say so as revision 892 has
+them; but a challenge to a CONNECT, whose target is a host and port, was answered in a listing by none, and is now
+answered by the first CONNECT after it to the same host and port carrying the proxy's credentials. A test groups the
+fixture's two ledgers, their heads rebuilt and checked against the server's truth byte for byte, each challenge answered
+by the proxy's credentials; two mutations of the rule are caught. Other schemes remain unmeasured: NTLM and Negotiate
+take the user's own credentials.

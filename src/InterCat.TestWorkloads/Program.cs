@@ -235,7 +235,9 @@ static void PrintHelp()
     Console.WriteLine("      has the server challenge each request without the run's test credentials with a 401 naming Basic,");
     Console.WriteLine("      logging both legs apart; with basic the client gives WinINet the credentials when it connects, and");
     Console.WriteLine("      with basic-late only once challenged, sending the request again; it makes the run FX-HTTP-011, and");
-    Console.WriteLine("      refuses --http2, --proxy, --redirect and --write.");
+    Console.WriteLine("      refuses --http2, --redirect and --write. With --proxy it is the proxy that challenges, with a 407,");
+    Console.WriteLine("      each request sent it and each CONNECT without its credentials, and the client gives them as the");
+    Console.WriteLine("      proxy's; it makes the run FX-HTTP-012.");
     Console.WriteLine();
     Console.WriteLine("  No scenario runs implicitly. Nothing is captured or observed by this executable.");
 }

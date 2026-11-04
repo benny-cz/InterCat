@@ -767,6 +767,9 @@ public static class WindowsSourceCatalog
                 "Measured on FX-HTTP-011 (ADR-037): a challenge for Basic credentials and the request WinINet then sends with them "
                 + "are kept as an exchange each; once answered, WinINet sends the credentials with every later request unasked, and "
                 + "a request's Authorization field is kept as sent.",
+                "Measured on FX-HTTP-012 (ADR-037): a proxy's Basic challenge is met as a server's - over HTTP on a request sent "
+                + "it whole, over TLS on its CONNECT - each challenge and its answer kept as an exchange each, and a request through "
+                + "a tunnel carries no credentials.",
                 "Only WinINet's clients raise these records: .NET's HTTP client, WinHTTP and browsers' own stacks do not.",
                 "Its message bytes are kept only under a scoped content policy; under any other, the buffer's length is.",
                 "Capture impact, seven pairs of FX-HTTP-001 on 2026-09-28 with 4,096 exchanges each: a median of 0.71 CPU "

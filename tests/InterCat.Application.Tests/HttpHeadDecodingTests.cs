@@ -409,6 +409,8 @@ public sealed class HttpHeadDecodingTests
     [InlineData("GET /a HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nwww-authenticate: Negotiate\r\nWWW-Authenticate: Basic realm=\"r\"\r\n\r\n", "401", "WWW-Authenticate", "Negotiate, Basic realm=\"r\"", "Authorization", "/a", "h")]
     [InlineData("GET http://p.test/a HTTP/1.1\r\nHost: p.test\r\n\r\n", "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"proxy\"\r\n\r\n", "407", "Proxy-Authenticate", "Basic realm=\"proxy\"", "Proxy-Authorization", "/a", "p.test")]
     [InlineData(null, "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic\r\n\r\n", "401", "WWW-Authenticate", "Basic", "Authorization", null, null)]
+    [InlineData("CONNECT fx.invalid:443 HTTP/1.0\r\nHost: fx.invalid:443\r\n\r\n", "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"FX-HTTP-012\"\r\nContent-Length: 0\r\n\r\n", "407", "Proxy-Authenticate", "Basic realm=\"FX-HTTP-012\"", "Proxy-Authorization", "fx.invalid:443", null)]
+    [InlineData("CONNECT /x HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\n\r\n", "407", "Proxy-Authenticate", "Basic", "Proxy-Authorization", null, null)]
     [InlineData("GET /a HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n", null, null, null, null, null, null)]
     [InlineData("GET /a HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate:\r\n\r\n", null, null, null, null, null, null)]
     [InlineData("GET /a HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 407 Proxy Authentication Required\r\nWWW-Authenticate: Basic\r\n\r\n", null, null, null, null, null, null)]
@@ -462,6 +464,10 @@ public sealed class HttpHeadDecodingTests
             (180, 185, "POST /a HTTP/1.1\r\nHost: h\r\n" + Basic + "\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
             (200, 210, "GET /c HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic\r\n\r\n"),
             (220, 225, null, null),
+            (230, 240, "CONNECT p.test:443 HTTP/1.0\r\nHost: p.test:443\r\n\r\n", "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic\r\n\r\n"),
+            (245, 250, "CONNECT p.test:443 HTTP/1.0\r\nHost: p.test:443\r\n" + Basic + "\r\n", "HTTP/1.1 200 Connection Established\r\n\r\n"),
+            (255, 260, "CONNECT other.test:443 HTTP/1.0\r\nHost: other.test:443\r\nProxy-Authorization: Basic eDp5\r\n\r\n", "HTTP/1.1 200 Connection Established\r\n\r\n"),
+            (265, 270, "CONNECT p.test:443 HTTP/1.0\r\nHost: p.test:443\r\nProxy-Authorization: Basic eDp5\r\n\r\n", "HTTP/1.1 200 Connection Established\r\n\r\n"),
         ];
         HttpExchange[] exchanges =
         [
@@ -492,8 +498,9 @@ public sealed class HttpHeadDecodingTests
         // The first challenge is answered by the first exchange after it, once its response ended, that asked for /a of h
         // with an Authorization field, its host in any case - not one begun before, nor one challenged too, of another
         // host, or carrying the field that answers a proxy, nor a later one; so is the second; a proxy's challenge by
-        // Proxy-Authorization alone; and one none listed answered has none.
-        Assert.Equal([5, -1, 5, -1, -1, -1, 8, -1, -1, -1, -1, -1], HttpChallenges.AnsweredBy(exchanges, heads));
+        // Proxy-Authorization alone; one none listed answered has none; and a proxy's challenge to a CONNECT by the first
+        // CONNECT after it to the same host and port carrying the proxy's credentials (FX-HTTP-012).
+        Assert.Equal([5, -1, 5, -1, -1, -1, 8, -1, -1, -1, -1, -1, 15, -1, -1, -1], HttpChallenges.AnsweredBy(exchanges, heads));
         Assert.Throws<ArgumentException>(() => HttpChallenges.AnsweredBy(exchanges, heads[1..]));
     }
 

@@ -380,14 +380,20 @@ internal static partial class Program
 
         bool Moved(List<Buffer> exchange) => StartLine(exchange).Contains("/moved ", StringComparison.Ordinal);
 
-        // Challenged, whether a request's head carries credentials, in an Authorization field.
+        // Challenged, whether a request's head carries credentials: in an Authorization field for its server, or through a
+        // proxy in Proxy-Authorization for the proxy, which challenges only what is sent it - a request in absolute form, or a
+        // CONNECT - never a request through a tunnel.
+        string credentialField = proxy ? "Proxy-Authorization:" : "Authorization:";
         bool Authorized(List<Buffer> exchange) => HeadText(exchange).Split("\r\n")
-            .Any(line => line.StartsWith("Authorization:", StringComparison.OrdinalIgnoreCase));
+            .Any(line => line.StartsWith(credentialField, StringComparison.OrdinalIgnoreCase));
+        bool SentToTheProxy(List<Buffer> exchange) => StartLine(exchange) is var line
+            && (line.Contains(" http://", StringComparison.Ordinal) || line.Contains(" https://", StringComparison.Ordinal));
 
         // Redirected or challenged, a request is two legs: the one the server answered with its redirect or its challenge,
         // and the one WinINet then made, to the path moved or carrying credentials.
         bool legged = redirect > 0 || auth is not null;
-        bool FirstLeg(List<Buffer> exchange) => redirect > 0 ? !Moved(exchange) : auth is not null && !Authorized(exchange);
+        bool FirstLeg(List<Buffer> exchange) => redirect > 0 ? !Moved(exchange)
+            : auth is not null && (!proxy || SentToTheProxy(exchange)) && !Authorized(exchange);
 
         // Each request's exchange - redirected or challenged, the second leg - and, apart, its first leg.
         var byRequest = new Dictionary<int, List<List<Buffer>>>();
@@ -448,6 +454,8 @@ internal static partial class Program
             // or the one WinINet then made, to the path moved or carrying credentials.
             int?[] requestOf = [.. exchanges.Select(RequestOf)];
             string[] legOf = [.. exchanges.Select(exchange => !legged ? string.Empty
+                : auth is not null && StartLine(exchange).StartsWith("CONNECT ", StringComparison.Ordinal)
+                    ? Authorized(exchange) ? ",authorized" : ",challenged"
                 : FirstLeg(exchange) ? (redirect > 0 ? ",redirected" : ",challenged")
                 : redirect > 0 ? ",moved" : ",authorized")];
             File.WriteAllLines(ledger,
@@ -656,9 +664,11 @@ internal static partial class Program
                 logged.Add((record.GetProperty("status").GetString()!, record.GetProperty("resourceName").GetString()!));
             }
 
-            int Matched(int id, string status)
+            // Matched one to one against what the server logged under any of the statuses, so a CONNECT it challenged and one
+            // it let through are each matched with its own kind.
+            int Matched(int id, params string[] statuses)
             {
-                List<string> left = [.. logged.Where(entry => entry.Status == status).Select(entry => entry.Hash)];
+                List<string> left = [.. logged.Where(entry => statuses.Contains(entry.Status, StringComparer.Ordinal)).Select(entry => entry.Hash)];
                 return connects.Count(exchange => left.Remove("sha256:" + Convert.ToHexStringLower(SHA256.HashData(
                     [.. exchange.Where(buffer => buffer.EventId == id).OrderBy(buffer => buffer.Sequence).SelectMany(buffer => buffer.Bytes)]))));
             }
@@ -666,9 +676,12 @@ internal static partial class Program
             return new
             {
                 connectsTheServerAnswered = logged.Count(entry => entry.Status == "connect-request-head"),
+                connectsTheServerChallenged = logged.Count(entry => entry.Status == "connect-challenged-request-head"),
                 connectExchangesCaptured = connects.Count,
-                requestHeadsMatchingAConnect = Matched(2001, "connect-request-head"),
-                responseHeadsMatchingItsAnswer = Matched(2003, "connect-response-head"),
+                connectExchangesCarryingCredentials = connects.Count(Authorized),
+                requestHeadsMatchingAConnect = Matched(2001, "connect-request-head", "connect-challenged-request-head"),
+                responseHeadsMatchingItsAnswer = Matched(2003, "connect-response-head", "connect-challenge-response-head"),
+                tunnelsCarryingNoRequest = logged.Count(entry => entry.Status == "connect-request-head") - (tls ? byRequest.Values.Sum(found => found.Count) : 0),
                 withARequestBodyBuffer = connects.Count(exchange => exchange.Any(buffer => buffer.EventId == 2002)),
                 withAResponseHead = connects.Count(exchange => exchange.Any(buffer => buffer.EventId == 2003)),
                 withAResponseBodyBuffer = connects.Count(exchange => exchange.Any(buffer => buffer.EventId == 2004)),

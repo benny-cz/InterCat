@@ -52,7 +52,9 @@ its own too, as over TLS directly. FX-HTTP-010's eight clients' 64 requests thro
 request, and over TLS one more to each CONNECT, each part whole (revision 891; §5h). So is a challenge for credentials
 and its answer: WinINet keeps the request a server challenged and the request it then sends with credentials as an
 exchange each, numbered apart; FX-HTTP-011's eight clients' 64 requests, each client's first challenged, are an exchange
-to each leg, each part whole (revision 892; §5i).
+to each leg, each part whole (revision 892; §5i). So is a proxy's challenge, to a request sent it whole or to a CONNECT:
+FX-HTTP-012's eight clients' 64 requests through a proxy that challenges are an exchange to each leg and each CONNECT,
+each part whole (revision 893).
 
 A release of a session's oldest interval (`contracts/store-v1.md` §8, ADR-043, revision 435) keeps every buffer of an
 exchange one of whose buffers stays, and the use before a use opened only by repeating one of its buffers, so every
@@ -317,7 +319,17 @@ begun once the challenge's response ended. Once a challenge was answered WinINet
 request to that server unasked: of eight clients' 64 requests, only each client's first was challenged. No record ties
 a challenge to its answer, so a listing names as its answer the first exchange listed after it, begun once its response
 ended, that asked for its target of its host carrying the field that answers it - its target and host resolved as a
-redirect's location is (§5g) - and each of FX-HTTP-011's 16 challenges was answered so by its own request.
+redirect's location is (§5g), a CONNECT's by the host and port it named - and each of FX-HTTP-011's 16 challenges was
+answered so by its own request.
+
+FX-HTTP-012 measured a proxy's challenge (revision 893): WinINet met it as a server's, answering a 407 by itself where
+its client gave it the proxy's credentials, or once a client that gave them only when challenged sent the request
+again, and sending them in Proxy-Authorization with every later request or CONNECT unasked; over HTTP the proxy
+challenged a request sent it whole, over TLS a CONNECT, and a request through a tunnel carried no credentials. Its
+capture kept each challenge and its answer as an exchange each, so a challenged CONNECT is answered, in a listing, by
+the first CONNECT after it to the same host and port carrying the proxy's credentials. A client sending a request
+again over TLS once challenged met WinINet's check of the new tunnel's certificate anew, and the client's reading of
+the 407's body raised one buffer of no byte under the request's own number, which is an exchange holding nothing else.
 
 `icat exchanges --decode` says, beside a challenge's answer, the listed exchange that answered it, and says among its
 caveats, once each, what WinINet does with a challenge and how its answer is found, and that heads holding credentials
@@ -332,7 +344,8 @@ one, and beneath a request, the credentials it carries; it reads one exchange, a
   `contracts/decoders-v1.md` §2).
 - How WinINet's capture keeps a body in a content coding other than gzip, deflate and br (§5e), and an exchange past
   authentication in a scheme other than Basic - NTLM and Negotiate, which take several exchanges and the user's own
-  credentials, among them - or past a proxy's challenge. Asynchronous WinINet is measured since revision 886
+  credentials, among them. A proxy's Basic challenge is measured since revision 893 (FX-HTTP-012, §5i). Asynchronous
+  WinINet is measured since revision 886
   (FX-HTTP-005), HTTP/2 since revision 887 (FX-HTTP-006), whose heads no record tells from HTTP/1.1's, a request body
   written in pieces since revision 888 (FX-HTTP-007), deflate and br since revision 889 (FX-HTTP-008), redirects
   WinINet follows since revision 890 (FX-HTTP-009, §5g), requests through a proxy since revision 891 (FX-HTTP-010,

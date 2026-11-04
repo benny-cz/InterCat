@@ -362,3 +362,10 @@ once each what WinINet does with a challenge and that the heads are to be shared
 giving each challenge and each request's credentials in its JSON and its table, as the window's Export with their heads…
 does; the conversation says each beneath its side (`http-exchanges-v1` §5i). Each of FX-HTTP-011's 16 challenges was
 answered so by its own request. Nothing else above changes.
+
+## Addendum, revision 893
+
+A proxy's Basic challenge is measured (FX-HTTP-012, ADR-037). Its 407s, and the requests carrying the proxy's credentials
+in Proxy-Authorization, say so as a server's do; a challenge to a CONNECT, whose target is a host and port, was answered
+in a listing by none, and is now answered by the first CONNECT after it to the same host and port carrying the proxy's
+credentials (`http-exchanges-v1` §5i). Nothing else above changes.

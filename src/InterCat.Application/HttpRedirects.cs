@@ -139,13 +139,20 @@ public static class HttpRedirects
 
     /// <summary>
     /// What a request asked for, as a redirect's location is resolved: its target's path and query, and the host it named;
-    /// null where its request line was not decoded, or its target is neither a path nor an absolute HTTP address.
+    /// a CONNECT's, the host and port it named as it named them (RFC 9112 §3.2.3), by its target alone; null where its
+    /// request line was not decoded, or its target is none of a path, an absolute HTTP address or a CONNECT's host and port.
     /// </summary>
     internal static (string Target, string? Host)? Asked(HttpExchangeHeads heads)
     {
-        if (heads.RequestLine?.Target is not { } target)
+        if (heads.RequestLine is not { } line)
         {
             return null;
+        }
+
+        string target = line.Target;
+        if (line.Method == "CONNECT")
+        {
+            return target.StartsWith('/') || target.Contains("://", StringComparison.Ordinal) ? null : (target, null);
         }
 
         if (Uri.TryCreate(target, UriKind.Absolute, out Uri? absolute) && absolute.Scheme is "http" or "https")
