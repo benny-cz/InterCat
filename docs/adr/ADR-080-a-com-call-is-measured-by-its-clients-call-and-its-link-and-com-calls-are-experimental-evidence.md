@@ -1,7 +1,8 @@
 # ADR-080: A COM call is measured by its client's call and its link, and COM calls are experimental evidence
 
 - Status: accepted; FX-COM-001 measured through the product, and COM calls carry their tier on `10.0.26220.0-x64`;
-  since revision 920 the COM calls profile's cost is measured through the product (its addendum)
+  since revision 920 the COM calls profile's cost is measured through the product (its addendum), and since revision 921
+  a capture's queue holds §12's acquisition budget, so the profile's unpaced series drops nothing (ADR-081)
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
 - Relates to: ADR-004, ADR-075, ADR-077, ADR-078, ADR-079, §14.2, R3, P1, P4, P7, P8, P16, P27, FX-COM-001,

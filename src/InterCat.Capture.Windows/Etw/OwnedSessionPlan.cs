@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using InterCat.Domain;
 
 namespace InterCat.Capture.Windows;
@@ -158,8 +160,20 @@ public sealed record OwnedSessionPlan
     /// <summary>ETW buffer size in kilobytes. Recorded in the manifest as a capture-affecting setting.</summary>
     public int BufferSizeKilobytes { get; init; } = 128;
 
+    /// <summary>§12's acquisition budget: the bytes the queue between the callback and the decode stage may hold.</summary>
+    public const long AcquisitionQueueBudgetBytes = 256L * 1024 * 1024;
+
+    /// <summary>
+    /// The records that queue holds by default: the largest power of two of admitted records within
+    /// <see cref="AcquisitionQueueBudgetBytes"/>, since the queue's array doubles as it fills, so a power of two keeps it
+    /// within the budget at its fullest (§12, ADR-081). It is 262,144 at today's record size, where 65,536 held under a
+    /// second of a COM-heavy burst and dropped a third of it.
+    /// </summary>
+    public static int DefaultQueueCapacityRecords { get; } =
+        1 << BitOperations.Log2((ulong)(AcquisitionQueueBudgetBytes / Unsafe.SizeOf<AdmittedEvent>()));
+
     /// <summary>Bounded in-process queue between the callback and the decode stage (R8).</summary>
-    public int QueueCapacityRecords { get; init; } = 65_536;
+    public int QueueCapacityRecords { get; init; } = DefaultQueueCapacityRecords;
 
     /// <summary>Hard stop for an M0 experiment. A capture never runs unbounded by accident (section 9.2).</summary>
     public TimeSpan MaximumDuration { get; init; } = TimeSpan.FromMinutes(5);

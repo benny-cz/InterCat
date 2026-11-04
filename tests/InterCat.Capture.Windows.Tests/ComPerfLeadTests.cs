@@ -224,7 +224,7 @@ public sealed class ComPerfLeadTests
         });
     }
 
-    [Fact(DisplayName = "§12: the COM calls profile's cost is measured through the product in two series - unpaced, its full queue dropping records in every round and the workload past the throughput target, and in bursts, nothing dropped and the target met - and its statement says what each measured")]
+    [Fact(DisplayName = "§12: the COM calls profile's cost is measured through the product in two series - unpaced, the workload past the throughput target, and in bursts, within it - nothing dropped or lost in either, and its statement says what each measured")]
     public void TheProfilesCostIsMeasuredThroughTheProduct()
     {
         CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("com-calls")!;
@@ -244,29 +244,65 @@ public sealed class ComPerfLeadTests
                 trial => Assert.Equal(0, trial.GetProperty("capture").GetProperty("sourceLoss").GetInt64()));
         }
 
-        // Unpaced, every capture's own full queue dropped records and the workload ran past the throughput target; in bursts
-        // none dropped and the target was met. Both classify as the profile states.
+        // Unpaced the workload ran past the throughput target, and in bursts within it; no capture of either series, the
+        // profile's or Explore's, dropped or lost a record. Both classify as the profile states.
         JsonElement fast = unpaced.RootElement.GetProperty("profiles").GetProperty("com-calls");
         JsonElement slow = paced.RootElement.GetProperty("profiles").GetProperty("com-calls");
-        Assert.Equal((9, false, false), (fast.GetProperty("capturesWithApplicationDrops").GetInt32(),
-            fast.GetProperty("throughputTargetMet").GetBoolean(), fast.GetProperty("lossFree").GetBoolean()));
-        Assert.Equal((0, true, true), (slow.GetProperty("capturesWithApplicationDrops").GetInt32(),
-            slow.GetProperty("throughputTargetMet").GetBoolean(), slow.GetProperty("lossFree").GetBoolean()));
+        Assert.False(fast.GetProperty("throughputTargetMet").GetBoolean());
+        Assert.True(slow.GetProperty("throughputTargetMet").GetBoolean());
+        foreach (JsonDocument series in new[] { unpaced, paced })
+        {
+            Assert.All(series.RootElement.GetProperty("profiles").EnumerateObject(), captured => Assert.Equal((0, true),
+                (captured.Value.GetProperty("capturesWithApplicationDrops").GetInt32(), captured.Value.GetProperty("lossFree").GetBoolean())));
+        }
+
         Assert.All(new[] { fast, slow }, series => Assert.Equal(profile.Overhead.ToString(), series.GetProperty("overhead").GetString()));
-        Assert.Equal(7, unpaced.RootElement.GetProperty("profiles").GetProperty("explore").GetProperty("capturesWithApplicationDrops").GetInt32());
 
         // The statement says what each series measured, in tenths.
-        static string Tenths(JsonElement series, string name) =>
-            Math.Round(series.GetProperty(name).GetDecimal(), 1, MidpointRounding.AwayFromZero).ToString("0.0", CultureInfo.InvariantCulture);
         string statement = profile.OverheadStatement!;
+        JsonElement explore = unpaced.RootElement.GetProperty("profiles").GetProperty("explore");
         Assert.Contains($"added a median {Tenths(fast, "medianCpuPercentagePoints")} pp to no capture, its own process "
             + Tenths(fast, "medianCaptureProcessCpuPercentagePoints"), statement, StringComparison.Ordinal);
-        Assert.Contains($"ran {Tenths(fast, "medianWorkloadSlowdownPercent")}% slower, past the 5% throughput target", statement, StringComparison.Ordinal);
-        Assert.Contains($"dropped a median {Tenths(fast, "medianDroppedSharePercent")}% of the records it observed", statement, StringComparison.Ordinal);
-        Assert.Contains("Explore's dropped some in seven rounds of nine", statement, StringComparison.Ordinal);
+        Assert.Contains($"ran {Tenths(fast, "medianWorkloadSlowdownPercent")}% slower, past the 5% throughput target, nothing dropped or lost",
+            statement, StringComparison.Ordinal);
+        Assert.Contains($"under Explore it ran {Tenths(explore, "medianWorkloadSlowdownPercent")}% slower", statement, StringComparison.Ordinal);
         Assert.Contains($"it added {Tenths(slow, "medianCpuPercentagePoints")} pp and the workload ran {Tenths(slow, "medianWorkloadSlowdownPercent")}% "
             + "slower, nothing dropped or lost", statement, StringComparison.Ordinal);
     }
+
+    [Fact(DisplayName = "§12: FX-COM-001's unpaced burst, about 100,000 records a second, overran a queue of 65,536 records in every capture, dropping a third of them, and a queue holding the acquisition budget drops none")]
+    public void TheAcquisitionBudgetHoldsTheBurst()
+    {
+        string root = RepositoryRoot();
+        using JsonDocument before = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(root, "bench", "results", "com-calls-impact-20261104T215928Z", "product-impact.json")));
+        using JsonDocument after = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(root, CaptureProfileCatalog.Find("com-calls")!.OverheadEvidence!)));
+
+        // The same nine rounds of the same 16,384 calls, each capture observing about as many records: its sources lost none.
+        foreach (JsonDocument series in new[] { before, after })
+        {
+            JsonElement[] captures = [.. series.RootElement.GetProperty("trials").EnumerateArray()
+                .Where(trial => trial.GetProperty("kind").GetString() == "com-calls").Select(trial => trial.GetProperty("capture"))];
+            Assert.Equal(9, captures.Length);
+            Assert.All(captures, capture =>
+            {
+                Assert.InRange(capture.GetProperty("observedRecords").GetInt64(), 400_000, 520_000);
+                Assert.Equal(0, capture.GetProperty("sourceLoss").GetInt64());
+            });
+        }
+
+        // With 65,536 records every capture's queue filled and dropped records, a median third of them; with the acquisition
+        // budget's 262,144, none (ADR-081).
+        JsonElement dropped = before.RootElement.GetProperty("profiles").GetProperty("com-calls");
+        Assert.Equal((9, "32.9"), (dropped.GetProperty("capturesWithApplicationDrops").GetInt32(), Tenths(dropped, "medianDroppedSharePercent")));
+        Assert.Equal(0, after.RootElement.GetProperty("profiles").GetProperty("com-calls").GetProperty("capturesWithApplicationDrops").GetInt32());
+        Assert.Equal(262_144, OwnedSessionPlan.DefaultQueueCapacityRecords);
+    }
+
+    /// <summary>A measured median in tenths, rounded from the decimal the report wrote.</summary>
+    private static string Tenths(JsonElement series, string name) =>
+        Math.Round(series.GetProperty(name).GetDecimal(), 1, MidpointRounding.AwayFromZero).ToString("0.0", CultureInfo.InvariantCulture);
 
     private static Row[] Ledger(string? evidence = null) =>
     [

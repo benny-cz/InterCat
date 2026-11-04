@@ -62,15 +62,14 @@ public sealed class ComCallsCaptureTests
         }
     }
 
-    [Fact(DisplayName = "R18: icat profiles com-calls states the cost measured through the product - the throughput regression and the records its full queue dropped unpaced, none in bursts - and the evidence it rests on")]
+    [Fact(DisplayName = "R18: icat profiles com-calls states the cost measured through the product - the throughput regression unpaced, within the target in bursts, nothing dropped - and the evidence it rests on")]
     public async Task ItsPreviewStatesItsCost()
     {
         (InterCatExitCode code, string preview) = await Run("profiles", "com-calls");
         Assert.Equal(InterCatExitCode.Success, code);
         string words = System.Text.RegularExpressions.Regex.Replace(preview, @"\s+", " ");
         Assert.Contains("Measured cost moderate: its sources measured Moderate at most", words, StringComparison.Ordinal);
-        Assert.Contains("the workload ran 38.6% slower, past the 5% throughput target, while its full queue dropped a median 32.9% of "
-            + "the records it observed", words, StringComparison.Ordinal);
+        Assert.Contains("the workload ran 35.2% slower, past the 5% throughput target, nothing dropped or lost", words, StringComparison.Ordinal);
         Assert.Contains("In bursts of 64 calls 40 ms apart it added 2.6 pp and the workload ran 0.9% slower, nothing dropped or lost",
             words, StringComparison.Ordinal);
         Assert.Matches(@"(?m)^  Cost evidence +bench/results/com-calls-impact-\d{8}T\d{6}Z/product-impact\.json\r?$", preview);

@@ -844,6 +844,7 @@ Revision 917 makes the RPC peer rule `rpc-call-peer-v2` (ADR-079's third addendu
 Revision 918 adds the opt-in COM calls profile (ADR-079's fourth addendum): Kernel-Process, RPC and COM-Perf, all required, its class Moderate as its sources' and its statement naming COM-Perf's throughput regression; Explore never admits the source.
 Revision 919 measures FX-COM-001 through `icat record --profile com-calls` (ADR-080): every truth call its client's COM call, linked to the server's call of the same truth call and carried by one RPC call served through it, 1,920 of 1,920, with no byte and no object named, so COM calls carry ExperimentalEvidence.
 Revision 920 measures the COM calls profile's cost through the product (ADR-080's addendum): Moderate; unpaced, a COM-heavy workload 38.6% slower and a third of its records dropped by the capture's own full queue in every round; in bursts, 0.9% slower and nothing dropped.
+Revision 921 sizes a capture's acquisition queue by §12's 256 MiB budget, 262,144 records where it held 65,536 (ADR-081), so FX-COM-001's unpaced burst, which dropped a third of its records, drops none.
 
 ## Revisions, a paragraph each, in order
 
@@ -3721,3 +3722,16 @@ nothing dropped or lost. The profile keeps its sources' class, Moderate, its sta
 evidence the unpaced one. The drops are the capture's: the recorder publishes each chunk on the thread that drains
 its queue, so at these rates the queue fills while a chunk is published, short of §12's ingest budget, which is the
 next step. Tests hold the statement to both series' evidence; seven mutations are caught.
+
+Revision 921 sizes a capture's acquisition queue by §12's 256 MiB acquisition budget (ADR-081). Revision 920's unpaced
+series had every capture's 65,536-record queue fill and drop a third of FX-COM-001's records. A timing experiment on the
+writer thread, run once and not kept, found it writing a record in about 7.2 µs, draining at most about 140,000 a second,
+and each chunk publication stopping it for 350 to 435 ms, while an admitted record of about 850 bytes put 65,536 of them
+at 52 MiB, under a second of the burst. The queue now holds the largest power of two of admitted records within 256 MiB,
+computed from the record's size: the channel's array doubles as it fills, so only a power of two keeps it within the
+budget at its fullest. That is 262,144 records, about 220 MiB, and it grows only as the writer falls behind. Measured
+again, no capture of nine rounds, the profile's or Explore's, dropped or lost a record. The profile added a median 2.7
+CPU points and the workload ran 35.2% slower, and one recording kept all 421,448 records and every truth call. The COM
+calls profile's statement and evidence cite the new series. §12's sustained ingest, 100,000 records a second for ten
+minutes, is still not shown, as publishing still stops the drain. Tests hold the queue to the budget and both series to
+what they measured.

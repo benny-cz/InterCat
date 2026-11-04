@@ -6,6 +6,26 @@ namespace InterCat.Capture.Windows.Tests;
 
 public sealed class OwnedCaptureSessionTests
 {
+    [Fact(DisplayName = "§12: a capture's acquisition queue holds the largest power of two of admitted records within the 256 MiB acquisition budget, so its array at its fullest stays within it")]
+    public void TheQueueHoldsTheAcquisitionBudget()
+    {
+        int capacity = OwnedSessionPlan.DefaultQueueCapacityRecords;
+        long record = System.Runtime.CompilerServices.Unsafe.SizeOf<AdmittedEvent>();
+
+        // The queue's array doubles as it fills, so only a power of two keeps it the bound; the next one would not fit.
+        Assert.True(System.Numerics.BitOperations.IsPow2(capacity));
+        Assert.InRange(capacity * record, 1, OwnedSessionPlan.AcquisitionQueueBudgetBytes);
+        Assert.True(2L * capacity * record > OwnedSessionPlan.AcquisitionQueueBudgetBytes);
+        Assert.Equal(256L * 1024 * 1024, OwnedSessionPlan.AcquisitionQueueBudgetBytes);
+
+        // At today's record size that is four times the 65,536 records a COM-heavy burst overran, and a plan takes it
+        // unless it states its own.
+        Assert.Equal(262_144, capacity);
+        OwnedSessionPlan stated = BuildPlan();
+        Assert.Equal(capacity, new OwnedSessionPlan { Identity = stated.Identity, Providers = stated.Providers, Sources = stated.Sources }
+            .QueueCapacityRecords);
+    }
+
     [Fact]
     public void DurableOwnershipIdentityDoesNotMintANewCaptureOrSession()
     {

@@ -374,7 +374,7 @@ public sealed class CaptureProfileCompilerTests
             && decision.Reason.Contains("not registered", StringComparison.Ordinal));
     }
 
-    [Fact(DisplayName = "§9.4: COM calls admits COM-Perf beside lifecycle and RPC, all required, its cost measured through the product with the throughput regression and the records its full queue dropped, and COM-Perf is never Explore's")]
+    [Fact(DisplayName = "§9.4: COM calls admits COM-Perf beside lifecycle and RPC, all required, its cost measured through the product with the throughput regression, and COM-Perf is never Explore's")]
     public void ComCallsAdmitsComPerfBesideRpc()
     {
         SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
@@ -393,14 +393,14 @@ public sealed class CaptureProfileCompilerTests
             && decision is { State: ProfileSourceDecisionState.Included, Required: true, Overhead: OverheadClass.Low });
 
         // The profile keeps its sources' class and states, beside it, what it cost measured through the product: how much
-        // slower a COM-heavy workload ran, which is why it is opt-in and Explore never admits the source, and the records its
-        // full queue dropped at that rate, where in bursts it dropped none.
+        // slower a COM-heavy workload ran, which is why it is opt-in and Explore never admits the source, and that its
+        // capture kept every record, unpaced and in bursts.
         CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("com-calls")!;
         Assert.Equal((CaptureProfileKind.ComCalls, OverheadClass.Moderate, AdmissionMode.MetadataOnly),
             (profile.Kind, profile.Overhead, profile.Admission));
         Assert.Contains("Through the product", profile.OverheadStatement, StringComparison.Ordinal);
-        Assert.Contains("past the 5% throughput target, while its full queue dropped", profile.OverheadStatement, StringComparison.Ordinal);
-        Assert.Contains("nothing dropped or lost", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.Contains("past the 5% throughput target, nothing dropped or lost", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.DoesNotContain("full queue", profile.OverheadStatement, StringComparison.Ordinal);
         Assert.Contains("slows a COM-heavy workload", profile.Summary, StringComparison.Ordinal);
         Assert.Contains("no thread, pointer, IPID, OID or address", profile.CollectionStatement, StringComparison.Ordinal);
         Assert.DoesNotContain(CaptureProfileCatalog.Find("explore")!.Sources,
