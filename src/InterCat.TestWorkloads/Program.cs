@@ -94,6 +94,19 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Port = Integer(args, "--port") ?? 0,
     };
 
+    var unixOptions = new UnixLoopbackOptions
+    {
+        TruthDirectory = truth,
+        Seed = Integer(args, "--seed") ?? 20_261_104,
+        Connections = Integer(args, "--connections") ?? 2,
+        MessagesPerConnection = Integer(args, "--messages") ?? 8,
+        MaximumMessageBytes = Integer(args, "--bytes") ?? 4_096,
+        InterMessageDelayMilliseconds = Integer(args, "--delay") ?? 15,
+        Concurrency = Integer(args, "--concurrency") ?? 1,
+        SocketPath = Option(args, "--socket"),
+        WaitForStart = args.Contains("--wait-for-start", StringComparer.Ordinal),
+    };
+
     var options = new TcpLoopbackOptions
     {
         TruthDirectory = truth,
@@ -117,6 +130,9 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             "udp-loopback" => await UdpLoopbackScenario.RunCoordinatorAsync(udpOptions, cancellationToken).ConfigureAwait(false),
             "udp-loopback-server" => await UdpLoopbackScenario.RunServerAsync(udpOptions, cancellationToken).ConfigureAwait(false),
             "udp-loopback-client" => await UdpLoopbackScenario.RunClientAsync(udpOptions, cancellationToken).ConfigureAwait(false),
+            "unix-loopback" => await UnixLoopbackScenario.RunCoordinatorAsync(unixOptions, cancellationToken).ConfigureAwait(false),
+            "unix-loopback-server" => await UnixLoopbackScenario.RunServerAsync(unixOptions, cancellationToken).ConfigureAwait(false),
+            "unix-loopback-client" => await UnixLoopbackScenario.RunClientAsync(unixOptions, cancellationToken).ConfigureAwait(false),
             "pipe-loopback" when OperatingSystem.IsWindows() =>
                 await PipeLoopbackScenario.RunCoordinatorAsync(pipeOptions, cancellationToken).ConfigureAwait(false),
             "pipe-loopback-server" when OperatingSystem.IsWindows() =>
@@ -202,6 +218,13 @@ static void PrintHelp()
     Console.WriteLine("      several bound sockets and the server acknowledges each to the endpoint it came from, so");
     Console.WriteLine("      both directions carry data and every truth record names both ports. --ipv6 runs it over");
     Console.WriteLine("      IPv6 loopback (::1) as FX-UDP-002.");
+    Console.WriteLine();
+    Console.WriteLine("  unix-loopback --truth <dir> [--seed n] [--connections n] [--messages n] [--bytes n] [--delay ms]");
+    Console.WriteLine("                [--concurrency n] [--socket <path>] [--wait-for-start]");
+    Console.WriteLine("      FX-UNIX-001: FX-TCP-001's two-process exchange over an AF_UNIX stream socket bound to a path -");
+    Console.WriteLine("      by default fx.sock in the truth directory - each process logging every message by the path,");
+    Console.WriteLine("      as a Unix-domain socket has no port. --wait-for-start has each process wait for a line on");
+    Console.WriteLine("      standard input before it opens a socket, so a capture scoped to it is in place first.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

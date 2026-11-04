@@ -1,0 +1,440 @@
+{
+  "schema": "intercat.afd-unix-feasibility.v1",
+  "measuredUtc": "2026-11-04T05:52:37.2039269+00:00",
+  "workload": {
+    "connections": 8,
+    "messages": 32,
+    "bytes": 4096,
+    "concurrency": 8,
+    "delay": 0
+  },
+  "session": {
+    "eventsLost": 0,
+    "seconds": 4.2,
+    "afdRecords": 8453,
+    "afdRecordsUnreadable": 0,
+    "afdRecordsRaisedBy": {
+      "another process": 309,
+      "server": 2620,
+      "decoy server": 2619,
+      "client": 1450,
+      "decoy client": 1455
+    },
+    "processesRaisingAfdRecords": 16,
+    "recordsOfNoSocketCreatedInTheSession": 299,
+    "socketsCreatedAtAnAddressAnEarlierSocketHad": 9,
+    "kernelNetworkRecordsNamingTheWorkload": 0,
+    "kernelNetworkRecordsInAll": 87,
+    "note": "The session asked AFD for the workload\u0027s two processes alone, beside a decoy pair running the same exchange outside them; Kernel-Network was enabled machine-wide, as the product\u0027s TCP and UDP source requests it."
+  },
+  "server": {
+    "truth": {
+      "connections": 8,
+      "sends": 256,
+      "bytesSent": 2048,
+      "receives": 256,
+      "bytesReceived": 538375
+    },
+    "socketsCreated": {
+      "family 1": 10,
+      "family 23": 1,
+      "family 2": 1
+    },
+    "unixSockets": 10,
+    "recordsOnThem": 2408,
+    "byEvent": {
+      "1000 AfdCreate, phase 0, location 1006": {
+        "records": 10,
+        "statusZero": 10,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 10
+        }
+      },
+      "1000 AfdCreate, phase 1, location 1013": {
+        "records": 10,
+        "statusZero": 10,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 10
+        }
+      },
+      "1001 AfdClose, phase 0, location 2000": {
+        "records": 10,
+        "statusZero": 10,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 10
+        }
+      },
+      "1001 AfdClose, phase 1, location 2001": {
+        "records": 10,
+        "statusZero": 10,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 10
+        }
+      },
+      "1002 AfdCleanup, phase 0, location 2002": {
+        "records": 10,
+        "statusZero": 10,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 10
+        }
+      },
+      "1002 AfdCleanup, phase 1, location 2003": {
+        "records": 10,
+        "statusZero": 10,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 10
+        }
+      },
+      "1003 AfdSend, phase 0, location 3047": {
+        "records": 256,
+        "statusZero": 256,
+        "bufferLength": 2048,
+        "raisedIn": {
+          "own": 256
+        }
+      },
+      "1003 AfdSend, phase 0, location 3056": {
+        "records": 256,
+        "statusZero": 256,
+        "bufferLength": 2048,
+        "raisedIn": {
+          "own": 256
+        }
+      },
+      "1003 AfdSend, phase 1, location 3024": {
+        "records": 256,
+        "statusZero": 256,
+        "bufferLength": 2048,
+        "raisedIn": {
+          "own": 256
+        }
+      },
+      "1003 AfdSend, phase 1, location 3051": {
+        "records": 256,
+        "statusZero": 256,
+        "bufferLength": 2048,
+        "raisedIn": {
+          "own": 256
+        }
+      },
+      "1004 AfdReceive, phase 0, location 4107": {
+        "records": 47,
+        "statusZero": 47,
+        "bufferLength": 188,
+        "raisedIn": {
+          "own": 47
+        }
+      },
+      "1004 AfdReceive, phase 0, location 4115": {
+        "records": 465,
+        "statusZero": 465,
+        "bufferLength": 538187,
+        "raisedIn": {
+          "own": 465
+        }
+      },
+      "1004 AfdReceive, phase 1, location 4116": {
+        "records": 465,
+        "statusZero": 465,
+        "bufferLength": 538187,
+        "raisedIn": {
+          "own": 465
+        }
+      },
+      "1004 AfdReceive, phase 1, location 4123": {
+        "records": 47,
+        "statusZero": 47,
+        "bufferLength": 188,
+        "raisedIn": {
+          "peer\u0027s": 47
+        }
+      },
+      "1026 AfdAcceptEx, phase 0, location 6024": {
+        "records": 8,
+        "statusZero": 8,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 8
+        }
+      },
+      "1027 AfdAcceptExWithAddress, phase 1, location 6101": {
+        "records": 8,
+        "statusZero": 8,
+        "bufferLength": 0,
+        "raisedIn": {
+          "peer\u0027s": 1,
+          "own": 7
+        }
+      },
+      "1030 AfdBindWithAddress, phase 0, location 7010": {
+        "records": 1,
+        "statusZero": 1,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 1
+        }
+      },
+      "1030 AfdBindWithAddress, phase 1, location 7022": {
+        "records": 1,
+        "statusZero": 1,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 1
+        }
+      },
+      "1035 AfdOption, phase 4, location 11002": {
+        "records": 8,
+        "statusZero": 8,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 8
+        }
+      },
+      "1037 AfdListen, phase 0, location 13006": {
+        "records": 1,
+        "statusZero": 1,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 1
+        }
+      },
+      "1037 AfdListen, phase 1, location 13012": {
+        "records": 1,
+        "statusZero": 1,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 1
+        }
+      },
+      "3001 AfdConnectIndicationWithAddress, phase 3, location 6501": {
+        "records": 8,
+        "statusZero": 8,
+        "bufferLength": 0,
+        "raisedIn": {
+          "peer\u0027s": 8
+        }
+      },
+      "3003 AfdDataIndication, phase 3, location 9000": {
+        "records": 256,
+        "statusZero": 256,
+        "bufferLength": 538187,
+        "raisedIn": {
+          "peer\u0027s": 256
+        }
+      },
+      "3006 AfdDisconnect, phase 3, location 12001": {
+        "records": 8,
+        "statusZero": 8,
+        "bufferLength": 0,
+        "raisedIn": {
+          "peer\u0027s": 8
+        }
+      }
+    },
+    "addresses": {
+      "1030 AfdBindWithAddress, phase 0, AF_UNIX, another path": 1,
+      "1030 AfdBindWithAddress, phase 1, AF_UNIX, another path": 1,
+      "3001 AfdConnectIndicationWithAddress, phase 3, AF_UNIX, no path": 8,
+      "1027 AfdAcceptExWithAddress, phase 1, AF_UNIX, no path": 8
+    }
+  },
+  "client": {
+    "truth": {
+      "connections": 8,
+      "sends": 256,
+      "bytesSent": 538375,
+      "receives": 256,
+      "bytesReceived": 2048
+    },
+    "socketsCreated": {
+      "family 1": 9,
+      "family 23": 1,
+      "family 2": 1
+    },
+    "unixSockets": 9,
+    "recordsOnThem": 1638,
+    "byEvent": {
+      "1000 AfdCreate, phase 0, location 1006": {
+        "records": 9,
+        "statusZero": 9,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 9
+        }
+      },
+      "1000 AfdCreate, phase 1, location 1013": {
+        "records": 9,
+        "statusZero": 9,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 9
+        }
+      },
+      "1001 AfdClose, phase 0, location 2000": {
+        "records": 9,
+        "statusZero": 9,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 9
+        }
+      },
+      "1001 AfdClose, phase 1, location 2001": {
+        "records": 9,
+        "statusZero": 9,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 9
+        }
+      },
+      "1002 AfdCleanup, phase 0, location 2002": {
+        "records": 9,
+        "statusZero": 9,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 9
+        }
+      },
+      "1002 AfdCleanup, phase 1, location 2003": {
+        "records": 9,
+        "statusZero": 9,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 9
+        }
+      },
+      "1003 AfdSend, phase 0, location 3047": {
+        "records": 256,
+        "statusZero": 256,
+        "bufferLength": 538375,
+        "raisedIn": {
+          "own": 256
+        }
+      },
+      "1003 AfdSend, phase 0, location 3056": {
+        "records": 256,
+        "statusZero": 256,
+        "bufferLength": 538375,
+        "raisedIn": {
+          "own": 256
+        }
+      },
+      "1003 AfdSend, phase 1, location 3024": {
+        "records": 256,
+        "statusZero": 256,
+        "bufferLength": 538375,
+        "raisedIn": {
+          "peer\u0027s": 256
+        }
+      },
+      "1003 AfdSend, phase 1, location 3051": {
+        "records": 256,
+        "statusZero": 256,
+        "bufferLength": 538375,
+        "raisedIn": {
+          "own": 256
+        }
+      },
+      "1004 AfdReceive, phase 0, location 4107": {
+        "records": 256,
+        "statusZero": 256,
+        "bufferLength": 2048,
+        "raisedIn": {
+          "own": 256
+        }
+      },
+      "1004 AfdReceive, phase 1, location 4123": {
+        "records": 256,
+        "statusZero": 256,
+        "bufferLength": 2048,
+        "raisedIn": {
+          "peer\u0027s": 256
+        }
+      },
+      "1017 AfdConnect, phase 1, location 5024": {
+        "records": 8,
+        "statusZero": 8,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 8
+        }
+      },
+      "1018 AfdConnectWithAddress, phase 0, location 5023": {
+        "records": 8,
+        "statusZero": 8,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 8
+        }
+      },
+      "1030 AfdBindWithAddress, phase 0, location 7010": {
+        "records": 8,
+        "statusZero": 8,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 8
+        }
+      },
+      "1030 AfdBindWithAddress, phase 1, location 7022": {
+        "records": 8,
+        "statusZero": 8,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 8
+        }
+      },
+      "1035 AfdOption, phase 4, location 11002": {
+        "records": 8,
+        "statusZero": 8,
+        "bufferLength": 0,
+        "raisedIn": {
+          "own": 8
+        }
+      },
+      "3006 AfdDisconnect, phase 3, location 12001": {
+        "records": 8,
+        "statusZero": 8,
+        "bufferLength": 0,
+        "raisedIn": {
+          "peer\u0027s": 8
+        }
+      }
+    },
+    "addresses": {
+      "1030 AfdBindWithAddress, phase 0, AF_UNIX, no path": 8,
+      "1030 AfdBindWithAddress, phase 1, AF_UNIX, no path": 8,
+      "1018 AfdConnectWithAddress, phase 0, AF_UNIX, another path": 8
+    }
+  },
+  "decoyServer": {
+    "truth": {
+      "connections": 8,
+      "sends": 256,
+      "bytesSent": 2048,
+      "receives": 256,
+      "bytesReceived": 541008
+    },
+    "unixSockets": 10,
+    "recordsOnThem": 2408,
+    "sendLength": 2048,
+    "recordsRaisedByIt": 2619
+  },
+  "decoyClient": {
+    "truth": {
+      "connections": 8,
+      "sends": 256,
+      "bytesSent": 541008,
+      "receives": 256,
+      "bytesReceived": 2048
+    },
+    "unixSockets": 9,
+    "recordsOnThem": 1642,
+    "sendLength": 541008,
+    "recordsRaisedByIt": 1455
+  }
+}

@@ -1,0 +1,161 @@
+{
+  "workload": "FX-UNIX-001",
+  "question": "Whether a supported passive source records an AF_UNIX stream exchange - each socket's creation, bind, connect, accept and close, and each send and receive with its length - and whether TCP/IP's own tracing does; and what a record of it says of its socket, its process, its name and its peer.",
+  "answer": "Microsoft-Windows-Winsock-AFD does, and Kernel-Network does not. In three runs every AF_UNIX socket of the workload's two processes was created with its family, the server's bound and listening, the client's connecting and the server's accepting, each closed and cleaned up, and every send and receive was recorded with its length, summing to the truth's bytes at both ends exactly; Kernel-Network held no record naming either process. But a session's process filter does not hold the provider - the decoy pair outside it had every record delivered, as did other processes - so a capture of it would collect every socket call on the machine. A record names its socket by its endpoint's kernel address, which the kernel frees and reuses within seconds - 8 to 11 sockets a run began at an address an earlier one had - so a socket is read from its create to the next create at its address, owned by the process its create was made for; completions are raised on the thread that finished them, often the peer process's, so a record's header names no owner. A bind's or connect's address holds 16 bytes, an AF_UNIX path's first 14 characters, so a socket's name is not observed whole, and no record names its peer.",
+  "probe": {
+    "tool": "tools/InterCat.AfdProbe --connections n --messages n [--bytes n] [--concurrency n --delay 0] --ledger: one real-time session of its own enabling Winsock AFD for the socket calls and the transport indications (AFD_KW_SOURCE_WINSOCK, AFD_KW_SOURCE_TRANSPORT) at Informational, asked to scope it to the workload's two processes, beside a decoy pair running the same exchange outside them, and Kernel-Network machine-wide under the keywords the product's TCP and UDP source requests; each record read by the provider's registered layout, its socket by incarnation",
+    "runs": [
+      {
+        "run": "8 connections at once, 32 messages each, unpaced: the run the ledger holds",
+        "bench": "bench/results/afd-unix-feasibility-eight-at-once-20261104T055237Z",
+        "lost": "nothing reported",
+        "afdRecordsDelivered": 8453,
+        "afdRecordsRaisedBy": {
+          "another process": 309,
+          "server": 2620,
+          "decoy server": 2619,
+          "client": 1450,
+          "decoy client": 1455
+        },
+        "recordsOfNoSocketCreatedInTheSession": 299,
+        "socketsCreatedAtAnAddressAnEarlierSocketHad": 9,
+        "kernelNetworkRecordsNamingTheWorkload": 0,
+        "server": {
+          "truthMessagesSent": 256,
+          "truthBytesSent": 2048,
+          "truthMessagesReceived": 256,
+          "truthBytesReceived": 538375,
+          "unixSockets": 10,
+          "sendCalls": 256,
+          "sendBytes": 2048,
+          "receiveCalls": 512,
+          "receiveBytes": 538375,
+          "recordsOnItsSockets": 2408,
+          "recordsOnItsSocketsRaisedIn": {
+            "own": 2088,
+            "peer's": 320
+          }
+        },
+        "client": {
+          "truthMessagesSent": 256,
+          "truthBytesSent": 538375,
+          "truthMessagesReceived": 256,
+          "truthBytesReceived": 2048,
+          "unixSockets": 9,
+          "sendCalls": 256,
+          "sendBytes": 538375,
+          "receiveCalls": 256,
+          "receiveBytes": 2048,
+          "recordsOnItsSockets": 1638,
+          "recordsOnItsSocketsRaisedIn": {
+            "own": 1118,
+            "peer's": 520
+          }
+        },
+        "decoySendBytesAsItsTruth": true
+      },
+      {
+        "run": "2 connections, 16 messages each of up to 256 KiB",
+        "bench": "bench/results/afd-unix-feasibility-large-messages-20261104T055242Z",
+        "lost": "nothing reported",
+        "afdRecordsDelivered": 1750,
+        "afdRecordsRaisedBy": {
+          "another process": 604,
+          "server": 333,
+          "decoy server": 333,
+          "client": 240,
+          "decoy client": 240
+        },
+        "recordsOfNoSocketCreatedInTheSession": 394,
+        "socketsCreatedAtAnAddressAnEarlierSocketHad": 8,
+        "kernelNetworkRecordsNamingTheWorkload": 0,
+        "server": {
+          "truthMessagesSent": 32,
+          "truthBytesSent": 256,
+          "truthMessagesReceived": 32,
+          "truthBytesReceived": 4614365,
+          "unixSockets": 4,
+          "sendCalls": 32,
+          "sendBytes": 256,
+          "receiveCalls": 64,
+          "receiveBytes": 4614365,
+          "recordsOnItsSockets": 326,
+          "recordsOnItsSocketsRaisedIn": {
+            "own": 255,
+            "peer's": 71
+          }
+        },
+        "client": {
+          "truthMessagesSent": 32,
+          "truthBytesSent": 4614365,
+          "truthMessagesReceived": 32,
+          "truthBytesReceived": 256,
+          "unixSockets": 3,
+          "sendCalls": 32,
+          "sendBytes": 4614365,
+          "receiveCalls": 32,
+          "receiveBytes": 256,
+          "recordsOnItsSockets": 223,
+          "recordsOnItsSocketsRaisedIn": {
+            "own": 157,
+            "peer's": 66
+          }
+        },
+        "decoySendBytesAsItsTruth": true
+      },
+      {
+        "run": "4 connections one at a time, 16 messages each, 15 ms apart",
+        "bench": "bench/results/afd-unix-feasibility-one-at-a-time-20261104T054816Z",
+        "lost": "nothing reported",
+        "afdRecordsDelivered": 2663,
+        "afdRecordsRaisedBy": {
+          "another process": 461,
+          "server": 642,
+          "decoy server": 640,
+          "client": 458,
+          "decoy client": 462
+        },
+        "recordsOfNoSocketCreatedInTheSession": 461,
+        "socketsCreatedAtAnAddressAnEarlierSocketHad": 11,
+        "kernelNetworkRecordsNamingTheWorkload": 0,
+        "server": {
+          "truthMessagesSent": 64,
+          "truthBytesSent": 512,
+          "truthMessagesReceived": 64,
+          "truthBytesReceived": 134901,
+          "unixSockets": 6,
+          "sendCalls": 64,
+          "sendBytes": 512,
+          "receiveCalls": 128,
+          "receiveBytes": 134901,
+          "recordsOnItsSockets": 636,
+          "recordsOnItsSocketsRaisedIn": {
+            "own": 498,
+            "peer's": 138
+          }
+        },
+        "client": {
+          "truthMessagesSent": 64,
+          "truthBytesSent": 134901,
+          "truthMessagesReceived": 64,
+          "truthBytesReceived": 512,
+          "unixSockets": 5,
+          "sendCalls": 64,
+          "sendBytes": 134901,
+          "receiveCalls": 64,
+          "receiveBytes": 512,
+          "recordsOnItsSockets": 440,
+          "recordsOnItsSocketsRaisedIn": {
+            "own": 308,
+            "peer's": 132
+          }
+        },
+        "decoySendBytesAsItsTruth": true
+      }
+    ]
+  },
+  "ledger": "fixtures/FX-UNIX-001/evidence/records.csv, of the run eight at once: each record on a socket the workload's two processes created, in time order - its milliseconds after the first, owner, the process whose thread raised it, thread, event, phase (EnterExit), location, a number standing for its socket's incarnation, never its address, the socket's family, its length and status - never a pointer, an address or a byte. A test counts it against the two truth logs.",
+  "note": "A send is recorded four times - two entries and two exits, by location - and a receive twice, each record with the call's length; a reader counting calls takes one location of each. No profile admits the source: its cost, collected machine-wide, is unmeasured.",
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-11-04"
+}

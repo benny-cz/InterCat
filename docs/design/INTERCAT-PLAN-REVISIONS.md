@@ -816,6 +816,8 @@ Revision 893 measures a proxy's Basic challenge through WinINet's capture (FX-HT
 
 Revision 894 measures RPC over TCP (FX-RPC-002): a call over TCP is paired and carries no byte as over ALPC, its bytes its TCP connection's alone, and no ALPC message carries it; a call now names the transport its start named, TCP or LRPC, and one over TCP says so where its other end is unresolved, while the endpoint mapper's records of calls it served over TCP carry no activity id and pair with nothing.
 
+Revision 895 begins M6 with Unix-domain sockets' capability result (ADR-072, FX-UNIX-001): Winsock AFD records every AF_UNIX socket call of a truth exchange with its length, where TCP/IP's tracing records none, but its process filter does not hold, a socket is its create to the next create at a reused kernel address, and no socket's whole path or peer is named; it is inventoried as the mechanism's lead, requested by no profile, with no tier.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3377,3 +3379,20 @@ server answering on another thread would join two calls' records (P8). A test re
 session's records - 256 client calls paired, the endpoint mapper's 512 records pairing with nothing, one TCP
 relationship of 8 connections holding every byte; thirteen mutations are caught. RPC over named pipes or HTTP, a call
 to another host and a pairing for a server's records over TCP remain unmeasured.
+
+Revision 895 begins M6 with the Unix-domain sockets package's capability result (ADR-072, FX-UNIX-001). No catalog
+source named the mechanism, and §4.2 warned against assuming TCP/IP's tracing covers it. A new truth workload,
+`unix-loopback`, runs FX-TCP-001's two-process exchange over an AF_UNIX stream socket bound to a path, and a lab probe,
+`tools/InterCat.AfdProbe`, reads Microsoft-Windows-Winsock-AFD in a session of its own, asked to scope it to the two
+processes, beside a decoy pair outside them and Kernel-Network machine-wide. Three runs - one at a time, eight
+connections at once and messages of up to 256 KiB - found every send and receive recorded with its length, summing to
+the truth's bytes at both ends exactly, and every socket created with its family, bound, connected, accepted and
+closed, while Kernel-Network named neither process. But the provider's process filter did not hold, the decoy's every
+record delivered; a record names its socket by a kernel address reused by 8 to 11 later sockets a run, so a socket is
+read from its create to the next create at its address, owned by the process its create names, a completion being
+raised on whichever thread finished it, often the peer's; and a bind's or connect's address holds a path's first 14
+characters, so no socket's whole name is observed and no record names its peer. AFD enters the catalog as the
+mechanism's lead - inventoried, requested by no profile and admitting no event - which `icat capabilities` states, and
+no build carries a tier for Unix-domain sockets (P27). Tests hold the lead and its absence of a tier, and count the
+fixture's ledger, each record by its socket's incarnation, against the truth at both ends; four mutations are caught.
+The cost of collecting AFD machine-wide comes before any profile admits it.

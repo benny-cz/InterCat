@@ -124,6 +124,7 @@ public static class WindowsSourceCatalog
     public const string KernelFileSourceId = "etw/manifest/Microsoft-Windows-Kernel-File";
     public const string KernelMemorySourceId = "etw/manifest/Microsoft-Windows-Kernel-Memory";
     public const string KernelAlpcSourceId = "etw/kernel-flag/ALPC";
+    public const string WinsockAfdSourceId = "etw/manifest/Microsoft-Windows-Winsock-AFD";
 
     /// <summary>The classic event class of the kernel's ALPC events, measured on this workstation (ADR-035's addendum).</summary>
     public static readonly Guid AlpcEventClass = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
@@ -780,6 +781,41 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc, winInetCapture];
+        var winsockAfd = new WindowsSourceDefinition
+        {
+            SourceId = WinsockAfdSourceId,
+            DisplayName = "Winsock AFD socket calls (Unix-domain socket lead)",
+            Kind = SourceKind.ManifestProvider,
+            ProviderName = "Microsoft-Windows-Winsock-AFD",
+            Mechanisms = [Mechanism.UnixDomainSocket],
+            RequiredPrivilege = PrivilegeRequirement.Administrator,
+            Level = "win:Informational",
+            MatchAnyKeyword = 0,
+            RequestedKeywords = [],
+            SupportsCaptureSideProcessFilter = false,
+            FilteringNotes =
+                "No capture profile requests it. Measured on FX-UNIX-001: a session's process filter does not hold it - a "
+                + "decoy outside the filter had its every record delivered - so a capture requesting it would collect every "
+                + "socket call of every process, TCP's and UDP's too, a cost no measurement has stated yet.",
+            StartupBehaviour = "No rundown: a socket made before a capture starts has no create in it, so its records belong to no socket (R22).",
+            SupportsCaptureState = false,
+            ContractStatus = SourceContractStatus.Experimental,
+            Notes =
+            [
+                "Measured on FX-UNIX-001: every AF_UNIX socket of the workload's two processes - created with its family, "
+                + "bound, listening, connected, accepted and closed - and every send and receive with its length, exactly "
+                + "the truth's at both ends; Kernel-Network held none of it.",
+                "A record names its socket by its endpoint's kernel address, which the kernel frees and reuses within "
+                + "seconds, so a socket is its create to the next create at that address, owned by the process its create "
+                + "names, never identified by the address alone (R22).",
+                "A completion is raised on the thread that finished it, often the peer process's, so a record's header "
+                + "names no owner; its socket's create does.",
+                "A bind's or connect's address holds 16 bytes, an AF_UNIX path's first 14 characters, so a socket's name is "
+                + "not observed whole and no peer is resolved by it.",
+                "Registration is not evidence of traffic; only a measured fixture assigns a tier, and no profile admits this source.",
+            ],
+        };
+
+        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc, winInetCapture, winsockAfd];
     }
 }

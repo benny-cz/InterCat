@@ -2392,6 +2392,8 @@ Every milestone inherits the v1 invariants: immutable source evidence, traceable
 
 **Fallback:** a mechanism without reliable passive evidence stays explicitly unsupported and is routed to M7 or M10. No UI hook or broad process instrumentation is silently introduced into the driverless Explore profile.
 
+**Status (revision 895):** begun with the Unix-domain sockets package's capability result (ADR-072, FX-UNIX-001): Winsock AFD records every AF_UNIX socket call of a truth exchange with its length, which TCP/IP's tracing does not, but its process filter does not hold, its socket is an incarnation of a reused kernel address, and it names neither a socket's whole path nor its peer. It is inventoried as the mechanism's lead and admitted by no profile; the capture's cost of it comes first. The other packages are not begun.
+
 ### M7 — Cooperative instrumentation and shared-memory semantics
 
 **Goal:** obtain precise application meaning, especially where memory access and higher-level message boundaries are invisible to OS tracing.
@@ -2630,6 +2632,7 @@ Required ADRs, each recorded before the corresponding implementation and each st
 | ADR-068 | An outlier is a row whose records over the compared interval are above or below every window of its baseline, each window as long as the interval, at least 19 and at most 199; the chance is stated - at most 1 time in one more than the windows each way, assuming nothing of how records arrive - only rows the comparison compares are judged, by records, and every label is an observation (plan M12, R18, R21) |
 | ADR-069 | A note about a saved comparison names it as it is saved and one of its rows by the key the comparison gives it, never by rank; a removed comparison keeps its notes, a run says them beneath its rows, and a redacted report carries none (plan M12, §8.4, R22) |
 | ADR-071 | A decoding enters a document only when a person asks for it with one - `icat exchanges --decode` with `--json` or `--output` - as `http-exchange-heads-v1`, which says it holds content and names the decoder version, or as a table whose cells a spreadsheet will not evaluate; `http-exchanges-v1`, reports and packages never hold one (plan M8, §11.1, amends ADR-070) |
+| ADR-072 | Winsock AFD records every AF_UNIX socket call with its length, where TCP/IP's tracing records none, but its process filter does not hold, a socket is its create to the next create at its reused kernel address, a record's header names no owner, and a path is cut to 14 characters with no peer named: it is Unix-domain sockets' lead, inventoried, requested by no profile, with no tier until a capture's cost of it is measured (plan M6, §4.2, FX-UNIX-001) |
 | ADR-070 | A decoder reads a whole part only when asked, from bytes kept with consent, within 64 KiB and 250 ms, stops at the first line its format does not allow, writes values inertly, and is never kept; the first reads HTTP/1.1 heads from WinINet's parts (plan M8, §11.2, P2) |
 | not written | Byte accounting: the canonical owner rule for a proven association (§5.3). ADR-011 fixed how a domain, a side and an unknown are stored and summed over one segment, and ADR-012 which contributions each accounting takes; which contribution owns a total once a transfer association is proven is still owed and needs the correlators |
 
@@ -3359,6 +3362,7 @@ src/
 tools/
   InterCat.AlpcProbe/               whether ALPC links an RPC call to the call that served it (ADR-004)
   InterCat.WinInetProbe/            whether WinINet's capture provider records an exchange's bytes (ADR-036)
+  InterCat.AfdProbe/                what Winsock AFD records of an AF_UNIX exchange (ADR-072)
   InterCat.JournalProbe/            journal write and read throughput
   InterCat.CaptureComparison/       a capture's impact on a workload, against none (IC-010a)
   InterCat.BrokerQualification/     the composed broker qualified with real ETW, elevated

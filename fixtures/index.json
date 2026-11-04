@@ -239,6 +239,52 @@
       ]
     },
     {
+      "id": "FX-UNIX-001",
+      "title": "A two-process AF_UNIX stream exchange, as Winsock AFD records it",
+      "scenario": "Plan M6's Unix-domain sockets work package (§4.2, ADR-072): FX-TCP-001's two-process exchange over an AF_UNIX stream socket bound to a path, each process logging every message it sent and read; a lab probe reads Winsock AFD in a session of its own, asked to scope it to the two processes, beside a decoy pair outside them and Kernel-Network machine-wide. Measured by the probe alone: no profile admits the source.",
+      "milestone": "M6",
+      "mechanism": "UnixDomainSocket",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": [
+          "P27"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads unix-loopback-server and unix-loopback-client --connections 8 --concurrency 8 --messages 32 --delay 0, started by tools/InterCat.AfdProbe",
+        "seed": 20261104,
+        "log": "fixtures/FX-UNIX-001/evidence/truth-client.jsonl",
+        "independence": "Each process logs every connection and every message it sent and read, by the socket's path and its length, through ordinary sockets; neither reads InterCat state, and the probe reads the provider's records apart from both."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-UNIX-001/evidence/measurement.json",
+        "note": "Every send and receive of three runs recorded with its length, summing to the truth's bytes at both ends exactly, and every socket created with its family, bound, connected, accepted and closed; Kernel-Network named neither process. The process filter did not hold - the decoy's every record was delivered - a socket's kernel address was reused by 8 to 11 later sockets a run, so a socket is read from its create to the next create at its address, and a path is cut to its first 14 characters. The ledger of the run eight at once, never its pointers, addresses or bytes, is counted by a test against the truth."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-04",
+          "result": "Measured by tools/InterCat.AfdProbe, three runs, nothing lost: every AF_UNIX socket call of the exchange recorded by Winsock AFD with its exact length, none by Kernel-Network. No tier is assigned: no profile admits the source, whose cost collected machine-wide is unmeasured, and a socket's name and peer are not observed (ADR-072)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two processes' truth logs of the run eight at once - connections and messages by the socket's path in the probe's own output folder and their lengths, of synthetic messages - its ledger of each record on the workload's sockets, by its time, owner, the process that raised it, thread, event, phase, location, a number standing for its socket's incarnation, family, length and status, never a pointer, an address or a byte, and the measurement's counters."
+      },
+      "tests": [
+        "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
+        "P27: Unix-domain sockets have an inventoried source that no profile requests, and no tier on any build until a fixture measures one through it"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -1944,6 +1990,7 @@
         "P26: a live preview never reaches the ranking, the interval table, a step, a brush or an export"
       ],
       "P27": [
+        "P27: Unix-domain sockets have an inventoried source that no profile requests, and no tier on any build until a fixture measures one through it",
         "P27: a build outside the matrix is untested, never probably working",
         "P27: a build's coverage names a tier measured on it, and names another build's evidence as another's",
         "P27: a fixture's tiers are tiers, agree with what its results say, and belong to its mechanism",
@@ -2538,6 +2585,7 @@
         "R22: FX-HTTP-010's requests through a proxy, eight clients at once, are each one exchange and over TLS each CONNECT one more, every part whole and each said to have gone to a proxy",
         "R22: FX-HTTP-011's requests challenged for credentials, eight clients at once, are an exchange to each leg, each part whole, each challenge answered by its own request and each request carrying credentials said to",
         "R22: FX-HTTP-012's requests through a proxy that challenges, eight clients at once, are an exchange to each leg and each CONNECT, each part whole, and each challenge answered by the proxy's credentials",
+        "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
         "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused",
         "R22: a boot is named by a token kept only until the machine restarts, and its count is no identity",
