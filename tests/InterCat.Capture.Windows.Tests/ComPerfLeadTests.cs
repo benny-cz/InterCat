@@ -157,6 +157,38 @@ public sealed class ComPerfLeadTests
         });
     }
 
+    [Fact(DisplayName = "P27: COM calls have an inventoried source, requested by no profile and admitting no event, its process filter and cost measured, and no tier on any build")]
+    public void ComCallsHaveALeadAndNoTier()
+    {
+        WindowsSourceDefinition comPerf = WindowsSourceCatalog.Find(WindowsSourceCatalog.ComPerfSourceId)!;
+        Assert.Equal(("Microsoft-Windows-COM-Perf", SourceKind.ManifestProvider), (comPerf.ProviderName, comPerf.Kind));
+        Assert.Equal([Mechanism.ComCall], comPerf.Mechanisms);
+        Assert.Equal((SourceContractStatus.Experimental, true), (comPerf.ContractStatus, comPerf.SupportsCaptureSideProcessFilter));
+        Assert.Empty(comPerf.AdmittedEvents);
+
+        // Its cost is measured, Low in processor time, with the throughput regression its notes state beside the class.
+        Assert.Equal(OverheadClass.Low, comPerf.Overhead);
+        using (JsonDocument impact = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepositoryRoot(), comPerf.OverheadEvidence!))))
+        {
+            Assert.Equal((comPerf.Overhead.ToString(), false), (impact.RootElement.GetProperty("overhead").GetString(),
+                impact.RootElement.GetProperty("throughputTargetMet").GetBoolean()));
+        }
+
+        Assert.Contains(comPerf.Notes, note => note.Contains("slower", StringComparison.Ordinal) && note.Contains("never Explore", StringComparison.Ordinal));
+        Assert.Contains(comPerf.Notes, note => note.Contains("FX-COM-001", StringComparison.Ordinal));
+        Assert.Contains(comPerf.Notes, note => note.Contains("FX-COM-002", StringComparison.Ordinal));
+        Assert.Contains("FX-COM-001", comPerf.FilteringNotes, StringComparison.Ordinal);
+
+        // No profile requests it, and no other source claims COM calls.
+        Assert.DoesNotContain(CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures),
+            profile => profile.Sources.Any(source => source.SourceId == WindowsSourceCatalog.ComPerfSourceId));
+        Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != WindowsSourceCatalog.ComPerfSourceId),
+            source => Assert.DoesNotContain(Mechanism.ComCall, source.Mechanisms));
+
+        // And no build carries a tier for COM calls: no fixture has measured them through the product.
+        Assert.DoesNotContain(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.ComCall);
+    }
+
     [Fact(DisplayName = "§12: COM-Perf's collection is measured in two series of pairs - Low in processor time, and a COM-heavy workload slower past §12's throughput target, so only an opt-in profile stating it may admit the source")]
     public void TheCollectionCostIsMeasured()
     {

@@ -1,6 +1,7 @@
 # ADR-077: COM-Perf records each out-of-process COM call at both ends, and its activations name nothing
 
-- Status: accepted for M6's COM/DCOM/WinRT work package; no source is inventoried for it yet, and no profile requests it
+- Status: accepted for M6's COM/DCOM/WinRT work package; COM-Perf is inventoried as COM calls' lead (revision 912), and no
+  profile requests it
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
 - Relates to: plan §4.2, §9.4, M6, P7, P8, R22, ADR-034, ADR-072, FX-COM-001, FX-COM-002, `tools/InterCat.ComProbe`,
@@ -113,3 +114,20 @@ second on a COM-heavy workload, by an amount in proportion to a process's COM ca
 stated beside the regression it measured. A profile that admits it is opt-in and says what it costs, and Explore never
 admits it. What remains before a profile admits COM-Perf is a mechanism for COM calls. A test holds both series to
 their class and regression; two alterations of them are caught.
+
+## Addendum: COM-Perf inventoried as COM calls' lead (revision 912)
+
+The first decision held COM-Perf out of the catalog until a mechanism for COM calls existed, and ADR-078 gave it one,
+`ComCall`. COM-Perf now enters the source catalog as its lead, as Winsock AFD entered as AF_UNIX's (ADR-072):
+
+- **Inventoried, experimental, requested by no profile, admitting no event.** A COM call's records need a binding of
+  their own by the process that raised them, a field for the process at the other end, and their layering over the RPC
+  call that carries them settled before any is admitted.
+- **Its measured notes are what `icat capabilities` states of it:** every out-of-process call at both ends, paired by
+  causality and rank; a call across an apartment naming its own process; activations naming nothing; no rundown; and
+  a process filter that holds, so it is a source a capture can scope.
+- **Its cost is Low, stated beside its regression.** The second addendum's series is its evidence, and its notes say
+  that a COM-heavy workload ran 17 to 18% slower, so only an opt-in profile stating it may admit it, never Explore.
+
+No build carries a tier for COM calls: no fixture has measured them through the product. A test holds the lead, its
+absence from every profile and the absence of a tier; six mutations of the catalog entry are caught.

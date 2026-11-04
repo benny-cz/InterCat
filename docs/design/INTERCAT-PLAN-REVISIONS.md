@@ -835,6 +835,7 @@ Revision 908 measures COM-Perf against FX-COM-001 (ADR-077): every out-of-proces
 Revision 909 measures what scopes COM-Perf's records (ADR-077's addendum): a session's process filter holds for it, and FX-COM-002's calls across an apartment within one process are recorded as out-of-process ones are, naming their own process at both ends, so a call is between processes only where the process it names is another.
 Revision 910 measures what collecting COM-Perf costs (ADR-077's second addendum): Low processor time, a median 0.3 to 0.6 points, but a COM-heavy workload ran 17 to 18% slower, past §12's 5% throughput target, so only an opt-in profile stating it may admit the source.
 Revision 911 gives a COM call a mechanism of its own (ADR-078): EN-Mechanism gains `ComCall`, code 22, a call through COM's channel from one apartment to another, never an activation, and a test now holds §23's table to the domain's enumeration (R5).
+Revision 912 inventories COM-Perf as COM calls' lead (ADR-077's third addendum): experimental, requested by no profile and admitting no event, its measured notes and its Low cost, with the throughput regression beside it, stated by `icat capabilities`; no build carries a tier for COM calls.
 
 ## Revisions, a paragraph each, in order
 
@@ -3600,3 +3601,13 @@ family is `com-call` and its hue the remote-call family's; no capture has admitt
 records' binding by the process that raised them, measured but needing a binding rule identity of its own, and its
 layering over the RPC call that carries it (P4) come with its admission. A new test holds §23's EN-Mechanism table to
 the domain's enumeration by code and name (R5); it failed until the table had the row.
+
+Revision 912 inventories COM-Perf as COM calls' lead, as Winsock AFD was inventoried as AF_UNIX's: experimental,
+requested by no profile, admitting no event, since a COM call's records need a binding of their own by the process that
+raised them, a field for the process at the other end and their layering over RPC settled before any is admitted. Its
+notes, which `icat capabilities` states, carry what FX-COM-001 and FX-COM-002 measured - every out-of-process call at
+both ends, paired by causality and rank, a call across an apartment naming its own process, activations naming nothing
+- and that a process filter holds for it and it has no rundown. Its cost is Low with ADR-077's second addendum as
+evidence, its notes saying a COM-heavy workload ran 17 to 18% slower, so only an opt-in profile stating it may admit
+it. No build carries a tier for COM calls. A test holds the lead, its absence from every profile and the absence of a
+tier; six mutations of the catalog entry are caught.

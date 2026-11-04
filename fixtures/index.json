@@ -2176,6 +2176,7 @@
         "P26: a live preview never reaches the ranking, the interval table, a step, a brush or an export"
       ],
       "P27": [
+        "P27: COM calls have an inventoried source, requested by no profile and admitting no event, its process filter and cost measured, and no tier on any build",
         "P27: FX-UNIX-001's rows through the product reproduce its measured tier - every truth send and receive its owner's row, bound to its socket with its bytes, and no peer named",
         "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and the tier its latest fixture measured through the product",
         "P27: a build outside the matrix is untested, never probably working",

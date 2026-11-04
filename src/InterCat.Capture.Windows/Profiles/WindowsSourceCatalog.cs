@@ -125,6 +125,7 @@ public static class WindowsSourceCatalog
     public const string KernelMemorySourceId = "etw/manifest/Microsoft-Windows-Kernel-Memory";
     public const string KernelAlpcSourceId = "etw/kernel-flag/ALPC";
     public const string WinsockAfdSourceId = "etw/manifest/Microsoft-Windows-Winsock-AFD";
+    public const string ComPerfSourceId = "etw/manifest/Microsoft-Windows-COM-Perf";
 
     /// <summary>The classic event class of the kernel's ALPC events, measured on this workstation (ADR-035's addendum).</summary>
     public static readonly Guid AlpcEventClass = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
@@ -873,6 +874,47 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc, winInetCapture, winsockAfd];
+        // COM calls' lead (ADR-077, ADR-078): inventoried and requested by no profile, admitting no event until a COM call's
+        // records have a binding of their own; its measured notes are what icat capabilities states of it.
+        var comPerf = new WindowsSourceDefinition
+        {
+            SourceId = ComPerfSourceId,
+            DisplayName = "COM call starts and stops (COM call lead)",
+            Kind = SourceKind.ManifestProvider,
+            ProviderName = "Microsoft-Windows-COM-Perf",
+            Mechanisms = [Mechanism.ComCall],
+            RequiredPrivilege = PrivilegeRequirement.Administrator,
+            Level = "win:Informational",
+            MatchAnyKeyword = 0,
+            RequestedKeywords = [],
+            SupportsCaptureSideProcessFilter = true,
+            FilteringNotes =
+                "No capture profile requests it. Measured on FX-COM-001: a session's process filter holds it - its two "
+                + "processes' every call arrived, and nothing of a decoy pair making as many calls outside the filter or of any "
+                + "other process - as it is raised in the process that makes or serves a call.",
+            StartupBehaviour = "No rundown: a call made before a capture starts is not seen, nor an object exported before it.",
+            SupportsCaptureState = false,
+            ContractStatus = SourceContractStatus.Experimental,
+            Overhead = OverheadClass.Low,
+            OverheadEvidence = "bench/results/com-perf-impact-20261104T160252Z/impact.json",
+            Notes =
+            [
+                "Collection alone, two series of nine pairs over 16,384 unpaced calls at about 65,000 records a second, "
+                + "loss-free: a median of 0.6 and 0.3 CPU pp, Low; but the workload ran 18.1% and 17.3% slower, past the 5% "
+                + "throughput target, as a call's four records are written in the threads that make and serve it. Only an "
+                + "opt-in profile stating it may admit it, never Explore.",
+                "Measured on FX-COM-001: every out-of-process COM call at both ends - its client's start naming the server's "
+                + "process and the server's naming the client's, with its interface and method, each start joined to its stop "
+                + "by its call trace number, with its HRESULT.",
+                "A causality names a chain of calls, not one, and the threads its records name are none the other end recorded, "
+                + "so a call's two ends pair by causality and rank, the server's start inside the client's call.",
+                "A call across an apartment within one process is recorded as an out-of-process one is, both ends naming the "
+                + "process itself (FX-COM-002): a call is between processes only where the process it names is another.",
+                "Its activation events carry no field, so none names what was activated or becomes a call count.",
+                "Registration is not evidence of traffic; only a measured fixture assigns a tier, and no profile admits this source.",
+            ],
+        };
+
+        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc, winInetCapture, winsockAfd, comPerf];
     }
 }
