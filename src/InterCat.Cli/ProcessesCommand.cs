@@ -963,11 +963,14 @@ internal static class ProcessesCommand
                 $"; icat operations <directory> --pid {process.ProcessId} lists its calls, each with the process at its other end"));
         }
 
-        // Its Unix-domain sockets, whose bytes its sent and received count, with no other end: AF_UNIX names none.
+        // Its Unix-domain sockets, whose bytes its sent and received count, with no other end: AF_UNIX names none. The records
+        // counted are the ones icat evidence lists by its instance and the mechanism, each with its source record.
         if (item.UnixSocketRecords is > 0 and var unix)
         {
             ConsoleUi.Field("Unix sockets", CountText.Of(unix, "record") + " of its AF_UNIX sockets, their bytes in its sent and received; "
                 + "AF_UNIX names no socket's other end, so theirs is unresolved");
+            ConsoleUi.Note(unix == 1 ? "To list it with its source record:" : "To list each of them with its source record:");
+            ConsoleUi.Line($"    icat evidence \"{path}\" --owner-process {process.InstanceId} --mechanism unix-domain-socket");
         }
 
         if (item.Peers is not { } peers)

@@ -829,6 +829,7 @@ Revision 902 measures the Unix sockets profile's cost through the product: on FX
 Revision 903 adds FX-UNIX-002 (ADR-075's addendum): 64 AF_UNIX connections made one at a time, most of whose sockets the kernel created at an address an earlier one held, are each a socket of its own at both ends through the product, their operations paired with their rows by rank where every pair's bytes agree and placed in their connections by the truth's sequence.
 Revision 904 adds FX-UNIX-003, AF_UNIX's ambiguity case (ADR-073's addendum): of eight connections open before a capture began, not one call is a row of any process, while FX-UNIX-001's exchange made inside the same capture is observed whole.
 Revision 905 refuses a gated source whose machine's schema does not admit a field its gate decides by (ADR-074's addendum), AF_UNIX's schema-failure case: the Unix sockets profile does not start on such a build and says why, where its gate would have read the field as zero and followed no socket.
+Revision 906 has `icat processes` name the `icat evidence` command that lists each of a process's AF_UNIX records with its source record (ADR-076's addendum): the drill-down is exact, 413 of 413 records and every byte on a recording, and with it the Unix-domain sockets package meets M6's exit tests.
 
 ## Revisions, a paragraph each, in order
 
@@ -3527,3 +3528,14 @@ does not start, `icat record` says why, and `icat capabilities` states the sourc
 the plan compiles, never on the callback path, and no contract changes. Tests take each field the gate decides by out
 of AFD's registered layout in turn and hold the plan, the capture's compilation, the profile and the capability
 report to the refusal; eight mutations are caught.
+
+Revision 906 checks AF_UNIX's exact source drill-down, the last of its M6 exit tests. `icat evidence` pages admitted
+rows by owner and mechanism, each with its raw record's locator, but `icat processes` counted a process's AF_UNIX
+records without naming that command, as it names `icat operations` for RPC calls. It now names the command, by the
+process's instance and the mechanism. On FX-UNIX-003's first run its control's server was stated 413 AF_UNIX
+records, 1,024 bytes sent and 268,711 received, and the command named listed 413 distinct source records of that
+process, their bytes exactly those. A test runs the command the view names beside the same process's TCP send and
+another process's AF_UNIX send, and finds each counted record and no other; five mutations are caught, two in the
+evidence query's own scoping. With it the Unix-domain sockets package meets M6's exit tests: two instance and
+lifetime fixtures, an ambiguity case, a schema-failure case, exact source drill-down and the baseline overhead
+comparison.

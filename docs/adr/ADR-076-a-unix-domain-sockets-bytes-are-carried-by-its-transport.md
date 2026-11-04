@@ -3,7 +3,7 @@
 - Status: accepted; Winsock AFD's admitted lengths read in the `TransportObserved` domain
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
-- Relates to: ADR-012, ADR-072, ADR-074, ADR-075, §5.3, I6, P3, FX-UNIX-001, `relations-v1` §4
+- Relates to: ADR-012, ADR-072, ADR-074, ADR-075, §5.3, I6, P3, R18, FX-UNIX-001, FX-UNIX-003, `relations-v1` §4
 
 ## Context
 
@@ -47,3 +47,21 @@ its entry is counted as nothing.
 - A total of transport bytes across mechanisms now counts AF_UNIX's beside TCP's and UDP's. These are different sockets'
   bytes, never the same transfer twice.
 - The tier ADR-075 measured does not change: the evaluator reads lengths, not their domain.
+
+## Addendum: a process's AF_UNIX records drill down exactly (revision 906)
+
+M6's exit asks each mechanism for exact source drill-down: what a view counts reaches the rows it counted, each with
+the record it was admitted from. `icat evidence` pages a session's admitted rows by owner and mechanism, each with its
+raw record's locator and its segment row, and `icat raw` opens the journal record a locator names. `icat processes`
+counted a process's AF_UNIX records without naming that command, as it names `icat operations` for RPC calls.
+
+- **The process view names its drill-down.** Beside a process's Unix-domain socket records, `icat processes` now names
+  the `icat evidence` command that lists each of them with its source record: by the process's instance, never its
+  PID, and the mechanism.
+- **Measured on a recording.** On FX-UNIX-003's first run, its control's server was stated 413 records of its AF_UNIX
+  sockets, 1,024 bytes sent and 268,711 received; the command named listed 413 distinct source records, each that
+  process's and a Unix-domain socket's, their bytes 1,024 sent and 268,711 received.
+
+A test runs the command a process's view names on a session that also holds the same process's TCP send and another
+process's AF_UNIX send, and finds each record the view counted and no other, with its bytes and its source record;
+five mutations are caught, two of them in the evidence query's own mechanism and owner scoping.

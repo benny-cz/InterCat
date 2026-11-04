@@ -42,9 +42,64 @@ public sealed class UnixSocketProcessesTests
         Assert.DoesNotContain("It made no TCP or UDP send or receive record", output, StringComparison.Ordinal);
     }
 
-    /// <summary>A Unix-domain socket row of PID 400, as Winsock AFD's gate admits one: no endpoint, its bytes the transport's.</summary>
-    private static ObservationRowV1 Unix(long ticks, ObservationKind kind, AccountingSide side, long? bytes) =>
-        Transfer(ticks, kind, side, bytes, 400) with
+    [Fact(DisplayName = "R18: a process's Unix-domain socket records drill down exactly - the icat evidence command icat processes names lists each one it counts, of that process and mechanism alone, with its bytes and its source record")]
+    public async Task AProcesssUnixSocketRecordsDrillDownExactly()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 400, 1) with { ResourceName = @"C:\Tools\server.exe" },
+            Lifecycle(2, ObservationKind.Create, 500, 2) with { ResourceName = @"C:\Tools\other.exe" },
+            Unix(10, ObservationKind.Open, AccountingSide.EndpointActivity, null) with
+            {
+                ByteDomain = null,
+                AccountingSide = null,
+                MeasurementUnit = null,
+            },
+            Unix(20, ObservationKind.Send, AccountingSide.SendSide, 120),
+            Unix(30, ObservationKind.Receive, AccountingSide.ReceiveSide, 96),
+
+            // The same process's TCP send, and another process's AF_UNIX send: neither is one of its Unix-domain socket records.
+            Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 50, 400),
+            Unix(50, ObservationKind.Send, AccountingSide.SendSide, 70, owner: 500),
+        ]);
+        session.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string output) = await Run("processes", session.Path, "--pid", "400");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Unix sockets +3 records of its AF_UNIX sockets", output);
+        System.Text.RegularExpressions.Match command = System.Text.RegularExpressions.Regex.Match(output,
+            @"(?m)^    icat evidence ""(?<path>[^""]+)"" --owner-process (?<instance>[0-9a-f]{32}) --mechanism unix-domain-socket\r?$");
+        Assert.True(command.Success, output);
+        Assert.Equal(session.Path, command.Groups["path"].Value);
+
+        // The command it names lists the three it counted, and no other: each of that process, a Unix-domain socket's, with
+        // the bytes its sent and received count beside its TCP send's 50, and the raw record it was admitted from.
+        (code, string page) = await Run("evidence", session.Path, "--owner-process", command.Groups["instance"].Value,
+            "--mechanism", "unix-domain-socket", "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        using System.Text.Json.JsonDocument listed = System.Text.Json.JsonDocument.Parse(page);
+        System.Text.Json.JsonElement[] records = [.. listed.RootElement.GetProperty("page").GetProperty("records").EnumerateArray()];
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, listed.RootElement.GetProperty("page").GetProperty("nextCursor").ValueKind);
+        Assert.Equal([10UL, 20UL, 30UL], records.Select(record => record.GetProperty("observationId").GetProperty("rawRecordId")
+            .GetProperty("recordOrdinal").GetUInt64()));
+        Assert.All(records, record =>
+        {
+            Assert.Equal(Guid.Parse(command.Groups["instance"].Value), record.GetProperty("owner").GetProperty("instance").GetProperty("value").GetGuid());
+            Assert.Equal("UnixDomainSocket", record.GetProperty("observation").GetProperty("mechanism").GetString());
+            Assert.Equal(record.GetProperty("observation").GetProperty("rawRecordOrdinal").GetUInt64(),
+                record.GetProperty("observationId").GetProperty("rawRecordId").GetProperty("recordOrdinal").GetUInt64());
+            Assert.StartsWith("seg-", record.GetProperty("segmentName").GetString(), StringComparison.Ordinal);
+        });
+        long Bytes(string kind) => records.Where(record => record.GetProperty("observation").GetProperty("kind").GetString() == kind)
+            .Sum(record => record.GetProperty("observation").GetProperty("byteValue").GetInt64());
+        Assert.Equal((120L, 96L), (Bytes("Send"), Bytes("Receive")));
+        Assert.True(System.Text.RegularExpressions.Regex.IsMatch(output, @"(?m)^  400 +server\.exe +.+ +170 B +96 B\r?$"), output);
+    }
+
+    /// <summary>A Unix-domain socket row, as Winsock AFD's gate admits one: no endpoint, its bytes the transport's.</summary>
+    private static ObservationRowV1 Unix(long ticks, ObservationKind kind, AccountingSide side, long? bytes, int owner = 400) =>
+        Transfer(ticks, kind, side, bytes, owner) with
         {
             FactKey = FactKey.Create("unix-socket-operation"),
             Mechanism = Mechanism.UnixDomainSocket,
