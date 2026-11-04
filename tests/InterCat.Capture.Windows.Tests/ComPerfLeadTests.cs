@@ -96,16 +96,78 @@ public sealed class ComPerfLeadTests
         Assert.True(File.Exists(Path.Combine(RepositoryRoot(), runs[0].GetProperty("bench").GetString()!, "report.json")));
     }
 
-    private static Row[] Ledger() =>
+    [Fact(DisplayName = "R21: a session's process filter holds for COM-Perf - FX-COM-001's filtered pair has its every call recorded at both ends, and a decoy pair making as many calls beside it, and every other process, none: outside the filter is not collected, never quiet")]
+    public void TheProcessFilterHolds()
+    {
+        using JsonDocument measurement = JsonDocument.Parse(File.ReadAllText(Path.Combine(Evidence(), "measurement.json")));
+        JsonElement[] runs = [.. measurement.RootElement.GetProperty("processFilter").GetProperty("runs").EnumerateArray()];
+        Assert.Equal(2, runs.Length);
+        Assert.All(runs, run =>
+        {
+            JsonElement truth = run.GetProperty("truth");
+            int calls = truth.GetProperty("filtered").GetProperty("issued").GetInt32();
+            Assert.Equal((calls, calls), (truth.GetProperty("filtered").GetProperty("served").GetInt32(), truth.GetProperty("decoy").GetProperty("issued").GetInt32()));
+
+            // Only the filtered pair's records arrived: its every invoke at both ends, the decoy's none, nobody else's any.
+            Assert.Equal(["client", "server"], run.GetProperty("recordsByProcess").EnumerateObject().Select(process => process.Name).Order(StringComparer.Ordinal));
+            JsonElement kept = run.GetProperty("filteredInvokes");
+            JsonElement decoy = run.GetProperty("decoyInvokes");
+            Assert.Equal((calls, calls, 0, 0), (kept.GetProperty("atTheClientNamingTheServer").GetInt32(), kept.GetProperty("atTheServerNamingTheClient").GetInt32(),
+                decoy.GetProperty("atTheClientNamingTheServer").GetInt32(), decoy.GetProperty("atTheServerNamingTheClient").GetInt32()));
+            Assert.Equal((0, 0), (run.GetProperty("session").GetProperty("eventsLost").GetInt32(), run.GetProperty("session").GetProperty("realTimeBuffersLost").GetInt32()));
+            Assert.True(File.Exists(Path.Combine(RepositoryRoot(), run.GetProperty("bench").GetString()!, "report.json")));
+        });
+    }
+
+    [Fact(DisplayName = "P7: FX-COM-002's calls across an apartment are recorded as an out-of-process call is, each naming its own process at both ends, so a call is between processes only where the process it names is another")]
+    public void AnInProcessCallNamesItsOwnProcess()
+    {
+        string evidence = Evidence("FX-COM-002");
+        Row[] rows = Ledger(evidence);
+        (string Kind, long Call, long Utc)[] client = Truth(evidence, "truth-client.jsonl");
+        (string Kind, long Call, long Utc)[] issued = [.. client.Where(record => record.Kind == "CallIssued")];
+        (string Kind, long Call, long Utc)[] completed = [.. client.Where(record => record.Kind == "CallCompleted")];
+
+        // Every call start, at either end, is raised in the workload's process and names that same process as its other end.
+        Row[] starts = [.. rows.Where(row => row.Event is 39 or 43)];
+        Assert.NotEmpty(starts);
+        Assert.All(starts, row => Assert.Equal(("the process", "the process"), (row.RaisedIn, row.OtherEnd)));
+
+        // Each truth call is one invoke at the client end and one at the server end, both in that process, each start joined
+        // to its stop by its trace number.
+        Row[] made = [.. rows.Where(row => row is { Event: 39, Interface: Dispatch } && row.Method == Invoke.ToString(CultureInfo.InvariantCulture))];
+        Row[] served = [.. rows.Where(row => row is { Event: 43, Interface: Dispatch } && row.Method == Invoke.ToString(CultureInfo.InvariantCulture))];
+        Assert.Equal((64, 64, 64), (issued.Length, made.Length, served.Length));
+        Assert.All(issued.Zip(completed), call => Assert.Single(made, row => row.Utc >= call.First.Utc && row.Utc <= call.Second.Utc));
+        foreach ((int start, int stop) in new[] { (39, 40), (43, 44) })
+        {
+            HashSet<string> stopped = [.. rows.Where(row => row.Event == stop).Select(row => row.CallTrace)];
+            Assert.All(rows.Where(row => row.Event == start), row => Assert.Contains(row.CallTrace, stopped));
+        }
+
+        // Both runs the measurement states, alike.
+        using JsonDocument measurement = JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "measurement.json")));
+        Assert.All(measurement.RootElement.GetProperty("throughALabSession").GetProperty("runs").EnumerateArray(), run =>
+        {
+            int calls = run.GetProperty("truth").GetProperty("issued").GetInt32();
+            JsonElement invokes = run.GetProperty("invokes");
+            Assert.Equal((calls, calls), (invokes.GetProperty("atTheClientNamingItsOwnProcess").GetInt32(), invokes.GetProperty("atTheServerNamingItsOwnProcess").GetInt32()));
+            Assert.Equal(run.GetProperty("clientCalls").GetProperty("starts").GetInt32(), run.GetProperty("clientCalls").GetProperty("startsNamingTheirOwnProcess").GetInt32());
+        });
+    }
+
+    private static Row[] Ledger(string? evidence = null) =>
     [
-        .. File.ReadLines(Path.Combine(Evidence(), "ledger.csv")).Skip(1).Where(line => line.Length > 0).Select(line => line.Split(','))
+        .. File.ReadLines(Path.Combine(evidence ?? Evidence(), "ledger.csv")).Skip(1).Where(line => line.Length > 0).Select(line => line.Split(','))
             .Select(field => new Row(long.Parse(field[0], CultureInfo.InvariantCulture), field[1], int.Parse(field[2], CultureInfo.InvariantCulture),
                 field[3], field[4], field[5], field[6], field[7], field[8])),
     ];
 
-    private static (string Kind, long Call, long Utc)[] Truth(string file) =>
+    private static (string Kind, long Call, long Utc)[] Truth(string file) => Truth(Evidence(), file);
+
+    private static (string Kind, long Call, long Utc)[] Truth(string evidence, string file) =>
     [
-        .. File.ReadLines(Path.Combine(Evidence(), file)).Where(line => line.Length > 0).Select(line =>
+        .. File.ReadLines(Path.Combine(evidence, file)).Where(line => line.Length > 0).Select(line =>
         {
             using JsonDocument record = JsonDocument.Parse(line);
             JsonElement root = record.RootElement;
@@ -115,7 +177,7 @@ public sealed class ComPerfLeadTests
         }),
     ];
 
-    private static string Evidence() => Path.Combine(RepositoryRoot(), "fixtures", "FX-COM-001", "evidence");
+    private static string Evidence(string fixture = "FX-COM-001") => Path.Combine(RepositoryRoot(), "fixtures", fixture, "evidence");
 
     private static string RepositoryRoot()
     {

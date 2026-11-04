@@ -342,5 +342,87 @@
     },
     "ledger": "fixtures/FX-COM-001/evidence/ledger.csv, of the paced run: each workload record's time, the role of the process it was raised in, its event, call trace number, the role at its other end, interface, method, causality and HRESULT - never a PID, a thread, a pointer or an IPID.",
     "session": "COM-Perf enabled machine-wide at verbose, every keyword, in a real-time session of the probe's own, its final losses read from its stop as the product's capture reads them; the workload's processes do not exist before it starts, so its records are those raised in them. Whether a process filter holds for it is not measured."
+  },
+  "processFilter": {
+    "question": "Whether a session's process filter holds for COM-Perf: FX-COM-001's exchange, its two processes the filter's, beside a decoy pair running the same exchange outside it, every process waiting to initialize COM until the filter was in place.",
+    "answer": "It holds. In two runs, 64 calls paced and 256 unpaced, the session delivered the filtered pair's every call at both ends and not one record of the decoy pair - which made as many calls - or of any other process; nothing was lost. COM-Perf is raised in the process that makes or serves a call, so a capture scoped to named processes collects their calls alone.",
+    "runs": [
+      {
+        "run": "paced",
+        "bench": "bench/results/com-perf-scope-filter-paced-20261104T153336Z",
+        "workload": {
+          "calls": 64,
+          "delay": 5
+        },
+        "session": {
+          "eventsLost": 0,
+          "realTimeBuffersLost": 0,
+          "records": 788,
+          "processesRaisingRecords": 2
+        },
+        "truth": {
+          "filtered": {
+            "issued": 64,
+            "completed": 64,
+            "served": 64
+          },
+          "decoy": {
+            "issued": 64,
+            "completed": 64,
+            "served": 64
+          }
+        },
+        "recordsByProcess": {
+          "client": 392,
+          "server": 396
+        },
+        "filteredInvokes": {
+          "atTheClientNamingTheServer": 64,
+          "atTheServerNamingTheClient": 64
+        },
+        "decoyInvokes": {
+          "atTheClientNamingTheServer": 0,
+          "atTheServerNamingTheClient": 0
+        }
+      },
+      {
+        "run": "unpaced",
+        "bench": "bench/results/com-perf-scope-filter-unpaced-20261104T153419Z",
+        "workload": {
+          "calls": 256,
+          "delay": 0
+        },
+        "session": {
+          "eventsLost": 0,
+          "realTimeBuffersLost": 0,
+          "records": 3092,
+          "processesRaisingRecords": 2
+        },
+        "truth": {
+          "filtered": {
+            "issued": 256,
+            "completed": 256,
+            "served": 256
+          },
+          "decoy": {
+            "issued": 256,
+            "completed": 256,
+            "served": 256
+          }
+        },
+        "recordsByProcess": {
+          "client": 1544,
+          "server": 1548
+        },
+        "filteredInvokes": {
+          "atTheClientNamingTheServer": 256,
+          "atTheServerNamingTheClient": 256
+        },
+        "decoyInvokes": {
+          "atTheClientNamingTheServer": 0,
+          "atTheServerNamingTheClient": 0
+        }
+      }
+    ]
   }
 }

@@ -1,0 +1,7 @@
+{
+  "scenarioId": "FX-COM-002",
+  "calls": 64,
+  "interCallDelayMilliseconds": 5,
+  "class": "Scripting.Dictionary",
+  "clientProcessId": 48936
+}

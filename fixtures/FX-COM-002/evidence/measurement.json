@@ -1,0 +1,141 @@
+{
+  "fixture": "FX-COM-002",
+  "question": "What Microsoft-Windows-COM-Perf records of one process's calls to an apartment-threaded object it created on its multithreaded apartment's thread, which COM hosts in a single-threaded apartment of its own and reaches through a proxy: calls that cross an apartment and never a process.",
+  "answer": "Each call as it records an out-of-process one. In two runs, 64 calls paced and 256 unpaced, every truth call was an IDispatch::Invoke client start and a server start, both raised in the workload's process and both naming that same process as the other end, each start joined to its stop by its trace number; the host apartment's activation - ISystemActivator and IClassFactory calls - and IRundown's calls were recorded alike, and nothing was lost. Nothing in a record says a call stayed in its process except that the process it names is its own.",
+  "throughALabSession": {
+    "runs": [
+      {
+        "run": "paced",
+        "bench": "bench/results/com-perf-scope-inprocess-paced-20261104T153350Z",
+        "workload": {
+          "calls": 64,
+          "delay": 5
+        },
+        "session": {
+          "eventsLost": 0,
+          "realTimeBuffersLost": 0,
+          "records": 1114
+        },
+        "truth": {
+          "issued": 64,
+          "completed": 64,
+          "served": 0
+        },
+        "clientCalls": {
+          "starts": 200,
+          "stops": 200,
+          "startsJoinedToAStopByTraceNumber": 200,
+          "startsNamingTheirOwnProcess": 200,
+          "byInterfaceAndMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3 to the process": 67,
+            "{00020400-0000-0000-c000-000000000046} method 5 to the process": 64,
+            "{00020400-0000-0000-c000-000000000046} method 6 to the process": 64,
+            "{00000134-0000-0000-c000-000000000046} method 5 to the process": 2,
+            "{00000134-0000-0000-c000-000000000046} method 9 to the process": 1,
+            "{000001a0-0000-0000-c000-000000000046} method 3 to the process": 1,
+            "{00000001-0000-0000-c000-000000000046} method 3 to the process": 1
+          }
+        },
+        "serverCalls": {
+          "starts": 200,
+          "stops": 200,
+          "startsJoinedToAStopByTraceNumber": 200,
+          "startsNamingTheirOwnProcess": 200,
+          "byInterfaceAndMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3 to the process": 67,
+            "{00020400-0000-0000-c000-000000000046} method 5 to the process": 64,
+            "{00020400-0000-0000-c000-000000000046} method 6 to the process": 64,
+            "{00000134-0000-0000-c000-000000000046} method 5 to the process": 2,
+            "{00000134-0000-0000-c000-000000000046} method 9 to the process": 1,
+            "{000001a0-0000-0000-c000-000000000046} method 3 to the process": 1,
+            "{00000001-0000-0000-c000-000000000046} method 3 to the process": 1
+          }
+        },
+        "invokes": {
+          "atTheClientNamingItsOwnProcess": 64,
+          "atTheServerNamingItsOwnProcess": 64
+        },
+        "recordsByEvent": {
+          "5": 6,
+          "6": 6,
+          "11": 1,
+          "12": 1,
+          "35": 8,
+          "36": 8,
+          "39": 200,
+          "40": 200,
+          "43": 200,
+          "44": 200,
+          "49": 3
+        }
+      },
+      {
+        "run": "unpaced",
+        "bench": "bench/results/com-perf-scope-inprocess-unpaced-20261104T153422Z",
+        "workload": {
+          "calls": 256,
+          "delay": 0
+        },
+        "session": {
+          "eventsLost": 0,
+          "realTimeBuffersLost": 0,
+          "records": 3217
+        },
+        "truth": {
+          "issued": 256,
+          "completed": 256,
+          "served": 0
+        },
+        "clientCalls": {
+          "starts": 776,
+          "stops": 776,
+          "startsJoinedToAStopByTraceNumber": 776,
+          "startsNamingTheirOwnProcess": 776,
+          "byInterfaceAndMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3 to the process": 259,
+            "{00020400-0000-0000-c000-000000000046} method 5 to the process": 256,
+            "{00020400-0000-0000-c000-000000000046} method 6 to the process": 256,
+            "{00000134-0000-0000-c000-000000000046} method 5 to the process": 2,
+            "{00000134-0000-0000-c000-000000000046} method 9 to the process": 1,
+            "{000001a0-0000-0000-c000-000000000046} method 3 to the process": 1,
+            "{00000001-0000-0000-c000-000000000046} method 3 to the process": 1
+          }
+        },
+        "serverCalls": {
+          "starts": 776,
+          "stops": 776,
+          "startsJoinedToAStopByTraceNumber": 776,
+          "startsNamingTheirOwnProcess": 776,
+          "byInterfaceAndMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3 to the process": 259,
+            "{00020400-0000-0000-c000-000000000046} method 5 to the process": 256,
+            "{00020400-0000-0000-c000-000000000046} method 6 to the process": 256,
+            "{00000134-0000-0000-c000-000000000046} method 5 to the process": 2,
+            "{00000134-0000-0000-c000-000000000046} method 9 to the process": 1,
+            "{000001a0-0000-0000-c000-000000000046} method 3 to the process": 1,
+            "{00000001-0000-0000-c000-000000000046} method 3 to the process": 1
+          }
+        },
+        "invokes": {
+          "atTheClientNamingItsOwnProcess": 256,
+          "atTheServerNamingItsOwnProcess": 256
+        },
+        "recordsByEvent": {
+          "5": 6,
+          "6": 6,
+          "11": 1,
+          "12": 1,
+          "35": 8,
+          "36": 8,
+          "39": 776,
+          "40": 776,
+          "43": 776,
+          "44": 776,
+          "49": 3
+        }
+      }
+    ],
+    "ledger": "fixtures/FX-COM-002/evidence/ledger.csv, of the paced run: each record of the workload's process - its time, the process it was raised in and the one its other end names, as roles, its event, call trace number, interface, method, causality and HRESULT - never a PID, a thread, a pointer or an IPID.",
+    "session": "COM-Perf enabled machine-wide at verbose, every keyword, in a real-time session of the probe's own, drained after its stop before it was disposed."
+  }
+}

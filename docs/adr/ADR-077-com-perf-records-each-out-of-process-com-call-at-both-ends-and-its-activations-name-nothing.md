@@ -3,8 +3,9 @@
 - Status: accepted for M6's COM/DCOM/WinRT work package; no source is inventoried for it yet, and no profile requests it
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
-- Relates to: plan §4.2, M6, P7, P8, R22, ADR-034, ADR-072, FX-COM-001, `tools/InterCat.ComProbe`,
-  `bench/results/com-provider-inspection-20261104T141555Z`, `bench/results/com-perf-feasibility-*`
+- Relates to: plan §4.2, §9.4, M6, P7, P8, R22, ADR-034, ADR-072, FX-COM-001, FX-COM-002, `tools/InterCat.ComProbe`,
+  `bench/results/com-provider-inspection-20261104T141555Z`, `bench/results/com-perf-feasibility-*`,
+  `bench/results/com-perf-scope-*`
 
 ## Context
 
@@ -68,3 +69,27 @@ COM-Perf machine-wide at verbose with every keyword, and read each record by the
 - Tests hold the ledger to the truth: each truth call one invoke at each end, paired as measured, each start joined to its
   stop; every call naming the other workload process; and activations naming nothing. Three alterations of the ledger are
   caught.
+
+## Addendum: what scopes COM-Perf's records (revision 909)
+
+The fourth decision asked whether a process filter holds for COM-Perf and what a call within one process records.
+`tools/InterCat.ComProbe --measure --filter` and `--in-process` measured both, each in two runs, 64 calls paced and
+256 unpaced, nothing lost.
+
+- **A process filter holds.** FX-COM-001's exchange ran with its two processes in the session's process filter, beside
+  a decoy pair making as many calls outside it, every process waiting to initialize COM until the filter was in place.
+  The filtered pair's every call was recorded at both ends, and not one record of the decoy pair or of any other
+  process arrived. COM-Perf is raised in the process that makes or serves a call, where AFD's records are raised in the
+  kernel (ADR-072), so a capture scoped to named processes collects their calls alone.
+- **A call within one process is recorded as an out-of-process one.** FX-COM-002 has one process call the system's
+  apartment-threaded in-memory dictionary from its multithreaded apartment, so COM hosts the object in a single-threaded
+  apartment of its own and reaches it through a proxy. Every call was a client start and a server start, both raised in
+  the process and both naming that same process as the other end, with the host apartment's activation and `IRundown`'s
+  calls recorded alike. Nothing in a record says a call stayed in its process except that the process it names is its
+  own.
+
+A fifth decision follows: **a COM call is between processes only where the process its record names is another.** One
+naming its own process is that process's own work across an apartment, never IPC and never a relation, as the plan's
+"in-process COM is not IPC" asks. What remains before a profile admits COM-Perf is a mechanism for COM calls and its
+collection's cost. Tests hold FX-COM-001's filter result and FX-COM-002's ledger to their truth; four alterations of
+them are caught.

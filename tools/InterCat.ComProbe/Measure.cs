@@ -23,8 +23,8 @@ internal static partial class Measure
     private const int Invoke = 6;
     private const int MaximumRecords = 4_000_000;
 
-    private static readonly Guid ComPerf = Guid.Parse("b8d6861b-d20f-4eec-bbae-87e0dd80602b");
-    private static readonly Guid Dispatch = Guid.Parse("00020400-0000-0000-c000-000000000046");
+    internal static readonly Guid ComPerf = Guid.Parse("b8d6861b-d20f-4eec-bbae-87e0dd80602b");
+    internal static readonly Guid Dispatch = Guid.Parse("00020400-0000-0000-c000-000000000046");
 
     // The call events this probe reads, and the fields each must declare for it to read them.
     private static readonly (int Id, string[] Fields)[] Needed =
@@ -37,7 +37,7 @@ internal static partial class Measure
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    private sealed record Record(int Id, int Version, int ProcessId, int ThreadId, long UtcTicks, Dictionary<string, object> Fields);
+    internal sealed record Record(int Id, int Version, int ProcessId, int ThreadId, long UtcTicks, Dictionary<string, object> Fields);
 
     public static async Task<int> RunAsync(string output, string[] args)
     {
@@ -328,9 +328,9 @@ internal static partial class Measure
             ? string.Create(CultureInfo.InvariantCulture, $"{record.Id} {declared.TaskName} {declared.OpcodeName}")
             : record.Id.ToString(CultureInfo.InvariantCulture);
 
-    private static string Hresult(object value) => string.Create(CultureInfo.InvariantCulture, $"0x{(uint)(ulong)value:X8}");
+    internal static string Hresult(object value) => string.Create(CultureInfo.InvariantCulture, $"0x{(uint)(ulong)value:X8}");
 
-    private static Dictionary<string, object>? Fields(ProviderSchemaEvent declared, byte[] body, int pointerSize)
+    internal static Dictionary<string, object>? Fields(ProviderSchemaEvent declared, byte[] body, int pointerSize)
     {
         var values = new Dictionary<string, object>(StringComparer.Ordinal);
         int offset = 0;
@@ -367,7 +367,7 @@ internal static partial class Measure
         return values;
     }
 
-    private static string? CheckSchema(ProviderSchema schema)
+    internal static string? CheckSchema(ProviderSchema schema)
     {
         foreach ((int id, string[] needed) in Needed)
         {
@@ -386,7 +386,7 @@ internal static partial class Measure
         return null;
     }
 
-    private static string? Option(string[] args, string name)
+    internal static string? Option(string[] args, string name)
     {
         int at = Array.IndexOf(args, name);
         return at >= 0 && at + 1 < args.Length ? args[at + 1] : null;
@@ -396,7 +396,7 @@ internal static partial class Measure
     /// Stops the session by name and reads its loss counters from the stop's answer, as the product's EtwSessionControl does:
     /// EVENT_TRACE_PROPERTIES on 64-bit Windows, its counters at the offsets the product reads, room for both names after.
     /// </summary>
-    private static (long EventsLost, long RealTimeBuffersLost)? Stop(string sessionName)
+    internal static (long EventsLost, long RealTimeBuffersLost)? Stop(string sessionName)
     {
         const int PropertiesBytes = 120;
         const int NameBytes = 1_024 * sizeof(char);

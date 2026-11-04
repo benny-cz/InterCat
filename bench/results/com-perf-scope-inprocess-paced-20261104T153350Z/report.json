@@ -1,0 +1,71 @@
+{
+  "schema": "intercat.com-perf-scope.v1",
+  "measuredUtc": "2026-11-04T15:33:50.6150154+00:00",
+  "build": "10.0.26220.0-x64",
+  "mode": "in-process",
+  "workload": {
+    "calls": 64,
+    "delay": 5
+  },
+  "session": {
+    "eventsLost": 0,
+    "realTimeBuffersLost": 0,
+    "sourceEventsLost": 0,
+    "records": 1114,
+    "unreadable": 0,
+    "processesRaisingRecords": 8,
+    "note": "COM-Perf enabled machine-wide at verbose, every keyword: the workload\u0027s process does not exist before the session starts."
+  },
+  "truth": {
+    "issued": 64,
+    "completed": 64,
+    "served": 0
+  },
+  "byEvent": {
+    "5": 6,
+    "6": 6,
+    "11": 1,
+    "12": 1,
+    "35": 8,
+    "36": 8,
+    "39": 200,
+    "40": 200,
+    "43": 200,
+    "44": 200,
+    "49": 3
+  },
+  "clientCalls": {
+    "starts": 200,
+    "stops": 200,
+    "startsJoinedToAStopByTraceNumber": 200,
+    "startsNamingTheirOwnProcess": 200,
+    "byInterfaceAndMethod": {
+      "{00000134-0000-0000-c000-000000000046} method 3 to the process": 67,
+      "{00020400-0000-0000-c000-000000000046} method 5 to the process": 64,
+      "{00020400-0000-0000-c000-000000000046} method 6 to the process": 64,
+      "{00000134-0000-0000-c000-000000000046} method 5 to the process": 2,
+      "{00000134-0000-0000-c000-000000000046} method 9 to the process": 1,
+      "{000001a0-0000-0000-c000-000000000046} method 3 to the process": 1,
+      "{00000001-0000-0000-c000-000000000046} method 3 to the process": 1
+    }
+  },
+  "serverCalls": {
+    "starts": 200,
+    "stops": 200,
+    "startsJoinedToAStopByTraceNumber": 200,
+    "startsNamingTheirOwnProcess": 200,
+    "byInterfaceAndMethod": {
+      "{00000134-0000-0000-c000-000000000046} method 3 to the process": 67,
+      "{00020400-0000-0000-c000-000000000046} method 5 to the process": 64,
+      "{00020400-0000-0000-c000-000000000046} method 6 to the process": 64,
+      "{00000134-0000-0000-c000-000000000046} method 5 to the process": 2,
+      "{00000134-0000-0000-c000-000000000046} method 9 to the process": 1,
+      "{000001a0-0000-0000-c000-000000000046} method 3 to the process": 1,
+      "{00000001-0000-0000-c000-000000000046} method 3 to the process": 1
+    }
+  },
+  "invokes": {
+    "atTheClientNamingItsOwnProcess": 64,
+    "atTheServerNamingItsOwnProcess": 64
+  }
+}

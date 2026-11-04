@@ -832,6 +832,7 @@ Revision 905 refuses a gated source whose machine's schema does not admit a fiel
 Revision 906 has `icat processes` name the `icat evidence` command that lists each of a process's AF_UNIX records with its source record (ADR-076's addendum): the drill-down is exact, 413 of 413 records and every byte on a recording, and with it the Unix-domain sockets package meets M6's exit tests.
 Revision 907 begins M6's COM/DCOM/WinRT package with its metadata inspection (§4.2): `Microsoft-Windows-COM-Perf` declares client and server call events, each start with the call's interface, method, causality GUID and other end's process, and activation events carrying no field; nothing is enabled or implemented.
 Revision 908 measures COM-Perf against FX-COM-001 (ADR-077): every out-of-process call of four runs was recorded at both ends with its interface, method and other end's process, each client call paired with the server's by causality and rank; its activations name nothing, and no source is inventoried until a mechanism for COM calls exists.
+Revision 909 measures what scopes COM-Perf's records (ADR-077's addendum): a session's process filter holds for it, and FX-COM-002's calls across an apartment within one process are recorded as out-of-process ones are, naming their own process at both ends, so a call is between processes only where the process it names is another.
 
 ## Revisions, a paragraph each, in order
 
@@ -3566,3 +3567,15 @@ before its reader took the stop's buffers and lost a run's tail in 6 of 17 runs 
 drained first, 10 of 10 held every call, as the product's capture drains. EN-Mechanism names COM only as
 `ComActivation`, which a call is not, so no source is inventoried until a mechanism for COM calls exists. Tests hold
 the committed ledger to the truth; three alterations of it are caught.
+
+Revision 909 measures what scopes COM-Perf's records, ADR-077's fourth decision asking it. `tools/InterCat.ComProbe
+--measure --filter` ran FX-COM-001's exchange with its two processes in the session's process filter, beside a decoy
+pair making as many calls outside it, every process waiting to initialize COM until the filter was in place: the
+filtered pair's every call arrived at both ends, and not one record of the decoy pair or of any other process. COM-Perf
+is raised in the process that makes or serves a call, where AFD's records are the kernel's, so a capture scoped to
+named processes collects their calls alone. `--in-process` ran FX-COM-002, one process calling the system's
+apartment-threaded in-memory dictionary from its multithreaded apartment through the proxy COM gives it: every call was
+recorded as an out-of-process one is, both ends raised in the process and naming that same process. So a COM call is
+between processes only where the process its record names is another; one naming its own process is the process's
+own work across an apartment, never IPC. Each mode ran twice, 64 calls paced and 256 unpaced, nothing lost; tests hold
+both results to their truth, and four alterations of them are caught.

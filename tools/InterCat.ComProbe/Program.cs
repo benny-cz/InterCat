@@ -47,6 +47,8 @@ internal static class Program
             Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]: runs FX-COM-001 under a session of its own reading");
             Console.Error.WriteLine("  Microsoft-Windows-COM-Perf machine-wide, and writes counters of what it recorded of the workload's");
             Console.Error.WriteLine("  calls, and with --ledger each of its records' metadata, never a pointer.");
+            Console.Error.WriteLine("  --filter scopes the session to FX-COM-001's two processes beside a decoy pair outside it;");
+            Console.Error.WriteLine("  --in-process runs FX-COM-002, one process's calls across an apartment, never a process.");
             return 2;
         }
 
@@ -58,7 +60,10 @@ internal static class Program
         }
 
         Directory.CreateDirectory(output);
-        return measure ? await Measure.RunAsync(output, args) : Inspect(output);
+        return !measure ? Inspect(output)
+            : args.Contains("--filter", StringComparer.Ordinal) || args.Contains("--in-process", StringComparer.Ordinal)
+                ? await Scope.RunAsync(output, args)
+                : await Measure.RunAsync(output, args);
     }
 
     private static int Inspect(string output)

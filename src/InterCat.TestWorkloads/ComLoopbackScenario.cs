@@ -14,12 +14,20 @@ internal sealed record ComLoopbackOptions
 {
     public const string ScenarioId = "FX-COM-001";
 
+    public const string InProcessScenarioId = "FX-COM-002";
+
     public required string TruthDirectory { get; init; }
     public int Calls { get; init; } = 64;
     public int InterCallDelayMilliseconds { get; init; } = 5;
 
     /// <summary>When above zero, the client makes its calls in bursts of this many, unpaced, the delay between bursts.</summary>
     public int Burst { get; init; }
+
+    /// <summary>
+    /// Whether each process waits for a line on standard input before it initializes COM, so a session scoped to its process
+    /// is in place first.
+    /// </summary>
+    public bool WaitForStart { get; init; }
 
     /// <summary>The item the server registered its object under, which the coordinator hands its client.</summary>
     public string? Moniker { get; init; }
@@ -37,6 +45,9 @@ internal static partial class ComLoopbackScenario
 {
     private const uint MultithreadedApartment = 0x0;
     private const int RegistrationKeepsAlive = 0x1;
+
+    // The system's in-memory dictionary, registered apartment-threaded on every Windows build.
+    private const string DictionaryClass = "Scripting.Dictionary";
 
     private static readonly JsonSerializerOptions SummaryOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -91,6 +102,7 @@ internal static partial class ComLoopbackScenario
         Directory.CreateDirectory(options.TruthDirectory);
         await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-server.jsonl"), ComLoopbackOptions.ScenarioId, "server");
         truth.Write(TruthEventKind.ProcessStarted);
+        await WaitForStartAsync(options, cancellationToken).ConfigureAwait(false);
         Initialize();
 
         string name = string.Create(CultureInfo.InvariantCulture, $"InterCat.{ComLoopbackOptions.ScenarioId}.{truth.ProcessId}");
@@ -121,6 +133,7 @@ internal static partial class ComLoopbackScenario
         await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-client.jsonl"), ComLoopbackOptions.ScenarioId, "client");
         truth.Write(TruthEventKind.ProcessStarted);
         string name = options.Moniker ?? throw new InvalidOperationException("--moniker names the server's object.");
+        await WaitForStartAsync(options, cancellationToken).ConfigureAwait(false);
         Initialize();
 
         Table().GetObject(Moniker(name), out object proxy);
@@ -160,6 +173,79 @@ internal static partial class ComLoopbackScenario
         truth.Write(TruthEventKind.ConnectionClosed, resourceName: name);
         truth.Write(TruthEventKind.ProcessExiting);
         return failures == 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// FX-COM-002: one process's calls to an apartment-threaded object it created on its multithreaded apartment's thread,
+    /// which COM therefore hosts in a single-threaded apartment of its own and reaches through a proxy - calls that cross
+    /// an apartment and never a process. The class is the system's in-memory dictionary, and each call asks whether it holds
+    /// a key, so nothing outside the process is touched.
+    /// </summary>
+    public static async Task<int> RunInProcessAsync(ComLoopbackOptions options, CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(options.TruthDirectory);
+        int processId;
+        int failures = 0;
+        await using (var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-client.jsonl"), ComLoopbackOptions.InProcessScenarioId, "client"))
+        {
+            processId = truth.ProcessId;
+            truth.Write(TruthEventKind.ProcessStarted);
+            Initialize();
+            Type type = Type.GetTypeFromProgID(DictionaryClass, throwOnError: true)!;
+            object dictionary = Activator.CreateInstance(type)
+                ?? throw new InvalidOperationException($"{DictionaryClass} could not be created.");
+            truth.Write(TruthEventKind.ConnectionEstablished, resourceName: DictionaryClass);
+            try
+            {
+                for (int call = 0; call < options.Calls; call++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    truth.Write(TruthEventKind.CallIssued, callId: call, resourceName: "Exists");
+                    string status;
+                    try
+                    {
+                        object? answer = type.InvokeMember("Exists", BindingFlags.InvokeMethod, null, dictionary, [call], CultureInfo.InvariantCulture);
+                        status = answer is false ? "S_OK" : "wrong answer";
+                    }
+                    catch (COMException exception)
+                    {
+                        status = string.Create(CultureInfo.InvariantCulture, $"0x{exception.HResult:X8}");
+                    }
+
+                    failures += status == "S_OK" ? 0 : 1;
+                    truth.Write(TruthEventKind.CallCompleted, callId: call, resourceName: "Exists", status: status);
+                    if (options.InterCallDelayMilliseconds > 0)
+                    {
+                        await Task.Delay(options.InterCallDelayMilliseconds, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+            }
+            finally
+            {
+                Marshal.FinalReleaseComObject(dictionary);
+            }
+
+            truth.Write(TruthEventKind.ConnectionClosed, resourceName: DictionaryClass);
+            truth.Write(TruthEventKind.ProcessExiting);
+        }
+
+        await File.WriteAllTextAsync(Path.Combine(options.TruthDirectory, "scenario.json"), JsonSerializer.Serialize(new
+        {
+            scenarioId = ComLoopbackOptions.InProcessScenarioId,
+            options.Calls,
+            options.InterCallDelayMilliseconds,
+            @class = DictionaryClass,
+            clientProcessId = processId,
+        }, SummaryOptions), cancellationToken).ConfigureAwait(false);
+        return failures == 0 ? 0 : 1;
+    }
+
+    private static async Task WaitForStartAsync(ComLoopbackOptions options, CancellationToken cancellationToken)
+    {
+        if (options.WaitForStart)
+        {
+            _ = await Console.In.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private static void Initialize()

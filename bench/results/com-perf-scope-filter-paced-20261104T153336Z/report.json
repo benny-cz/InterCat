@@ -1,0 +1,49 @@
+{
+  "schema": "intercat.com-perf-scope.v1",
+  "measuredUtc": "2026-11-04T15:33:36.0566624+00:00",
+  "build": "10.0.26220.0-x64",
+  "mode": "filter",
+  "workload": {
+    "calls": 64,
+    "delay": 5
+  },
+  "session": {
+    "eventsLost": 0,
+    "realTimeBuffersLost": 0,
+    "sourceEventsLost": 0,
+    "records": 788,
+    "unreadable": 0,
+    "processesRaisingRecords": 2,
+    "note": "COM-Perf enabled at verbose, every keyword, scoped by the session\u0027s process filter to the filtered pair\u0027s two processes."
+  },
+  "exitCodes": {
+    "server": 0,
+    "client": 0,
+    "decoyServer": 0,
+    "decoyClient": 0
+  },
+  "truth": {
+    "filtered": {
+      "issued": 64,
+      "completed": 64,
+      "served": 64
+    },
+    "decoy": {
+      "issued": 64,
+      "completed": 64,
+      "served": 64
+    }
+  },
+  "byProcess": {
+    "client": 392,
+    "server": 396
+  },
+  "filteredInvokes": {
+    "atTheClientNamingTheServer": 64,
+    "atTheServerNamingTheClient": 64
+  },
+  "decoyInvokes": {
+    "atTheClientNamingTheServer": 0,
+    "atTheServerNamingTheClient": 0
+  }
+}

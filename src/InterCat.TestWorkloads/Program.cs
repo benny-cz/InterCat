@@ -135,6 +135,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         InterCallDelayMilliseconds = Integer(args, "--delay") ?? 5,
         Burst = Integer(args, "--burst") ?? 0,
         Moniker = Option(args, "--moniker"),
+        WaitForStart = args.Contains("--wait-for-start", StringComparer.Ordinal),
     };
 
     if (args[0].StartsWith("unix-loopback", StringComparison.Ordinal) && churn && hold > 0)
@@ -171,7 +172,9 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
                 await ComLoopbackScenario.RunServerAsync(comOptions, cancellationToken).ConfigureAwait(false),
             "com-loopback-client" when OperatingSystem.IsWindows() =>
                 await ComLoopbackScenario.RunClientAsync(comOptions, cancellationToken).ConfigureAwait(false),
-            "com-loopback" or "com-loopback-server" or "com-loopback-client" =>
+            "com-inproc" when OperatingSystem.IsWindows() =>
+                await ComLoopbackScenario.RunInProcessAsync(comOptions, cancellationToken).ConfigureAwait(false),
+            "com-loopback" or "com-loopback-server" or "com-loopback-client" or "com-inproc" =>
                 await UnsupportedPlatformAsync().ConfigureAwait(false),
             "rpc-local" when OperatingSystem.IsWindows() =>
                 await RpcLocalScenario.RunCoordinatorAsync(rpcOptions, cancellationToken).ConfigureAwait(false),
@@ -269,7 +272,14 @@ static void PrintHelp()
     Console.WriteLine("      the running object table under an item moniker of its own, and the client takes it from there and");
     Console.WriteLine("      calls it through IDispatch, each process logging every call it made or served. Nothing is");
     Console.WriteLine("      registered with the machine. --burst has the client make its calls in bursts of that many,");
-    Console.WriteLine("      unpaced, the delay between bursts. Windows only.");
+    Console.WriteLine("      unpaced, the delay between bursts. com-loopback-server and com-loopback-client, started apart,");
+    Console.WriteLine("      take --wait-for-start: each waits for a line on standard input before it initializes COM.");
+    Console.WriteLine("      Windows only.");
+    Console.WriteLine();
+    Console.WriteLine("  com-inproc --truth <dir> [--calls n] [--delay ms]");
+    Console.WriteLine("      FX-COM-002: one process calls the system's apartment-threaded in-memory dictionary, which COM");
+    Console.WriteLine("      hosts in an apartment of its own and reaches through a proxy: calls that cross an apartment and");
+    Console.WriteLine("      never a process, each one logged. Windows only.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

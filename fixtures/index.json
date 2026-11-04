@@ -389,7 +389,9 @@
         "IC-002"
       ],
       "covers": {
-        "rules": [],
+        "rules": [
+          "R21"
+        ],
         "invariants": [],
         "prohibitions": [
           "P7",
@@ -404,7 +406,7 @@
       },
       "expected": {
         "artifact": "fixtures/FX-COM-001/evidence/measurement.json",
-        "note": "Four runs under a lab session reading COM-Perf machine-wide, nothing lost: every truth call an IDispatch::Invoke start at the client naming the server and one at the server naming the client, each start joined to its stop by its trace number, each client invoke paired with the server invoke of its causality and rank, the server's start inside the client's call. A causality names a chain of calls, threads name nothing the other end recorded, and activations carry no field. The paced run's ledger is held to its truth by tests."
+        "note": "Four runs under a lab session reading COM-Perf machine-wide, nothing lost: every truth call an IDispatch::Invoke start at the client naming the server and one at the server naming the client, each start joined to its stop by its trace number, each client invoke paired with the server invoke of its causality and rank, the server's start inside the client's call. A causality names a chain of calls, threads name nothing the other end recorded, and activations carry no field. The paced run's ledger is held to its truth by tests. Under a session's process filter, beside a decoy pair outside it, its two processes' every call arrived and nothing of the decoy's or any other process."
       },
       "environment": [
         {
@@ -421,7 +423,50 @@
       },
       "tests": [
         "P8: FX-COM-001's COM-Perf records pair as measured - each truth call one invoke at the client and one at the server, of its causality and rank, the server's inside the client's call, each start joined to its stop by its trace number",
-        "P7: FX-COM-001's every COM-Perf call names the other workload process at both ends, its threads pairing nothing, and its activations name nothing to count as a call"
+        "P7: FX-COM-001's every COM-Perf call names the other workload process at both ends, its threads pairing nothing, and its activations name nothing to count as a call",
+        "R21: a session's process filter holds for COM-Perf - FX-COM-001's filtered pair has its every call recorded at both ends, and a decoy pair making as many calls beside it, and every other process, none: outside the filter is not collected, never quiet"
+      ]
+    },
+    {
+      "id": "FX-COM-002",
+      "title": "COM calls across an apartment within one process, as Microsoft-Windows-COM-Perf records them",
+      "scenario": "Plan M6's COM/DCOM/WinRT work package (ADR-077's addendum): one process calls the system's apartment-threaded in-memory dictionary from its multithreaded apartment, so COM hosts the object in a single-threaded apartment of its own and reaches it through a proxy - calls that cross an apartment and never a process, 64 paced and 256 unpaced. Read by a lab session of tools/InterCat.ComProbe enabling COM-Perf machine-wide.",
+      "milestone": "M6",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [],
+        "invariants": [],
+        "prohibitions": [
+          "P7"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads com-inproc --calls 64 --delay 5, under tools/InterCat.ComProbe --measure --in-process",
+        "seed": 0,
+        "log": "fixtures/FX-COM-002/evidence/truth-client.jsonl",
+        "independence": "The process logs every call it issued and its completion through ordinary COM, by its number; it never reads InterCat state, and the probe's session reads the provider's records apart from it. The object is the system's, which logs nothing."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-COM-002/evidence/measurement.json",
+        "note": "Two runs under a lab session reading COM-Perf machine-wide, nothing lost: every truth call a client invoke start and a server invoke start, both raised in the workload's process and both naming that same process as the other end, each start joined to its stop by its trace number, with the host apartment's activation and IRundown's calls recorded alike. The paced run's ledger is held to its truth by a test."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-04",
+          "result": "Measured by tools/InterCat.ComProbe, two runs, nothing lost: every call across the apartment recorded as an out-of-process call is, both ends naming the process itself. No tier is assigned: it measures what is not IPC, and no source is inventoried (ADR-077's addendum)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The process's truth log and scenario of the paced run - calls by their number to the system's in-memory dictionary - and the ledger of its COM-Perf records: each one's time, the process it was raised in and the one its other end names, as roles, its event, call trace number, interface, method, causality and HRESULT, never a PID, a thread, a pointer or an IPID; and the measurement's counters."
+      },
+      "tests": [
+        "P7: FX-COM-002's calls across an apartment are recorded as an out-of-process call is, each naming its own process at both ends, so a call is between processes only where the process it names is another"
       ]
     },
     {
@@ -2182,6 +2227,7 @@
       ],
       "P7": [
         "P7: FX-COM-001's every COM-Perf call names the other workload process at both ends, its threads pairing nothing, and its activations name nothing to count as a call",
+        "P7: FX-COM-002's calls across an apartment are recorded as an out-of-process call is, each naming its own process at both ends, so a call is between processes only where the process it names is another",
         "P7: a client call and a server call are never paired, even when they carry one activity id",
         "P7: a peer is claimed only when the two sides share an activity, and is checked against truth",
         "P7: a pipe peer pairing is checked against the truth log rather than assumed",
@@ -2640,6 +2686,7 @@
         "R21: a session aligned to another of its boot reads as aligned by one boot's counter, exactly",
         "R21: a session that records no connection's open ranks no process by connections made or accepted, unmeasured rather than none",
         "R21: a session that records no connection's open says so beneath the connection rankings, and ranks no process by them",
+        "R21: a session's process filter holds for COM-Perf - FX-COM-001's filtered pair has its every call recorded at both ends, and a decoy pair making as many calls beside it, and every other process, none: outside the filter is not collected, never quiet",
         "R21: a shared comparison records each interval's coverage and missing sources, its byte domain, accounting and alignment",
         "R21: a sharing report states its scope's coverage in the inspector's words, from fixed templates that name no provider",
         "R21: a table whose rung draws only edges to other hosts lists them, and says why it lists none only where it lists nothing",
