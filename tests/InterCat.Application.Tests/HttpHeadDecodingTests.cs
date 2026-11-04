@@ -350,6 +350,97 @@ public sealed class HttpHeadDecodingTests
         Assert.Equal(new HttpBodyDeclaration(statement, contradicts), request ? heads.RequestBody(body) : heads.ResponseBody(body));
     }
 
+    [Theory(DisplayName = "P2: a 301, 302, 303, 307 or 308 response naming one Location redirects there, resolved against its request's target and host")]
+    [InlineData("POST /fx/0 HTTP/1.1\r\nHost: 127.0.0.1:5000\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: /fx/0/moved\r\n\r\n", "302", "/fx/0/moved", "/fx/0/moved", "127.0.0.1:5000")]
+    [InlineData("GET /a/b?c=1 HTTP/1.1\r\nHost: Example.Test\r\n\r\n", "HTTP/1.1 301 Moved Permanently\r\nlocation: d?e=2\r\n\r\n", "301", "d?e=2", "/a/d?e=2", "example.test")]
+    [InlineData("GET /a/b HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 303 See Other\r\nLocation: ../c#part\r\n\r\n", "303", "../c#part", "/c", "example.test")]
+    [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 307 Temporary Redirect\r\nLocation: https://Other.Test:8443/x?y\r\n\r\n", "307", "https://Other.Test:8443/x?y", "/x?y", "other.test:8443")]
+    [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 308 Permanent Redirect\r\nLocation: https://other.test/x\r\n\r\n", "308", "https://other.test/x", "/x", "other.test")]
+    [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: //other.test:81/x\r\n\r\n", "302", "//other.test:81/x", "/x", "other.test:81")]
+    [InlineData("GET /a/b HTTP/1.1\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: /c\r\n\r\n", "302", "/c", "/c", null)]
+    [InlineData("GET /a/b HTTP/1.1\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: c\r\n\r\n", "302", "c", "/a/c", null)]
+    [InlineData(null, "HTTP/1.1 308 Permanent Redirect\r\nLocation: c\r\n\r\n", "308", "c", null, null)]
+    [InlineData(null, "HTTP/1.1 308 Permanent Redirect\r\nLocation: /c\r\n\r\n", "308", "/c", "/c", null)]
+    [InlineData("OPTIONS * HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: c\r\n\r\n", "302", "c", null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: ftp://example.test/x\r\n\r\n", "302", "ftp://example.test/x", null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 200 OK\r\nLocation: /b\r\n\r\n", null, null, null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 304 Not Modified\r\nLocation: /b\r\n\r\n", null, null, null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 300 Multiple Choices\r\nLocation: /b\r\n\r\n", null, null, null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 302 Found\r\nContent-Length: 0\r\n\r\n", null, null, null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: /b\r\nLocation: /c\r\n\r\n", null, null, null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation:\r\n\r\n", null, null, null, null)]
+    [InlineData("GET /a HTTP/1.1\r\nHost: example.test\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: /b\r\n", null, null, null, null)]
+    public void ARedirectNamesWhereItSendsItsRequest(string? request, string response, string? status, string? location, string? target, string? host)
+    {
+        var heads = new HttpExchangeHeads(request is null ? null : Head(request, request: true), Head(response, request: false));
+        Assert.Equal(status is null ? null : new HttpRedirect(status, location!, target, host), heads.Redirect);
+
+        // A response no buffer of whose head was recorded redirects nowhere that is known.
+        Assert.Null(new HttpExchangeHeads(heads.Request, null).Redirect);
+    }
+
+    /// <summary>
+    /// No record ties a redirect to the request WinINet made to its location (FX-HTTP-009), so a listing names as its
+    /// follow-up the first exchange listed after it, begun once its response ended, that asked for its location of its host -
+    /// the target alone where a host is known of neither.
+    /// </summary>
+    [Fact(DisplayName = "P2: a listed redirect is followed by the first exchange listed after it, begun once its response ended, that asked for its location of its host")]
+    public void ARedirectIsFollowedByTheFirstLaterExchangeAskingForItsLocation()
+    {
+        (long First, long? End, string? Request, string? Response)[] listed =
+        [
+            (10, 100, "GET /a HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: /b\r\n\r\n"),
+            (50, 60, "GET /b HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (105, 110, "GET /b HTTP/1.1\r\nHost: other\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (120, 125, "GET /b HTTP/1.1\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (130, 140, "GET /c HTTP/1.1\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: http://h/d\r\n\r\n"),
+            (150, 155, null, null),
+            (160, 165, "GET /d HTTP/1.1\r\nHost: H\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (170, 175, "POST /e HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 307 Temporary Redirect\r\nLocation: /never\r\n\r\n"),
+            (200, 205, "GET /b HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (210, null, "GET /f HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 303 See Other\r\nLocation: /b\r\n\r\n"),
+            (211, 215, "GET /b HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (216, 218, "GET /h HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: /g\r\n\r\n"),
+            (219, 222, "GET /x/../g HTTP/1.1\r\nHost: h:80\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+            (300, null, "GET /self HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: /self\r\n\r\n"),
+            (320, 330, "GET /self HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 200 OK\r\n\r\n"),
+        ];
+        HttpExchange[] exchanges =
+        [
+            .. listed.Select((exchange, at) => new HttpExchange
+            {
+                Number = at + 1,
+                ProcessId = 4_242,
+                Process = new ProcessBinding(0, RelationStrength.Direct, ProcessBindingReason.Bound),
+                FirstTicks = exchange.First,
+                LastTicks = exchange.End ?? exchange.First,
+                FirstNanoseconds = exchange.First,
+                LastNanoseconds = exchange.End ?? exchange.First,
+                ResponseEndNanoseconds = exchange.End,
+                RequestHead = new(1, 20, true),
+                RequestBody = default,
+                ResponseHead = new(1, 20, true),
+                ResponseBody = new(1, 0, exchange.End is not null),
+                First = (1, 0, (ulong)(at + 1)),
+            }),
+        ];
+        HttpExchangeHeads?[] heads =
+        [
+            .. listed.Select(exchange => exchange.Request is null
+                ? null
+                : new HttpExchangeHeads(Head(exchange.Request, request: true), Head(exchange.Response!, request: false))),
+        ];
+
+        // The first redirect's follow-up is the first exchange after it, once its response ended, that asked for /b of h or
+        // of no host it named - not one begun before, nor one of another host, nor a later one; an absolute location names
+        // its own host, in any case; a redirect that none listed followed has none; one whose response's end was not
+        // recorded is followed by the next asking; a request names its target and host as a location does, its dot
+        // segments and its scheme's own port aside; and a redirect to its own target is followed by a later exchange,
+        // never by itself, even where its response's end, which it began before, was not recorded.
+        Assert.Equal([3, -1, -1, -1, 6, -1, -1, -1, -1, 10, -1, 12, -1, 14, -1], HttpRedirects.FollowUps(exchanges, heads));
+        Assert.Throws<ArgumentException>(() => HttpRedirects.FollowUps(exchanges, heads[1..]));
+    }
+
     /// <summary>
     /// FX-HTTP-004 measured that WinINet's capture keeps a gzip body as its client read it: the coded bytes where the client
     /// read them, the body before its coding where it had WinINet decode it, under heads kept as the wire carried them. Each

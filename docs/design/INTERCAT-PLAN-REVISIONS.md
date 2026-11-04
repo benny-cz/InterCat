@@ -806,6 +806,8 @@ Revision 888 measures a request body written in pieces through WinINet's capture
 
 Revision 889 measures responses in deflate and br through WinINet's capture (FX-HTTP-008): each is kept as its client read it, as gzip's is, and a zlib-format deflate body WinINet cannot decode is kept as no byte, so a body in either coding is set beside its head as one in gzip.
 
+Revision 890 measures redirects through WinINet's capture (FX-HTTP-009): a redirect WinINet follows is kept as two exchanges, the request it made to the location numbered apart and begun once the redirect's response ended, so a decoded redirect names its location and a listing the exchange that followed it.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3269,3 +3271,22 @@ failed two more fixtures under load, each its own commit: an investigation drop 
 window still held a session's lease, and two broker fixtures recorded for one second, which could pass before their
 starts were acknowledged; with the tests' temporary folders moved off `C:\WINDOWS\Temp`, where files kept vanishing, the
 third run passed whole. Redirects, proxies and authentication remain unmeasured.
+
+Revision 890 measures redirects through WinINet's capture (FX-HTTP-009), where every server measured before had
+answered each request at once. The truth workload's server can answer each request first with a redirect of no body -
+301, 302, 303, 307 or 308 - to its path moved, logging each leg apart. WinINet follows it by itself, but one that keeps
+a POST and its body only once its client confirms it: until then it fails the send with
+`ERROR_HTTP_REDIRECT_NEEDS_CONFIRMATION`, as its dialog would ask a person, and the client confirms it by sending again.
+Nine probe runs, over TLS and asynchronously too, and two `icat record --profile content` runs of 64 requests eight
+clients at once found each leg an exchange of its own: the request redirected and its redirect, a head and an empty
+body, whole, under one number, and the request WinINet made to the location under another, numbered 3 to 15 later and
+begun once the redirect's response had ended, every part matching the server's truth of its leg. A POST answered 301,
+302 or 303 WinINet asked again as a GET of no body, and one answered 307 or 308, once confirmed, as the same POST. No
+record ties the two exchanges, so the grouping needs nothing new and the number is no guide: where heads are decoded, a
+response of one of those statuses naming one Location now says where it redirects, resolved against its request's
+target and host as a request there names it, and `icat exchanges --decode` and the window's Export with their heads…
+name the listed exchange that followed it - the first after it, begun once its response ended, that asked for its
+location of its host - or its location where none listed did, while an exchange's conversation says where its response
+redirects and what WinINet does with a redirect (`http-exchanges-v1` §5g). A test rebuilds the heads of the fixture's
+two ledgers, checks each against the server's truth byte for byte, and finds each of the 128 redirects followed by its
+own request there; twenty-one mutations of the rule are caught. Proxies and authentication remain unmeasured.

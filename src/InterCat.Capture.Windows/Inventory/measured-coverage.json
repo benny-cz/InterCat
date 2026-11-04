@@ -7,7 +7,7 @@
       "mechanism": "Http",
       "build": "10.0.26220.0-x64",
       "tier": "ExperimentalEvidence",
-      "fixture": "FX-HTTP-008",
+      "fixture": "FX-HTTP-009",
       "date": "2026-11-04",
       "supportTier": "Primary"
     },

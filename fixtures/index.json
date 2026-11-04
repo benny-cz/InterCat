@@ -1071,6 +1071,57 @@
         "P2: a body is set beside the length its head declares, and said to disagree with it only where its recorded bytes do",
         "P2: FX-HTTP-008's responses in deflate and br, kept as WinINet decoded them or as no byte where it could not, are not said to disagree with the length their heads declare"
       ]
+    },
+    {
+      "id": "FX-HTTP-009",
+      "title": "WinINet requests redirected, which WinINet follows by itself",
+      "scenario": "Redirects (ADR-037, revision 890): the loopback server answers each request first with a redirect of no body - 301, 302, 303, 307 or 308 - to the request's path moved, which WinINet follows by itself, and logs each leg apart; where WinINet asks its client to confirm a redirect that keeps a POST and its body, the client confirms it by sending the request again. Over HTTP/1.1, over TLS, asynchronously, one request at a time or eight clients at once; WinINet's capture provider is enabled for the workload's process alone.",
+      "milestone": "M3",
+      "mechanism": "Http",
+      "backlog": [
+        "IC-011",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": [
+          "P2"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads http-wininet --redirect 301|302|303|307|308, with --tls, --async and --concurrency 8",
+        "seed": 20260929,
+        "log": "fixtures/FX-HTTP-009/evidence/302-eight-at-once/truth-http-server.jsonl",
+        "independence": "The loopback server is the witness: it logs the head and body of each request it redirected and of the redirect it sent, then of the request to the location and its response, by length and SHA-256, never the bytes. The client logs what it sent and read, and each redirect it confirmed. Neither reads InterCat state."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-HTTP-009/evidence/measurement.json",
+        "note": "A redirect WinINet follows is two exchanges: the request redirected and its redirect, a head and an empty body, under one exchange number, and the request WinINet made to the location and its answer under another, numbered apart and begun once the redirect's response ended - a POST answered 301, 302 or 303 asked again as a GET of no body, one answered 307 or 308, once its client confirmed it, as the same POST. Through icat record, two runs of 64 requests eight at once kept 128 exchanges each, every one whole, every part as long as the server's truth of its leg and every part saved by icat content --part matching the server's bytes, 382 of 382 and 445 of 445 that held any; each of the 128 redirects named its location and was followed by its own request there. The lab probe found the same of nine runs, over TLS and asynchronously too. The ledgers of the two runs eight at once, never their bytes, are grouped by a test as a session's records are."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-04",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record --profile content scoped to the workload's process, twice: 1,064 and 1,188 records journaled, 1,218,383 and 1,855,826 bytes of content kept, nothing lost. Every exchange recorded whole and every head decoded to its end; each redirect named its location and was followed by its own request there, and every part saved by icat content matched the server's bytes. Tier ExperimentalEvidence: proxies and authentication are unmeasured (ADR-037)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The server's and the client's truth logs and the scenario of two runs - ports, thread IDs, lengths and SHA-256 of synthetic requests and responses and of each leg apart, never their bytes - their buffer ledgers, each buffer's reading, event, exchange number, place, ends, length, request, kind of thread and leg, never its bytes, and the measurement's counters. The captures themselves are not kept."
+      },
+      "tests": [
+        "R22: FX-HTTP-009's redirected requests, eight clients at once, are two exchanges each - the redirect and the request WinINet made to its location - each part whole, and each redirect followed by its own",
+        "P2: a 301, 302, 303, 307 or 308 response naming one Location redirects there, resolved against its request's target and host",
+        "P2: a listed redirect is followed by the first exchange listed after it, begun once its response ended, that asked for its location of its host",
+        "P2: icat exchanges --decode names where each listed redirect sends its request, and the listed exchange that followed it, in its listing, its JSON and its table",
+        "P2: a conversation whose response redirects says where once its heads are decoded, and what WinINet does with a redirect, legibly and heard"
+      ]
     }
   ],
   "retired": [
@@ -1606,6 +1657,7 @@
         "P2: Find in kept content never searches bytes kept without consent and says how many it left, says when more hold it than it lists and when none is kept, and with no process selected offers no narrowing",
         "P2: Find in kept content offers Stop while a search runs, which ends it keeping what it found, and says it was stopped",
         "P2: Find in kept content searches on from where a search ended, adding what it finds after the records listed, and says what the whole search read",
+        "P2: a 301, 302, 303, 307 or 308 response naming one Location redirects there, resolved against its request's target and host",
         "P2: a body is set beside the length its head declares, and said to disagree with it only where its recorded bytes do",
         "P2: a buffer longer than a view shows at once is shown from its first byte, and the view says where it stopped",
         "P2: a buffer's content viewer opens its exchange's conversation, which offers no buffers from there, and a record of no exchange offers none",
@@ -1614,6 +1666,7 @@
         "P2: a content search lists the records whose kept bytes hold a text, how often and where first, and shows no byte unless previews are asked for",
         "P2: a content search read on from where it ended lists what one search from the start would, never a record twice, every count summed once",
         "P2: a content search stopped when asked answers with what it found before, says it was stopped and is partial; one cancelled lists nothing",
+        "P2: a conversation whose response redirects says where once its heads are decoded, and what WinINet does with a redirect, legibly and heard",
         "P2: a decoder that fails on its bytes decodes nothing and says it failed and how, stopping nothing that asked it",
         "P2: a decoding reads at most what a view shows at once, within its time budget, and says where it stopped",
         "P2: a fixture message decodes into the fields its bytes hold, each with its bytes, linked to the record and the decoder's version",
@@ -1622,6 +1675,7 @@
         "P2: a head decoded to the empty line that ends it says so, and a head not decoded declares nothing of its body",
         "P2: a head decoding reads at most what a view shows at once, within its time budget, and says where it stopped",
         "P2: a head is decoded only as its whole part, from bytes kept with consent to inspect them, and a body by no decoder",
+        "P2: a listed redirect is followed by the first exchange listed after it, begun once its response ended, that asked for its location of its host",
         "P2: a part of one buffer, its first and last, that the record limit cut says so of the buffer, and that the rest was cut",
         "P2: a part that is not whole is shown with each gap in place, and no byte stands in for what is missing",
         "P2: a process's exchanges export with what their heads say only once the window has said the table is content, each exchange of the scope a line",
@@ -1644,6 +1698,7 @@
         "P2: icat content says why it shows no byte of a part kept without consent, and that an empty part holds none",
         "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one",
         "P2: icat content shows and saves a whole HTTP part as one, and refuses --part of a record that belongs to none",
+        "P2: icat exchanges --decode names where each listed redirect sends its request, and the listed exchange that followed it, in its listing, its JSON and its table",
         "P2: icat exchanges --decode says what each listed request asked for, of which host, and what its response answered, each head read whole",
         "P2: icat exchanges writes the listed exchanges' heads only when asked, as content, in JSON or as a table whose cells a spreadsheet will not evaluate",
         "P2: the content viewer decodes a buffer's whole HTTP head only when asked, shows a field's bytes in the part, and never decodes a head that is not whole",
@@ -2264,6 +2319,7 @@
         "R22: FX-HTTP-005's asynchronous exchanges, eight at once and raised on the client's threads and WinINet's, are one exchange to a request, each part whole and as long as the server's truth",
         "R22: FX-HTTP-006's exchanges over HTTP/2, eight clients' multiplexed on one connection, are one exchange to a request, each part whole and each body as long as the server's truth",
         "R22: FX-HTTP-007's request bodies, written in pieces eight clients at once, are each its exchange's, a buffer to a write and one to end it, every part whole and as long as the server's truth",
+        "R22: FX-HTTP-009's redirected requests, eight clients at once, are two exchanges each - the redirect and the request WinINet made to its location - each part whole, and each redirect followed by its own",
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
         "R22: a binding packed into four bytes reads back as it was, and one that does not fit is refused",
         "R22: a boot is named by a token kept only until the machine restarts, and its count is no identity",

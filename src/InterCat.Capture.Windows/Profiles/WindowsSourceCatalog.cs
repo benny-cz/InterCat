@@ -758,6 +758,9 @@ public static class WindowsSourceCatalog
                 "Measured on FX-HTTP-004 and FX-HTTP-008 (ADR-037): a response body in gzip, deflate or br is kept as its "
                 + "client read it - coded, or decoded where the client had WinINet decode it - and one in the zlib-format "
                 + "deflate WinINet cannot decode is kept as one buffer of no byte.",
+                "Measured on FX-HTTP-009 (ADR-037): a redirect WinINet follows is kept as two exchanges - the request redirected "
+                + "and its redirect, and the request WinINet made to the location under a number of its own, begun once the "
+                + "redirect's response ended - and no record ties the two.",
                 "Only WinINet's clients raise these records: .NET's HTTP client, WinHTTP and browsers' own stacks do not.",
                 "Its message bytes are kept only under a scoped content policy; under any other, the buffer's length is.",
                 "Capture impact, seven pairs of FX-HTTP-001 on 2026-09-28 with 4,096 exchanges each: a median of 0.71 CPU "

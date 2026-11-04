@@ -7,11 +7,12 @@
   themselves (revision 245); a process's exchanges on its rung (revision 247, `contracts/http-exchanges-v1.md`);
   asynchronous clients measured, and the thread each record is raised on (revision 886); HTTP/2 measured, its heads kept
   in HTTP/1.1's form (revision 887); a request body written in pieces measured (revision 888); responses in deflate and
-  br measured (revision 889)
+  br measured (revision 889); redirects WinINet follows measured, each leg an exchange of its own (revision 890)
 - Date: 2026-09-28
 - Decision owners: InterCat maintainers
 - Relates to: §3.7, §11, §11.1, §11.2, M3, M8, I21, R21, R22, ADR-030, ADR-036, FX-HTTP-001, FX-HTTP-002,
-  FX-HTTP-003, FX-HTTP-005, FX-HTTP-006, FX-HTTP-007, FX-HTTP-008, `contracts/content-v1.md`, `contracts/decoders-v1.md`,
+  FX-HTTP-003, FX-HTTP-005, FX-HTTP-006, FX-HTTP-007, FX-HTTP-008, FX-HTTP-009, `contracts/content-v1.md`,
+  `contracts/decoders-v1.md`, `contracts/http-exchanges-v1.md`,
   `tools/InterCat.WinInetProbe`,
   `bench/results/wininet-capture-feasibility-20260928T102426Z`,
   `bench/results/wininet-capture-feasibility-tls-20260928T120408Z`,
@@ -25,7 +26,9 @@
   `bench/results/wininet-capture-written-eight-20261103T223954Z`,
   `bench/results/wininet-capture-br-decoded-20261104T003209Z`,
   `bench/results/wininet-capture-deflate-decoded-20261104T003223Z`,
-  `bench/results/wininet-capture-deflate-raw-decoded-20261104T003232Z`
+  `bench/results/wininet-capture-deflate-raw-decoded-20261104T003232Z`,
+  `bench/results/wininet-capture-redirect-302-eight-20261104T013021Z`,
+  `bench/results/wininet-capture-redirect-307-eight-20261104T013026Z`
 
 ## Context
 
@@ -202,6 +205,30 @@ it came, or has WinINet decode it first. The probe ran each of the five ways, br
   length agrees, one holding another is not said to disagree, and a deflate body holding no byte is said to be
   possibly one WinINet could not decode.
 
+## Measurement of redirects (revision 890)
+
+Every server measured before answered each request at once. FX-HTTP-009's server answers each first with a redirect of
+no body - 301, 302, 303, 307 or 308 - to the request's path moved, and logs each leg apart; WinINet follows it by
+itself. The probe ran each status, 307 over TLS and asynchronously too, and 302 and 307 eight clients at once, beside a
+decoy.
+
+- **Two exchanges, each of its own.** The request the server redirected and its redirect - a head and an empty body,
+  whole - were kept under one exchange number, and the request WinINet made to the location and its answer under
+  another, every time: numbered apart, 3 to 15 later eight clients at once, and begun once the redirect's response had
+  ended. No record ties the two. Every part of both legs matched the server's truth of its leg, nothing was lost and
+  none of the decoy's records reached the session.
+- **What WinINet asks there.** After a POST answered 301, 302 or 303 it asked the location with GET and no body,
+  keeping the request's other fields in their order. After 307 or 308 it failed the send with
+  `ERROR_HTTP_REDIRECT_NEEDS_CONFIRMATION` (12168), as its dialog would ask a person; the client confirmed it by sending
+  the request again, and WinINet made the same POST, body and all, to the location - the client's own field then sent
+  after WinINet's.
+- **Through `icat record`** (FX-HTTP-009: 64 requests eight at once, redirected by 302 and again by 307): 128
+  exchanges each, every one recorded whole, every head decoded to its end, every part as long as the server's truth of
+  its leg, and every part `icat content --part` saved matching the server's bytes, 382 of 382 and 445 of 445 that held
+  any. So the grouping needs nothing new; and since no record ties a redirect to the request made there, a listing of
+  decoded heads names as its follow-up the first exchange listed after it, begun once its response ended, that asked
+  for its location of its host - in both runs, each of the 128 redirects its own request there.
+
 ## Decision
 
 1. **The source contract, for its admission to implement.** An exchange is a `SessionId`; a part is its event, which
@@ -250,6 +277,12 @@ it came, or has WinINet decode it first. The probe ran each of the five ways, br
    carried an exchange. A decoded head's version is never said to be its exchange's protocol: wherever heads are
    decoded - `icat content --part --decode`, `icat exchanges --decode`, the content viewer and an exchange's
    conversation - InterCat says so beside them (`contracts/decoders-v1.md` §4).
+10. **A redirect's follow-up is named by what it asked for** (revision 890). WinINet keeps the request it makes to a
+   redirect's location as an exchange of its own, which nothing kept ties to the redirect, and its number is no guide.
+   Where heads are decoded, a response that redirects names its location, resolved as a request there names it, and a
+   listing names the first exchange listed after it, begun once its response ended, that asked for that location of
+   its host as the one that followed it - an inference from what was asked and when, said as such, never a record's
+   claim; one no listed exchange followed names none (`contracts/http-exchanges-v1.md` §5g).
 
 ## Consequences
 
@@ -271,8 +304,11 @@ it came, or has WinINet decode it first. The probe ran each of the five ways, br
   64,511 bytes cut there, and ended by an empty buffer, as a body handed over whole is.
 - Responses in deflate and br are measured (revision 889, FX-HTTP-008): each is kept as its client read it, as gzip's
   is, and a zlib-format deflate body WinINet cannot decode is kept as no byte.
-- Not measured: content codings other than gzip, deflate and br; redirects, proxies and authentication. Each is
-  measured before a profile claims it.
+- Redirects WinINet follows are measured (revision 890, FX-HTTP-009): each leg is an exchange of its own, the request
+  made to the location numbered apart and begun once the redirect's response ended, and a listing of decoded heads
+  names the one that followed a redirect.
+- Not measured: content codings other than gzip, deflate and br; proxies and authentication. Each is measured before a
+  profile claims it.
 - The scope is the named processes themselves (revision 245): the provider's filter holds their IDs by number, and the
   capture holds each process open while it runs, so a named process's exit ends its content and no process started
   after it can take its ID.

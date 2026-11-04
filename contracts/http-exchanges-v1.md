@@ -40,7 +40,11 @@ are one exchange to a request, each part whole (revision 886). So are an exchang
 as over HTTP/1.1, its heads in HTTP/1.1's form: FX-HTTP-006's eight clients' 64 exchanges, multiplexed on one connection,
 are one exchange to a request, each part whole (revision 887). So are an exchange's whose request body was written in
 pieces, a buffer to a write: FX-HTTP-007's eight clients' 64 exchanges, their bodies in up to 46 buffers each, are one
-exchange to a request, each body in its writes' buffers and one to end it (revision 888).
+exchange to a request, each body in its writes' buffers and one to end it (revision 888). A redirect WinINet follows is
+two exchanges, grouped as any: WinINet makes the request to the location by itself, and its capture keeps that request
+as an exchange of its own, numbered apart and begun once the redirect's response ended. FX-HTTP-009's eight clients' 64
+requests, redirected by 302 and again by 307, are two exchanges to a request, each part whole (revision 890); no record
+ties the two, so where heads are decoded the listing names the one that followed a redirect (§5g).
 
 A release of a session's oldest interval (`contracts/store-v1.md` §8, ADR-043, revision 435) keeps every buffer of an
 exchange one of whose buffers stays, and the use before a use opened only by repeating one of its buffers, so every
@@ -142,7 +146,8 @@ under one lease in one pass over the session's segments, and only the exchanges 
 exchanges. The figures above the exchanges are read as without `--decode`. Since revision 887 a listing with its heads
 decoded says among its caveats that the version a head names is WinINet's: it keeps an exchange it made over HTTP/2
 with heads in HTTP/1.1's form, so no head says which protocol carried its exchange (FX-HTTP-006,
-`contracts/decoders-v1.md` §4).
+`contracts/decoders-v1.md` §4). Since revision 890 a response that redirects is listed with the exchange that followed
+it, or with its location where none listed did (§5g).
 
 ## 5d. An exchange's conversation (revision 777)
 
@@ -197,8 +202,11 @@ them - its `id`, `name`, `version` and what it `reads`; and on each listed excha
 recorded, else its `part`, the bytes it `read` (`first` and `last`, null where it read none), its `fields` (each
 `name`, `value`, and `first` and `last` byte in the head), `notDecoded` and `reachedEnd` (`contracts/decoders-v1.md`
 §2); and `requestBody` and `responseBody`, what each head declares of its body (§5e: `statement` and `contradicts`),
-null where the head was not decoded. A file written says beside it that it holds content. Without `--decode` none of
-these is written, not even as null: `http-exchanges-v1` never holds a head's value.
+null where the head was not decoded; and since revision 890 `redirect`, where its response redirects (§5g) - its
+`status`, its `location` as its head gave it, the `target` and `host` a request there names, each null where it could
+not be resolved, and `followedBy`, the listed exchange that followed it, by `key` and `number`, null where none listed
+did - null where it does not. A file written says beside it that it holds content. Without `--decode` none of these is
+written, not even as null: `http-exchanges-v1` never holds a head's value.
 
 `--output` writes JSON; `--format csv`, or a path ending `.csv`, writes the listed exchanges as a table instead, one
 line per exchange in the order listed after a header naming its columns: `session_id`, `generation`, `pid`, `process`,
@@ -206,9 +214,11 @@ line per exchange in the order listed after a header naming its columns: `sessio
 each part - `request_head`, `request_body`, `response_head`, `response_body` - its `_buffers`, `_bytes` and `_whole`.
 With `--decode` it adds `decoder`, `decoder_version`, `method`, `target`, `request_version`, `host`, `status`,
 `reason`, `response_version`, `request_head_decoded_to_end` and `response_head_decoded_to_end`,
-`request_head_not_decoded` and `response_head_not_decoded`, where a head no buffer of which was recorded says so, and
-each body's `_declared` statement and `_contradicts`. Numbers are invariant, flags `true` or `false`, and what is not
-known is empty. A cell holding a comma, a quote or a line end is quoted, its quotes doubled; a text cell beginning
+`request_head_not_decoded` and `response_head_not_decoded`, where a head no buffer of which was recorded says so,
+each body's `_declared` statement and `_contradicts`, and since revision 890 `redirect_location`, where a response
+redirects, and `redirect_followed_by`, the number of the listed exchange that followed it (§5g). Numbers are
+invariant, flags `true` or `false`, and what is not known is empty. A cell holding a comma, a quote or a line end is
+quoted, its quotes doubled; a text cell beginning
 with `=`, `+`, `-`, `@`, a tab or a carriage return begins with an apostrophe, so a spreadsheet shows it rather than
 evaluates it. `--format` needs `--output`, and a table needs listed exchanges: `--pid`, or `--exchanges` with a
 number. The figures are read as without `--decode`, and nothing written is read back.
@@ -219,12 +229,39 @@ it, and only then asks for its file. It holds every exchange the rung lists in i
 export of the rung does, up to the records an evidence export holds, and says when that limit left exchanges out and
 how many heads were not decoded. It writes no JSON: the command line's document is the one a program reads.
 
+## 5g. Where a response redirects (revision 890)
+
+Where an exchange's heads are decoded (§5c, §5d, §5f), a response of status 301, 302, 303, 307 or 308 whose head was
+decoded to its end and names one Location redirects there. Its location is resolved as a request made there names it
+(RFC 3986 §5): an absolute address names its own target and host; any other is resolved against its request's target
+and the host its request named - a reference to a path needing the request's target, a reference beginning with a
+slash only the host - and what cannot be resolved is null. A head naming no Location, or several, redirects nowhere
+known, and so does a response of any other status.
+
+WinINet follows a redirect by itself, and its capture keeps the request it makes to the location as an exchange of its
+own, numbered apart and begun once the redirect's response ended (FX-HTTP-009, §2): a POST answered 301, 302 or 303 it
+asks there again as a GET of no body, and one answered 307 or 308 with the same method and body, but only once its
+client confirms the redirect, failing the send with ERROR_HTTP_REDIRECT_NEEDS_CONFIRMATION until then. No record ties
+the two exchanges, so a listing names as the one that followed a redirect the first exchange listed after it, begun
+once its response ended, that asked for its location of its host: its request's target and host resolved as a
+location is, its dot segments and its scheme's own port aside, and the target alone where a host is known of neither.
+FX-HTTP-009's 128 redirects, eight clients at once, were each followed so by its own request there. Where two
+redirects send their requests to one address at once, each names the first to ask for it once it ended, which may be
+the other's; one that no listed exchange followed - one its client did not confirm, or whose follow-up is past the
+listing - names none.
+
+`icat exchanges --decode` says, beside a redirect's answer, the exchange that followed it, or its location where none
+listed did, and says among its caveats, once, what WinINet does with a redirect and how its follow-up is found; its
+JSON and its table give each redirect (§5f). The window's conversation says, beneath a redirect's answer, where it
+redirects and what WinINet does with a redirect; it reads one exchange, and names no follow-up.
+
 ## 6. Not defined at this version
 
 - An exchange's method, target, status or headers in `http-exchanges-v1`: they are content, which only a decoding
   asked for reads, and only `http-exchange-heads-v1` writes, asked for with them (§5c, §5d, §5f,
   `contracts/decoders-v1.md` §2).
-- How WinINet's capture keeps a body in a content coding other than gzip, deflate and br (§5e), and a response it
-  redirected, or one through a proxy or past authentication. Asynchronous WinINet is measured since revision 886
-  (FX-HTTP-005), HTTP/2 since revision 887 (FX-HTTP-006), whose heads no record tells from HTTP/1.1's, a request body
-  written in pieces since revision 888 (FX-HTTP-007), and deflate and br since revision 889 (FX-HTTP-008).
+- How WinINet's capture keeps a body in a content coding other than gzip, deflate and br (§5e), and an exchange
+  through a proxy or past authentication. Asynchronous WinINet is measured since revision 886 (FX-HTTP-005), HTTP/2
+  since revision 887 (FX-HTTP-006), whose heads no record tells from HTTP/1.1's, a request body written in pieces since
+  revision 888 (FX-HTTP-007), deflate and br since revision 889 (FX-HTTP-008), and redirects WinINet follows since
+  revision 890 (FX-HTTP-009, §5g).

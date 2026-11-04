@@ -3116,6 +3116,104 @@ public sealed class CommandLineTests : IDisposable
             };
     }
 
+    [Fact(DisplayName = "P2: icat exchanges --decode names where each listed redirect sends its request, and the listed exchange that followed it, in its listing, its JSON and its table")]
+    public async Task ExchangesNameWhereARedirectSentItsRequest()
+    {
+        // PID 4242: exchange 3 a POST answered 302 to /fx/0/moved, which exchange 5 asked for after it; exchange 6 a POST
+        // answered 307 to another host, which no listed exchange asked for. PID 4141's exchange 1 redirects nowhere.
+        using var kept = new TemporarySession();
+        using var files = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        ObservationRowV1[] rows =
+        [
+            Wininet(10, 2001, 1), Wininet(11, 2003, 2), Wininet(12, 2004, 3),
+            Wininet(20, 2001, 4), Wininet(21, 2003, 5), Wininet(22, 2004, 6),
+            Wininet(30, 2001, 7), Wininet(31, 2003, 8), Wininet(32, 2004, 9),
+            Wininet(5, 2001, 10) with { HeaderProcessId = 4_141 }, Wininet(6, 2003, 11) with { HeaderProcessId = 4_141 },
+        ];
+        (int Row, long Exchange)[] parts = [(0, 3), (1, 3), (2, 3), (3, 5), (4, 5), (5, 5), (6, 6), (7, 6), (8, 6), (9, 1), (10, 1)];
+        string[] messages =
+        [
+            "POST /fx/0 HTTP/1.1\r\nHost: h\r\nContent-Length: 0\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: /fx/0/moved\r\nContent-Length: 0\r\n\r\n", "",
+            "GET /fx/0/moved HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n", "hello",
+            "POST /b HTTP/1.1\r\nHost: h\r\nContent-Length: 0\r\n\r\n", "HTTP/1.1 307 Temporary Redirect\r\nLocation: https://elsewhere.test/b\r\nContent-Length: 0\r\n\r\n", "",
+            "GET /x HTTP/1.1\r\nHost: h\r\n\r\n", "HTTP/1.1 204 No Content\r\n\r\n",
+        ];
+        rows = [.. rows.Select((row, index) => row with { ByteValue = messages[index].Length })];
+        Publish(kept.Store, rows,
+            fields: [.. parts.SelectMany(part => new[]
+            {
+                Field(rows[part.Row], SourceField.HttpExchangeId, part.Exchange),
+                Field(rows[part.Row], SourceField.ContentBufferSequence, 0),
+                Field(rows[part.Row], SourceField.ContentBufferFlags, 3),
+            })],
+            content: (ContentHeader(recordLimit: 128),
+                [.. messages.Select((message, index) => (message, index)).Where(entry => entry.message.Length > 0)
+                    .Select(entry => Content(rows[entry.index], System.Text.Encoding.ASCII.GetBytes(entry.message), 128, ContentEncodingV1.Binary))]));
+        kept.Store.ReleaseSegmentReaders();
+
+        // A redirect's answer names the listed exchange that followed it, or, where none listed did, its location; what
+        // WinINet does with a redirect, and how its follow-up is found, is said once beneath.
+        (InterCatExitCode code, string output, string said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  \S+ +3 +no end +POST /fx/0 +h +302 Found, followed by exchange 5 +whole\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +5 +no end +GET /fx/0/moved +h +200 OK +whole\r?$", output);
+        Assert.Matches(@"(?m)^  \S+ +6 +no end +POST /b +h +307 Temporary Redirect, to https://elsewhere.test/b +whole\r?$", output);
+        Assert.Equal(2, output.Split(HttpRedirects.Statement).Length);
+        Assert.Equal(2, output.Split(HttpRedirects.FollowUpStatement).Length);
+
+        // Its follow-up not listed, a redirect names its location.
+        (code, output, said) = await Run("exchanges", kept.Path, "--pid", "4242", "--exchanges", "1", "--decode");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  \S+ +3 +no end +POST /fx/0 +h +302 Found, to /fx/0/moved +whole\r?$", output);
+
+        // A listing of no redirect says nothing of them.
+        (code, output, said) = await Run("exchanges", kept.Path, "--pid", "4141", "--decode");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  \S+ +1 +no end +GET /x +h +204 No Content +not whole\r?$", output);
+        Assert.DoesNotContain(HttpRedirects.Statement, output, StringComparison.Ordinal);
+        Assert.DoesNotContain(HttpRedirects.FollowUpStatement, output, StringComparison.Ordinal);
+
+        // In JSON each redirect is its status, its location as its head gave it, the target and host a request there names,
+        // and the listed exchange that followed it, by key and number; an exchange that does not redirect has none.
+        (code, output, said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using (JsonDocument document = JsonDocument.Parse(output))
+        {
+            JsonElement[] listed = [.. document.RootElement.GetProperty("groups").EnumerateArray().Single().GetProperty("list").EnumerateArray()];
+            JsonElement redirect = listed[0].GetProperty("heads").GetProperty("redirect");
+            Assert.Equal(("302", "/fx/0/moved", "/fx/0/moved", "h"), (redirect.GetProperty("status").GetString(),
+                redirect.GetProperty("location").GetString(), redirect.GetProperty("target").GetString(), redirect.GetProperty("host").GetString()));
+            Assert.Equal((listed[1].GetProperty("key").GetString(), 5L), (redirect.GetProperty("followedBy").GetProperty("key").GetString(),
+                redirect.GetProperty("followedBy").GetProperty("number").GetInt64()));
+            Assert.Equal(JsonValueKind.Null, listed[1].GetProperty("heads").GetProperty("redirect").ValueKind);
+            JsonElement elsewhere = listed[2].GetProperty("heads").GetProperty("redirect");
+            Assert.Equal(("307", "https://elsewhere.test/b", "/b", "elsewhere.test", JsonValueKind.Null), (elsewhere.GetProperty("status").GetString(),
+                elsewhere.GetProperty("location").GetString(), elsewhere.GetProperty("target").GetString(),
+                elsewhere.GetProperty("host").GetString(), elsewhere.GetProperty("followedBy").ValueKind));
+            Assert.Contains(HttpRedirects.Statement, document.RootElement.GetProperty("caveats").EnumerateArray().Select(caveat => caveat.GetString()));
+        }
+
+        // In a table, each redirect's location and the number of the listed exchange that followed it.
+        string table = Path.Combine(files.Path, "redirects.csv");
+        (code, _, said) = await Run("exchanges", kept.Path, "--pid", "4242", "--decode", "--output", table);
+        Assert.True(code == InterCatExitCode.Success, said);
+        List<IReadOnlyDictionary<string, string>> lines = Csv(File.ReadAllText(table));
+        Assert.Equal([("/fx/0/moved", "5"), ("", ""), ("https://elsewhere.test/b", "")],
+            lines.Select(line => (line["redirect_location"], line["redirect_followed_by"])));
+
+        static ObservationRowV1 Wininet(long ticks, ushort eventId, ulong ordinal) =>
+            Transfer(ticks, eventId <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
+                eventId <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, 1, null, ordinal) with
+            {
+                Mechanism = Mechanism.Http,
+                Layer = ObservationLayer.Application,
+                EventId = eventId,
+                HeaderProcessId = 4_242,
+                Direction = eventId <= 2002 ? Direction.Outbound : Direction.Inbound,
+                ByteDomain = ByteDomain.ApplicationPayload,
+            };
+    }
+
     [Fact(DisplayName = "P2: icat exchanges writes the listed exchanges' heads only when asked, as content, in JSON or as a table whose cells a spreadsheet will not evaluate")]
     public async Task ExchangesHeadsAreWrittenOnlyWhenAsked()
     {

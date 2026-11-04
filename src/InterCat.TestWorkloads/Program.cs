@@ -59,6 +59,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         PaceMilliseconds = Integer(args, "--pace") ?? 0,
         Http2 = args.Contains("--http2", StringComparer.Ordinal),
         WriteBytes = Integer(args, "--write") ?? 0,
+        RedirectStatus = Integer(args, "--redirect") ?? 0,
     };
 
     var pipeOptions = new PipeLoopbackOptions
@@ -201,7 +202,7 @@ static void PrintHelp()
     Console.WriteLine();
     Console.WriteLine("  http-wininet --truth <dir> [--seed n] [--requests n] [--bytes n] [--wait-for-start | --start-after s] [--tls]");
     Console.WriteLine("               [--concurrency n] [--chunked] [--gzip | --coding gzip|deflate|br [--decode]] [--async] [--pace ms]");
-    Console.WriteLine("               [--http2] [--write n]");
+    Console.WriteLine("               [--http2] [--write n] [--redirect 301|302|303|307|308]");
     Console.WriteLine("      FX-HTTP-001: seeded HTTP/1.1 requests through WinINet to a server this process runs on");
     Console.WriteLine("      loopback, bodies from empty to past 64 KiB both ways. The server logs every head and body");
     Console.WriteLine("      it received and sent by length and SHA-256, never the bytes. --wait-for-start waits for a");
@@ -223,7 +224,9 @@ static void PrintHelp()
     Console.WriteLine("      field names, never the frames; it makes the run FX-HTTP-006, and refuses --chunked. --write has");
     Console.WriteLine("      the client send each request's head with HttpSendRequestEx and write its body with InternetWriteFile");
     Console.WriteLine("      in seeded pieces of 1 to n bytes, logging each piece, then end it with HttpEndRequest; it makes");
-    Console.WriteLine("      the run FX-HTTP-007, with any of the others.");
+    Console.WriteLine("      the run FX-HTTP-007, with any of the others. --redirect has the server answer each request first");
+    Console.WriteLine("      with that redirect, of no body, to its path moved, which WinINet follows by itself; the server logs");
+    Console.WriteLine("      both legs apart; it makes the run FX-HTTP-009, and refuses --http2.");
     Console.WriteLine();
     Console.WriteLine("  No scenario runs implicitly. Nothing is captured or observed by this executable.");
 }

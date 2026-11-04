@@ -284,6 +284,154 @@ public sealed class SessionHttpExchangesTests
     }
 
     /// <summary>
+    /// FX-HTTP-009 measured that WinINet follows a redirect by itself, and that its capture keeps the request it makes to the
+    /// location as an exchange of its own, numbered apart - three to fifteen after its redirect's, eight clients at once -
+    /// and begun once the redirect's response ended: a POST answered 302 asked again as a GET of no body, and one answered
+    /// 307, once its client confirmed it, as the same POST with the same body. Each run's ledger of 64 requests, grouped as
+    /// a session's records are, each head rebuilt and checked against the server's truth byte for byte, is two exchanges to
+    /// a request, each part whole and as long as the server's truth of its leg; and each redirect names its location and is
+    /// followed by its own request there, the first listed after it to ask for it.
+    /// </summary>
+    [Theory(DisplayName = "R22: FX-HTTP-009's redirected requests, eight clients at once, are two exchanges each - the redirect and the request WinINet made to its location - each part whole, and each redirect followed by its own")]
+    [InlineData("302-eight-at-once", 302, "Found", "GET")]
+    [InlineData("307-eight-at-once", 307, "Temporary Redirect", "POST")]
+    public void RedirectsAreTwoExchangesEachFollowedByItsOwn(string run, int status, string reason, string method)
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-HTTP-009", "evidence", run);
+        (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes, int Request, bool Client, bool Moved)[] ledger =
+        [
+            .. File.ReadLines(Path.Combine(evidence, "buffers.csv")).Skip(1).Select(line => line.Split(',')).Select(field => (
+                long.Parse(field[0], CultureInfo.InvariantCulture), ushort.Parse(field[1], CultureInfo.InvariantCulture),
+                long.Parse(field[2], CultureInfo.InvariantCulture), long.Parse(field[3], CultureInfo.InvariantCulture),
+                long.Parse(field[4], CultureInfo.InvariantCulture), long.Parse(field[5], CultureInfo.InvariantCulture),
+                int.Parse(field[6], CultureInfo.InvariantCulture), field[7] == "client", field[8] == "moved")),
+        ];
+        var truth = new Dictionary<(long Call, string Part), (long Length, string Hash)>();
+        foreach (string line in File.ReadLines(Path.Combine(evidence, "truth-http-server.jsonl")))
+        {
+            using var record = System.Text.Json.JsonDocument.Parse(line);
+            if (record.RootElement.TryGetProperty("callId", out var call) && call.ValueKind == System.Text.Json.JsonValueKind.Number
+                && record.RootElement.TryGetProperty("status", out var part) && part.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                truth[(call.GetInt64(), part.GetString()!)] = (record.RootElement.GetProperty("declaredBytes").GetInt64(),
+                    record.RootElement.GetProperty("resourceName").GetString()!);
+            }
+        }
+
+        using var scenario = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "scenario.json")));
+        string host = string.Create(CultureInfo.InvariantCulture, $"127.0.0.1:{scenario.RootElement.GetProperty("port").GetInt32()}");
+
+        // Each leg's heads as the wire carried them, rebuilt and checked against the server's truth byte for byte: the
+        // request the server redirected and its redirect, then the request WinINet made to the location and its answer.
+        byte[] Head(int request, bool moved, bool response)
+        {
+            const string Fixture = "X-InterCat-Fixture: FX-HTTP-009\r\n";
+            string text = (moved, response) switch
+            {
+                (false, false) => string.Create(CultureInfo.InvariantCulture,
+                    $"POST /fx/{request} HTTP/1.1\r\n{Fixture}User-Agent: InterCat-FX-HTTP-009\r\nHost: {host}\r\nContent-Length: {truth[(request, "redirected-request-body")].Length}\r\nConnection: Keep-Alive\r\nCache-Control: no-cache\r\n\r\n"),
+                (false, true) => string.Create(CultureInfo.InvariantCulture,
+                    $"HTTP/1.1 {status} {reason}\r\nLocation: /fx/{request}/moved\r\nContent-Length: 0\r\n{Fixture}\r\n"),
+                // Followed by WinINet alone, the GET keeps the request's own fields but its body's; sent again by its client,
+                // the POST takes the client's field anew, after WinINet's own.
+                (true, false) when method == "GET" => string.Create(CultureInfo.InvariantCulture,
+                    $"GET /fx/{request}/moved HTTP/1.1\r\n{Fixture}User-Agent: InterCat-FX-HTTP-009\r\nHost: {host}\r\nConnection: Keep-Alive\r\nCache-Control: no-cache\r\n\r\n"),
+                (true, false) => string.Create(CultureInfo.InvariantCulture,
+                    $"POST /fx/{request}/moved HTTP/1.1\r\nUser-Agent: InterCat-FX-HTTP-009\r\nHost: {host}\r\nContent-Length: {truth[(request, "request-body")].Length}\r\nConnection: Keep-Alive\r\nCache-Control: no-cache\r\n{Fixture}\r\n"),
+                (true, true) => string.Create(CultureInfo.InvariantCulture,
+                    $"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {truth[(request, "response-body")].Length}\r\n{Fixture}\r\n"),
+            };
+            byte[] bytes = System.Text.Encoding.ASCII.GetBytes(text);
+            string logged = (moved ? string.Empty : response ? "redirect-" : "redirected-") + (response ? "response-head" : "request-head");
+            Assert.Equal(truth[(request, logged)], (bytes.LongLength, "sha256:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes))));
+            return bytes;
+        }
+
+        // Each buffer a record of the client, process 4242, raised on one of its threads that made requests or on another,
+        // and each head - every one a single buffer - kept with consent to inspect it.
+        ObservationRowV1[] buffers =
+        [
+            .. ledger.Select((buffer, index) => HttpBuffer(buffer.Ticks + 10, buffer.Event, (ulong)(index + 1), buffer.Bytes) with
+            {
+                HeaderThreadId = buffer.Client ? 4_243 : 4_244,
+            }),
+        ];
+        SourceFieldRowV1[] fields =
+        [
+            .. ledger.SelectMany((buffer, index) => new[]
+            {
+                Field(buffers[index], SourceField.HttpExchangeId, buffer.Number),
+                Field(buffers[index], SourceField.ContentBufferSequence, buffer.Sequence),
+                Field(buffers[index], SourceField.ContentBufferFlags, buffer.Flags),
+            }),
+        ];
+        var heads = new List<(ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes)>();
+        for (int index = 0; index < ledger.Length; index++)
+        {
+            if (ledger[index].Event is 2001 or 2003)
+            {
+                byte[] head = Head(ledger[index].Request, ledger[index].Moved, response: ledger[index].Event == 2003);
+                Assert.Equal((head.LongLength, 3L), (ledger[index].Bytes, ledger[index].Flags));
+                heads.Add(Content(buffers[index], head, 1_024, ContentEncodingV1.Binary));
+            }
+        }
+
+        Assert.Equal(256, heads.Count);
+        using var session = new TemporarySession();
+        Publish(session.Store, [Lifecycle(1, ObservationKind.Create, 4_242, 100_000), .. buffers], fields: fields,
+            content: (ContentHeader(recordLimit: 1_024), heads));
+
+        HttpChannelSummary channel = Assert.Single(SessionHttpExchanges.Channels(session.Store, Client(session.Store)).Channels);
+        Assert.Equal((128L, 128L, (long)ledger.Length), (channel.Exchanges, channel.Complete, channel.Records));
+        HttpExchangePage page = SessionHttpExchanges.ExchangesUpTo(session.Store, channel.Key, 1_000);
+        HttpExchangeTableRead table = SessionHttpExchanges.Table(session.Store, page.SessionId, channel.Key, 1_000);
+        Assert.Equal(page.Exchanges.Select(row => row.Key), table.Lines.Select(line => line.Key));
+
+        // Each exchange is one leg of one request, by its first buffer: every buffer of it that leg's, every part whole and
+        // as long as the server's truth of that leg.
+        var legs = new Dictionary<(int Request, bool Moved), (HttpExchangeRow Row, HttpExchangeLine Line)>();
+        foreach ((HttpExchangeRow row, HttpExchangeLine line) in page.Exchanges.Zip(table.Lines))
+        {
+            var first = ledger[(int)row.Exchange.First.Ordinal - 1];
+            legs.Add((first.Request, first.Moved), (row, line));
+            HttpExchange exchange = row.Exchange;
+            Assert.True(exchange.Complete, row.Parts(CultureInfo.InvariantCulture));
+            (string requestPart, string responsePart) = first.Moved ? ("request-", "response-") : ("redirected-request-", "redirect-response-");
+            Assert.Equal(
+                (truth[(first.Request, requestPart + "head")].Length, truth[(first.Request, requestPart + "body")].Length,
+                    truth[(first.Request, responsePart + "head")].Length, truth[(first.Request, responsePart + "body")].Length),
+                (exchange.RequestHead.Bytes, exchange.RequestBody.Bytes, exchange.ResponseHead.Bytes, exchange.ResponseBody.Bytes));
+            SessionEvidencePage records = SessionEvidenceQuery.Read(session.Store, operationKey: row.Key);
+            Assert.Equal(exchange.Records, records.Records.Count);
+            Assert.All(records.Records, record =>
+                Assert.Equal((first.Request, first.Moved), (ledger[(int)record.Observation.RawRecordOrdinal - 1].Request, ledger[(int)record.Observation.RawRecordOrdinal - 1].Moved)));
+        }
+
+        // Each redirect names its location, and is followed by its own request there: numbered apart, so its number is no
+        // guide, and begun once the redirect's response ended. The request there redirects nowhere, and no body is said to
+        // disagree with its head.
+        Assert.Equal(128, legs.Count);
+        for (int request = 0; request < 64; request++)
+        {
+            (HttpExchangeRow redirected, HttpExchangeLine redirectedLine) = legs[(request, false)];
+            (HttpExchangeRow moved, HttpExchangeLine movedLine) = legs[(request, true)];
+            string location = string.Create(CultureInfo.InvariantCulture, $"/fx/{request}/moved");
+            Assert.Equal((string.Create(CultureInfo.InvariantCulture, $"POST /fx/{request}"), method + " " + location),
+                (redirectedLine.Heads!.Asked, movedLine.Heads!.Asked));
+            Assert.Equal(new HttpRedirect(status.ToString(CultureInfo.InvariantCulture), location, location, host), redirectedLine.Heads.Redirect);
+            Assert.Equal(new HttpFollowUp(moved.Key, moved.Exchange.Number), redirectedLine.FollowedBy);
+            Assert.Equal(((HttpRedirect?)null, (HttpFollowUp?)null), (movedLine.Heads.Redirect, movedLine.FollowedBy));
+            Assert.True(moved.Exchange.Number - redirected.Exchange.Number > 1);
+            Assert.True(moved.Exchange.FirstNanoseconds >= redirected.Exchange.ResponseEndNanoseconds);
+            Assert.All(new[] { (redirectedLine, redirected), (movedLine, moved) }, leg =>
+            {
+                Assert.False(leg.Item1.Heads!.RequestBody(leg.Item2.Exchange.RequestBody)!.Contradicts);
+                Assert.False(leg.Item1.Heads.ResponseBody(leg.Item2.Exchange.ResponseBody)!.Contradicts);
+            });
+        }
+    }
+
+    /// <summary>
     /// The ledger of <paramref name="fixture"/>'s run eight at once, grouped as a session's records are: one exchange to a
     /// request, every buffer of an exchange its request's, every part whole and each as long as the server's truth of it -
     /// a chunked body as its client read it - or, where the server holds no head's bytes, the heads recorded whole.

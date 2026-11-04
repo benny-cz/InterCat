@@ -375,6 +375,59 @@ public sealed class ConversationWindowTests
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
     }
 
+    [AvaloniaFact(DisplayName = "P2: a conversation whose response redirects says where once its heads are decoded, and what WinINet does with a redirect, legibly and heard")]
+    public async Task ARedirectsConversationSaysWhereItSentItsRequest()
+    {
+        // Process 4242's exchange 3: a POST answered 302 to /moved, its response's body empty.
+        string[] messages = ["POST /r HTTP/1.1\r\nHost: a\r\nContent-Length: 0\r\n\r\n", "HTTP/1.1 302 Found\r\nLocation: /moved\r\nContent-Length: 0\r\n\r\n"];
+        ObservationRowV1[] rows = [Http(10, 2001, 1, messages[0].Length), Http(11, 2003, 2, messages[1].Length), Http(12, 2004, 3, 0)];
+        using var session = new TemporarySession();
+        Publish(session.Store, [Lifecycle(1, ObservationKind.Create, 4_242, 1_000_000), .. rows],
+            fields: [.. rows.SelectMany(row => new[]
+            {
+                Field(row, SourceField.HttpExchangeId, 3),
+                Field(row, SourceField.ContentBufferSequence, 0),
+                Field(row, SourceField.ContentBufferFlags, 3),
+            })],
+            content: (ContentHeader(), [.. messages.Select((message, index) => Content(rows[index], Encoding.ASCII.GetBytes(message), 64, ContentEncodingV1.Binary))]));
+        session.Store.ReleaseSegmentReaders();
+        ProcessInstanceId client = SessionOverviewProjector.Project(session.Store).Nodes.Single(node => node.ProcessId == 4_242).Id;
+        string key = Assert.Single(SessionHttpExchanges.Exchanges(session.Store, HttpExchangeKeys.Channel(client)).Exchanges).Key;
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            using var conversation = new SessionConversationWindow(session.Path, session.Store.SessionId, key,
+                EvidencePolicy.IncludeCorrelated, "client.exe · PID 4242", SessionClock.Session(TimeZoneInfo.Utc));
+            conversation.Width = conversation.MinWidth;
+            conversation.Height = conversation.MinHeight;
+            _ = conversation.ShowDialog<bool>(owner);
+            await Until(() => Status(conversation).StartsWith("Read from generation", StringComparison.Ordinal));
+
+            // Until its heads are decoded, nothing is said of where it redirects.
+            TextBlock redirect = Named<TextBlock>(conversation, name => name.StartsWith("Its response redirects", StringComparison.Ordinal));
+            Assert.False(redirect.IsVisible);
+
+            // Decoded, its response says where it redirects and what WinINet does with a redirect - that the request it makes
+            // there is an exchange of its own; its request redirects nowhere.
+            Labelled(conversation, "Decode its heads").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => Status(conversation).Contains("decoded", StringComparison.Ordinal));
+            Assert.Contains("302 Found", Texts(conversation));
+            Assert.Equal("It redirects to /moved. " + HttpRedirects.Statement, redirect.Text);
+            Assert.True(redirect.IsEffectivelyVisible);
+            Assert.Equal("Its response redirects: It redirects to /moved. " + HttpRedirects.Statement, AutomationProperties.GetName(redirect));
+            Assert.False(Named<TextBlock>(conversation, name => name.StartsWith("Its request redirects", StringComparison.Ordinal)).IsVisible);
+            Dispatch();
+            Assert.Empty(LegibleTextTests.CutOff(conversation, "a redirect's conversation"));
+            Assert.Empty(AccessibilityAuditTests.Unheard(conversation, out _));
+            conversation.Close();
+        }
+        finally
+        {
+            owner.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "P2: a process's exchanges export with what their heads say only once the window has said the table is content, each exchange of the scope a line")]
     public async Task ExchangesExportWithTheirHeadsOnceTheTableIsSaidToBeContent()
     {

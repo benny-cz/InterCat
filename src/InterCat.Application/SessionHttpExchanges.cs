@@ -449,6 +449,12 @@ public static class SessionHttpExchanges
         int[] positions = scoped.Length > limit ? scoped[..limit] : scoped;
         IReadOnlyList<HttpExchangeHeads> heads = HttpExchangeHeadsQuery.ReadAt(store, manifest, index, group, positions, cancellationToken);
         string? image = index.Processes.Instances[group.Process.Instance].ImageName;
+
+        // Where a response redirects, the exchange listed after it that followed it (§5g).
+        HttpExchange[] listed = [.. positions.Select(position => all[position])];
+        int[] followUps = HttpRedirects.FollowUps(listed, heads);
+        string Key(HttpExchange exchange) =>
+            HttpExchangeKeys.Exchange(channelKey, exchange.First.Stream, exchange.First.Epoch, exchange.First.Ordinal);
         return new(manifest.SessionId, manifest.Generation,
         [
             .. positions.Select((position, at) =>
@@ -462,7 +468,7 @@ public static class SessionHttpExchanges
                     Process = image,
                     ProcessKey = channelKey,
                     Unattributed = null,
-                    Key = HttpExchangeKeys.Exchange(channelKey, exchange.First.Stream, exchange.First.Epoch, exchange.First.Ordinal),
+                    Key = Key(exchange),
                     Number = exchange.Number,
                     FirstSeconds = SessionTimeText.EpochSeconds(clock, exchange.FirstTicks),
                     DurationNanoseconds = exchange.DurationNanoseconds,
@@ -472,6 +478,7 @@ public static class SessionHttpExchanges
                     ResponseHead = exchange.ResponseHead,
                     ResponseBody = exchange.ResponseBody,
                     Heads = heads[at],
+                    FollowedBy = followUps[at] < 0 ? null : new(Key(listed[followUps[at]]), listed[followUps[at]].Number),
                 };
             }),
         ], scoped.Length > limit, null);

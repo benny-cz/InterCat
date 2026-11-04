@@ -325,3 +325,16 @@ raw data; deflate in the zlib format RFC 9110 names it cannot decode, and the ca
 no byte. So such a body is set beside its declared length as one in gzip is: one holding another length is not said to
 disagree, and a deflate body holding no byte is said to be possibly one WinINet could not decode. Nothing else above
 changes.
+
+## Addendum, revision 890
+
+Redirects WinINet follows are measured (FX-HTTP-009, ADR-037): the request it makes to a redirect's location is kept as
+an exchange of its own, numbered apart and begun once the redirect's response ended, and no record ties the two. So
+where heads are decoded a response of status 301, 302, 303, 307 or 308 naming one Location now says where it
+redirects, resolved as a request there names it, and `icat exchanges --decode` names beside its answer the exchange that
+followed it - the first listed after it, begun once its response ended, that asked for its location of its host - in
+its listing, its JSON and its table, saying among its caveats what WinINet does with a redirect and how its follow-up is
+found; the window's conversation says where a response redirects and what WinINet does with it, and the table its
+Export with their heads… writes gives each redirect's location and the exchange that followed it
+(`http-exchanges-v1` §5g). FX-HTTP-009's 128 redirects through `icat record` were each followed so by its own request
+there. Nothing else above changes.

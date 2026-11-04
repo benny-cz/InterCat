@@ -56,6 +56,12 @@ public sealed record HttpExchangeHeads(DecodedContent? Request, DecodedContent? 
     /// </summary>
     public HttpBodyDeclaration? ResponseBody(HttpPartRecord body) => HttpBodies.Declared(Response, body, response: true,
         RequestLine?.Method, StatusLine?.Status);
+
+    /// <summary>
+    /// Where its response redirects (§5g): a 301, 302, 303, 307 or 308 response whose head was decoded to its end and names
+    /// one Location; null otherwise.
+    /// </summary>
+    public HttpRedirect? Redirect => HttpRedirects.Of(this);
 }
 
 /// <summary>

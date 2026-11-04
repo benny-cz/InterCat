@@ -104,7 +104,10 @@ internal sealed record ExchangeHeadsDocument
     public required HttpBodyDeclaration? RequestBody { get; init; }
     public required HttpBodyDeclaration? ResponseBody { get; init; }
 
-    public static ExchangeHeadsDocument From(HttpExchangeHeads heads, ExchangeDocument exchange) => new()
+    /// <summary>Where its response redirects, and the listed exchange that followed it (§5g); null where it does not redirect.</summary>
+    public required HttpRedirectDocument? Redirect { get; init; }
+
+    public static ExchangeHeadsDocument From(HttpExchangeHeads heads, ExchangeDocument exchange, HttpFollowUp? followedBy) => new()
     {
         Asked = heads.Asked,
         Host = heads.Host,
@@ -113,8 +116,19 @@ internal sealed record ExchangeHeadsDocument
         Response = heads.Response is { } response ? DecodingDocument.From(response) : null,
         RequestBody = heads.RequestBody(exchange.RequestBody),
         ResponseBody = heads.ResponseBody(exchange.ResponseBody),
+        Redirect = heads.Redirect is { } redirect
+            ? new(redirect.Status, redirect.Location, redirect.Target, redirect.Host, followedBy)
+            : null,
     };
 }
+
+/// <summary>
+/// Where a response redirects (`contracts/http-exchanges-v1.md` §5g): its status and its Location as its head gave them;
+/// the target and host a request made there names, each null where it could not be resolved; and the listed exchange that
+/// followed it - the first after it, begun once its response ended, that asked for its location of its host - null where
+/// none listed did.
+/// </summary>
+internal sealed record HttpRedirectDocument(string Status, string Location, string? Target, string? Host, HttpFollowUp? FollowedBy);
 
 /// <summary>
 /// One head's decoding (`contracts/decoders-v1.md` §2): the part it read, the bytes it read by their offsets in the part,
@@ -351,6 +365,16 @@ internal static class ExchangesCommand
             string? channelKey = instance is null ? null : HttpExchangeKeys.Channel(instance.Id);
             IReadOnlyList<HttpExchange> exchanges = index.ExchangesOf(group);
             long[] durations = [.. exchanges.Select(exchange => exchange.DurationNanoseconds).OfType<long>().Order()];
+
+            // Where a listed response redirects, the exchange listed after it that followed it (§5g).
+            HttpExchange[] listed = [.. exchanges.Take(list)];
+            int[] followUps = decoded is null ? [] : HttpRedirects.FollowUps(listed, decoded);
+            string? KeyOf(HttpExchange exchange) => channelKey is null
+                ? null
+                : HttpExchangeKeys.Exchange(channelKey, exchange.First.Stream, exchange.First.Epoch, exchange.First.Ordinal);
+            HttpFollowUp? FollowUpOf(int at) => decoded is null || followUps[at] < 0
+                ? null
+                : new(KeyOf(listed[followUps[at]]), listed[followUps[at]].Number);
             groups.Add(new()
             {
                 ProcessId = group.ProcessId,
@@ -367,11 +391,9 @@ internal static class ExchangesCommand
                 MedianDurationNanoseconds = durations.Length == 0 ? null : durations[(durations.Length - 1) / 2],
                 List = list == 0
                     ? null
-                    : [.. exchanges.Take(list).Select((exchange, at) => Listed(new ExchangeDocument
+                    : [.. listed.Select((exchange, at) => Listed(new ExchangeDocument
                     {
-                        Key = channelKey is null
-                            ? null
-                            : HttpExchangeKeys.Exchange(channelKey, exchange.First.Stream, exchange.First.Epoch, exchange.First.Ordinal),
+                        Key = KeyOf(exchange),
                         Number = exchange.Number,
                         FirstSeconds = SessionText.Seconds(clock, exchange.FirstTicks),
                         DurationNanoseconds = exchange.DurationNanoseconds,
@@ -380,7 +402,7 @@ internal static class ExchangesCommand
                         RequestBody = exchange.RequestBody,
                         ResponseHead = exchange.ResponseHead,
                         ResponseBody = exchange.ResponseBody,
-                    }, decoded?[at]))],
+                    }, decoded?[at], FollowUpOf(at)))],
             });
         }
 
@@ -408,13 +430,16 @@ internal static class ExchangesCommand
                 "A duration runs from an exchange's first recorded buffer to its response's last, as the client library held "
                     + "them; an exchange whose response end was not recorded has none.",
                 .. heads is null ? Array.Empty<string>() : [ContentDecoders.HttpHeadVersionStatement],
+                .. heads?.Any(group => group.Any(exchange => exchange.Redirect is not null)) == true
+                    ? [HttpRedirects.Statement, HttpRedirects.FollowUpStatement]
+                    : Array.Empty<string>(),
             ],
         };
     }
 
-    /// <summary>A listed exchange, with what its heads say where they were decoded.</summary>
-    private static ExchangeDocument Listed(ExchangeDocument exchange, HttpExchangeHeads? heads) =>
-        heads is null ? exchange : exchange with { Heads = ExchangeHeadsDocument.From(heads, exchange) };
+    /// <summary>A listed exchange, with what its heads say where they were decoded, and the exchange that followed its redirect.</summary>
+    private static ExchangeDocument Listed(ExchangeDocument exchange, HttpExchangeHeads? heads, HttpFollowUp? followedBy) =>
+        heads is null ? exchange : exchange with { Heads = ExchangeHeadsDocument.From(heads, exchange, followedBy) };
 
     /// <summary>The listed exchanges as a table (`http-exchanges-v1` §5f), with what their heads say where they were decoded.</summary>
     private static string Table(Guid sessionId, ExchangesDocument document, IReadOnlyList<IReadOnlyList<HttpExchangeHeads>>? heads) =>
@@ -438,6 +463,7 @@ internal static class ExchangesCommand
                 ResponseHead = exchange.ResponseHead,
                 ResponseBody = exchange.ResponseBody,
                 Heads = heads?[at][position],
+                FollowedBy = exchange.Heads?.Redirect?.FollowedBy,
             })),
         ], decoded: heads is not null);
 
@@ -547,7 +573,7 @@ internal static class ExchangesCommand
                 exchange.DurationNanoseconds is { } duration ? OperationText.Duration(duration, CultureInfo.CurrentCulture) : "no end",
                 heads[at].Asked ?? (heads[at].Request is null ? "no head recorded" : "not decoded"),
                 heads[at].Host ?? "-",
-                heads[at].Answered ?? (heads[at].Response is null ? "no head recorded" : "not decoded"),
+                Answered(heads[at], exchange),
                 exchange.RecordedWhole ? "whole" : "not whole",
             ])]);
         for (int at = 0; at < exchanges.Count; at++)
@@ -575,6 +601,16 @@ internal static class ExchangesCommand
         }
     }
 
+    /// <summary>
+    /// What a response answered, in a cell: its status and reason, and where it redirects, the listed exchange that followed
+    /// it, or its location where none listed did (§5g).
+    /// </summary>
+    private static string Answered(HttpExchangeHeads heads, ExchangeDocument exchange) =>
+        heads.Answered is not { } answered ? (heads.Response is null ? "no head recorded" : "not decoded")
+        : exchange.Heads?.Redirect is not { } redirect ? answered
+        : redirect.FollowedBy is { } followUp ? string.Create(CultureInfo.CurrentCulture, $"{answered}, followed by exchange {followUp.Number:N0}")
+        : $"{answered}, to {redirect.Location}";
+
     /// <summary>A part in a cell: its bytes and buffers, and whether it was recorded whole.</summary>
     private static string Part(HttpPartRecord part) => !part.Recorded
         ? "none recorded"
@@ -590,11 +626,12 @@ internal static class ExchangesCommand
         ConsoleUi.Line("  and how long it took. --pid narrows to one process and lists its first 20 exchanges; --exchanges");
         ConsoleUi.Line("  sets how many are listed per process. Its figures read no content; icat content reads a buffer's.");
         ConsoleUi.Line("  --decode reads the listed exchanges' heads, each whole, from content kept with consent to inspect it,");
-        ConsoleUi.Line("  and says what each request asked for, of which host, and what its response answered; a head not");
-        ConsoleUi.Line("  whole, or kept without consent, is not decoded, and why is said, as is a body that does not hold");
-        ConsoleUi.Line("  the length its head declared. With --json or --output it writes them too, as http-exchange-heads-v1:");
-        ConsoleUi.Line("  content, to be shared only as that content would be. --output writes JSON, or with --format csv or a");
-        ConsoleUi.Line("  .csv path a table, one line per listed exchange, its cells safe from a spreadsheet's evaluation.");
+        ConsoleUi.Line("  and says what each request asked for, of which host, and what its response answered, and where it");
+        ConsoleUi.Line("  redirects, which listed exchange followed it; a head not whole, or kept without consent, is not");
+        ConsoleUi.Line("  decoded, and why is said, as is a body that does not hold the length its head declared. With --json");
+        ConsoleUi.Line("  or --output it writes them too, as http-exchange-heads-v1: content, to be shared only as that content");
+        ConsoleUi.Line("  would be. --output writes JSON, or with --format csv or a .csv path a table, one line per listed");
+        ConsoleUi.Line("  exchange, its cells safe from a spreadsheet's evaluation.");
         ConsoleUi.Line("  What the capture covered of HTTP is said from its coverage ledger, never from a count of none.");
     }
 }

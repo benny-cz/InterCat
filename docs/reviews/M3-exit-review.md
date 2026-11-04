@@ -65,3 +65,11 @@ Compressed responses beside gzip are measured (FX-HTTP-008, ADR-037): a body in 
 read it, coded or decoded by WinINet, and a deflate body in the zlib format RFC 9110 names, which WinINet cannot decode,
 is kept as one buffer of no byte. Of the semantics the verdict names unmeasured, RPC over TCP transport remains. Nothing
 else above changes.
+
+## Addendum, revision 890
+
+Redirects WinINet follows are measured (FX-HTTP-009, ADR-037): the request a server redirected and its redirect are
+kept as one exchange, and the request WinINet made to the location as another, numbered apart and begun once the
+redirect's response ended, each whole; through `icat record` two runs of 64 requests eight at once, redirected by 302
+and by 307, kept 128 exchanges each, every one whole. Of the semantics the verdict names unmeasured, RPC over TCP
+transport remains. Nothing else above changes.

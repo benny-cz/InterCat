@@ -47,6 +47,9 @@ internal sealed record HttpWinInetOptions
     /// <summary>Responses in the deflate or br content coding, which the client reads coded or has WinINet decode: FX-HTTP-008.</summary>
     public const string CodingsScenarioId = "FX-HTTP-008";
 
+    /// <summary>Each request redirected once, which WinINet follows by itself: FX-HTTP-009.</summary>
+    public const string RedirectScenarioId = "FX-HTTP-009";
+
     public required string TruthDirectory { get; init; }
     public int Seed { get; init; } = 20_260_929;
     public int Requests { get; init; } = 16;
@@ -119,11 +122,19 @@ internal sealed record HttpWinInetOptions
     public int WriteBytes { get; init; }
 
     /// <summary>
-    /// The scenario this run is: FX-HTTP-008 with responses in deflate or br, else FX-HTTP-007 with bodies written in pieces,
+    /// The status the server first answers each request with, a redirect of no body to the request's path moved, which
+    /// WinINet follows by itself with a second request - 301, 302, 303, 307 or 308; 0 answers each request at once.
+    /// </summary>
+    public int RedirectStatus { get; init; }
+
+    /// <summary>
+    /// The scenario this run is: FX-HTTP-009 with each request redirected once, else FX-HTTP-008 with responses in deflate
+    /// or br, else FX-HTTP-007 with bodies written in pieces,
     /// else FX-HTTP-006 over HTTP/2, else FX-HTTP-005 made asynchronously, else FX-HTTP-004 with responses in gzip, else
     /// FX-HTTP-003 with several clients at once or chunked responses, else FX-HTTP-002 over TLS, else FX-HTTP-001.
     /// </summary>
-    public string Scenario => Coding is not (null or "gzip") ? CodingsScenarioId : WriteBytes > 0 ? WrittenScenarioId
+    public string Scenario => RedirectStatus > 0 ? RedirectScenarioId : Coding is not (null or "gzip") ? CodingsScenarioId
+        : WriteBytes > 0 ? WrittenScenarioId
         : Http2 ? Http2ScenarioId : Async ? AsyncScenarioId : Coding is "gzip" ? CodedScenarioId
         : Concurrency > 1 || Chunked ? InterleavedScenarioId : Tls ? TlsScenarioId : ScenarioId;
 
@@ -176,6 +187,7 @@ internal static partial class HttpWinInetScenario
     private const uint StatusRequestComplete = 100;
     private const int ErrorIoPending = 997;
     private const int ErrorTimeout = 1460;
+    private const int ErrorRedirectNeedsConfirmation = 12168;
     private static readonly IntPtr InvalidStatusCallback = -1;
     private const uint IgnoreCertificateErrors = 0x00000100 | 0x00001000 | 0x00002000 | 0x00000080 | 0x00000200;
     private static readonly JsonSerializerOptions SummaryOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -283,6 +295,13 @@ internal static partial class HttpWinInetScenario
             return 2;
         }
 
+        if (options.RedirectStatus != 0 && (options.RedirectStatus is not (301 or 302 or 303 or 307 or 308) || options.Http2))
+        {
+            await Console.Error.WriteLineAsync("--redirect takes 301, 302, 303, 307 or 308, and its server is HTTP/1.1's, so it is refused with --http2.")
+                .ConfigureAwait(false);
+            return 2;
+        }
+
         if (options.Http2 && options.Chunked)
         {
             await Console.Error.WriteLineAsync("HTTP/2 frames a body itself and has no chunked transfer coding; --chunked is refused with --http2.")
@@ -366,6 +385,7 @@ internal static partial class HttpWinInetScenario
             options.Http2,
             requestsOverHttp2 = options.Http2 ? requestsOverHttp2 : (int?)null,
             options.WriteBytes,
+            options.RedirectStatus,
             asynchronous = options.Async ? new { sendsAtOnce, sendsPending, writesAtOnce, writesPending, readsAtOnce, readsPending } : null,
             processId = Environment.ProcessId,
             clientThreads = clientThreads.Order().ToArray(),
@@ -528,6 +548,16 @@ internal static partial class HttpWinInetScenario
                     bool requestSent = options.WriteBytes > 0
                         ? SendWritten(calls, request, context, RequestHeaders(options), body, pieces, out int sendError)
                         : Send(calls, request, RequestHeaders(options), body, out sendError);
+
+                    // A redirect that keeps a POST and its body WinINet follows only once confirmed, which its dialog would ask
+                    // a person: the send fails with ERROR_HTTP_REDIRECT_NEEDS_CONFIRMATION. The client confirms it as that
+                    // dialog's caller does, by sending the request again, which WinINet makes to the redirect's location.
+                    if (!requestSent && sendError == ErrorRedirectNeedsConfirmation && options.RedirectStatus > 0 && options.WriteBytes == 0)
+                    {
+                        client.Write(TruthEventKind.MessageReceived, callId: index, status: "redirect-needs-confirmation");
+                        requestSent = Send(calls, request, RequestHeaders(options), body, out sendError);
+                    }
+
                     if (!requestSent)
                     {
                         client.Write(TruthEventKind.Failure, callId: index, status: $"HttpSendRequest failed: {sendError}");
@@ -894,6 +924,25 @@ internal static partial class HttpWinInetScenario
                     byte[] rest = pending.WrittenSpan[(head.Length + length)..].ToArray();
                     pending.Clear();
                     pending.Write(rest);
+
+                    // Redirected, each request the client made is answered by the redirect alone, of no body, to its path
+                    // moved, which WinINet follows by itself with a second request; each leg is logged apart.
+                    if (options.RedirectStatus > 0 && !headText.Contains("/moved ", StringComparison.Ordinal))
+                    {
+                        server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: head.Length,
+                            status: "redirected-request-head", resourceName: Sha256(head));
+                        server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: body.Length,
+                            status: "redirected-request-body", resourceName: Sha256(body));
+                        byte[] redirect = Encoding.ASCII.GetBytes(string.Create(CultureInfo.InvariantCulture,
+                            $"HTTP/1.1 {options.RedirectStatus} {Reason(options.RedirectStatus)}\r\nLocation: /fx/{index}/moved\r\nContent-Length: 0\r\n{FixtureHeader(options)}\r\n"));
+                        await stream.WriteAsync(redirect, cancellationToken).ConfigureAwait(false);
+                        server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: redirect.Length,
+                            status: "redirect-response-head", resourceName: Sha256(redirect));
+                        server.Write(TruthEventKind.MessageSent, callId: index, declaredBytes: 0, status: "redirect-response-body",
+                            resourceName: Sha256([]));
+                        continue;
+                    }
+
                     server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: head.Length, status: "request-head",
                         resourceName: Sha256(head));
                     server.Write(TruthEventKind.MessageReceived, callId: index, declaredBytes: body.Length, status: "request-body",
@@ -1027,12 +1076,25 @@ internal static partial class HttpWinInetScenario
         }
     }
 
+    /// <summary>The index a request's target names, /fx/{index}, or /fx/{index}/moved where a redirect sent it.</summary>
     private static int RequestIndex(string head)
     {
         int start = head.IndexOf("/fx/", StringComparison.Ordinal) + 4;
-        int end = head.IndexOf(' ', start);
+        int end = start;
+        while (end < head.Length && char.IsAsciiDigit(head[end])) end++;
         return int.Parse(head.AsSpan(start, end - start), NumberStyles.None, CultureInfo.InvariantCulture);
     }
+
+    /// <summary>The reason phrase of a redirect's status.</summary>
+    private static string Reason(int status) => status switch
+    {
+        301 => "Moved Permanently",
+        302 => "Found",
+        303 => "See Other",
+        307 => "Temporary Redirect",
+        308 => "Permanent Redirect",
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Not a redirect the workload sends."),
+    };
 
     private static int ContentLength(string head)
     {
