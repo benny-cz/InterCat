@@ -1,0 +1,346 @@
+{
+  "fixture": "FX-COM-001",
+  "question": "Whether Microsoft-Windows-COM-Perf records each out-of-process COM call at both ends - its interface and method, the other end's process, its start joined to its stop - against a truth logging every call the client issued and the server served, and what its activation events and causality GUID can say.",
+  "answer": "In four runs - 64 calls paced, 256 and 1,024 unpaced, and four bursts of 128 - every truth call was one IDispatch::Invoke start at the client naming the server process and one at the server naming the client, each start joined to its stop by its trace number, and each client invoke paired with the server invoke of its causality and rank, the server's start inside the client's call. A causality names a chain of calls, one or two a run, not one call; the client's target thread names none of the server's serving threads and the server names no client thread, so threads pair nothing. Every call's other calls - GetIDsOfNames and the remote QueryInterface, AddRef and Release of IRundown - were recorded alike. Activations were recorded with no field: what was activated is not named. Nothing was lost in any run.",
+  "throughALabSession": {
+    "runs": [
+      {
+        "run": "bursts-20261104T150125Z",
+        "bench": "bench/results/com-perf-feasibility-bursts-20261104T150125Z",
+        "workload": {
+          "calls": 512,
+          "delay": 1000,
+          "burst": 128
+        },
+        "session": {
+          "eventsLost": 0,
+          "realTimeBuffersLost": 0,
+          "sourceEventsLost": 0,
+          "records": 7939,
+          "ofTheWorkload": 6168,
+          "processesRaisingRecords": 20
+        },
+        "truth": {
+          "issued": 512,
+          "completedOk": 512,
+          "served": 512
+        },
+        "client": {
+          "starts": 1539,
+          "stops": 1539,
+          "startsJoinedToAStopByTraceNumber": 1539,
+          "startsNamingTheServer": 1539,
+          "byInterfaceAndMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3 to server": 513,
+            "{00020400-0000-0000-c000-000000000046} method 5 to server": 512,
+            "{00020400-0000-0000-c000-000000000046} method 6 to server": 512,
+            "{00000134-0000-0000-c000-000000000046} method 4 to server": 1,
+            "{00000134-0000-0000-c000-000000000046} method 5 to server": 1
+          },
+          "stopsByHresult": {
+            "0x00000000": 1027,
+            "0x80004002": 512
+          },
+          "asyncCalls": 0,
+          "activationAndApartmentEvents": {
+            "49 COM_ApartmentInitialize ": 2,
+            "35 COM_GetClassFactory_InprocServerImpl win:Start": 1,
+            "36 COM_GetClassFactory_InprocServerImpl win:Stop": 1
+          }
+        },
+        "server": {
+          "starts": 1539,
+          "stops": 1539,
+          "startsJoinedToAStopByTraceNumber": 1539,
+          "startsNamingTheClient": 1539,
+          "byInterfaceAndMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3 to client": 513,
+            "{00020400-0000-0000-c000-000000000046} method 5 to client": 512,
+            "{00020400-0000-0000-c000-000000000046} method 6 to client": 512,
+            "{00000134-0000-0000-c000-000000000046} method 4 to client": 1,
+            "{00000134-0000-0000-c000-000000000046} method 5 to client": 1
+          },
+          "stopsByHresult": {
+            "0x00000000": 1027,
+            "0x80004002": 512
+          },
+          "asyncCalls": 0,
+          "activationAndApartmentEvents": {
+            "49 COM_ApartmentInitialize ": 2,
+            "35 COM_GetClassFactory_InprocServerImpl win:Start": 2,
+            "36 COM_GetClassFactory_InprocServerImpl win:Stop": 2,
+            "5 COM_CreateInstance win:Start": 1,
+            "6 COM_CreateInstance win:Stop": 1
+          }
+        },
+        "invokes": {
+          "clientInvokesToTheServer": 512,
+          "serverInvokesFromTheClient": 512,
+          "clientInvokesWhoseCausalityAServerInvokeCarries": 512,
+          "causalities": 2,
+          "pairedByCausalityAndRank": 512,
+          "pairsServedInsideTheClientsCall": 512,
+          "clientInvokesNamingAServingThreadOfTheServer": 0,
+          "serverInvokesNamingNoClientThread": 512
+        }
+      },
+      {
+        "run": "long-20261104T150121Z",
+        "bench": "bench/results/com-perf-feasibility-long-20261104T150121Z",
+        "workload": {
+          "calls": 1024,
+          "delay": 0,
+          "burst": 0
+        },
+        "session": {
+          "eventsLost": 0,
+          "realTimeBuffersLost": 0,
+          "sourceEventsLost": 0,
+          "records": 17300,
+          "ofTheWorkload": 12312,
+          "processesRaisingRecords": 21
+        },
+        "truth": {
+          "issued": 1024,
+          "completedOk": 1024,
+          "served": 1024
+        },
+        "client": {
+          "starts": 3075,
+          "stops": 3075,
+          "startsJoinedToAStopByTraceNumber": 3075,
+          "startsNamingTheServer": 3075,
+          "byInterfaceAndMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3 to server": 1025,
+            "{00020400-0000-0000-c000-000000000046} method 5 to server": 1024,
+            "{00020400-0000-0000-c000-000000000046} method 6 to server": 1024,
+            "{00000134-0000-0000-c000-000000000046} method 4 to server": 1,
+            "{00000134-0000-0000-c000-000000000046} method 5 to server": 1
+          },
+          "stopsByHresult": {
+            "0x00000000": 2051,
+            "0x80004002": 1024
+          },
+          "asyncCalls": 0,
+          "activationAndApartmentEvents": {
+            "49 COM_ApartmentInitialize ": 2,
+            "35 COM_GetClassFactory_InprocServerImpl win:Start": 1,
+            "36 COM_GetClassFactory_InprocServerImpl win:Stop": 1
+          }
+        },
+        "server": {
+          "starts": 3075,
+          "stops": 3075,
+          "startsJoinedToAStopByTraceNumber": 3075,
+          "startsNamingTheClient": 3075,
+          "byInterfaceAndMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3 to client": 1025,
+            "{00020400-0000-0000-c000-000000000046} method 5 to client": 1024,
+            "{00020400-0000-0000-c000-000000000046} method 6 to client": 1024,
+            "{00000134-0000-0000-c000-000000000046} method 4 to client": 1,
+            "{00000134-0000-0000-c000-000000000046} method 5 to client": 1
+          },
+          "stopsByHresult": {
+            "0x00000000": 2051,
+            "0x80004002": 1024
+          },
+          "asyncCalls": 0,
+          "activationAndApartmentEvents": {
+            "49 COM_ApartmentInitialize ": 2,
+            "35 COM_GetClassFactory_InprocServerImpl win:Start": 2,
+            "36 COM_GetClassFactory_InprocServerImpl win:Stop": 2,
+            "5 COM_CreateInstance win:Start": 1,
+            "6 COM_CreateInstance win:Stop": 1
+          }
+        },
+        "invokes": {
+          "clientInvokesToTheServer": 1024,
+          "serverInvokesFromTheClient": 1024,
+          "clientInvokesWhoseCausalityAServerInvokeCarries": 1024,
+          "causalities": 1,
+          "pairedByCausalityAndRank": 1024,
+          "pairsServedInsideTheClientsCall": 1024,
+          "clientInvokesNamingAServingThreadOfTheServer": 0,
+          "serverInvokesNamingNoClientThread": 1024
+        }
+      },
+      {
+        "run": "paced-20261104T150111Z",
+        "bench": "bench/results/com-perf-feasibility-paced-20261104T150111Z",
+        "workload": {
+          "calls": 64,
+          "delay": 5,
+          "burst": 0
+        },
+        "session": {
+          "eventsLost": 0,
+          "realTimeBuffersLost": 0,
+          "sourceEventsLost": 0,
+          "records": 1260,
+          "ofTheWorkload": 792,
+          "processesRaisingRecords": 11
+        },
+        "truth": {
+          "issued": 64,
+          "completedOk": 64,
+          "served": 64
+        },
+        "client": {
+          "starts": 195,
+          "stops": 195,
+          "startsJoinedToAStopByTraceNumber": 195,
+          "startsNamingTheServer": 195,
+          "byInterfaceAndMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3 to server": 65,
+            "{00020400-0000-0000-c000-000000000046} method 5 to server": 64,
+            "{00020400-0000-0000-c000-000000000046} method 6 to server": 64,
+            "{00000134-0000-0000-c000-000000000046} method 4 to server": 1,
+            "{00000134-0000-0000-c000-000000000046} method 5 to server": 1
+          },
+          "stopsByHresult": {
+            "0x00000000": 131,
+            "0x80004002": 64
+          },
+          "asyncCalls": 0,
+          "activationAndApartmentEvents": {
+            "49 COM_ApartmentInitialize ": 2,
+            "35 COM_GetClassFactory_InprocServerImpl win:Start": 1,
+            "36 COM_GetClassFactory_InprocServerImpl win:Stop": 1
+          }
+        },
+        "server": {
+          "starts": 195,
+          "stops": 195,
+          "startsJoinedToAStopByTraceNumber": 195,
+          "startsNamingTheClient": 195,
+          "byInterfaceAndMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3 to client": 65,
+            "{00020400-0000-0000-c000-000000000046} method 5 to client": 64,
+            "{00020400-0000-0000-c000-000000000046} method 6 to client": 64,
+            "{00000134-0000-0000-c000-000000000046} method 4 to client": 1,
+            "{00000134-0000-0000-c000-000000000046} method 5 to client": 1
+          },
+          "stopsByHresult": {
+            "0x00000000": 131,
+            "0x80004002": 64
+          },
+          "asyncCalls": 0,
+          "activationAndApartmentEvents": {
+            "49 COM_ApartmentInitialize ": 2,
+            "35 COM_GetClassFactory_InprocServerImpl win:Start": 2,
+            "36 COM_GetClassFactory_InprocServerImpl win:Stop": 2,
+            "5 COM_CreateInstance win:Start": 1,
+            "6 COM_CreateInstance win:Stop": 1
+          }
+        },
+        "invokes": {
+          "clientInvokesToTheServer": 64,
+          "serverInvokesFromTheClient": 64,
+          "clientInvokesWhoseCausalityAServerInvokeCarries": 64,
+          "causalities": 2,
+          "pairedByCausalityAndRank": 64,
+          "pairsServedInsideTheClientsCall": 64,
+          "clientInvokesNamingAServingThreadOfTheServer": 0,
+          "serverInvokesNamingNoClientThread": 64
+        }
+      },
+      {
+        "run": "unpaced-20261104T150116Z",
+        "bench": "bench/results/com-perf-feasibility-unpaced-20261104T150116Z",
+        "workload": {
+          "calls": 256,
+          "delay": 0,
+          "burst": 0
+        },
+        "session": {
+          "eventsLost": 0,
+          "realTimeBuffersLost": 0,
+          "sourceEventsLost": 0,
+          "records": 12112,
+          "ofTheWorkload": 3096,
+          "processesRaisingRecords": 29
+        },
+        "truth": {
+          "issued": 256,
+          "completedOk": 256,
+          "served": 256
+        },
+        "client": {
+          "starts": 771,
+          "stops": 771,
+          "startsJoinedToAStopByTraceNumber": 771,
+          "startsNamingTheServer": 771,
+          "byInterfaceAndMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3 to server": 257,
+            "{00020400-0000-0000-c000-000000000046} method 5 to server": 256,
+            "{00020400-0000-0000-c000-000000000046} method 6 to server": 256,
+            "{00000134-0000-0000-c000-000000000046} method 4 to server": 1,
+            "{00000134-0000-0000-c000-000000000046} method 5 to server": 1
+          },
+          "stopsByHresult": {
+            "0x00000000": 515,
+            "0x80004002": 256
+          },
+          "asyncCalls": 0,
+          "activationAndApartmentEvents": {
+            "49 COM_ApartmentInitialize ": 2,
+            "35 COM_GetClassFactory_InprocServerImpl win:Start": 1,
+            "36 COM_GetClassFactory_InprocServerImpl win:Stop": 1
+          }
+        },
+        "server": {
+          "starts": 771,
+          "stops": 771,
+          "startsJoinedToAStopByTraceNumber": 771,
+          "startsNamingTheClient": 771,
+          "byInterfaceAndMethod": {
+            "{00000134-0000-0000-c000-000000000046} method 3 to client": 257,
+            "{00020400-0000-0000-c000-000000000046} method 5 to client": 256,
+            "{00020400-0000-0000-c000-000000000046} method 6 to client": 256,
+            "{00000134-0000-0000-c000-000000000046} method 4 to client": 1,
+            "{00000134-0000-0000-c000-000000000046} method 5 to client": 1
+          },
+          "stopsByHresult": {
+            "0x00000000": 515,
+            "0x80004002": 256
+          },
+          "asyncCalls": 0,
+          "activationAndApartmentEvents": {
+            "49 COM_ApartmentInitialize ": 2,
+            "35 COM_GetClassFactory_InprocServerImpl win:Start": 2,
+            "36 COM_GetClassFactory_InprocServerImpl win:Stop": 2,
+            "5 COM_CreateInstance win:Start": 1,
+            "6 COM_CreateInstance win:Stop": 1
+          }
+        },
+        "invokes": {
+          "clientInvokesToTheServer": 256,
+          "serverInvokesFromTheClient": 256,
+          "clientInvokesWhoseCausalityAServerInvokeCarries": 256,
+          "causalities": 1,
+          "pairedByCausalityAndRank": 256,
+          "pairsServedInsideTheClientsCall": 256,
+          "clientInvokesNamingAServingThreadOfTheServer": 0,
+          "serverInvokesNamingNoClientThread": 256
+        }
+      }
+    ],
+    "delivery": {
+      "realTimeDisposedBeforeTheReaderWasDone": {
+        "runs": 17,
+        "complete": 11
+      },
+      "realTimeDrainedBeforeDisposal": {
+        "runs": 10,
+        "complete": 10
+      },
+      "toAFile": {
+        "runs": 6,
+        "complete": 6
+      },
+      "note": "Unpaced runs of 256 calls, except one of 1,024. Disposing a real-time session closes its source, which dropped the buffers its stop delivered before the reader took them: the runs missing records lost every one after a point, and ETW reported nothing lost. Drained first, and to a file, every run held every call."
+    },
+    "ledger": "fixtures/FX-COM-001/evidence/ledger.csv, of the paced run: each workload record's time, the role of the process it was raised in, its event, call trace number, the role at its other end, interface, method, causality and HRESULT - never a PID, a thread, a pointer or an IPID.",
+    "session": "COM-Perf enabled machine-wide at verbose, every keyword, in a real-time session of the probe's own, its final losses read from its stop as the product's capture reads them; the workload's processes do not exist before it starts, so its records are those raised in them. Whether a process filter holds for it is not measured."
+  }
+}

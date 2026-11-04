@@ -128,6 +128,15 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Port = Integer(args, "--port") ?? 0,
     };
 
+    var comOptions = new ComLoopbackOptions
+    {
+        TruthDirectory = truth,
+        Calls = Integer(args, "--calls") ?? 64,
+        InterCallDelayMilliseconds = Integer(args, "--delay") ?? 5,
+        Burst = Integer(args, "--burst") ?? 0,
+        Moniker = Option(args, "--moniker"),
+    };
+
     if (args[0].StartsWith("unix-loopback", StringComparison.Ordinal) && churn && hold > 0)
     {
         await Console.Error.WriteLineAsync("--churn and --hold are two fixtures, FX-UNIX-002 and FX-UNIX-003: a run is one of them.")
@@ -155,6 +164,14 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             "pipe-loopback-client" when OperatingSystem.IsWindows() =>
                 await PipeLoopbackScenario.RunClientAsync(pipeOptions, cancellationToken).ConfigureAwait(false),
             "pipe-loopback" or "pipe-loopback-server" or "pipe-loopback-client" =>
+                await UnsupportedPlatformAsync().ConfigureAwait(false),
+            "com-loopback" when OperatingSystem.IsWindows() =>
+                await ComLoopbackScenario.RunCoordinatorAsync(comOptions, cancellationToken).ConfigureAwait(false),
+            "com-loopback-server" when OperatingSystem.IsWindows() =>
+                await ComLoopbackScenario.RunServerAsync(comOptions, cancellationToken).ConfigureAwait(false),
+            "com-loopback-client" when OperatingSystem.IsWindows() =>
+                await ComLoopbackScenario.RunClientAsync(comOptions, cancellationToken).ConfigureAwait(false),
+            "com-loopback" or "com-loopback-server" or "com-loopback-client" =>
                 await UnsupportedPlatformAsync().ConfigureAwait(false),
             "rpc-local" when OperatingSystem.IsWindows() =>
                 await RpcLocalScenario.RunCoordinatorAsync(rpcOptions, cancellationToken).ConfigureAwait(false),
@@ -246,6 +263,13 @@ static void PrintHelp()
     Console.WriteLine("      the kernel creates at addresses earlier ones held. --hold runs it as FX-UNIX-003: by default eight");
     Console.WriteLine("      connections opened at once, each waiting that many milliseconds before its first of 16 messages,");
     Console.WriteLine("      unpaced, so a capture started meanwhile finds them open.");
+    Console.WriteLine();
+    Console.WriteLine("  com-loopback --truth <dir> [--calls n] [--delay ms] [--burst n]");
+    Console.WriteLine("      FX-COM-001: a two-process out-of-process COM exchange. The server puts an automation object in");
+    Console.WriteLine("      the running object table under an item moniker of its own, and the client takes it from there and");
+    Console.WriteLine("      calls it through IDispatch, each process logging every call it made or served. Nothing is");
+    Console.WriteLine("      registered with the machine. --burst has the client make its calls in bursts of that many,");
+    Console.WriteLine("      unpaced, the delay between bursts. Windows only.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

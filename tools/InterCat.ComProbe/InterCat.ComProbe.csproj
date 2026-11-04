@@ -1,9 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- The source-generated interop of its session stop, which reads the final loss counters ETW states only there. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <!-- For each candidate provider's registered schema, read as the product's inventory reads it. -->
     <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- A lab probe, not a product adapter: its own session reads Microsoft-Windows-COM-Perf, to measure what it records of
+         an out-of-process COM exchange before any profile admits it. -->
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,118 @@
+{
+  "schema": "intercat.com-perf-feasibility.v1",
+  "measuredUtc": "2026-11-04T15:01:33.8241937+00:00",
+  "build": "10.0.26220.0-x64",
+  "workload": {
+    "calls": 512,
+    "delay": 1000,
+    "burst": 128
+  },
+  "delivery": "real-time",
+  "session": {
+    "eventsLost": 0,
+    "realTimeBuffersLost": 0,
+    "sourceEventsLost": 0,
+    "records": 7939,
+    "unreadable": 0,
+    "dropped": 0,
+    "byProcess": {
+      "another process": 1771,
+      "server": 3086,
+      "client": 3082
+    },
+    "processesRaisingRecords": 20,
+    "note": "COM-Perf was enabled machine-wide at verbose, every keyword: the workload\u0027s processes do not exist before the session starts, so its records are those raised in them."
+  },
+  "truth": {
+    "issued": 512,
+    "completedOk": 512,
+    "served": 512
+  },
+  "client": {
+    "byEvent": {
+      "49 COM_ApartmentInitialize ": 2,
+      "39 COM_ClientSyncCall win:Start": 1539,
+      "40 COM_ClientSyncCall win:Stop": 1539,
+      "35 COM_GetClassFactory_InprocServerImpl win:Start": 1,
+      "36 COM_GetClassFactory_InprocServerImpl win:Stop": 1
+    },
+    "syncCalls": {
+      "starts": 1539,
+      "stops": 1539,
+      "startsJoinedToAStopByTraceNumber": 1539,
+      "startsNamingTheOtherWorkloadProcess": 1539,
+      "byInterfaceAndMethod": {
+        "{00000134-0000-0000-c000-000000000046} method 3 to server": 513,
+        "{00020400-0000-0000-c000-000000000046} method 5 to server": 512,
+        "{00020400-0000-0000-c000-000000000046} method 6 to server": 512,
+        "{00000134-0000-0000-c000-000000000046} method 4 to server": 1,
+        "{00000134-0000-0000-c000-000000000046} method 5 to server": 1
+      },
+      "stopsByHresult": {
+        "0x00000000": 1027,
+        "0x80004002": 512
+      }
+    },
+    "asyncCalls": {
+      "starts": 0,
+      "stops": 0,
+      "startsJoinedToAStopByTraceNumber": 0,
+      "startsNamingTheOtherWorkloadProcess": 0,
+      "byInterfaceAndMethod": {},
+      "stopsByHresult": {}
+    }
+  },
+  "server": {
+    "byEvent": {
+      "49 COM_ApartmentInitialize ": 2,
+      "43 COM_ServerSyncCall win:Start": 1539,
+      "44 COM_ServerSyncCall win:Stop": 1539,
+      "35 COM_GetClassFactory_InprocServerImpl win:Start": 2,
+      "36 COM_GetClassFactory_InprocServerImpl win:Stop": 2,
+      "5 COM_CreateInstance win:Start": 1,
+      "6 COM_CreateInstance win:Stop": 1
+    },
+    "syncCalls": {
+      "starts": 1539,
+      "stops": 1539,
+      "startsJoinedToAStopByTraceNumber": 1539,
+      "startsNamingTheOtherWorkloadProcess": 1539,
+      "byInterfaceAndMethod": {
+        "{00000134-0000-0000-c000-000000000046} method 3 to client": 513,
+        "{00020400-0000-0000-c000-000000000046} method 5 to client": 512,
+        "{00020400-0000-0000-c000-000000000046} method 6 to client": 512,
+        "{00000134-0000-0000-c000-000000000046} method 4 to client": 1,
+        "{00000134-0000-0000-c000-000000000046} method 5 to client": 1
+      },
+      "stopsByHresult": {
+        "0x00000000": 1027,
+        "0x80004002": 512
+      }
+    },
+    "asyncCalls": {
+      "starts": 0,
+      "stops": 0,
+      "startsJoinedToAStopByTraceNumber": 0,
+      "startsNamingTheOtherWorkloadProcess": 0,
+      "byInterfaceAndMethod": {},
+      "stopsByHresult": {}
+    }
+  },
+  "invokes": {
+    "clientInvokesToTheServer": 512,
+    "serverInvokesFromTheClient": 512,
+    "clientInvokesWhoseCausalityAServerInvokeCarries": 512,
+    "distinctCausalitiesOfClientInvokes": 2,
+    "pairedByCausalityAndRank": 512,
+    "pairsWhoseThreadsNameEachOther": 0,
+    "pairsServedInsideTheClientsCall": 512,
+    "clientInvokesNamingNoServerThread": 0,
+    "clientInvokesNamingAServingThreadOfTheServer": 0,
+    "serverInvokesNamingNoClientThread": 512,
+    "serverInvokesNamingACallingThreadOfTheClient": 0,
+    "distinctServingThreads": 1,
+    "distinctCallingThreads": 2,
+    "truthCallsWithAnInvokeWithin50Ms": 512,
+    "servedCallsWithAServerInvokeWithin50Ms": 512
+  }
+}

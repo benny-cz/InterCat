@@ -381,6 +381,50 @@
       ]
     },
     {
+      "id": "FX-COM-001",
+      "title": "Out-of-process COM calls through the running object table, as Microsoft-Windows-COM-Perf records them",
+      "scenario": "Plan M6's COM/DCOM/WinRT work package (§4.2, ADR-077): a server process puts an automation object in the running object table under an item moniker of its own, and a client process takes it from there and calls it through IDispatch - 64 to 1,024 calls, paced, unpaced and in bursts; nothing is registered with the machine. Read by a lab session of tools/InterCat.ComProbe enabling COM-Perf machine-wide.",
+      "milestone": "M6",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [],
+        "invariants": [],
+        "prohibitions": [
+          "P7",
+          "P8"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads com-loopback --calls 64 --delay 5, under tools/InterCat.ComProbe --measure",
+        "seed": 0,
+        "log": "fixtures/FX-COM-001/evidence/truth-client.jsonl",
+        "independence": "Each process logs every call it issued or served through ordinary COM, by its number; neither reads InterCat state, and the probe's session reads the provider's records apart from both."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-COM-001/evidence/measurement.json",
+        "note": "Four runs under a lab session reading COM-Perf machine-wide, nothing lost: every truth call an IDispatch::Invoke start at the client naming the server and one at the server naming the client, each start joined to its stop by its trace number, each client invoke paired with the server invoke of its causality and rank, the server's start inside the client's call. A causality names a chain of calls, threads name nothing the other end recorded, and activations carry no field. The paced run's ledger is held to its truth by tests."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-04",
+          "result": "Measured by tools/InterCat.ComProbe, four runs, nothing lost: every out-of-process call of the exchange recorded at both ends with its interface, method and other end's process. No tier is assigned: no source is inventoried, as no mechanism for COM calls exists yet, and the provider's cost is not measured (ADR-077)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two processes' truth logs and scenario of the paced run - calls by their number, of a synthetic object - and the ledger of the workload's COM-Perf records: each one's time, the role of the process it was raised in, its event, call trace number, the role at its other end, interface, method, causality and HRESULT, never a PID, a thread, a pointer or an IPID; and the measurement's counters."
+      },
+      "tests": [
+        "P8: FX-COM-001's COM-Perf records pair as measured - each truth call one invoke at the client and one at the server, of its causality and rank, the server's inside the client's call, each start joined to its stop by its trace number",
+        "P7: FX-COM-001's every COM-Perf call names the other workload process at both ends, its threads pairing nothing, and its activations name nothing to count as a call"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -2137,6 +2181,7 @@
         "P6: when lifecycle evidence cannot tell incarnations apart, only an other end they all agree on is named"
       ],
       "P7": [
+        "P7: FX-COM-001's every COM-Perf call names the other workload process at both ends, its threads pairing nothing, and its activations name nothing to count as a call",
         "P7: a client call and a server call are never paired, even when they carry one activity id",
         "P7: a peer is claimed only when the two sides share an activity, and is checked against truth",
         "P7: a pipe peer pairing is checked against the truth log rather than assumed",
@@ -2144,6 +2189,7 @@
         "P7: a process's one-sided connections are its channels no record's other end holds, named by their endpoints, never by a guessed peer"
       ],
       "P8": [
+        "P8: FX-COM-001's COM-Perf records pair as measured - each truth call one invoke at the client and one at the server, of its causality and rank, the server's inside the client's call, each start joined to its stop by its trace number",
         "P8: FX-RPC-001's calls pair as measured - 62 client calls by activity id, 61 served ones",
         "P8: a channel's calls page in reading order, and each call's key finds it again",
         "P8: a completion is paired by I/O request identity, not by time proximity",

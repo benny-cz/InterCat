@@ -33,14 +33,20 @@ internal static class Program
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    private static int Main(string[] args)
+    private static async Task<int> Main(string[] args)
     {
         string? output = Option(args, "--output");
-        if (!args.Contains("--inspect", StringComparer.Ordinal) || output is null)
+        bool inspect = args.Contains("--inspect", StringComparer.Ordinal);
+        bool measure = args.Contains("--measure", StringComparer.Ordinal);
+        if (inspect == measure || output is null)
         {
             Console.Error.WriteLine("InterCat.ComProbe --inspect --output <new directory>");
             Console.Error.WriteLine("  Reads, without enabling any, the registered schema of each provider this machine has for COM,");
             Console.Error.WriteLine("  DCOM, OLE, COM+, RPCSS and WinRT, and writes each one's keywords and events with their fields.");
+            Console.Error.WriteLine("InterCat.ComProbe --measure --output <new directory> [--calls n] [--delay ms] [--ledger]");
+            Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]: runs FX-COM-001 under a session of its own reading");
+            Console.Error.WriteLine("  Microsoft-Windows-COM-Perf machine-wide, and writes counters of what it recorded of the workload's");
+            Console.Error.WriteLine("  calls, and with --ledger each of its records' metadata, never a pointer.");
             return 2;
         }
 
@@ -52,6 +58,11 @@ internal static class Program
         }
 
         Directory.CreateDirectory(output);
+        return measure ? await Measure.RunAsync(output, args) : Inspect(output);
+    }
+
+    private static int Inspect(string output)
+    {
         var metadata = new TdhEtwMetadataSource();
         var providers = new List<object>();
         foreach (string name in Candidates)

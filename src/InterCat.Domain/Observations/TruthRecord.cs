@@ -18,6 +18,9 @@ public enum TruthEventKind
 
     /// <summary>The completion the workload observed for a call it issued.</summary>
     CallCompleted = 11,
+
+    /// <summary>A call the workload served, logged by its server as it ran: the other end of a call another process issued.</summary>
+    CallServed = 12,
 }
 
 /// <summary>

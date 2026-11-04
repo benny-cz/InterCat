@@ -831,6 +831,7 @@ Revision 904 adds FX-UNIX-003, AF_UNIX's ambiguity case (ADR-073's addendum): of
 Revision 905 refuses a gated source whose machine's schema does not admit a field its gate decides by (ADR-074's addendum), AF_UNIX's schema-failure case: the Unix sockets profile does not start on such a build and says why, where its gate would have read the field as zero and followed no socket.
 Revision 906 has `icat processes` name the `icat evidence` command that lists each of a process's AF_UNIX records with its source record (ADR-076's addendum): the drill-down is exact, 413 of 413 records and every byte on a recording, and with it the Unix-domain sockets package meets M6's exit tests.
 Revision 907 begins M6's COM/DCOM/WinRT package with its metadata inspection (§4.2): `Microsoft-Windows-COM-Perf` declares client and server call events, each start with the call's interface, method, causality GUID and other end's process, and activation events carrying no field; nothing is enabled or implemented.
+Revision 908 measures COM-Perf against FX-COM-001 (ADR-077): every out-of-process call of four runs was recorded at both ends with its interface, method and other end's process, each client call paired with the server's by causality and rank; its activations name nothing, and no source is inventoried until a mechanism for COM calls exists.
 
 ## Revisions, a paragraph each, in order
 
@@ -3552,3 +3553,16 @@ COMRuntime declares a call-delay event under a wait-analysis keyword, COM-Rundow
 events by OID and IPID, and RPCSS the endpoint mapper's registrations; DistributedCOM's and COM+'s events are
 event-log messages of string parameters. §4.2 records it as evidence of schemas on one machine, not of emission:
 COM-Perf is measured against a truth fixture before any field is implemented.
+
+Revision 908 gives the COM/DCOM/WinRT package its capability result. `InterCat.TestWorkloads com-loopback` has a server
+put an automation object in the running object table under a moniker of its own and a client call it through
+`IDispatch`, each logging every call it issued or served, a truth's new `CallServed`; nothing is registered with the
+machine. `tools/InterCat.ComProbe --measure` ran it under a session of its own reading COM-Perf machine-wide. In four
+runs, 64 to 1,024 calls paced, unpaced and in bursts, every call was an invoke start at the client naming the server
+and one at the server naming the client, each start joined to its stop by its trace number, nothing lost. A causality
+names a chain of calls and threads name nothing the other end recorded, so a call's ends pair by causality and rank, the
+server's start inside the client's call; activations carry no field. An earlier probe disposed its real-time session
+before its reader took the stop's buffers and lost a run's tail in 6 of 17 runs with ETW reporting nothing lost;
+drained first, 10 of 10 held every call, as the product's capture drains. EN-Mechanism names COM only as
+`ComActivation`, which a call is not, so no source is inventoried until a mechanism for COM calls exists. Tests hold
+the committed ledger to the truth; three alterations of it are caught.
