@@ -13,7 +13,7 @@ namespace InterCat.Capture.Windows.Tests;
 /// </summary>
 public sealed class UnixDomainSocketLeadTests
 {
-    [Fact(DisplayName = "P27: Unix-domain sockets have an inventoried source that no profile requests, and no tier on any build until a fixture measures one through it")]
+    [Fact(DisplayName = "P27: Unix-domain sockets have an inventoried source that no profile requests, its cost measured, and no tier on any build until a fixture measures one through it")]
     public void UnixDomainSocketsHaveALeadAndNoTier()
     {
         WindowsSourceDefinition afd = WindowsSourceCatalog.Find(WindowsSourceCatalog.WinsockAfdSourceId)!;
@@ -23,6 +23,15 @@ public sealed class UnixDomainSocketLeadTests
         Assert.Equal((SourceContractStatus.Experimental, false, 0UL),
             (afd.ContractStatus, afd.SupportsCaptureSideProcessFilter, afd.MatchAnyKeyword));
         Assert.Contains(afd.Notes, note => note.Contains("FX-UNIX-001", StringComparison.Ordinal));
+
+        // Its collection's cost is measured, and Moderate: collected machine-wide, as its process filter does not hold.
+        Assert.Equal(OverheadClass.Moderate, afd.Overhead);
+        Assert.True(File.Exists(Path.Combine(RepositoryRoot(), afd.OverheadEvidence!)), afd.OverheadEvidence);
+        using (JsonDocument impact = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepositoryRoot(), afd.OverheadEvidence!))))
+        {
+            Assert.Equal(afd.Overhead.ToString(), impact.RootElement.GetProperty("overhead").GetString());
+            Assert.Equal(0, impact.RootElement.GetProperty("eventsLost").GetInt64());
+        }
 
         // No profile requests it, and no other source claims the mechanism.
         Assert.DoesNotContain(CaptureProfileCatalog.All,

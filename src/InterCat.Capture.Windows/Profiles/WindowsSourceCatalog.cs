@@ -795,13 +795,19 @@ public static class WindowsSourceCatalog
             SupportsCaptureSideProcessFilter = false,
             FilteringNotes =
                 "No capture profile requests it. Measured on FX-UNIX-001: a session's process filter does not hold it - a "
-                + "decoy outside the filter had its every record delivered - so a capture requesting it would collect every "
-                + "socket call of every process, TCP's and UDP's too, a cost no measurement has stated yet.",
+                + "decoy outside the filter had its every record delivered - so a capture requesting it collects every socket "
+                + "call of every process, TCP's and UDP's too.",
             StartupBehaviour = "No rundown: a socket made before a capture starts has no create in it, so its records belong to no socket (R22).",
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Experimental,
+            Overhead = OverheadClass.Moderate,
+            OverheadEvidence = "bench/results/afd-impact-unix-20261104T063455Z/impact.json",
             Notes =
             [
+                "Collection alone, nine pairs each over AF_UNIX and TCP traffic at about 490,000 records a second machine-wide, "
+                + "loss-free: a median of 1.6 CPU pp over AF_UNIX's, where an earlier nine measured none, and 0.5 over TCP's, "
+                + "the workload 2.8 and 4.1% slower; the class is the higher, Moderate, so only an opt-in profile could "
+                + "admit it, as ALPC's.",
                 "Measured on FX-UNIX-001: every AF_UNIX socket of the workload's two processes - created with its family, "
                 + "bound, listening, connected, accepted and closed - and every send and receive with its length, exactly "
                 + "the truth's at both ends; Kernel-Network held none of it.",

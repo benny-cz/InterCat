@@ -68,6 +68,8 @@ internal static class Program
         {
             Console.Error.WriteLine("InterCat.AfdProbe --output <new directory> [--connections n] [--messages n] [--bytes n] [--delay ms]");
             Console.Error.WriteLine("  [--concurrency n] [--ledger] [--workload <InterCat.TestWorkloads.exe>]");
+            Console.Error.WriteLine("  [--impact [--pairs n] [--traffic unix|tcp]]: machine CPU and workload time with and without a session");
+            Console.Error.WriteLine("             collecting AFD machine-wide, in pairs, over eight connections at once unpaced");
             Console.Error.WriteLine("  Runs FX-UNIX-001's AF_UNIX exchange under a session of its own reading Winsock AFD, asked to scope it");
             Console.Error.WriteLine("  to the workload's two processes beside a decoy pair outside them, and Kernel-Network machine-wide;");
             Console.Error.WriteLine("  writes counters, and with --ledger each workload record's metadata, never a pointer or a byte.");
@@ -107,6 +109,23 @@ internal static class Program
             await WriteAsync(output, new { schema = Schema, measuredUtc = DateTimeOffset.UtcNow, schemaProblem });
             Console.Error.WriteLine("The AFD events do not have the layout this probe reads: " + schemaProblem);
             return 4;
+        }
+
+        // What collecting the provider costs, in pairs with and without a session collecting it machine-wide.
+        if (args.Contains("--impact", StringComparer.Ordinal))
+        {
+            int pairs = int.Parse(Option(args, "--pairs") ?? "7", CultureInfo.InvariantCulture);
+            string traffic = Option(args, "--traffic") ?? "unix";
+            string[] arguments = traffic switch
+            {
+                "unix" => ["unix-loopback", "--truth", "{truth}", "--connections", "8", "--concurrency", "8", "--messages", messages.ToString(CultureInfo.InvariantCulture), "--delay", "0"],
+                "tcp" => ["tcp-loopback", "--truth", "{truth}", "--connections", "8", "--concurrency", "8", "--messages", messages.ToString(CultureInfo.InvariantCulture), "--delay", "0"],
+                _ => throw new ArgumentException($"--traffic expects unix or tcp; '{traffic}' is neither."),
+            };
+            Dictionary<string, object?> impact = await Impact.MeasureAsync(workload, arguments, pairs);
+            await File.WriteAllTextAsync(Path.Combine(output, "impact.json"), JsonSerializer.Serialize(impact, Json));
+            Console.WriteLine(JsonSerializer.Serialize(impact, Json));
+            return 0;
         }
 
         string truth = Path.Combine(output, "truth");

@@ -155,7 +155,7 @@
     ]
   },
   "ledger": "fixtures/FX-UNIX-001/evidence/records.csv, of the run eight at once: each record on a socket the workload's two processes created, in time order - its milliseconds after the first, owner, the process whose thread raised it, thread, event, phase (EnterExit), location, a number standing for its socket's incarnation, never its address, the socket's family, its length and status - never a pointer, an address or a byte. A test counts it against the two truth logs.",
-  "note": "A send is recorded four times - two entries and two exits, by location - and a receive twice, each record with the call's length; a reader counting calls takes one location of each. No profile admits the source: its cost, collected machine-wide, is unmeasured.",
+  "note": "A send is recorded four times - two entries and two exits, by location - and a receive twice, each record with the call's length; a reader counting calls takes one location of each. No profile admits the source. Collected machine-wide, as its process filter does not hold, it costs Moderate: nine pairs each over AF_UNIX and TCP traffic at about 490,000 records a second measured a median of 1.6 and 0.5 CPU percentage points, an earlier nine none (bench/results/afd-impact-*).",
   "build": "10.0.26220.0-x64",
   "measuredDate": "2026-11-04"
 }

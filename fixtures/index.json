@@ -271,7 +271,7 @@
           "build": "10.0.26220.0-x64",
           "supportTier": "Primary",
           "date": "2026-11-04",
-          "result": "Measured by tools/InterCat.AfdProbe, three runs, nothing lost: every AF_UNIX socket call of the exchange recorded by Winsock AFD with its exact length, none by Kernel-Network. No tier is assigned: no profile admits the source, whose cost collected machine-wide is unmeasured, and a socket's name and peer are not observed (ADR-072)."
+          "result": "Measured by tools/InterCat.AfdProbe, three runs, nothing lost: every AF_UNIX socket call of the exchange recorded by Winsock AFD with its exact length, none by Kernel-Network. No tier is assigned: no profile admits the source, whose collection machine-wide costs Moderate (ADR-072), and a socket's name and peer are not observed."
         }
       ],
       "provenance": {
@@ -281,7 +281,7 @@
       },
       "tests": [
         "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
-        "P27: Unix-domain sockets have an inventoried source that no profile requests, and no tier on any build until a fixture measures one through it"
+        "P27: Unix-domain sockets have an inventoried source that no profile requests, its cost measured, and no tier on any build until a fixture measures one through it"
       ]
     },
     {
@@ -1990,7 +1990,7 @@
         "P26: a live preview never reaches the ranking, the interval table, a step, a brush or an export"
       ],
       "P27": [
-        "P27: Unix-domain sockets have an inventoried source that no profile requests, and no tier on any build until a fixture measures one through it",
+        "P27: Unix-domain sockets have an inventoried source that no profile requests, its cost measured, and no tier on any build until a fixture measures one through it",
         "P27: a build outside the matrix is untested, never probably working",
         "P27: a build's coverage names a tier measured on it, and names another build's evidence as another's",
         "P27: a fixture's tiers are tiers, agree with what its results say, and belong to its mechanism",

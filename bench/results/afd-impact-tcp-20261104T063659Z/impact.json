@@ -1,0 +1,118 @@
+{
+  "workload": "tcp-loopback --truth {truth} --connections 8 --concurrency 8 --messages 16384 --delay 0",
+  "pairs": [
+    {
+      "pair": 1,
+      "captureFirst": false,
+      "withoutBusyPercent": 38.413,
+      "withBusyPercent": 35.369,
+      "captureImpactPercentagePoints": 0,
+      "withoutSeconds": 3.945,
+      "withSeconds": 4.34,
+      "throughputRegressionPercent": 9.11,
+      "afdEventsPerSecond": 466862
+    },
+    {
+      "pair": 2,
+      "captureFirst": true,
+      "withoutBusyPercent": 38.315,
+      "withBusyPercent": 38.896,
+      "captureImpactPercentagePoints": 0.581,
+      "withoutSeconds": 4.017,
+      "withSeconds": 3.959,
+      "throughputRegressionPercent": 0,
+      "afdEventsPerSecond": 507893
+    },
+    {
+      "pair": 3,
+      "captureFirst": false,
+      "withoutBusyPercent": 36.628,
+      "withBusyPercent": 37.15,
+      "captureImpactPercentagePoints": 0.522,
+      "withoutSeconds": 3.931,
+      "withSeconds": 4.099,
+      "throughputRegressionPercent": 4.1,
+      "afdEventsPerSecond": 492172
+    },
+    {
+      "pair": 4,
+      "captureFirst": true,
+      "withoutBusyPercent": 38.234,
+      "withBusyPercent": 38.038,
+      "captureImpactPercentagePoints": 0,
+      "withoutSeconds": 3.975,
+      "withSeconds": 3.92,
+      "throughputRegressionPercent": 0,
+      "afdEventsPerSecond": 511570
+    },
+    {
+      "pair": 5,
+      "captureFirst": false,
+      "withoutBusyPercent": 36.009,
+      "withBusyPercent": 37.799,
+      "captureImpactPercentagePoints": 1.79,
+      "withoutSeconds": 3.85,
+      "withSeconds": 4.167,
+      "throughputRegressionPercent": 7.61,
+      "afdEventsPerSecond": 482870
+    },
+    {
+      "pair": 6,
+      "captureFirst": true,
+      "withoutBusyPercent": 38.758,
+      "withBusyPercent": 36.573,
+      "captureImpactPercentagePoints": 0,
+      "withoutSeconds": 4.018,
+      "withSeconds": 3.872,
+      "throughputRegressionPercent": 0,
+      "afdEventsPerSecond": 518136
+    },
+    {
+      "pair": 7,
+      "captureFirst": false,
+      "withoutBusyPercent": 39.116,
+      "withBusyPercent": 45.157,
+      "captureImpactPercentagePoints": 6.041,
+      "withoutSeconds": 3.985,
+      "withSeconds": 4.201,
+      "throughputRegressionPercent": 5.15,
+      "afdEventsPerSecond": 480904
+    },
+    {
+      "pair": 8,
+      "captureFirst": true,
+      "withoutBusyPercent": 38.478,
+      "withBusyPercent": 35.394,
+      "captureImpactPercentagePoints": 0,
+      "withoutSeconds": 3.961,
+      "withSeconds": 4.244,
+      "throughputRegressionPercent": 6.68,
+      "afdEventsPerSecond": 477472
+    },
+    {
+      "pair": 9,
+      "captureFirst": false,
+      "withoutBusyPercent": 35.661,
+      "withBusyPercent": 38.12,
+      "captureImpactPercentagePoints": 2.46,
+      "withoutSeconds": 4.096,
+      "withSeconds": 4.082,
+      "throughputRegressionPercent": 0,
+      "afdEventsPerSecond": 493639
+    }
+  ],
+  "medianObservedCpuDifferencePercentagePoints": 0.522,
+  "medianCaptureImpactPercentagePoints": 0.522,
+  "medianObservedWorkloadSlowdownPercent": 4.28,
+  "medianThroughputRegressionPercent": 4.1,
+  "overhead": "Low",
+  "cpuTargetMet": true,
+  "throughputTargetMet": true,
+  "medianAfdEventsPerSecond": 492172,
+  "eventsLost": 0,
+  "notes": [
+    "Machine CPU is the GetSystemTimes busy share over the workload alone; the session\u0027s start and stop are outside it.",
+    "The session collects AFD machine-wide, as a capture would since its process filter does not hold, and its consumer only counts events: this is the cost of collecting AFD, not of admitting or storing it, a lower bound on a product capture.",
+    "A pair\u0027s observed difference is kept signed; its impact, as the product classifies it, is the difference or none, and its regression the slowdown or none."
+  ]
+}

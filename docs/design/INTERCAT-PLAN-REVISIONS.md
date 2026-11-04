@@ -818,6 +818,8 @@ Revision 894 measures RPC over TCP (FX-RPC-002): a call over TCP is paired and c
 
 Revision 895 begins M6 with Unix-domain sockets' capability result (ADR-072, FX-UNIX-001): Winsock AFD records every AF_UNIX socket call of a truth exchange with its length, where TCP/IP's tracing records none, but its process filter does not hold, a socket is its create to the next create at a reused kernel address, and no socket's whole path or peer is named; it is inventoried as the mechanism's lead, requested by no profile, with no tier.
 
+Revision 896 measures what collecting Winsock AFD machine-wide costs: at about 490,000 records a second, a median of 0.5 to 1.6 CPU percentage points over two series of nine pairs a traffic, near the Low ceiling, so the catalog states Moderate and a profile admitting it is opt-in.
+
 ## Revisions, a paragraph each, in order
 
 Revision 173 relates IPv6 ends: `transport-endpoint-relation-v4` keys an end by its family and 128-bit addresses, so an IPv6 connection or datagram flow finds its other end, its peer and its channel as an IPv4 one does. The family is part of the key, so the two families never meet. An IPv4-mapped address is kept as the source named it rather than equated with its IPv4 host, because no capture has shown the source needs that. The rule identity changes because relation-dependent answers now read IPv6 records, which v3 left without an end, as revision 57 changed it for UDP. The rule's own contract (`relations-v1` §8) requires it, and the first plan for this slice missed that. That would have cost every existing session its checkpoint and made its reopen read every segment again. So a checkpoint of v3 is read as v4's where the two are provably one state: where it counts no related record without an end, which is every scale-gate session and every capture whose transport records name both endpoints (`derivation-checkpoint-v1` §4, format 1.2). On this machine the §12 gates at 10M read the same under this build as under revision 171's, three runs each.
@@ -3396,3 +3398,14 @@ mechanism's lead - inventoried, requested by no profile and admitting no event -
 no build carries a tier for Unix-domain sockets (P27). Tests hold the lead and its absence of a tier, and count the
 fixture's ledger, each record by its socket's incarnation, against the truth at both ends; four mutations are caught.
 The cost of collecting AFD machine-wide comes before any profile admits it.
+
+Revision 896 measures that cost (ADR-072). The lab probe's `--impact` runs eight connections at once unpaced, in
+alternating pairs with and without a session collecting AFD machine-wide - as a capture would, its process filter not
+holding - a consumer only counting its records, and classifies each series as the product classifies a capture's cost,
+each pair's impact the CPU difference or none. Two series of nine pairs over each traffic, at about 490,000 AFD records
+a second and loss-free, measured over AF_UNIX's a median of 1.6 CPU percentage points, Moderate, where the earlier series
+measured none, and over TCP's 0.5 points and none, Low, the workload 1.7-4.1% slower. Pairs ranged from 4.6 points below
+to 7.6 above on a machine 15-40% busy, so the class sits near the Low ceiling; the catalog states the higher, Moderate,
+with its evidence, as ALPC's is, so a profile admitting AFD is opt-in, never Explore. A first series, which counted its
+records before the session flushed them over runs too short to measure, was discarded. Tests hold the class and that
+its evidence says the same; three mutations are caught.

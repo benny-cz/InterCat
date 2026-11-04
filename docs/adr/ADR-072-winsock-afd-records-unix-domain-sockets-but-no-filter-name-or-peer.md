@@ -62,3 +62,25 @@ provider's registered layout. Three runs: 4 connections one at a time, 8 at once
   counts it against the truth.
 - The other M6 packages - COM and DCOM annotations, synchronization objects, mailslots, UI messaging and section
   discovery - are not begun.
+
+## Addendum: what collecting it costs (revision 896)
+
+`InterCat.AfdProbe --impact` ran a socket-heavy workload - eight connections at once, 16,384 messages each, unpaced - in
+alternating pairs, once with no session and once while a session of its own collected AFD's socket calls and transport
+indications machine-wide, as a capture would since its process filter does not hold, a consumer only counting them.
+Machine processor time over the workload is §12's measure, each pair's impact the difference or none, as the product
+classifies a capture's cost:
+
+| Series, nine pairs each | AFD records a second | Median impact | Workload slower by | Lost |
+|---|---|---|---|---|
+| AF_UNIX traffic (`bench/results/afd-impact-unix-20261104T063455Z`) | 489,584 | 1.6 pp: Moderate | 2.8% | none |
+| TCP traffic (`bench/results/afd-impact-tcp-20261104T063659Z`) | 492,172 | 0.5 pp: Low | 4.1% | none |
+| AF_UNIX, earlier (`bench/results/afd-impact-unix-first-20261104T062859Z`) | 492,425 | none: Low | 3.0% | none |
+| TCP, earlier (`bench/results/afd-impact-tcp-first-20261104T063101Z`) | 500,556 | none: Low | 1.7% | none |
+
+Pairs ranged from 4.6 points below to 7.6 above on a machine 15-40% busy, so the class sits near the Low ceiling; it is
+the higher, `Moderate`, as ALPC's is. The first decision's catalog entry now states it with this evidence, and the third
+decision's first step is met: a profile admitting AFD is opt-in, never Explore, which admits sources measured Low, and
+its records normalized by incarnation come next. The consumer only counts, so this is the cost of collection, a lower
+bound on a capture that admits and stores the records; a machine's own socket calls set its rate, which the workload
+drove to about 490,000 records a second where this workstation's background made a few hundred.
