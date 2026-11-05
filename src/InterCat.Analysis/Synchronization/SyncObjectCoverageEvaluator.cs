@@ -65,8 +65,9 @@ public sealed record SyncObjectCoverageResult
 /// Compares an independent truth log of named synchronization objects - each object a process created or opened by its name,
 /// and each handle it closed - with a capture's synchronization handle records (ADR-082, ADR-083), and computes the section
 /// 14.2 counters. A truth object is the one number the capture's closes naming it carry: a close is the only handle record a
-/// creation's name reaches, and the gate numbers an object from the first handle it saw made to the close of the last. It is
-/// discovered with its lifetime where that number has the creator's creation and every close the truth logged, each in the
+/// creation's name reaches, and the gate numbers an object from the first handle it saw made to the close of the last. A
+/// number two truth objects' closes name is neither's: the capture joined objects the truth says were apart. An object is
+/// discovered with its lifetime where its number has the creator's creation and every close the truth logged, each in the
 /// process that logged it, and its members - the processes its records bind to - are exactly the truth's: a process the
 /// truth says never held it is a false membership, and the object is not discovered. Its handle opens and closes are the
 /// truth's operations; a signal or a wait is in no record, so none is counted, and no record carries a size, so the
@@ -95,12 +96,25 @@ public static class SyncObjectCoverageEvaluator
         var objects = new List<SyncObjectTruthCoverage>();
         long truthOperations = 0;
         long observedOperations = 0;
+        long boundOperations = 0;
         long expectedMemberships = 0;
         long resolvedMemberships = 0;
         long attributions = 0;
         long falseAttributions = 0;
-        foreach (IGrouping<string, TruthRecord> named in handles.GroupBy(static record => record.ResourceName!, StringComparer.Ordinal)
-            .OrderBy(static group => group.Key, StringComparer.Ordinal))
+
+        // Each truth object's number: the one its closes' names carry, each naming it after its namespace.
+        (IGrouping<string, TruthRecord> Named, long[] Numbers)[] candidates =
+        [
+            .. handles.GroupBy(static record => record.ResourceName!, StringComparer.Ordinal).OrderBy(static group => group.Key, StringComparer.Ordinal)
+                .Select(named => (named, (long[])[.. inScope.Where(observation => observation.Kind == ObservationKind.Close && Names(observation.Name, named.Key)
+                    && observation.ObjectNumber is not null).Select(static observation => observation.ObjectNumber!.Value).Distinct().Order()])),
+        ];
+
+        // A number the closes of two truth objects name is neither's: the capture joined two objects the truth says were apart,
+        // as a gate following an address past an object's last close would join it to the next object the kernel made there.
+        HashSet<long> shared = [.. candidates.Where(static candidate => candidate.Numbers.Length == 1).GroupBy(static candidate => candidate.Numbers[0])
+            .Where(static group => group.Count() > 1).Select(static group => group.Key)];
+        foreach ((IGrouping<string, TruthRecord> named, long[] numbers) in candidates)
         {
             int[] holders = [.. named.Where(static record => record.Kind != TruthEventKind.HandleClosed).Select(static record => record.ProcessId)
                 .Distinct().Order()];
@@ -109,10 +123,6 @@ public static class SyncObjectCoverageEvaluator
                 .ToDictionary(static group => group.Key, static group => group.Count());
             truthOperations += named.Count();
             expectedMemberships += holders.Length;
-
-            // The object's number: the one its closes' names carry, each naming it after its namespace.
-            long[] numbers = [.. inScope.Where(observation => observation.Kind == ObservationKind.Close && Names(observation.Name, named.Key)
-                && observation.ObjectNumber is not null).Select(static observation => observation.ObjectNumber!.Value).Distinct().Order()];
             if (numbers.Length != 1)
             {
                 objects.Add(new(named.Key, holders, null, false, false, [], false, numbers.Length == 0
@@ -130,19 +140,23 @@ public static class SyncObjectCoverageEvaluator
             falseAttributions += falseMembers.Length;
             resolvedMemberships += members.Intersect(holders).Count();
 
-            // Each process's logged opens and closes against the records of the number bound to it, an open or a close.
+            // Each process's logged opens and closes against the records of the number bound to it, an open or a close: bound to
+            // its resource instance only where the number is the object's alone.
+            bool own = !shared.Contains(number);
             foreach (((int process, bool close), int count) in logged)
             {
                 int seen = records.Count(observation => observation.ProcessId == process
                     && (close ? observation.Kind == ObservationKind.Close : observation.Kind == ObservationKind.Open));
                 observedOperations += Math.Min(count, seen);
+                boundOperations += own ? Math.Min(count, seen) : 0;
             }
 
             bool creation = creators.Length == 1 && records.Any(observation => observation.Kind == ObservationKind.Open && observation.ProcessId == creators[0]);
             bool everyClose = logged.Where(static pair => pair.Key.Close).All(pair => records.Count(observation =>
                 observation.Kind == ObservationKind.Close && observation.ProcessId == pair.Key.Process) >= pair.Value);
-            bool discovered = creation && everyClose && falseMembers.Length == 0 && holders.All(members.Contains);
+            bool discovered = own && creation && everyClose && falseMembers.Length == 0 && holders.All(members.Contains);
             string? gap = discovered ? null
+                : !own ? "Its number is another truth object's too, so the number is no one object."
                 : falseMembers.Length > 0 ? "Its number is bound to a process the truth says never held it."
                 : !creation ? "No creation of its first handle, in the process that created it, carried its number."
                 : !everyClose ? "Not every close the truth logged was seen, in its own process, under its number."
@@ -158,11 +172,11 @@ public static class SyncObjectCoverageEvaluator
             Reproduced = settings.Reproduced,
             MeasuredOnSupportedBuild = settings.BuildIsSupported,
 
-            // A handle's open or close the truth logged, seen in its own process under its object's number: observed and bound
-            // to the object, its resource instance.
+            // A handle's open or close the truth logged, seen in its own process under its object's number: observed, and bound
+            // to the object, its resource instance, where that number is the object's alone.
             TruthOperations = truthOperations,
             TruthOperationsWithAdmittedObservation = observedOperations,
-            TruthOperationsBoundToResourceInstance = observedOperations,
+            TruthOperationsBoundToResourceInstance = boundOperations,
             PeerAttributions = attributions,
             FalsePeerAttributions = falseAttributions,
 

@@ -869,6 +869,7 @@ Revision 942 measures FX-SYNC-002 again (ADR-082's sixth addendum): every duplic
 Revision 943 measures the synchronization objects profile through the product (ADR-083's fifth addendum): on a handle-heavy workload a median 11.8 CPU pp and the workload 18.4% slower, nothing dropped or lost, so the profile states High, past both of §12's targets.
 Revision 944 adds `SyncObjectCoverageEvaluator` (ADR-084): a named synchronization object is the one number its closes name, discovered with its lifetime and bound to exactly the processes that held it, its measurement claiming neither bytes nor operations, so topology at most; no capture is measured by it yet.
 Revision 945 measures FX-SYNC-001 through the product (ADR-084's addendum): four runs of icat record under the synchronization objects profile, every named object one number from its creation to every logged close and bound to exactly its two processes, so named synchronization objects are topology only on 10.0.26220.0-x64.
+Revision 946 makes one number one object (ADR-084's second addendum): a number the closes of two truth objects name is neither's, so neither is discovered and their opens and closes bind to no object of their own.
 
 ## Revisions, a paragraph each, in order
 
@@ -4018,3 +4019,11 @@ bound to exactly the creator and the opener: 12 of 12 handle opens and closes a 
 traffic. Other processes' records on objects the workload's processes also held named no run object, and so are scope. A
 test reproduces the tier from the first run's ledger, eight alterations of the evidence caught, and the build's per-build
 coverage carries Synchronization at TopologyOnly from FX-SYNC-001.
+
+Revision 946 holds a named synchronization object to one number of its own (ADR-084's second addendum). The kernel makes
+a later object at an address an earlier one held once that one is gone, and a gate that followed the address past the
+earlier object's last close would give the two one number while each object's closes still named it under one number,
+so the first decision alone would find both. `SyncObjectCoverageEvaluator` now finds every truth object's number first,
+and a number two of them carry is no one object: neither is discovered, and their opens and closes, observed, are bound to
+no resource instance of their own. FX-SYNC-001's committed evidence is unchanged, its three objects three numbers. A
+synthetic capture whose event and semaphore share a number holds the rule, and ten mutations of the evaluator are caught.

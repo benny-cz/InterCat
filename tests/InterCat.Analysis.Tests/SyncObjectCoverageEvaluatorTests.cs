@@ -76,6 +76,26 @@ public sealed class SyncObjectCoverageEvaluatorTests
         Assert.Equal(CapabilityTier.ExperimentalEvidence, result.Assessment.Tier);
     }
 
+    [Fact(DisplayName = "R22: a number the closes of two truth objects name is neither's - the capture joined two objects the truth says were apart, so neither is discovered and their opens and closes bind to no object of their own")]
+    public void ANumberOfTwoObjectsIsNeithers()
+    {
+        // The capture followed the event's number on to the semaphore: both objects' records carry it.
+        SyncObjectObservation[] joined = [.. Observed().Select(observation => observation.ObjectNumber == 2 ? observation with { ObjectNumber = 1 } : observation)];
+        SyncObjectCoverageResult result = SyncObjectCoverageEvaluator.Evaluate(Truth(), joined, Settings());
+
+        SyncObjectTruthCoverage[] apart = [.. result.Objects.Where(item => item.ObjectNumber == 1)];
+        Assert.Equal(2, apart.Length);
+        Assert.All(apart, item => Assert.Equal((false, "Its number is another truth object's too, so the number is no one object."),
+            (item.DiscoveredWithLifetime, item.Gap)));
+        Assert.True(result.Objects.Single(item => item.ObjectNumber == 3).DiscoveredWithLifetime);
+
+        // Their opens and closes are observed, but bound to no object of their own: only the mutex's are.
+        MechanismMeasurement measured = result.Measurement;
+        Assert.Equal((12L, 12L, 4L, 1L), (measured.TruthOperations, measured.TruthOperationsWithAdmittedObservation,
+            measured.TruthOperationsBoundToResourceInstance, measured.DiscoveredResourcesWithLifetime));
+        Assert.Equal(CapabilityTier.ExperimentalEvidence, result.Assessment.Tier);
+    }
+
     [Fact(DisplayName = "P27: a capture with no record of the truth's processes discovers nothing, its records scope, and the mechanism is unsupported; a kernel name names an object only by its whole name after the namespace")]
     public void NothingOfTheTruthIsUnsupported()
     {

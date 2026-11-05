@@ -1,6 +1,7 @@
 # ADR-084: A named synchronization object is measured as the one number its closes name, and is topology at most
 
-- Status: accepted; FX-SYNC-001 measured through the product, topology only on 10.0.26220.0-x64 (addendum)
+- Status: accepted; FX-SYNC-001 measured through the product, topology only on 10.0.26220.0-x64 (addendum); one number is one
+  object (second addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-082, ADR-083, §14.2, R3, P1, P7, P27, FX-SYNC-001, `CoverageTierCalculator`, `SyncObjectCoverageEvaluator`,
@@ -66,3 +67,16 @@ here.
   they are scope (decision 5).
 - Named synchronization objects are topology only on 10.0.26220.0-x64: the build's per-build coverage carries the tier from
   FX-SYNC-001, and a test reproduces it from the first run's committed ledger; eight alterations of that evidence are caught.
+
+## Second addendum: one number is one object (2026-11-05)
+
+A number the closes of two truth objects name is neither's. The gate numbers an object from the first handle it saw made at
+an address to the close of the last it holds, and the kernel makes a later object at an address an earlier one held once
+that one is gone: a gate that followed the address past the earlier object's last close would give both objects one
+number, and each object's closes would still name it under one number, so decision 1 alone would find both. So
+`SyncObjectCoverageEvaluator` finds every truth object's number first, and a number two of them carry is no one object:
+neither is discovered, and their opens and closes, observed, are bound to no resource instance of their own (R22).
+
+- FX-SYNC-001's committed evidence is unchanged by it: its three objects are three numbers, and it is topology only.
+- A synthetic capture whose event and semaphore share a number holds the rule: both undiscovered, only the mutex's opens
+  and closes bound, and the mechanism at experimental evidence; three mutations of the rule are caught.
