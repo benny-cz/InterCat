@@ -461,6 +461,30 @@ public static class WindowsSourceCatalog
         new("TypeName", FieldRole.ResourceName, Notes: "The type's name, which the session names its number by only at its stop."),
     ];
 
+    // What the window message gate decides a message's end by (ADR-087).
+    private const string QueueMessageDecides =
+        "the window message gate follows a message by its queue message pointer, which it writes over with the message's number";
+
+    private static readonly AdmittedFieldIntent QueueMessage =
+        new("pqmsg", FieldRole.CorrelationKey, SourceField: SourceField.WindowMessageNumber,
+            Notes: "Written by the gate: the message's number in the capture, never the queue message's kernel pointer, which the "
+                + "kernel reuses once the message is retrieved (R22).")
+        {
+            Decides = QueueMessageDecides,
+        };
+
+    /// <summary>A message's end - a post's queueing or retrieval, a send's retrieval or stop - by its number alone.</summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> WindowMessageEndFields = [QueueMessage];
+
+    /// <summary>A sent message's start: its number and the process that receives it, which no other end names.</summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> WindowMessageSendFields =
+    [
+        QueueMessage,
+        new("pidReceiver", FieldRole.CorrelationKey, SourceField: SourceField.PeerProcessId,
+            Notes: "The process whose window receives the message, never the record's own: only a send's start names its other "
+                + "end, so a post's are joined by their number alone (ADR-086)."),
+    ];
+
     public static IReadOnlyList<WindowsSourceDefinition> All { get; } = Build();
 
     /// <summary>
@@ -1188,8 +1212,9 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        // Window messages' lead (ADR-086): inventoried and requested by no profile, admitting no event until a capture numbers
-        // each message's ends; its measured notes are what icat capabilities states of it.
+        // Window messages' lead (ADR-086): inventoried and requested by no profile. Its six message events admit through the
+        // window message gate (ADR-087), which writes each message's number over its pointer; its measured notes are what icat
+        // capabilities states of it.
         var win32k = new WindowsSourceDefinition
         {
             SourceId = Win32kSourceId,
@@ -1211,6 +1236,18 @@ public static class WindowsSourceCatalog
             ContractStatus = SourceContractStatus.Experimental,
             Overhead = OverheadClass.Low,
             OverheadEvidence = "bench/results/window-message-impact-20261105T175321Z/impact.json",
+
+            // A message's ends, each by the message's number, which the gate writes over the queue message's pointer; a send's
+            // start names the process that receives it. No window, thread, message number or parameter is admitted.
+            AdmittedEvents =
+            [
+                new(WindowMessageGate.QueuePost, 0, "Message posted", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.Send, Direction.Outbound, WindowMessageEndFields),
+                new(WindowMessageGate.SendStart, 0, "Message sent", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Outbound, WindowMessageSendFields),
+                new(WindowMessageGate.RetrievePost, 0, "Posted message retrieved", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.Receive, Direction.Inbound, WindowMessageEndFields),
+                new(WindowMessageGate.RetrieveSendStart, 0, "Sent message retrieved", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Inbound, WindowMessageEndFields),
+                new(WindowMessageGate.SendStop, 0, "Sent message returned", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Outbound, WindowMessageEndFields),
+                new(WindowMessageGate.RetrieveSendStop, 0, "Sent message handled", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Inbound, WindowMessageEndFields),
+            ],
             Notes =
             [
                 "Collection alone, two series of nine pairs over a message-bound workload, loss-free: the processor time it "
@@ -1226,7 +1263,11 @@ public static class WindowsSourceCatalog
                 + "parameters, and none a payload's size, so a WM_COPYDATA message's bytes are not measured and a DDE conversation "
                 + "is not told from any other message (ADR-086).",
                 "A queue message's pointer is a kernel address, reused once its message is retrieved, so it joins two ends only "
-                + "within a message's life: a capture must number each message from its queueing or start to its retrieval's end.",
+                + "within a message's life. Its records admit through the window message gate (ADR-087), which numbers each message "
+                + "from its start to its end, writing the number over the pointer, and omits a record delivered out of the order "
+                + "raised, as it numbers by that order.",
+                "Its six message events are admitted: each end's message number and a send's receiving process - never a window, "
+                + "a thread, a message number or a parameter, which every record of FX-WMSG-001's processes carried as zero.",
                 "Every window on the machine pumps messages: with no messaging workload of its own, a capture collecting it "
                 + "receives the other windows' records, about 3,100 a second on the measuring machine.",
                 "Registration is not evidence of traffic; only a measured fixture assigns a tier.",

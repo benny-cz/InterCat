@@ -24,6 +24,7 @@ internal static class RecordGates
         {
             WindowsSourceCatalog.WinsockAfdSourceId => new AfdRecordGate(),
             WindowsSourceCatalog.KernelObjectHandlesSourceId => new ObjectHandleRecordGate(SynchronizationHandleGate.MeasuredTypes(ThisBuild) ?? []),
+            WindowsSourceCatalog.Win32kSourceId => new WindowMessageRecordGate(),
             _ => (IRecordGate?)null,
         })];
     }
@@ -206,6 +207,57 @@ internal sealed class AfdRecordGate(int capacity = UnixSocketGate.DefaultCapacit
 
             return -1;
         }
+    }
+}
+
+/// <summary>
+/// Win32k's message pump gate: reads a message's ends through <see cref="WindowMessageGate"/> and writes into an admitted
+/// record, in place of the queue message's kernel pointer, the message's number in the capture, so no record keeps a pointer
+/// (ADR-087). The gate numbers by the order records were raised in, which a session was measured delivering them in
+/// (ADR-086's third addendum): a record delivered out of it, which the gate numbers alone, is omitted as such, counted by its
+/// reason, rather than admitted as a message of its own (ADR-087's addendum). A schema without the pointer is refused before
+/// a capture starts, as the field's intent says the gate decides by it (<see cref="RecordGates.Undecidable(SourceAdmissionPlan)"/>).
+/// </summary>
+internal sealed class WindowMessageRecordGate(int capacity = WindowMessageGate.DefaultCapacity) : IRecordGate
+{
+    private readonly WindowMessageGate gate = new(capacity);
+    private readonly Dictionary<AdmittedEventPlan, int> pointers = new(ReferenceEqualityComparer.Instance);
+
+    public GateOmission? Read(ref AdmittedEvent admitted, AdmittedEventPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (!pointers.TryGetValue(plan, out int pointer))
+        {
+            pointers[plan] = pointer = PointerSlot(plan);
+        }
+
+        long queueMessage = pointer >= 0 && admitted.TryGetSlot(pointer, out long value) ? value : 0;
+        WindowMessageIncarnation message = gate.Read(new WindowMessageRecord(admitted.EventId, unchecked((ulong)queueMessage), admitted.TimestampQpc));
+        if (message.FirstSeen == MessageFirstSeen.OutOfOrder)
+        {
+            return GateOmission.OutOfOrder;
+        }
+
+        if (pointer >= 0)
+        {
+            admitted.SetSlot(pointer, message.Number);
+        }
+
+        return null;
+    }
+
+    /// <summary>Where a descriptor admits the queue message's pointer; -1 for one that does not.</summary>
+    private static int PointerSlot(AdmittedEventPlan plan)
+    {
+        for (int index = 0; index < plan.Slots.Count; index++)
+        {
+            if (string.Equals(plan.Slots[index].FieldName, "pqmsg", StringComparison.Ordinal))
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 }
 

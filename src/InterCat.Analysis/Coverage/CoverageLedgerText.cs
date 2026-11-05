@@ -58,6 +58,7 @@ public static class CoverageLedgerText
         GateOmission.NotCounted => "of a resource its gate follows, and counting nothing of it",
         GateOmission.NoFollowedResource => "of no resource its gate followed",
         GateOmission.BeyondBound => "began a resource beyond as many as its gate may follow",
+        GateOmission.OutOfOrder => "raised before a record delivered ahead of it, out of the order its gate numbers by",
         _ => string.Create(CultureInfo.InvariantCulture, $"gate omission {(int)reason}"),
     };
 

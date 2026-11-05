@@ -55,6 +55,9 @@ public sealed class ObservationNormalizerV1
 
         // A family of its own before its first row: no capture has admitted a COM call (ADR-078), so none is re-keyed.
         Mechanism.ComCall => "com-call",
+
+        // And a window message's, before any capture admitted one (ADR-087's addendum).
+        Mechanism.WindowMessage => "window-message",
         _ => "source-observation",
     };
 

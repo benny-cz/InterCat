@@ -440,14 +440,16 @@ internal static class RecordCommand
 
     /// <summary>
     /// What a recording delivered and did not admit: by its policy, and by a gated source's gate (ADR-074). Neither is loss;
-    /// a gate that followed as many resources as it may and no more is said, as its coverage is a partial gap.
+    /// a gate that followed as many resources as it may and no more is said, as its coverage is a partial gap, and so are
+    /// records delivered out of the order raised, which a gate numbering by that order omits (ADR-087's addendum).
     /// </summary>
     internal static string NotAdmitted(CaptureHealthSnapshot health)
     {
         ArgumentNullException.ThrowIfNull(health);
         string policy = ConsoleUi.Count(health.PolicyOmissionsUnrequestedProvider + health.PolicyOmissionsDescriptorNotAdmitted
             + health.PolicyOmissionsDescriptorDenied);
-        long gated = health.GateOmissionsNotCounted + health.GateOmissionsNoFollowedResource + health.GateOmissionsBeyondBound;
+        long gated = health.GateOmissionsNotCounted + health.GateOmissionsNoFollowedResource + health.GateOmissionsBeyondBound
+            + health.GateOmissionsOutOfOrder;
         if (gated == 0)
         {
             return policy + " by policy, which is not loss";
@@ -456,6 +458,9 @@ internal static class RecordCommand
         return $"{policy} by policy and {ConsoleUi.Count(gated)} by a source's gate, neither of which is loss"
             + (health.GateOmissionsBeyondBound > 0
                 ? $"; the gate followed as many resources as it may, and not {CountText.Of(health.GateOmissionsBeyondBound, "more", "more")}"
+                : string.Empty)
+            + (health.GateOmissionsOutOfOrder > 0
+                ? $"; {CountText.Of(health.GateOmissionsOutOfOrder, "record", "records")} arrived out of the order raised, which the gate numbers by, so it numbered none of them"
                 : string.Empty);
     }
 

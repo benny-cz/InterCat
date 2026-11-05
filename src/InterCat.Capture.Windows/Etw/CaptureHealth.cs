@@ -26,6 +26,12 @@ public sealed record CaptureHealthSnapshot
     /// <summary>Resources a source's gate did not follow, holding as many as it may (ADR-074).</summary>
     public long GateOmissionsBeyondBound { get; init; }
 
+    /// <summary>
+    /// Records a source's gate omitted as raised before one delivered ahead of them, out of the order it numbers by
+    /// (ADR-087's addendum): not a loss, but a capture whose delivery was not the order measured.
+    /// </summary>
+    public long GateOmissionsOutOfOrder { get; init; }
+
     /// <summary>Loss the ETW session itself reported. It bounds loss to a polling interval, not to exact records.</summary>
     public required long ProviderReportedEventLoss { get; init; }
 
@@ -70,6 +76,7 @@ public sealed class CaptureHealthLedger
     private long gatedNotCounted;
     private long gatedNoFollowed;
     private long gatedBeyondBound;
+    private long gatedOutOfOrder;
     private long applicationDrops;
     private long quarantinedTimestamps;
     private long providerLoss;
@@ -135,6 +142,9 @@ public sealed class CaptureHealthLedger
             case GateOmission.BeyondBound:
                 Interlocked.Increment(ref gatedBeyondBound);
                 break;
+            case GateOmission.OutOfOrder:
+                Interlocked.Increment(ref gatedOutOfOrder);
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(reason));
         }
@@ -179,6 +189,7 @@ public sealed class CaptureHealthLedger
         GateOmissionsNotCounted = Interlocked.Read(ref gatedNotCounted),
         GateOmissionsNoFollowedResource = Interlocked.Read(ref gatedNoFollowed),
         GateOmissionsBeyondBound = Interlocked.Read(ref gatedBeyondBound),
+        GateOmissionsOutOfOrder = Interlocked.Read(ref gatedOutOfOrder),
         ProviderReportedEventLoss = Interlocked.Read(ref providerLoss),
         ConsumerReportedBufferLoss = Interlocked.Read(ref consumerBufferLoss),
         ApplicationDrops = Interlocked.Read(ref applicationDrops),

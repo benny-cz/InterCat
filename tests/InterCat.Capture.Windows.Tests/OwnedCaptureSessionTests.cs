@@ -497,7 +497,10 @@ public sealed class OwnedCaptureSessionTests
     public void AGatesOmissionsAreCountedByReason()
     {
         var ledger = new CaptureHealthLedger();
-        foreach ((GateOmission reason, int times) in new[] { (GateOmission.NotCounted, 3), (GateOmission.NoFollowedResource, 2), (GateOmission.BeyondBound, 1) })
+        foreach ((GateOmission reason, int times) in new[]
+        {
+            (GateOmission.NotCounted, 3), (GateOmission.NoFollowedResource, 2), (GateOmission.BeyondBound, 1), (GateOmission.OutOfOrder, 4),
+        })
         {
             for (int index = 0; index < times; index++)
             {
@@ -506,7 +509,8 @@ public sealed class OwnedCaptureSessionTests
         }
 
         CaptureHealthSnapshot health = ledger.Read(0, 1);
-        Assert.Equal((3L, 2L, 1L), (health.GateOmissionsNotCounted, health.GateOmissionsNoFollowedResource, health.GateOmissionsBeyondBound));
+        Assert.Equal((3L, 2L, 1L, 4L), (health.GateOmissionsNotCounted, health.GateOmissionsNoFollowedResource, health.GateOmissionsBeyondBound,
+            health.GateOmissionsOutOfOrder));
         Assert.Equal((0L, 0L, 0L), (health.PolicyOmissionsUnrequestedProvider, health.PolicyOmissionsDescriptorNotAdmitted, health.PolicyOmissionsDescriptorDenied));
         Assert.True(health.IsLossFree);
         _ = Assert.Throws<ArgumentOutOfRangeException>(() => ledger.RecordGated((GateOmission)9));

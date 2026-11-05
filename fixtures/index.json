@@ -887,7 +887,7 @@
       },
       "tests": [
         "P7: FX-WMSG-001's every message one process sent or posted another's window is recorded at both ends by Win32k's message pump - a send's start naming its receiver's process and thread, each end joined to the other by its queue message pointer - and none names which message it was",
-        "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
+        "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
         "R22: a session with the product's buffer size delivers FX-WMSG-001's message ends in the order they were raised - three runs of up to 40,000 messages, ends raised on two processors and pointers reused - so a gate following a message by its pointer as records arrive numbers each as its life is",
         "R22: FX-WMSG-001's message ends, read through the gate as delivered, are its 32 sends and 33 posts - each send's start and stop at the sender and its retrieval at the receiver one message, each post's queueing and retrieval another - numbered apart, though the run reused its pointers"
       ]
@@ -2631,7 +2631,7 @@
         "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build their fixtures measured them on through the product",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",
         "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build",
-        "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build"
+        "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build"
       ],
       "P28": [
         "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone"
@@ -3091,7 +3091,7 @@
         "R21: a field behind a variable-length field is reported unknown, never guessed",
         "R21: a fixed binary length TDH reports is restored to a rebuilt manifest, and nothing else is changed",
         "R21: a gate's omissions are counted by reason, apart from the policy's and from every loss",
-        "R21: a gate's omissions are no loss, and its coverage says what its gate admitted; a resource the gate could not follow makes it a partial gap",
+        "R21: a gate's omissions are no loss, and its coverage says what its gate admitted; a resource the gate could not follow, or a record delivered out of the order the gate numbers by, makes it a partial gap",
         "R21: a generation with no coverage ledger yet says so plainly, and one limited interval is named as one",
         "R21: a journal that names no clock is refused, never read against an assumed one",
         "R21: a leased overview applies imported coverage only to observed mechanism buckets",
@@ -3187,7 +3187,7 @@
         "R21: icat processes says a process's transport bytes are unmeasured, or that it made none, as the window's rows do",
         "R21: icat processes says how each instance's records were bound, and what the evidence policy left out of a reused PID's later holder, as the inspector does",
         "R21: icat processes says what the capture covered as icat metric does, and never that a process sent nothing",
-        "R21: icat record says what it did not admit by policy and by a source's gate, neither of them loss, and a gate that could follow no more",
+        "R21: icat record says what it did not admit by policy and by a source's gate, neither of them loss, a gate that could follow no more, and records delivered out of the order a gate numbers by",
         "R21: icat timeline counts a mechanism's lane where none of its records falls, each column saying what the capture covered of it, as the window's lane does",
         "R21: icat workspace correlate says an end's sends that measured no size are unmeasured, never 0 B, in the window's words",
         "R21: icat workspace correlate states what each compared capture covered of TCP and UDP, and that no candidate is then no proof",
@@ -3254,6 +3254,7 @@
         "R22: FX-UNIX-002's rows through the product keep each of sixty-four connections made one at a time on its own socket at both ends, while the kernel reused their addresses",
         "R22: FX-UNIX-003's connections, open before the capture began, bind to no socket - not one of their calls is a row of any process - while the same capture follows its own connections whole",
         "R22: FX-WMSG-001's message ends, read through the gate as delivered, are its 32 sends and 33 posts - each send's start and stop at the sender and its retrieval at the receiver one message, each post's queueing and retrieval another - numbered apart, though the run reused its pointers",
+        "R22: Win32k's message events compile from its registered layout to fixed slots - each end's queue message pointer, which the gate writes the message's number over, and a send's receiving process - never a window, a thread, a message number or a parameter",
         "R22: Winsock AFD's admitted calls compile from its registered layout to fixed slots, none an address the kernel reuses or a buffer's",
         "R22: a COM call record binds to the process that raised it - a client call's to the caller, a served call's to the server - as an RPC record does",
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
@@ -3333,6 +3334,7 @@
         "R22: an RPC record binds to the process that raised it, and a kernel record's header stays context",
         "R22: an RPC server no lifecycle record names is a process of its own calls, and its rows name it",
         "R22: an admitted COM call record is a COM call row whose payload names no owner, so the process that raised it owns it, the process it names at its other end a source field and never its owner",
+        "R22: an admitted window message record is a window message row of a family of its own, its message's number and a send's receiving process source fields, the process that raised it kept in its header",
         "R22: an exchange number used again in one process ID is two parts, told apart in time, never one",
         "R22: an exchange whose request body's last buffer was not recorded says that body is not whole",
         "R22: an instance's records are exactly the rows its owner binding gives it, under each policy",
@@ -3389,6 +3391,7 @@
         "R22: the window compares executables, a restarted process's executable one row, and opens its rung",
         "R22: the window starts a content capture only after its review, with a plan prepared again that keeps what was reviewed",
         "R22: the window's live view of an Explore capture shaped as Windows delivers it relates its loopback connections over IPv4 and IPv6",
+        "R22: through its gate Win32k admits each of a message's ends with the message's number written over its pointer - a send's four ends one number, a post's two another, the pointer's next message a third - and omits a record delivered out of the order raised",
         "R22: through its gate an AFD record is admitted with its socket's number and owner in place of the kernel's addresses, and any other is omitted with its reason",
         "R22: through its gate the handle group admits a synchronization type's handle records with the object's number written over its address, a duplication's for its target, and omits another type's, a kernel handle's and those beyond its bound",
         "R22: two boots of one host that overlap in the investigation's time say an alignment is wrong",
@@ -3409,6 +3412,8 @@
         "R3: a COM-Perf whose schema lacks a call's HRESULT, which no rule decides by, is admitted, the call's answer then unknown",
         "R3: a COM-Perf whose schema registers no client call stop is refused, its calls never left open at capture end for want of a stop it could not have recorded",
         "R3: a TCP transfer admits its byte count, and a connection attempted, established or closed admits none",
+        "R3: a Win32k whose schema does not admit an end's queue message pointer, by which its gate tells which message the end is of, is refused, never admitted to number messages from a value never observed - a capture's compilation refuses it, and icat capabilities says its schema is unknown",
+        "R3: a Win32k whose schema lacks a send's receiving process, which no rule decides by, is admitted, the receiver then unknown",
         "R3: a bound is written rounded up at the precision written, so it never reads smaller than it is",
         "R3: a budget is met or missed against its own direction, not against a bare number",
         "R3: a build with no measured synchronization type numbers refuses the handle group, as does a schema without a field its gate decides by",

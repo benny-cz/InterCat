@@ -1,6 +1,7 @@
 # ADR-087: A window message gate follows a message at its pointer from its start to its end
 
-- Status: accepted for M6's UI messaging work package; no profile compiles the gate yet
+- Status: accepted for M6's UI messaging work package; since revision 959 Win32k's six message events admit through it,
+  a record delivered out of order omitted as such (its addendum); no profile compiles the gate yet
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-073, ADR-083, ADR-086, plan M6, §4.2, R22, P7, P12, FX-WMSG-001
@@ -47,3 +48,30 @@ two processors and the runs reused hundreds of pointers (ADR-086's third addendu
   allocations - and on FX-WMSG-001's ledger, a run's 194 ends as they were delivered, read through it: 32 sends and 33 posts,
   each send's four ends one message and each post's two another, numbered apart though the run reused 11 pointers, none
   given up and none out of order. Eleven mutations of the gate are caught.
+
+## Addendum: what Win32k admits through the gate (revision 959)
+
+The fifth decision left Win32k's admitted events and fields to wire. The message pump now admits its six message events
+at version 0, each compiled from the layout this build registers for it, all of them window message records of the
+application layer:
+
+- a post's queueing (59), a send raised in the poster, and its retrieval (61), a receive raised in the receiver;
+- a send's start (60), a request's start raised in the sender and naming the process that receives it, and its stop
+  (70), the request's end;
+- the receiver's retrieval of a sent message (62), a request's start inbound, and its end (83).
+
+Each keeps the queue message's pointer only for the gate to read: `WindowMessageRecordGate` writes the message's number
+over it, a source field of its own, `WindowMessageNumber`, so no admitted record keeps a pointer (R22). A send's start
+keeps the process it names as `PeerProcessId`, never its owner; no window, thread, message number or parameter is
+admitted. Window messages are a fact family of their own, `window-message`, before any capture admitted one.
+
+A record the gate numbers alone as delivered out of the order raised (the third decision) is omitted instead, as
+`OutOfOrder`, a gate omission of its own: the coverage ledger counts it by that reason, a capture's health reports it,
+`icat record` says it, and the mechanism's coverage is a partial gap. A schema without an end's pointer refuses the
+source, as the gate decides by it; one without a send's receiving process, which no rule decides by, admits it, the
+receiver unknown (R3). No binding rule binds a window message record to the process that raised it yet, and no profile
+requests the source.
+
+Tests hold the layout this machine registers, the compiled slots, the gate's admissions and its omission on compiled
+records, an admitted record's row, the refusals, the gate on the callback's path, and the omission's count, coverage and
+words. Thirteen mutations are caught.

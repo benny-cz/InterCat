@@ -114,6 +114,10 @@ public sealed class CallbackPathTests
         Assert.Contains("InterCat.Capture.Windows.ObjectHandleRecordGate.Read", walk.Reached);
         Assert.Contains("InterCat.Capture.Windows.SynchronizationHandleGate.Read", walk.Reached);
         Assert.Contains("InterCat.Capture.Recording.CaptureCoverageTally.Gated", walk.Reached);
+
+        // And Win32k's, whose messages are held to its bound, both its tables sized once (ADR-087).
+        Assert.Contains("InterCat.Capture.Windows.WindowMessageRecordGate.Read", walk.Reached);
+        Assert.Contains("InterCat.Capture.Windows.WindowMessageGate.Read", walk.Reached);
         return walk;
     }
 

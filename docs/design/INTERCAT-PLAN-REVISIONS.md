@@ -882,6 +882,7 @@ Revision 955 measures what collecting Win32k's message pump costs (ADR-086's add
 Revision 956 inventories Win32k's message pump as window messages' lead (ADR-086's second addendum): `etw/manifest/Microsoft-Windows-Win32k` at its message pump keyword, experimental, requested by no profile and admitting no event.
 Revision 957 measures the order a session delivers a window message's ends in (ADR-086's third addendum): none of 195,781 records in three runs arrived after one raised later, so a gate may number a message by its pointer as records arrive.
 Revision 958 adds a window message gate (ADR-087): it follows a message at its queue message pointer from its start to its end and numbers it in the capture, a message begun before the capture its own and a record delivered out of order numbered alone; no profile compiles it yet.
+Revision 959 admits Win32k's six message events through the window message gate (ADR-087's addendum): each end by its message's number, written over its pointer, a send's start keeping its receiving process, and a record delivered out of order omitted as a gate omission of its own.
 
 ## Revisions, a paragraph each, in order
 
@@ -4166,3 +4167,13 @@ ends join, as a session delivers a message's ends in the order raised (ADR-086's
 out of that order is numbered alone and counted. The gate follows at most 65,536 messages, giving up the oldest it
 follows beyond them, and allocates nothing per record. FX-WMSG-001's ledger, a run's 194 ends as delivered, read through
 it is the run's 32 sends and 33 posts, numbered apart though the run reused 11 pointers. No profile compiles it yet.
+
+Revision 959 admits Win32k's message events through the window message gate (ADR-087's addendum), as the handle group's
+came through theirs (ADR-083's addendum). The six events compile from the layout this build registers: a post's
+queueing and retrieval, a send's start and stop at the sender and its retrieval's start and stop at the receiver, all
+window message records of the application layer. Each keeps the queue message's pointer only for the gate, which writes
+the message's number over it as `WindowMessageNumber`; a send's start keeps the process it names as `PeerProcessId`;
+no window, thread, message number or parameter is admitted, and window messages are a fact family of their own. A record
+delivered out of the order raised is omitted as `OutOfOrder`, a new gate omission the ledger counts by reason, the
+capture's health reports, `icat record` says and coverage makes a partial gap. A schema without an end's pointer refuses
+the source. No binding rule or profile reaches the source yet.

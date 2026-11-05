@@ -350,6 +350,14 @@ public static class SessionCoverage
             losses.Add($"its gate, following as many resources as it may, did not follow {Count(beyondBound, "more resource")} or admit their records");
         }
 
+        // A gate numbering by the order records were raised in omits one delivered out of it: a gap in what it numbered,
+        // never a loss the source reported (ADR-087's addendum).
+        long outOfOrder = deliveries.Sum(delivery => delivery.Gated?.GetValueOrDefault(GateOmission.OutOfOrder) ?? 0);
+        if (outOfOrder > 0)
+        {
+            losses.Add($"{Count(outOfOrder, "record")} arrived out of the order raised, which its gate numbers by, and were not admitted");
+        }
+
         if (losses.Count > 0)
         {
             return new(mechanism, CoverageState.PartialGap, string.Join("; ", losses));

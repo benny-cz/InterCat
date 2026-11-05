@@ -93,7 +93,7 @@ public sealed class SessionCoverageTests
         Assert.Equal(CoverageLedgerText.Loss(lost, CoverageAcquisition.EtlImport), SessionCoverage.Of(lossy, Mechanism.Tcp).Reason);
     }
 
-    [Fact(DisplayName = "R21: a gate's omissions are no loss, and its coverage says what its gate admitted; a resource the gate could not follow makes it a partial gap")]
+    [Fact(DisplayName = "R21: a gate's omissions are no loss, and its coverage says what its gate admitted; a resource the gate could not follow, or a record delivered out of the order the gate numbers by, makes it a partial gap")]
     public void AGatesOmissionsAreNoLossButItsBoundIsAGap()
     {
         CoverageLedgerV1 ledger = Ledger(CoverageAcquisition.LiveCapture) with { Contract = CoverageLedgerV1.GatedContractName };
@@ -119,9 +119,21 @@ public sealed class SessionCoverageTests
             (CoverageState.PartialGap, "its gate, following as many resources as it may, did not follow 1 more resource or admit their records"),
             (gap.State, gap.Reason));
 
+        // So do records a gate numbering by the order raised omitted as delivered out of it (ADR-087's addendum).
+        CoverageDeliveryV1 unordered = delivery with
+        {
+            Delivered = 1_206,
+            Gated = new Dictionary<GateOmission, long>(delivery.Gated!) { [GateOmission.OutOfOrder] = 2 },
+        };
+        var outOfOrder = SessionCoverage.Of(ledger with { Epochs = [epoch with { Deliveries = [unordered] }] }, Mechanism.Tcp);
+        Assert.Equal(
+            (CoverageState.PartialGap, "2 records arrived out of the order raised, which its gate numbers by, and were not admitted"),
+            (outOfOrder.State, outOfOrder.Reason));
+
         // Each reason a gate omits a record for has its words, and one this version does not know is named by its number.
         Assert.Equal(
-            ["of a resource its gate follows, and counting nothing of it", "of no resource its gate followed", "began a resource beyond as many as its gate may follow"],
+            ["of a resource its gate follows, and counting nothing of it", "of no resource its gate followed", "began a resource beyond as many as its gate may follow",
+                "raised before a record delivered ahead of it, out of the order its gate numbers by"],
             Enum.GetValues<GateOmission>().Select(CoverageLedgerText.Gate));
         Assert.Equal("gate omission 9", CoverageLedgerText.Gate((GateOmission)9));
     }

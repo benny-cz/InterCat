@@ -91,14 +91,18 @@ public sealed class WindowMessageFeasibilityTests
         Assert.Equal([(32, 32), (2048, 2048), (20_000, 20_000)], sizes);
     }
 
-    [Fact(DisplayName = "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build")]
+    [Fact(DisplayName = "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build")]
     public void WindowMessagesHaveALeadAndNoTier()
     {
         WindowsSourceDefinition win32k = WindowsSourceCatalog.Find(WindowsSourceCatalog.Win32kSourceId)!;
         Assert.Equal((SourceKind.ManifestProvider, "Microsoft-Windows-Win32k", "win:Informational"), (win32k.Kind, win32k.ProviderName, win32k.Level));
         Assert.Equal([Mechanism.WindowMessage], win32k.Mechanisms);
         Assert.Equal((SourceContractStatus.Experimental, false), (win32k.ContractStatus, win32k.SupportsCaptureSideProcessFilter));
-        Assert.Empty(win32k.AdmittedEvents);
+
+        // Its six message events, each a window message record, admit through the window message gate (ADR-087).
+        Assert.Equal(WindowMessageGate.Ends.Order(), win32k.AdmittedEvents.Select(intent => intent.EventId).Order());
+        Assert.All(win32k.AdmittedEvents, intent => Assert.Equal((Mechanism.WindowMessage, 0), (intent.Mechanism, intent.Version)));
+        Assert.Contains(win32k.Notes, note => note.Contains("window message gate (ADR-087)", StringComparison.Ordinal));
 
         // Its keyword is the one FX-WMSG-001 was measured under, by the name and mask the inspection read from this build's
         // registered schema.

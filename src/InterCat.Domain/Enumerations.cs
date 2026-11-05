@@ -217,6 +217,13 @@ public enum SourceField : ushort
 
     /// <summary>The handle a duplication made in its target process, by its value there, as <see cref="HandleValue"/> is named.</summary>
     PeerHandleValue = 25,
+
+    /// <summary>
+    /// A window message's number in its capture, as the window message gate numbers it from its start - a send's start or a
+    /// post's queueing - to its end (ADR-087): never the queue message's kernel pointer, which the kernel reuses once the
+    /// message is retrieved (R22).
+    /// </summary>
+    WindowMessageNumber = 26,
 }
 
 /// <summary><c>EN-TimeScope</c> (section 23): the interval a result is scoped to.</summary>
@@ -341,6 +348,13 @@ public enum GateOmission
     /// are of none it followed.
     /// </summary>
     BeyondBound = 3,
+
+    /// <summary>
+    /// A record raised before one the session delivered ahead of it. Its gate numbers by the order a session was measured
+    /// delivering in, the order raised (ADR-086's third addendum), which this record is not, so it is omitted rather than
+    /// numbered with a resource it may not be of (ADR-087's addendum).
+    /// </summary>
+    OutOfOrder = 4,
 }
 
 /// <summary>
