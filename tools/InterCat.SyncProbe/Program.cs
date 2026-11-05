@@ -33,6 +33,13 @@ internal static class Program
 
     private static async Task<int> Main(string[] args)
     {
+        // A session icat record recorded is read, not captured: the ledger of its workload's synchronization handle records
+        // as the product holds them, evaluated against the workload's truth.
+        if (Option(args, "--session") is { } recorded)
+        {
+            return SessionLedger.Write(recorded, Option(args, "--truth"), Option(args, "--out"));
+        }
+
         string? output = Option(args, "--output");
         bool inspect = args.Contains("--inspect", StringComparer.Ordinal);
         bool measure = args.Contains("--measure", StringComparer.Ordinal);
@@ -60,6 +67,10 @@ internal static class Program
             Console.Error.WriteLine("  --duplication [--ledger]: FX-SYNC-002, the opener also given each object's handle by a duplication -");
             Console.Error.WriteLine("  pushed, pulled, and made between the two by a third process: which process raised each duplication's");
             Console.Error.WriteLine("  record and its handle's, and where the synchronization types' kernel handles' records are raised.");
+            Console.Error.WriteLine("InterCat.SyncProbe --session <recorded session> --truth <its workload's truth> --out <records.csv>");
+            Console.Error.WriteLine("  Reads the synchronization handle records of a session icat record recorded under the synchronization");
+            Console.Error.WriteLine("  objects profile, as the product holds them, writes the ledger of the workload's own and of other");
+            Console.Error.WriteLine("  processes' on its objects by role, never by PID, and evaluates it.");
             return 2;
         }
 

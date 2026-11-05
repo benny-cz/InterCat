@@ -564,5 +564,180 @@
   "ledgers": {
     "ledger.csv": "the first run's handle records of the three objects, the ready threads between the creator and the opener either way, and each switch out of their threads into a user-mode wait: each by its time, record, role, object kind, object and handle ordinals, type, type name, whether it carried a name, the readied role, its wait, adjust reason and DPC flag, and the thread's ordinal - never a PID, a thread id, a handle value or an address",
     "ledger-objects.csv": "the object run's ledger, with each object's creation and deletion as the object group recorded them"
+  },
+  "throughTheProduct": {
+    "question": "Whether a capture through the product - icat record under the opt-in synchronization objects profile, the object manager's handle group admitted through the synchronization handle gate (ADR-083) and bound under process-binding-v6 - records each of the run's three named objects as one number from the creator's creation of its first handle to both processes' closes, bound to exactly the two processes, and which tier that measures (ADR-084).",
+    "answer": "In 4 runs, machine-wide and loss-free - twice paced as the fixture is, once unpaced over 256 rounds and once with the opener opening and closing each object 16 more times - each of the run's three objects was one number from the creator's creation of its first handle to every close the truth logged, each in the process that logged it, its two closes naming it under the session's namespace, and bound to exactly the creator and the opener: 12 of 12 objects discovered with their lifetimes, 24 of 24 memberships resolved and none false, 144 of 144 handle opens and closes seen. Other processes' records on objects the workload's processes also held - an unnamed object whose handles they only closed, and a named object dozens of processes hold, mostly in the stop's rundown - were none of the run's objects, and so scope. A handle record carries no byte, signal or wait, so the measurement claims neither bytes nor operations: the tier is TopologyOnly.",
+    "runs": [
+      {
+        "run": "paced-1",
+        "workload": {
+          "rounds": 64,
+          "holdMilliseconds": 5,
+          "churn": 0
+        },
+        "capture": {
+          "profile": "sync-objects",
+          "lossFree": true,
+          "observedRecords": 897929,
+          "admittedRecords": 123314,
+          "applicationDrops": 0,
+          "sourceLoss": 0,
+          "gateOmissionsNoFollowedResource": 729101,
+          "gateOmissionsBeyondBound": 0,
+          "undecodableUnknownDescriptorVersion": 17749,
+          "synchronizationRecords": 122740
+        },
+        "evaluation": {
+          "truthObjects": 3,
+          "discoveredWithLifetime": 3,
+          "expectedMemberships": 6,
+          "resolvedMemberships": 6,
+          "memberships": 6,
+          "falseMemberships": 0,
+          "truthOperations": 12,
+          "observed": 12,
+          "byteEligible": 0,
+          "claimsBytesOrOperations": false,
+          "workloadRecords": 344,
+          "closesNamingARunObject": 6,
+          "recordsOfOtherProcessesOnItsObjects": 58,
+          "otherProcessesOnItsObjects": 46,
+          "recordsOfOtherProcesses": 122393,
+          "recordsBoundToNoProcess": 3,
+          "tier": "TopologyOnly",
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      },
+      {
+        "run": "paced-2",
+        "workload": {
+          "rounds": 64,
+          "holdMilliseconds": 5,
+          "churn": 0
+        },
+        "capture": {
+          "profile": "sync-objects",
+          "lossFree": true,
+          "observedRecords": 985496,
+          "admittedRecords": 125430,
+          "applicationDrops": 0,
+          "sourceLoss": 0,
+          "gateOmissionsNoFollowedResource": 810913,
+          "gateOmissionsBeyondBound": 0,
+          "undecodableUnknownDescriptorVersion": 20219,
+          "synchronizationRecords": 124749
+        },
+        "evaluation": {
+          "truthObjects": 3,
+          "discoveredWithLifetime": 3,
+          "expectedMemberships": 6,
+          "resolvedMemberships": 6,
+          "memberships": 6,
+          "falseMemberships": 0,
+          "truthOperations": 12,
+          "observed": 12,
+          "byteEligible": 0,
+          "claimsBytesOrOperations": false,
+          "workloadRecords": 344,
+          "closesNamingARunObject": 6,
+          "recordsOfOtherProcessesOnItsObjects": 63,
+          "otherProcessesOnItsObjects": 49,
+          "recordsOfOtherProcesses": 124402,
+          "recordsBoundToNoProcess": 3,
+          "tier": "TopologyOnly",
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      },
+      {
+        "run": "unpaced",
+        "workload": {
+          "rounds": 256,
+          "holdMilliseconds": 0,
+          "churn": 0
+        },
+        "capture": {
+          "profile": "sync-objects",
+          "lossFree": true,
+          "observedRecords": 1001506,
+          "admittedRecords": 128548,
+          "applicationDrops": 0,
+          "sourceLoss": 0,
+          "gateOmissionsNoFollowedResource": 821560,
+          "gateOmissionsBeyondBound": 0,
+          "undecodableUnknownDescriptorVersion": 22892,
+          "synchronizationRecords": 127813
+        },
+        "evaluation": {
+          "truthObjects": 3,
+          "discoveredWithLifetime": 3,
+          "expectedMemberships": 6,
+          "resolvedMemberships": 6,
+          "memberships": 6,
+          "falseMemberships": 0,
+          "truthOperations": 12,
+          "observed": 12,
+          "byteEligible": 0,
+          "claimsBytesOrOperations": false,
+          "workloadRecords": 344,
+          "closesNamingARunObject": 6,
+          "recordsOfOtherProcessesOnItsObjects": 5,
+          "otherProcessesOnItsObjects": 2,
+          "recordsOfOtherProcesses": 127466,
+          "recordsBoundToNoProcess": 3,
+          "tier": "TopologyOnly",
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      },
+      {
+        "run": "churned",
+        "workload": {
+          "rounds": 64,
+          "holdMilliseconds": 0,
+          "churn": 16
+        },
+        "capture": {
+          "profile": "sync-objects",
+          "lossFree": true,
+          "observedRecords": 759308,
+          "admittedRecords": 117604,
+          "applicationDrops": 0,
+          "sourceLoss": 0,
+          "gateOmissionsNoFollowedResource": 594394,
+          "gateOmissionsBeyondBound": 0,
+          "undecodableUnknownDescriptorVersion": 20550,
+          "synchronizationRecords": 117077
+        },
+        "evaluation": {
+          "truthObjects": 3,
+          "discoveredWithLifetime": 3,
+          "expectedMemberships": 6,
+          "resolvedMemberships": 6,
+          "memberships": 6,
+          "falseMemberships": 0,
+          "truthOperations": 108,
+          "observed": 108,
+          "byteEligible": 0,
+          "claimsBytesOrOperations": false,
+          "workloadRecords": 440,
+          "closesNamingARunObject": 54,
+          "recordsOfOtherProcessesOnItsObjects": 4,
+          "otherProcessesOnItsObjects": 1,
+          "recordsOfOtherProcesses": 116634,
+          "recordsBoundToNoProcess": 3,
+          "tier": "TopologyOnly",
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      }
+    ],
+    "ledger": "fixtures/FX-SYNC-001/evidence/product/records.csv and its truth logs and scenario, of the run paced-1: the workload's synchronization handle records and other processes' on objects the workload's processes held, each record's place in the session's order, its time on the capture's calibrated wall clock, its process's role - creator, opener, or other-01 onward for a process the truth does not name - its kind, opcode and object number in the capture, and its name where it names one of the run's objects, \"named\" where it names another - never a PID, a handle value, an address or another object's name."
   }
 }

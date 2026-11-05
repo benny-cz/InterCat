@@ -1,6 +1,6 @@
 # ADR-084: A named synchronization object is measured as the one number its closes name, and is topology at most
 
-- Status: accepted; no capture is measured by it yet - FX-SYNC-001 through the product is next
+- Status: accepted; FX-SYNC-001 measured through the product, topology only on 10.0.26220.0-x64 (addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-082, ADR-083, §14.2, R3, P1, P7, P27, FX-SYNC-001, `CoverageTierCalculator`, `SyncObjectCoverageEvaluator`,
@@ -47,3 +47,22 @@ show is which processes share an object, from its first handle to its last close
 - Tests hold it on synthetic captures: a whole run is topology only, a stranger bound to an object is a false membership,
   an object of two numbers or with its creation or a close unseen is not discovered, and a capture of none of the truth's
   processes is unsupported; seven mutations are caught.
+
+## Addendum: FX-SYNC-001 through the product (2026-11-05)
+
+`InterCat.SyncProbe --session` reads a session `icat record` recorded under the opt-in synchronization objects profile as the
+product holds it: each handle record's process under `process-binding-v6`, the number the gate wrote over its object's
+address, and its name. It writes the ledger of the workload's records, and of other processes' on objects the workload's
+processes held, by role - never a PID, a handle value, an address or another object's name - and evaluates it as decided
+here.
+
+- In four runs, machine-wide and loss-free - twice paced as the fixture is, once unpaced over 256 rounds, and once with the
+  opener opening and closing each object 16 more times - each of the run's three objects was one number from the creator's
+  creation of its first handle to every close the truth logged, each in its own process, its closes naming it under the
+  session's namespace, and bound to exactly the creator and the opener: 12 of 12 handle opens and closes a run, 108 of 108
+  churned, no membership false.
+- Other processes' records on objects the workload's processes also held - an unnamed object whose handles they only
+  closed, and a named object dozens of processes hold, mostly in the stop's rundown - named none of the run's objects, so
+  they are scope (decision 5).
+- Named synchronization objects are topology only on 10.0.26220.0-x64: the build's per-build coverage carries the tier from
+  FX-SYNC-001, and a test reproduces it from the first run's committed ledger; eight alterations of that evidence are caught.

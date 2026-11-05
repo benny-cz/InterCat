@@ -90,6 +90,78 @@ public sealed class SyncObjectCoverageEvaluatorTests
         Assert.False(SyncObjectCoverageEvaluator.Names(null, Run + "-event"));
     }
 
+    [Fact(DisplayName = "P27: FX-SYNC-001's handle records through the product reproduce its measured tier - each named object the one number its closes name, from the creator's creation to both processes' closes, bound to exactly the two processes, and topology only")]
+    public void CommittedEvidenceReproducesItsTier()
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-SYNC-001", "evidence");
+        string product = Path.Combine(evidence, "product");
+        TruthRecord[] truth = [.. ReadTruth(Path.Combine(product, "truth-creator.jsonl")), .. ReadTruth(Path.Combine(product, "truth-opener.jsonl"))];
+        Dictionary<string, int> processes = truth.GroupBy(record => record.Role).ToDictionary(group => group.Key, group => group.First().ProcessId);
+
+        // The committed ledger holds the workload's records, and other processes' on its objects, by role - never a PID (P16).
+        SyncObjectObservation[] records = [.. ReadLedger(Path.Combine(product, "records.csv"), processes)];
+        SyncObjectCoverageResult result = SyncObjectCoverageEvaluator.Evaluate(truth, records, Settings());
+
+        using System.Text.Json.JsonDocument measurement = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "measurement.json")));
+        System.Text.Json.JsonElement stated = measurement.RootElement.GetProperty("throughTheProduct").GetProperty("runs")[0].GetProperty("evaluation");
+        MechanismMeasurement measured = result.Measurement;
+        Assert.Equal(
+            (stated.GetProperty("truthObjects").GetInt64(), stated.GetProperty("discoveredWithLifetime").GetInt64(),
+                stated.GetProperty("expectedMemberships").GetInt64(), stated.GetProperty("resolvedMemberships").GetInt64(),
+                stated.GetProperty("falseMemberships").GetInt64(), stated.GetProperty("truthOperations").GetInt64(), stated.GetProperty("observed").GetInt64()),
+            (measured.TruthResources, measured.DiscoveredResourcesWithLifetime, measured.ExpectedMemberships, measured.ResolvedMemberships,
+                measured.FalsePeerAttributions, measured.TruthOperations, measured.TruthOperationsWithAdmittedObservation));
+        Assert.Equal(stated.GetProperty("recordsOfOtherProcessesOnItsObjects").GetInt32(), result.ObservationsOutsideScope);
+        Assert.Equal(stated.GetProperty("gaps").EnumerateArray().Select(gap => gap.GetString()), result.Assessment.Gaps);
+        Assert.Equal(Enum.Parse<CapabilityTier>(stated.GetProperty("tier").GetString()!), result.Assessment.Tier);
+
+        // Every one of them: three objects, each one number from the creator's creation to both processes' closes and bound to
+        // exactly the two, its closes carrying its whole kernel name in the session's namespace; every handle open and close
+        // the truth logged seen in its own process; no byte, signal or wait claimed, so the tier is topology.
+        Assert.Equal((3L, 3L, 6L, 6L, 0L), (measured.TruthResources, measured.DiscoveredResourcesWithLifetime, measured.ExpectedMemberships,
+            measured.ResolvedMemberships, measured.FalsePeerAttributions));
+        Assert.Equal((12L, 12L, 0L, false), (measured.TruthOperations, measured.TruthOperationsWithAdmittedObservation,
+            measured.ByteEligibleOperations, measured.ClaimsBytesOrOperations));
+        int[] holders = [.. processes.Values.Order()];
+        Assert.All(result.Objects, item => Assert.Equal(holders, item.MemberProcesses));
+        Assert.All(result.Objects, item => Assert.Contains(records, record => record.Kind == ObservationKind.Close
+            && record.ObjectNumber == item.ObjectNumber && record.Name is { } name && name.StartsWith(@"\Sessions\", StringComparison.Ordinal)
+            && name.EndsWith(@"\" + item.Name[(item.Name.IndexOf('\\', StringComparison.Ordinal) + 1)..], StringComparison.Ordinal)));
+        Assert.Equal(CapabilityTier.TopologyOnly, result.Assessment.Tier);
+    }
+
+    private static IEnumerable<TruthRecord> ReadTruth(string path)
+    {
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        return File.ReadLines(path).Where(line => line.Length > 0).Select(line => System.Text.Json.JsonSerializer.Deserialize<TruthRecord>(line, options)!);
+    }
+
+    // A ledger's records as the evaluator reads a session's: each role of the truth its process, each other process one of its
+    // own the truth never names, and a name naming none of the run's objects ("named") one that names no object.
+    private static IEnumerable<SyncObjectObservation> ReadLedger(string path, Dictionary<string, int> processes) =>
+        File.ReadLines(path).Skip(1).Where(line => line.Length > 0).Select(line => line.Split(',')).Select(field => new SyncObjectObservation
+        {
+            Ordinal = long.Parse(field[0], System.Globalization.CultureInfo.InvariantCulture),
+            Kind = Enum.Parse<ObservationKind>(field[3]),
+            ProcessId = field[2].Length == 0 ? null
+                : processes.TryGetValue(field[2], out int process) ? process
+                : -int.Parse(field[2]["other-".Length..], System.Globalization.CultureInfo.InvariantCulture),
+            ObjectNumber = field[5].Length == 0 ? null : long.Parse(field[5], System.Globalization.CultureInfo.InvariantCulture),
+            Name = field[6].Length == 0 ? null : field[6],
+        });
+
+    private static string RepositoryRoot()
+    {
+        DirectoryInfo? current = new(AppContext.BaseDirectory);
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "InterCat.slnx")))
+        {
+            current = current.Parent;
+        }
+
+        return current?.FullName ?? throw new DirectoryNotFoundException("Could not locate the InterCat repository root.");
+    }
+
     private static SyncObjectCoverageSettings Settings() => new()
     {
         FixtureId = "FX-SYNC-001",

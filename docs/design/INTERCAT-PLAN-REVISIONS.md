@@ -868,6 +868,7 @@ Revision 941 gives a classic class's descriptors laid out apart their class's fi
 Revision 942 measures FX-SYNC-002 again (ADR-082's sixth addendum): every duplication is raised at version 3, whose fourth field names the process it was duplicated from - correcting revision 937's reading by the registered version 2 layout, which names none - and no layout the machine registers describes it, so a capture counts it undecodable.
 Revision 943 measures the synchronization objects profile through the product (ADR-083's fifth addendum): on a handle-heavy workload a median 11.8 CPU pp and the workload 18.4% slower, nothing dropped or lost, so the profile states High, past both of §12's targets.
 Revision 944 adds `SyncObjectCoverageEvaluator` (ADR-084): a named synchronization object is the one number its closes name, discovered with its lifetime and bound to exactly the processes that held it, its measurement claiming neither bytes nor operations, so topology at most; no capture is measured by it yet.
+Revision 945 measures FX-SYNC-001 through the product (ADR-084's addendum): four runs of icat record under the synchronization objects profile, every named object one number from its creation to every logged close and bound to exactly its two processes, so named synchronization objects are topology only on 10.0.26220.0-x64.
 
 ## Revisions, a paragraph each, in order
 
@@ -4005,3 +4006,15 @@ its members, the processes its records bind to, are exactly the truth's: a proce
 false membership and leaves it undiscovered. Its handle opens and closes are the truth's operations; a signal or a wait
 is in no record and no record carries a size, so the measurement claims neither bytes nor operations and the mechanism
 reaches topology at most. Records of other processes are scope. No capture is measured by it yet.
+
+Revision 945 measures named synchronization objects through the product (ADR-084's addendum). `InterCat.SyncProbe --session`
+reads a session icat record recorded under the opt-in synchronization objects profile as the product holds it - each handle
+record's process under `process-binding-v6` and its object's number in the capture - writes the ledger of the workload's
+records and of other processes' on objects its processes held, by role, never a PID, a handle value, an address or another
+object's name, and evaluates it with `SyncObjectCoverageEvaluator`. In four runs, machine-wide and loss-free - twice paced,
+once unpaced over 256 rounds and once with the opener opening and closing each object 16 more times - each of the run's
+three objects was one number from the creator's creation to every close the truth logged, each in its own process, and
+bound to exactly the creator and the opener: 12 of 12 handle opens and closes a run and 108 of 108 churned, none claimed as
+traffic. Other processes' records on objects the workload's processes also held named no run object, and so are scope. A
+test reproduces the tier from the first run's ledger, eight alterations of the evidence caught, and the build's per-build
+coverage carries Synchronization at TopologyOnly from FX-SYNC-001.

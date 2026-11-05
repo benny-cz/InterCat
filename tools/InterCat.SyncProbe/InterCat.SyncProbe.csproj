@@ -9,6 +9,9 @@
     <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
     <!-- To read what a product capture published - its health and coverage ledger - when it measures a profile's cost. -->
     <ProjectReference Include="../../src/InterCat.Storage/InterCat.Storage.csproj" />
+    <!-- And, for a session icat record recorded, evaluates its workload's records against their truth as the product
+         evaluates named synchronization objects. -->
+    <ProjectReference Include="../../src/InterCat.Analysis/InterCat.Analysis.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- A lab probe, not a product adapter: its own private system logger collects the kernel's handle and dispatcher flag

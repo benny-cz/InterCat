@@ -635,34 +635,36 @@
         ]
       },
       "truth": {
-        "generator": "src/InterCat.TestWorkloads sync-objects --rounds 64 --hold-ms 5, under tools/InterCat.SyncProbe --measure",
+        "generator": "src/InterCat.TestWorkloads sync-objects --rounds 64 --hold-ms 5, under tools/InterCat.SyncProbe --measure, and under icat record --profile sync-objects, read by tools/InterCat.SyncProbe --session",
         "seed": 0,
         "log": "fixtures/FX-SYNC-001/evidence/truth-creator.jsonl",
         "independence": "Each process logs every object it created or opened, every signal it gave, every wait that ended - whether its first look failed - and every handle it closed, by the object's name; neither reads InterCat state, and the probe's session reads the kernel's records apart from both."
       },
       "expected": {
         "artifact": "fixtures/FX-SYNC-001/evidence/measurement.json",
-        "note": "Four runs under the probe's private system logger, machine-wide, nothing lost: each process's handle to each object created and closed once, both processes' handles at one address, its type Event, Semaphore or Mutant, its creation naming nothing and its close the object; with the object group, each object created in the creator before its first handle and deleted after its last close. Every wait the kernel blocked had the ready thread of its thread from the signaling process's running thread within microseconds of the signal, and no ready of a thread in a user-mode wait between the two processes was left unpaired; dozens of readies at their exit, in the kernel's own waits, matched no signal. The first run's ledger and the object run's are held to the truth by tests."
+        "note": "Four runs under the probe's private system logger, machine-wide, nothing lost: each process's handle to each object created and closed once, both processes' handles at one address, its type Event, Semaphore or Mutant, its creation naming nothing and its close the object; with the object group, each object created in the creator before its first handle and deleted after its last close. Every wait the kernel blocked had the ready thread of its thread from the signaling process's running thread within microseconds of the signal, and no ready of a thread in a user-mode wait between the two processes was left unpaired; dozens of readies at their exit, in the kernel's own waits, matched no signal. The first run's ledger and the object run's are held to the truth by tests. Through the product, four runs of icat record under the synchronization objects profile, machine-wide and nothing lost - twice paced, once unpaced over 256 rounds and once with the opener opening and closing each object 16 more times: each of the run's three objects one number from the creator's creation to every close the truth logged, each in its own process, bound to exactly the two processes, 12 of 12 handle opens and closes seen a run and 108 of 108 churned; the first such run's ledger is evaluated by a test against its truth."
       },
       "environment": [
         {
           "build": "10.0.26220.0-x64",
           "supportTier": "Primary",
           "date": "2026-11-05",
-          "result": "Measured by tools/InterCat.SyncProbe, four runs, nothing lost: each process's handles to each named object at one address, named at their close, and each wait the kernel blocked readied from the signaling process. No tier is assigned: the object manager's handle group is inventoried as named synchronization objects' lead and requested by no profile, so no capture has recorded them through the product (ADR-082, ADR-083)."
+          "tier": "TopologyOnly",
+          "result": "Measured by tools/InterCat.SyncProbe, four runs, nothing lost: each process's handles to each named object at one address, named at their close, and each wait the kernel blocked readied from the signaling process. Recorded through the product by icat record under the opt-in synchronization objects profile, four times, nothing lost: each object one number from the creator's creation to every close the truth logged, bound to exactly its two processes, 12 of 12 handle opens and closes seen a run. Tier TopologyOnly: a handle record carries no byte, signal or wait (ADR-084)."
         }
       ],
       "provenance": {
         "adapter": "windows-etw-inventory-0.8.0",
         "shareable": true,
-        "contents": "The two processes' truth logs and scenario of the first run - objects by the run's own name, signals and waits by round - and the ledgers of the first run and of the object run: the handle records of the run's three objects, each object's creation and deletion, the ready threads between the two processes either way and their threads' switches into a user-mode wait, by role, object kind, object, handle and thread ordinals, type and wait, never a PID, a thread id, a handle value or an address; and the measurement's counters."
+        "contents": "The two processes' truth logs and scenario of the first run - objects by the run's own name, signals and waits by round - and the ledgers of the first run and of the object run: the handle records of the run's three objects, each object's creation and deletion, the ready threads between the two processes either way and their threads' switches into a user-mode wait, by role, object kind, object, handle and thread ordinals, type and wait, never a PID, a thread id, a handle value or an address; the truth logs and scenario of the first run through the product and the ledger of its synchronization handle records and of other processes' on objects its processes held, by role - creator, opener, other-01 onward - kind, opcode, object number and the run's own objects' names, never a PID, a handle value, an address or another object's name; and the measurement's counters."
       },
       "tests": [
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
         "R22: an object's address names it only from its creation to its deletion - FX-SYNC-001's object group records each named object created in the creator before its first handle and deleted after its last close, at the address its handles carry",
         "P8: FX-SYNC-001's every wait the kernel blocked has the ready of its thread from the signaling process inside the wait's span, and no ready of a thread in a user-mode wait between the two processes is left unpaired - a ready names no object, so only a truth's wait makes one a signal",
-        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
-        "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart"
+        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build FX-SYNC-001 measured them through the product",
+        "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart",
+        "P27: FX-SYNC-001's handle records through the product reproduce its measured tier - each named object the one number its closes name, from the creator's creation to both processes' closes, bound to exactly the two processes, and topology only"
       ]
     },
     {
@@ -2420,6 +2422,7 @@
       "P27": [
         "P27: COM calls have an inventoried source admitting its four synchronous call events, requested by the opt-in COM calls profile alone, its process filter and cost measured, and the tier its fixture measured through the product",
         "P27: FX-COM-001's calls through the product reproduce its measured tier - every truth call its client's call linked to the server call of its own, carried by one RPC call served through it, and no byte",
+        "P27: FX-SYNC-001's handle records through the product reproduce its measured tier - each named object the one number its closes name, from the creator's creation to both processes' closes, bound to exactly the two processes, and topology only",
         "P27: FX-UNIX-001's rows through the product reproduce its measured tier - every truth send and receive its owner's row, bound to its socket with its bytes, and no peer named",
         "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and the tier its latest fixture measured through the product",
         "P27: a COM call evaluation matches each truth call to its client's call on the interface and method the workload called, its peer the process its link reached, and measures no byte",
@@ -2442,7 +2445,7 @@
         "P27: discovered resources without a byte claim are topology only",
         "P27: every section 14.2 threshold met on a supported build yields traffic visualization",
         "P27: false peer attribution above one percent blocks traffic visualization",
-        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
+        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build FX-SYNC-001 measured them through the product",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",
         "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build"
       ],
