@@ -1,0 +1,4973 @@
+{
+  "schema": "intercat.ui-message-provider-inspection.v1",
+  "inspectedUtc": "2026-11-05T16:32:57.72872+00:00",
+  "build": "10.0.26220.0-x64",
+  "note": "Read-only: each provider\u0027s registered schema as TDH gives it, read as the product reads one, and the registered providers\u0027 names. No provider was enabled and no session started, so nothing here says what anything emits.",
+  "providerWords": [
+    "win32k",
+    "user32",
+    "uipi",
+    "clipboard",
+    "dde",
+    "dwm",
+    "input",
+    "message"
+  ],
+  "eventWords": [
+    "wm_",
+    "copydata",
+    "clipboard",
+    "dde",
+    "hwnd",
+    "windowmessage",
+    "sendmessage",
+    "postmessage",
+    "uipi"
+  ],
+  "publishedProviders": 1230,
+  "providers": [
+    {
+      "name": "Microsoft-Windows-AppXDeployment-Server-UndockedDeh",
+      "guid": "43833e12-078d-4d7d-8aaf-ae8c8520f18c",
+      "registered": true,
+      "schemaFingerprint": "283294a8c74a3dfe890e46cf48dee448ae55c185836addd87a581a246df8fb40",
+      "events": 16,
+      "keywords": [],
+      "eventsNamingMessages": [
+        {
+          "id": 9000,
+          "version": 0,
+          "symbol": "AppXDeployment.Task.Server.OSIM",
+          "task": "AppXDeployment.Task.Server.OSIM",
+          "opcode": null,
+          "keywords": [],
+          "fields": [
+            {
+              "name": "PackageFullName",
+              "inType": "win:UnicodeString"
+            },
+            {
+              "name": "UndockedDehDllParent",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 9001,
+          "version": 0,
+          "symbol": "AppXDeployment.Task.Server.OSIM9001",
+          "task": "AppXDeployment.Task.Server.OSIM",
+          "opcode": null,
+          "keywords": [],
+          "fields": [
+            {
+              "name": "PackageFullName",
+              "inType": "win:UnicodeString"
+            },
+            {
+              "name": "UndockedDehDllParent",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 9002,
+          "version": 0,
+          "symbol": "AppXDeployment.Task.Server.OSIM9002",
+          "task": "AppXDeployment.Task.Server.OSIM",
+          "opcode": null,
+          "keywords": [],
+          "fields": [
+            {
+              "name": "PackageFullName",
+              "inType": "win:UnicodeString"
+            },
+            {
+              "name": "UndockedDehDllParent",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 9003,
+          "version": 0,
+          "symbol": "AppXDeployment.Task.Server.OSIM9003",
+          "task": "AppXDeployment.Task.Server.OSIM",
+          "opcode": null,
+          "keywords": [],
+          "fields": [
+            {
+              "name": "PackageFullName",
+              "inType": "win:UnicodeString"
+            },
+            {
+              "name": "UndockedDehDllParent",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 9004,
+          "version": 0,
+          "symbol": "AppXDeployment.Task.Server.OSIM9004",
+          "task": "AppXDeployment.Task.Server.OSIM",
+          "opcode": null,
+          "keywords": [],
+          "fields": [
+            {
+              "name": "PackageFullName",
+              "inType": "win:UnicodeString"
+            },
+            {
+              "name": "UndockedDehDllParent",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 9005,
+          "version": 0,
+          "symbol": "AppXDeployment.Task.Server.OSIM9005",
+          "task": "AppXDeployment.Task.Server.OSIM",
+          "opcode": null,
+          "keywords": [],
+          "fields": [
+            {
+              "name": "PackageFullName",
+              "inType": "win:UnicodeString"
+            },
+            {
+              "name": "UndockedDehDllParent",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-Dwm-Api",
+      "guid": "292a52c4-fa27-4461-b526-54a46430bd54",
+      "registered": true,
+      "schemaFingerprint": "d8d21c7f85387217fe96ac1a896e7b81ccda198eed52c245b762303cf5659e4e",
+      "events": 82,
+      "keywords": [
+        {
+          "name": "DwmApi",
+          "mask": "0x1"
+        }
+      ],
+      "eventsNamingMessages": [
+        {
+          "id": 9,
+          "version": 0,
+          "symbol": "ApiGetWindowAttributeStart",
+          "task": "ApiGetWindowAttribute",
+          "opcode": "win:Start",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "version": 0,
+          "symbol": "ApiGetWindowAttributeStop",
+          "task": "ApiGetWindowAttribute",
+          "opcode": "win:Stop",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hr",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "version": 0,
+          "symbol": "ApiSetWindowAttributeStart",
+          "task": "ApiSetWindowAttribute",
+          "opcode": "win:Start",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "version": 0,
+          "symbol": "ApiSetWindowAttributeStop",
+          "task": "ApiSetWindowAttribute",
+          "opcode": "win:Stop",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hr",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 27,
+          "version": 0,
+          "symbol": "ApiSetIconicThumbnailStart",
+          "task": "ApiSetIconicThumbnail",
+          "opcode": "win:Start",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 28,
+          "version": 0,
+          "symbol": "ApiSetIconicThumbnailStop",
+          "task": "ApiSetIconicThumbnail",
+          "opcode": "win:Stop",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hr",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 45,
+          "version": 0,
+          "symbol": "ApipDxGetWindowSharedSurfaceStart",
+          "task": "ApipDxGetWindowSharedSurface",
+          "opcode": "win:Start",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "luidAdapter",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "hmonAssociation",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "dwFlags",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DxgiFormat",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 46,
+          "version": 0,
+          "symbol": "ApipDxGetWindowSharedSurfaceStop",
+          "task": "ApipDxGetWindowSharedSurface",
+          "opcode": "win:Stop",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "hr",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "hDxSurface",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "uiUpdateId",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "DxgiFormat",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "cTries",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 71,
+          "version": 0,
+          "symbol": "ApiSnapshotIconicThumbnailStart",
+          "task": "ApiSnapshotIconicThumbnail",
+          "opcode": "win:Start",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hwndDst",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwndSrc",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 72,
+          "version": 0,
+          "symbol": "ApiSnapshotIconicThumbnailStop",
+          "task": "ApiSnapshotIconicThumbnail",
+          "opcode": "win:Stop",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hr",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 73,
+          "version": 0,
+          "symbol": "ApipActivateLivePreviewStart",
+          "task": "ApipActivateLivePreview",
+          "opcode": "win:Start",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "fActivate",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "hwndExclude",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "trigger",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 74,
+          "version": 0,
+          "symbol": "ApipActivateLivePreviewStop",
+          "task": "ApipActivateLivePreview",
+          "opcode": "win:Stop",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "fActivate",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "hwndExclude",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "trigger",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 75,
+          "version": 0,
+          "symbol": "ApiSetIconicLivePreviewBitmapStart",
+          "task": "ApiSetIconicLivePreviewBitmap",
+          "opcode": "win:Start",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 76,
+          "version": 0,
+          "symbol": "ApiSetIconicLivePreviewBitmapStop",
+          "task": "ApiSetIconicLivePreviewBitmap",
+          "opcode": "win:Stop",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hr",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 77,
+          "version": 0,
+          "symbol": "ApiInvalidateIconicBitmapsStart",
+          "task": "ApiInvalidateIconicBitmaps",
+          "opcode": "win:Start",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 78,
+          "version": 0,
+          "symbol": "ApiInvalidateIconicBitmapsStop",
+          "task": "ApiInvalidateIconicBitmaps",
+          "opcode": "win:Stop",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hr",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 80,
+          "version": 0,
+          "symbol": "ApipDxUpdateWindowRedirectionBltSurfaceStop",
+          "task": "ApipDxUpdateWindowRedirectionBltSurface",
+          "opcode": "win:Stop",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hr",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "left",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "top",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "right",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "bottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 82,
+          "version": 0,
+          "symbol": "ApipDxSetContentHostingInformationStop",
+          "task": "ApipDxSetContentHostingInformation",
+          "opcode": "win:Stop",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hr",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "Flags",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 103,
+          "version": 0,
+          "symbol": "ApipTransitionWindowStart",
+          "task": "ApipTransitionWindow",
+          "opcode": "win:Start",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "target",
+              "inType": "win:Int32"
+            }
+          ]
+        },
+        {
+          "id": 105,
+          "version": 0,
+          "symbol": "ApiTransitionOwnedWindowStart",
+          "task": "ApiTransitionOwnedWindow",
+          "opcode": "win:Start",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "target",
+              "inType": "win:Int32"
+            }
+          ]
+        },
+        {
+          "id": 107,
+          "version": 0,
+          "symbol": "ApipUpdateDesktopThumbnailStart",
+          "task": "ApipUpdateDesktopThumbnail",
+          "opcode": "win:Start",
+          "keywords": [
+            "DwmApi"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-Dwm-Compositor",
+      "guid": "044a9015-d96c-5dd1-0199-72d258325298",
+      "registered": true,
+      "schemaFingerprint": "6730fd31e65f701e18c1c755c68354685f83c199887eeac915720decfa1c8ffb",
+      "events": 36,
+      "keywords": [
+        {
+          "name": "Frame",
+          "mask": "0x1"
+        },
+        {
+          "name": "Batches",
+          "mask": "0x2"
+        },
+        {
+          "name": "Tokens",
+          "mask": "0x4"
+        },
+        {
+          "name": "Animations",
+          "mask": "0x8"
+        },
+        {
+          "name": "Expressions",
+          "mask": "0x10"
+        },
+        {
+          "name": "CleanTrees",
+          "mask": "0x20"
+        },
+        {
+          "name": "PresentMon",
+          "mask": "0x40000000"
+        },
+        {
+          "name": "Summary",
+          "mask": "0x80000000"
+        }
+      ],
+      "eventsNamingMessages": []
+    },
+    {
+      "name": "Microsoft-Windows-Dwm-Core",
+      "guid": "9e9bba3c-2e38-40cb-99f4-9e8281425164",
+      "registered": true,
+      "schemaFingerprint": "aafbc541d9331355f4d423d3955020647996084184622e13755f0f3d6529e2b7",
+      "events": 345,
+      "keywords": [
+        {
+          "name": "Composition",
+          "mask": "0x1"
+        },
+        {
+          "name": "DetailedFrameInformation",
+          "mask": "0x2"
+        },
+        {
+          "name": "FrameDrawInconsistencyInformation",
+          "mask": "0x4"
+        },
+        {
+          "name": "DwmFrameRate",
+          "mask": "0x8"
+        },
+        {
+          "name": "AnimationScreenOff",
+          "mask": "0x10"
+        },
+        {
+          "name": "ProcessAttribution",
+          "mask": "0x20"
+        },
+        {
+          "name": "ComputeScribble",
+          "mask": "0x40"
+        },
+        {
+          "name": "Scheduling",
+          "mask": "0x80"
+        },
+        {
+          "name": "Animations",
+          "mask": "0x100"
+        },
+        {
+          "name": "Overlays",
+          "mask": "0x200"
+        },
+        {
+          "name": "Cursor",
+          "mask": "0x400"
+        },
+        {
+          "name": "FrameVisualization",
+          "mask": "0x10000"
+        },
+        {
+          "name": "LowOverheadSmoothnessTracking",
+          "mask": "0x20000"
+        },
+        {
+          "name": "FrameVisualizationExtra",
+          "mask": "0x40000"
+        },
+        {
+          "name": "DwmHolographic",
+          "mask": "0x80000"
+        },
+        {
+          "name": "DwmInput",
+          "mask": "0x200000"
+        },
+        {
+          "name": "DwmDiagTrack",
+          "mask": "0x400000"
+        }
+      ],
+      "eventsNamingMessages": [
+        {
+          "id": 67,
+          "version": 0,
+          "symbol": "MILEVENT_MEDIA_UCE_CHECKDEVICESTATE",
+          "task": "MILEVENT_MEDIA_UCE_CHECKDEVICESTATE",
+          "opcode": null,
+          "keywords": [
+            "Composition"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "hr",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 96,
+          "version": 0,
+          "symbol": "ETWGUID_MAGNIFIERRENDERTARGET_CAPTUREBITSStart",
+          "task": "ETWGUID_MAGNIFIERRENDERTARGET_CAPTUREBITS",
+          "opcode": "win:Start",
+          "keywords": [
+            "Composition"
+          ],
+          "fields": [
+            {
+              "name": "hwndLensContext",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "UpdateId",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "OffsetX",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "OffsetY",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "S_11",
+              "inType": "win:Float"
+            },
+            {
+              "name": "S_22",
+              "inType": "win:Float"
+            },
+            {
+              "name": "DX",
+              "inType": "win:Float"
+            },
+            {
+              "name": "DY",
+              "inType": "win:Float"
+            }
+          ]
+        },
+        {
+          "id": 97,
+          "version": 0,
+          "symbol": "ETWGUID_MAGNIFIERRENDERTARGET_CAPTUREBITSStop",
+          "task": "ETWGUID_MAGNIFIERRENDERTARGET_CAPTUREBITS",
+          "opcode": "win:Stop",
+          "keywords": [
+            "Composition"
+          ],
+          "fields": [
+            {
+              "name": "hwndLensContext",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "UpdateId",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "hr",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 209,
+          "version": 0,
+          "symbol": "HIT_TESTStop",
+          "task": "HIT_TEST",
+          "opcode": "win:Stop",
+          "keywords": [
+            "DwmInput"
+          ],
+          "fields": [
+            {
+              "name": "X",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Y",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "hWnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "inputSinkHandle",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "inputSinkLuid",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "_11",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_12",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_13",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_14",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_21",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_22",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_23",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_24",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_31",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_32",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_33",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_34",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_41",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_42",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_43",
+              "inType": "win:Float"
+            },
+            {
+              "name": "_44",
+              "inType": "win:Float"
+            }
+          ]
+        },
+        {
+          "id": 214,
+          "version": 0,
+          "symbol": "DETECT_TOPLEVELWINDOW_DESTROY",
+          "task": "DETECT_TOPLEVELWINDOW_DESTROY",
+          "opcode": null,
+          "keywords": [
+            "Composition"
+          ],
+          "fields": [
+            {
+              "name": "hWnd",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "pCollector",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "nMetaDataCount",
+              "inType": "win:UInt64"
+            }
+          ]
+        },
+        {
+          "id": 311,
+          "version": 0,
+          "symbol": "ENDFRAME_DRAWLIST_BATCH_STATS",
+          "task": "ENDFRAME_DRAWLIST_BATCH_STATS",
+          "opcode": null,
+          "keywords": [
+            "Composition"
+          ],
+          "fields": [
+            {
+              "name": "NoAAFixupVertices",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "AAFixup2DVertices",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "AAFixup3DVertices",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "HWDrawCallsProcessed",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "WarpDrawCallsProcessed",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "HwMegaRectsAdded",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DrawListBatchesProcessed",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DrawListEntriesProcessed",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DrawListEntryGroupsProcessed",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "GroupedDrawListEntriesProcessed",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "RenderingDrawListEntriesProcessed",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "StateSettingDrawListEntriesCreated",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "StateSettingDrawListEntriesOptimizedAway",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 409,
+          "version": 0,
+          "symbol": "HWDEVICEStart",
+          "task": "HWDEVICE",
+          "opcode": "win:Start",
+          "keywords": [
+            "Composition"
+          ],
+          "fields": [
+            {
+              "name": "CD3DDeviceLevel1",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FeatureLevel",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "AdapterLuid",
+              "inType": "win:UInt8"
+            },
+            {
+              "name": "AdapterDescription",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 410,
+          "version": 0,
+          "symbol": "HWDEVICEStop",
+          "task": "HWDEVICE",
+          "opcode": "win:Stop",
+          "keywords": [
+            "Composition"
+          ],
+          "fields": [
+            {
+              "name": "CD3DDeviceLevel1",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 415,
+          "version": 0,
+          "symbol": "REGISTER_VAIL_STROKE_ON_HOST",
+          "task": "REGISTER_VAIL_STROKE_ON_HOST",
+          "opcode": null,
+          "keywords": [
+            "ComputeScribble"
+          ],
+          "fields": [
+            {
+              "name": "StrokeId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "HWND",
+              "inType": "win:UInt64"
+            }
+          ]
+        },
+        {
+          "id": 416,
+          "version": 0,
+          "symbol": "UNREGISTER_VAIL_STROKE_ON_HOST",
+          "task": "UNREGISTER_VAIL_STROKE_ON_HOST",
+          "opcode": null,
+          "keywords": [
+            "ComputeScribble"
+          ],
+          "fields": [
+            {
+              "name": "StrokeId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "HWND",
+              "inType": "win:UInt64"
+            }
+          ]
+        },
+        {
+          "id": 466,
+          "version": 0,
+          "symbol": "Windowed_Dx_Blt_Consumed",
+          "task": "Windowed_Dx_Blt_Consumed",
+          "opcode": null,
+          "keywords": [
+            "Composition"
+          ],
+          "fields": [
+            {
+              "name": "hWnd",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "displayAdapterLuid",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "renderAdapterLuid",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "vidPnSourceId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "vidPnTargetId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "uniqueId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "bltRect",
+              "inType": "win:Int32"
+            }
+          ]
+        },
+        {
+          "id": 467,
+          "version": 0,
+          "symbol": "Windowed_Dx_Flip_Consumed",
+          "task": "Windowed_Dx_Flip_Consumed",
+          "opcode": null,
+          "keywords": [
+            "Composition"
+          ],
+          "fields": [
+            {
+              "name": "hWnd",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "displayAdapterLuid",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "renderAdapterLuid",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "vidPnSourceId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "vidPnTargetId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "uniqueId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "surfaceLuid",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "bindId",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "presentCount",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "flipRect",
+              "inType": "win:UInt64"
+            }
+          ]
+        },
+        {
+          "id": 502,
+          "version": 0,
+          "symbol": "CURSOR_HIDDEN",
+          "task": "CURSOR_HIDDEN",
+          "opcode": null,
+          "keywords": [
+            "Cursor"
+          ],
+          "fields": [
+            {
+              "name": "adapterLuid",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "vidPnSourceId",
+              "inType": "win:UInt32"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-Dwm-Dwm",
+      "guid": "d29d56ea-4867-4221-b02e-cfd998834075",
+      "registered": true,
+      "schemaFingerprint": "c4749cae8e0f512449d2cd342d8bd3e35320f5b0cebe63743378b795fd20dd95",
+      "events": 15,
+      "keywords": [
+        {
+          "name": "DwmExe",
+          "mask": "0x1"
+        },
+        {
+          "name": "DwmExeGhosting",
+          "mask": "0x2"
+        }
+      ],
+      "eventsNamingMessages": [
+        {
+          "id": 11,
+          "version": 0,
+          "symbol": "AddGhost",
+          "task": "AddGhost",
+          "opcode": null,
+          "keywords": [
+            "DwmExeGhosting"
+          ],
+          "fields": [
+            {
+              "name": "CGhostOrHwndToGhost",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "version": 0,
+          "symbol": "DuplicateGhost",
+          "task": "DuplicateGhost",
+          "opcode": null,
+          "keywords": [
+            "DwmExeGhosting"
+          ],
+          "fields": [
+            {
+              "name": "CGhostOrHwndToGhost",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "version": 0,
+          "symbol": "VetoCreateGhostWindow",
+          "task": "VetoCreateGhostWindow",
+          "opcode": null,
+          "keywords": [
+            "DwmExeGhosting"
+          ],
+          "fields": [
+            {
+              "name": "CGhostOrHwndToGhost",
+              "inType": "win:Pointer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-Dwm-Redir",
+      "guid": "7d99f6a4-1bec-4c09-9703-3aaa8148347f",
+      "registered": true,
+      "schemaFingerprint": "5af4b9e8f29f61d04e3ea604cd131f058cb746f2e8e5aa33fa96c64867ee22d1",
+      "events": 9,
+      "keywords": [
+        {
+          "name": "DwmRedir",
+          "mask": "0x1"
+        },
+        {
+          "name": "DwmInput",
+          "mask": "0x2"
+        },
+        {
+          "name": "DwmInputPerf",
+          "mask": "0x4"
+        }
+      ],
+      "eventsNamingMessages": [
+        {
+          "id": 7,
+          "version": 0,
+          "symbol": "RedirDwmUpdate",
+          "task": "RedirDwmUpdate",
+          "opcode": null,
+          "keywords": [
+            "DwmRedir"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "MessageId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Flags",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "version": 0,
+          "symbol": "RedirSetLivePreviewExcludeHwnd",
+          "task": "RedirSetLivePreviewExcludeHwnd",
+          "opcode": null,
+          "keywords": [
+            "DwmRedir"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "fExcludedFromLivePreview",
+              "inType": "win:Boolean"
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "version": 0,
+          "symbol": "RedirUpdateWindowRegion",
+          "task": "RedirUpdateWindowRegion",
+          "opcode": null,
+          "keywords": [
+            "DwmRedir"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "RgnType",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "RectStartIndex",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "RectEndIndex",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "TotalRectCount",
+              "inType": "win:UInt32"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-Dwm-Udwm",
+      "guid": "a2d1c713-093b-43a7-b445-d09370ec9f47",
+      "registered": true,
+      "schemaFingerprint": "b3aa360e76ddd2b0b738122024c999173a3e5c0c1809ce3b651e6f64d4a100e5",
+      "events": 121,
+      "keywords": [
+        {
+          "name": "Udwm",
+          "mask": "0x1"
+        },
+        {
+          "name": "UdwmInput",
+          "mask": "0x2"
+        }
+      ],
+      "eventsNamingMessages": [
+        {
+          "id": 5002,
+          "version": 0,
+          "symbol": "UdwmAnimationStart",
+          "task": "UdwmAnimation",
+          "opcode": "win:Start",
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "AnimationType",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5003,
+          "version": 0,
+          "symbol": "UdwmAnimationStop",
+          "task": "UdwmAnimation",
+          "opcode": "win:Stop",
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "AnimationType",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5005,
+          "version": 0,
+          "symbol": "UdwmManageIconicThumbnail",
+          "task": "UdwmManageIconicThumbnail",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "Action",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5006,
+          "version": 0,
+          "symbol": "UdwmSelectIconicRepresentation",
+          "task": "UdwmSelectIconicRepresentation",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "Action",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5007,
+          "version": 0,
+          "symbol": "UdwmProcessSetIconicThumbnailStart",
+          "task": "UdwmProcessSetIconicThumbnail",
+          "opcode": "win:Start",
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5008,
+          "version": 0,
+          "symbol": "UdwmProcessSetIconicThumbnailStop",
+          "task": "UdwmProcessSetIconicThumbnail",
+          "opcode": "win:Stop",
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5014,
+          "version": 0,
+          "symbol": "UdwmProcessSetIconicLivePreviewBitmapStart",
+          "task": "UdwmProcessSetIconicLivePreviewBitmap",
+          "opcode": "win:Start",
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5015,
+          "version": 0,
+          "symbol": "UdwmProcessSetIconicLivePreviewBitmapStop",
+          "task": "UdwmProcessSetIconicLivePreviewBitmap",
+          "opcode": "win:Stop",
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5016,
+          "version": 0,
+          "symbol": "UdwmProcessInvalidateIconicBitmapsStart",
+          "task": "UdwmProcessInvalidateIconicBitmaps",
+          "opcode": "win:Start",
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5017,
+          "version": 0,
+          "symbol": "UdwmProcessInvalidateIconicBitmapsStop",
+          "task": "UdwmProcessInvalidateIconicBitmaps",
+          "opcode": "win:Stop",
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5083,
+          "version": 0,
+          "symbol": "UdwmAnimationComponent",
+          "task": "UdwmAnimationComponent",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "StoryboardId",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Target",
+              "inType": "win:Int32"
+            }
+          ]
+        },
+        {
+          "id": 5084,
+          "version": 0,
+          "symbol": "UdwmAnimationComponent5084",
+          "task": "UdwmAnimationComponent",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "StoryboardId",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Target",
+              "inType": "win:Int32"
+            }
+          ]
+        },
+        {
+          "id": 5085,
+          "version": 0,
+          "symbol": "UdwmAnimationComponent5085",
+          "task": "UdwmAnimationComponent",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "StoryboardId",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Target",
+              "inType": "win:Int32"
+            }
+          ]
+        },
+        {
+          "id": 5086,
+          "version": 0,
+          "symbol": "UdwmAnimationComponent5086",
+          "task": "UdwmAnimationComponent",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "StoryboardId",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Target",
+              "inType": "win:Int32"
+            }
+          ]
+        },
+        {
+          "id": 5089,
+          "version": 0,
+          "symbol": "UdwmAnimatedTransitionVisual",
+          "task": "UdwmAnimatedTransitionVisual",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "StoryboardId",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "TargetId",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "BeginLeft",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "BeginTop",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "BeginRight",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "BeginBottom",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "EndLeft",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "EndTop",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "EndRight",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "EndBottom",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "BeginOpacity",
+              "inType": "win:Float"
+            },
+            {
+              "name": "EndOpacity",
+              "inType": "win:Float"
+            },
+            {
+              "name": "BeginDepth",
+              "inType": "win:Float"
+            },
+            {
+              "name": "EndDepth",
+              "inType": "win:Float"
+            },
+            {
+              "name": "ResourceHandle",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "StaggerOrder",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "AnimationId",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 5093,
+          "version": 0,
+          "symbol": "UdwmTransitionRequest",
+          "task": "UdwmTransitionRequest",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "Target",
+              "inType": "win:HexInt32"
+            }
+          ]
+        },
+        {
+          "id": 5117,
+          "version": 0,
+          "symbol": "UdwmSystemAnimation",
+          "task": "UdwmSystemAnimation",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "Cloaked",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Tracked",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 5118,
+          "version": 0,
+          "symbol": "UdwmSystemAnimation5118",
+          "task": "UdwmSystemAnimation",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "Target",
+              "inType": "win:HexInt32"
+            }
+          ]
+        },
+        {
+          "id": 5119,
+          "version": 0,
+          "symbol": "UdwmSystemAnimation5119",
+          "task": "UdwmSystemAnimation",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "Show",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 5123,
+          "version": 0,
+          "symbol": "UdwmSystemAnimation5123",
+          "task": "UdwmSystemAnimation",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwndCloned",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwndAfter",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5124,
+          "version": 0,
+          "symbol": "UdwmSystemAnimation5124",
+          "task": "UdwmSystemAnimation",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5125,
+          "version": 0,
+          "symbol": "UdwmSystemAnimationStart",
+          "task": "UdwmSystemAnimation",
+          "opcode": "win:Start",
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5126,
+          "version": 0,
+          "symbol": "UdwmSystemAnimationStop",
+          "task": "UdwmSystemAnimation",
+          "opcode": "win:Stop",
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 5153,
+          "version": 0,
+          "symbol": "UdwmWindowDPIChange",
+          "task": "UdwmWindowDPIChange",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "DPI",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "LogicalOriginX",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "LogicalOriginY",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "PhysicalOriginX",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "PhysicalOriginY",
+              "inType": "win:Int32"
+            }
+          ]
+        },
+        {
+          "id": 5154,
+          "version": 0,
+          "symbol": "UdwmSystemAnimation5154",
+          "task": "UdwmSystemAnimation",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "left",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "top",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "right",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "bottom",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "HRESULT",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 5155,
+          "version": 0,
+          "symbol": "UdwmSystemAnimation5155",
+          "task": "UdwmSystemAnimation",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "StoryboardId",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Target",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "CreationMethod",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Left",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Top",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Right",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Bottom",
+              "inType": "win:Int32"
+            }
+          ]
+        },
+        {
+          "id": 5157,
+          "version": 0,
+          "symbol": "UdwmMaximizeSnapTransition",
+          "task": "UdwmMaximizeSnapTransition",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "Left",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Top",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Right",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Bottom",
+              "inType": "win:Int32"
+            }
+          ]
+        },
+        {
+          "id": 9001,
+          "version": 0,
+          "symbol": "task_0",
+          "task": "task_0",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "secondarywindowpointer",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 9002,
+          "version": 0,
+          "symbol": "task_09002",
+          "task": "task_0",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "secondarywindowpointer",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "representationType",
+              "inType": "win:Int32"
+            }
+          ]
+        },
+        {
+          "id": 9003,
+          "version": 0,
+          "symbol": "task_09003",
+          "task": "task_0",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "secondarywindowpointer",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 9005,
+          "version": 0,
+          "symbol": "task_09005",
+          "task": "task_0",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "hwndDestination",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 9006,
+          "version": 0,
+          "symbol": "task_09006",
+          "task": "task_0",
+          "opcode": null,
+          "keywords": [
+            "Udwm"
+          ],
+          "fields": [
+            {
+              "name": "pwd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-Hyper-V-EmulatedDevices",
+      "guid": "da5a028b-b248-4a75-b60a-024fe6457484",
+      "registered": true,
+      "schemaFingerprint": "2cc4fd8352dff5966e21cc62624420a45644c0b3030c2a67eff8475995865fe5",
+      "events": 7,
+      "keywords": [],
+      "eventsNamingMessages": []
+    },
+    {
+      "name": "Microsoft-Windows-Input-HIDCLASS",
+      "guid": "6465da78-e7a0-4f39-b084-8f53c7c30dc6",
+      "registered": true,
+      "schemaFingerprint": "9f0dba82c443863df962a23ba63f4749e3c7a40b1ab8a2db28e128add9e5fbfe",
+      "events": 5,
+      "keywords": [
+        {
+          "name": "Default",
+          "mask": "0x1"
+        }
+      ],
+      "eventsNamingMessages": []
+    },
+    {
+      "name": "Microsoft-Windows-InputSwitch",
+      "guid": "bb8e7234-bbf4-48a7-8741-339206ed1dfb",
+      "registered": true,
+      "schemaFingerprint": "b097322e003ab80ed2211d9321f599ba03903c0c3200437e05f3cebb7092be74",
+      "events": 27,
+      "keywords": [
+        {
+          "name": "Status",
+          "mask": "0x10000"
+        },
+        {
+          "name": "Perf",
+          "mask": "0x20000"
+        },
+        {
+          "name": "InputSwitch_Keyword",
+          "mask": "0x40000"
+        }
+      ],
+      "eventsNamingMessages": []
+    },
+    {
+      "name": "Microsoft-Windows-Kernel-Clipboard",
+      "guid": "fa8b6373-5a3d-5411-8d69-fa704c43d68c",
+      "registered": true,
+      "schemaFingerprint": "b91ac4d80d6dadf68244e21d21ca1cedf4f387e3497bde2f97f7ac1790cb828d",
+      "events": 2,
+      "keywords": [],
+      "eventsNamingMessages": [
+        {
+          "id": 706,
+          "version": 0,
+          "symbol": "task_0706",
+          "task": "task_0",
+          "opcode": null,
+          "keywords": [],
+          "fields": [
+            {
+              "name": "CallerPid",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ProcessName",
+              "inType": "win:AnsiString"
+            },
+            {
+              "name": "Tid",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "CallerProcessCreateTime",
+              "inType": "win:FILETIME"
+            },
+            {
+              "name": "OwnerPid",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "OwnerProcessCreateTime",
+              "inType": "win:FILETIME"
+            },
+            {
+              "name": "ClipboardSequenceNumber",
+              "inType": "win:UInt32"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-TabletPC-InputPanel",
+      "guid": "e978f84e-582d-4167-977e-32af52706888",
+      "registered": true,
+      "schemaFingerprint": "37de184a6779e1d0a11d454ab212baa719cf96a6b7027800dea1452470c9113f",
+      "events": 429,
+      "keywords": [
+        {
+          "name": "TabletPC_InputPanel_Keyword",
+          "mask": "0x10000"
+        }
+      ],
+      "eventsNamingMessages": [
+        {
+          "id": 1,
+          "version": 0,
+          "symbol": "FSLoader_LoadKeyboardDefStart",
+          "task": "FSLoader_LoadKeyboardDef",
+          "opcode": "win:Start",
+          "keywords": [
+            "TabletPC_InputPanel_Keyword"
+          ],
+          "fields": []
+        },
+        {
+          "id": 2,
+          "version": 0,
+          "symbol": "FSLoader_LoadKeyboardDefStop",
+          "task": "FSLoader_LoadKeyboardDef",
+          "opcode": "win:Stop",
+          "keywords": [
+            "TabletPC_InputPanel_Keyword"
+          ],
+          "fields": []
+        },
+        {
+          "id": 2000,
+          "version": 0,
+          "symbol": "VisibilityInputType",
+          "task": "VisibilityInputType",
+          "opcode": null,
+          "keywords": [
+            "TabletPC_InputPanel_Keyword"
+          ],
+          "fields": [
+            {
+              "name": "fShowIHM",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "fPenOrTouch",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "fLastTouchInThisControl",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "fInPasswordField",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "hwndElementFocusEvent",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwndRootFocusEvent",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "dwProcess",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "rcBoundLeft",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "rcBoundTop",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "rcBoundRight",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "rcBoundBottom",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "fRequireTouchInControl",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "fCanProcessEvent",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "fOnPersistenceList",
+              "inType": "win:Boolean"
+            }
+          ]
+        },
+        {
+          "id": 2005,
+          "version": 0,
+          "symbol": "VisibilityInputType2005",
+          "task": "VisibilityInputType",
+          "opcode": null,
+          "keywords": [
+            "TabletPC_InputPanel_Keyword"
+          ],
+          "fields": [
+            {
+              "name": "eMethod",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "ForegroundHwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 2006,
+          "version": 0,
+          "symbol": "VisibilityInputType2006",
+          "task": "VisibilityInputType",
+          "opcode": null,
+          "keywords": [
+            "TabletPC_InputPanel_Keyword"
+          ],
+          "fields": [
+            {
+              "name": "ForegroundHwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 2007,
+          "version": 0,
+          "symbol": "VisibilityInputType2007",
+          "task": "VisibilityInputType",
+          "opcode": null,
+          "keywords": [
+            "TabletPC_InputPanel_Keyword"
+          ],
+          "fields": [
+            {
+              "name": "ForegroundHwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "fOptedIntoFocusTracking",
+              "inType": "win:Boolean"
+            }
+          ]
+        },
+        {
+          "id": 2008,
+          "version": 0,
+          "symbol": "VisibilityInputType2008",
+          "task": "VisibilityInputType",
+          "opcode": null,
+          "keywords": [
+            "TabletPC_InputPanel_Keyword"
+          ],
+          "fields": [
+            {
+              "name": "Caret_left",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Caret_top",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Caret_right",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Caret_bottom",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "CaretWnd_left",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "CaretWnd_top",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "CaretWnd_right",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "CaretWnd_bottom",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Caret_Flags",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "CaretHwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "CaretVisible",
+              "inType": "win:Boolean"
+            }
+          ]
+        },
+        {
+          "id": 2010,
+          "version": 0,
+          "symbol": "VisibilityInputType2010",
+          "task": "VisibilityInputType",
+          "opcode": null,
+          "keywords": [
+            "TabletPC_InputPanel_Keyword"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "fVisible",
+              "inType": "win:Boolean"
+            }
+          ]
+        },
+        {
+          "id": 2012,
+          "version": 0,
+          "symbol": "PKMKeyboardDeparted",
+          "task": "PKMKeyboardDeparted",
+          "opcode": null,
+          "keywords": [],
+          "fields": [
+            {
+              "name": "KeyboardType",
+              "inType": "win:UInt32"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Microsoft-Windows-TabletPC-InputPersonalization",
+      "guid": "a8106e5c-293a-4cd0-9397-2e6fac7f9749",
+      "registered": true,
+      "schemaProblem": "TDH manifest metadata is unavailable: Could not find provider with at GUID of a8106e5c-293a-4cd0-9397-2e6fac7f9749"
+    },
+    {
+      "name": "Microsoft-Windows-TabletPC-MathInput",
+      "guid": "8443ccb7-feb0-4b8d-8e28-8d4c7cb814e8",
+      "registered": true,
+      "schemaFingerprint": "2f6662400b5683d727ae9a85e137a504d51d1948ad42df1b074943e1d96f96ea",
+      "events": 81,
+      "keywords": [],
+      "eventsNamingMessages": []
+    },
+    {
+      "name": "Microsoft-Windows-TabletPC-Platform-Input-Core",
+      "guid": "b5fd844a-01d4-4b10-a57f-58b13b561582",
+      "registered": true,
+      "schemaFingerprint": "bde8924ef46cdbe0a895fca0920ea98c668169a16050906cfdfe4e682053834c",
+      "events": 6,
+      "keywords": [],
+      "eventsNamingMessages": []
+    },
+    {
+      "name": "Microsoft-Windows-TabletPC-Platform-Input-Ninput",
+      "guid": "2c3e6d9f-8298-450f-8e5d-49b724f1216f",
+      "registered": true,
+      "schemaFingerprint": "c0a2bb01de85bb90b88c3d67b9ead848687304de04042462ede3cad566472692",
+      "events": 55,
+      "keywords": [],
+      "eventsNamingMessages": []
+    },
+    {
+      "name": "Microsoft-Windows-TabletPC-Platform-Input-Wisp",
+      "guid": "e5aa2a53-30be-40f5-8d84-ad3f40a404cd",
+      "registered": true,
+      "schemaFingerprint": "562fea3402c1650110540aba002715a3dcb3ac28ddd47dc500fcdb38edc4be01",
+      "events": 68,
+      "keywords": [],
+      "eventsNamingMessages": []
+    },
+    {
+      "name": "Microsoft-Windows-UI-Input-Inking",
+      "guid": "bf1db390-3e67-4d4d-a287-8958044a3db4",
+      "registered": true,
+      "schemaFingerprint": "f885c0b984e87b46bac8411b7b81787eac444d9f85ab6a9e2e4da8f277005603",
+      "events": 42,
+      "keywords": [
+        {
+          "name": "InkStrokeBuilding",
+          "mask": "0x10000"
+        },
+        {
+          "name": "InkStrokeManipulation",
+          "mask": "0x20000"
+        }
+      ],
+      "eventsNamingMessages": []
+    },
+    {
+      "name": "Microsoft-Windows-Win32k",
+      "guid": "8c416c79-d49b-4f01-a467-e56d3aa8234c",
+      "registered": true,
+      "schemaFingerprint": "0b6f1b7a46947469b9b42b025242bc709ce8e60a7c8f635615bb8a74a9055c34",
+      "events": 369,
+      "keywords": [
+        {
+          "name": "AuditApiCalls",
+          "mask": "0x400"
+        },
+        {
+          "name": "CompatImpact",
+          "mask": "0x800"
+        },
+        {
+          "name": "Updates",
+          "mask": "0x1000"
+        },
+        {
+          "name": "Focus",
+          "mask": "0x2000"
+        },
+        {
+          "name": "UIPI",
+          "mask": "0x4000"
+        },
+        {
+          "name": "win32Power",
+          "mask": "0x8000"
+        },
+        {
+          "name": "Concurrency",
+          "mask": "0x10000"
+        },
+        {
+          "name": "UserActivity",
+          "mask": "0x20000"
+        },
+        {
+          "name": "UIUnresponsiveness",
+          "mask": "0x40000"
+        },
+        {
+          "name": "ThreadRundown",
+          "mask": "0x80000"
+        },
+        {
+          "name": "Rendering",
+          "mask": "0x100000"
+        },
+        {
+          "name": "ThreadInfo",
+          "mask": "0x200000"
+        },
+        {
+          "name": "MessagePump",
+          "mask": "0x400000"
+        },
+        {
+          "name": "MessagePumpInternalAndInput",
+          "mask": "0x800000"
+        },
+        {
+          "name": "TouchInput",
+          "mask": "0x1000000"
+        },
+        {
+          "name": "PointerInput",
+          "mask": "0x4000000"
+        },
+        {
+          "name": "AutoRotation",
+          "mask": "0x8000000"
+        },
+        {
+          "name": "Contention",
+          "mask": "0x10000000"
+        },
+        {
+          "name": "TimerInfo",
+          "mask": "0x20000000"
+        },
+        {
+          "name": "ComponentHosting",
+          "mask": "0x40000000"
+        },
+        {
+          "name": "TrappedACRendering",
+          "mask": "0x80000000"
+        },
+        {
+          "name": "Fonts",
+          "mask": "0x100000000"
+        },
+        {
+          "name": "NullMessages",
+          "mask": "0x200000000"
+        },
+        {
+          "name": "Visualization",
+          "mask": "0x400000000"
+        },
+        {
+          "name": "DCompDetails",
+          "mask": "0x800000000"
+        },
+        {
+          "name": "PrecisionTouchpad",
+          "mask": "0x1000000000"
+        },
+        {
+          "name": "ContentionTelemetry",
+          "mask": "0x2000000000"
+        },
+        {
+          "name": "ProcessInfo",
+          "mask": "0x4000000000"
+        },
+        {
+          "name": "DCompInput",
+          "mask": "0x8000000000"
+        },
+        {
+          "name": "keyword_10000000000",
+          "mask": "0x10000000000"
+        },
+        {
+          "name": "keyword_20000000000",
+          "mask": "0x20000000000"
+        },
+        {
+          "name": "keyword_40000000000",
+          "mask": "0x40000000000"
+        },
+        {
+          "name": "keyword_80000000000",
+          "mask": "0x80000000000"
+        },
+        {
+          "name": "keyword_100000000000",
+          "mask": "0x100000000000"
+        }
+      ],
+      "eventsNamingMessages": [
+        {
+          "id": 1,
+          "version": 0,
+          "symbol": "WindowUpdate",
+          "task": "WindowUpdate",
+          "opcode": null,
+          "keywords": [
+            "Updates"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "Type",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "version": 0,
+          "symbol": "UIPIMsgError",
+          "task": "UIPIMsgError",
+          "opcode": null,
+          "keywords": [
+            "UIPI"
+          ],
+          "fields": [
+            {
+              "name": "UIPI_Trace_Header",
+              "inType": "win:UInt8"
+            },
+            {
+              "name": "Message",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "wParam",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "lParam",
+              "inType": "win:UInt64"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "version": 0,
+          "symbol": "UIPIHookError",
+          "task": "UIPIHookError",
+          "opcode": null,
+          "keywords": [
+            "UIPI"
+          ],
+          "fields": [
+            {
+              "name": "UIPI_Trace_Header",
+              "inType": "win:UInt16"
+            },
+            {
+              "name": "HookID",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Flags",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "nCode",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "wParam",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "lParam",
+              "inType": "win:UInt64"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "version": 0,
+          "symbol": "UIPIEventHookError",
+          "task": "UIPIEventHookError",
+          "opcode": null,
+          "keywords": [
+            "UIPI"
+          ],
+          "fields": [
+            {
+              "name": "UIPI_Trace_Header",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "WinEvent",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "WndHandle",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "ObjectID",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ChildID",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "SenderTID",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Time",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Flags",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "version": 0,
+          "symbol": "UIPIHandleValError",
+          "task": "UIPIHandleValError",
+          "opcode": null,
+          "keywords": [
+            "UIPI"
+          ],
+          "fields": [
+            {
+              "name": "UIPI_Trace_Header",
+              "inType": "win:UInt8"
+            },
+            {
+              "name": "Handle",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "HandleType",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Reserved",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "version": 0,
+          "symbol": "UIPIInputError",
+          "task": "UIPIInputError",
+          "opcode": null,
+          "keywords": [
+            "UIPI"
+          ],
+          "fields": [
+            {
+              "name": "UIPI_Trace_Header",
+              "inType": "win:UInt8"
+            },
+            {
+              "name": "InputType",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "QIL",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "QLBN",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "version": 0,
+          "symbol": "UIPIClipboardError",
+          "task": "UIPIClipboardError",
+          "opcode": null,
+          "keywords": [
+            "UIPI"
+          ],
+          "fields": [
+            {
+              "name": "UIPI_Trace_Header",
+              "inType": "win:UInt8"
+            },
+            {
+              "name": "ClipFormat",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ClipIL",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ClipLBN",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "version": 0,
+          "symbol": "UIPISystemError",
+          "task": "UIPISystemError",
+          "opcode": null,
+          "keywords": [
+            "UIPI"
+          ],
+          "fields": [
+            {
+              "name": "UIPI_Trace_Header",
+              "inType": "win:AnsiString"
+            },
+            {
+              "name": "SysErrorType",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "version": 0,
+          "symbol": "SwapChainBind",
+          "task": "SwapChainBind",
+          "opcode": null,
+          "keywords": [
+            "Updates"
+          ],
+          "fields": [
+            {
+              "name": "hWnd",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "hLogicalSurfSwapChainBind",
+              "inType": "win:UInt64"
+            }
+          ]
+        },
+        {
+          "id": 19,
+          "version": 0,
+          "symbol": "SwapChainUnBind",
+          "task": "SwapChainUnBind",
+          "opcode": null,
+          "keywords": [
+            "Updates"
+          ],
+          "fields": [
+            {
+              "name": "hWnd",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "hLogicalSurfSwapChainBind",
+              "inType": "win:UInt64"
+            }
+          ]
+        },
+        {
+          "id": 27,
+          "version": 0,
+          "symbol": "DwmSpriteCreate",
+          "task": "DwmSpriteCreate",
+          "opcode": null,
+          "keywords": [
+            "Updates"
+          ],
+          "fields": [
+            {
+              "name": "hWnd",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "hSprite",
+              "inType": "win:UInt64"
+            }
+          ]
+        },
+        {
+          "id": 28,
+          "version": 0,
+          "symbol": "DwmSpriteDestroy",
+          "task": "DwmSpriteDestroy",
+          "opcode": null,
+          "keywords": [
+            "Updates"
+          ],
+          "fields": [
+            {
+              "name": "hWnd",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "hSprite",
+              "inType": "win:UInt64"
+            }
+          ]
+        },
+        {
+          "id": 39,
+          "version": 0,
+          "symbol": "RenderingNewRendering",
+          "task": "Rendering",
+          "opcode": "NewRendering",
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwndDst",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwndDstSprite",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hbmDst",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "DstLeft",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DstTop",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DstRight",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DstBottom",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "hwndSrc",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwndSrcSprite",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hbmSrc",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "SrcLeft",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "SrcTop",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "SrcRight",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "SrcBottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 40,
+          "version": 0,
+          "symbol": "RenderingOldToNewRendering",
+          "task": "Rendering",
+          "opcode": "OldToNewRendering",
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwndDst",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwndDstSprite",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hbmDst",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "DstLeft",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DstTop",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DstRight",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DstBottom",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "hwndSrc",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwndSrcSprite",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hbmSrc",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "SrcLeft",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "SrcTop",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "SrcRight",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "SrcBottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 41,
+          "version": 0,
+          "symbol": "RenderingAppRenderingUpdate",
+          "task": "Rendering",
+          "opcode": "AppRenderingUpdate",
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "bitmapCX",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "bitmapCY",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyLeft",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyTop",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyRight",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyBottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 42,
+          "version": 0,
+          "symbol": "RenderingAppRenderingTightUpdate",
+          "task": "Rendering",
+          "opcode": "AppRenderingTightUpdate",
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "bitmapCX",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "bitmapCY",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyLeft",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyTop",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyRight",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyBottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 43,
+          "version": 0,
+          "symbol": "RenderingValidateWindow",
+          "task": "Rendering",
+          "opcode": "ValidateWindow",
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FULL",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Left",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Top",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Right",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Bottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 44,
+          "version": 0,
+          "symbol": "RenderingInvalidateWindow",
+          "task": "Rendering",
+          "opcode": "InvalidateWindow",
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FULL",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Left",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Top",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Right",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Bottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 46,
+          "version": 0,
+          "symbol": "BindLogicalSurface",
+          "task": "BindLogicalSurface",
+          "opcode": null,
+          "keywords": [
+            "Updates"
+          ],
+          "fields": [
+            {
+              "name": "hWnd",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "hLogicalSurf",
+              "inType": "win:UInt64"
+            }
+          ]
+        },
+        {
+          "id": 47,
+          "version": 0,
+          "symbol": "UnBindLogicalSurface",
+          "task": "UnBindLogicalSurface",
+          "opcode": null,
+          "keywords": [
+            "Updates"
+          ],
+          "fields": [
+            {
+              "name": "hWnd",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "hLogicalSurf",
+              "inType": "win:UInt64"
+            }
+          ]
+        },
+        {
+          "id": 59,
+          "version": 0,
+          "symbol": "QueuePostMessage",
+          "task": "QueuePostMessage",
+          "opcode": null,
+          "keywords": [
+            "MessagePump"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "LParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "message",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "inputReadyTimeMs",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 60,
+          "version": 0,
+          "symbol": "SendMessageStart",
+          "task": "SendMessage",
+          "opcode": "win:Start",
+          "keywords": [
+            "MessagePump"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "LParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "message",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "inputReadyTimeMs",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "flags",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "pidReceiver",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "tidReceiver",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 61,
+          "version": 0,
+          "symbol": "RetrievePostMessage",
+          "task": "RetrievePostMessage",
+          "opcode": null,
+          "keywords": [
+            "MessagePump"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "LParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "message",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "inputReadyTimeMs",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "flags",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 62,
+          "version": 0,
+          "symbol": "RetrieveSendMessageStart",
+          "task": "RetrieveSendMessage",
+          "opcode": "win:Start",
+          "keywords": [
+            "MessagePump"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "LParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "message",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "inputReadyTimeMs",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 63,
+          "version": 0,
+          "symbol": "RetrieveInputMessage",
+          "task": "RetrieveInputMessage",
+          "opcode": null,
+          "keywords": [
+            "MessagePump",
+            "ComponentHosting"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "LParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "message",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "inputReadyTimeMs",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "flags",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 64,
+          "version": 0,
+          "symbol": "RetrievePseudoMessage",
+          "task": "RetrievePseudoMessage",
+          "opcode": null,
+          "keywords": [
+            "MessagePump"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "LParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "message",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "inputReadyTimeMs",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "flags",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 65,
+          "version": 0,
+          "symbol": "WakePump",
+          "task": "WakePump",
+          "opcode": null,
+          "keywords": [
+            "MessagePump"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "LParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "message",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "inputReadyTimeMs",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 70,
+          "version": 0,
+          "symbol": "SendMessageStop",
+          "task": "SendMessage",
+          "opcode": "win:Stop",
+          "keywords": [
+            "MessagePump"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 71,
+          "version": 0,
+          "symbol": "SendMessageTimeOutToBlocking",
+          "task": "SendMessageTimeOutToBlocking",
+          "opcode": null,
+          "keywords": [
+            "MessagePumpInternalAndInput"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            }
+          ]
+        },
+        {
+          "id": 74,
+          "version": 0,
+          "symbol": "MessageInjectionPostGestureInputMessage",
+          "task": "MessageInjection",
+          "opcode": "PostGestureInputMessage",
+          "keywords": [
+            "MessagePumpInternalAndInput"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hGestureInfo",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 75,
+          "version": 0,
+          "symbol": "MessageInjectionPostGestureMessage",
+          "task": "MessageInjection",
+          "opcode": "PostGestureMessage",
+          "keywords": [
+            "MessagePumpInternalAndInput"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hGestureInfo",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 83,
+          "version": 0,
+          "symbol": "RetrieveSendMessageStop",
+          "task": "RetrieveSendMessage",
+          "opcode": "win:Stop",
+          "keywords": [
+            "MessagePump"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 88,
+          "version": 0,
+          "symbol": "QueueInputMessage",
+          "task": "QueueInputMessage",
+          "opcode": null,
+          "keywords": [
+            "MessagePump",
+            "ComponentHosting"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WindowDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "WasWindowDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "Delegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "WasDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "Processed",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "fDelayedFree",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "LParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "message",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "inputReadyTimeMs",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 117,
+          "version": 0,
+          "symbol": "RenderingTranslationUpdate",
+          "task": "Rendering",
+          "opcode": "TranslationUpdate",
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "DirtyLeft",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyTop",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyRight",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyBottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 118,
+          "version": 0,
+          "symbol": "TranslationUpdateOffset",
+          "task": "TranslationUpdateOffset",
+          "opcode": null,
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "Offsetx",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Offsety",
+              "inType": "win:Int32"
+            }
+          ]
+        },
+        {
+          "id": 119,
+          "version": 0,
+          "symbol": "RenderingTranslationUpdateRectClip",
+          "task": "Rendering",
+          "opcode": "TranslationUpdateRectClip",
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "DirtyLeft",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyTop",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyRight",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyBottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 120,
+          "version": 0,
+          "symbol": "RenderingUpdateDxAccumFromGDI",
+          "task": "Rendering",
+          "opcode": "UpdateDxAccumFromGDI",
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "DirtyLeft",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyTop",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyRight",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyBottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 121,
+          "version": 0,
+          "symbol": "RenderingUpdateDxAccumFromDX",
+          "task": "Rendering",
+          "opcode": "UpdateDxAccumFromDX",
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "DirtyLeft",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyTop",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyRight",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyBottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 122,
+          "version": 0,
+          "symbol": "RenderingGetDxAccum",
+          "task": "Rendering",
+          "opcode": "GetDxAccum",
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hSprite",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "hWnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 124,
+          "version": 0,
+          "symbol": "LogicalSurfRemovedTranslationFromDirty",
+          "task": "LogicalSurfRemovedTranslationFromDirty",
+          "opcode": null,
+          "keywords": [
+            "Updates"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "DirtyLeft",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyTop",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyRight",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyBottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 152,
+          "version": 0,
+          "symbol": "DelegateInputUserCallbackStart",
+          "task": "DelegateInputUserCallback",
+          "opcode": "win:Start",
+          "keywords": [
+            "MessagePumpInternalAndInput"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WindowDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "WasWindowDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "Delegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "WasDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "Processed",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "fDelayedFree",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "LParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "message",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "inputReadyTimeMs",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 153,
+          "version": 0,
+          "symbol": "DelegateInputUserCallbackStop",
+          "task": "DelegateInputUserCallback",
+          "opcode": "win:Stop",
+          "keywords": [
+            "MessagePumpInternalAndInput"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WindowDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "WasWindowDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "Delegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "WasDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "Processed",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "fDelayedFree",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "LParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "message",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "inputReadyTimeMs",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 154,
+          "version": 0,
+          "symbol": "DelegatedInputWorkerStart",
+          "task": "DelegatedInputWorker",
+          "opcode": "win:Start",
+          "keywords": [
+            "MessagePumpInternalAndInput"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WindowDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "WasWindowDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "Delegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "WasDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "Processed",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "fDelayedFree",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "LParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "message",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "inputReadyTimeMs",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "hdfResponse",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 155,
+          "version": 0,
+          "symbol": "DelegatedInputWorkerStop",
+          "task": "DelegatedInputWorker",
+          "opcode": "win:Stop",
+          "keywords": [
+            "MessagePumpInternalAndInput"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WindowDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "WasWindowDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "Delegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "WasDelegated",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "Processed",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "fDelayedFree",
+              "inType": "win:Boolean"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "WParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "LParam",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "message",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "inputReadyTimeMs",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "hdfResponse",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 180,
+          "version": 0,
+          "symbol": "LogicalSurfRemovedTranslationFromMove",
+          "task": "LogicalSurfRemovedTranslationFromMove",
+          "opcode": null,
+          "keywords": [
+            "Updates"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "DirtyLeft",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyTop",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyRight",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyBottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 181,
+          "version": 0,
+          "symbol": "DirtyRectUpdate",
+          "task": "DirtyRectUpdate",
+          "opcode": null,
+          "keywords": [
+            "Updates"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "DirtyLeft",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyTop",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyRight",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "DirtyBottom",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 182,
+          "version": 0,
+          "symbol": "TranslationUpdateOffsetDWM",
+          "task": "TranslationUpdateOffsetDWM",
+          "opcode": null,
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "Offsetx",
+              "inType": "win:Int32"
+            },
+            {
+              "name": "Offsety",
+              "inType": "win:Int32"
+            }
+          ]
+        },
+        {
+          "id": 187,
+          "version": 0,
+          "symbol": "InternalSetTimerCoalescing",
+          "task": "InternalSetTimerCoalescing",
+          "opcode": null,
+          "keywords": [
+            "TimerInfo"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "uId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "uElapse",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "uCoalescingTolerance",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "uType",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 188,
+          "version": 0,
+          "symbol": "InternalSetTimerNoCoalescing",
+          "task": "InternalSetTimerNoCoalescing",
+          "opcode": null,
+          "keywords": [
+            "TimerInfo"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "uId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "uElapse",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "uType",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 189,
+          "version": 0,
+          "symbol": "KillTimer",
+          "task": "KillTimer",
+          "opcode": null,
+          "keywords": [
+            "TimerInfo"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "uId",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 190,
+          "version": 0,
+          "symbol": "ProcTimerCoalescing",
+          "task": "ProcTimerCoalescing",
+          "opcode": null,
+          "keywords": [
+            "TimerInfo"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "uId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "uElapse",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "uCoalescingTolerance",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "uType",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 191,
+          "version": 0,
+          "symbol": "ProcTimerNoCoalescing",
+          "task": "ProcTimerNoCoalescing",
+          "opcode": null,
+          "keywords": [
+            "TimerInfo"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "uId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "uElapse",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "uType",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 203,
+          "version": 0,
+          "symbol": "QueueEventMessage",
+          "task": "QueueEventMessage",
+          "opcode": null,
+          "keywords": [
+            "MessagePumpInternalAndInput"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "pti",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "dwQEvent",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 204,
+          "version": 0,
+          "symbol": "RetrieveQueueEventMessage",
+          "task": "RetrieveQueueEventMessage",
+          "opcode": null,
+          "keywords": [
+            "MessagePumpInternalAndInput"
+          ],
+          "fields": [
+            {
+              "name": "CallbackCount",
+              "inType": "win:Int8"
+            },
+            {
+              "name": "pqmsg",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "pti",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "dwQEvent",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 223,
+          "version": 0,
+          "symbol": "DITSpeedHitTestFailedRevalidation",
+          "task": "DITSpeedHitTestFailedRevalidation",
+          "opcode": null,
+          "keywords": [
+            "MessagePumpInternalAndInput",
+            "ComponentHosting"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 224,
+          "version": 0,
+          "symbol": "InputRedirection",
+          "task": "InputRedirection",
+          "opcode": null,
+          "keywords": [
+            "MessagePumpInternalAndInput",
+            "ComponentHosting"
+          ],
+          "fields": [
+            {
+              "name": "hDCompInputHandle",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "XformQPCTime",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "XformStored",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 225,
+          "version": 0,
+          "symbol": "OnInputXformUpdate",
+          "task": "OnInputXformUpdate",
+          "opcode": null,
+          "keywords": [
+            "MessagePumpInternalAndInput",
+            "ComponentHosting"
+          ],
+          "fields": [
+            {
+              "name": "Hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "XformQPCTime",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "XformUpdated",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 245,
+          "version": 0,
+          "symbol": "LegacyTouchPadDetectionStart",
+          "task": "LegacyTouchPadDetection",
+          "opcode": "win:Start",
+          "keywords": [
+            "TouchInput"
+          ],
+          "fields": []
+        },
+        {
+          "id": 246,
+          "version": 0,
+          "symbol": "LegacyTouchPadDetectionStop",
+          "task": "LegacyTouchPadDetection",
+          "opcode": "win:Stop",
+          "keywords": [
+            "TouchInput"
+          ],
+          "fields": []
+        },
+        {
+          "id": 247,
+          "version": 0,
+          "symbol": "LegacyTouchPadDetection",
+          "task": "LegacyTouchPadDetection",
+          "opcode": null,
+          "keywords": [
+            "TouchInput"
+          ],
+          "fields": []
+        },
+        {
+          "id": 248,
+          "version": 0,
+          "symbol": "LegacyTouchPadDetection248",
+          "task": "LegacyTouchPadDetection",
+          "opcode": null,
+          "keywords": [
+            "TouchInput"
+          ],
+          "fields": []
+        },
+        {
+          "id": 426,
+          "version": 0,
+          "symbol": "QueueNullPostMessage",
+          "task": "QueueNullPostMessage",
+          "opcode": null,
+          "keywords": [
+            "MessagePump",
+            "NullMessages"
+          ],
+          "fields": [
+            {
+              "name": "SourceProcessId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "SourceThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "SourceProcessName",
+              "inType": "win:AnsiString"
+            },
+            {
+              "name": "DestinationHwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 459,
+          "version": 0,
+          "symbol": "WriteClipboard",
+          "task": "WriteClipboard",
+          "opcode": null,
+          "keywords": [
+            "keyword_40000000000"
+          ],
+          "fields": [
+            {
+              "name": "Pid",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ProcessCreateTime",
+              "inType": "win:FILETIME"
+            }
+          ]
+        },
+        {
+          "id": 460,
+          "version": 0,
+          "symbol": "WriteClipboard460",
+          "task": "WriteClipboard",
+          "opcode": null,
+          "keywords": [
+            "keyword_40000000000"
+          ],
+          "fields": [
+            {
+              "name": "Pid",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ProcessCreateTime",
+              "inType": "win:FILETIME"
+            }
+          ]
+        },
+        {
+          "id": 461,
+          "version": 0,
+          "symbol": "DwmVisRgnUpdate",
+          "task": "DwmVisRgnUpdate",
+          "opcode": null,
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwndParent",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "visRgnType",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "changed",
+              "inType": "win:Boolean"
+            }
+          ]
+        },
+        {
+          "id": 462,
+          "version": 0,
+          "symbol": "DwmVisRgnDirty",
+          "task": "DwmVisRgnDirty",
+          "opcode": null,
+          "keywords": [
+            "Rendering"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "hwndParent",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 463,
+          "version": 0,
+          "symbol": "ReadClipboard",
+          "task": "ReadClipboard",
+          "opcode": null,
+          "keywords": [
+            "keyword_80000000000"
+          ],
+          "fields": [
+            {
+              "name": "CallerPid",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "CallerProcessCreateTime",
+              "inType": "win:FILETIME"
+            },
+            {
+              "name": "OwnerPid",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "OwnerProcessCreateTime",
+              "inType": "win:FILETIME"
+            },
+            {
+              "name": "ClipboardSequenceNumber",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 551,
+          "version": 0,
+          "symbol": "SmoothResizeTimeout",
+          "task": "SmoothResizeTimeout",
+          "opcode": null,
+          "keywords": [
+            "Updates"
+          ],
+          "fields": [
+            {
+              "name": "hwnd",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 1001,
+          "version": 0,
+          "symbol": "task_01001",
+          "task": "task_0",
+          "opcode": null,
+          "keywords": [
+            "AuditApiCalls"
+          ],
+          "fields": [
+            {
+              "name": "ReturnValue",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "UsagePage",
+              "inType": "win:UInt16"
+            },
+            {
+              "name": "Usage",
+              "inType": "win:UInt16"
+            },
+            {
+              "name": "Flags",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "hwndTarget",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadStartAddress",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadCreateTime",
+              "inType": "win:FILETIME"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "cWindows",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "cVisWindows",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ThreadInfoFlags",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "ProcessId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ProcessCreateTime",
+              "inType": "win:FILETIME"
+            },
+            {
+              "name": "ProcessStartKey",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "ThreadStartAddressMappedModuleName",
+              "inType": "win:UnicodeString"
+            },
+            {
+              "name": "ThreadStartAddressQueryResult",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ThreadStartAddressVadAllocationBase",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadStartAddressVadAllocationProtect",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ThreadStartAddressVadRegionType",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ThreadStartAddressVadRegionSize",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadStartAddressVadProtect",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 10002,
+          "version": 0,
+          "symbol": "WindowLayoutChangeStop",
+          "task": "WindowLayoutChange",
+          "opcode": "win:Stop",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "hWnd",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Packed_High_Height_Low_Width",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "PRAID",
+              "inType": "win:UnicodeString"
+            },
+            {
+              "name": "PackageFullName",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "User32",
+      "guid": "b0aa8734-56f7-41cc-b2f4-de228e98b946",
+      "registered": true,
+      "schemaFingerprint": "e4e7e31a357b613da8c28e7987321288d41e073b97f6cc7350b5926ff6430ea5",
+      "events": 5,
+      "keywords": [],
+      "eventsNamingMessages": []
+    }
+  ]
+}

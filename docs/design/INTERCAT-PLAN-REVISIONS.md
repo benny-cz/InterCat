@@ -876,6 +876,7 @@ Revision 949 has a capture's compilation refuse the handle group where its gate 
 Revision 950 has a process's synchronization records drill down exactly (ADR-084's fifth addendum): icat processes names the icat evidence command that lists them, and the named synchronization objects package meets M6's exit tests.
 Revision 951 begins the mailslots package with its metadata inspection: no registered provider is named for mailslots and Kernel-File declares no mailslot event, while the kernel's classic file I/O class, never measured for ADR-003, declares a create with its open path, reads and writes with their requested size and an operation end with its completion.
 Revision 952 measures FX-MAIL-001 (ADR-085): neither the kernel's classic file I/O class nor Kernel-File records a mailslot, while both record the same processes' own files, so mailslots are unsupported on this build, and the capability report states a mechanism no source covers where a fixture measured it.
+Revision 953 begins the UI messaging package with its metadata inspection: Win32k declares under its message pump keyword a posted message's queueing and retrieval and a sent message's start and stop, the start naming the receiver's process, and the clipboard's writes and reads by process; no event names DDE or a copied payload's size.
 
 ## Revisions, a paragraph each, in order
 
@@ -4095,3 +4096,16 @@ messages or a close, by its name or by a message's size, while each recorded abo
 files in the same session. Mailslots are Unsupported on this build; no inference replaces the evidence, and the gap is
 routed to M7, to M9a's NPFS/MSFS minifilter and to M10. No source covers the mechanism, so the capability report now states
 a mechanism no source covers where a fixture measured it on the build, and leaves it out where none did.
+
+Revision 953 begins M6's UI messaging package - window messages, `WM_COPYDATA`, the clipboard and DDE - with what the
+machine declares. `tools/InterCat.UiMessageProbe --inspect` reads, without enabling any, the registered schema of every
+provider whose name, past its `Microsoft-Windows-` prefix, says windowing, input, messages, the clipboard or DDE: 20 of 1230
+(`bench/results/ui-message-provider-inspection-20261105T163256Z`). `Microsoft-Windows-Win32k` declares under its `MessagePump` keyword a posted message's
+queueing and retrieval, and a sent message's start and stop at both ends - the start at the sender naming the receiver's
+process and thread - each with its window, message number, parameters and the queue message's kernel pointer; a null
+message another process posted, naming it; under keywords of their own a clipboard write by its process and a read naming
+its caller, the clipboard's owner and its sequence number; and under `UIPI` what integrity levels refused.
+`Microsoft-Windows-Kernel-Clipboard` declares a read naming its caller and the owner. No event names DDE, whose
+conversations are window messages, nor a `WM_COPYDATA` payload's size. It is evidence of layouts on one machine, not of
+emission: a message one process sends another and a clipboard write another reads are measured against a truth fixture
+before any field is implemented.

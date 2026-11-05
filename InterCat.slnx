@@ -24,6 +24,7 @@
     <Project Path="tools/InterCat.MailslotProbe/InterCat.MailslotProbe.csproj" />
     <Project Path="tools/InterCat.SyncProbe/InterCat.SyncProbe.csproj" />
     <Project Path="tools/InterCat.ThemeReport/InterCat.ThemeReport.csproj" />
+    <Project Path="tools/InterCat.UiMessageProbe/InterCat.UiMessageProbe.csproj" />
     <Project Path="tools/InterCat.WinInetProbe/InterCat.WinInetProbe.csproj" />
   </Folder>
   <Folder Name="/tests/">
