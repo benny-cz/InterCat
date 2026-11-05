@@ -33,7 +33,7 @@ public sealed class UnixSocketsCaptureTests
         foreach ((string? mechanism, string[] words, bool broader, string refusal) in new (string?, string[], bool, string)[]
         {
             ("tcp", [], false, "focused-transport takes --mechanism tcp and optionally --pid <id,...> and --allow-broader; "
-                + "explore, rpc-peers, unix-sockets, com-calls and sync-objects take neither."),
+                + "explore, rpc-peers, unix-sockets, com-calls, sync-objects and window-messages take neither."),
             (null, ["--pid", "4242"], false, "focused-transport takes --mechanism tcp"),
             (null, [], true, "focused-transport takes --mechanism tcp"),
             (null, ["--max-record-bytes", "1"], false, "--source, --channel, the byte limits, --inspection and --retention"),
@@ -48,7 +48,7 @@ public sealed class UnixSocketsCaptureTests
     [Fact(DisplayName = "R18: icat record takes every profile its help names, each by the catalog's id, and refuses any other by the same list")]
     public async Task IcatRecordTakesEveryProfileItsHelpNames()
     {
-        Assert.Equal(["explore", "focused-transport", "rpc-peers", "unix-sockets", "com-calls", "sync-objects", "content", "content-fixture"], RecordCommand.Profiles);
+        Assert.Equal(["explore", "focused-transport", "rpc-peers", "unix-sockets", "com-calls", "sync-objects", "window-messages", "content", "content-fixture"], RecordCommand.Profiles);
         foreach (string profile in RecordCommand.Profiles)
         {
             CaptureProfileDescriptor named = CaptureProfileCatalog.Find(profile)!;
@@ -59,7 +59,7 @@ public sealed class UnixSocketsCaptureTests
         Assert.Null(RecordCommand.Profile("timing"));
         (InterCatExitCode code, string help) = await Run("--help");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Contains("icat record <new-session-dir> [--profile explore|focused-transport|rpc-peers|unix-sockets|com-calls|sync-objects|content|content-fixture]",
+        Assert.Contains("icat record <new-session-dir> [--profile explore|focused-transport|rpc-peers|unix-sockets|com-calls|sync-objects|window-messages|content|content-fixture]",
             help, StringComparison.Ordinal);
     }
 

@@ -91,7 +91,7 @@ public sealed class WindowMessageFeasibilityTests
         Assert.Equal([(32, 32), (2048, 2048), (20_000, 20_000)], sizes);
     }
 
-    [Fact(DisplayName = "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build")]
+    [Fact(DisplayName = "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by the opt-in window messages profile alone, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build")]
     public void WindowMessagesHaveALeadAndNoTier()
     {
         WindowsSourceDefinition win32k = WindowsSourceCatalog.Find(WindowsSourceCatalog.Win32kSourceId)!;
@@ -131,10 +131,11 @@ public sealed class WindowMessageFeasibilityTests
         Assert.Contains(win32k.Notes, note => note.StartsWith("No record names which message it was", StringComparison.Ordinal));
         Assert.Contains(win32k.Notes, note => note.Contains("only within a message's life", StringComparison.Ordinal));
 
-        // No profile requests it, no other source claims window messages, and no build carries a tier for them.
-        Assert.DoesNotContain(CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures),
-            profile => profile.Sources.Any(source => source.SourceId == win32k.SourceId));
-        Assert.StartsWith("No capture profile requests it.", win32k.FilteringNotes, StringComparison.Ordinal);
+        // Only the opt-in window messages profile requests it, no other source claims window messages, and no build carries
+        // a tier for them.
+        Assert.Equal(["window-messages"], CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures)
+            .Where(profile => profile.Sources.Any(source => source.SourceId == win32k.SourceId)).Select(profile => profile.Id));
+        Assert.StartsWith("Only the opt-in window messages profile requests it.", win32k.FilteringNotes, StringComparison.Ordinal);
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != win32k.SourceId),
             source => Assert.DoesNotContain(Mechanism.WindowMessage, source.Mechanisms));
         Assert.DoesNotContain(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.WindowMessage);

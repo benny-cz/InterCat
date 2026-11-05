@@ -223,6 +223,39 @@ public static class CaptureProfileCatalog
                 + "handle-heavy workload ran 5.3 and 8.3% lower in throughput.",
             OverheadEvidence = "bench/results/sync-objects-impact-20261105T112016Z/product-impact.json",
         },
+        new()
+        {
+            Kind = CaptureProfileKind.WindowMessages,
+            Id = "window-messages",
+            DisplayName = "Window messages",
+            Summary = "Lifecycle and every message one window sends or posts another - its start and stop at the sender, its "
+                + "retrieval at the receiver - from Win32k's message pump, each message numbered in the capture. Opt-in: "
+                + "collecting the message pump slows a message-bound workload.",
+            Admission = AdmissionMode.MetadataOnly,
+            CompilationAvailable = true,
+            RequestPreviewAvailable = true,
+            Sources =
+            [
+                new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Process identity and PID-reuse-safe lifecycle context."),
+                new(WindowsSourceCatalog.Win32kSourceId, true, true,
+                    "Each window message's ends, owned by the process that raised each and numbered by its message in the capture, "
+                    + "never by its pointer, a send naming the process that receives it (ADR-087)."),
+            ],
+            PreserveExtendedData = true,
+            RequestCallStacks = false,
+            CollectionStatement =
+                "Collects process lifecycle and, of every message any window on the machine is sent or posted, its ends: a send's "
+                + "start and stop at the sender, naming the process that receives it, its retrieval's start and stop at the "
+                + "receiver, and a post's queueing and retrieval, each with its message's number in the capture. It keeps no "
+                + "window, thread, message number, parameter or pointer, retains no payload bytes and requests no call stacks.",
+            Overhead = OverheadClass.Moderate,
+            OverheadStatement =
+                "its sources measured Moderate at most (Kernel-Process 1.75 CPU pp). Win32k's message pump's collection alone "
+                + "added a median 0.36 and 0.28 CPU pp, Low, but a message-bound workload ran 8.3 and 5.2% lower in throughput, "
+                + "past the 5% target, as a message's records are raised in the threads that send, post and retrieve it. "
+                + "Nothing has measured the profile whole yet.",
+            OverheadEvidence = "bench/results/window-message-impact-20261105T175321Z/impact.json",
+        },
         Unavailable(
             CaptureProfileKind.Timing,
             "timing",

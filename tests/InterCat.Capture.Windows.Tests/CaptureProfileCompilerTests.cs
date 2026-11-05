@@ -9,8 +9,8 @@ public sealed class CaptureProfileCompilerTests
     [Fact(DisplayName = "IC-012: the profile catalog exposes every intent without pretending unfinished modes are available")]
     public void CatalogExposesUnavailableProfiles()
     {
-        Assert.Equal(9, CaptureProfileCatalog.All.Count);
-        Assert.Equal(9, CaptureProfileCatalog.All.Select(profile => profile.Id).Distinct().Count());
+        Assert.Equal(10, CaptureProfileCatalog.All.Count);
+        Assert.Equal(10, CaptureProfileCatalog.All.Select(profile => profile.Id).Distinct().Count());
 
         CaptureProfileDescriptor focused = CaptureProfileCatalog.Find("focused-transport")!;
         Assert.True(focused.CompilationAvailable);
@@ -474,6 +474,54 @@ public sealed class CaptureProfileCompilerTests
             && decision.Reason.Contains("No synchronization type numbers are measured", StringComparison.Ordinal));
     }
 
+    [Fact(DisplayName = "§9.4: window messages admits Win32k's message pump beside lifecycle, both required and Win32k at its message pump keyword, its cost its sources' with the regression the pump's collection measured, and Win32k is never Explore's")]
+    public void WindowMessagesAdmitsWin32kBesideLifecycle()
+    {
+        SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
+        SourceAdmissionPlan win32k = BuildPlan(WindowsSourceCatalog.Win32kSourceId, 1, WindowMessageGate.SendStart);
+
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.WindowMessages),
+            new SourcePlanCompilation([process, win32k], []));
+
+        // Win32k is a manifest provider the plan enables at its message pump keyword and the informational level.
+        Assert.True(plan.CanStart);
+        Assert.Equal("window-messages", plan.EffectiveProfileId);
+        Assert.Equal(2, plan.Sources.Count);
+        ProviderEnablementRequest pump = Assert.Single(plan.Providers, provider => provider.SourceId == WindowsSourceCatalog.Win32kSourceId);
+        Assert.Equal((WindowsSourceCatalog.Win32kMessagePumpKeyword, 4, "Microsoft-Windows-Win32k"), (pump.MatchAnyKeyword, pump.Level, pump.ProviderName));
+        Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.Win32kSourceId
+            && decision is { State: ProfileSourceDecisionState.Included, Required: true, Overhead: OverheadClass.Low });
+
+        // The profile states its sources' class, Moderate at most, and beside it the message pump's measured regression,
+        // which is why it is opt-in and Explore never admits the source; nothing has measured it whole yet.
+        CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("window-messages")!;
+        Assert.Equal((CaptureProfileKind.WindowMessages, OverheadClass.Moderate, AdmissionMode.MetadataOnly),
+            (profile.Kind, profile.Overhead, profile.Admission));
+        Assert.Contains("8.3 and 5.2% lower in throughput, past the 5% target", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.Contains("Nothing has measured the profile whole yet.", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.Contains("slows a message-bound workload", profile.Summary, StringComparison.Ordinal);
+        Assert.Contains("no window, thread, message number, parameter or pointer", profile.CollectionStatement, StringComparison.Ordinal);
+        Assert.Matches(@"^bench/results/window-message-impact-\d{8}T\d{6}Z/impact\.json$", profile.OverheadEvidence);
+        Assert.Equal(WindowsSourceCatalog.Find(WindowsSourceCatalog.Win32kSourceId)!.OverheadEvidence, profile.OverheadEvidence);
+        Assert.DoesNotContain(CaptureProfileCatalog.Find("explore")!.Sources, source => source.SourceId == WindowsSourceCatalog.Win32kSourceId);
+    }
+
+    [Fact(DisplayName = "§9.4: window messages without Win32k's message pump does not start, rather than record lifecycle and no message")]
+    public void WindowMessagesWithoutWin32kIsBlocked()
+    {
+        SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.WindowMessages),
+            new SourcePlanCompilation([process], [new(WindowsSourceCatalog.Win32kSourceId, SourcePlanIssueSeverity.Refusal,
+                "This machine's schema admits no pqmsg for event 60 v0 (Message sent).")]));
+
+        Assert.False(plan.CanStart);
+        Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.Win32kSourceId
+            && decision.State == ProfileSourceDecisionState.Blocking
+            && decision.Reason.Contains("admits no pqmsg", StringComparison.Ordinal));
+    }
+
     [Fact(DisplayName = "§9.4: RPC peers without ALPC does not start, rather than record calls it cannot resolve")]
     public void RpcPeersWithoutAlpcIsBlocked()
     {
@@ -689,7 +737,9 @@ public sealed class CaptureProfileCompilerTests
                     ? Guid.Parse("b8d6861b-d20f-4eec-bbae-87e0dd80602b")
                     : sourceId == WindowsSourceCatalog.KernelObjectHandlesSourceId
                         ? WindowsSourceCatalog.ObjectManagerEventClass
-                        : Guid.Parse("7dd42a49-5329-4832-8dfd-43d979153a88");
+                        : sourceId == WindowsSourceCatalog.Win32kSourceId
+                            ? Guid.Parse("8c416c79-d49b-4f01-a467-e56d3aa8234c")
+                            : Guid.Parse("7dd42a49-5329-4832-8dfd-43d979153a88");
         var admitted = new AdmittedEventPlan
         {
             SourceIndex = sourceIndex,

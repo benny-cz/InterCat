@@ -2,7 +2,8 @@
 
 - Status: accepted for M6's UI messaging work package; since revision 959 Win32k's six message events admit through it,
   a record delivered out of order omitted as such (its addendum); since revision 960 a window message's records bind to
-  the process that raised them, as `process-binding-v7` (its second addendum); no profile compiles the gate yet
+  the process that raised them, as `process-binding-v7` (its second addendum); since revision 962 the opt-in window
+  messages profile requests the message pump, stating its cost (its third addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-073, ADR-083, ADR-086, plan M6, §4.2, R22, P7, P12, FX-WMSG-001
@@ -96,3 +97,20 @@ Tests pin the mechanisms a header binds, bind a session's window message records
 sender, its retrieval to the receiver, a post's queueing to the poster and its retrieval to the receiver - bind an
 admitted record's row to the process that raised it, never the receiver it names, and read a version 6 checkpoint; five
 mutations are caught. No profile requests the source yet.
+
+## Addendum: the opt-in window messages profile (revision 962)
+
+The fifth decision's last requirement was an opt-in profile stating the cost. `window-messages` requires Kernel-Process
+and Win32k's message pump, so where Win32k is refused - a schema without an end's pointer (the first addendum) - it does
+not start rather than record lifecycle and no message. It takes no focus, as Explore takes none, and `icat capture` and
+`icat record` take it as they take the other opt-in profiles; a capture asking for it enables Win32k at its message pump
+keyword, at the informational level.
+
+Its class is its sources' at most, Moderate for Kernel-Process. Its statement names what ADR-086's first addendum
+measured: the message pump's collection alone added a median 0.36 and 0.28 CPU points, Low, but a message-bound workload
+ran 8.3 and 5.2% lower in throughput, past the 5% target. That is why the profile is opt-in and Explore never admits the
+source, which the source's catalog notes now say. Nothing has measured the profile whole yet, and no build carries a tier
+for window messages.
+
+Tests compile the profile with and without Win32k, hold the lead's one profile, and check both commands' profile lists,
+help and preview; the catalog now counts ten profiles. Five mutations are caught.

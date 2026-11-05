@@ -887,7 +887,7 @@
       },
       "tests": [
         "P7: FX-WMSG-001's every message one process sent or posted another's window is recorded at both ends by Win32k's message pump - a send's start naming its receiver's process and thread, each end joined to the other by its queue message pointer - and none names which message it was",
-        "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
+        "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by the opt-in window messages profile alone, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
         "R22: a session with the product's buffer size delivers FX-WMSG-001's message ends in the order they were raised - three runs of up to 40,000 messages, ends raised on two processors and pointers reused - so a gate following a message by its pointer as records arrive numbers each as its life is",
         "R22: FX-WMSG-001's message ends, read through the gate as delivered, are its 32 sends and 33 posts - each send's start and stop at the sender and its retrieval at the receiver one message, each post's queueing and retrieval another - numbered apart, though the run reused its pointers"
       ]
@@ -2631,7 +2631,7 @@
         "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build their fixtures measured them on through the product",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",
         "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build",
-        "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build"
+        "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by the opt-in window messages profile alone, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build"
       ],
       "P28": [
         "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone"
@@ -3664,6 +3664,7 @@
         "R18: icat capture records RPC peers through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture records Unix sockets through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture records synchronization objects through the broker as it records Explore, live, and refuses a focus or content it does not take",
+        "R18: icat capture records window messages through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture takes a content request in icat record's words, and refuses what a content capture does not take",
         "R18: icat channels pages the busiest channels first, channels of as many records by key, and its JSON names that order",
         "R18: icat channels says how each channel was paired - its rule, strength, lifetime and coverage - in the inspector's words",
@@ -3726,6 +3727,7 @@
         "R18: icat profiles com-calls states the cost measured through the product - the throughput regression unpaced, within the target in bursts, nothing dropped - and the evidence it rests on",
         "R18: icat profiles sync-objects states the cost measured through the product - High on a handle-heavy workload, past both targets, nothing dropped - and the evidence it rests on",
         "R18: icat profiles unix-sockets states the cost measured through the product and the evidence it rests on",
+        "R18: icat profiles window-messages states its cost - its sources' Moderate at most, the message pump's collection Low but a message-bound workload past the throughput target, nothing measured whole yet - and the evidence it rests on",
         "R18: icat profiles writes its catalog to --output as --json prints it, into a folder it makes, and says it wrote the catalog there",
         "R18: icat programs --program lists the pairs one program is in, named as listed, by its executable's file name with or without its extension, or by its path",
         "R18: icat programs lists every pair of programs the session's relationships join, the busiest first, as many as asked",
@@ -3735,6 +3737,7 @@
         "R18: icat record and icat capture say what COM calls records and that collecting COM-Perf slows a COM-heavy workload",
         "R18: icat record and icat capture say what Unix sockets records and that AFD collects every socket call of the machine",
         "R18: icat record and icat capture say what synchronization objects records and that collecting it slows a handle-heavy workload",
+        "R18: icat record and icat capture say what window messages records and that collecting it slows a message-bound workload",
         "R18: icat record takes every profile its help names, each by the catalog's id, and refuses any other by the same list",
         "R18: icat rederive needs a session's folder, and says so of none and of one that is not there",
         "R18: icat rederive refuses an option it cannot read, saying what it expects",

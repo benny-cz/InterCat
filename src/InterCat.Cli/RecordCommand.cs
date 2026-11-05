@@ -422,7 +422,7 @@ internal static class RecordCommand
 
     /// <summary>The profiles icat record takes, as its help lists them and its refusal names them.</summary>
     public static IReadOnlyList<string> Profiles { get; } =
-        ["explore", "focused-transport", "rpc-peers", "unix-sockets", "com-calls", "sync-objects", "content", "content-fixture"];
+        ["explore", "focused-transport", "rpc-peers", "unix-sockets", "com-calls", "sync-objects", "window-messages", "content", "content-fixture"];
 
     /// <summary>The profile <paramref name="option"/> names, in any case and with or without its dash; null for none.</summary>
     internal static CaptureProfileKind? Profile(string option) => option.ToUpperInvariant() switch
@@ -433,6 +433,7 @@ internal static class RecordCommand
         "UNIX-SOCKETS" or "UNIXSOCKETS" => CaptureProfileKind.UnixSockets,
         "COM-CALLS" or "COMCALLS" => CaptureProfileKind.ComCalls,
         "SYNC-OBJECTS" or "SYNCOBJECTS" => CaptureProfileKind.SyncObjects,
+        "WINDOW-MESSAGES" or "WINDOWMESSAGES" => CaptureProfileKind.WindowMessages,
         "CONTENT-FIXTURE" or "CONTENTFIXTURE" => CaptureProfileKind.ContentFixture,
         "CONTENT" => CaptureProfileKind.Content,
         _ => null,
@@ -494,6 +495,10 @@ internal static class RecordCommand
         ConsoleUi.Line("  manager, owned by the process that holds each and numbered by its object, never its address");
         ConsoleUi.Line("  (ADR-083); collecting them slows a handle-heavy workload, so icat profiles sync-objects states");
         ConsoleUi.Line("  its cost.");
+        ConsoleUi.Line("  --profile window-messages records every message one window sends or posts another from Win32k's");
+        ConsoleUi.Line("  message pump, each end owned by the process that raised it and numbered by its message, never");
+        ConsoleUi.Line("  its pointer (ADR-087); collecting them slows a message-bound workload, so icat profiles");
+        ConsoleUi.Line("  window-messages states its cost.");
         ConsoleUi.Line("  --profile content keeps the message bytes of a source admitted for content - WinINet's HTTP");
         ConsoleUi.Line("  exchanges, etw/manifest/Microsoft-Windows-WinINet-Capture (ADR-037) - from the processes --pid");
         ConsoleUi.Line("  names only, which the provider's own process filter holds before anything is kept; --channel *");

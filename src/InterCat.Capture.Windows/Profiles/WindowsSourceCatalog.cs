@@ -1212,9 +1212,9 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        // Window messages' lead (ADR-086): inventoried and requested by no profile. Its six message events admit through the
-        // window message gate (ADR-087), which writes each message's number over its pointer; its measured notes are what icat
-        // capabilities states of it.
+        // Window messages' lead (ADR-086): inventoried and requested by the opt-in window messages profile alone. Its six
+        // message events admit through the window message gate (ADR-087), which writes each message's number over its pointer;
+        // its measured notes are what icat capabilities states of it.
         var win32k = new WindowsSourceDefinition
         {
             SourceId = Win32kSourceId,
@@ -1228,9 +1228,9 @@ public static class WindowsSourceCatalog
             RequestedKeywords = ["MessagePump"],
             SupportsCaptureSideProcessFilter = false,
             FilteringNotes =
-                "No capture profile requests it. Its message pump keyword records every message sent or posted to any window on "
-                + "the machine, each raised in the thread that sends, posts or retrieves it; whether a session's process filter "
-                + "holds it is not measured.",
+                "Only the opt-in window messages profile requests it. Its message pump keyword records every message sent or "
+                + "posted to any window on the machine, each raised in the thread that sends, posts or retrieves it; whether a "
+                + "session's process filter holds it is not measured.",
             StartupBehaviour = "No rundown: a message sent or posted before a capture starts is not seen.",
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Experimental,
@@ -1253,8 +1253,8 @@ public static class WindowsSourceCatalog
                 "Collection alone, two series of nine pairs over a message-bound workload, loss-free: the processor time it "
                 + "added, the workload's and its consumer's, a median of 0.36 and 0.28 CPU pp, Low; but the workload spent about a "
                 + "twentieth more processor time of its own and ran 8.3 and 5.2% lower in throughput, past the 5% target, as a "
-                + "message's records are raised in the threads that send, post and retrieve it. Only an opt-in profile stating "
-                + "it may admit it, never Explore.",
+                + "message's records are raised in the threads that send, post and retrieve it. Only the opt-in window messages "
+                + "profile, which states it, requests this source, never Explore.",
                 "Measured on FX-WMSG-001: every message one process sent or posted another's window at both ends - a send's start "
                 + "at the sender naming the receiver's process and thread, its stop, and the receiver's retrieval and its end; a "
                 + "post's queueing, raised in the poster, and its retrieval in the receiver - each end joined to the others by the "

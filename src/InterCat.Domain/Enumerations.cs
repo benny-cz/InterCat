@@ -437,6 +437,13 @@ public enum CaptureProfileKind
     /// handle-heavy workload's throughput 5.3 and 8.3%.
     /// </summary>
     SyncObjects = 10,
+
+    /// <summary>
+    /// Lifecycle and window messages - every message one window sends or posts another, its ends each bound to the process
+    /// that raised it and numbered by its message in the capture - from Win32k's message pump (ADR-087). Opt-in: collecting
+    /// the message pump, Low in the processor time it adds, lowered a message-bound workload's throughput 8.3 and 5.2%.
+    /// </summary>
+    WindowMessages = 11,
 }
 
 public enum CaptureLifecycle { Idle = 1, Probing = 2, Starting = 3, Recording = 4, Stopping = 5, Finalizing = 6, Closed = 7 }
