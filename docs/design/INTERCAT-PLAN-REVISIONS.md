@@ -854,6 +854,7 @@ Revision 927 adds FX-COM-005, calls a capture's start and stop cut, each stated 
 Revision 928 begins M6's named synchronization objects package with its metadata inspection (§4.2): the kernel's object manager declares a handle's creation, duplication and close with its object's address, type and name, rundowns of open handles, and an object's creation and deletion, and its dispatcher a ready thread naming the thread readied; no event records a signal or a wait on an object, and nothing is enabled or implemented.
 Revision 929 measures the kernel's handle, object and dispatcher records against FX-SYNC-001 (ADR-082): each process's handles to a named object two processes share at one address, the creation naming nothing and the close the object; each object's creation and deletion by address; every wait the kernel blocked readied from the signaling process, a ready naming no object; no source is inventoried.
 Revision 930 measures what collecting the object manager's groups costs (ADR-082's addendum): the handle group Low in processor time but a handle-heavy workload 5.3 and 8.3% lower in throughput, past §12's target, so only an opt-in profile stating it may admit it; the object group beside it Moderate, 23.7% lower, about 2.7 million records a second.
+Revision 931 inventories the object manager's handle group as named synchronization objects' lead (ADR-082's second addendum): `etw/kernel-group/ObjectHandles`, enabled by a group mask and no kernel flag, experimental, requested by no profile and admitting no event, its measured notes and Low cost stated by `icat capabilities`; no build carries a tier for named objects.
 
 ## Revisions, a paragraph each, in order
 
@@ -3846,3 +3847,13 @@ the workload ran 5.3 and 8.3% lower in throughput, past §12's 5% target: a hand
 in the thread that makes the call. With the object group beside it, whose references come with it, the cost was 1.9
 points, Moderate, and 23.7% of the throughput, at about 2.7 million records a second. Only an opt-in profile stating its
 cost may admit the handle group, and no profile collects lifetimes by the object group without a measurement of its own.
+
+Revision 931 inventories the object manager's handle group as named synchronization objects' lead (ADR-082's second
+addendum), as COM-Perf was inventoried as COM calls'. `etw/kernel-group/ObjectHandles` enters the source catalog, a kernel
+group of the object manager's class enabled by the group mask `PERF_OB_HANDLE` and by no kernel flag, experimental,
+requested by no profile and admitting no event, as a capture cannot yet set a group mask on its private system logger.
+Its notes, which `icat capabilities` states, carry what FX-SYNC-001 measured - each process's handles to a shared named
+object at its one address, a handle named at its close, an object one object by its address within its lifetime, the
+object group's cost, and a ready thread never a signal by itself - and its cost is Low, with a handle-heavy workload's
+throughput regression beside it, so only an opt-in profile stating it may admit it, never Explore. No other source claims
+named synchronization objects, and no build carries a tier for them; a test holds the lead.

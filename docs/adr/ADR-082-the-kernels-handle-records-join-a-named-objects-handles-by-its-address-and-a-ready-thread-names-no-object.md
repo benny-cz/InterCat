@@ -1,8 +1,9 @@
 # ADR-082: The kernel's handle records join a named object's handles by its address, and a ready thread names no object
 
-- Status: accepted for M6's named synchronization objects work package; no source is inventoried; since revision 930 the
-  handle group's collection cost is measured, Low in processor time but a handle-heavy workload past §12's throughput
-  target, and the object group's Moderate (its addendum)
+- Status: accepted for M6's named synchronization objects work package; since revision 930 the handle group's collection
+  cost is measured, Low in processor time but a handle-heavy workload past §12's throughput target, and the object group's
+  Moderate (its addendum); since revision 931 the handle group is inventoried as named synchronization objects' lead,
+  requested by no profile and admitting no event (its second addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: plan §4.1, §4.2, M6, P7, P8, R22, ADR-035, FX-SYNC-001, `tools/InterCat.SyncProbe`,
@@ -124,3 +125,17 @@ machine, and they cost a Moderate processor time and a fifth of the workload's t
    and what a handle opened before a capture began records.
 
 A test holds the three series to their class and regression; five alterations of them are caught.
+
+## Addendum: the handle group inventoried as the lead (revision 931)
+
+The first decision named the handle group the lead and held it out of the catalog until its cost was measured. With its
+cost measured, it enters the source catalog as named synchronization objects' lead, as COM-Perf entered as COM calls'
+(ADR-077's third addendum): `etw/kernel-group/ObjectHandles`, a kernel group of the object manager's class, experimental,
+requested by no profile and admitting no event. It is enabled by a group mask and no kernel flag, so its kernel flags are
+none, and a capture cannot yet set a group mask on its private system logger. Its notes, which `icat capabilities` states,
+carry what FX-SYNC-001 measured: each process's handles to a shared named object at its one address, a handle named at its
+close, an object one object by its address within its lifetime, the object group's cost, and a ready thread never a signal
+by itself. Its cost is Low with this ADR's addendum as evidence, its notes stating a handle-heavy workload's throughput
+regression beside the class, so only an opt-in profile stating it may admit it, never Explore. It has no process filter,
+and its rundown at the session's stop names every handle still open. No other source claims named synchronization objects,
+and no build carries a tier for them. A test holds the lead, its absence from every profile and the absence of a tier.

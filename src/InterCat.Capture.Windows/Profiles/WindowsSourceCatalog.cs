@@ -134,8 +134,14 @@ public static class WindowsSourceCatalog
     public const string WinsockAfdSourceId = "etw/manifest/Microsoft-Windows-Winsock-AFD";
     public const string ComPerfSourceId = "etw/manifest/Microsoft-Windows-COM-Perf";
 
+    /// <summary>The object manager's handle group: named synchronization objects' lead, enabled by a group mask (ADR-082).</summary>
+    public const string KernelObjectHandlesSourceId = "etw/kernel-group/ObjectHandles";
+
     /// <summary>The classic event class of the kernel's ALPC events, measured on this workstation (ADR-035's addendum).</summary>
     public static readonly Guid AlpcEventClass = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
+
+    /// <summary>The classic event class of the kernel's object manager events, ObTrace, as this build registers it (§4.2).</summary>
+    public static readonly Guid ObjectManagerEventClass = Guid.Parse("89497f50-effe-4440-8cf2-ce6b1cdcaca7");
 
     /// <summary><c>EVENT_TRACE_FLAG_ALPC</c>.</summary>
     public const ulong AlpcKernelFlag = 0x0010_0000;
@@ -996,6 +1002,52 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc, winInetCapture, winsockAfd, comPerf];
+        // Named synchronization objects' lead (ADR-082): inventoried and requested by no profile, admitting no event until a
+        // capture sets a group mask on its private system logger; its measured notes are what icat capabilities states of it.
+        var objectHandles = new WindowsSourceDefinition
+        {
+            SourceId = KernelObjectHandlesSourceId,
+            DisplayName = "Object manager handle group (named synchronization object lead)",
+            Kind = SourceKind.KernelFlagGroup,
+            ProviderName = "Kernel object manager handles (PERF_OB_HANDLE)",
+            Mechanisms = [Mechanism.Synchronization],
+            RequiredPrivilege = PrivilegeRequirement.Administrator,
+            Level = "win:Informational",
+            MatchAnyKeyword = 0,
+            RequestedKeywords = [],
+            SupportsCaptureSideProcessFilter = false,
+            FilteringNotes =
+                "No capture profile requests it. A kernel group of the object manager, enabled by the group mask PERF_OB_HANDLE "
+                + "and by no kernel flag: only a private system logger receives it, its masks set by the session's handle, which "
+                + "TraceEvent does only on the NT Kernel Logger, a session a capture never uses (ADR-035, ADR-082). It has no "
+                + "process filter: it records every process's handles.",
+            StartupBehaviour =
+                "At the session's stop a rundown names every handle still open, with its process and its object's name, and every "
+                + "object type's name; a handle opened before the capture began is seen only at its close or in that rundown.",
+            SupportsCaptureState = false,
+            ContractStatus = SourceContractStatus.Experimental,
+            Overhead = OverheadClass.Low,
+            OverheadEvidence = "bench/results/sync-objects-impact-handles-20261105T035540Z/impact.json",
+            ClassicEventClass = ObjectManagerEventClass,
+            Notes =
+            [
+                "There is no registered object manager manifest provider to inventory, so its absence from the registry is expected.",
+                "Collection alone, two series of nine pairs over a handle-heavy workload, loss-free: a median of 0.4 and 0.0 CPU "
+                + "pp, Low; but the workload ran 5.3 and 8.3% lower in throughput, past the 5% target, as a handle's creation and "
+                + "close each raise a record in the thread that makes the call. Only an opt-in profile stating it may admit it, "
+                + "never Explore.",
+                "Measured on FX-SYNC-001: each process's handle to a named object two processes share, its creation and its "
+                + "close, both processes' at the object's one address, typed by the type rundown. A creation names nothing; the "
+                + "close names the object, so a handle is named at its close.",
+                "A named object is one object by its address within its lifetime, never by its name or its address alone: the "
+                + "object group, PERF_OB_OBJECT, records each object's creation and deletion by address, but its references come "
+                + "with it, about 2.7 million records a second and a fifth of a handle-heavy workload's throughput, Moderate.",
+                "No record names a signal or a wait on an object. The dispatcher's ready thread names neither the object nor the "
+                + "thread that readied it, and threads of two processes ready each other with no object between them, so a ready "
+                + "is never a signal by itself.",
+            ],
+        };
+
+        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc, winInetCapture, winsockAfd, comPerf, objectHandles];
     }
 }

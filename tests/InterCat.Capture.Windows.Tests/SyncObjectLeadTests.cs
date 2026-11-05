@@ -173,6 +173,37 @@ public sealed class SyncObjectLeadTests
         Assert.All(taken.Keys, row => Assert.Contains(row.AwakenedWait, PairedWaits));
     }
 
+    [Fact(DisplayName = "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build")]
+    public void NamedObjectsHaveALeadAndNoTier()
+    {
+        WindowsSourceDefinition handles = WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelObjectHandlesSourceId)!;
+        Assert.Equal((SourceKind.KernelFlagGroup, 0UL, WindowsSourceCatalog.ObjectManagerEventClass),
+            (handles.Kind, handles.KernelFlags, handles.ClassicEventClass));
+        Assert.Equal([Mechanism.Synchronization], handles.Mechanisms);
+        Assert.Equal((SourceContractStatus.Experimental, false), (handles.ContractStatus, handles.SupportsCaptureSideProcessFilter));
+        Assert.Empty(handles.AdmittedEvents);
+        Assert.Contains("PERF_OB_HANDLE", handles.FilteringNotes, StringComparison.Ordinal);
+
+        // Its cost is measured, Low in processor time, with the throughput regression its notes state beside the class.
+        Assert.Equal(OverheadClass.Low, handles.Overhead);
+        using (JsonDocument impact = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepositoryRoot(), handles.OverheadEvidence!))))
+        {
+            Assert.Equal((handles.Overhead.ToString(), false), (impact.RootElement.GetProperty("overhead").GetString(),
+                impact.RootElement.GetProperty("throughputTargetMet").GetBoolean()));
+        }
+
+        Assert.Contains(handles.Notes, note => note.Contains("past the 5% target", StringComparison.Ordinal) && note.Contains("never Explore", StringComparison.Ordinal));
+        Assert.Contains(handles.Notes, note => note.Contains("FX-SYNC-001", StringComparison.Ordinal) && note.Contains("named at its close", StringComparison.Ordinal));
+        Assert.Contains(handles.Notes, note => note.Contains("never a signal by itself", StringComparison.Ordinal));
+
+        // No profile requests it, no other source claims named synchronization objects, and no build carries a tier for them.
+        Assert.DoesNotContain(CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures),
+            profile => profile.Sources.Any(source => source.SourceId == handles.SourceId));
+        Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != handles.SourceId),
+            source => Assert.DoesNotContain(Mechanism.Synchronization, source.Mechanisms));
+        Assert.DoesNotContain(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.Synchronization);
+    }
+
     [Fact(DisplayName = "§12: collecting the handle group is measured in two series of pairs over a handle-heavy workload - Low in processor time, the workload slower past §12's throughput target - and the object group beside it Moderate, millions of records a second, so only an opt-in profile stating it may admit either")]
     public void TheGroupsCollectionCostIsMeasured()
     {

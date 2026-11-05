@@ -630,6 +630,7 @@
         ],
         "invariants": [],
         "prohibitions": [
+          "P27",
           "P8"
         ]
       },
@@ -648,7 +649,7 @@
           "build": "10.0.26220.0-x64",
           "supportTier": "Primary",
           "date": "2026-11-05",
-          "result": "Measured by tools/InterCat.SyncProbe, four runs, nothing lost: each process's handles to each named object at one address, named at their close, and each wait the kernel blocked readied from the signaling process. No tier is assigned: no source is inventoried for synchronization objects (ADR-082)."
+          "result": "Measured by tools/InterCat.SyncProbe, four runs, nothing lost: each process's handles to each named object at one address, named at their close, and each wait the kernel blocked readied from the signaling process. No tier is assigned: the object manager's handle group is inventoried as named synchronization objects' lead, requested by no profile and admitting no event, so no capture has recorded them through the product (ADR-082)."
         }
       ],
       "provenance": {
@@ -659,7 +660,8 @@
       "tests": [
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
         "R22: an object's address names it only from its creation to its deletion - FX-SYNC-001's object group records each named object created in the creator before its first handle and deleted after its last close, at the address its handles carry",
-        "P8: FX-SYNC-001's every wait the kernel blocked has the ready of its thread from the signaling process inside the wait's span, and no ready of a thread in a user-mode wait between the two processes is left unpaired - a ready names no object, so only a truth's wait makes one a signal"
+        "P8: FX-SYNC-001's every wait the kernel blocked has the ready of its thread from the signaling process inside the wait's span, and no ready of a thread in a user-mode wait between the two processes is left unpaired - a ready names no object, so only a truth's wait makes one a signal",
+        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build"
       ]
     },
     {
@@ -2393,6 +2395,7 @@
         "P27: discovered resources without a byte claim are topology only",
         "P27: every section 14.2 threshold met on a supported build yields traffic visualization",
         "P27: false peer attribution above one percent blocks traffic visualization",
+        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",
         "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build"
       ],
