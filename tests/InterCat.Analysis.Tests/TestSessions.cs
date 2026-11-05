@@ -17,7 +17,16 @@ internal static class TestSessions
     public static readonly Guid RpcProvider = Guid.Parse("6ad52b32-d609-4be9-ae07-ce8dae937e39");
     public static readonly Guid AlpcClass = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
     public static readonly Guid ComPerfProvider = Guid.Parse("b8d6861b-d20f-4eec-bbae-87e0dd80602b");
+    public static readonly Guid ObjectManagerClass = Guid.Parse("89497f50-effe-4440-8cf2-ce6b1cdcaca7");
     public static readonly DateTimeOffset Committed = new(2026, 9, 22, 16, 0, 0, TimeSpan.Zero);
+
+    // The object manager's handle records by opcode: a handle's creation, close and duplication, an object type at the
+    // stop, and a handle still open at the stop.
+    public const byte HandleCreated = 32;
+    public const byte HandleClosed = 33;
+    public const byte HandleDuplicated = 34;
+    public const byte TypeAtStop = 37;
+    public const byte HandleAtStop = 39;
 
     public static SourceClockDescriptor TestClock { get; } = ClockFor(Clock, "session-metrics-tests");
 
@@ -205,6 +214,45 @@ internal static class TestSessions
         StatusAvailability = kind == ObservationKind.RequestEnd && status is not null
             ? FieldAvailability.Present
             : FieldAvailability.NotApplicable,
+        AttributionQuality = QualityLevel.UnknownQuality,
+        CorrelationQuality = QualityLevel.UnknownQuality,
+        MeasurementQuality = QualityLevel.UnknownQuality,
+        TimingQuality = QualityLevel.Proven,
+    };
+
+    /// <summary>
+    /// A named synchronization object's handle record raised in <paramref name="raisedBy"/>, as the object manager's handle
+    /// group admits one through its gate: a creation or a close naming no owner, a duplication naming the target it made its
+    /// handle in, a handle at the stop naming its holder, or an object type at the stop naming none (ADR-083's second
+    /// addendum). Only its header says whose a creation or a close is.
+    /// </summary>
+    public static ObservationRowV1 Handle(long ticks, byte opcode, int raisedBy, int? owner, ulong ordinal) => new()
+    {
+        RawStreamId = 1,
+        RawSourceEpoch = 1,
+        RawRecordOrdinal = ordinal,
+        FactKey = FactKey.Create("synchronization-handle"),
+        ProviderId = ObjectManagerClass,
+        EventId = 0,
+        DescriptorVersion = 2,
+        SchemaFingerprint = "sha256:" + new string('e', 64),
+        Opcode = opcode,
+        NativeTicks = ticks,
+        HeaderProcessId = raisedBy,
+        HeaderThreadId = raisedBy + 1,
+        ProcessorNumber = 0,
+        OwnerProcessId = owner,
+        Mechanism = Mechanism.Synchronization,
+        Layer = ObservationLayer.Resource,
+        Kind = opcode switch
+        {
+            HandleCreated or HandleDuplicated => ObservationKind.Open,
+            HandleClosed => ObservationKind.Close,
+            _ => ObservationKind.Inventory,
+        },
+        Direction = opcode == HandleDuplicated ? Direction.Inbound : Direction.DirectionNotApplicable,
+        ByteAvailability = FieldAvailability.NotApplicable,
+        StatusAvailability = FieldAvailability.NotApplicable,
         AttributionQuality = QualityLevel.UnknownQuality,
         CorrelationQuality = QualityLevel.UnknownQuality,
         MeasurementQuality = QualityLevel.UnknownQuality,

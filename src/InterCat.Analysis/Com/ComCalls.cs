@@ -111,7 +111,7 @@ public sealed record ComCall
 
     public required ComCallState State { get; init; }
 
-    /// <summary>The process its records belong to: the one that raised them (`process-binding-v5`).</summary>
+    /// <summary>The process its records belong to: the one that raised them (since `process-binding-v5`).</summary>
     public required int ProcessId { get; init; }
 
     /// <summary>The process its start names at its other end, never its own owner; null without a start or where it named none.</summary>

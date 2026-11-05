@@ -297,7 +297,48 @@ public sealed class ProcessInstanceTests
         });
         Assert.Equal(5, grouped.Value);
         Assert.Contains(grouped.Caveats, caveat => caveat.Contains(
-            "used only for an RPC, HTTP or COM call record, which names none", StringComparison.Ordinal));
+            "used only for an RPC, HTTP, COM call or synchronization handle record, which names none", StringComparison.Ordinal));
+    }
+
+    [Fact(DisplayName = "R22: a synchronization handle record binds where it was raised or to what it names - a creation and a close to the process that raised them, a duplication to the target it names, the stop's rundown to the holder it names - and an object type's inventory to none")]
+    public void ASynchronizationHandleRecordBindsWhereItWasRaisedOrToWhatItNames()
+    {
+        using var session = new TemporarySession();
+        Publish(
+            session.Store,
+            [
+                Lifecycle(100, ObservationKind.Create, 400, 1),
+                Lifecycle(110, ObservationKind.Create, 700, 2),
+                Handle(150, HandleCreated, raisedBy: 400, owner: null, 3),
+                Handle(160, HandleDuplicated, raisedBy: 900, owner: 700, 4),
+                Handle(170, HandleClosed, raisedBy: 700, owner: null, 5),
+                Handle(180, HandleAtStop, raisedBy: 900, owner: 400, 6),
+                Handle(190, TypeAtStop, raisedBy: 900, owner: null, 7),
+            ]);
+
+        ProcessInstanceIndex index = Derive(session.Store);
+
+        // The process that asked for the duplication and ran the rundowns owns none of their records: no instance of it.
+        Assert.Equal([400, 700], index.Instances.Select(instance => instance.ProcessId).Order());
+        int creator = index.Instances.ToList().FindIndex(instance => instance.ProcessId == 400);
+        int opener = index.Instances.ToList().FindIndex(instance => instance.ProcessId == 700);
+        ProcessBinding[] owners = index.OwnersOf(Assert.Single(TestSessions.Segments(session.Store)));
+
+        // A creation is its raiser's, the duplication its target's, the duplicated handle's close its closer's, and the
+        // rundown's entry the holder's it names; the object type's inventory is no process's, whichever process raised it.
+        Assert.Equal(new ProcessBinding(creator, RelationStrength.Correlated, ProcessBindingReason.Bound), owners[2]);
+        Assert.Equal((opener, ProcessBindingReason.Bound), (owners[3].Instance, owners[3].Reason));
+        Assert.Equal(new ProcessBinding(opener, RelationStrength.Correlated, ProcessBindingReason.Bound), owners[4]);
+        Assert.Equal((creator, ProcessBindingReason.Bound), (owners[5].Instance, owners[5].Reason));
+        Assert.Equal(ProcessBindingReason.NoOwner, owners[6].Reason);
+        ProcessActivityIndex activity = ProcessActivityIndex.Derive(TestSessions.Segments(session.Store), index);
+        Assert.Equal(
+            [(Mechanism.ProcessLifecycle, 1L), (Mechanism.Synchronization, 2L)],
+            activity.MechanismsOf(creator, EvidencePolicy.IncludeCorrelated).OrderBy(count => count.Mechanism));
+        Assert.Equal(
+            [(Mechanism.ProcessLifecycle, 1L), (Mechanism.Synchronization, 2L)],
+            activity.MechanismsOf(opener, EvidencePolicy.IncludeCorrelated).OrderBy(count => count.Mechanism));
+        Assert.Equal((1L, 0L), (activity.RecordsWithoutOwner, activity.RecordsNotBound));
     }
 
     [Fact(DisplayName = "I14: instance identities do not depend on how the evidence was split into segments")]

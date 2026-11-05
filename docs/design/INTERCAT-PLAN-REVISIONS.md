@@ -862,6 +862,7 @@ Revision 935 adds a synchronization handle gate (ADR-083): it admits only the ob
 Revision 936 admits the handle group's events through the synchronization handle gate (ADR-083's addendum): a handle's creation, close and duplication and the stop's type and handle rundowns, with four source fields, the object's number written over its address; the gate allocates nothing per record on the capture's callback, its bound holding the handles; a build with no measured type numbers refuses the source, and no profile requests it yet.
 Revision 937 measures FX-SYNC-002 (ADR-082's fifth addendum): each handle duplication is raised in the process that asked for it, its record naming its target and the handle made there but no source process, and each kernel handle's records are raised wherever the kernel ran, never in the system process that holds it; no binding changes yet.
 Revision 938 makes a handle duplication the open of the target its record names, its payload owner, and has the synchronization handle gate follow no kernel handle, whose creation and close FX-SYNC-002 had raised wherever the kernel ran (ADR-083's second addendum).
+Revision 939 binds a named synchronization object's handle creation and close to the process that raised them, and binds no inventory by its header, as `process-binding-v6` (ADR-083's third addendum); a checkpoint of an earlier rule is read as this one's wherever every record named its owner.
 
 ## Revisions, a paragraph each, in order
 
@@ -3944,3 +3945,12 @@ in a process no record names. The synchronization handle gate follows no kernel 
 creation, close and rundown, and a duplication into the system process's table, are omitted as of no object it follows,
 since their headers name whichever process the kernel ran for; a duplication from a kernel handle into a process makes
 that process a handle the gate holds. A creation's or a close's header still binds nothing.
+
+Revision 939 is `process-binding-v6` (ADR-083's third addendum, ADR-030). ADR-030's header binding reaches the
+`Synchronization` mechanism: a handle's creation or close whose payload names no owner belongs to the process that
+raised it, as FX-SYNC-001 and FX-SYNC-002 measured, and the gate admits no kernel handle, whose header names whichever
+process the kernel ran for. A duplication binds by the target its payload names and a handle open at the stop by its
+holder. A header now binds no inventory, of any mechanism, as a rundown is raised wherever it ran: an object type at the
+stop is no process's, and no mechanism bound by its header before has an inventory. A checkpoint derived under version 2
+to 5 is read as version 6's wherever every record named its owner; the entities, checkpoint, operations, operation
+index, metrics, relations, query identity, HTTP exchange and COM call contracts name the new rule.

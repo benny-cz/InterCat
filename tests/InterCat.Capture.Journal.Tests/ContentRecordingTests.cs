@@ -159,7 +159,7 @@ public sealed class ContentRecordingTests
             return Enumerable.Range(0, segment.RowCount).Select(segment.Row);
         })];
         Assert.All(rows, row => Assert.Equal((Mechanism.Http, (int?)null, 4_242),
-            (row.Mechanism, row.OwnerProcessId, RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.HeaderProcessId)!.Value)));
+            (row.Mechanism, row.OwnerProcessId, RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.Kind, row.HeaderProcessId)!.Value)));
         SourceFieldRowV1[] fields = [.. SessionSegments.FieldNames(store.Current).SelectMany(name =>
         {
             SegmentReaderV1 segment = SessionSegments.Open(store, store.Current, name);

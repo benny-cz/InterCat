@@ -1,7 +1,8 @@
 # ADR-030: An RPC record binds to the process that raised it
 
-- Status: accepted for M1; revision 238 adds HTTP to its list as `process-binding-v4` (ADR-037), and revision 914 COM
-  calls as `process-binding-v5` (ADR-077's fifth addendum)
+- Status: accepted for M1; revision 238 adds HTTP to its list as `process-binding-v4` (ADR-037), revision 914 COM
+  calls as `process-binding-v5` (ADR-077's fifth addendum), and revision 939 named synchronization objects' handles as
+  `process-binding-v6`, a header binding no inventory (ADR-083's third addendum)
 - Date: 2026-09-27
 - Decision owners: InterCat maintainers
 - Relates to: §4.1 (header and payload), §7.1 (process instances), §7.3 (`EntityBindingRevision`), §24
@@ -43,8 +44,10 @@ The fixture ran twice in one capture, and both runs produced the same shape.
 1. **A header binds where it was measured to.** A record belongs to the PID its payload names. When its payload names
    none, and its mechanism is one measured to raise its records in the process they describe, it belongs to the process
    its header names. RPC was the only such mechanism (`RecordAttribution`); HTTP joined it in revision 238, measured
-   on FX-HTTP-001 (ADR-037), and COM calls in revision 914, measured on FX-COM-001 (ADR-077's fifth
-   addendum). A test pins that list, so adding a mechanism brings its own measurement, a new rule
+   on FX-HTTP-001 (ADR-037), COM calls in revision 914, measured on FX-COM-001 (ADR-077's fifth
+   addendum), and named synchronization objects' handles in revision 939, measured on FX-SYNC-001 and FX-SYNC-002
+   (ADR-083's third addendum). Since then an inventory binds by no header: a rundown is raised wherever it ran, never
+   in the process it describes. A test pins that list, so adding a mechanism brings its own measurement, a new rule
    identity and the texts that name the list.
 2. **It is a binding rule, not a normalization.** The stored row keeps an empty owner and an unknown attribution
    quality (R1). The derivation reads the header column only in a segment where such a record names no owner, so a

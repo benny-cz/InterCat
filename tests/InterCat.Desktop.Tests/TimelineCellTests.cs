@@ -275,7 +275,7 @@ public sealed class TimelineCellTests
         string cells = 20_000.ToString("N0", CultureInfo.CurrentCulture);
         Assert.Equal(Counted(cell.ObservationCount, "record") + $" {Have(cell.ObservationCount)} a session time in this interval "
             + $"and {Is(cell.ObservationCount)} bound to {owner.NameWithPid}, {Its(cell.ObservationCount)} canonical owner, by "
-            + "process-binding, version 5." + Count
+            + "process-binding, version 6." + Count
             + Placement + $"one of the lanes' own 500, coarser than the view's so the group's 40 lanes stay within {cells} cells"
             + Unplaced + Unknown, workspace.CellExplanation);
 
@@ -325,7 +325,7 @@ public sealed class TimelineCellTests
         workspace.ChooseTimelineCell(sent, directionLane: Direction.Outbound);
         Assert.Equal(Counted(sent.ObservationCount, "record") + $" marked outbound {Have(sent.ObservationCount)} a session time "
             + $"in this interval and {Is(sent.ObservationCount)} bound to {client.NameWithPid}, {Its(sent.ObservationCount)} "
-            + "canonical owner, by process-binding, version 5. The source marks sends, connection attempts and client calls "
+            + "canonical owner, by process-binding, version 6. The source marks sends, connection attempts and client calls "
             + "outbound, which does not say who initiated the conversation." + Count + view, workspace.CellExplanation);
 
         // A publication of the same session keeps the cell, chosen in the same row.

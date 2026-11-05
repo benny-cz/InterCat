@@ -113,7 +113,7 @@ public static class EvidenceRowText
     public static int? OwnerProcessId(ObservationRowV1 row)
     {
         ArgumentNullException.ThrowIfNull(row);
-        return RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.HeaderProcessId);
+        return RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.Kind, row.HeaderProcessId);
     }
 
     /// <summary>

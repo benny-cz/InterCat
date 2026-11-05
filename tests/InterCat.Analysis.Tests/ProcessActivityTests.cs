@@ -75,7 +75,7 @@ public sealed class ProcessActivityTests
                 .Sum(instance => activity.RecordsOf(instance, EvidencePolicy.AllIncludingConflicting));
             Assert.Equal(rows.Length, bound + activity.RecordsWithoutOwner + activity.RecordsNotBound);
             Assert.Equal(
-                rows.Count(row => RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.HeaderProcessId) is null),
+                rows.Count(row => RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.Kind, row.HeaderProcessId) is null),
                 activity.RecordsWithoutOwner);
             for (int instance = 0; instance < processes.Instances.Count; instance++)
             {

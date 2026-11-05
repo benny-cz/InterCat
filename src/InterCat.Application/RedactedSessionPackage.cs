@@ -382,7 +382,7 @@ public static class RedactedSessionPackage
             Interval is not { } interval
             || Within(interval, row.SessionRelativeTicks)
             || (ProcessInstanceIndex.IsLifecycleRecord(row.Mechanism, row.Kind)
-                && RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.HeaderProcessId) is { } owner
+                && RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.Kind, row.HeaderProcessId) is { } owner
                 && processes.Contains(owner));
 
         /// <summary>Whether a session time lies in the interval, read as `icat evidence` and `icat export` read one.</summary>
@@ -422,15 +422,15 @@ public static class RedactedSessionPackage
                 if (read % ProgressInterval == 0) progress?.Report(new(RedactedPackageStage.Selecting, read, total));
                 read++;
                 var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
-                int? owner = RecordAttribution.OwnerOf(owners.SignedAt(row) is { } payload ? (int)payload : null, mechanism,
+                var kind = (ObservationKind)kinds.UnsignedAt(row)!.Value;
+                int? owner = RecordAttribution.OwnerOf(owners.SignedAt(row) is { } payload ? (int)payload : null, mechanism, kind,
                     (int)headers.SignedAt(row)!.Value);
                 if (Selection.Within(interval, times.SignedAt(row)))
                 {
                     within++;
                     if (owner is { } process) processes.Add(process);
                 }
-                else if (owner is { } process
-                    && ProcessInstanceIndex.IsLifecycleRecord(mechanism, (ObservationKind)kinds.UnsignedAt(row)!.Value))
+                else if (owner is { } process && ProcessInstanceIndex.IsLifecycleRecord(mechanism, kind))
                 {
                     lifecycleOutside[process] = lifecycleOutside.GetValueOrDefault(process) + 1;
                 }

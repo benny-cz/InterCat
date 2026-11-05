@@ -217,16 +217,19 @@ public sealed class DerivationCheckpointTests
             EarlierCheckpoints.UnderEarlierBindingRule(EarlierCheckpoints.UnderEarlierRelationRule(bytes)), Session, TestClock);
         Assert.Equal(EarlierCheckpoints.WithoutTransfers(bytes), Checkpoint(both.Processes, both.Relations, both.Activity!));
 
-        // So did process-binding-v3, which bound only an RPC record among those that named none (ADR-037), and
-        // process-binding-v4, which bound only an RPC or HTTP record (ADR-077's fifth addendum).
+        // So did process-binding-v3, which bound only an RPC record among those that named none (ADR-037),
+        // process-binding-v4, which bound only an RPC or HTTP record (ADR-077's fifth addendum), and process-binding-v5,
+        // which bound only an RPC, HTTP or COM call record (ADR-083's third addendum).
         DerivationCheckpoint third = DerivationCheckpoint.Read(EarlierCheckpoints.UnderEarlierBindingRule(bytes, 3), Session, TestClock);
         Assert.Equal(bytes, Checkpoint(third.Processes, third.Relations, third.Activity!));
         DerivationCheckpoint fourth = DerivationCheckpoint.Read(EarlierCheckpoints.UnderEarlierBindingRule(bytes, 4), Session, TestClock);
         Assert.Equal(bytes, Checkpoint(fourth.Processes, fourth.Relations, fourth.Activity!));
+        DerivationCheckpoint fifth = DerivationCheckpoint.Read(EarlierCheckpoints.UnderEarlierBindingRule(bytes, 5), Session, TestClock);
+        Assert.Equal(bytes, Checkpoint(fifth.Processes, fifth.Relations, fifth.Activity!));
 
-        // A record naming no owner might have been an RPC, HTTP or COM call record, which this rule binds to the process
-        // that raised it, so a checkpoint that left one unbound is derived again. Its count is all the checkpoint says of
-        // them.
+        // A record naming no owner might have been an RPC, HTTP, COM call or synchronization handle record, which this rule
+        // binds to the process that raised it, so a checkpoint that left one unbound is derived again. Its count is all the
+        // checkpoint says of them.
         using var incomplete = new TemporarySession();
         Publish(incomplete.Store,
         [
@@ -242,9 +245,12 @@ public sealed class DerivationCheckpointTests
         Assert.Contains("derived under process-binding-v3, which left 1 record naming no owner unbound", Assert.Throws<InvalidDataException>(
             () => DerivationCheckpoint.Read(EarlierCheckpoints.UnderEarlierBindingRule(bytes, 3), Session, TestClock)).Message,
             StringComparison.Ordinal);
-        Assert.Contains("derived under process-binding-v4, which left 1 record naming no owner unbound, and process-binding-v5 binds an RPC, "
-            + "HTTP or COM call record among them", Assert.Throws<InvalidDataException>(
+        Assert.Contains("derived under process-binding-v4, which left 1 record naming no owner unbound", Assert.Throws<InvalidDataException>(
             () => DerivationCheckpoint.Read(EarlierCheckpoints.UnderEarlierBindingRule(bytes, 4), Session, TestClock)).Message,
+            StringComparison.Ordinal);
+        Assert.Contains("derived under process-binding-v5, which left 1 record naming no owner unbound, and process-binding-v6 binds an RPC, "
+            + "HTTP, COM call or synchronization handle record among them", Assert.Throws<InvalidDataException>(
+            () => DerivationCheckpoint.Read(EarlierCheckpoints.UnderEarlierBindingRule(bytes, 5), Session, TestClock)).Message,
             StringComparison.Ordinal);
     }
 

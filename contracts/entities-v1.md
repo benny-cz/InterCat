@@ -1,6 +1,6 @@
 # InterCat entities v1
 
-Status: **implemented** as `process-binding-v5` (revision 914), with the v1 fallback for older generations that
+Status: **implemented** as `process-binding-v6` (revision 939), with the v1 fallback for older generations that
 publish no `source-fields-v1`. Thread, endpoint, resource and channel instances remain undefined (§8); which process is
 at a record's other end is `contracts/relations-v1.md`'s, built on the bindings fixed here.
 
@@ -20,7 +20,7 @@ rather than merged. The clock is the one the generation's journal describes.
 |---|---|
 | Host | The clock descriptor's host. |
 | Boot | Derived from the clock: one monotonic clock scopes one boot (`BootId.DeriveFromClock`). |
-| PID | The owner a record's own payload names (`OwnerProcessId`); for a record whose payload names none, the process that raised it when its mechanism's records are raised in the process they describe (§2a). Any other event header's process is never used (§4.1). |
+| PID | The owner a record's own payload names (`OwnerProcessId`); for a record whose payload names none, the process that raised it when its mechanism's records are raised in the process they describe and it is no inventory (§2a). Any other event header's process is never used (§4.1). |
 | Lifecycle epoch | Which instance of the PID this is, in reading order, from 1. |
 | Evidence | A provider start sequence and reported creation time when available, otherwise an observed creation or the raw-record key of the witnessing record. |
 
@@ -35,19 +35,24 @@ witnesses nothing and is counted.
 A record belongs to the PID its own payload names. A kernel source raises a record in whatever context the kernel
 was in, so its event header's process is context only and never an owner (§4.1).
 
-A user-mode provider raises a record in the process it describes. For a mechanism where that is measured, a record
-whose payload names no owner belongs to the process its event header names (ADR-030):
+A user-mode provider raises a record in the process it describes, and the kernel's object manager raises a handle's
+creation and close in the process whose handle it is. For a mechanism where that is measured, a record whose payload
+names no owner belongs to the process its event header names (ADR-030) - unless it is an inventory, which is raised
+wherever its rundown ran, never in the process it describes:
 
 | Mechanism | A header binds when the payload names no owner | Measured |
 |---|---|---|
 | `Rpc` | yes: a client call is raised in the calling process, a server call in the serving one | FX-RPC-001: every truth call's start in the calling process, and 122 of 122 server calls to its interface in the service host that served them |
 | `Http` | yes: WinINet raises its capture records in the client process that made the exchange | FX-HTTP-001: 444 of 444 records raised in the client process, and none of a decoy's reached a session scoped to that client (ADR-037) |
 | `ComCall` | yes: COM-Perf raises a call's client start and stop in the calling process, its served start and stop in the serving one | FX-COM-001: every call of four runs at both ends, each in the process that made or served it, and under a session's process filter none of a decoy pair's; FX-COM-002: a call across an apartment in its own process at both ends (ADR-077) |
+| `Synchronization` | yes for a handle's creation and close: the object manager raises each in the process that made or closed it. A duplication names the process it made its handle in, and a handle open at the stop its holder, so both bind by their payload; an object type at the stop, an inventory, binds to none | FX-SYNC-001: every handle's creation and close of four runs in the process that made and closed it; FX-SYNC-002: a duplicated handle's close in its target, a duplication raised in the process that asked for it, and the stop's rundown raised in processes other than the holders it named. No kernel handle's record is admitted, its header naming whichever process the kernel ran for (ADR-082, ADR-083) |
 | any other | no | — |
 
 A payload owner always wins. `process-binding-v2` bound payload owners only; `process-binding-v3` (revision 177)
 adds this table and changes nothing for a record whose payload names its owner; `process-binding-v4` (revision 238)
-adds its `Http` row and `process-binding-v5` (revision 914) its `ComCall` row, each changing nothing else. A record with no owner by either
+adds its `Http` row, `process-binding-v5` (revision 914) its `ComCall` row, and `process-binding-v6` (revision 939) its
+`Synchronization` row and the rule that a header binds no inventory, which no earlier row's mechanism has, each changing
+nothing else. A record with no owner by either
 belongs to no process and is counted as such.
 
 ## 3. Instances
@@ -142,10 +147,11 @@ states this as an assumption rather than a verified condition.
 
 ## 7. Identity of a derivation
 
-A derivation is identified by `process-binding-v5` and the generation it was derived from. A change to what binds,
+A derivation is identified by `process-binding-v6` and the generation it was derived from. A change to what binds,
 how strongly, or how an instance is keyed is a new rule identity (§24 `entityRevision`); a result names the rule it
-was grouped under. Version 3 adds §2a, version 4 its `Http` row and version 5 its `ComCall` row. A derivation under
-version 2, 3 or 4 is version 5's wherever every record named its owner, since each differs from it only in binding fewer records that name none; a
+was grouped under. Version 3 adds §2a, version 4 its `Http` row, version 5 its `ComCall` row and version 6 its
+`Synchronization` row. A derivation under version 2, 3, 4 or 5 is version 6's wherever every record named its owner,
+since each differs from it only in binding fewer records that name none; a
 derivation checkpoint's counts can show that (`contracts/derivation-checkpoint-v1.md` §4).
 
 ## 8. Not defined at this version

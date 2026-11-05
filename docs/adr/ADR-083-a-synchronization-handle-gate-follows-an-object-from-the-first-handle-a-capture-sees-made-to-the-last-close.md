@@ -2,7 +2,8 @@
 
 - Status: accepted for M6's named synchronization objects work package; since revision 936 the handle group's events
   admit through the gate (its addendum); since revision 938 a duplication is the open of the target its record names, and
-  the gate follows no kernel handle (its second addendum); no profile requests the group yet
+  the gate follows no kernel handle (its second addendum); since revision 939 a handle's creation and close bind to the
+  process that raised them, as `process-binding-v6` (its third addendum); no profile requests the group yet
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-073, ADR-082, plan M6, §4.2, R22, P7, FX-SYNC-001, `bench/results/sync-objects-types-20261105T053215Z`
@@ -105,3 +106,22 @@ the gate holds as the object's.
 
 A creation's or a close's header still binds nothing (`contracts/entities-v1.md` §2a). Tests hold the duplication's
 compiled roles and direction, and the gate's omissions on synthetic and compiled records; eight mutations are caught.
+
+## Addendum: a handle's creation and close bind to the process that raised them (revision 939)
+
+The second addendum left a creation's and a close's header binding nothing. FX-SYNC-001 had every handle's creation and
+close of four runs raised in the process that made and closed it, and FX-SYNC-002 a duplicated handle's close in its
+target; the gate admits no kernel handle, whose header names whichever process the kernel ran for. So ADR-030's header
+binding now reaches the `Synchronization` mechanism (`contracts/entities-v1.md` §2a): a creation or a close whose payload
+names no owner belongs to the process that raised it. A duplication binds by the target its payload names and a handle
+open at the stop by the holder its record names, as a payload owner always wins.
+
+An object type at the stop is an inventory whose payload names no process, raised, as FX-SYNC-002's handle rundowns
+were, in processes other than any it describes. So a header now binds no inventory, of any mechanism; no mechanism bound
+by its header before this one has an inventory, so this changes no earlier binding. What binds changes, so the rule is
+`process-binding-v6`, as the entities contract's §7 requires: a checkpoint derived under version 2 to 5 is read as
+version 6's wherever every record named its owner, and one counting a record without an owner is derived again. The
+entities, checkpoint, operations, operation index, metrics, relations, query identity, HTTP exchange and COM call
+contracts name the new rule; the grouped answer's caveat and the checkpoint's refusal name synchronization handles, and
+the Desktop's explanations say version 6. Tests pin the mechanisms a header binds and the inventory it never does, bind
+a session's handle records each way, and read a version 5 checkpoint; six mutations are caught.

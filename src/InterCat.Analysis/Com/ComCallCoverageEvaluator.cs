@@ -36,7 +36,7 @@ public sealed record ComCallObservation
 
     public required ComCallState State { get; init; }
 
-    /// <summary>The process that raised its records (`process-binding-v5`).</summary>
+    /// <summary>The process that raised its records (since `process-binding-v5`).</summary>
     public required int ProcessId { get; init; }
 
     /// <summary>The process its start names at its other end; null without a start or where it named none.</summary>

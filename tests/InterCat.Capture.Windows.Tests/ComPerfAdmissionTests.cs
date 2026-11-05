@@ -10,7 +10,7 @@ namespace InterCat.Capture.Windows.Tests;
 /// COM-Perf's call events admitted (ADR-079's addendum): a synchronous call's starts and stops at both ends compile from the
 /// provider's registered layout to fixed slots - its trace number, the process at its other end, its method and interface,
 /// its HRESULT - and never to a thread, a pointer, an IPID, an OID or an address; an admitted record is a COM call row whose
-/// payload names no owner, so the process that raised it owns it (`process-binding-v5`), the process it names at its other
+/// payload names no owner, so the process that raised it owns it (since `process-binding-v5`), the process it names at its other
 /// end a source field and never its owner.
 /// </summary>
 public sealed class ComPerfAdmissionTests
@@ -133,7 +133,7 @@ public sealed class ComPerfAdmissionTests
             (Mechanism.ComCall, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Outbound),
             (row.Mechanism, row.Layer, row.Kind, row.Direction));
         Assert.Equal(((int?)null, 400, QualityLevel.UnknownQuality), (row.OwnerProcessId, row.HeaderProcessId, row.AttributionQuality));
-        Assert.Equal(400, RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.HeaderProcessId));
+        Assert.Equal(400, RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.Kind, row.HeaderProcessId));
         Assert.Equal(((Guid?)Dispatch, (Guid?)activity), (row.SourceIdentifier, row.ActivityId));
         Assert.Null(row.Validate());
         Assert.Equal(
