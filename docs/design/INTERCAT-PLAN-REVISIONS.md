@@ -853,6 +853,7 @@ Revision 926 adds FX-COM-004, nested COM calls, each linked to its own served ca
 Revision 927 adds FX-COM-005, calls a capture's start and stop cut, each stated cut and linked to nothing, with which the COM calls package meets M6's exit tests (ADR-080's fourth addendum).
 Revision 928 begins M6's named synchronization objects package with its metadata inspection (§4.2): the kernel's object manager declares a handle's creation, duplication and close with its object's address, type and name, rundowns of open handles, and an object's creation and deletion, and its dispatcher a ready thread naming the thread readied; no event records a signal or a wait on an object, and nothing is enabled or implemented.
 Revision 929 measures the kernel's handle, object and dispatcher records against FX-SYNC-001 (ADR-082): each process's handles to a named object two processes share at one address, the creation naming nothing and the close the object; each object's creation and deletion by address; every wait the kernel blocked readied from the signaling process, a ready naming no object; no source is inventoried.
+Revision 930 measures what collecting the object manager's groups costs (ADR-082's addendum): the handle group Low in processor time but a handle-heavy workload 5.3 and 8.3% lower in throughput, past §12's target, so only an opt-in profile stating it may admit it; the object group beside it Moderate, 23.7% lower, about 2.7 million records a second.
 
 ## Revisions, a paragraph each, in order
 
@@ -3834,3 +3835,14 @@ its thread from the signaling process's running thread, within microseconds of t
 their threads readied each other dozens of times in the kernel's own waits with no object between them. A named object is
 one object by its address within its lifetime, and a ready thread is never a signal by itself. No source is inventoried;
 the handle group's cost and a capture's group masks come first.
+
+Revision 930 measures what collecting the kernel's object manager groups costs (ADR-082's addendum). `sync-objects
+--churn n` has FX-SYNC-001's opener open and close each object by its name n times before its rounds, a workload heavy in
+handles, and `tools/InterCat.SyncProbe --measure --impact` runs it in alternating pairs, once with no session and once
+while a private system logger of its own collects the handle group machine-wide, a consumer only counting the records, as
+COM-Perf's cost was measured; a third series collects the object group beside it. With 32,768 turns, about 98,000 handles
+in two seconds, nine pairs a series and nothing lost, the handle group cost 0.4 and 0.0 points of processor time, Low, but
+the workload ran 5.3 and 8.3% lower in throughput, past §12's 5% target: a handle's creation and close each raise a record
+in the thread that makes the call. With the object group beside it, whose references come with it, the cost was 1.9
+points, Moderate, and 23.7% of the throughput, at about 2.7 million records a second. Only an opt-in profile stating its
+cost may admit the handle group, and no profile collects lifetimes by the object group without a measurement of its own.

@@ -47,6 +47,9 @@ internal static class Program
             Console.Error.WriteLine("  collecting the kernel's handle and dispatcher events machine-wide, and writes what it recorded of the");
             Console.Error.WriteLine("  run's three named objects and of the threads one process's signals readied in the other; with");
             Console.Error.WriteLine("  --ledger each kept record by role, never a PID, a thread, a handle's value or an address.");
+            Console.Error.WriteLine("  --impact [--pairs n] [--churn n] [--objects]: machine CPU and workload time with and without a session");
+            Console.Error.WriteLine("  collecting the object manager's handle group - and with --objects its object group - machine-wide, in");
+            Console.Error.WriteLine("  pairs, over FX-SYNC-001's opener opening and closing each object that many times, its rounds unpaced.");
             return 2;
         }
 
@@ -58,6 +61,28 @@ internal static class Program
         }
 
         Directory.CreateDirectory(output);
+
+        // What collecting the object manager's groups costs, in pairs with and without a session collecting them
+        // machine-wide, over FX-SYNC-001's opener churning handles.
+        if (measure && args.Contains("--impact", StringComparer.Ordinal))
+        {
+            string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+            int pairs = int.Parse(Option(args, "--pairs") ?? "9", CultureInfo.InvariantCulture);
+            string churn = Option(args, "--churn") ?? "4096";
+            uint[] groups = args.Contains("--objects", StringComparer.Ordinal)
+                ? [GroupMask.ObjectHandles, GroupMask.ObjectLifetimes]
+                : [GroupMask.ObjectHandles];
+            Dictionary<string, object?> impact = await Impact.MeasureAsync(workload,
+                ["sync-objects", "--truth", "{truth}", "--rounds", "64", "--hold-ms", "0", "--churn", churn], pairs, groups).ConfigureAwait(false);
+            impact["schema"] = "intercat.sync-objects-impact.v1";
+            impact["measuredUtc"] = DateTimeOffset.UtcNow;
+            impact["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+            File.WriteAllText(Path.Combine(output, "impact.json"), JsonSerializer.Serialize(impact, Json));
+            Console.WriteLine(JsonSerializer.Serialize(impact, Json));
+            return 0;
+        }
+
         return measure ? await Measure.RunAsync(output, args).ConfigureAwait(false) : Inspect(output);
     }
 

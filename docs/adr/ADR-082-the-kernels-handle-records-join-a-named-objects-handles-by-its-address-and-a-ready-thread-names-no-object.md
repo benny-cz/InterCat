@@ -1,10 +1,13 @@
 # ADR-082: The kernel's handle records join a named object's handles by its address, and a ready thread names no object
 
-- Status: accepted for M6's named synchronization objects work package; no source is inventoried
+- Status: accepted for M6's named synchronization objects work package; no source is inventoried; since revision 930 the
+  handle group's collection cost is measured, Low in processor time but a handle-heavy workload past §12's throughput
+  target, and the object group's Moderate (its addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: plan §4.1, §4.2, M6, P7, P8, R22, ADR-035, FX-SYNC-001, `tools/InterCat.SyncProbe`,
-  `bench/results/sync-provider-inspection-20261105T022919Z`, `bench/results/sync-objects-feasibility-*`
+  `bench/results/sync-provider-inspection-20261105T022919Z`, `bench/results/sync-objects-feasibility-*`,
+  `bench/results/sync-objects-impact-*`
 
 ## Context
 
@@ -89,3 +92,35 @@ waiter's log bounds it in.
   close, with its type; each object created before its first handle and deleted after its last close; and every wait the
   kernel blocked paired with the ready thread of its thread from the signaling process. Six alterations of the ledgers are
   caught.
+
+## Addendum: what collecting the object manager's groups costs (revision 930)
+
+The fourth decision asked for the handle group's collection cost. `tools/InterCat.SyncProbe --measure --impact` ran a
+handle-heavy workload - FX-SYNC-001 with `--churn 32768`, its opener opening and closing each object by its name 32,768
+times, then its rounds unpaced, about 98,000 handles in two seconds - in alternating pairs, once with no session and once
+while a private system logger of its own collected the handle group machine-wide, and in a third series the object group
+beside it. The session starts with the kernel's process flag, the least a system logger takes, and its consumer only
+counts the object manager's records, as COM-Perf's and AFD's costs were measured (ADR-077's and ADR-072's addenda).
+Nine pairs a series, nothing lost:
+
+| Series | Groups | Median CPU impact | Workload slower by | Throughput regression | Records a second |
+|---|---|---|---|---|---|
+| `bench/results/sync-objects-impact-handles-20261105T035540Z` | handle | 0.4 pp: Low | 5.6% | 5.3% | about 155,000 |
+| `bench/results/sync-objects-impact-handles-20261105T035857Z` | handle | 0.0 pp: Low | 9.1% | 8.3% | about 180,000 |
+| `bench/results/sync-objects-impact-objects-20261105T035712Z` | handle and object | 1.9 pp: Moderate | 31.0% | 23.7% | about 2.7 million |
+
+A handle's creation and close each raise a record in the thread that makes the call, the close with the object's name, so
+the time is the call's own: a workload opening and closing handles as fast as it can is slower in proportion to its handle
+rate. The machine ran a virtual machine beside the measurement, whose load varied: two pairs of the second series ran with
+the machine 36 to 40% busy, and both series' medians still put the handle group past §12's 5% throughput target and well
+within its processor time. The object group's references come with it, every reference taken on any object on the
+machine, and they cost a Moderate processor time and a fifth of the workload's throughput.
+
+1. The handle group's class is Low, stated beside the regression a handle-heavy workload measured, and only an opt-in
+   profile saying so may admit it; Explore never does.
+2. The object group is Moderate and slows a handle-heavy workload by a fifth and more, its references dwarfing the
+   lifetimes it records, so an object's lifetime is not collected by it in any profile without its own measurement.
+3. What remains before a profile admits the handle group: how the capture sets a group mask on its private system logger,
+   and what a handle opened before a capture began records.
+
+A test holds the three series to their class and regression; five alterations of them are caught.

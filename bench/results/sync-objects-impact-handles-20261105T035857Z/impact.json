@@ -1,0 +1,124 @@
+{
+  "workload": "sync-objects --truth {truth} --rounds 64 --hold-ms 0 --churn 32768",
+  "groups": [
+    "PERF_OB_HANDLE"
+  ],
+  "pairs": [
+    {
+      "pair": 1,
+      "captureFirst": false,
+      "withoutBusyPercent": 8.763,
+      "withBusyPercent": 10.7,
+      "captureImpactPercentagePoints": 1.937,
+      "withoutSeconds": 1.6,
+      "withSeconds": 1.93,
+      "throughputRegressionPercent": 17.13,
+      "objectManagerEventsPerSecond": 168813
+    },
+    {
+      "pair": 2,
+      "captureFirst": true,
+      "withoutBusyPercent": 36.526,
+      "withBusyPercent": 36.542,
+      "captureImpactPercentagePoints": 0.017,
+      "withoutSeconds": 2.311,
+      "withSeconds": 2.527,
+      "throughputRegressionPercent": 8.55,
+      "objectManagerEventsPerSecond": 222383
+    },
+    {
+      "pair": 3,
+      "captureFirst": false,
+      "withoutBusyPercent": 39.647,
+      "withBusyPercent": 21.525,
+      "captureImpactPercentagePoints": 0,
+      "withoutSeconds": 2.402,
+      "withSeconds": 2.314,
+      "throughputRegressionPercent": 0,
+      "objectManagerEventsPerSecond": 210278
+    },
+    {
+      "pair": 4,
+      "captureFirst": true,
+      "withoutBusyPercent": 9.045,
+      "withBusyPercent": 17.01,
+      "captureImpactPercentagePoints": 7.965,
+      "withoutSeconds": 1.679,
+      "withSeconds": 2.205,
+      "throughputRegressionPercent": 23.86,
+      "objectManagerEventsPerSecond": 262816
+    },
+    {
+      "pair": 5,
+      "captureFirst": false,
+      "withoutBusyPercent": 10.603,
+      "withBusyPercent": 10.952,
+      "captureImpactPercentagePoints": 0.349,
+      "withoutSeconds": 1.842,
+      "withSeconds": 2.009,
+      "throughputRegressionPercent": 8.3,
+      "objectManagerEventsPerSecond": 156476
+    },
+    {
+      "pair": 6,
+      "captureFirst": true,
+      "withoutBusyPercent": 19.228,
+      "withBusyPercent": 11.933,
+      "captureImpactPercentagePoints": 0,
+      "withoutSeconds": 2.104,
+      "withSeconds": 2.018,
+      "throughputRegressionPercent": 0,
+      "objectManagerEventsPerSecond": 145887
+    },
+    {
+      "pair": 7,
+      "captureFirst": false,
+      "withoutBusyPercent": 13.872,
+      "withBusyPercent": 8.249,
+      "captureImpactPercentagePoints": 0,
+      "withoutSeconds": 1.951,
+      "withSeconds": 1.669,
+      "throughputRegressionPercent": 0,
+      "objectManagerEventsPerSecond": 183697
+    },
+    {
+      "pair": 8,
+      "captureFirst": true,
+      "withoutBusyPercent": 8.347,
+      "withBusyPercent": 10.876,
+      "captureImpactPercentagePoints": 2.529,
+      "withoutSeconds": 1.61,
+      "withSeconds": 1.996,
+      "throughputRegressionPercent": 19.34,
+      "objectManagerEventsPerSecond": 147440
+    },
+    {
+      "pair": 9,
+      "captureFirst": false,
+      "withoutBusyPercent": 13.048,
+      "withBusyPercent": 8.699,
+      "captureImpactPercentagePoints": 0,
+      "withoutSeconds": 1.837,
+      "withSeconds": 1.696,
+      "throughputRegressionPercent": 0,
+      "objectManagerEventsPerSecond": 179775
+    }
+  ],
+  "medianObservedCpuDifferencePercentagePoints": 0.017,
+  "medianCaptureImpactPercentagePoints": 0.017,
+  "medianObservedWorkloadSlowdownPercent": 9.05,
+  "medianThroughputRegressionPercent": 8.3,
+  "overhead": "Low",
+  "cpuTargetMet": true,
+  "throughputTargetMet": false,
+  "medianObjectManagerEventsPerSecond": 179775,
+  "eventsLost": 0,
+  "notes": [
+    "Machine CPU is the GetSystemTimes busy share over the workload alone; the session\u0027s start and stop are outside it.",
+    "The session is a private system logger started by the kernel\u0027s process flag, with the object manager\u0027s groups added to its masks, machine-wide, and its consumer only counts the object manager\u0027s records: this is the cost of collecting the groups, not of admitting or storing them, a lower bound on a product capture. A kernel group has no process filter.",
+    "A pair\u0027s observed difference is kept signed; its impact, as the product classifies it, is the difference or none, and its regression the slowdown or none."
+  ],
+  "schema": "intercat.sync-objects-impact.v1",
+  "measuredUtc": "2026-11-05T03:58:57.8008918+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

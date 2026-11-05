@@ -20,6 +20,12 @@ internal sealed record SyncObjectsOptions
 
     /// <summary>The objects' shared name, which the coordinator chooses and gives both processes; null for the coordinator.</summary>
     public string? Name { get; init; }
+
+    /// <summary>
+    /// When above zero, the opener opens and closes each object by its name that many times before the rounds, logging each:
+    /// a workload heavy in handles, for what collecting the kernel's handle records costs.
+    /// </summary>
+    public int Churn { get; init; }
 }
 
 /// <summary>
@@ -38,6 +44,14 @@ internal static class SyncObjectsScenario
     private const string MutexKind = "mutex";
 
     private static readonly JsonSerializerOptions SummaryOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+
+    // How the opener opens an object of each kind by its name.
+    private static readonly (string Kind, Func<string, WaitHandle> Open)[] Openers =
+    [
+        (EventKind, static name => EventWaitHandle.OpenExisting(name)),
+        (SemaphoreKind, static name => Semaphore.OpenExisting(name)),
+        (MutexKind, static name => Mutex.OpenExisting(name)),
+    ];
 
     /// <summary>
     /// Starts the creator, then the opener once the creator's objects exist, and lets both begin once the opener holds a
@@ -80,6 +94,7 @@ internal static class SyncObjectsScenario
             scenarioId = SyncObjectsOptions.ScenarioId,
             options.Rounds,
             options.HoldMilliseconds,
+            options.Churn,
             name,
             objects = new[] { (name + "-" + EventKind), (name + "-" + SemaphoreKind), (name + "-" + MutexKind) },
             creatorProcessId = creator.Id,
@@ -158,6 +173,20 @@ internal static class SyncObjectsScenario
             return 1;
         }
 
+        // A handle of each object opened by its name and closed again, as many times as asked, each logged by its turn.
+        for (int turn = 1; turn <= options.Churn; turn++)
+        {
+            foreach ((string kind, Func<string, WaitHandle> open) in Openers)
+            {
+                using (open(name + "-" + kind))
+                {
+                    truth.Write(TruthEventKind.ObjectOpened, callId: turn, status: kind, resourceName: name + "-" + kind);
+                }
+
+                truth.Write(TruthEventKind.HandleClosed, callId: turn, status: kind, resourceName: name + "-" + kind);
+            }
+        }
+
         for (int round = 1; round <= options.Rounds; round++)
         {
             Wait(truth, signal, name + "-" + EventKind, round);
@@ -208,6 +237,7 @@ internal static class SyncObjectsScenario
             verb, "--truth", options.TruthDirectory, "--name", options.Name!,
             "--rounds", options.Rounds.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "--hold-ms", options.HoldMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "--churn", options.Churn.ToString(System.Globalization.CultureInfo.InvariantCulture),
         })
         {
             start.ArgumentList.Add(argument);

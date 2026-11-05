@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using InterCat.Domain;
 using Xunit;
 
 namespace InterCat.Capture.Windows.Tests;
@@ -170,6 +171,40 @@ public sealed class SyncObjectLeadTests
         Assert.Equal(first.GetProperty("truthWaitsWhoseFirstLookFailed").GetInt32(), waits.Count);
         Assert.DoesNotContain(readies, row => !taken.ContainsKey(row) && row.AwakenedWait == "UserRequest");
         Assert.All(taken.Keys, row => Assert.Contains(row.AwakenedWait, PairedWaits));
+    }
+
+    [Fact(DisplayName = "§12: collecting the handle group is measured in two series of pairs over a handle-heavy workload - Low in processor time, the workload slower past §12's throughput target - and the object group beside it Moderate, millions of records a second, so only an opt-in profile stating it may admit either")]
+    public void TheGroupsCollectionCostIsMeasured()
+    {
+        string results = Path.Combine(RepositoryRoot(), "bench", "results");
+        string[] handles = [.. Directory.EnumerateDirectories(results, "sync-objects-impact-handles-*")
+            .Select(directory => Path.Combine(directory, "impact.json")).Where(File.Exists).Order(StringComparer.Ordinal)];
+        Assert.Equal(2, handles.Length);
+        Assert.All(handles, file =>
+        {
+            // Nine pairs of FX-SYNC-001's opener churning handles, nothing lost: processor time is Low, and the workload is
+            // slower than §12's 5% target in its median pair.
+            using JsonDocument impact = JsonDocument.Parse(File.ReadAllText(file));
+            JsonElement root = impact.RootElement;
+            Assert.Equal((9, 0L), (root.GetProperty("pairs").GetArrayLength(), root.GetProperty("eventsLost").GetInt64()));
+            Assert.Equal(["PERF_OB_HANDLE"], root.GetProperty("groups").EnumerateArray().Select(group => group.GetString()));
+            Assert.Equal(nameof(OverheadClass.Low), root.GetProperty("overhead").GetString());
+            Assert.Equal(OverheadClass.Low, OverheadClassCalculator.Classify(root.GetProperty("medianCaptureImpactPercentagePoints").GetDouble()));
+            Assert.True(root.GetProperty("medianThroughputRegressionPercent").GetDouble() > 5, file);
+            Assert.False(root.GetProperty("throughputTargetMet").GetBoolean());
+            Assert.Contains("--churn", root.GetProperty("workload").GetString(), StringComparison.Ordinal);
+        });
+
+        // The object group beside it: its references come with it, millions of records a second, Moderate in processor time
+        // and the workload a fifth slower and more.
+        using JsonDocument objects = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            Assert.Single(Directory.EnumerateDirectories(results, "sync-objects-impact-objects-*")), "impact.json")));
+        JsonElement both = objects.RootElement;
+        Assert.Equal((9, 0L), (both.GetProperty("pairs").GetArrayLength(), both.GetProperty("eventsLost").GetInt64()));
+        Assert.Equal(["PERF_OB_HANDLE", "PERF_OB_OBJECT"], both.GetProperty("groups").EnumerateArray().Select(group => group.GetString()));
+        Assert.Equal(nameof(OverheadClass.Moderate), both.GetProperty("overhead").GetString());
+        Assert.InRange(both.GetProperty("medianThroughputRegressionPercent").GetDouble(), 20, double.MaxValue);
+        Assert.InRange(both.GetProperty("medianObjectManagerEventsPerSecond").GetDouble(), 1_000_000, double.MaxValue);
     }
 
     private static string? KindOf(string? resource) => Kinds.FirstOrDefault(kind => resource?.EndsWith("-" + kind, StringComparison.Ordinal) == true);

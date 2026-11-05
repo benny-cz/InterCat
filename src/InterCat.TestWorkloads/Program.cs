@@ -151,6 +151,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Rounds = Integer(args, "--rounds") ?? 64,
         HoldMilliseconds = Integer(args, "--hold-ms") ?? 5,
         Name = Option(args, "--name"),
+        Churn = Integer(args, "--churn") ?? 0,
     };
 
     if (args[0].StartsWith("unix-loopback", StringComparison.Ordinal) && churn && hold > 0)
@@ -308,13 +309,15 @@ static void PrintHelp()
     Console.WriteLine("      hosts in an apartment of its own and reaches through a proxy: calls that cross an apartment and");
     Console.WriteLine("      never a process, each one logged. Windows only.");
     Console.WriteLine();
-    Console.WriteLine("  sync-objects --truth <dir> [--rounds n] [--hold-ms ms]");
+    Console.WriteLine("  sync-objects --truth <dir> [--rounds n] [--hold-ms ms] [--churn n]");
     Console.WriteLine("      FX-SYNC-001: two processes take turns through three named objects of the session's namespace -");
     Console.WriteLine("      an event, a semaphore and a mutex - that one creates and the other opens by name. Each round the");
     Console.WriteLine("      creator, holding the mutex, sets the event and releases the mutex that many milliseconds later;");
     Console.WriteLine("      the opener waits on both, then releases the mutex and the semaphore, on which the creator waits.");
     Console.WriteLine("      Each process logs every object it created or opened, every signal it gave, every wait that ended");
-    Console.WriteLine("      - whether it blocked first - and every handle it closed, by the object's name. Windows only.");
+    Console.WriteLine("      - whether it blocked first - and every handle it closed, by the object's name. --churn has the opener");
+    Console.WriteLine("      open and close each object by its name that many times before the rounds, logging each: a workload");
+    Console.WriteLine("      heavy in handles. Windows only.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");
