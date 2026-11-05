@@ -870,6 +870,7 @@ Revision 943 measures the synchronization objects profile through the product (A
 Revision 944 adds `SyncObjectCoverageEvaluator` (ADR-084): a named synchronization object is the one number its closes name, discovered with its lifetime and bound to exactly the processes that held it, its measurement claiming neither bytes nor operations, so topology at most; no capture is measured by it yet.
 Revision 945 measures FX-SYNC-001 through the product (ADR-084's addendum): four runs of icat record under the synchronization objects profile, every named object one number from its creation to every logged close and bound to exactly its two processes, so named synchronization objects are topology only on 10.0.26220.0-x64.
 Revision 946 makes one number one object (ADR-084's second addendum): a number the closes of two truth objects name is neither's, so neither is discovered and their opens and closes bind to no object of their own.
+Revision 947 adds FX-SYNC-003 (ADR-084's third addendum): named objects made and ended one generation after another, recorded through the product four times, every object a number of its own while the kernel made 27 at an address an earlier generation's object held - the mechanism's second instance and lifetime fixture.
 
 ## Revisions, a paragraph each, in order
 
@@ -4027,3 +4028,15 @@ so the first decision alone would find both. `SyncObjectCoverageEvaluator` now f
 and a number two of them carry is no one object: neither is discovered, and their opens and closes, observed, are bound to
 no resource instance of their own. FX-SYNC-001's committed evidence is unchanged, its three objects three numbers. A
 synthetic capture whose event and semaphore share a number holds the rule, and ten mutations of the evaluator are caught.
+
+Revision 947 measures named synchronization objects whose lifetimes follow one another (ADR-084's third addendum). The
+workload's `sync-objects --generations` makes and ends FX-SYNC-001's three objects that many times one after another, each
+generation under names of its own and closed by both processes before the next is made, and the lab probe's generations
+mode, its own private system logger watching the run icat record records, reads each object's address from the creator's
+close that names it and counts the objects the kernel made at an address an earlier generation's object held. In four runs
+through the product, machine-wide and loss-free - 128 generations twice and 512 twice - every object was one number of its
+own from its creation to both closes, bound to exactly the two processes: 384 of 384 and 1,536 of 1,536 a run, while the
+probe counted 27 objects made where an earlier generation's had been, 2 in the committed run. Lab runs alone show the
+kernel reusing these addresses seldom and unevenly, its pool handing out small blocks in no fixed order. A test reproduces
+the tier from the committed run's ledger and holds the probe's count to that run; the build's per-build coverage carries the
+tier from FX-SYNC-003, the mechanism's latest fixture, and the lead test now names their fixtures rather than one.

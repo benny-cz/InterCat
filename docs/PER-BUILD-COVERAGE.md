@@ -13,7 +13,7 @@ says so, and never borrows another build's tier (P27).
 | Http | ExperimentalEvidence | FX-HTTP-012 | 2026-11-04 | Primary |
 | NamedPipe | Unsupported | FX-PIPE-001 | 2026-09-21 | Untested at the time of the run; ADR-007 later added this build |
 | Rpc | ExperimentalEvidence | FX-RPC-002 | 2026-11-04 | Primary |
-| Synchronization | TopologyOnly | FX-SYNC-001 | 2026-11-05 | Primary |
+| Synchronization | TopologyOnly | FX-SYNC-003 | 2026-11-05 | Primary |
 | Tcp | TrafficVisualization | FX-TCP-002 | 2026-09-27 | Primary |
 | Udp | TrafficVisualization | FX-UDP-002 | 2026-09-27 | Primary |
 | UnixDomainSocket | ExperimentalEvidence | FX-UNIX-002 | 2026-11-04 | Primary |

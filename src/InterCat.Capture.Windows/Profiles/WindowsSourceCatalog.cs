@@ -1167,8 +1167,9 @@ public static class WindowsSourceCatalog
                 + "close names the object, so a handle is named at its close.",
                 "Measured through the product on FX-SYNC-001, four runs of the opt-in profile, nothing lost: each of the run's three "
                 + "named objects one number from the creator's creation of its first handle to every close, each in the process that "
-                + "made it, and bound to exactly the two processes that held it. A handle record carries no byte, signal or wait, so "
-                + "its tier is topology only (ADR-084).",
+                + "made it, and bound to exactly the two processes that held it; and on FX-SYNC-003, objects made and ended 128 and "
+                + "512 generations one after another, each a number of its own though the kernel made some where an earlier "
+                + "generation's had been. A handle record carries no byte, signal or wait, so its tier is topology only (ADR-084).",
                 "A named object is one object by its address within its lifetime, never by its name or its address alone: the "
                 + "object group, PERF_OB_OBJECT, records each object's creation and deletion by address, but its references come "
                 + "with it, about 2.7 million records a second and a fifth of a handle-heavy workload's throughput, Moderate.",

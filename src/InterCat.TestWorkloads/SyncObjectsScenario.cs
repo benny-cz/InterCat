@@ -17,6 +17,9 @@ internal sealed record SyncObjectsOptions
     /// <summary>The scenario of a run whose opener is also given a handle of each object by a duplication.</summary>
     public const string DuplicationScenarioId = "FX-SYNC-002";
 
+    /// <summary>The scenario of a run whose objects are made and ended one generation after another.</summary>
+    public const string GenerationsScenarioId = "FX-SYNC-003";
+
     public required string TruthDirectory { get; init; }
 
     /// <summary>How many rounds the two processes take turns through the objects.</summary>
@@ -42,8 +45,24 @@ internal sealed record SyncObjectsOptions
     /// </summary>
     public bool Duplicate { get; init; }
 
-    /// <summary>The run's scenario: FX-SYNC-002 when the opener is also given handles by duplication, FX-SYNC-001 otherwise.</summary>
-    public string Scenario => Duplicate ? DuplicationScenarioId : ScenarioId;
+    /// <summary>
+    /// When above one, the run is FX-SYNC-003: the creator makes the three objects that many times one after another, each
+    /// generation under names of its own, the opener opening each generation's and the two taking their rounds through them,
+    /// and both closing them before the next is made - so the kernel makes a later generation's objects where an earlier
+    /// generation's were.
+    /// </summary>
+    public int Generations { get; init; } = 1;
+
+    /// <summary>
+    /// The run's scenario: FX-SYNC-002 when the opener is also given handles by duplication, FX-SYNC-003 when its objects are
+    /// made in generations, FX-SYNC-001 otherwise.
+    /// </summary>
+    public string Scenario => Duplicate ? DuplicationScenarioId : Generations > 1 ? GenerationsScenarioId : ScenarioId;
+
+    /// <summary>An object's name: the run's name and the object's kind, and in FX-SYNC-003 its generation between them.</summary>
+    public string ObjectName(string name, int generation, string kind) => Generations > 1
+        ? string.Create(CultureInfo.InvariantCulture, $"{name}-{generation:D3}-{kind}")
+        : name + "-" + kind;
 }
 
 /// <summary>
@@ -53,7 +72,8 @@ internal sealed record SyncObjectsOptions
 /// creator releases it, and it releases the mutex and then the semaphore, on which the creator waits. Each process logs
 /// every object it created or opened, every signal it gave and every wait that ended - whether it blocked first - and
 /// every handle it closed, by the object's name. Neither reads InterCat state. FX-SYNC-002 is the same run with each object's
-/// handle also duplicated into the opener three ways (<see cref="SyncObjectsOptions.Duplicate"/>).
+/// handle also duplicated into the opener three ways (<see cref="SyncObjectsOptions.Duplicate"/>), and FX-SYNC-003 the same run
+/// made one generation of objects after another, each ended before the next (<see cref="SyncObjectsOptions.Generations"/>).
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static partial class SyncObjectsScenario
@@ -65,6 +85,9 @@ internal static partial class SyncObjectsScenario
     private const string EventKind = "event";
     private const string SemaphoreKind = "semaphore";
     private const string MutexKind = "mutex";
+
+    // A generation's three objects by kind, in the order each process makes and closes them.
+    private static readonly string[] Kinds = [EventKind, SemaphoreKind, MutexKind];
 
     private static readonly JsonSerializerOptions SummaryOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -113,13 +136,42 @@ internal static partial class SyncObjectsScenario
             return 1;
         }
 
-        foreach (Process process in new[] { creator, opener })
+        for (int generation = 1; generation <= options.Generations; generation++)
         {
-            await process.StandardInput.WriteLineAsync("go").ConfigureAwait(false);
-            await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+            // From the second generation on, the creator makes its objects once both processes closed the last one's, and the
+            // opener then opens them.
+            if (generation > 1
+                && (await AskAsync(creator, "next", cancellationToken).ConfigureAwait(false) is not ["created"]
+                    || await AskAsync(opener, "open", cancellationToken).ConfigureAwait(false) is not ["opened"]))
+            {
+                await StopAsync(creator, cancellationToken).ConfigureAwait(false);
+                await StopAsync(opener, cancellationToken).ConfigureAwait(false);
+                await Console.Error.WriteLineAsync($"Generation {generation}'s objects were not made and opened.").ConfigureAwait(false);
+                return 1;
+            }
+
+            foreach (Process process in new[] { creator, opener })
+            {
+                await process.StandardInput.WriteLineAsync("go").ConfigureAwait(false);
+                await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            // Every generation but the last ends with both processes closing its objects, so none is left when the next is made.
+            if (generation < options.Generations
+                && (await creator.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not "closed"
+                    || await opener.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not "closed"))
+            {
+                await StopAsync(creator, cancellationToken).ConfigureAwait(false);
+                await StopAsync(opener, cancellationToken).ConfigureAwait(false);
+                await Console.Error.WriteLineAsync($"Generation {generation}'s objects were not closed by both processes.").ConfigureAwait(false);
+                return 1;
+            }
         }
 
         await Task.WhenAll(creator.WaitForExitAsync(cancellationToken), opener.WaitForExitAsync(cancellationToken)).ConfigureAwait(false);
+
+        // Each generation's three objects, the generations in the order they were made.
+        string[] objects = [.. Enumerable.Range(1, options.Generations).SelectMany(generation => Kinds.Select(kind => options.ObjectName(name, generation, kind)))];
         var summary = new
         {
             scenarioId = options.Scenario,
@@ -127,8 +179,9 @@ internal static partial class SyncObjectsScenario
             options.HoldMilliseconds,
             options.Churn,
             options.Duplicate,
+            options.Generations,
             name,
-            objects = new[] { (name + "-" + EventKind), (name + "-" + SemaphoreKind), (name + "-" + MutexKind) },
+            objects,
             coordinatorProcessId = Environment.ProcessId,
             creatorProcessId = creator.Id,
             openerProcessId = opener.Id,
@@ -140,16 +193,49 @@ internal static partial class SyncObjectsScenario
         return creator.ExitCode != 0 || opener.ExitCode != 0 ? 1 : 0;
     }
 
-    /// <summary>The creator: makes the three objects under the run's name, then, holding the mutex, opens each round.</summary>
+    /// <summary>
+    /// The creator: makes the three objects under the run's name, then, holding the mutex, opens each round; in FX-SYNC-003 a
+    /// generation at a time, each made once it is told the last one's objects are gone.
+    /// </summary>
     public static async Task<int> RunCreatorAsync(SyncObjectsOptions options, CancellationToken cancellationToken)
     {
         string name = options.Name ?? throw new InvalidOperationException("The creator takes the objects' name from --name.");
         await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-creator.jsonl"), options.Scenario, "creator");
         truth.Write(TruthEventKind.ProcessStarted);
+        for (int generation = 1; generation <= options.Generations; generation++)
+        {
+            if (generation > 1 && await Console.In.ReadLineAsync(cancellationToken).ConfigureAwait(false) != "next")
+            {
+                return 1;
+            }
 
-        using var signal = new EventWaitHandle(false, EventResetMode.AutoReset, name + "-" + EventKind, out bool newEvent);
-        using var answer = new Semaphore(0, 1, name + "-" + SemaphoreKind, out bool newSemaphore);
-        using var mutex = new Mutex(false, name + "-" + MutexKind, out bool newMutex);
+            if (await RunCreatorGenerationAsync(options, truth, name, generation, cancellationToken).ConfigureAwait(false) is not 0 and var failed)
+            {
+                return failed;
+            }
+
+            // Its objects closed in this process: once the opener's are too, none of them is left.
+            if (generation < options.Generations)
+            {
+                Console.WriteLine("closed");
+                Console.Out.Flush();
+            }
+        }
+
+        truth.Write(TruthEventKind.ProcessExiting);
+        return 0;
+    }
+
+    // One generation of the creator's: its three objects made, the rounds, and its handles to them closed.
+    private static async Task<int> RunCreatorGenerationAsync(SyncObjectsOptions options, TruthLog truth, string name, int generation,
+        CancellationToken cancellationToken)
+    {
+        string eventName = options.ObjectName(name, generation, EventKind);
+        string semaphoreName = options.ObjectName(name, generation, SemaphoreKind);
+        string mutexName = options.ObjectName(name, generation, MutexKind);
+        using var signal = new EventWaitHandle(false, EventResetMode.AutoReset, eventName, out bool newEvent);
+        using var answer = new Semaphore(0, 1, semaphoreName, out bool newSemaphore);
+        using var mutex = new Mutex(false, mutexName, out bool newMutex);
         if (!newEvent || !newSemaphore || !newMutex)
         {
             // An object of the name existed already: another run's or another program's, which this run must not share.
@@ -157,9 +243,9 @@ internal static partial class SyncObjectsScenario
             return 1;
         }
 
-        truth.Write(TruthEventKind.ObjectCreated, status: EventKind, resourceName: name + "-" + EventKind);
-        truth.Write(TruthEventKind.ObjectCreated, status: SemaphoreKind, resourceName: name + "-" + SemaphoreKind);
-        truth.Write(TruthEventKind.ObjectCreated, status: MutexKind, resourceName: name + "-" + MutexKind);
+        truth.Write(TruthEventKind.ObjectCreated, status: EventKind, resourceName: eventName);
+        truth.Write(TruthEventKind.ObjectCreated, status: SemaphoreKind, resourceName: semaphoreName);
+        truth.Write(TruthEventKind.ObjectCreated, status: MutexKind, resourceName: mutexName);
         Console.WriteLine("created");
         if (options.Duplicate)
         {
@@ -186,7 +272,7 @@ internal static partial class SyncObjectsScenario
 
             int opener = int.Parse(target, CultureInfo.InvariantCulture);
             long made = Duplicate(truth.ProcessId, Value(signal), opener);
-            truth.Write(TruthEventKind.HandleDuplicated, status: EventKind, resourceName: name + "-" + EventKind,
+            truth.Write(TruthEventKind.HandleDuplicated, status: EventKind, resourceName: eventName,
                 duplication: new(truth.ProcessId, Value(signal), opener, made));
             Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"pushed {made}"));
             Console.Out.Flush();
@@ -195,35 +281,64 @@ internal static partial class SyncObjectsScenario
         // Every round on this one thread, which owns the mutex while it holds it.
         for (int round = 1; round <= options.Rounds; round++)
         {
-            Wait(truth, mutex, name + "-" + MutexKind, round);
+            Wait(truth, mutex, mutexName, round);
             signal.Set();
-            truth.Write(TruthEventKind.ObjectSignaled, callId: round, status: EventKind, resourceName: name + "-" + EventKind);
+            truth.Write(TruthEventKind.ObjectSignaled, callId: round, status: EventKind, resourceName: eventName);
             Thread.Sleep(options.HoldMilliseconds);
             mutex.ReleaseMutex();
-            truth.Write(TruthEventKind.ObjectSignaled, callId: round, status: MutexKind, resourceName: name + "-" + MutexKind);
-            Wait(truth, answer, name + "-" + SemaphoreKind, round);
+            truth.Write(TruthEventKind.ObjectSignaled, callId: round, status: MutexKind, resourceName: mutexName);
+            Wait(truth, answer, semaphoreName, round);
         }
 
-        Close(truth, signal, name + "-" + EventKind, EventKind);
-        Close(truth, answer, name + "-" + SemaphoreKind, SemaphoreKind);
-        Close(truth, mutex, name + "-" + MutexKind, MutexKind);
-        truth.Write(TruthEventKind.ProcessExiting);
+        Close(truth, signal, eventName, EventKind);
+        Close(truth, answer, semaphoreName, SemaphoreKind);
+        Close(truth, mutex, mutexName, MutexKind);
         return 0;
     }
 
-    /// <summary>The opener: opens the creator's three objects by name, then answers each round.</summary>
+    /// <summary>
+    /// The opener: opens the creator's three objects by name, then answers each round; in FX-SYNC-003 a generation at a time,
+    /// each opened once it is told the creator made it.
+    /// </summary>
     public static async Task<int> RunOpenerAsync(SyncObjectsOptions options, CancellationToken cancellationToken)
     {
         string name = options.Name ?? throw new InvalidOperationException("The opener takes the objects' name from --name.");
         await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-opener.jsonl"), options.Scenario, "opener");
         truth.Write(TruthEventKind.ProcessStarted);
+        for (int generation = 1; generation <= options.Generations; generation++)
+        {
+            if (generation > 1 && await Console.In.ReadLineAsync(cancellationToken).ConfigureAwait(false) != "open")
+            {
+                return 1;
+            }
 
-        using var signal = EventWaitHandle.OpenExisting(name + "-" + EventKind);
-        truth.Write(TruthEventKind.ObjectOpened, status: EventKind, resourceName: name + "-" + EventKind);
-        using var answer = Semaphore.OpenExisting(name + "-" + SemaphoreKind);
-        truth.Write(TruthEventKind.ObjectOpened, status: SemaphoreKind, resourceName: name + "-" + SemaphoreKind);
-        using var mutex = Mutex.OpenExisting(name + "-" + MutexKind);
-        truth.Write(TruthEventKind.ObjectOpened, status: MutexKind, resourceName: name + "-" + MutexKind);
+            if (await RunOpenerGenerationAsync(options, truth, name, generation, cancellationToken).ConfigureAwait(false) is not 0 and var failed)
+            {
+                return failed;
+            }
+
+            // Its handles closed in this process: once the creator's are too, none of the generation's objects is left.
+            if (generation < options.Generations)
+            {
+                Console.WriteLine("closed");
+                Console.Out.Flush();
+            }
+        }
+
+        truth.Write(TruthEventKind.ProcessExiting);
+        return 0;
+    }
+
+    // One generation of the opener's: its three objects opened by name, the rounds, and its handles to them closed.
+    private static async Task<int> RunOpenerGenerationAsync(SyncObjectsOptions options, TruthLog truth, string name, int generation,
+        CancellationToken cancellationToken)
+    {
+        using var signal = EventWaitHandle.OpenExisting(options.ObjectName(name, generation, EventKind));
+        truth.Write(TruthEventKind.ObjectOpened, status: EventKind, resourceName: options.ObjectName(name, generation, EventKind));
+        using var answer = Semaphore.OpenExisting(options.ObjectName(name, generation, SemaphoreKind));
+        truth.Write(TruthEventKind.ObjectOpened, status: SemaphoreKind, resourceName: options.ObjectName(name, generation, SemaphoreKind));
+        using var mutex = Mutex.OpenExisting(options.ObjectName(name, generation, MutexKind));
+        truth.Write(TruthEventKind.ObjectOpened, status: MutexKind, resourceName: options.ObjectName(name, generation, MutexKind));
         Console.WriteLine("opened");
         Console.Out.Flush();
 
@@ -248,7 +363,8 @@ internal static partial class SyncObjectsScenario
                         long source = long.Parse(sourceHandle, CultureInfo.InvariantCulture);
                         var made = new HandleDuplication(creator, source, truth.ProcessId, Duplicate(creator, source, truth.ProcessId));
                         duplicated.Add((SemaphoreKind, new SafeWaitHandle((nint)made.TargetHandle, ownsHandle: true), made));
-                        truth.Write(TruthEventKind.HandleDuplicated, status: SemaphoreKind, resourceName: name + "-" + SemaphoreKind, duplication: made);
+                        truth.Write(TruthEventKind.HandleDuplicated, status: SemaphoreKind, resourceName: options.ObjectName(name, generation, SemaphoreKind),
+                            duplication: made);
                         Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"pulled {made.TargetHandle}"));
                         Console.Out.Flush();
                         break;
@@ -274,7 +390,7 @@ internal static partial class SyncObjectsScenario
                 }
             }
 
-            return RunOpenerRounds(options, name, truth, signal, answer, mutex, duplicated);
+            return RunOpenerRounds(options, name, generation, truth, signal, answer, mutex, duplicated);
         }
         finally
         {
@@ -285,45 +401,46 @@ internal static partial class SyncObjectsScenario
         }
     }
 
-    // The opener's rounds and its closes: its own handles, then those duplications made in it, each logged with the
-    // duplication that made it.
-    private static int RunOpenerRounds(SyncObjectsOptions options, string name, TruthLog truth, EventWaitHandle signal,
+    // The opener's rounds of one generation and its closes: its own handles, then those duplications made in it, each logged
+    // with the duplication that made it.
+    private static int RunOpenerRounds(SyncObjectsOptions options, string name, int generation, TruthLog truth, EventWaitHandle signal,
         Semaphore answer, Mutex mutex, List<(string Kind, SafeWaitHandle Handle, HandleDuplication Made)> duplicated)
     {
+        string Named(string kind) => options.ObjectName(name, generation, kind);
+
         // A handle of each object opened by its name and closed again, as many times as asked, each logged by its turn.
         for (int turn = 1; turn <= options.Churn; turn++)
         {
             foreach ((string kind, Func<string, WaitHandle> open) in Openers)
             {
-                using (open(name + "-" + kind))
+                using (open(Named(kind)))
                 {
-                    truth.Write(TruthEventKind.ObjectOpened, callId: turn, status: kind, resourceName: name + "-" + kind);
+                    truth.Write(TruthEventKind.ObjectOpened, callId: turn, status: kind, resourceName: Named(kind));
                 }
 
-                truth.Write(TruthEventKind.HandleClosed, callId: turn, status: kind, resourceName: name + "-" + kind);
+                truth.Write(TruthEventKind.HandleClosed, callId: turn, status: kind, resourceName: Named(kind));
             }
         }
 
         for (int round = 1; round <= options.Rounds; round++)
         {
-            Wait(truth, signal, name + "-" + EventKind, round);
-            Wait(truth, mutex, name + "-" + MutexKind, round);
+            Wait(truth, signal, Named(EventKind), round);
+            Wait(truth, mutex, Named(MutexKind), round);
             mutex.ReleaseMutex();
-            truth.Write(TruthEventKind.ObjectSignaled, callId: round, status: MutexKind, resourceName: name + "-" + MutexKind);
+            truth.Write(TruthEventKind.ObjectSignaled, callId: round, status: MutexKind, resourceName: Named(MutexKind));
             answer.Release();
-            truth.Write(TruthEventKind.ObjectSignaled, callId: round, status: SemaphoreKind, resourceName: name + "-" + SemaphoreKind);
+            truth.Write(TruthEventKind.ObjectSignaled, callId: round, status: SemaphoreKind, resourceName: Named(SemaphoreKind));
         }
 
-        Close(truth, signal, name + "-" + EventKind, EventKind);
-        Close(truth, answer, name + "-" + SemaphoreKind, SemaphoreKind);
-        Close(truth, mutex, name + "-" + MutexKind, MutexKind);
+        Close(truth, signal, Named(EventKind), EventKind);
+        Close(truth, answer, Named(SemaphoreKind), SemaphoreKind);
+        Close(truth, mutex, Named(MutexKind), MutexKind);
         foreach ((string kind, SafeWaitHandle handle, HandleDuplication made) in duplicated)
         {
             handle.Dispose();
-            truth.Write(TruthEventKind.HandleClosed, status: kind, resourceName: name + "-" + kind, duplication: made);
+            truth.Write(TruthEventKind.HandleClosed, status: kind, resourceName: Named(kind), duplication: made);
         }
 
-        truth.Write(TruthEventKind.ProcessExiting);
         return 0;
     }
 
@@ -355,7 +472,7 @@ internal static partial class SyncObjectsScenario
 
         long mutexSource = long.Parse(mutexHandle, CultureInfo.InvariantCulture);
         long brokered = Duplicate(creator.Id, mutexSource, opener.Id);
-        truth.Write(TruthEventKind.HandleDuplicated, status: MutexKind, resourceName: name + "-" + MutexKind,
+        truth.Write(TruthEventKind.HandleDuplicated, status: MutexKind, resourceName: options.ObjectName(name, 1, MutexKind),
             duplication: new(creator.Id, mutexSource, opener.Id, brokered));
         return await AskAsync(opener, string.Create(CultureInfo.InvariantCulture,
             $"hold {creator.Id} {eventHandle} {pushed} {mutexHandle} {brokered}"), cancellationToken).ConfigureAwait(false) is ["held"];
@@ -452,6 +569,7 @@ internal static partial class SyncObjectsScenario
             "--rounds", options.Rounds.ToString(CultureInfo.InvariantCulture),
             "--hold-ms", options.HoldMilliseconds.ToString(CultureInfo.InvariantCulture),
             "--churn", options.Churn.ToString(CultureInfo.InvariantCulture),
+            "--generations", options.Generations.ToString(CultureInfo.InvariantCulture),
         })
         {
             start.ArgumentList.Add(argument);

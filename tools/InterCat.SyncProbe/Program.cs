@@ -67,6 +67,8 @@ internal static class Program
             Console.Error.WriteLine("  --duplication [--ledger]: FX-SYNC-002, the opener also given each object's handle by a duplication -");
             Console.Error.WriteLine("  pushed, pulled, and made between the two by a third process: which process raised each duplication's");
             Console.Error.WriteLine("  record and its handle's, and where the synchronization types' kernel handles' records are raised.");
+            Console.Error.WriteLine("  --generations n [--rounds n] [--hold-ms ms]: FX-SYNC-003, the three objects made and ended n times one");
+            Console.Error.WriteLine("  after another: how many objects the kernel made at an address an earlier generation's held, counted.");
             Console.Error.WriteLine("InterCat.SyncProbe --session <recorded session> --truth <its workload's truth> --out <records.csv>");
             Console.Error.WriteLine("  Reads the synchronization handle records of a session icat record recorded under the synchronization");
             Console.Error.WriteLine("  objects profile, as the product holds them, writes the ledger of the workload's own and of other");
@@ -124,6 +126,23 @@ internal static class Program
 
             File.WriteAllText(Path.Combine(output, "product-impact.json"), JsonSerializer.Serialize(document, Json));
             Console.WriteLine(JsonSerializer.Serialize(document, Json));
+            return 0;
+        }
+
+        // Where the kernel makes objects made and ended one generation after another: FX-SYNC-003's addresses, counted.
+        if (measure && Option(args, "--generations") is { } generationCount)
+        {
+            string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+            Dictionary<string, object?> generations = await Generations.RunAsync(workload, output,
+                int.Parse(generationCount, CultureInfo.InvariantCulture),
+                int.Parse(Option(args, "--rounds") ?? "2", CultureInfo.InvariantCulture),
+                int.Parse(Option(args, "--hold-ms") ?? "0", CultureInfo.InvariantCulture)).ConfigureAwait(false);
+            generations["schema"] = "intercat.sync-objects-generations.v1";
+            generations["measuredUtc"] = DateTimeOffset.UtcNow;
+            generations["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+            File.WriteAllText(Path.Combine(output, "report.json"), JsonSerializer.Serialize(generations, Json));
+            Console.WriteLine(JsonSerializer.Serialize(generations, Json));
             return 0;
         }
 

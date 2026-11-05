@@ -1,0 +1,25 @@
+{
+  "question": "Where the kernel makes named objects made and ended one generation after another: how many of a later generation\u0027s objects it made at an address an earlier generation\u0027s object held, which a capture\u0027s handle records alone would join to that earlier object.",
+  "scenario": "FX-SYNC-003",
+  "generations": 128,
+  "roundsPerGeneration": 1,
+  "holdMilliseconds": 0,
+  "objects": 384,
+  "objectsWithOneAddress": 384,
+  "creationsSeenAtTheirAddress": 384,
+  "openerClosesAtTheirAddress": 384,
+  "closesOfASynchronizationType": 384,
+  "distinctAddresses": 384,
+  "objectsAtAnAddressAnEarlierGenerationsObjectHeld": 0,
+  "objectsAtTheAddressOfTheirKindInThePreviousGeneration": 0,
+  "synchronizationTypes": {
+    "Event": 21,
+    "Mutant": 22,
+    "Semaphore": 24
+  },
+  "handleRecords": 74640,
+  "eventsLost": 0,
+  "schema": "intercat.sync-objects-generations.v1",
+  "measuredUtc": "2026-11-05T13:32:54.2695608+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

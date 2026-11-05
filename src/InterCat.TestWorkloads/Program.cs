@@ -153,11 +153,19 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Name = Option(args, "--name"),
         Churn = Integer(args, "--churn") ?? 0,
         Duplicate = args.Contains("--duplicate", StringComparer.Ordinal),
+        Generations = Integer(args, "--generations") ?? 1,
     };
 
     if (args[0].StartsWith("unix-loopback", StringComparison.Ordinal) && churn && hold > 0)
     {
         await Console.Error.WriteLineAsync("--churn and --hold are two fixtures, FX-UNIX-002 and FX-UNIX-003: a run is one of them.")
+            .ConfigureAwait(false);
+        return 2;
+    }
+
+    if (args[0].StartsWith("sync-objects", StringComparison.Ordinal) && (syncOptions.Generations < 1 || (syncOptions.Duplicate && syncOptions.Generations > 1)))
+    {
+        await Console.Error.WriteLineAsync("--generations is at least one, and --duplicate and --generations are two fixtures, FX-SYNC-002 and FX-SYNC-003: a run is one of them.")
             .ConfigureAwait(false);
         return 2;
     }
@@ -310,7 +318,7 @@ static void PrintHelp()
     Console.WriteLine("      hosts in an apartment of its own and reaches through a proxy: calls that cross an apartment and");
     Console.WriteLine("      never a process, each one logged. Windows only.");
     Console.WriteLine();
-    Console.WriteLine("  sync-objects --truth <dir> [--rounds n] [--hold-ms ms] [--churn n] [--duplicate]");
+    Console.WriteLine("  sync-objects --truth <dir> [--rounds n] [--hold-ms ms] [--churn n] [--duplicate | --generations n]");
     Console.WriteLine("      FX-SYNC-001: two processes take turns through three named objects of the session's namespace -");
     Console.WriteLine("      an event, a semaphore and a mutex - that one creates and the other opens by name. Each round the");
     Console.WriteLine("      creator, holding the mutex, sets the event and releases the mutex that many milliseconds later;");
@@ -318,7 +326,11 @@ static void PrintHelp()
     Console.WriteLine("      Each process logs every object it created or opened, every signal it gave, every wait that ended");
     Console.WriteLine("      - whether it blocked first - and every handle it closed, by the object's name. --churn has the opener");
     Console.WriteLine("      open and close each object by its name that many times before the rounds, logging each: a workload");
-    Console.WriteLine("      heavy in handles. Windows only.");
+    Console.WriteLine("      heavy in handles. --duplicate runs it as FX-SYNC-002, the opener also given each object's handle by a");
+    Console.WriteLine("      duplication. --generations runs it as FX-SYNC-003: the three objects made that many times one after");
+    Console.WriteLine("      another, each generation under names of its own and that many rounds through it, both processes");
+    Console.WriteLine("      closing it before the next is made, so the kernel makes later objects where earlier ones were.");
+    Console.WriteLine("      Windows only.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

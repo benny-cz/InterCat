@@ -662,7 +662,7 @@
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
         "R22: an object's address names it only from its creation to its deletion - FX-SYNC-001's object group records each named object created in the creator before its first handle and deleted after its last close, at the address its handles carry",
         "P8: FX-SYNC-001's every wait the kernel blocked has the ready of its thread from the signaling process inside the wait's span, and no ready of a thread in a user-mode wait between the two processes is left unpaired - a ready names no object, so only a truth's wait makes one a signal",
-        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build FX-SYNC-001 measured them through the product",
+        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build their fixtures measured them on through the product",
         "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart",
         "P27: FX-SYNC-001's handle records through the product reproduce its measured tier - each named object the one number its closes name, from the creator's creation to both processes' closes, bound to exactly the two processes, and topology only"
       ]
@@ -709,6 +709,50 @@
       "tests": [
         "R22: FX-SYNC-002's duplications are each raised in the process that asked for it - a push in its source, a pull in its target, one between two others in a third - at version 3, its fourth field naming its source process, with its source's handle and its target, and no creation of the handle made, whose close its target raises naming the object",
         "R22: a kernel handle's records are raised wherever the kernel ran, never in its holder - FX-SYNC-002's synchronization kernel handles created and closed outside the system process in every run, and the stop's rundown naming it the holder of each"
+      ]
+    },
+    {
+      "id": "FX-SYNC-003",
+      "title": "Named synchronization objects made and ended one generation after another, each an object of its own",
+      "scenario": "Plan M6's named synchronization objects work package (§4.2, ADR-084): FX-SYNC-001's two processes and three named objects, made and ended 128 times one after another - each generation under names of its own, the opener opening it, one round through it, and both processes closing it before the next is made - so the kernel makes some later objects at an address an earlier generation's object held. Recorded through icat record under the synchronization objects profile while the lab probe's own session watched the same run and counted the addresses reused, which the product keeps none of.",
+      "milestone": "M6",
+      "mechanism": "Synchronization",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads sync-objects --generations 128 --rounds 1 --hold-ms 0, under tools/InterCat.SyncProbe --measure --generations 128 and icat record --profile sync-objects, read by tools/InterCat.SyncProbe --session",
+        "seed": 0,
+        "log": "fixtures/FX-SYNC-003/evidence/truth-creator.jsonl",
+        "independence": "Each process logs every object it created or opened and every handle it closed, by the object's name, every signal it gave and every wait that ended; neither reads InterCat state, and the capture and the probe's session read the kernel's records apart from both."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-SYNC-003/evidence/measurement.json",
+        "note": "Four runs through icat record, machine-wide and nothing lost - 128 generations twice and 512 twice, one round each: every object one number of its own from the creator's creation to both processes' closes, bound to exactly the two processes, 384 of 384 and 1,536 of 1,536 a run, none sharing a number, while the probe watching each run counted 27 objects made at an address an earlier generation's object held, 2 in the run whose ledger is committed. Lab runs alone found 1 of 192 over 64 generations, none pinned to one processor and 66 of 1,536 over 512: the kernel's pool hands out small blocks in no fixed order. The committed run's ledger is evaluated by a test against its truth."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-05",
+          "tier": "TopologyOnly",
+          "result": "Recorded by icat record under the opt-in synchronization objects profile, four times, nothing lost: every object of 128 or 512 generations made and ended one after another one number of its own from its creation to both closes, bound to exactly its two processes, while 27 were made at an address an earlier generation's object held. Tier TopologyOnly: a handle record carries no byte, signal or wait (ADR-084)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two processes' truth logs and scenario of the committed run - objects by the run's own names, a generation at a time, signals and waits by round - and the ledger of its synchronization handle records and of other processes' on objects its processes held, by role - creator, opener, other-01 onward - kind, opcode, object number and the run's own objects' names, never a PID, a handle value, an address or another object's name; the measurement's counters; and the lab probe's counts of the addresses reused, never an address."
+      },
+      "tests": [
+        "R22: FX-SYNC-003's handle records through the product keep each of 384 named objects made and ended in 128 generations one number of its own, from its creation to both closes, while the kernel made some of them where an earlier generation's object had been"
       ]
     },
     {
@@ -2445,7 +2489,7 @@
         "P27: discovered resources without a byte claim are topology only",
         "P27: every section 14.2 threshold met on a supported build yields traffic visualization",
         "P27: false peer attribution above one percent blocks traffic visualization",
-        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build FX-SYNC-001 measured them through the product",
+        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build their fixtures measured them on through the product",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",
         "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build"
       ],
@@ -3062,6 +3106,7 @@
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
         "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart",
         "R22: FX-SYNC-002's duplications are each raised in the process that asked for it - a push in its source, a pull in its target, one between two others in a third - at version 3, its fourth field naming its source process, with its source's handle and its target, and no creation of the handle made, whose close its target raises naming the object",
+        "R22: FX-SYNC-003's handle records through the product keep each of 384 named objects made and ended in 128 generations one number of its own, from its creation to both closes, while the kernel made some of them where an earlier generation's object had been",
         "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
         "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other",
         "R22: FX-UNIX-002's rows through the product keep each of sixty-four connections made one at a time on its own socket at both ends, while the kernel reused their addresses",

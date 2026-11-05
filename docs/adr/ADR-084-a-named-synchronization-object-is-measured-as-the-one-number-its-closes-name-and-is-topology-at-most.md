@@ -1,7 +1,7 @@
 # ADR-084: A named synchronization object is measured as the one number its closes name, and is topology at most
 
 - Status: accepted; FX-SYNC-001 measured through the product, topology only on 10.0.26220.0-x64 (addendum); one number is one
-  object (second addendum)
+  object (second addendum); FX-SYNC-003's objects made in generations each their own (third addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-082, ADR-083, §14.2, R3, P1, P7, P27, FX-SYNC-001, `CoverageTierCalculator`, `SyncObjectCoverageEvaluator`,
@@ -80,3 +80,22 @@ neither is discovered, and their opens and closes, observed, are bound to no res
 - FX-SYNC-001's committed evidence is unchanged by it: its three objects are three numbers, and it is topology only.
 - A synthetic capture whose event and semaphore share a number holds the rule: both undiscovered, only the mutex's opens
   and closes bound, and the mechanism at experimental evidence; three mutations of the rule are caught.
+
+## Third addendum: FX-SYNC-003, objects made and ended in generations (2026-11-05)
+
+FX-SYNC-003 is the mechanism's second instance and lifetime fixture: FX-SYNC-001's two processes and three named objects,
+made and ended one generation after another - each generation under names of its own, the opener opening it, one round
+through it, both processes closing it before the next is made. A capture through the product numbers each object and keeps
+no address, so the lab probe's own private system logger watched each run as icat record recorded it, and counted the
+objects the kernel made at an address an earlier generation's object held.
+
+- In four runs, machine-wide and loss-free - 128 generations twice and 512 twice - every object was one number of its own
+  from the creator's creation to both processes' closes, bound to exactly the two processes and sharing its number with no
+  other (the second addendum): 384 of 384 and 1,536 of 1,536 a run, every handle open and close bound to its object.
+- The probe counted 27 objects made at an address an earlier generation's object held, 2 in the run whose ledger is
+  committed: each was its own number, the gate having ended the earlier object at its last close (ADR-083).
+- The kernel reuses these addresses seldom early and unevenly - 1 object of 192 over 64 generations, none pinned to one
+  processor, 66 of 1,536 over 512 in a lab run alone - as its pool hands out small blocks in no fixed order; so the gate's
+  own tests hold reuse deterministically, and this fixture holds it as the kernel makes it.
+- The build's per-build coverage now carries the tier from FX-SYNC-003, its latest fixture, still TopologyOnly; a test
+  reproduces it from the committed run's ledger and holds the probe's count to that run.

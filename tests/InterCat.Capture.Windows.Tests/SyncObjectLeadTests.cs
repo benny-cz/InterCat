@@ -176,7 +176,7 @@ public sealed class SyncObjectLeadTests
         Assert.All(taken.Keys, row => Assert.Contains(row.AwakenedWait, PairedWaits));
     }
 
-    [Fact(DisplayName = "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build FX-SYNC-001 measured them through the product")]
+    [Fact(DisplayName = "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build their fixtures measured them on through the product")]
     public void NamedObjectsHaveALeadAndAreTopologyOnly()
     {
         WindowsSourceDefinition handles = WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelObjectHandlesSourceId)!;
@@ -205,15 +205,15 @@ public sealed class SyncObjectLeadTests
         Assert.Contains(handles.Notes, note => note.Contains("never a signal by itself", StringComparison.Ordinal));
 
         // Only the opt-in synchronization objects profile requests it, no other source claims named synchronization objects,
-        // and only the build FX-SYNC-001 measured them on through the product carries a tier for them: topology only, as a
-        // handle record carries no byte, signal or wait; no other build borrows it.
+        // and only the build their fixtures measured them on through the product carries a tier for them, its latest fixture's,
+        // FX-SYNC-003's: topology only, as a handle record carries no byte, signal or wait; no other build borrows it.
         Assert.Equal(["sync-objects"], CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures)
             .Where(profile => profile.Sources.Any(source => source.SourceId == handles.SourceId)).Select(profile => profile.Id));
         Assert.Contains("Only the opt-in synchronization objects profile requests it.", handles.FilteringNotes, StringComparison.Ordinal);
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != handles.SourceId),
             source => Assert.DoesNotContain(Mechanism.Synchronization, source.Mechanisms));
         MeasuredCoverageEntry measured = Assert.Single(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.Synchronization);
-        Assert.Equal((CapabilityTier.TopologyOnly, "FX-SYNC-001", "10.0.26220.0-x64"), (measured.Tier, measured.Fixture, measured.Build));
+        Assert.Equal((CapabilityTier.TopologyOnly, "FX-SYNC-003", "10.0.26220.0-x64"), (measured.Tier, measured.Fixture, measured.Build));
         Assert.Contains(handles.Notes, note => note.Contains("through the product", StringComparison.Ordinal)
             && note.Contains("its tier is topology only (ADR-084)", StringComparison.Ordinal));
     }

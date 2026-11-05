@@ -55,7 +55,7 @@
       "mechanism": "Synchronization",
       "build": "10.0.26220.0-x64",
       "tier": "TopologyOnly",
-      "fixture": "FX-SYNC-001",
+      "fixture": "FX-SYNC-003",
       "date": "2026-11-05",
       "supportTier": "Primary"
     },

@@ -150,6 +150,53 @@ public sealed class SyncObjectCoverageEvaluatorTests
         Assert.Equal(CapabilityTier.TopologyOnly, result.Assessment.Tier);
     }
 
+    [Fact(DisplayName = "R22: FX-SYNC-003's handle records through the product keep each of 384 named objects made and ended in 128 generations one number of its own, from its creation to both closes, while the kernel made some of them where an earlier generation's object had been")]
+    public void ObjectsMadeInGenerationsAreEachTheirOwn()
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-SYNC-003", "evidence");
+        TruthRecord[] truth = [.. ReadTruth(Path.Combine(evidence, "truth-creator.jsonl")), .. ReadTruth(Path.Combine(evidence, "truth-opener.jsonl"))];
+        Dictionary<string, int> processes = truth.GroupBy(record => record.Role).ToDictionary(group => group.Key, group => group.First().ProcessId);
+        SyncObjectObservation[] records = [.. ReadLedger(Path.Combine(evidence, "records.csv"), processes)];
+        SyncObjectCoverageResult result = SyncObjectCoverageEvaluator.Evaluate(truth, records, Settings() with { FixtureId = "FX-SYNC-003" });
+
+        using System.Text.Json.JsonDocument measurement = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "measurement.json")));
+        System.Text.Json.JsonElement run = measurement.RootElement.GetProperty("throughTheProduct").GetProperty("runs").EnumerateArray()
+            .Single(run => run.GetProperty("run").GetString() == "128-generations-2");
+        System.Text.Json.JsonElement stated = run.GetProperty("evaluation");
+        MechanismMeasurement measured = result.Measurement;
+        Assert.Equal(
+            (stated.GetProperty("truthObjects").GetInt64(), stated.GetProperty("discoveredWithLifetime").GetInt64(),
+                stated.GetProperty("expectedMemberships").GetInt64(), stated.GetProperty("resolvedMemberships").GetInt64(),
+                stated.GetProperty("falseMemberships").GetInt64(), stated.GetProperty("truthOperations").GetInt64(), stated.GetProperty("observed").GetInt64(),
+                stated.GetProperty("boundToTheirObject").GetInt64()),
+            (measured.TruthResources, measured.DiscoveredResourcesWithLifetime, measured.ExpectedMemberships, measured.ResolvedMemberships,
+                measured.FalsePeerAttributions, measured.TruthOperations, measured.TruthOperationsWithAdmittedObservation,
+                measured.TruthOperationsBoundToResourceInstance));
+        Assert.Equal(Enum.Parse<CapabilityTier>(stated.GetProperty("tier").GetString()!), result.Assessment.Tier);
+
+        // Every one of them: each generation's three objects a number of its own, none another's, from the creator's creation
+        // to both processes' closes, bound to exactly the two, and every handle open and close bound to its object.
+        Assert.Equal((384L, 384L, 768L, 768L, 0L), (measured.TruthResources, measured.DiscoveredResourcesWithLifetime, measured.ExpectedMemberships,
+            measured.ResolvedMemberships, measured.FalsePeerAttributions));
+        Assert.Equal((1536L, 1536L, 1536L), (measured.TruthOperations, measured.TruthOperationsWithAdmittedObservation,
+            measured.TruthOperationsBoundToResourceInstance));
+        Assert.Equal(384, result.Objects.Select(item => item.ObjectNumber).Distinct().Count());
+        Assert.Equal(CapabilityTier.TopologyOnly, result.Assessment.Tier);
+
+        // While the lab probe's own session, watching the same run, counted objects the kernel made at an address an earlier
+        // generation's object held: a capture's records alone would have joined each to that earlier object.
+        System.Text.Json.JsonElement watched = run.GetProperty("observedByTheProbe");
+        using System.Text.Json.JsonDocument report = System.Text.Json.JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(RepositoryRoot(), watched.GetProperty("bench").GetString()!, "report.json")));
+        using System.Text.Json.JsonDocument scenario = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "scenario.json")));
+        Assert.Equal((128, 384, 0), (scenario.RootElement.GetProperty("generations").GetInt32(), report.RootElement.GetProperty("objects").GetInt32(),
+            report.RootElement.GetProperty("eventsLost").GetInt32()));
+        Assert.Equal(scenario.RootElement.GetProperty("generations").GetInt32(), report.RootElement.GetProperty("generations").GetInt32());
+        int reused = report.RootElement.GetProperty("objectsAtAnAddressAnEarlierGenerationsObjectHeld").GetInt32();
+        Assert.Equal(watched.GetProperty("objectsAtAnAddressAnEarlierGenerationsObjectHeld").GetInt32(), reused);
+        Assert.InRange(reused, 1, 383);
+    }
+
     private static IEnumerable<TruthRecord> ReadTruth(string path)
     {
         var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);

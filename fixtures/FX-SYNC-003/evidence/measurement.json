@@ -1,0 +1,224 @@
+{
+  "fixture": "FX-SYNC-003",
+  "question": "Whether a capture through the product - icat record under the opt-in synchronization objects profile - keeps each named object of a run that makes and ends them one generation after another one number of its own, from the creator's creation to both processes' closes and bound to exactly the two processes, while the kernel makes some of them at an address an earlier generation's object held; and which tier that measures.",
+  "answer": "In 4 runs through the product, machine-wide and loss-free - 128 generations twice and 512 twice, one round each - every object was one number of its own from the creator's creation of its first handle to both processes' closes, bound to exactly the creator and the opener: 3840 of 3840 objects discovered with their lifetimes, none sharing a number, 15360 of 15360 handle opens and closes seen and bound to their object. The lab probe's own session watched each run and counted 27 objects the kernel made at an address an earlier generation's object held - 2 in the run whose ledger is committed - each still an object of its own. A handle record carries no byte, signal or wait, so the tier is TopologyOnly.",
+  "method": "Each run: icat record --profile sync-objects started, and once its session ran the lab probe's generations mode, which starts a private system logger of its own collecting the object manager's handle group machine-wide, runs the workload under both and reads each object's address from the creator's close that names it. The product session's records are read by InterCat.SyncProbe --session into the role-only ledger and evaluated by SyncObjectCoverageEvaluator, which leaves undiscovered any object whose number another truth object carries. The probe writes counts alone, never an address.",
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-11-05",
+  "addressReuse": {
+    "question": "How often the kernel makes a named object of a generation at an address an earlier generation's object held, which a capture's handle records alone would join to that earlier object.",
+    "answer": "Seldom early, more often as the run goes on, and unevenly: the kernel's pool hands out small blocks in no fixed order. 1 object of 192 over 64 generations and none pinned to one processor; 66 of 1,536 over 512 generations in a lab run alone, and 0 to 25 a run in the runs the product recorded.",
+    "labRuns": [
+      {
+        "run": "64-generations",
+        "generations": 64,
+        "roundsPerGeneration": 2,
+        "onOneProcessor": false,
+        "objects": 192,
+        "distinctAddresses": 191,
+        "objectsAtAnAddressAnEarlierGenerationsObjectHeld": 1,
+        "eventsLost": 0,
+        "bench": "bench/results/sync-objects-generations-lab-64-generations-20261105T133019Z"
+      },
+      {
+        "run": "64-generations-one-processor",
+        "generations": 64,
+        "roundsPerGeneration": 2,
+        "onOneProcessor": true,
+        "objects": 192,
+        "distinctAddresses": 192,
+        "objectsAtAnAddressAnEarlierGenerationsObjectHeld": 0,
+        "eventsLost": 0,
+        "bench": "bench/results/sync-objects-generations-lab-64-generations-one-processor-20261105T133050Z"
+      },
+      {
+        "run": "512-generations",
+        "generations": 512,
+        "roundsPerGeneration": 1,
+        "onOneProcessor": false,
+        "objects": 1536,
+        "distinctAddresses": 1470,
+        "objectsAtAnAddressAnEarlierGenerationsObjectHeld": 66,
+        "eventsLost": 0,
+        "bench": "bench/results/sync-objects-generations-lab-512-generations-20261105T133141Z"
+      }
+    ]
+  },
+  "throughTheProduct": {
+    "runs": [
+      {
+        "run": "128-generations-1",
+        "workload": {
+          "generations": 128,
+          "roundsPerGeneration": 1,
+          "holdMilliseconds": 0
+        },
+        "capture": {
+          "profile": "sync-objects",
+          "lossFree": true,
+          "observedRecords": 724685,
+          "admittedRecords": 119348,
+          "applicationDrops": 0,
+          "sourceLoss": 0,
+          "gateOmissionsBeyondBound": 0,
+          "synchronizationRecords": 118832
+        },
+        "observedByTheProbe": {
+          "objects": 384,
+          "distinctAddresses": 384,
+          "objectsAtAnAddressAnEarlierGenerationsObjectHeld": 0,
+          "eventsLost": 0,
+          "bench": "bench/results/sync-objects-generations-128-generations-1-20261105T133254Z"
+        },
+        "evaluation": {
+          "truthObjects": 384,
+          "discoveredWithLifetime": 384,
+          "objectNumbers": 384,
+          "expectedMemberships": 768,
+          "resolvedMemberships": 768,
+          "falseMemberships": 0,
+          "truthOperations": 1536,
+          "observed": 1536,
+          "boundToTheirObject": 1536,
+          "claimsBytesOrOperations": false,
+          "workloadRecords": 1870,
+          "recordsOfOtherProcessesOnItsObjects": 9,
+          "tier": "TopologyOnly",
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      },
+      {
+        "run": "128-generations-2",
+        "workload": {
+          "generations": 128,
+          "roundsPerGeneration": 1,
+          "holdMilliseconds": 0
+        },
+        "capture": {
+          "profile": "sync-objects",
+          "lossFree": true,
+          "observedRecords": 998566,
+          "admittedRecords": 146953,
+          "applicationDrops": 0,
+          "sourceLoss": 0,
+          "gateOmissionsBeyondBound": 0,
+          "synchronizationRecords": 146388
+        },
+        "observedByTheProbe": {
+          "objects": 384,
+          "distinctAddresses": 382,
+          "objectsAtAnAddressAnEarlierGenerationsObjectHeld": 2,
+          "eventsLost": 0,
+          "bench": "bench/results/sync-objects-generations-128-generations-2-20261105T133345Z"
+        },
+        "evaluation": {
+          "truthObjects": 384,
+          "discoveredWithLifetime": 384,
+          "objectNumbers": 384,
+          "expectedMemberships": 768,
+          "resolvedMemberships": 768,
+          "falseMemberships": 0,
+          "truthOperations": 1536,
+          "observed": 1536,
+          "boundToTheirObject": 1536,
+          "claimsBytesOrOperations": false,
+          "workloadRecords": 1870,
+          "recordsOfOtherProcessesOnItsObjects": 9,
+          "tier": "TopologyOnly",
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      },
+      {
+        "run": "512-generations-1",
+        "workload": {
+          "generations": 512,
+          "roundsPerGeneration": 1,
+          "holdMilliseconds": 0
+        },
+        "capture": {
+          "profile": "sync-objects",
+          "lossFree": true,
+          "observedRecords": 1005917,
+          "admittedRecords": 144012,
+          "applicationDrops": 0,
+          "sourceLoss": 0,
+          "gateOmissionsBeyondBound": 0,
+          "synchronizationRecords": 143383
+        },
+        "observedByTheProbe": {
+          "objects": 1536,
+          "distinctAddresses": 1511,
+          "objectsAtAnAddressAnEarlierGenerationsObjectHeld": 25,
+          "eventsLost": 0,
+          "bench": "bench/results/sync-objects-generations-512-generations-1-20261105T133432Z"
+        },
+        "evaluation": {
+          "truthObjects": 1536,
+          "discoveredWithLifetime": 1536,
+          "objectNumbers": 1536,
+          "expectedMemberships": 3072,
+          "resolvedMemberships": 3072,
+          "falseMemberships": 0,
+          "truthOperations": 6144,
+          "observed": 6144,
+          "boundToTheirObject": 6144,
+          "claimsBytesOrOperations": false,
+          "workloadRecords": 6478,
+          "recordsOfOtherProcessesOnItsObjects": 63,
+          "tier": "TopologyOnly",
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      },
+      {
+        "run": "512-generations-2",
+        "workload": {
+          "generations": 512,
+          "roundsPerGeneration": 1,
+          "holdMilliseconds": 0
+        },
+        "capture": {
+          "profile": "sync-objects",
+          "lossFree": true,
+          "observedRecords": 923154,
+          "admittedRecords": 131678,
+          "applicationDrops": 0,
+          "sourceLoss": 0,
+          "gateOmissionsBeyondBound": 0,
+          "synchronizationRecords": 131138
+        },
+        "observedByTheProbe": {
+          "objects": 1536,
+          "distinctAddresses": 1536,
+          "objectsAtAnAddressAnEarlierGenerationsObjectHeld": 0,
+          "eventsLost": 0,
+          "bench": "bench/results/sync-objects-generations-512-generations-2-20261105T133513Z"
+        },
+        "evaluation": {
+          "truthObjects": 1536,
+          "discoveredWithLifetime": 1536,
+          "objectNumbers": 1536,
+          "expectedMemberships": 3072,
+          "resolvedMemberships": 3072,
+          "falseMemberships": 0,
+          "truthOperations": 6144,
+          "observed": 6144,
+          "boundToTheirObject": 6144,
+          "claimsBytesOrOperations": false,
+          "workloadRecords": 6478,
+          "recordsOfOtherProcessesOnItsObjects": 9,
+          "tier": "TopologyOnly",
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      }
+    ],
+    "ledger": "fixtures/FX-SYNC-003/evidence/records.csv and its truth logs and scenario, of the run 128-generations-2: the workload's synchronization handle records and other processes' on objects the workload's processes held, each record's place in the session's order, its time on the capture's calibrated wall clock, its process's role - creator, opener, or other-01 onward for a process the truth does not name - its kind, opcode and object number in the capture, and its name where it names one of the run's objects, \"named\" where it names another - never a PID, a handle value, an address or another object's name."
+  }
+}
