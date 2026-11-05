@@ -59,7 +59,9 @@ public readonly record struct SynchronizationObjectIncarnation(long Number, Hand
 /// saw made to it, the processes holding them and the duplications between them included; whatever the address held before
 /// ended, seen or not. A close, or the stop's rundown, of a handle at an address no followed object holds is of a handle
 /// made before the capture began: its object's other handles are unseen, so nothing says it is one object with any other
-/// record, and it is numbered alone (R22). Records are read as they arrive, and the gate holds none back.
+/// record, and it is numbered alone (R22). Records are read as they arrive, and the gate holds none back. It reads them on
+/// the capture's callback, so it allocates nothing per record (P12): a followed object is a value in one table and each
+/// handle it holds an entry in another, both grown only as far as its bound.
 /// </summary>
 public sealed class SynchronizationHandleGate
 {
@@ -69,7 +71,14 @@ public sealed class SynchronizationHandleGate
     public const int Duplicate = 34;
     public const int Rundown = 39;
 
-    /// <summary>How many objects the gate follows at most; a handle that would begin one beyond them is not followed.</summary>
+    /// <summary>The type rundown at the stop: each type's number and name, which a capture holds the build's numbers to.</summary>
+    public const int TypeRundown = 37;
+
+    /// <summary>
+    /// How many handles the gate holds at most, and so how many objects it follows, each holding one at least: a handle that
+    /// would begin an object beyond them is not followed, and a further handle of a followed object is its object's but not
+    /// held, so the object may end before that handle's close, which is then numbered alone.
+    /// </summary>
     public const int DefaultCapacity = 65_536;
 
     /// <summary>The object types the gate follows, by the names an object type table or a type rundown gives them.</summary>
@@ -84,12 +93,18 @@ public sealed class SynchronizationHandleGate
     };
 
     private readonly HashSet<int> types;
+
+    // Each followed object by its address, with how many of the handles the gate holds are its.
     private readonly Dictionary<ulong, Followed> followed = [];
+
+    // Each handle the gate saw made to a followed object and holds until its close: the object's address, the process whose
+    // handle it is, and its value there.
+    private readonly HashSet<(ulong Address, int Process, uint Handle)> held = [];
     private readonly int capacity;
     private long numbered;
 
     /// <param name="synchronizationTypes">The type numbers of the synchronization types, measured for the capture's build.</param>
-    /// <param name="capacity">How many objects the gate follows at most.</param>
+    /// <param name="capacity">How many handles the gate holds at most, and so how many objects it follows.</param>
     public SynchronizationHandleGate(IEnumerable<int> synchronizationTypes, int capacity = DefaultCapacity)
     {
         ArgumentNullException.ThrowIfNull(synchronizationTypes);
@@ -100,6 +115,9 @@ public sealed class SynchronizationHandleGate
 
     /// <summary>How many objects the gate follows now.</summary>
     public int Following => followed.Count;
+
+    /// <summary>How many handles the gate holds now: never more than its bound.</summary>
+    public int Holding => held.Count;
 
     /// <summary>The synchronization types' numbers measured for a build, Event's, Mutant's and Semaphore's; null for a build none measured.</summary>
     public static IReadOnlyList<int>? MeasuredTypes(string buildId)
@@ -126,60 +144,67 @@ public sealed class SynchronizationHandleGate
             return (HandleGateOutcome.OtherType, null);
         }
 
-        followed.TryGetValue(record.ObjectAddress, out Followed? held);
+        bool isFollowed = followed.TryGetValue(record.ObjectAddress, out Followed found);
         switch (record.Opcode)
         {
             case Create or Duplicate:
             {
                 // A handle made: to the followed object at its address, or the first of an object the capture saw begin
                 // there. A duplication makes its handle in its target process.
-                if (held is null)
+                if (!isFollowed)
                 {
-                    if (followed.Count >= capacity)
+                    if (held.Count >= capacity)
                     {
                         return (HandleGateOutcome.Untracked, null);
                     }
 
-                    held = new(new(++numbered, record.Opcode == Create ? HandleFirstSeen.Creation : HandleFirstSeen.Duplication));
-                    followed[record.ObjectAddress] = held;
+                    found = new(new(++numbered, record.Opcode == Create ? HandleFirstSeen.Creation : HandleFirstSeen.Duplication), 0);
                 }
 
-                held.Open.Add(record.Opcode == Create ? (record.Process, record.Handle) : (record.TargetProcess, record.TargetHandle));
-                return (HandleGateOutcome.Admitted, held.Incarnation);
+                // Within its bound the gate holds the handle until its close; beyond it the handle is still its object's.
+                (int process, uint handle) = record.Opcode == Create ? (record.Process, record.Handle) : (record.TargetProcess, record.TargetHandle);
+                if (held.Count < capacity && held.Add((record.ObjectAddress, process, handle)))
+                {
+                    found = found with { Handles = found.Handles + 1 };
+                }
+
+                followed[record.ObjectAddress] = found;
+                return (HandleGateOutcome.Admitted, found.Incarnation);
             }
 
             case Close:
             {
-                if (held is null)
+                if (!isFollowed)
                 {
                     // A handle made before the capture: its object's other handles are unseen, so it is numbered alone.
                     return (HandleGateOutcome.Admitted, new(++numbered, HandleFirstSeen.Close));
                 }
 
-                // The close of the last handle the gate saw made to the object ends it: the address may hold another next.
-                held.Open.Remove((record.Process, record.Handle));
-                if (held.Open.Count == 0)
+                // The close of the last handle the gate holds of the object ends it: the address may hold another next.
+                if (held.Remove((record.ObjectAddress, record.Process, record.Handle)))
                 {
-                    followed.Remove(record.ObjectAddress);
+                    if (found.Handles == 1)
+                    {
+                        followed.Remove(record.ObjectAddress);
+                    }
+                    else
+                    {
+                        followed[record.ObjectAddress] = found with { Handles = found.Handles - 1 };
+                    }
                 }
 
-                return (HandleGateOutcome.Admitted, held.Incarnation);
+                return (HandleGateOutcome.Admitted, found.Incarnation);
             }
 
             case Rundown:
                 // A handle still open at the stop: the followed object's, or one made before the capture, numbered alone.
-                return (HandleGateOutcome.Admitted, held?.Incarnation ?? new(++numbered, HandleFirstSeen.Rundown));
+                return (HandleGateOutcome.Admitted, isFollowed ? found.Incarnation : new(++numbered, HandleFirstSeen.Rundown));
 
             default:
                 throw new ArgumentOutOfRangeException(nameof(record), record.Opcode, "The gate reads a handle's creation, close, duplication and rundown.");
         }
     }
 
-    /// <summary>A followed object: its incarnation, and the handles the gate saw made to it and not yet closed.</summary>
-    private sealed class Followed(SynchronizationObjectIncarnation incarnation)
-    {
-        public SynchronizationObjectIncarnation Incarnation { get; } = incarnation;
-
-        public HashSet<(int Process, uint Handle)> Open { get; } = [];
-    }
+    /// <summary>A followed object: its incarnation, and how many of the handles the gate holds are its.</summary>
+    private readonly record struct Followed(SynchronizationObjectIncarnation Incarnation, int Handles);
 }

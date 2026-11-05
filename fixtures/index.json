@@ -661,7 +661,7 @@
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
         "R22: an object's address names it only from its creation to its deletion - FX-SYNC-001's object group records each named object created in the creator before its first handle and deleted after its last close, at the address its handles carry",
         "P8: FX-SYNC-001's every wait the kernel blocked has the ready of its thread from the signaling process inside the wait's span, and no ready of a thread in a user-mode wait between the two processes is left unpaired - a ready names no object, so only a truth's wait makes one a signal",
-        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
+        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
         "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart"
       ]
     },
@@ -2396,7 +2396,7 @@
         "P27: discovered resources without a byte claim are topology only",
         "P27: every section 14.2 threshold met on a supported build yields traffic visualization",
         "P27: false peer attribution above one percent blocks traffic visualization",
-        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
+        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",
         "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build"
       ],
@@ -3125,7 +3125,8 @@
         "R22: the Compare window knows a comparison its investigation saved alike, the one it opened as first, and says why it can keep no note",
         "R22: the Compare window saves the comparison shown in its investigation by name, and a saved one opens as saved",
         "R22: the Compare window says the notes about the saved comparison it shows, marks each noted row, and adds one about it or its chosen row",
-        "R22: the gate follows only the synchronization types, by the numbers measured for the capture's build, and no more objects than its bound",
+        "R22: the gate follows only the synchronization types, by the numbers measured for the capture's build, and holds no more handles than its bound, so follows no more objects",
+        "R22: the handle group's events compile from the class's layout to fixed slots - the object, which the gate writes its number over, the handle, the type, a close's and a rundown's name, a duplication's handles and target - and nothing else",
         "R22: the investigation window keeps notes: pinned at an instant, reworded, shown on the timeline, removed",
         "R22: the investigation window lists candidate joins with their evidence, none established",
         "R22: the investigation window packages the investigation with the sessions a person chooses",
@@ -3139,6 +3140,7 @@
         "R22: the window starts a content capture only after its review, with a plan prepared again that keeps what was reviewed",
         "R22: the window's live view of an Explore capture shaped as Windows delivers it relates its loopback connections over IPv4 and IPv6",
         "R22: through its gate an AFD record is admitted with its socket's number and owner in place of the kernel's addresses, and any other is omitted with its reason",
+        "R22: through its gate the handle group admits a synchronization type's handle records with the object's number written over its address, a duplication's for its target, and omits another type's and those beyond its bound",
         "R22: two boots of one host that overlap in the investigation's time say an alignment is wrong",
         "R22: two captures of one boot align exactly through their epochs, and captures of two boots never do",
         "R22: two captures of one host that ran at once are flagged, never merged, and two hosts' never compared",
@@ -3159,6 +3161,7 @@
         "R3: a TCP transfer admits its byte count, and a connection attempted, established or closed admits none",
         "R3: a bound is written rounded up at the precision written, so it never reads smaller than it is",
         "R3: a budget is met or missed against its own direction, not against a bare number",
+        "R3: a build with no measured synchronization type numbers refuses the handle group, as does a schema without a field its gate decides by",
         "R3: a byte comparison's lower bound decides a change only where the bound alone exceeds the other rate",
         "R3: a byte field the source declares but does not expose stays an unknown in its slot",
         "R3: a call served by a process the evidence policy does not admit names no server, and its server's time is said only where admitted",
@@ -3611,7 +3614,8 @@
       "P12": [
         "P12: once a capture's descriptors have been seen, a callback's queue, counters and coverage tally allocate nothing",
         "P12: the capture callback allocates from a pool, and otherwise only where a reviewed bound holds",
-        "P12: the capture callback reaches no query, store, file, network, name or symbol lookup, decoder or wait, and only reviewed locks"
+        "P12: the capture callback reaches no query, store, file, network, name or symbol lookup, decoder or wait, and only reviewed locks",
+        "P12: the synchronization handle gate, which reads its records on the capture's callback, allocates nothing per record once its tables hold what it followed at once"
       ],
       "P13": [
         "P13: a capture's providers are enabled and its session configured only as it starts, and nothing disables a provider",

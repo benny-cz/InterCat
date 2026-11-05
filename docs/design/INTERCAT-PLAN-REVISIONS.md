@@ -859,6 +859,7 @@ Revision 932 has two window tests wait out a loaded machine's layout - a reached
 Revision 933 has a capture set a kernel group's mask on its private system logger (ADR-082's third addendum): by the session's handle, after the kernel flags that start it - the kernel's process flag where the group has none - and before any manifest provider, a refused mask refusing the capture; on this machine an owned capture was delivered the object manager's handle records, nothing lost.
 Revision 934 measures whether a capture can know a handle record's type as it starts (ADR-082's fourth addendum): the object type table read from user mode before a session names each type number as the type rundown at its stop does, and Event, Mutant and Semaphore were about one handle creation in thirty machine-wide.
 Revision 935 adds a synchronization handle gate (ADR-083): it admits only the object manager's handle records of Event, Mutant and Semaphore, by the numbers measured for the capture's build, and follows an object from the first handle a capture sees made at its address to the close of the last, numbering a handle made before the capture alone; no profile compiles it yet.
+Revision 936 admits the handle group's events through the synchronization handle gate (ADR-083's addendum): a handle's creation, close and duplication and the stop's type and handle rundowns, with four source fields, the object's number written over its address; the gate allocates nothing per record on the capture's callback, its bound holding the handles; a build with no measured type numbers refuses the source, and no profile requests it yet.
 
 ## Revisions, a paragraph each, in order
 
@@ -3907,3 +3908,17 @@ followed object holds is of a handle made before the capture: its object's other
 alone, never joined to another record by its address or its name. It follows at most 65,536 objects and holds back no
 record. Tests hold it on synthetic records and on FX-SYNC-001's ledger, read through it as delivered - three objects,
 numbered apart - and hold its numbers to the probe's measurement; ten mutations are caught. No profile compiles it yet.
+
+Revision 936 admits the object manager's handle group through the synchronization handle gate (ADR-083's addendum). The
+group admits five events of its class at version 2, compiled from the layout the machine registers and told apart by
+opcode: a handle's creation and close, opens and closes of the resource layer with the object, the handle, the type and
+at the close the object's name; a duplication, an open in its target process with the handle it made there and that
+process as its other end; and the stop's type and handle rundowns, inventories, a handle's with the process its record
+names. `EN-SourceField` gains `SynchronizationObjectNumber`, `ObjectTypeNumber`, `HandleValue` and `PeerHandleValue`. The
+gate reads each record's slots, writes the object's number over its address so no record keeps one, admits only the
+synchronization types' records and the type rundown's entries of theirs, and omits every other. A build with no measured
+type numbers refuses the source, as does a schema without a field the gate decides by, now checked per opcode for a
+classic class, whose events share event id 0. On the capture's callback the gate allocates nothing per record (P12):
+each followed object is a value in one table and each handle it holds an entry in another, and its bound of 65,536 holds
+the handles, and so the objects; a further handle of a followed object is its object's but not held. No profile requests
+the group yet.

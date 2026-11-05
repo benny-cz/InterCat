@@ -363,6 +363,87 @@ public static class WindowsSourceCatalog
                 + "completes as an RPC call with status 0 (ADR-079)."),
     ];
 
+    // What the synchronization handle gate decides a handle record by (ADR-083).
+    private const string ObjectDecides = "the synchronization handle gate follows an object by its address, which it writes over with the object's number";
+    private const string TypeDecides = "the synchronization handle gate admits only a synchronization type's handles";
+    private const string HandleDecides = "the synchronization handle gate holds a handle by its process and value until its close";
+
+    private static readonly AdmittedFieldIntent HandleObject =
+        new("Object", FieldRole.CorrelationKey, SourceField: SourceField.SynchronizationObjectNumber,
+            Notes: "Written by the gate: the object's number in the capture, never its kernel address, which the kernel reuses (R22).")
+        {
+            Decides = ObjectDecides,
+        };
+
+    private static readonly AdmittedFieldIntent HandleType =
+        new("ObjectType", FieldRole.Unclassified, SourceField: SourceField.ObjectTypeNumber,
+            Notes: "The object's type by its number on this build, Event's, Mutant's and Semaphore's as measured for it (ADR-082).")
+        {
+            Decides = TypeDecides,
+        };
+
+    private static readonly AdmittedFieldIntent HandleName =
+        new("ObjectName", FieldRole.ResourceName,
+            Notes: "The object's full name, which a close and the stop's rundown carry and a creation never does; none for an unnamed object.");
+
+    /// <summary>A handle's creation: the object, the handle and the type; no name, which only its close carries.</summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> HandleCreateFields =
+    [
+        HandleObject,
+        new("Handle", FieldRole.ResourceHandle, SourceField: SourceField.HandleValue,
+            Notes: "The handle's value in the process that holds it, reused once it closes (R22).")
+        {
+            Decides = HandleDecides,
+        },
+        HandleType,
+    ];
+
+    /// <summary>A handle's close: its creation's fields and the object's name.</summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> HandleCloseFields = [.. HandleCreateFields, HandleName];
+
+    /// <summary>A duplication: the object, the source's handle, the handle it made in its target process, and that process.</summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> HandleDuplicateFields =
+    [
+        HandleObject,
+        new("SourceHandle", FieldRole.ResourceHandle, SourceField: SourceField.HandleValue,
+            Notes: "The duplicated handle's value in the record's own process."),
+        new("TargetHandle", FieldRole.ResourceHandle, SourceField: SourceField.PeerHandleValue,
+            Notes: "The handle the duplication made, by its value in the target process.")
+        {
+            Decides = "the synchronization handle gate holds the handle a duplication made in its target process",
+        },
+        new("TargetProcessId", FieldRole.CorrelationKey, SourceField: SourceField.PeerProcessId,
+            Notes: "The process the duplication made its handle in: the other end of the record, never its owner.")
+        {
+            Decides = "the synchronization handle gate holds a duplication's handle in the process it was made in",
+        },
+        HandleType,
+    ];
+
+    /// <summary>A handle still open at the stop: its process, from the record, then the handle's fields and the name.</summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> HandleRundownFields =
+    [
+        HandleObject,
+        new("ProcessId", FieldRole.ProcessAttribution, Notes: "The process holding the handle, which the rundown names in its record.")
+        {
+            Decides = "the synchronization handle gate tells whose handle the stop's rundown names",
+        },
+        new("Handle", FieldRole.ResourceHandle, SourceField: SourceField.HandleValue,
+            Notes: "The handle's value in its process.")
+        {
+            Decides = HandleDecides,
+        },
+        HandleType,
+        HandleName,
+    ];
+
+    /// <summary>An object type at the stop, by its number and name: what a capture holds the build's measured numbers to.</summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> TypeRundownFields =
+    [
+        HandleType,
+        new("TypeName", FieldRole.ResourceName, Notes: "The type's name, which the session names its number by only at its stop."),
+    ];
+
     public static IReadOnlyList<WindowsSourceDefinition> All { get; } = Build();
 
     /// <summary>
@@ -1017,9 +1098,10 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        // Named synchronization objects' lead (ADR-082): inventoried and requested by no profile, admitting no event until its
-        // records are bound and joined; a capture that asks for it sets its group mask on its private system logger. Its
-        // measured notes are what icat capabilities states of it.
+        // Named synchronization objects' lead (ADR-082): inventoried and requested by no profile. Its handle records admit
+        // through the synchronization handle gate (ADR-083), which keeps only the synchronization types' and writes each
+        // object's number over its address; a capture that asks for it sets its group mask on its private system logger.
+        // Its measured notes are what icat capabilities states of it.
         var objectHandles = new WindowsSourceDefinition
         {
             SourceId = KernelObjectHandlesSourceId,
@@ -1047,9 +1129,21 @@ public static class WindowsSourceCatalog
             OverheadEvidence = "bench/results/sync-objects-impact-handles-20261105T035540Z/impact.json",
             ClassicEventClass = ObjectManagerEventClass,
             KernelGroupMasks = [ObjectHandlesGroupMask],
+            AdmittedEvents =
+            [
+                new(0, 2, "Handle created", Mechanism.Synchronization, ObservationLayer.Resource, ObservationKind.Open, Direction.DirectionNotApplicable, HandleCreateFields) { Opcode = SynchronizationHandleGate.Create },
+                new(0, 2, "Handle closed", Mechanism.Synchronization, ObservationLayer.Resource, ObservationKind.Close, Direction.DirectionNotApplicable, HandleCloseFields) { Opcode = SynchronizationHandleGate.Close },
+                new(0, 2, "Handle duplicated", Mechanism.Synchronization, ObservationLayer.Resource, ObservationKind.Open, Direction.Outbound, HandleDuplicateFields) { Opcode = SynchronizationHandleGate.Duplicate },
+                new(0, 2, "Object type at the stop", Mechanism.Synchronization, ObservationLayer.Resource, ObservationKind.Inventory, Direction.DirectionNotApplicable, TypeRundownFields) { Opcode = SynchronizationHandleGate.TypeRundown },
+                new(0, 2, "Handle open at the stop", Mechanism.Synchronization, ObservationLayer.Resource, ObservationKind.Inventory, Direction.DirectionNotApplicable, HandleRundownFields) { Opcode = SynchronizationHandleGate.Rundown },
+            ],
             Notes =
             [
                 "There is no registered object manager manifest provider to inventory, so its absence from the registry is expected.",
+                "Its records admit through the synchronization handle gate (ADR-083): only an event's, a mutant's or a semaphore's, "
+                + "by the type numbers measured for the build, each object numbered in the capture from the first handle it saw made "
+                + "at its address to the close of the last, never by its address; a handle made before the capture, met at its close "
+                + "or the stop's rundown, is numbered alone. A build without measured numbers refuses it.",
                 "Collection alone, two series of nine pairs over a handle-heavy workload, loss-free: a median of 0.4 and 0.0 CPU "
                 + "pp, Low; but the workload ran 5.3 and 8.3% lower in throughput, past the 5% target, as a handle's creation and "
                 + "close each raise a record in the thread that makes the call. Only an opt-in profile stating it may admit it, "

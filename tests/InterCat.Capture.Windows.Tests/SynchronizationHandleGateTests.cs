@@ -24,8 +24,10 @@ public sealed class SynchronizationHandleGateTests
         SynchronizationObjectIncarnation made = Admitted(gate.Read(new(Create, 0x1000, 0x10, Event, 100)));
         Assert.Equal(new(1, HandleFirstSeen.Creation), made);
 
-        // Another process opens it by name, then each closes its handle: one object throughout, followed until the last.
+        // Another process opens it by name, then each closes its handle: one object throughout, followed until the last. A
+        // close at its address of a handle the gate never saw made is its own, and ends nothing.
         Assert.Equal(made, Admitted(gate.Read(new(Create, 0x1000, 0x24, Event, 200))));
+        Assert.Equal(made, Admitted(gate.Read(new(Close, 0x1000, 0x30, Event, 300))));
         Assert.Equal(made, Admitted(gate.Read(new(Close, 0x1000, 0x10, Event, 100))));
         Assert.Equal(1, gate.Following);
         Assert.Equal(made, Admitted(gate.Read(new(Close, 0x1000, 0x24, Event, 200))));
@@ -71,7 +73,7 @@ public sealed class SynchronizationHandleGateTests
         Assert.Equal(1, gate.Following);
     }
 
-    [Fact(DisplayName = "R22: the gate follows only the synchronization types, by the numbers measured for the capture's build, and no more objects than its bound")]
+    [Fact(DisplayName = "R22: the gate follows only the synchronization types, by the numbers measured for the capture's build, and holds no more handles than its bound, so follows no more objects")]
     public void TheGateFollowsOnlyItsTypesWithinItsBound()
     {
         // Another type's handles are never followed, whatever their address.
@@ -79,10 +81,18 @@ public sealed class SynchronizationHandleGateTests
         Assert.Equal((HandleGateOutcome.OtherType, (SynchronizationObjectIncarnation?)null), gate.Read(new(Create, 0x7000, 0x10, File, 100)));
         Assert.Equal((HandleGateOutcome.OtherType, (SynchronizationObjectIncarnation?)null), gate.Read(new(Close, 0x7000, 0x10, File, 100)));
 
-        // Beyond its bound a handle that would begin an object is not followed; one of a followed object still is.
+        // Beyond its bound a handle that would begin an object is not followed; one of a followed object is still its
+        // object's, but not held.
         SynchronizationObjectIncarnation made = Admitted(gate.Read(new(Create, 0x8000, 0x10, Event, 100)));
         Assert.Equal((HandleGateOutcome.Untracked, (SynchronizationObjectIncarnation?)null), gate.Read(new(Create, 0x9000, 0x10, Event, 100)));
         Assert.Equal(made, Admitted(gate.Read(new(Create, 0x8000, 0x14, Event, 200))));
+        Assert.Equal((1, 1), (gate.Following, gate.Holding));
+
+        // So the close of the handle it holds ends the object, and the other's close, met at an address it no longer
+        // follows, is numbered alone: two numbers for one object, never one for two.
+        Assert.Equal(made, Admitted(gate.Read(new(Close, 0x8000, 0x10, Event, 100))));
+        Assert.Equal((0, 0), (gate.Following, gate.Holding));
+        Assert.Equal(new(2, HandleFirstSeen.Close), Admitted(gate.Read(new(Close, 0x8000, 0x14, Event, 200))));
 
         // A type table - a session's rundown - names them by their names, whatever their numbers there.
         Assert.Equal([Event, Mutant, Semaphore], TypesIn(new Dictionary<int, string>
@@ -90,6 +100,56 @@ public sealed class SynchronizationHandleGateTests
             [2] = "Type", [Event] = "Event", [Mutant] = "Mutant", [Semaphore] = "Semaphore", [File] = "File", [23] = "Section",
         }));
         Assert.Throws<ArgumentOutOfRangeException>(() => gate.Read(new(48, 0x8000, 0, Event, 100)));
+    }
+
+    [Fact(DisplayName = "P12: the synchronization handle gate, which reads its records on the capture's callback, allocates nothing per record once its tables hold what it followed at once")]
+    public void TheGateAllocatesNothingPerRecord()
+    {
+        // A thousand objects begin - each created, opened by another process and duplicated into a third, beside another
+        // type's handles - and end, closed by all three. Read again once the gate's tables have grown to what it held at
+        // once, the same records allocate nothing, though every object begins and ends again.
+        ulong[] addresses = [.. Enumerable.Range(0, 1_024).Select(index => 0x10_0000 + ((ulong)index * 0x40))];
+        ObjectHandleRecord[] records =
+        [
+            .. addresses.SelectMany(address => new ObjectHandleRecord[]
+            {
+                new(Create, address, 0x10, Event, 100),
+                new(Create, address, 0x24, Event, 200),
+                new(Duplicate, address, 0x24, Event, 200, TargetProcess: 300, TargetHandle: 0x88),
+                new(Create, address + 8, 0x30, File, 100),
+            }),
+            .. addresses.SelectMany(address => new ObjectHandleRecord[]
+            {
+                new(Close, address, 0x10, Event, 100),
+                new(Close, address, 0x24, Event, 200),
+                new(Close, address, 0x88, Event, 300),
+                new(Close, address + 8, 0x30, File, 100),
+            }),
+        ];
+        var gate = new SynchronizationHandleGate(Synchronization);
+        Assert.Equal(0, Read(gate, records));
+        Assert.Equal((0, 0), (gate.Following, gate.Holding));
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        int untracked = Read(gate, records);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Equal((0, 0L), (untracked, allocated));
+        Assert.Equal((0, 0), (gate.Following, gate.Holding));
+
+        // How many records the gate did not follow, counted without an assertion's allocations among the gate's.
+        static int Read(SynchronizationHandleGate gate, ObjectHandleRecord[] records)
+        {
+            int untracked = 0;
+            foreach (ObjectHandleRecord record in records)
+            {
+                if (gate.Read(in record).Outcome == HandleGateOutcome.Untracked)
+                {
+                    untracked++;
+                }
+            }
+
+            return untracked;
+        }
     }
 
     [Fact(DisplayName = "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart")]

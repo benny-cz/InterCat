@@ -176,7 +176,7 @@ public sealed class SyncObjectLeadTests
         Assert.All(taken.Keys, row => Assert.Contains(row.AwakenedWait, PairedWaits));
     }
 
-    [Fact(DisplayName = "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build")]
+    [Fact(DisplayName = "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build")]
     public void NamedObjectsHaveALeadAndNoTier()
     {
         WindowsSourceDefinition handles = WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelObjectHandlesSourceId)!;
@@ -186,7 +186,10 @@ public sealed class SyncObjectLeadTests
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != handles.SourceId), source => Assert.Empty(source.KernelGroupMasks));
         Assert.Equal([Mechanism.Synchronization], handles.Mechanisms);
         Assert.Equal((SourceContractStatus.Experimental, false), (handles.ContractStatus, handles.SupportsCaptureSideProcessFilter));
-        Assert.Empty(handles.AdmittedEvents);
+        Assert.Equal([SynchronizationHandleGate.Create, SynchronizationHandleGate.Close, SynchronizationHandleGate.Duplicate,
+            SynchronizationHandleGate.TypeRundown, SynchronizationHandleGate.Rundown], handles.AdmittedEvents.Select(intent => intent.Opcode!.Value).Order());
+        Assert.All(handles.AdmittedEvents, intent => Assert.Equal(Mechanism.Synchronization, intent.Mechanism));
+        Assert.Contains(handles.Notes, note => note.Contains("synchronization handle gate (ADR-083)", StringComparison.Ordinal));
         Assert.Contains("PERF_OB_HANDLE", handles.FilteringNotes, StringComparison.Ordinal);
 
         // Its cost is measured, Low in processor time, with the throughput regression its notes state beside the class.

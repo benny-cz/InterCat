@@ -107,9 +107,12 @@ public sealed class CallbackPathTests
         Assert.Contains("InterCat.Capture.Windows.OwnedCaptureSession.Enqueue", walk.Reached);
         Assert.Contains("InterCat.Capture.Recording.CaptureCoverageTally.Admitted", walk.Reached);
 
-        // And a gated source's gate, whose sockets are held to its bound (ADR-074).
+        // And a gated source's gate, whose sockets are held to its bound (ADR-074), and the handle group's, whose handles
+        // are (ADR-083).
         Assert.Contains("InterCat.Capture.Windows.AfdRecordGate.Read", walk.Reached);
         Assert.Contains("InterCat.Capture.Windows.UnixSocketGate.Read", walk.Reached);
+        Assert.Contains("InterCat.Capture.Windows.ObjectHandleRecordGate.Read", walk.Reached);
+        Assert.Contains("InterCat.Capture.Windows.SynchronizationHandleGate.Read", walk.Reached);
         Assert.Contains("InterCat.Capture.Recording.CaptureCoverageTally.Gated", walk.Reached);
         return walk;
     }

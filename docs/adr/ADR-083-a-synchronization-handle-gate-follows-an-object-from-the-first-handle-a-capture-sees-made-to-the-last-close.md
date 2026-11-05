@@ -1,6 +1,7 @@
 # ADR-083: A synchronization handle gate follows an object from the first handle a capture sees made to the last close
 
-- Status: accepted for M6's named synchronization objects work package; no profile compiles the gate yet
+- Status: accepted for M6's named synchronization objects work package; since revision 936 the handle group's events
+  admit through the gate (its addendum), and no profile requests the group yet
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-073, ADR-082, plan M6, §4.2, R22, P7, FX-SYNC-001, `bench/results/sync-objects-types-20261105T053215Z`
@@ -49,3 +50,38 @@ as the session's type rundown at its stop does (ADR-082's fourth addendum).
   before, another type, the bound - and on FX-SYNC-001's ledger, read through it as it was delivered: three objects, each
   created by the creator, opened by the opener and closed by both, numbered apart. A test holds the build's numbers to the
   probe's measurement, and a build none measured to no gate. Ten mutations of the gate are caught.
+
+## Addendum: what the handle group admits through the gate (revision 936)
+
+The fifth decision left the group's admitted events and fields to wire. The handle group now admits five events of the
+object manager's class at version 2, each compiled from the layout the machine registers for it and told apart by its
+opcode, all of them synchronization records of the resource layer:
+
+- a handle's creation (opcode 32), an open: its object, its handle and its type;
+- its close (33): those and the object's name, which only a close and the stop's rundown carry;
+- a duplication (34), an open in its target process: its object, the source's handle, the handle it made, that process
+  as the record's other end, and the type;
+- the type rundown at the stop (37), an inventory: a type's number and name, by which a capture holds the build's
+  measured numbers to its session;
+- the handle rundown at the stop (39), an inventory: a handle still open, the process holding it as its record names it,
+  the handle, the type and the name.
+
+Four source fields name what fits no observation column: `SynchronizationObjectNumber`, `ObjectTypeNumber`, `HandleValue`
+and `PeerHandleValue`, the last a duplication's handle in its target. The object's field is admitted only for the gate to
+read, and the gate writes the object's number over it, so no admitted record keeps an address (R22). The gate admits
+only the synchronization types' records and the type rundown's entries of theirs, and omits every other as of no object
+it follows, or beyond its bound. A build with no measured type numbers refuses the source, as does a schema without a
+field the gate decides by: a creation's handle, a duplication's target, a rundown's process (R3). A classic class's
+deciding fields are now checked per opcode, its events sharing event id 0. No profile requests the group yet.
+
+Wired to its source, the gate reads its records on the capture's callback, which allocates nothing per record (P12), where
+it had made a set of handles on the heap for each object it began. A followed object is now a value in one table, with how
+many of the handles the gate holds are its, and each handle it holds an entry in another, keyed by the object's address,
+the process and the handle. The fourth decision's bound holds the handles too: the gate holds at most 65,536, and so
+follows at most as many objects. A further handle of a followed object beyond it is its object's but is not held, so the
+object may end before that handle's close, which is then numbered alone: one object split in two, never two joined.
+
+Tests hold the layout TDH describes on this machine, the compiled slots, the gate's admissions and omissions on compiled
+records, and the refusals; the gate's callback path reached and allocating only where reviewed; and a thousand objects
+begun and ended again through warmed tables allocating nothing. Nine mutations of the admission and six of the gate's
+tables are caught.

@@ -20,8 +20,16 @@ internal static class RecordGates
     public static IRecordGate?[] For(EventAdmissionTable table)
     {
         ArgumentNullException.ThrowIfNull(table);
-        return [.. table.SourceIds.Select(sourceId => sourceId == WindowsSourceCatalog.WinsockAfdSourceId ? new AfdRecordGate() : (IRecordGate?)null)];
+        return [.. table.SourceIds.Select(sourceId => sourceId switch
+        {
+            WindowsSourceCatalog.WinsockAfdSourceId => new AfdRecordGate(),
+            WindowsSourceCatalog.KernelObjectHandlesSourceId => new ObjectHandleRecordGate(SynchronizationHandleGate.MeasuredTypes(ThisBuild) ?? []),
+            _ => (IRecordGate?)null,
+        })];
     }
+
+    // This machine's build, by which the handle group's type numbers were measured (ADR-082's fourth addendum).
+    private static string ThisBuild => CapabilityInventoryProbe.DescribeEnvironment().BuildId;
 
     /// <summary>
     /// Why a source's records could not be decided by the fields its compiled plan admits, or null when they can. A gated
@@ -32,10 +40,18 @@ internal static class RecordGates
     /// COM call whose stop carries no trace number pairs with nothing, and one whose start names no other end reads as one
     /// whose ends disagree (ADR-079's fifth addendum). Either source is refused rather than admitted.
     /// </summary>
-    public static string? Undecidable(SourceAdmissionPlan plan)
+    public static string? Undecidable(SourceAdmissionPlan plan) => Undecidable(plan, ThisBuild);
+
+    /// <summary>As <see cref="Undecidable(SourceAdmissionPlan)"/>, on a named build: the handle gate decides by its numbers.</summary>
+    internal static string? Undecidable(SourceAdmissionPlan plan, string buildId)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        return plan.SourceId == WindowsSourceCatalog.WinsockAfdSourceId ? AfdRecordGate.Undecidable(plan) : WithoutDecidingField(plan);
+        return plan.SourceId switch
+        {
+            WindowsSourceCatalog.WinsockAfdSourceId => AfdRecordGate.Undecidable(plan),
+            WindowsSourceCatalog.KernelObjectHandlesSourceId => ObjectHandleRecordGate.Undecidable(buildId) ?? WithoutDecidingField(plan),
+            _ => WithoutDecidingField(plan),
+        };
     }
 
     /// <summary>
@@ -52,7 +68,8 @@ internal static class RecordGates
 
         foreach (AdmittedEventIntent intent in definition.AdmittedEvents)
         {
-            AdmittedEventPlan[] descriptors = [.. plan.Events.Where(descriptor => descriptor.EventId == intent.EventId)];
+            // A classic class's events share event id 0 and are told apart by their opcode, as a manifest's by its id.
+            AdmittedEventPlan[] descriptors = [.. plan.Events.Where(descriptor => descriptor.EventId == intent.EventId && descriptor.Opcode == intent.Opcode)];
             foreach (AdmittedFieldIntent field in intent.Fields.Where(field => field.Decides is not null))
             {
                 AdmittedEventPlan? without = descriptors.Length == 0
@@ -64,8 +81,9 @@ internal static class RecordGates
                     continue;
                 }
 
-                string at = string.Create(System.Globalization.CultureInfo.InvariantCulture,
-                    $"event {intent.EventId} v{without?.Version ?? intent.Version}");
+                string at = intent.Opcode is { } opcode
+                    ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"opcode {opcode} v{without?.Version ?? intent.Version}")
+                    : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"event {intent.EventId} v{without?.Version ?? intent.Version}");
                 return $"This machine's schema admits no {field.FieldName} for {at} ({intent.Name}), by which {field.Decides}. "
                     + "Without it the rule would decide by a value never observed, so the source is refused rather than admitted (R3).";
             }
@@ -180,6 +198,88 @@ internal sealed class AfdRecordGate(int capacity = UnixSocketGate.DefaultCapacit
             Find(plan, "ProcessId"), Find(plan, "Process"));
 
         public static int Find(AdmittedEventPlan plan, string field)
+        {
+            for (int index = 0; index < plan.Slots.Count; index++)
+            {
+                if (string.Equals(plan.Slots[index].FieldName, field, StringComparison.Ordinal)) return index;
+            }
+
+            return -1;
+        }
+    }
+}
+
+/// <summary>
+/// The object manager handle group's gate: reads its handle records through <see cref="SynchronizationHandleGate"/> and writes
+/// into an admitted record, in place of the object's kernel address, the object's number in the capture, so no record keeps
+/// an address (ADR-083). A handle is the record's own process's - the header's - but at the stop's rundown, which names it in
+/// its record, and a duplication's is made in its target process. The type rundown at the stop admits the synchronization
+/// types' own entries, by which a capture holds the build's measured numbers to its session.
+/// </summary>
+internal sealed class ObjectHandleRecordGate(IReadOnlyList<int> types, int capacity = SynchronizationHandleGate.DefaultCapacity) : IRecordGate
+{
+    private readonly SynchronizationHandleGate gate = new(types, capacity);
+    private readonly HashSet<int> synchronization = [.. types];
+    private readonly Dictionary<AdmittedEventPlan, Slots> slots = new(ReferenceEqualityComparer.Instance);
+
+    public GateOmission? Read(ref AdmittedEvent admitted, AdmittedEventPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (!slots.TryGetValue(plan, out Slots at))
+        {
+            slots[plan] = at = Slots.Of(plan);
+        }
+
+        int type = (int)Value(in admitted, at.ObjectType);
+        if (admitted.Opcode == SynchronizationHandleGate.TypeRundown)
+        {
+            return synchronization.Contains(type) ? null : GateOmission.NoFollowedResource;
+        }
+
+        bool duplicate = admitted.Opcode == SynchronizationHandleGate.Duplicate;
+        var record = new ObjectHandleRecord(
+            admitted.Opcode,
+            (ulong)Value(in admitted, at.Object),
+            (uint)Value(in admitted, duplicate ? at.SourceHandle : at.Handle),
+            type,
+            admitted.Opcode == SynchronizationHandleGate.Rundown ? (int)Value(in admitted, at.ProcessId) : admitted.HeaderProcessId,
+            duplicate ? (int)Value(in admitted, at.TargetProcessId) : 0,
+            duplicate ? (uint)Value(in admitted, at.TargetHandle) : 0);
+        (HandleGateOutcome outcome, SynchronizationObjectIncarnation? incarnation) = gate.Read(in record);
+        switch (outcome)
+        {
+            case HandleGateOutcome.Admitted:
+                if (at.Object >= 0) admitted.SetSlot(at.Object, incarnation!.Value.Number);
+                return null;
+            case HandleGateOutcome.Untracked:
+                return GateOmission.BeyondBound;
+            default:
+                return GateOmission.NoFollowedResource;
+        }
+    }
+
+    /// <summary>
+    /// Why the gate could not decide its records on <paramref name="buildId"/>: no type numbers measured for it, by which it
+    /// tells a synchronization object's handle; null when the build's are measured. A gate deciding by numbers never
+    /// measured would admit another type's handles as an event's, so the source is refused instead.
+    /// </summary>
+    internal static string? Undecidable(string buildId) =>
+        SynchronizationHandleGate.MeasuredTypes(buildId) is null
+            ? $"No synchronization type numbers are measured for build {buildId}, by which the source's gate tells an event's, a "
+                + "mutant's or a semaphore's handle from another type's. Decided by numbers never measured, it would admit another "
+                + "type's handles as theirs, so the source is refused rather than admitted (R3)."
+            : null;
+
+    private static long Value(in AdmittedEvent admitted, int slot) => slot >= 0 && admitted.TryGetSlot(slot, out long value) ? value : 0;
+
+    /// <summary>Where a descriptor's admitted fields the gate reads and writes are, by name; -1 for one it does not admit.</summary>
+    private readonly record struct Slots(int Object, int Handle, int ObjectType, int SourceHandle, int TargetHandle, int TargetProcessId, int ProcessId)
+    {
+        public static Slots Of(AdmittedEventPlan plan) => new(
+            Find(plan, "Object"), Find(plan, "Handle"), Find(plan, "ObjectType"), Find(plan, "SourceHandle"), Find(plan, "TargetHandle"),
+            Find(plan, "TargetProcessId"), Find(plan, "ProcessId"));
+
+        private static int Find(AdmittedEventPlan plan, string field)
         {
             for (int index = 0; index < plan.Slots.Count; index++)
             {

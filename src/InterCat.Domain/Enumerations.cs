@@ -195,6 +195,28 @@ public enum SourceField : ushort
     /// grouping key, never a call identity.
     /// </summary>
     ComMethodNumber = 21,
+
+    /// <summary>
+    /// A synchronization object's number in its capture, as the synchronization handle gate numbers it from the first handle
+    /// the capture saw made at its address to the close of the last (ADR-083): never its kernel address, which the kernel
+    /// reuses once the object is gone (R22).
+    /// </summary>
+    SynchronizationObjectNumber = 22,
+
+    /// <summary>
+    /// An object's type number, as the object manager numbers its types on one build - Event's, Mutant's and Semaphore's
+    /// measured for the build (ADR-082) - never a type's identity across builds.
+    /// </summary>
+    ObjectTypeNumber = 23,
+
+    /// <summary>
+    /// A handle's value within the process holding it: reused once the handle closes, so it names one handle only in its
+    /// process and between its creation and its close (R22).
+    /// </summary>
+    HandleValue = 24,
+
+    /// <summary>The handle a duplication made in its target process, by its value there, as <see cref="HandleValue"/> is named.</summary>
+    PeerHandleValue = 25,
 }
 
 /// <summary><c>EN-TimeScope</c> (section 23): the interval a result is scoped to.</summary>
