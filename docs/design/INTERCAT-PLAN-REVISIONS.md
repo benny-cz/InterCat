@@ -872,6 +872,7 @@ Revision 945 measures FX-SYNC-001 through the product (ADR-084's addendum): four
 Revision 946 makes one number one object (ADR-084's second addendum): a number the closes of two truth objects name is neither's, so neither is discovered and their opens and closes bind to no object of their own.
 Revision 947 adds FX-SYNC-003 (ADR-084's third addendum): named objects made and ended one generation after another, recorded through the product four times, every object a number of its own while the kernel made 27 at an address an earlier generation's object held - the mechanism's second instance and lifetime fixture.
 Revision 948 adds FX-SYNC-004 (ADR-084's fourth addendum): named objects whose handles were made before a capture began, each close numbered alone and none joined or discovered while a control inside the same capture is whole - the mechanism's ambiguity case.
+Revision 949 has a capture's compilation refuse the handle group where its gate could not decide its records (ADR-083's sixth addendum): on a build with no measured type numbers, or a layout without a field the gate decides by, the synchronization objects profile does not start, and icat capabilities says its schema is unknown.
 
 ## Revisions, a paragraph each, in order
 
@@ -4050,3 +4051,13 @@ synchronization record and closed after it, and the gate, meeting each only at i
 six closes naming a held object carries a number no other record does, so no object is one number, none is discovered
 and no two processes' handles are joined by its name. The control was whole each time. A test checks the first run's
 order of events and its two ledgers against their truth; the fixture assigns no tier.
+
+Revision 949 closes the named synchronization objects package's schema-failure case (ADR-083's sixth addendum).
+`RecordGates.Undecidable` says why a gate could not decide its records - for the handle group, no type numbers measured
+for the build, or a layout without a field it decides by - but a capture's compilation asked it only of a manifest
+provider, so the group, a classic class's, compiled on any build, and where no numbers were measured its gate admitted
+nothing while the profile started. `CapabilityInventoryProbe` now asks it of a classic kernel group too, for the build
+the capture is compiled for, and refuses the group with the gate's reason; `CaptureProfileCompiler` compiles a profile's
+sources for the build of its environment, so the synchronization objects profile does not start, the group blocking with
+that reason; and `icat capabilities` says the group's schema is unknown. A test holds the measured layout and build, an
+unmeasured build and a layout whose creation carries no handle; four mutations are caught.

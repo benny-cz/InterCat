@@ -154,8 +154,108 @@ public sealed class ObjectHandleAdmissionTests
         Assert.Contains("admits no Handle for opcode 32 v2 (Handle created)", RecordGates.Undecidable(without, "10.0.26220.0-x64"), StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R3: a capture's compilation refuses the handle group where its gate could not decide its records - on a build with no measured type numbers, or a layout without a field the gate decides by - so the synchronization objects profile does not start, and icat capabilities says its schema is unknown")]
+    public void AnUndecidableHandleGroupDoesNotStart()
+    {
+        const string Measured = "10.0.26220.0-x64";
+        const string Unmeasured = "10.0.19045.0-x64";
+        string[] group = [WindowsSourceCatalog.KernelObjectHandlesSourceId];
+        var whole = new CapabilityInventoryProbe(new ClassMetadata(Layout()));
+        var withoutHandle = new CapabilityInventoryProbe(new ClassMetadata(Layout(withoutCreationsHandle: true)));
+
+        // On its measured build with the whole layout the group compiles, the profile starts, and the report keeps it a
+        // kernel group the provider registry cannot confirm.
+        SourcePlanCompilation compiled = whole.CompilePlanSetOn(Measured, group);
+        Assert.Single(compiled.Plans);
+        Assert.DoesNotContain(compiled.Issues, issue => issue.Severity == SourcePlanIssueSeverity.Refusal);
+        Assert.True(SyncObjects(compiled).CanStart);
+        Assert.Equal(CapabilityState.Unsupported, Reported(whole, Measured).State);
+
+        foreach ((CapabilityInventoryProbe inventory, string build, string expected) in new (CapabilityInventoryProbe, string, string)[]
+        {
+            (whole, Unmeasured, "No synchronization type numbers are measured for build 10.0.19045.0-x64"),
+            (withoutHandle, Measured, "admits no Handle for opcode 32 v2 (Handle created)"),
+        })
+        {
+            // A capture's compilation refuses the group with the gate's reason, and compiles no plan of it.
+            SourcePlanCompilation refused = inventory.CompilePlanSetOn(build, group);
+            Assert.Empty(refused.Plans);
+            SourcePlanIssue refusal = Assert.Single(refused.Issues, issue => issue.Severity == SourcePlanIssueSeverity.Refusal);
+            Assert.Contains(expected, refusal.Reason, StringComparison.Ordinal);
+
+            // So the synchronization objects profile does not start, the group blocking with that reason, rather than start
+            // and follow no object.
+            EffectiveCapturePlan profile = SyncObjects(refused);
+            Assert.False(profile.CanStart);
+            ProfileSourceDecision decision = Assert.Single(profile.SourceDecisions, item => item.SourceId == WindowsSourceCatalog.KernelObjectHandlesSourceId);
+            Assert.Equal((ProfileSourceDecisionState.Blocking, true, refusal.Reason), (decision.State, decision.Required, decision.Reason));
+
+            // And the capability report says its schema is unknown, for that reason.
+            SourceCapability reported = Reported(inventory, build);
+            Assert.Equal((CapabilityState.SchemaUnknown, refusal.Reason), (reported.State, reported.UnavailableReason));
+        }
+
+        // A profile compiled against the machine's inventory compiles its sources for the build it is compiled for.
+        EffectiveCapturePlan unmeasured = CaptureProfileCompiler.Compile(new(CaptureProfileKind.SyncObjects), whole, Environment(Unmeasured));
+        Assert.False(unmeasured.CanStart);
+        Assert.Contains(unmeasured.SourceDecisions, item => item.SourceId == WindowsSourceCatalog.KernelObjectHandlesSourceId
+            && item.Reason.Contains("No synchronization type numbers are measured for build 10.0.19045.0-x64", StringComparison.Ordinal));
+    }
+
+    /// <summary>The synchronization objects profile compiled with lifecycle beside the handle group's compilation: it asks for both.</summary>
+    private static EffectiveCapturePlan SyncObjects(SourcePlanCompilation handles)
+    {
+        Guid provider = Guid.Parse("22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716");
+        var lifecycle = new SourceAdmissionPlan
+        {
+            SourceId = WindowsSourceCatalog.KernelProcessSourceId,
+            ProviderGuid = provider,
+            SourceIndex = 0,
+            Events =
+            [
+                new AdmittedEventPlan
+                {
+                    SourceIndex = 0,
+                    ProviderGuid = provider,
+                    EventId = 1,
+                    Version = 0,
+                    Name = "fixture",
+                    Mechanism = Mechanism.ProcessLifecycle,
+                    Layer = ObservationLayer.Lifecycle,
+                    Kind = ObservationKind.Create,
+                    Direction = Direction.DirectionNotApplicable,
+                    MinimumBodyLength = 0,
+                    PointerSize = 8,
+                    SchemaFingerprint = "sha256:fixture-lifecycle",
+                    BodyPolicy = CaptureBodyAdmissionPolicies.MetadataOnly,
+                    Slots = [],
+                    FieldReport = [],
+                },
+            ],
+            Diagnostics = [],
+        };
+        return CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.SyncObjects),
+            new SourcePlanCompilation(
+                [lifecycle, .. handles.Plans.Select(plan => plan with
+                {
+                    SourceIndex = 1,
+                    Events = [.. plan.Events.Select(descriptor => descriptor with { SourceIndex = 1 })],
+                })],
+                handles.Issues));
+    }
+
+    private static SourceCapability Reported(CapabilityInventoryProbe inventory, string build) =>
+        inventory.Probe(Environment(build)).Sources.Single(source => source.SourceId == WindowsSourceCatalog.KernelObjectHandlesSourceId);
+
+    private static ProbeEnvironment Environment(string build) => CapabilityInventoryProbe.DescribeEnvironment(isElevated: false) with { BuildId = build };
+
     /// <summary>The handle group compiled from the layout this build registers for its class (§4.2, revision 928).</summary>
-    private static SourceAdmissionPlan Compiled(bool withoutCreationsHandle = false)
+    private static SourceAdmissionPlan Compiled(bool withoutCreationsHandle = false) =>
+        AdmissionPlanCompiler.Compile(WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelObjectHandlesSourceId)!, Layout(withoutCreationsHandle), 0);
+
+    /// <summary>The layout this build registers for the object manager's class, or one without a creation's handle.</summary>
+    private static ProviderSchema Layout(bool withoutCreationsHandle = false)
     {
         ProviderSchemaField Field(string name, string type) => ProviderSchemaField.Create(name, type);
         ProviderSchemaEvent Event(int opcode, params ProviderSchemaField[] fields) =>
@@ -171,9 +271,25 @@ public sealed class ObjectHandleAdmissionTests
             Event(Rundown, Field("Object", "win:Pointer"), Field("ProcessId", "win:UInt32"), Field("Handle", "win:UInt32"),
                 Field("ObjectType", "win:UInt16"), Field("ObjectName", "win:UnicodeString")),
         ];
-        var schema = new ProviderSchema("Object manager", WindowsSourceCatalog.ObjectManagerEventClass,
+        return new ProviderSchema("Object manager", WindowsSourceCatalog.ObjectManagerEventClass,
             TdhClassicSchemaReader.Fingerprint(WindowsSourceCatalog.ObjectManagerEventClass, 2, 8, events), new Dictionary<string, ulong>(), events);
-        return AdmissionPlanCompiler.Compile(WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelObjectHandlesSourceId)!, schema, 0);
+    }
+
+    /// <summary>A machine that registers the object manager's class with the layout given, and no manifest provider.</summary>
+    private sealed class ClassMetadata(ProviderSchema layout) : IEtwMetadataSource
+    {
+        public bool IsAvailable => true;
+
+        public string? UnavailableReason => null;
+
+        public RegisteredProvider? TryResolveProvider(string providerName) => null;
+
+        public int CountPublishedProviders() => 0;
+
+        public ManifestReadResult TryReadManifest(Guid providerGuid) => ManifestReadResult.Failure("not registered in this test");
+
+        public ProviderSchema? TryReadClassic(Guid classGuid, string className, int version, IReadOnlyList<int> opcodes) =>
+            classGuid == WindowsSourceCatalog.ObjectManagerEventClass ? layout : null;
     }
 
     private static AdmittedEventPlan Plan(SourceAdmissionPlan plan, int opcode) => plan.Events.Single(descriptor => descriptor.Opcode == opcode);

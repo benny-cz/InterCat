@@ -6,7 +6,8 @@
   process that raised them, as `process-binding-v6` (its third addendum); since revision 940 the opt-in synchronization
   objects profile requests the group, stating its cost (its fourth addendum); its duplication, compiled at version 2,
   admits no record on this build, which raises every duplication at version 3 (ADR-082's sixth addendum); since revision
-  943 the profile's cost is measured through the product, High on a handle-heavy workload (its fifth addendum)
+  943 the profile's cost is measured through the product, High on a handle-heavy workload (its fifth addendum); since
+  revision 949 a capture's compilation refuses the group where its gate could not decide its records (its sixth addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-073, ADR-082, plan M6, §4.2, R22, P7, FX-SYNC-001, `bench/results/sync-objects-types-20261105T053215Z`
@@ -165,3 +166,21 @@ its records are the machine's every handle's, which a capture reads, gates and m
 is four points. The profile now states High and both series, the longer its evidence; it stays opt-in, and Explore never
 admits the source. Tests hold both series to their rounds, their loss and their class, and the statement to their
 medians; four alterations of the evidence and two of the statement are caught.
+
+## Addendum: a capture refuses a group its gate could not decide (revision 949)
+
+The gate decides each record by the type numbers measured for the capture's build and by the fields of its descriptors,
+and `RecordGates.Undecidable` says why it could not: no numbers measured for the build, or a layout that admits no field
+the gate decides by. But a capture's compilation asked it only of a manifest provider. The handle group, a classic
+class's, compiled from whatever layout the machine registered, and on a build with no measured numbers its gate was built
+with none: the synchronization objects profile would have started and admitted no synchronization record, saying it saw
+none - and the profile's own test held a refusal no compilation produced.
+
+- `CapabilityInventoryProbe` now asks it of a classic kernel group too, for the build the capture is compiled for, and
+  refuses the group with the gate's reason, compiling no plan of it; `CaptureProfileCompiler` compiles a profile's sources
+  for the build of the environment it is given. So the profile does not start, the group blocking with that reason.
+- `icat capabilities` says such a group's schema is unknown, for that reason, where it otherwise keeps it a kernel group
+  the provider registry cannot confirm.
+- A test holds it on the measured layout and build, which compile and start, on a build with no measured numbers and on a
+  layout whose creation carries no handle, both refused; four mutations are caught. It is the named synchronization
+  objects package's schema-failure case.

@@ -416,10 +416,13 @@ public static class CaptureProfileCompiler
         TimeProvider? clock = null)
     {
         ArgumentNullException.ThrowIfNull(inventory);
+
+        // The sources compile for the build the plan is for: a gate decides by the numbers measured for it (ADR-083).
+        ProbeEnvironment described = environment ?? CapabilityInventoryProbe.DescribeEnvironment();
         return CompileCore(
             request,
-            (sourceIds, policy) => inventory.CompilePlanSet(sourceIds, policy),
-            environment ?? CapabilityInventoryProbe.DescribeEnvironment(),
+            (sourceIds, policy) => inventory.CompilePlanSetOn(described.BuildId, sourceIds, policy),
+            described,
             (clock ?? TimeProvider.System).GetUtcNow());
     }
 

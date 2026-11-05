@@ -102,7 +102,7 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
         foreach (WindowsSourceDefinition definition in WindowsSourceCatalog.All)
         {
             evidenceById.TryGetValue(definition.SourceId, out SourceRuntimeEvidence? evidence);
-            sources.Add(ProbeSource(definition, sourceIndex++, evidence, diagnostics));
+            sources.Add(ProbeSource(definition, sourceIndex++, evidence, diagnostics, environment.BuildId));
         }
 
         return new()
@@ -138,8 +138,18 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
     /// </summary>
     public SourcePlanCompilation CompilePlanSet(
         IReadOnlyList<string> sourceIds,
+        CompiledBodyAdmissionPolicy? bodyPolicy = null) => CompilePlanSetOn(DescribeEnvironment().BuildId, sourceIds, bodyPolicy);
+
+    /// <summary>
+    /// As <see cref="CompilePlanSet"/>, on the build <paramref name="buildId"/> names: a gate decides by numbers measured for its
+    /// build, so a source whose gate has none measured there is refused, as one whose layout lacks a field it decides by is.
+    /// </summary>
+    internal SourcePlanCompilation CompilePlanSetOn(
+        string buildId,
+        IReadOnlyList<string> sourceIds,
         CompiledBodyAdmissionPolicy? bodyPolicy = null)
     {
+        ArgumentException.ThrowIfNullOrEmpty(buildId);
         ArgumentNullException.ThrowIfNull(sourceIds);
 
         var plans = new List<SourceAdmissionPlan>(sourceIds.Count);
@@ -178,7 +188,17 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
                     continue;
                 }
 
-                SourceAdmissionPlan classicPlan = AdmissionPlanCompiler.Compile(definition, classic, index++, bodyPolicy: sourcePolicy);
+                SourceAdmissionPlan classicPlan = AdmissionPlanCompiler.Compile(definition, classic, index, bodyPolicy: sourcePolicy);
+
+                // A gated kernel group whose gate could not decide its records - by numbers never measured for this build, or by
+                // a field this layout does not admit - is refused, never started to follow nothing and say it saw none (R3).
+                if (RecordGates.Undecidable(classicPlan, buildId) is { } undecidableClass)
+                {
+                    issues.Add(new(sourceId, SourcePlanIssueSeverity.Refusal, undecidableClass));
+                    continue;
+                }
+
+                index++;
                 plans.Add(classicPlan);
                 foreach (string diagnostic in classicPlan.Diagnostics)
                 {
@@ -255,7 +275,7 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
 
             // A gated source whose gate could not decide its records by the fields this schema admits is refused, never
             // admitted to read what it decides by as zero (R3, ADR-074).
-            if (RecordGates.Undecidable(plan) is { } undecidable)
+            if (RecordGates.Undecidable(plan, buildId) is { } undecidable)
             {
                 issues.Add(new(sourceId, SourcePlanIssueSeverity.Refusal, undecidable));
                 continue;
@@ -272,11 +292,30 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
         return new(plans, issues);
     }
 
+    /// <summary>
+    /// Why a kernel group of a classic class could not have its records decided on <paramref name="buildId"/>, read from the
+    /// layout the machine registers as a capture compiles it; null where they can, where it has no class, or where the machine
+    /// registers no layout, which a capture refuses for that reason instead.
+    /// </summary>
+    private string? UndecidableClass(WindowsSourceDefinition definition, int sourceIndex, string buildId)
+    {
+        if (definition.ClassicEventClass is not { } classGuid || !metadata.IsAvailable)
+        {
+            return null;
+        }
+
+        int[] opcodes = [.. definition.AdmittedEvents.Select(intent => intent.Opcode).OfType<int>().Distinct()];
+        int[] versions = [.. definition.AdmittedEvents.Select(intent => intent.Version).Distinct()];
+        ProviderSchema? classic = versions.Length == 1 ? metadata.TryReadClassic(classGuid, definition.DisplayName, versions[0], opcodes) : null;
+        return classic is null ? null : RecordGates.Undecidable(AdmissionPlanCompiler.Compile(definition, classic, sourceIndex), buildId);
+    }
+
     private SourceCapability ProbeSource(
         WindowsSourceDefinition definition,
         int sourceIndex,
         SourceRuntimeEvidence? evidence,
-        List<string> diagnostics)
+        List<string> diagnostics,
+        string buildId)
     {
         var checks = new List<CapabilityCheck>(4);
         RegisteredProvider? provider = null;
@@ -285,7 +324,20 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
         string? unavailableReason = null;
         CapabilityState state;
 
-        if (definition.Kind != SourceKind.ManifestProvider)
+        if (definition.Kind != SourceKind.ManifestProvider && UndecidableClass(definition, sourceIndex, buildId) is { } undecidableClass)
+        {
+            // A gated kernel group whose gate could not decide its records on this build - its numbers never measured here, or
+            // its layout without a field the gate decides by - leaves its schema unknown to it, as a capture refuses it (R3).
+            unavailableReason = undecidableClass;
+            checks.Add(new(
+                CapabilityCheckKind.Registration,
+                CheckOutcome.NotAttempted,
+                "Registration is inapplicable to a kernel flag group.",
+                unavailableReason));
+            state = CapabilityState.SchemaUnknown;
+            diagnostics.Add($"{definition.SourceId}: {undecidableClass}");
+        }
+        else if (definition.Kind != SourceKind.ManifestProvider)
         {
             unavailableReason =
                 "This source is not a manifest provider, so the provider registry cannot confirm it. "
