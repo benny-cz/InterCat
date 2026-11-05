@@ -867,6 +867,7 @@ Revision 940 adds the opt-in synchronization objects profile, `sync-objects` (AD
 Revision 941 gives a classic class's descriptors laid out apart their class's fingerprint, so a journal's one schema entry for the class holds them and the synchronization objects profile records through the product (ADR-035's addendum); duplications, raised at a version no registered layout describes, are counted undecodable.
 Revision 942 measures FX-SYNC-002 again (ADR-082's sixth addendum): every duplication is raised at version 3, whose fourth field names the process it was duplicated from - correcting revision 937's reading by the registered version 2 layout, which names none - and no layout the machine registers describes it, so a capture counts it undecodable.
 Revision 943 measures the synchronization objects profile through the product (ADR-083's fifth addendum): on a handle-heavy workload a median 11.8 CPU pp and the workload 18.4% slower, nothing dropped or lost, so the profile states High, past both of §12's targets.
+Revision 944 adds `SyncObjectCoverageEvaluator` (ADR-084): a named synchronization object is the one number its closes name, discovered with its lifetime and bound to exactly the processes that held it, its measurement claiming neither bytes nor operations, so topology at most; no capture is measured by it yet.
 
 ## Revisions, a paragraph each, in order
 
@@ -3995,3 +3996,12 @@ own process 4.2, and the workload ran 18.4% slower, nothing dropped, lost or bey
 it added none measurable. A first series of 4,096 times each, on a machine already 43% busy, measured 6.2 points and 14.8%
 slower. So the profile is High on a handle-heavy workload, past §12's processor target as well as its throughput one; it
 states that and both series, stays opt-in, and Explore never admits the source.
+
+Revision 944 decides how a named synchronization object is measured against a truth (ADR-084). `SyncObjectCoverageEvaluator`
+finds each object the truth logged by name as the one number of the capture's closes whose kernel name names it - a
+creation names nothing, a close the object - and two numbers make no one object. The object is discovered with its
+lifetime where that number has the creator's creation and every close the truth logged, each in its own process, and
+its members, the processes its records bind to, are exactly the truth's: a process the truth says never held it is a
+false membership and leaves it undiscovered. Its handle opens and closes are the truth's operations; a signal or a wait
+is in no record and no record carries a size, so the measurement claims neither bytes nor operations and the mechanism
+reaches topology at most. Records of other processes are scope. No capture is measured by it yet.
