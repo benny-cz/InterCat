@@ -60,6 +60,12 @@ internal static class SessionLedger
             {
                 roles[root.GetProperty("serverProcessId").GetInt32()] = "server";
             }
+
+            // FX-COM-004's second server, which the server calls while serving.
+            if (root.TryGetProperty("forwardedProcessId", out JsonElement forwarded))
+            {
+                roles[forwarded.GetInt32()] = "forwarded";
+            }
         }
 
         string Role(int? process) => process is not { } id ? string.Empty : roles.GetValueOrDefault(id, Other);

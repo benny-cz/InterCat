@@ -394,6 +394,49 @@ public sealed class ComCallCoverageEvaluatorTests
         });
     }
 
+    [Fact(DisplayName = "P7: FX-COM-004's nested calls through the product - the server calling a second server while serving each call - are calls of their own, each linked to the call that served it inside the one it is nested in, which is linked to its own, none ambiguous")]
+    public void ANestedCallIsACallOfItsOwn()
+    {
+        const long Offset = 1_000_000;
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-COM-004", "evidence");
+        TruthRecord[] truth = [.. Directory.EnumerateFiles(evidence, "truth-*.jsonl").Order(StringComparer.Ordinal).SelectMany(ReadTruth)];
+        Dictionary<string, int> processes = truth.GroupBy(record => record.Role).ToDictionary(group => group.Key, group => group.First().ProcessId);
+        Assert.Equal(["client", "forwarded", "server"], processes.Keys.Order(StringComparer.Ordinal));
+        ComCallObservation[] calls = [.. ReadLedger(Path.Combine(evidence, "calls.csv"), processes)];
+        ComCallCoverageResult result = ComCallCoverageEvaluator.Evaluate(truth, calls, Settings() with { FixtureId = "FX-COM-004" });
+
+        using JsonDocument measurement = JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "measurement.json")));
+        JsonElement stated = measurement.RootElement.GetProperty("throughTheProduct").GetProperty("runs").EnumerateArray()
+            .Single(run => run.GetProperty("run").GetString() == "nested-1").GetProperty("evaluation");
+        Assert.Equal(
+            (stated.GetProperty("truthCalls").GetInt64(), stated.GetProperty("peerAttributions").GetInt64(), stated.GetProperty("falsePeerAttributions").GetInt64(),
+                stated.GetProperty("linkedToTheirServedCall").GetInt32(), stated.GetProperty("carriersServedThroughCom").GetInt32()),
+            (result.Measurement.TruthOperations, result.Measurement.PeerAttributions, result.Measurement.FalsePeerAttributions,
+                result.LinkedToTheirServedCall, result.CarriersServedThroughCom));
+
+        // The client's 64 calls are linked to the server's, and the 64 the server made while serving them to the forwarded
+        // server's, each to the call of its own truth call and carried by an RPC call that call's server served through it.
+        ComCallTruthCoverage[] made = [.. result.Calls.Where(call => call.ClientProcessId == processes["client"]).OrderBy(call => call.CallId)];
+        ComCallTruthCoverage[] nested = [.. result.Calls.Where(call => call.ClientProcessId == processes["server"]).OrderBy(call => call.CallId)];
+        Assert.Equal((64, 64), (made.Length, nested.Length));
+        Assert.All(made, call => Assert.Equal(processes["server"], call.LinkedProcessId));
+        Assert.All(nested, call => Assert.Equal(processes["forwarded"], call.LinkedProcessId));
+        Assert.All(result.Calls, call => Assert.True(call.LinkedToItsServedCall && call.CarrierServedThroughCom, $"call {call.CallId}"));
+
+        // Each nested call lies inside the call the server served it from, both of the server's own records.
+        Assert.All(made.Zip(nested), pair =>
+        {
+            Assert.Equal(pair.First.CallId + Offset, pair.Second.CallId);
+            ComCallObservation served = calls.Single(call => call.Ordinal == pair.First.ServedCall);
+            ComCallObservation inside = calls.Single(call => call.Ordinal == pair.Second.ClientCall);
+            Assert.InRange(inside.StartUtcTicks!.Value, served.StartUtcTicks!.Value, served.StopUtcTicks!.Value);
+            Assert.InRange(inside.StopUtcTicks!.Value, inside.StartUtcTicks!.Value, served.StopUtcTicks!.Value);
+        });
+
+        // And no COM call of the three processes was left uncarried or unlinked: no served call or activity held two calls.
+        Assert.All(calls, call => Assert.Equal((ComCarrierState.Carried, ComLinkState.Linked), (call.Carrier, call.Link)));
+    }
+
     private static IEnumerable<TruthRecord> ReadTruth(string path)
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);

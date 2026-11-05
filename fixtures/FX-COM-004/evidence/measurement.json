@@ -1,0 +1,133 @@
+{
+  "fixture": "FX-COM-004",
+  "question": "Whether a COM call the server makes while serving another - a nested call, inside the one it serves, on the thread serving it - is a call of its own through the product, carried and linked to the call that served it, and the call it is nested in still linked to its own; or whether the two share an activity, so that one served call or one activity holds both and com-call-link-v1 must state them ambiguous.",
+  "answer": "A call of its own. In 3 runs through icat record under the COM calls profile, machine-wide and loss-free - 64 calls paced twice and 256 unpaced - every client call was linked to the server's call of the same truth call, and every nested call the server made while serving it was linked to the forwarded server's call of its own, each carried by one RPC call served through it: 768 of 768, none attributed to another process. Each of the three processes' COM calls was carried and linked, so COM gives a nested call an activity of its own: no served call or activity held two calls, and nothing was ambiguous.",
+  "throughTheProduct": {
+    "runs": [
+      {
+        "run": "nested-1",
+        "workload": {
+          "calls": 64,
+          "interCallDelayMilliseconds": 5,
+          "nestedCallOffset": 1000000
+        },
+        "capture": {
+          "profile": "com-calls",
+          "lossFree": true,
+          "journaledRecords": 29452,
+          "coverage": {
+            "ProcessLifecycle": "Covered",
+            "Rpc": "Covered",
+            "ComCall": "Covered"
+          }
+        },
+        "evaluation": {
+          "truthCalls": 128,
+          "clientCalls": 64,
+          "nestedCalls": 64,
+          "observed": 128,
+          "completed": 128,
+          "hresultsAgreeing": 128,
+          "carried": 128,
+          "peerAttributions": 128,
+          "falsePeerAttributions": 0,
+          "linkedToTheirServedCall": 128,
+          "carriersServedThroughCom": 128,
+          "truthCallsServed": 128,
+          "servedCallsObserved": 128,
+          "callsPairedByRank": 256,
+          "clockOffsetMilliseconds": 0.095
+        },
+        "workloadComCallsByEndAndState": {
+          "Client server: Carried, Linked": 195,
+          "Server forwarded: Carried, Linked": 195,
+          "Client client: Carried, Linked": 195,
+          "Server server: Carried, Linked": 195
+        }
+      },
+      {
+        "run": "nested-2",
+        "workload": {
+          "calls": 64,
+          "interCallDelayMilliseconds": 5,
+          "nestedCallOffset": 1000000
+        },
+        "capture": {
+          "profile": "com-calls",
+          "lossFree": true,
+          "journaledRecords": 32978,
+          "coverage": {
+            "ProcessLifecycle": "Covered",
+            "Rpc": "Covered",
+            "ComCall": "Covered"
+          }
+        },
+        "evaluation": {
+          "truthCalls": 128,
+          "clientCalls": 64,
+          "nestedCalls": 64,
+          "observed": 128,
+          "completed": 128,
+          "hresultsAgreeing": 128,
+          "carried": 128,
+          "peerAttributions": 128,
+          "falsePeerAttributions": 0,
+          "linkedToTheirServedCall": 128,
+          "carriersServedThroughCom": 128,
+          "truthCallsServed": 128,
+          "servedCallsObserved": 128,
+          "callsPairedByRank": 256,
+          "clockOffsetMilliseconds": 0.109
+        },
+        "workloadComCallsByEndAndState": {
+          "Client server: Carried, Linked": 195,
+          "Server forwarded: Carried, Linked": 195,
+          "Client client: Carried, Linked": 195,
+          "Server server: Carried, Linked": 195
+        }
+      },
+      {
+        "run": "nested-unpaced",
+        "workload": {
+          "calls": 256,
+          "interCallDelayMilliseconds": 0,
+          "nestedCallOffset": 1000000
+        },
+        "capture": {
+          "profile": "com-calls",
+          "lossFree": true,
+          "journaledRecords": 41370,
+          "coverage": {
+            "ProcessLifecycle": "Covered",
+            "Rpc": "Covered",
+            "ComCall": "Covered"
+          }
+        },
+        "evaluation": {
+          "truthCalls": 512,
+          "clientCalls": 256,
+          "nestedCalls": 256,
+          "observed": 512,
+          "completed": 512,
+          "hresultsAgreeing": 512,
+          "carried": 512,
+          "peerAttributions": 512,
+          "falsePeerAttributions": 0,
+          "linkedToTheirServedCall": 512,
+          "carriersServedThroughCom": 512,
+          "truthCallsServed": 512,
+          "servedCallsObserved": 512,
+          "callsPairedByRank": 1024,
+          "clockOffsetMilliseconds": 0.084
+        },
+        "workloadComCallsByEndAndState": {
+          "Client server: Carried, Linked": 771,
+          "Server forwarded: Carried, Linked": 771,
+          "Client client: Carried, Linked": 771,
+          "Server server: Carried, Linked": 771
+        }
+      }
+    ],
+    "ledger": "fixtures/FX-COM-004/evidence/calls.csv and its truth logs and scenario, of the first paced run: each COM call of the three processes as the product derives it, by role - the client, the server and the forwarded server - with the columns of FX-COM-001's ledger, never a PID, a thread, an activity id or another process's call."
+  }
+}

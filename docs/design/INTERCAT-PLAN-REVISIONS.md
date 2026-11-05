@@ -849,6 +849,7 @@ Revision 922 has `icat processes` count a process's COM call records, of the cal
 Revision 923 refuses a COM-Perf whose schema lacks a field `com-call-link-v1` pairs, carries or links by, so the COM calls profile does not start on such a build and says why (ADR-079's fifth addendum).
 Revision 924 adds FX-COM-003, a client following servers restarted one after another, each call linked to the server instance that served it, 1,792 of 1,792 over 56 instances (ADR-080's third addendum).
 Revision 925 has the replaced-session test wait out the shown session's reader before it deletes or replaces a file, as the store's replace does.
+Revision 926 adds FX-COM-004, nested COM calls, each linked to its own served call, 768 of 768: a nested call carries an activity of its own, so nesting makes nothing ambiguous (ADR-079's sixth addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -3779,3 +3780,13 @@ was refused with a sharing violation; one Release suite under full load failed s
 clean worktree. The product's own writer waits such a reader out (revision 865). The test's move now does too: it tries
 a delete or replace another handle refused again after each of the store's pauses, up to a second, and fails as it
 fails after. No product code changes.
+
+Revision 926 measures nested COM calls (ADR-079's sixth addendum). The COM calls contract left a nested call unmeasured:
+one a server makes while serving another, on the thread serving it. Had it shared the served call's activity, one activity
+would have been carried by two server calls and `com-call-link-v1` would have linked neither. FX-COM-004's server calls a
+second, forwarded server's object while serving each of the client's calls, numbering its nested call 1,000,000 past the
+client's. Three runs through `icat record --profile com-calls`, machine-wide and loss-free, had every client call linked to
+the server's call and every nested call to the forwarded server's, inside the call it was made from, each carried by an
+RPC call served through it, 768 of 768, and every COM call of the three processes carried and linked. COM gives a nested
+call an activity of its own, so the contract's assumption is now this measurement and nesting makes nothing ambiguous;
+the package's ambiguity case remains.

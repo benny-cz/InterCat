@@ -18,7 +18,24 @@ internal sealed record ComLoopbackOptions
 
     public const string RestartedServersScenarioId = "FX-COM-003";
 
+    public const string NestedCallsScenarioId = "FX-COM-004";
+
+    /// <summary>How far past the client's call number the server numbers the nested call it makes while serving it.</summary>
+    public const int NestedCallOffset = 1_000_000;
+
     public required string TruthDirectory { get; init; }
+
+    /// <summary>
+    /// FX-COM-004: the server, while serving each call, makes a call of its own to a second server's object - a nested call,
+    /// numbered <see cref="NestedCallOffset"/> past the client's - before it answers.
+    /// </summary>
+    public bool Nested { get; init; }
+
+    /// <summary>The moniker of the object a server calls while serving each call, the forwarded server's; null for none.</summary>
+    public string? Forward { get; init; }
+
+    /// <summary>Whether this server is FX-COM-004's second, which the first calls while serving, logging as the forwarded one.</summary>
+    public bool Forwarded { get; init; }
 
     /// <summary>
     /// When above one, FX-COM-003: that many servers one after another, each a process of its own under a moniker of its own,
@@ -35,8 +52,8 @@ internal sealed record ComLoopbackOptions
     /// </summary>
     public bool MonikersOnInput { get; init; }
 
-    /// <summary>The fixture this run is: FX-COM-003 with several servers, FX-COM-001 with one.</summary>
-    public string RunScenarioId => Servers > 1 ? RestartedServersScenarioId : ScenarioId;
+    /// <summary>The fixture this run is: FX-COM-004 with nested calls, FX-COM-003 with several servers, FX-COM-001 with one.</summary>
+    public string RunScenarioId => Nested ? NestedCallsScenarioId : Servers > 1 ? RestartedServersScenarioId : ScenarioId;
     public int Calls { get; init; } = 64;
     public int InterCallDelayMilliseconds { get; init; } = 5;
 
@@ -77,6 +94,11 @@ internal static partial class ComLoopbackScenario
         Directory.CreateDirectory(options.TruthDirectory);
         string executable = System.Environment.ProcessPath
             ?? throw new InvalidOperationException("The workload executable path could not be resolved.");
+        if (options.Nested)
+        {
+            return await RunNestedAsync(options, executable, cancellationToken).ConfigureAwait(false);
+        }
+
         if (options.Servers > 1)
         {
             return await RunRestartedServersAsync(options, executable, cancellationToken).ConfigureAwait(false);
@@ -115,6 +137,85 @@ internal static partial class ComLoopbackScenario
         await File.WriteAllTextAsync(Path.Combine(options.TruthDirectory, "scenario.json"),
             JsonSerializer.Serialize(summary, SummaryOptions), cancellationToken).ConfigureAwait(false);
         return server.ExitCode != 0 || client.ExitCode != 0 ? 1 : 0;
+    }
+
+    /// <summary>
+    /// FX-COM-004: the client calls the server, and the server, while serving each call, calls a second server's object -
+    /// a nested call made inside the one it serves. The coordinator starts the forwarded server first, gives the server its
+    /// moniker, hands the server's to the client, and stops both servers once the client is done.
+    /// </summary>
+    private static async Task<int> RunNestedAsync(ComLoopbackOptions options, string executable, CancellationToken cancellationToken)
+    {
+        using Process forwarded = StartChild(executable, "com-loopback-server", options with { Forwarded = true }, redirect: true);
+        string? forwardedMoniker = await MonikerAsync(forwarded, cancellationToken).ConfigureAwait(false);
+        if (forwardedMoniker is null)
+        {
+            await Console.Error.WriteLineAsync("The forwarded server exited before it registered its object.").ConfigureAwait(false);
+            return 1;
+        }
+
+        using Process server = StartChild(executable, "com-loopback-server", options with { Forward = forwardedMoniker }, redirect: true);
+        string? moniker = await MonikerAsync(server, cancellationToken).ConfigureAwait(false);
+        int clientExit = 1;
+        int clientId = 0;
+        if (moniker is not null)
+        {
+            using Process client = StartChild(executable, "com-loopback-client", options with { Moniker = moniker }, redirect: false);
+            await client.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            (clientExit, clientId) = (client.ExitCode, client.Id);
+        }
+        else
+        {
+            await Console.Error.WriteLineAsync("The server exited before it registered its object.").ConfigureAwait(false);
+        }
+
+        // The client is done: the server lets its proxy to the forwarded object go and exits, then the forwarded one.
+        await StopAsync(server, cancellationToken).ConfigureAwait(false);
+        await StopAsync(forwarded, cancellationToken).ConfigureAwait(false);
+        var summary = new
+        {
+            scenarioId = ComLoopbackOptions.NestedCallsScenarioId,
+            options.Calls,
+            options.InterCallDelayMilliseconds,
+            options.Burst,
+            nestedCallOffset = ComLoopbackOptions.NestedCallOffset,
+            moniker,
+            forwardedMoniker,
+            serverProcessId = server.Id,
+            forwardedProcessId = forwarded.Id,
+            clientProcessId = clientId,
+            serverExitCode = server.ExitCode,
+            forwardedExitCode = forwarded.ExitCode,
+            clientExitCode = clientExit,
+        };
+        await File.WriteAllTextAsync(Path.Combine(options.TruthDirectory, "scenario.json"),
+            JsonSerializer.Serialize(summary, SummaryOptions), cancellationToken).ConfigureAwait(false);
+        return server.ExitCode != 0 || forwarded.ExitCode != 0 || clientExit != 0 ? 1 : 0;
+    }
+
+    /// <summary>The moniker a server says it registered its object under, or null when it exited first.</summary>
+    private static async Task<string?> MonikerAsync(Process server, CancellationToken cancellationToken)
+    {
+        string? handshake = await server.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+        if (handshake is null)
+        {
+            await server.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+
+        return JsonDocument.Parse(handshake).RootElement.GetProperty("moniker").GetString();
+    }
+
+    /// <summary>Tells a server to revoke its object and waits for it to exit.</summary>
+    private static async Task StopAsync(Process server, CancellationToken cancellationToken)
+    {
+        if (!server.HasExited)
+        {
+            await server.StandardInput.WriteLineAsync("stop").ConfigureAwait(false);
+            await server.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await server.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -184,18 +285,30 @@ internal static partial class ComLoopbackScenario
     public static async Task<int> RunServerAsync(ComLoopbackOptions options, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(options.TruthDirectory);
-        (string file, string role) = options.ServerIndex is { } index
-            ? (string.Create(CultureInfo.InvariantCulture, $"truth-server-{index:D2}.jsonl"), string.Create(CultureInfo.InvariantCulture, $"server-{index:D2}"))
-            : ("truth-server.jsonl", "server");
+        (string file, string role) = options switch
+        {
+            { ServerIndex: { } index } =>
+                (string.Create(CultureInfo.InvariantCulture, $"truth-server-{index:D2}.jsonl"), string.Create(CultureInfo.InvariantCulture, $"server-{index:D2}")),
+            { Forwarded: true } => ("truth-forwarded.jsonl", "forwarded"),
+            _ => ("truth-server.jsonl", "server"),
+        };
         await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, file), options.RunScenarioId, role);
         truth.Write(TruthEventKind.ProcessStarted);
         await WaitForStartAsync(options, cancellationToken).ConfigureAwait(false);
         Initialize();
 
+        // FX-COM-004's server holds the forwarded server's object, which it calls while serving each call.
+        object? forward = null;
+        if (options.Forward is { } forwardName)
+        {
+            Table().GetObject(Moniker(forwardName), out forward);
+            truth.Write(TruthEventKind.ConnectionEstablished, resourceName: forwardName);
+        }
+
         string name = string.Create(CultureInfo.InvariantCulture, $"InterCat.{options.RunScenarioId}.{truth.ProcessId}");
         IRunningObjectTable table = Table();
         IMoniker moniker = Moniker(name);
-        var served = new ComFixtureObject(truth, name);
+        var served = new ComFixtureObject(truth, name, forward);
         int cookie = table.Register(RegistrationKeepsAlive, served, moniker);
         truth.Write(TruthEventKind.ListenerBound, resourceName: name);
         try
@@ -207,10 +320,15 @@ internal static partial class ComLoopbackScenario
         finally
         {
             table.Revoke(cookie);
+            if (forward is not null)
+            {
+                Marshal.FinalReleaseComObject(forward);
+                truth.Write(TruthEventKind.ConnectionClosed, resourceName: options.Forward);
+            }
         }
 
         truth.Write(TruthEventKind.ProcessExiting);
-        return 0;
+        return served.Failures == 0 ? 0 : 1;
     }
 
     /// <summary>
@@ -427,6 +545,23 @@ internal static partial class ComLoopbackScenario
             start.ArgumentList.Add(moniker);
         }
 
+        // FX-COM-004's children: the run's nested calls, the forwarded server, and the object a server calls while serving.
+        if (options.Nested)
+        {
+            start.ArgumentList.Add("--nested");
+        }
+
+        if (options.Forwarded)
+        {
+            start.ArgumentList.Add("--forwarded");
+        }
+
+        if (options.Forward is { } forward)
+        {
+            start.ArgumentList.Add("--forward");
+            start.ArgumentList.Add(forward);
+        }
+
         // FX-COM-003's children: how many servers the run has, a server's place among them, and a client told each in turn.
         if (options.Servers > 1)
         {
@@ -468,17 +603,50 @@ public sealed class ComFixtureObject
 {
     private readonly TruthLog truth;
     private readonly string name;
+    private readonly object? forward;
+    private int failures;
 
-    internal ComFixtureObject(TruthLog truth, string name)
+    internal ComFixtureObject(TruthLog truth, string name, object? forward = null)
     {
         this.truth = truth;
         this.name = name;
+        this.forward = forward;
     }
 
-    /// <summary>Answers a call with its own argument, logging it as served.</summary>
+    /// <summary>The nested calls that failed or answered wrongly.</summary>
+    internal int Failures => Volatile.Read(ref failures);
+
+    /// <summary>
+    /// Answers a call with its own argument, logging it as served. FX-COM-004's server first calls the forwarded server's
+    /// object with the call's number moved past the client's, logging that nested call and its completion as a client does.
+    /// </summary>
     public int Echo(int call)
     {
         truth.Write(TruthEventKind.CallServed, callId: call, resourceName: name);
+        if (forward is not null)
+        {
+            int nested = call + ComLoopbackOptions.NestedCallOffset;
+            truth.Write(TruthEventKind.CallIssued, callId: nested, resourceName: nameof(Echo));
+            string status;
+            try
+            {
+                object? answer = forward.GetType().InvokeMember(nameof(Echo), BindingFlags.InvokeMethod, null, forward, [nested],
+                    CultureInfo.InvariantCulture);
+                status = answer is int echoed && echoed == nested ? "S_OK" : "wrong answer";
+            }
+            catch (COMException exception)
+            {
+                status = string.Create(CultureInfo.InvariantCulture, $"0x{exception.HResult:X8}");
+            }
+
+            if (status != "S_OK")
+            {
+                Interlocked.Increment(ref failures);
+            }
+
+            truth.Write(TruthEventKind.CallCompleted, callId: nested, resourceName: nameof(Echo), status: status);
+        }
+
         return call;
     }
 }

@@ -530,6 +530,49 @@
       ]
     },
     {
+      "id": "FX-COM-004",
+      "title": "Nested COM calls: a server calling a second server while serving each call",
+      "scenario": "Plan M6's COM/DCOM/WinRT work package (ADR-079's sixth addendum): FX-COM-001's exchange in which the server, while serving each of the client's calls, calls a second, forwarded server's object - a nested call on the thread serving the first, numbered 1,000,000 past it - before it answers. Recorded through icat record under the COM calls profile.",
+      "milestone": "M6",
+      "mechanism": "ComCall",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [],
+        "invariants": [],
+        "prohibitions": [
+          "P7"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads com-loopback --nested --calls 64 --delay 5, under icat record --profile com-calls",
+        "seed": 0,
+        "log": "fixtures/FX-COM-004/evidence/truth-client.jsonl",
+        "independence": "The client logs every call it issued and its completion, the server every call it served and every nested call it issued and its completion, and the forwarded server every call it served, all through ordinary COM, by number; none reads InterCat state, and the capture reads the provider's records apart from all of them."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-COM-004/evidence/measurement.json",
+        "note": "Three runs through icat record, machine-wide and nothing lost - 64 calls paced twice and 256 unpaced: every client call linked to the server's call of the same truth call, and every nested call the server made while serving it linked to the forwarded server's call of its own, each carried by one RPC call served through it, 768 of 768, none attributed to another process, every COM call of the three processes carried and linked. COM gives a nested call an activity of its own, so nothing is ambiguous. The first run's ledger is evaluated by a test, each nested call inside the call the server served it from."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-05",
+          "result": "Recorded by icat record under the opt-in COM calls profile, three times, machine-wide and nothing lost: every client call and every nested call linked to its own served call and carried, 768 of 768, none attributed to another process; a nested call carries an activity of its own. It measures how nested calls link; COM calls' tier is FX-COM-003's."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The three processes' truth logs and the scenario of the first paced run - calls and nested calls by their number, of synthetic objects - and the ledger of their COM calls as the product derives them, by role, with the columns of FX-COM-001's ledger, never a PID, a thread, an activity id or another process's call; and the measurement's counters."
+      },
+      "tests": [
+        "P7: FX-COM-004's nested calls through the product - the server calling a second server while serving each call - are calls of their own, each linked to the call that served it inside the one it is nested in, which is linked to its own, none ambiguous"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -2300,6 +2343,7 @@
         "P7: FX-COM-001's layering run, its ledger made a session, has every client RPC call carrying a COM call served under rpc-call-peer-v2 through COM, and the client's other RPC calls unresolved for want of ALPC",
         "P7: FX-COM-002's calls across an apartment are recorded as an out-of-process call is, each naming its own process at both ends, so a call is between processes only where the process it names is another",
         "P7: FX-COM-003's calls through the product, a client following eight servers started one after another, have every call linked to the server instance whose log served it, inside that instance's lifetime, and carried by an RPC call it served through it - none attributed to another instance",
+        "P7: FX-COM-004's nested calls through the product - the server calling a second server while serving each call - are calls of their own, each linked to the call that served it inside the one it is nested in, which is linked to its own, none ambiguous",
         "P7: a COM call linked to a server call of a process other than the truth's server is a false peer attribution, and one not linked attributes none",
         "P7: a COM call's ends are never linked by an activity alone - a server in the client's own process, two server calls of one activity, ends that do not name each other, or a served call outside the client's link nothing, each with its reason",
         "P7: a call number two servers' logs both hold names no server for it - the call is linked to no served call of the truth's, and its attribution is never counted true",

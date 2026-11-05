@@ -4,7 +4,8 @@
   third decisions (`contracts/com-calls-v1.md`), and since revision 917 `rpc-call-peer-v2` serves a call through it,
   and since revision 918 the opt-in COM calls profile collects COM-Perf beside RPC, and since revision 919 COM calls
   measured through it carry ExperimentalEvidence (ADR-080), and since revision 923 a COM-Perf whose schema lacks a field
-  the rule decides by is refused (its fifth addendum); since
+  the rule decides by is refused (its fifth addendum), and since revision 926 a nested call is measured a call of its own
+  (its sixth addendum); since
   revision 914 a COM call's records bind to the process that raised them (ADR-077's fifth addendum), and since revision
   915 COM-Perf's call events are admitted, the process at a call's other end a source field of its own (its addendum)
 - Date: 2026-11-04
@@ -214,3 +215,22 @@ source's schema unknown. A call's HRESULT, which no rule decides by, may be abse
 The check runs as the plan compiles, never on the callback path, and the link rule is unchanged. Tests take each such
 field out of COM-Perf's registered layout in turn, and its client call stop, and hold the plan, the capture's
 compilation, the profile and the capability report to the refusal.
+
+## Addendum: a nested call is a call of its own (revision 926)
+
+The link's assumption left a nested call unmeasured: a call a server makes while serving another, on the thread serving
+it. Had it shared the served call's activity id, one activity would have been carried by two server calls, and
+`com-call-link-v1` would have stated both client calls `SeveralServedCalls` rather than link either. FX-COM-004 measures
+it: the server, while serving each of the client's calls, calls a second, forwarded server's object before it answers.
+
+Three runs through `icat record --profile com-calls`, machine-wide and loss-free, 64 calls paced twice and 256 unpaced:
+
+- every client call was linked to the server's call of the same truth call;
+- every nested call was linked to the forwarded server's call of its own, inside the call the server served it from;
+- each was carried by one RPC call served through it, 768 of 768, none attributed to another process;
+- every COM call of the three processes was carried and linked.
+
+COM gives a nested call an activity of its own, so no served call or activity holds two calls, and nesting makes nothing
+ambiguous. The rule is unchanged, and its assumption is now this measurement (`contracts/com-calls-v1.md` §6). The
+first paced run is committed under `fixtures/FX-COM-004/evidence/`, and a test reproduces it. COM calls' ambiguity case,
+which M6's exit asks for, remains: nesting is not one.
