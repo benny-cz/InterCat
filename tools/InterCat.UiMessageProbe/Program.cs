@@ -50,9 +50,10 @@ internal static class Program
             Console.Error.WriteLine("  collecting the message pump keyword machine-wide, in pairs, over FX-WMSG-001's sender sending and");
             Console.Error.WriteLine("  posting that many messages, and the processor time of the workload's processes and of the probe's");
             Console.Error.WriteLine("  own consumer.");
-            Console.Error.WriteLine("  --order [--copies n] [--posts n] [--bytes n]: whether a session with the product's buffer size delivers");
-            Console.Error.WriteLine("  each of FX-WMSG-001's messages' ends in the order they were raised, and what a gate following a");
-            Console.Error.WriteLine("  message by its pointer as records arrive would number wrongly.");
+            Console.Error.WriteLine("  --order [--copies n] [--posts n] [--bytes n] [--ledger <csv>]: whether a session with the product's buffer");
+            Console.Error.WriteLine("  size delivers each of FX-WMSG-001's messages' ends in the order they were raised, and what a gate");
+            Console.Error.WriteLine("  following a message by its pointer as records arrive would number wrongly; the ledger is the run's ends");
+            Console.Error.WriteLine("  as delivered, each pointer by the order it first appeared in.");
             return 2;
         }
 
@@ -94,7 +95,7 @@ internal static class Program
                 Dictionary<string, object?> ordered = await Order.RunAsync(workload, output,
                     int.Parse(Option(args, "--copies") ?? "32", CultureInfo.InvariantCulture),
                     int.Parse(Option(args, "--posts") ?? "32", CultureInfo.InvariantCulture),
-                    int.Parse(Option(args, "--bytes") ?? "2048", CultureInfo.InvariantCulture)).ConfigureAwait(false);
+                    int.Parse(Option(args, "--bytes") ?? "2048", CultureInfo.InvariantCulture), Option(args, "--ledger")).ConfigureAwait(false);
                 ordered["schema"] = "intercat.window-message-order.v1";
                 ordered["measuredUtc"] = DateTimeOffset.UtcNow;
                 ordered["build"] = CapabilityInventoryProbe.DescribeEnvironment().BuildId;

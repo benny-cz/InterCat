@@ -33,7 +33,8 @@ internal static class Order
     private static readonly int[] SendEnds = [SendStart, RetrieveSendStart, RetrieveSendStop, SendStop];
     private static readonly int[] PostEnds = [QueuePost, RetrievePost];
 
-    public static async Task<Dictionary<string, object?>> RunAsync(string workload, string output, int copies, int posts, int bytes)
+    public static async Task<Dictionary<string, object?>> RunAsync(string workload, string output, int copies, int posts, int bytes,
+        string? ledger = null)
     {
         string truth = Path.Combine(output, "truth");
         var records = new List<Record>();
@@ -179,6 +180,31 @@ internal static class Order
         var numbersLives = ours.GroupBy(record => numberOf[record.Ordinal]).ToDictionary(group => group.Key, group => group.Select(record => lifeOf[record.Ordinal]).Distinct().Count());
         int misnumbered = ours.Count(record => lifesNumbers[lifeOf[record.Ordinal]].Length != 1 || numbersLives[numberOf[record.Ordinal]] != 1);
         int livesMisnumbered = lifesNumbers.Select((found, life) => found.Length != 1 || numbersLives[found[0]] != 1).Count(static wrong => wrong);
+
+        // The workload's message ends in the order delivered, for a gate to be read on as a capture would read them: each end's
+        // role, event and pointer, the pointer by the order it first appeared in, never the kernel's address, and when it was
+        // raised, in ticks from the first end.
+        if (ledger is not null)
+        {
+            var pointerNumbers = new Dictionary<long, int>();
+            double first = ours.Length == 0 ? 0 : ours[0].Raised;
+            var lines = new List<string> { "ordinal,role,event,pointer,raised" };
+            foreach (Record record in ours)
+            {
+                long pointer = record.Pointer!.Value;
+                if (!pointerNumbers.TryGetValue(pointer, out int number))
+                {
+                    number = pointerNumbers.Count + 1;
+                    pointerNumbers[pointer] = number;
+                }
+
+                long raised = (long)Math.Round((record.Raised - first) * TimeSpan.TicksPerMillisecond);
+                lines.Add(string.Create(CultureInfo.InvariantCulture,
+                    $"{lines.Count - 1},{(record.Process == sender ? "sender" : "receiver")},{record.Id},{number},{raised}"));
+            }
+
+            File.WriteAllLines(ledger, lines);
+        }
 
         return new()
         {

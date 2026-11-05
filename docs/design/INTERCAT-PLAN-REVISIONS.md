@@ -881,6 +881,7 @@ Revision 954 measures FX-WMSG-001 (ADR-086): Win32k's message pump records every
 Revision 955 measures what collecting Win32k's message pump costs (ADR-086's addendum): Low in the processor time it adds, a message-bound workload spending a twentieth more of its own and past §12's throughput target, so only an opt-in profile may admit it.
 Revision 956 inventories Win32k's message pump as window messages' lead (ADR-086's second addendum): `etw/manifest/Microsoft-Windows-Win32k` at its message pump keyword, experimental, requested by no profile and admitting no event.
 Revision 957 measures the order a session delivers a window message's ends in (ADR-086's third addendum): none of 195,781 records in three runs arrived after one raised later, so a gate may number a message by its pointer as records arrive.
+Revision 958 adds a window message gate (ADR-087): it follows a message at its queue message pointer from its start to its end and numbers it in the capture, a message begun before the capture its own and a record delivered out of order numbered alone; no profile compiles it yet.
 
 ## Revisions, a paragraph each, in order
 
@@ -4155,3 +4156,13 @@ messages reused hundreds of pointers, and a gate following a message by its poin
 it, an end joining it, a send's stop or a post's retrieval ending it - numbered every record as its message's life is.
 The order is this build's, measured at these rates, so the gate that relies on it is to count each record delivered out
 of order.
+
+Revision 958 adds a window message gate (ADR-087), as the synchronization handle gate came before its profile (ADR-083).
+`WindowMessageGate` reads a message's six ends as they arrive: a send's start or a post's queueing begins a message at
+its queue message pointer, whatever the pointer held before ended; the receiver's retrieval joins a sent message, and
+the sender's stop or the post's retrieval ends it. Each message is numbered in the capture, never by its pointer. An end
+at a pointer no followed message of its kind holds begins a message of its own, begun before the capture, which its later
+ends join, as a session delivers a message's ends in the order raised (ADR-086's third addendum); a record delivered
+out of that order is numbered alone and counted. The gate follows at most 65,536 messages, giving up the oldest it
+follows beyond them, and allocates nothing per record. FX-WMSG-001's ledger, a run's 194 ends as delivered, read through
+it is the run's 32 sends and 33 posts, numbered apart though the run reused 11 pointers. No profile compiles it yet.

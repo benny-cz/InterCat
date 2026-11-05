@@ -883,12 +883,13 @@
       "provenance": {
         "adapter": "windows-etw-inventory-0.8.0",
         "shareable": true,
-        "contents": "The two processes' truth logs and scenario of the first run - the window by the run's own class, messages by their number, copies by their size, of seeded bytes - and the measurement's counters: per run, the records delivered and lost, each end's records of the run's messages and those joined by pointer, and the two processes' records carrying a message number or a parameter, never a window's handle, a pointer or another process's message."
+        "contents": "The two processes' truth logs and scenario of the first run - the window by the run's own class, messages by their number, copies by their size, of seeded bytes - and the measurement's counters: per run, the records delivered and lost, each end's records of the run's messages and those joined by pointer, and the two processes' records carrying a message number or a parameter, never a window's handle, a pointer or another process's message; and a ledger of a fourth run's 194 message ends in the order delivered, with its report: each end's role, event and time raised, its pointer by the order it first appeared in, never the pointer itself."
       },
       "tests": [
         "P7: FX-WMSG-001's every message one process sent or posted another's window is recorded at both ends by Win32k's message pump - a send's start naming its receiver's process and thread, each end joined to the other by its queue message pointer - and none names which message it was",
         "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
-        "R22: a session with the product's buffer size delivers FX-WMSG-001's message ends in the order they were raised - three runs of up to 40,000 messages, ends raised on two processors and pointers reused - so a gate following a message by its pointer as records arrive numbers each as its life is"
+        "R22: a session with the product's buffer size delivers FX-WMSG-001's message ends in the order they were raised - three runs of up to 40,000 messages, ends raised on two processors and pointers reused - so a gate following a message by its pointer as records arrive numbers each as its life is",
+        "R22: FX-WMSG-001's message ends, read through the gate as delivered, are its 32 sends and 33 posts - each send's start and stop at the sender and its retrieval at the receiver one message, each post's queueing and retrieval another - numbered apart, though the run reused its pointers"
       ]
     },
     {
@@ -3252,6 +3253,7 @@
         "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other",
         "R22: FX-UNIX-002's rows through the product keep each of sixty-four connections made one at a time on its own socket at both ends, while the kernel reused their addresses",
         "R22: FX-UNIX-003's connections, open before the capture began, bind to no socket - not one of their calls is a row of any process - while the same capture follows its own connections whole",
+        "R22: FX-WMSG-001's message ends, read through the gate as delivered, are its 32 sends and 33 posts - each send's start and stop at the sender and its retrieval at the receiver one message, each post's queueing and retrieval another - numbered apart, though the run reused its pointers",
         "R22: Winsock AFD's admitted calls compile from its registered layout to fixed slots, none an address the kernel reuses or a buffer's",
         "R22: a COM call record binds to the process that raised it - a client call's to the caller, a served call's to the server - as an RPC record does",
         "R22: a UDP datagram's other end is the process holding its mirrored endpoints, read by each descriptor's orientation",
@@ -3299,6 +3301,7 @@
         "R22: a person accepts or rejects a candidate join as a kept revision, and re-aligning flags it for review",
         "R22: a person chooses the sessions a package copies, and one that moved on is copied as it is, still to relink",
         "R22: a port reused by a later connection is another connection, paired with its own other end",
+        "R22: a posted message is one message from its queueing to its retrieval, and a start at a pointer a message is followed at begins another, that one ended unseen",
         "R22: a prepared content plan keeps one source's content under its request's limits, of processes each named by its ID and start, which its digest covers",
         "R22: a process a content capture names is its ID and its start, so one whose ID now names a later process, or that is no longer the client's, refuses the start",
         "R22: a process filter is held to running processes, each held open so its ID stays its own",
@@ -3306,10 +3309,12 @@
         "R22: a process's HTTP exchanges are its numbers' uses in time, each part recorded whole or said not to be",
         "R22: a process's RPC channels are its own calls by side and interface, keyed by instance",
         "R22: a record of a PID's later instance counts only when candidates are admitted, as its binding says",
+        "R22: a record raised before one the session delivered ahead of it is numbered alone and counted, and leaves the message it might have joined as it was",
         "R22: a record with no endpoint pair is no channel, never a zero, and a peer count needs a process",
         "R22: a reused PID's later holder carries how many of its records the evidence policy withholds as candidates, and a reopen says the same",
         "R22: a saved comparison names two intervals of its sessions, each in its own session's time, and keeps every revision",
         "R22: a saved view is a named interval of the investigation's time, kept in its reference's clock",
+        "R22: a sent message is one message from its start to the sender's stop, its retrieval at the receiver between, and the next start at its pointer begins another",
         "R22: a sent total measured at the receiving end is attributed to a sender only through a relation",
         "R22: a server call is counted as raised in the recorded host only when its own process is that host",
         "R22: a session is named by its identity, a unique leading part of it, or its folder as show lists it, never by a name two share",
@@ -3367,7 +3372,9 @@
         "R22: the Compare window knows a comparison its investigation saved alike, the one it opened as first, and says why it can keep no note",
         "R22: the Compare window saves the comparison shown in its investigation by name, and a saved one opens as saved",
         "R22: the Compare window says the notes about the saved comparison it shows, marks each noted row, and adds one about it or its chosen row",
+        "R22: the ends of a message begun before the capture are one message numbered apart, from the first of its ends the capture saw to its last, and an end of the other kind at a pointer is never the message there",
         "R22: the gate follows no kernel handle - its creation, close or rundown, or a duplication into the system process's table - and a duplication from one makes its target a handle of its own",
+        "R22: the gate follows no more messages than its bound, giving up the oldest it still follows - never one already ended - whose later end is then numbered as a message's begun before",
         "R22: the gate follows only the synchronization types, by the numbers measured for the capture's build, and holds no more handles than its bound, so follows no more objects",
         "R22: the handle group's events compile from the class's layout to fixed slots - the object, which the gate writes its number over, the handle, the type, a close's and a rundown's name, a duplication's handles and the target that owns it - and nothing else",
         "R22: the investigation window keeps notes: pinned at an instant, reworded, shown on the timeline, removed",
@@ -3864,7 +3871,8 @@
         "P12: once a capture's descriptors have been seen, a callback's queue, counters and coverage tally allocate nothing",
         "P12: the capture callback allocates from a pool, and otherwise only where a reviewed bound holds",
         "P12: the capture callback reaches no query, store, file, network, name or symbol lookup, decoder or wait, and only reviewed locks",
-        "P12: the synchronization handle gate, which reads its records on the capture's callback, allocates nothing per record once its tables hold what it followed at once"
+        "P12: the synchronization handle gate, which reads its records on the capture's callback, allocates nothing per record once its tables hold what it followed at once",
+        "P12: the window message gate, which reads its records on the capture's callback, allocates nothing per record, its tables sized once to its bound"
       ],
       "P13": [
         "P13: a capture's providers are enabled and its session configured only as it starts, and nothing disables a provider",

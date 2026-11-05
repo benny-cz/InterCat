@@ -5,7 +5,8 @@
   processor time it adds but a message-bound workload past §12's throughput target (its addendum); since revision 956 it
   is inventoried as the mechanism's lead, requested by no profile and admitting no event (its second addendum); since
   revision 957 a session is measured delivering a message's ends in the order they were raised, so a gate may number a
-  message by its pointer as records arrive (its third addendum)
+  message by its pointer as records arrive (its third addendum); since revision 958 a window message gate numbers each
+  message at its pointer from its start to its end (ADR-087)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: plan M6, §4.1, §4.2, §12, R3, R22, P7, P16, FX-WMSG-001, `tools/InterCat.UiMessageProbe`
