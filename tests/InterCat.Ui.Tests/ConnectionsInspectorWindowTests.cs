@@ -449,14 +449,19 @@ public sealed class ConnectionsInspectorWindowTests
             Dispatch();
             Assert.Equal("Other hosts it reached, the busiest first", heading.Text);
 
-            // A double click on a host finds who reached it alike.
-            Control first = Assert.IsAssignableFrom<Control>(hosts.ContainerFromIndex(0));
-            first.BringIntoView();
-            Dispatch();
-            _ = window.CaptureRenderedFrame();
-            Dispatch();
-            Point on = first.TranslatePoint(new(first.Bounds.Width / 2, first.Bounds.Height / 2), window)!.Value;
-            Assert.True(window.InputHitTest(on) is Visual hit && first.IsVisualAncestorOf(hit));
+            // A double click on a host finds who reached it alike. The list was rebuilt twice just now, for the program and
+            // back for the process, so its first row is taken, and its middle hit, once its layout has settled: under a
+            // loaded machine a single pass can leave the point on a row still moving.
+            Point on = default;
+            await Until(() =>
+            {
+                if (hosts.ContainerFromIndex(0) is not Control row) return false;
+                row.BringIntoView();
+                _ = window.CaptureRenderedFrame();
+                Dispatch();
+                on = row.TranslatePoint(new(row.Bounds.Width / 2, row.Bounds.Height / 2), window)!.Value;
+                return window.InputHitTest(on) is Visual hit && row.IsVisualAncestorOf(hit);
+            });
             window.MouseDown(on, MouseButton.Left);
             window.MouseUp(on, MouseButton.Left);
             window.MouseDown(on, MouseButton.Left);
@@ -533,6 +538,18 @@ public sealed class ConnectionsInspectorWindowTests
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+    // Waits, dispatching, until the window shows what the step asks, up to five seconds, then holds it to that.
+    private static async Task Until(Func<bool> condition)
+    {
+        for (int wait = 0; wait < 200 && !condition(); wait++)
+        {
+            await Task.Delay(25);
+            Dispatch();
+        }
+
+        Assert.True(condition());
+    }
 
     /// <summary>The words a list's rows show, row by row and line by line.</summary>
     private static string[] Texts(ItemsControl list) =>

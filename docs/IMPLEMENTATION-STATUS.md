@@ -136,6 +136,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 932 — two window tests wait out a loaded machine's layout:**
+  - Under full load, a Release suite failed the inspector test's hit test on a reached host, taken after one layout pass
+    of a list just rebuilt twice, and a clean worktree the relationship table's check that Enter's rung takes the keyboard,
+    which the window gives back at the layout's priority and again as rows arrive; the first passed alone five times of five.
+  - Each now waits, dispatching, up to five seconds for what it checks: the host's middle hit once the row has settled,
+    and the rung's rows holding the keyboard. No product code changes.
+
 - **Revision 931 — the handle group inventoried as named synchronization objects' lead (ADR-082's second addendum):**
   - `etw/kernel-group/ObjectHandles` enters the source catalog: a kernel group of the object manager's class, enabled by
     the group mask `PERF_OB_HANDLE` and no kernel flag, experimental, requested by no profile and admitting no event.

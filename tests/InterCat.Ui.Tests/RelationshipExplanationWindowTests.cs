@@ -252,11 +252,12 @@ public sealed class RelationshipExplanationWindowTests
                 + "64 B sent · no receive recorded. Direction: browser.exe · PID 400 connected to 142.250.1.1:443. Enter opens "
                 + "its process's rung, which lists each connection.", line.Text);
 
-            // Enter opens its process's rung, whose rows take the keyboard.
+            // Enter opens its process's rung, whose rows take the keyboard once they are laid out: the window gives it back
+            // at the layout's priority, and again as rows arrive, so on a loaded machine it can come a pass or more later.
             window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
             Dispatch();
             Assert.Equal("Process: browser.exe · PID 400", workspace.Crumbs[^1].Label);
-            Assert.True(window.GetControl<ListBox>("RungList").IsKeyboardFocusWithin);
+            await Until(() => window.GetControl<ListBox>("RungList").IsKeyboardFocusWithin);
         }
         finally
         {
@@ -590,4 +591,16 @@ public sealed class RelationshipExplanationWindowTests
     }
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+    // Waits, dispatching, until the window shows what the step asks, up to five seconds, then holds it to that.
+    private static async Task Until(Func<bool> condition)
+    {
+        for (int wait = 0; wait < 200 && !condition(); wait++)
+        {
+            await Task.Delay(25);
+            Dispatch();
+        }
+
+        Assert.True(condition());
+    }
 }

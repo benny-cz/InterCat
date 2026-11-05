@@ -855,6 +855,7 @@ Revision 928 begins M6's named synchronization objects package with its metadata
 Revision 929 measures the kernel's handle, object and dispatcher records against FX-SYNC-001 (ADR-082): each process's handles to a named object two processes share at one address, the creation naming nothing and the close the object; each object's creation and deletion by address; every wait the kernel blocked readied from the signaling process, a ready naming no object; no source is inventoried.
 Revision 930 measures what collecting the object manager's groups costs (ADR-082's addendum): the handle group Low in processor time but a handle-heavy workload 5.3 and 8.3% lower in throughput, past §12's target, so only an opt-in profile stating it may admit it; the object group beside it Moderate, 23.7% lower, about 2.7 million records a second.
 Revision 931 inventories the object manager's handle group as named synchronization objects' lead (ADR-082's second addendum): `etw/kernel-group/ObjectHandles`, enabled by a group mask and no kernel flag, experimental, requested by no profile and admitting no event, its measured notes and Low cost stated by `icat capabilities`; no build carries a tier for named objects.
+Revision 932 has two window tests wait out a loaded machine's layout - a reached host's hit test and Enter's rung taking the keyboard - each dispatching until what it checks holds, up to five seconds; no product code changes.
 
 ## Revisions, a paragraph each, in order
 
@@ -3857,3 +3858,13 @@ object at its one address, a handle named at its close, an object one object by 
 object group's cost, and a ready thread never a signal by itself - and its cost is Low, with a handle-heavy workload's
 throughput regression beside it, so only an opt-in profile stating it may admit it, never Explore. No other source claims
 named synchronization objects, and no build carries a tier for them; a test holds the lead.
+
+Revision 932 has two window tests wait out a loaded machine's layout. With a virtual machine loading this workstation, a
+Release suite failed the inspector test's double click on a reached host: its hit test was taken after one layout pass
+of a list just rebuilt twice, for a program and back for its process, while the row could still be moving. A clean
+worktree then failed the relationship table's check that the rung Enter opens takes the keyboard, which the window gives
+back at the layout's priority, and again as the rung's rows arrive, so it can come a pass or more later. The first
+passed alone five times of five, and the product does what each asks, only later than one pass. Each test now waits,
+dispatching, up to five seconds for what it checks - the row's middle hit once it has settled, and the rung's rows
+holding the keyboard - and fails as before after. No product code changes, and no mutation can catch a race the tests
+now tolerate; the full suite exercises them.
