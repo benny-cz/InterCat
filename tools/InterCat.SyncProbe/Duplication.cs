@@ -118,6 +118,17 @@ internal static class Duplication
             Record[] closes = [.. records.Where(record => record.Opcode == Close && addresses.Contains(record.Object)
                 && record.Handle == (uint)ends.TargetHandle && record.Utc >= from
                 && (record.RaisedBy == ends.TargetProcessId || !OwnHandle(record.RaisedBy)))];
+            // What a later version carries after version 2's fields: a value naming one of the duplication's processes, and
+            // a name, each said by what it is, never by its value.
+            string ValueAfterType(Record record) => record.After switch
+            {
+                null => "none",
+                { } value when value == (uint)ends.SourceProcessId => "the source process",
+                { } value when value == (uint)ends.TargetProcessId => "the target process",
+                { } value when value == (uint)record.RaisedBy => "the process that asked",
+                0 => "zero",
+                _ => "another value",
+            };
             duplications.Add(new Dictionary<string, object?>
             {
                 ["object"] = made.Status,
@@ -127,6 +138,11 @@ internal static class Duplication
                 ["target"] = run.RoleOf(ends.TargetProcessId),
                 ["objectsFound"] = addresses.Length,
                 ["records"] = duplicated.Length,
+                ["headerVersions"] = Counts(duplicated.Select(record => record.Version.ToString(CultureInfo.InvariantCulture))),
+                ["payloadBytes"] = Counts(duplicated.Select(record => record.Length.ToString(CultureInfo.InvariantCulture))),
+                ["valueAfterType"] = Counts(duplicated.Select(ValueAfterType)),
+                ["nameAfterType"] = Counts(duplicated.Select(record => Generalize(record.NameAfterType, part))),
+                ["nameAfterValue"] = Counts(duplicated.Select(record => Generalize(record.NameAfterValue, part))),
                 ["raisedIn"] = Counts(duplicated.Select(record => run.RoleOf(record.RaisedBy))),
                 ["sourceHandleCarried"] = duplicated.Length > 0 && duplicated.All(record => record.Handle == (uint)ends.SourceHandle),
                 ["creationsOfTheHandleMade"] = Counts(creations.Select(record => run.RoleOf(record.RaisedBy))),
@@ -164,6 +180,8 @@ internal static class Duplication
         }
 
         Record[] machineDuplications = [.. ofSynchronization.Where(record => record.Opcode == Duplicate)];
+        Dictionary<string, int> duplicationShapes = Counts(records.Where(record => record.Opcode == Duplicate)
+            .Select(record => string.Create(CultureInfo.InvariantCulture, $"version {record.Version}, {record.Length} bytes")));
         var report = new Dictionary<string, object?>
         {
             ["question"] = "Which process the object manager raises a handle's duplication in - pushed by its source, pulled by its "
@@ -177,6 +195,7 @@ internal static class Duplication
                 ["records"] = machineDuplications.Length,
                 ["raisedInTheirTarget"] = machineDuplications.Count(record => record.RaisedBy == record.TargetProcess),
                 ["raisedElsewhere"] = machineDuplications.Count(record => record.RaisedBy != record.TargetProcess),
+                ["ofEveryTypeByShape"] = duplicationShapes,
             },
             ["synchronizationTypes"] = Synchronization.ToDictionary(name => name, name => (object?)types.FirstOrDefault(type => type.Value == name).Key),
             ["handleRecords"] = records.Count,
@@ -201,7 +220,9 @@ internal static class Duplication
         int Handle(int process, uint handle, ulong address) =>
             handleOrdinals.TryGetValue((process, handle, address), out int known) ? known : handleOrdinals[(process, handle, address)] = handleOrdinals.Count + 1;
 
-        var text = new StringBuilder("utcTicks,record,role,kind,object,handle,targetRole,targetHandle,type,typeName,nameCarried\n");
+        // A duplication's version and the role of the process its fourth field names, which version 3 carries after the type
+        // and no layout the machine registers describes.
+        var text = new StringBuilder("utcTicks,record,role,kind,object,handle,targetRole,targetHandle,type,typeName,nameCarried,version,sourceRole\n");
         foreach (Record record in records.Where(record => objects.ContainsKey(record.Object)).OrderBy(static record => record.Utc))
         {
             int objectOrdinal = objectOrdinals.TryGetValue(record.Object, out int seen) ? seen : objectOrdinals[record.Object] = objectOrdinals.Count + 1;
@@ -217,7 +238,7 @@ internal static class Duplication
                     $"{(record.Opcode == Create ? "Create" : "Close")},{run.RoleOf(record.RaisedBy)},{objects[record.Object]},{objectOrdinal},{Handle(record.RaisedBy, record.Handle, record.Object)},,"),
             };
             text.Append(CultureInfo.InvariantCulture,
-                $"{record.Utc.Ticks},{row},{record.Type},{types.GetValueOrDefault(record.Type) ?? string.Empty},{record.Name.Length > 0}\n");
+                $"{record.Utc.Ticks},{row},{record.Type},{types.GetValueOrDefault(record.Type) ?? string.Empty},{record.Name.Length > 0},{record.Version},{(record.After is { } after ? run.RoleOf((int)after) : string.Empty)}\n");
         }
 
         return text.ToString();
@@ -228,6 +249,13 @@ internal static class Duplication
             return held.Length == 1 ? held[0].ToString(CultureInfo.InvariantCulture) : string.Empty;
         }
     }
+
+    // A kernel name with the run's own part and the session's number taken out, which says nothing of the machine; an empty
+    // one is said to be none.
+    private static string Generalize(string? kernelName, string runPart) => string.IsNullOrEmpty(kernelName)
+        ? "none"
+        : System.Text.RegularExpressions.Regex.Replace(kernelName.Replace(runPart, "<run>", StringComparison.Ordinal),
+            @"\\Sessions\\\d+\\", @"\Sessions\<n>\");
 
     private static Dictionary<string, int> Counts(IEnumerable<string> roles) =>
         roles.GroupBy(role => role, StringComparer.Ordinal).OrderBy(group => group.Key, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.Count());
@@ -243,23 +271,39 @@ internal static class Duplication
         int needed = opcode switch { Duplicate => pointer + 14, Rundown => pointer + 10, _ => pointer + 6 };
         if (payload.Length < needed)
         {
-            return new(opcode, utc, data.ProcessID, 0, 0, -1, 0, 0, 0, string.Empty);
+            return new(opcode, utc, data.ProcessID, 0, 0, -1, 0, 0, 0, string.Empty) { Version = data.Version, Length = payload.Length };
         }
 
         ulong address = pointer == 8 ? BitConverter.ToUInt64(payload, 0) : BitConverter.ToUInt32(payload, 0);
         return opcode switch
         {
-            // Object, SourceHandle, TargetHandle, TargetProcessId, ObjectType.
+            // Object, SourceHandle, TargetHandle, TargetProcessId, ObjectType - the layout the machine registers at version 2 -
+            // and whatever a later version carries after them: a 32-bit value and a name, where its length holds them.
             Duplicate => new(opcode, utc, data.ProcessID, address, BitConverter.ToUInt32(payload, pointer), BitConverter.ToUInt16(payload, pointer + 12),
-                (int)BitConverter.ToUInt32(payload, pointer + 8), BitConverter.ToUInt32(payload, pointer + 4), 0, string.Empty),
+                (int)BitConverter.ToUInt32(payload, pointer + 8), BitConverter.ToUInt32(payload, pointer + 4), 0, string.Empty)
+            {
+                Version = data.Version,
+                Length = payload.Length,
+                After = payload.Length >= pointer + 18 ? BitConverter.ToUInt32(payload, pointer + 14) : null,
+                NameAfterType = NameAt(payload, pointer + 14),
+                NameAfterValue = NameAt(payload, pointer + 18),
+            },
 
             // Object, ProcessId, Handle, ObjectType, ObjectName.
             Rundown => new(opcode, utc, data.ProcessID, address, BitConverter.ToUInt32(payload, pointer + 4), BitConverter.ToUInt16(payload, pointer + 8),
-                0, 0, (int)BitConverter.ToUInt32(payload, pointer), NameAt(payload, pointer + 10)),
+                0, 0, (int)BitConverter.ToUInt32(payload, pointer), NameAt(payload, pointer + 10))
+            {
+                Version = data.Version,
+                Length = payload.Length,
+            },
 
             // Object, Handle, ObjectType, ObjectName.
             _ => new(opcode, utc, data.ProcessID, address, BitConverter.ToUInt32(payload, pointer), BitConverter.ToUInt16(payload, pointer + 4),
-                0, 0, 0, NameAt(payload, pointer + 6)),
+                0, 0, 0, NameAt(payload, pointer + 6))
+            {
+                Version = data.Version,
+                Length = payload.Length,
+            },
         };
     }
 
@@ -288,7 +332,21 @@ internal static class Duplication
     /// source handle - the type, a duplication's target process and handle, a rundown's holding process, and its name.
     /// </summary>
     private readonly record struct Record(int Opcode, DateTime Utc, int RaisedBy, ulong Object, uint Handle, int Type, int TargetProcess,
-        uint TargetHandle, int Holder, string Name);
+        uint TargetHandle, int Holder, string Name)
+    {
+        /// <summary>The version its header names, and its payload's length.</summary>
+        public int Version { get; init; }
+
+        public int Length { get; init; }
+
+        /// <summary>A duplication's 32-bit value after its type, where its payload holds one; null where it ends there.</summary>
+        public uint? After { get; init; }
+
+        /// <summary>A duplication's name read right after its type, and after that 32-bit value: empty where none is.</summary>
+        public string? NameAfterType { get; init; }
+
+        public string? NameAfterValue { get; init; }
+    }
 
     /// <summary>The run's three processes, by which a record's process is named by its role, never its PID.</summary>
     private sealed record Run(int Coordinator, int Creator, int Opener)

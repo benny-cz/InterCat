@@ -865,6 +865,7 @@ Revision 938 makes a handle duplication the open of the target its record names,
 Revision 939 binds a named synchronization object's handle creation and close to the process that raised them, and binds no inventory by its header, as `process-binding-v6` (ADR-083's third addendum); a checkpoint of an earlier rule is read as this one's wherever every record named its owner.
 Revision 940 adds the opt-in synchronization objects profile, `sync-objects` (ADR-083's fourth addendum): Kernel-Process and the object manager's handle group, both required, its Moderate class stated beside the group's measured throughput regression; nothing has measured it whole yet.
 Revision 941 gives a classic class's descriptors laid out apart their class's fingerprint, so a journal's one schema entry for the class holds them and the synchronization objects profile records through the product (ADR-035's addendum); duplications, raised at a version no registered layout describes, are counted undecodable.
+Revision 942 measures FX-SYNC-002 again (ADR-082's sixth addendum): every duplication is raised at version 3, whose fourth field names the process it was duplicated from - correcting revision 937's reading by the registered version 2 layout, which names none - and no layout the machine registers describes it, so a capture counts it undecodable.
 
 ## Revisions, a paragraph each, in order
 
@@ -3974,3 +3975,13 @@ alike, as ALPC's send and receive, keep the fingerprint they always had, so no e
 journal and normalizer-plan contracts say so. The recording then ran its six seconds, about 103,000 records admitted
 and none dropped or lost, and found the kernel raising a handle's duplication at version 3, which no layout the machine
 registers describes: those records are counted undecodable, as its coverage ledger states.
+
+Revision 942 corrects revision 937 (ADR-082's sixth addendum). Revision 937 read each duplication by the layout the
+machine registers, version 2's, and found its record naming no source process; revision 941's first product recording
+counted every duplication undecodable, its header at version 3. The probe now reads each duplication's header version,
+its payload's length and the 32-bit value after its type, named only by which of the duplication's processes it is, and
+FX-SYNC-002 was measured again: in four runs every duplication was raised at version 3, 26 bytes, whose fourth field
+named the process it was duplicated from, and every duplication of the machine was such a record. No layout the machine
+registers describes that field, and InterCat admits a classic record only by one, so a capture counts every duplication
+undecodable, as its ledger says; reading version 3 by its measured layout, held to the builds that measured it, is a
+decision of its own. The fixture's evidence, ledger and tests are renewed, and the handle group's catalog notes say so.

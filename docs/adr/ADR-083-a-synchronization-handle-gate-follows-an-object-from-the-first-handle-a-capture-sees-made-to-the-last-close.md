@@ -4,7 +4,8 @@
   admit through the gate (its addendum); since revision 938 a duplication is the open of the target its record names, and
   the gate follows no kernel handle (its second addendum); since revision 939 a handle's creation and close bind to the
   process that raised them, as `process-binding-v6` (its third addendum); since revision 940 the opt-in synchronization
-  objects profile requests the group, stating its cost (its fourth addendum)
+  objects profile requests the group, stating its cost (its fourth addendum); its duplication, compiled at version 2,
+  admits no record on this build, which raises every duplication at version 3 (ADR-082's sixth addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-073, ADR-082, plan M6, §4.2, R22, P7, FX-SYNC-001, `bench/results/sync-objects-types-20261105T053215Z`

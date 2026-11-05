@@ -4,15 +4,15 @@
   "holdMilliseconds": 5,
   "churn": 0,
   "duplicate": true,
-  "name": "Local\\InterCat-FX-SYNC-002-e2c18625c3864b179dd8710720586a09",
+  "name": "Local\\InterCat-FX-SYNC-002-b308cdee445f42d9b2386a590b760b8c",
   "objects": [
-    "Local\\InterCat-FX-SYNC-002-e2c18625c3864b179dd8710720586a09-event",
-    "Local\\InterCat-FX-SYNC-002-e2c18625c3864b179dd8710720586a09-semaphore",
-    "Local\\InterCat-FX-SYNC-002-e2c18625c3864b179dd8710720586a09-mutex"
+    "Local\\InterCat-FX-SYNC-002-b308cdee445f42d9b2386a590b760b8c-event",
+    "Local\\InterCat-FX-SYNC-002-b308cdee445f42d9b2386a590b760b8c-semaphore",
+    "Local\\InterCat-FX-SYNC-002-b308cdee445f42d9b2386a590b760b8c-mutex"
   ],
-  "coordinatorProcessId": 43716,
-  "creatorProcessId": 66952,
-  "openerProcessId": 3732,
+  "coordinatorProcessId": 71128,
+  "creatorProcessId": 55452,
+  "openerProcessId": 74252,
   "creatorExitCode": 0,
   "openerExitCode": 0
 }

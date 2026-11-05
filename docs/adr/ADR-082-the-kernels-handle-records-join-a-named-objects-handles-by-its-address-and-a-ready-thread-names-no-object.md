@@ -8,7 +8,8 @@
   type table read from user mode as a capture starts names each handle record's type number as the stop's rundown does
   (its fourth addendum); since revision 937 FX-SYNC-002 has each duplication raised in the process that asked for it and
   each kernel handle's records raised wherever the kernel ran, never in the system process that holds it (its fifth
-  addendum)
+  addendum); since revision 942 every duplication is known to be raised at version 3, whose fourth field names the
+  process it was duplicated from, which no layout the machine registers describes (its sixth addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: plan §4.1, §4.2, M6, P7, P8, R22, ADR-035, FX-SYNC-001, `tools/InterCat.SyncProbe`,
@@ -218,3 +219,27 @@ none by its header, which names whichever process the kernel ran for; only the r
 duplication started from is in no record: only a handle of that value to the object, seen made in one process, could
 name it. No binding changes in this revision. A test holds the first run's ledger to the three processes' truth, and one
 holds the four runs' counts; eight alterations of the evidence are caught.
+
+## Addendum: a duplication is raised at version 3, which names its source (revision 942)
+
+The fifth addendum read each duplication by the layout the machine registers, version 2's: the object, the source's
+handle, the handle made, the target process and the type, and nothing after. The synchronization objects profile's
+first recording through the product counted every duplication undecodable, its header naming version 3, at which the
+machine registers no layout (ADR-035's addendum of revision 941). So `tools/InterCat.SyncProbe --measure --duplication`
+now reads each record's header version, its payload's length and the 32-bit value after its type, named only by which
+of the duplication's processes it is, and FX-SYNC-002 was measured again, four runs, nothing lost
+(`bench/results/sync-objects-duplication-*-20261105T1045*`):
+
+- Every one of the three duplications was raised at version 3, 26 bytes: version 2's 22, then four more, which named
+  the process it was duplicated from in every run - the push's, the pull's and the third process's alike.
+- Every duplication of the machine, of every type, was such a record, 2,847 to 3,949 a run.
+- The rest stands: each was raised in the process that asked for it, raised no creation of the handle it made, and that
+  handle's close was raised in its target; kernel handles' records were raised outside the system process that holds them.
+
+So the fifth addendum's "nothing in its record names its source process" holds of version 2's layout, not of the
+record the kernel raises: its fourth field names the source. No layout the machine registers describes that field, and
+InterCat admits a classic record only by such a layout (ADR-035), so a capture counts every duplication undecodable and
+its ledger says so; ADR-083's second addendum's duplication, compiled at version 2, admits no record on this build.
+Whether to read version 3 by its measured layout, held to the builds that measured it, is a decision of its own. Tests
+hold the first run's ledger, its duplications at version 3 naming the creator as their source, and the four runs'
+shapes and values; twelve alterations of the evidence are caught.

@@ -9,7 +9,9 @@ namespace InterCat.Capture.Windows.Tests;
 /// a duplication - the creator pushing its event's, the opener pulling the semaphore's, the coordinator duplicating the
 /// mutex's between the two - measured by tools/InterCat.SyncProbe --duplication under a private system logger of its own.
 /// A duplication's record names the process it made a handle in and that handle, and is raised in the process that asked
-/// for it; a kernel handle's records are raised wherever the kernel ran, and only the stop's rundown names its holder.
+/// for it; at version 3, the only version this build raises it at, its fourth field names the process it came from, which
+/// no layout the machine registers describes. A kernel handle's records are raised wherever the kernel ran, and only the
+/// stop's rundown names its holder.
 /// </summary>
 public sealed class SyncObjectDuplicationTests
 {
@@ -17,7 +19,7 @@ public sealed class SyncObjectDuplicationTests
     private static readonly string[] Roles = ["creator", "opener", "coordinator"];
     private static readonly string[] Made = ["creations", "closes"];
 
-    [Fact(DisplayName = "R22: FX-SYNC-002's duplications are each raised in the process that asked for it - a push in its source, a pull in its target, one between two others in a third - with its source's handle and its target, and no creation of the handle made, whose close its target raises naming the object")]
+    [Fact(DisplayName = "R22: FX-SYNC-002's duplications are each raised in the process that asked for it - a push in its source, a pull in its target, one between two others in a third - at version 3, its fourth field naming its source process, with its source's handle and its target, and no creation of the handle made, whose close its target raises naming the object")]
     public void ADuplicationIsRaisedInTheProcessThatAskedForIt()
     {
         Row[] rows = Ledger();
@@ -40,6 +42,10 @@ public sealed class SyncObjectDuplicationTests
             // handle it made in its target, and the handle it started from by its value, the creator's.
             Row duplicated = Assert.Single(rows, row => row is { Record: "Duplicate" } && row.Kind == kind);
             Assert.Equal((role, "opener"), (duplicated.Role, duplicated.TargetRole));
+
+            // At version 3, whose fourth field - after the type, where no layout the machine registers reads - names the
+            // process it was duplicated from, whichever process asked.
+            Assert.Equal(("3", "creator"), (duplicated.Version, duplicated.SourceRole));
             Row created = Assert.Single(rows, row => row is { Record: "Create", Role: "creator" } && row.Kind == kind);
             Assert.Equal(created.Handle, duplicated.Handle);
 
@@ -54,9 +60,14 @@ public sealed class SyncObjectDuplicationTests
         Assert.All(measurement.RootElement.GetProperty("runs").EnumerateArray(), run =>
         {
             Assert.Equal(0, run.GetProperty("eventsLost").GetInt32());
+            Assert.Equal(["version 3, 26 bytes"],
+                run.GetProperty("machineDuplications").GetProperty("ofEveryTypeByShape").EnumerateObject().Select(shape => shape.Name));
             Assert.All(run.GetProperty("duplications").EnumerateArray(), made =>
             {
                 Assert.Equal(1, made.GetProperty("records").GetInt32());
+                Assert.Equal(("3", "26", "the source process"), (Assert.Single(made.GetProperty("headerVersions").EnumerateObject()).Name,
+                    Assert.Single(made.GetProperty("payloadBytes").EnumerateObject()).Name,
+                    Assert.Single(made.GetProperty("valueAfterType").EnumerateObject()).Name));
                 Assert.Equal(made.GetProperty("askedBy").GetString(), Assert.Single(made.GetProperty("raisedIn").EnumerateObject()).Name);
                 Assert.True(made.GetProperty("sourceHandleCarried").GetBoolean());
                 Assert.Empty(made.GetProperty("creationsOfTheHandleMade").EnumerateObject());
@@ -107,7 +118,7 @@ public sealed class SyncObjectDuplicationTests
     [
         .. File.ReadLines(Path.Combine(Evidence(), "ledger.csv")).Skip(1).Where(line => line.Length > 0).Select(line => line.Split(','))
             .Select(field => new Row(long.Parse(field[0], CultureInfo.InvariantCulture), field[1], field[2], field[3], field[4], field[5],
-                field[6], field[7], field[8], field[9], field[10])),
+                field[6], field[7], field[8], field[9], field[10], field[11], field[12])),
     ];
 
     private static JsonElement[] TruthLog(string file) =>
@@ -134,7 +145,10 @@ public sealed class SyncObjectDuplicationTests
         return current?.FullName ?? throw new DirectoryNotFoundException("Could not locate the InterCat repository root.");
     }
 
-    /// <summary>One ledger row: a record of the run's three objects by role and kind, its handles by ordinal.</summary>
+    /// <summary>
+    /// One ledger row: a record of the run's three objects by role and kind, its handles by ordinal, its header's version, and
+    /// a duplication's source by the role of the process its fourth field names.
+    /// </summary>
     private sealed record Row(long UtcTicks, string Record, string Role, string Kind, string Object, string Handle, string TargetRole,
-        string TargetHandle, string Type, string TypeName, string NameCarried);
+        string TargetHandle, string Type, string TypeName, string NameCarried, string Version, string SourceRole);
 }

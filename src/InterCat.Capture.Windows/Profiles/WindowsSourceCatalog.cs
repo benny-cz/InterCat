@@ -402,16 +402,18 @@ public static class WindowsSourceCatalog
     private static readonly IReadOnlyList<AdmittedFieldIntent> HandleCloseFields = [.. HandleCreateFields, HandleName];
 
     /// <summary>
-    /// A duplication: an open in the process it made its handle in, which its record names and so owns it - the record is
-    /// raised in the process that asked for the duplication, which its header alone names (FX-SYNC-002) - with the object,
-    /// the handle it made, the handle it was duplicated from, and the type.
+    /// A duplication at version 2, the layout the machine registers: an open in the process it made its handle in, which its
+    /// record names and so owns it - the record is raised in the process that asked for the duplication, which its header
+    /// names (FX-SYNC-002) - with the object, the handle it made, the handle it was duplicated from, and the type. This build
+    /// raises every duplication at version 3, whose fourth field, after the type, names the process it was duplicated from
+    /// and is described by no layout the machine registers, so such a record is counted undecodable.
     /// </summary>
     private static readonly IReadOnlyList<AdmittedFieldIntent> HandleDuplicateFields =
     [
         HandleObject,
         new("SourceHandle", FieldRole.ResourceHandle, SourceField: SourceField.PeerHandleValue,
-            Notes: "The handle it was duplicated from, by its value in a process the record does not name: the process that "
-                + "asked for the duplication only where that process gave its own (FX-SYNC-002)."),
+            Notes: "The handle it was duplicated from, by its value in the process it was duplicated from, which version 2's "
+                + "layout does not name (FX-SYNC-002)."),
         new("TargetHandle", FieldRole.ResourceHandle, SourceField: SourceField.HandleValue,
             Notes: "The handle the duplication made, by its value in the record's owner, which closes it.")
         {
@@ -1151,9 +1153,11 @@ public static class WindowsSourceCatalog
                 + "at its address to the close of the last, never by its address; a handle made before the capture, met at its close "
                 + "or the stop's rundown, is numbered alone. It follows no kernel handle. A build without measured numbers refuses it.",
                 "Measured on FX-SYNC-002: a duplication is raised in the process that asked for it - the handle's source, its target "
-                + "or a third process - so it is the open of the process it made its handle in, which its record names; no record "
-                + "names the process it was duplicated from. A kernel handle, its value's top bit set, is the system process's, but "
-                + "its creation and close are raised in whichever process the kernel ran for, so none of its records is admitted.",
+                + "or a third process - so it is the open of the process it made its handle in, which its record names. This build "
+                + "raises every duplication at version 3, whose fourth field names the process it was duplicated from, but the "
+                + "machine registers only version 2's layout, so each is counted undecodable. A kernel handle, its value's top bit "
+                + "set, is the system process's, but its creation and close are raised in whichever process the kernel ran for, so "
+                + "none of its records is admitted.",
                 "Collection alone, two series of nine pairs over a handle-heavy workload, loss-free: a median of 0.4 and 0.0 CPU "
                 + "pp, Low; but the workload ran 5.3 and 8.3% lower in throughput, past the 5% target, as a handle's creation and "
                 + "close each raise a record in the thread that makes the call. Only the opt-in synchronization objects profile, "

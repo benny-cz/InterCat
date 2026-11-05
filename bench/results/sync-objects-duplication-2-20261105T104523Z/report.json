@@ -1,0 +1,166 @@
+{
+  "question": "Which process the object manager raises a handle\u0027s duplication in - pushed by its source, pulled by its target, or made between two others by a third - and where it raises the records of the handle a duplication made; and, machine-wide, where the records of the synchronization types\u0027 kernel handles are raised.",
+  "scenario": "FX-SYNC-002",
+  "duplications": [
+    {
+      "object": "event",
+      "way": "push",
+      "askedBy": "creator",
+      "source": "creator",
+      "target": "opener",
+      "objectsFound": 1,
+      "records": 1,
+      "headerVersions": {
+        "3": 1
+      },
+      "payloadBytes": {
+        "26": 1
+      },
+      "valueAfterType": {
+        "the source process": 1
+      },
+      "nameAfterType": {
+        "\uBC4C": 1
+      },
+      "nameAfterValue": {
+        "none": 1
+      },
+      "raisedIn": {
+        "creator": 1
+      },
+      "sourceHandleCarried": true,
+      "creationsOfTheHandleMade": {},
+      "closesOfTheHandleMade": {
+        "opener": 1
+      },
+      "closesNamed": 1
+    },
+    {
+      "object": "semaphore",
+      "way": "pull",
+      "askedBy": "opener",
+      "source": "creator",
+      "target": "opener",
+      "objectsFound": 1,
+      "records": 1,
+      "headerVersions": {
+        "3": 1
+      },
+      "payloadBytes": {
+        "26": 1
+      },
+      "valueAfterType": {
+        "the source process": 1
+      },
+      "nameAfterType": {
+        "\uBC4C": 1
+      },
+      "nameAfterValue": {
+        "none": 1
+      },
+      "raisedIn": {
+        "opener": 1
+      },
+      "sourceHandleCarried": true,
+      "creationsOfTheHandleMade": {},
+      "closesOfTheHandleMade": {
+        "opener": 1
+      },
+      "closesNamed": 1
+    },
+    {
+      "object": "mutex",
+      "way": "between two others",
+      "askedBy": "coordinator",
+      "source": "creator",
+      "target": "opener",
+      "objectsFound": 1,
+      "records": 1,
+      "headerVersions": {
+        "3": 1
+      },
+      "payloadBytes": {
+        "26": 1
+      },
+      "valueAfterType": {
+        "the source process": 1
+      },
+      "nameAfterType": {
+        "\uBC4C": 1
+      },
+      "nameAfterValue": {
+        "none": 1
+      },
+      "raisedIn": {
+        "coordinator": 1
+      },
+      "sourceHandleCarried": true,
+      "creationsOfTheHandleMade": {},
+      "closesOfTheHandleMade": {
+        "opener": 1
+      },
+      "closesNamed": 1
+    }
+  ],
+  "kernelHandles": {
+    "creations": {
+      "kernelHandles": 240,
+      "kernelRaisedInSystem": 0,
+      "kernelRaisedElsewhere": 240,
+      "kernelRaisedInProcesses": 3,
+      "kernelHeldBySystem": 0,
+      "userHandles": 2909,
+      "userRaisedInSystem": 0,
+      "userHeldBySystem": 0
+    },
+    "closes": {
+      "kernelHandles": 251,
+      "kernelRaisedInSystem": 0,
+      "kernelRaisedElsewhere": 251,
+      "kernelRaisedInProcesses": 11,
+      "kernelHeldBySystem": 0,
+      "userHandles": 3320,
+      "userRaisedInSystem": 0,
+      "userHeldBySystem": 0
+    },
+    "duplications": {
+      "kernelHandles": 11,
+      "kernelRaisedInSystem": 0,
+      "kernelRaisedElsewhere": 11,
+      "kernelRaisedInProcesses": 8,
+      "kernelHeldBySystem": 11,
+      "userHandles": 72,
+      "userRaisedInSystem": 0,
+      "userHeldBySystem": 0
+    },
+    "rundown": {
+      "kernelHandles": 1857,
+      "kernelRaisedInSystem": 0,
+      "kernelRaisedElsewhere": 1857,
+      "kernelRaisedInProcesses": 4,
+      "kernelHeldBySystem": 1857,
+      "userHandles": 88973,
+      "userRaisedInSystem": 0,
+      "userHeldBySystem": 0
+    }
+  },
+  "machineDuplications": {
+    "records": 83,
+    "raisedInTheirTarget": 14,
+    "raisedElsewhere": 69,
+    "ofEveryTypeByShape": {
+      "version 3, 26 bytes": 3286
+    }
+  },
+  "synchronizationTypes": {
+    "Event": 21,
+    "Mutant": 22,
+    "Semaphore": 24
+  },
+  "handleRecords": 446482,
+  "synchronizationRecords": 97633,
+  "eventsLost": 0,
+  "schema": "intercat.sync-objects-duplication.v1",
+  "measuredUtc": "2026-11-05T10:45:23.1183002+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}
