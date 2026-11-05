@@ -1,0 +1,260 @@
+{
+  "question": "Whether the kernel\u0027s handle events record each process\u0027s handles to three named objects two processes share - with the object\u0027s name, one address and its type - and whether its ready thread events join a signal of one process\u0027s to the wait it ended in the other.",
+  "objects": [
+    {
+      "kind": "event",
+      "kernelName": [
+        "\\Sessions\\\u003Cn\u003E\\BaseNamedObjects\\\u003Crun\u003E-event"
+      ],
+      "types": [
+        21
+      ],
+      "typeNames": [
+        "Event"
+      ],
+      "distinctAddresses": 1,
+      "recordedElsewhere": 0,
+      "duplicates": 0,
+      "createsNamed": 0,
+      "closesNamed": 2,
+      "byRole": {
+        "creator": {
+          "truthOpens": 1,
+          "recordedOpens": 1,
+          "truthCloses": 1,
+          "recordedCloses": 1
+        },
+        "opener": {
+          "truthOpens": 1,
+          "recordedOpens": 1,
+          "truthCloses": 1,
+          "recordedCloses": 1
+        }
+      },
+      "lifetime": null
+    },
+    {
+      "kind": "semaphore",
+      "kernelName": [
+        "\\Sessions\\\u003Cn\u003E\\BaseNamedObjects\\\u003Crun\u003E-semaphore"
+      ],
+      "types": [
+        24
+      ],
+      "typeNames": [
+        "Semaphore"
+      ],
+      "distinctAddresses": 1,
+      "recordedElsewhere": 0,
+      "duplicates": 0,
+      "createsNamed": 0,
+      "closesNamed": 2,
+      "byRole": {
+        "creator": {
+          "truthOpens": 1,
+          "recordedOpens": 1,
+          "truthCloses": 1,
+          "recordedCloses": 1
+        },
+        "opener": {
+          "truthOpens": 1,
+          "recordedOpens": 1,
+          "truthCloses": 1,
+          "recordedCloses": 1
+        }
+      },
+      "lifetime": null
+    },
+    {
+      "kind": "mutex",
+      "kernelName": [
+        "\\Sessions\\\u003Cn\u003E\\BaseNamedObjects\\\u003Crun\u003E-mutex"
+      ],
+      "types": [
+        22
+      ],
+      "typeNames": [
+        "Mutant"
+      ],
+      "distinctAddresses": 1,
+      "recordedElsewhere": 0,
+      "duplicates": 0,
+      "createsNamed": 0,
+      "closesNamed": 2,
+      "byRole": {
+        "creator": {
+          "truthOpens": 1,
+          "recordedOpens": 1,
+          "truthCloses": 1,
+          "recordedCloses": 1
+        },
+        "opener": {
+          "truthOpens": 1,
+          "recordedOpens": 1,
+          "truthCloses": 1,
+          "recordedCloses": 1
+        }
+      },
+      "lifetime": null
+    }
+  ],
+  "objectsWhole": 3,
+  "truthBlockedWaits": 185,
+  "truthBlockedWaitsByKind": {
+    "event": 63,
+    "semaphore": 58,
+    "mutex": 64
+  },
+  "readiesAcross": {
+    "creatorToOpener": 175,
+    "openerToCreator": 87
+  },
+  "clockOffsetMilliseconds": -0.004,
+  "clockAnchors": {
+    "count": 12,
+    "minimumMilliseconds": -0.857,
+    "maximumMilliseconds": -0.001
+  },
+  "slackMilliseconds": 0.02,
+  "blockedWaitsWithTheirReady": 183,
+  "blockedWaitsWithTheirReadyByKind": {
+    "event": 63,
+    "semaphore": 56,
+    "mutex": 64
+  },
+  "readyFromSignalRecordMilliseconds": {
+    "minimum": -0.016,
+    "median": -0.001,
+    "maximum": 0.002
+  },
+  "readiesAcrossUnmatched": 79,
+  "readiesAcrossFromDpc": 6,
+  "readiesAcrossByWaitReason": {
+    "paired": {
+      "UserRequest": 178,
+      "not seen waiting": 5
+    },
+    "unpaired": {
+      "WrPushLock": 1,
+      "WrResource": 43,
+      "not seen waiting": 28,
+      "reason 0": 6,
+      "reason 34": 1
+    }
+  },
+  "unpairedReadies": {
+    "beforeTheRounds": 0,
+    "duringTheRounds": 0,
+    "betweenTheRoundsAndTheLastRecord": 0,
+    "afterTheLastRecord": 79,
+    "afterTheLastRecordWithinMilliseconds": 5.974
+  },
+  "unpairedReadiesNearestTruth": {
+    "creator\u003Eopener waiter near creator ProcessExiting   before \u003C10ms": 48,
+    "opener\u003Ecreator waiter near creator ProcessExiting   before \u003C10ms": 29,
+    "opener\u003Ecreator another thread near creator ProcessExiting   before \u003C10ms": 2
+  },
+  "truthBlockedWaitsTheKernelBlocked": 178,
+  "kernelBlockedWaitsWithTheirReady": 178,
+  "readiesPairedToWaitsTheKernelDidNotBlock": 5,
+  "unpairedBlockedWaits": [
+    {
+      "waiter": "creator",
+      "kind": "semaphore",
+      "round": 18,
+      "kernelBlocked": false,
+      "spanMilliseconds": 0.068,
+      "readiesOfTheWaiterInItsSpan": [
+        "from creator, UserRequest, -0.035 ms from the signal"
+      ]
+    },
+    {
+      "waiter": "creator",
+      "kind": "semaphore",
+      "round": 53,
+      "kernelBlocked": false,
+      "spanMilliseconds": 0.04,
+      "readiesOfTheWaiterInItsSpan": [
+        "from other DPC, DelayExecution, -0.057 ms from the signal"
+      ]
+    }
+  ],
+  "readiesAcrossByReason": {
+    "paired": {
+      "unwait": 183
+    },
+    "unpaired": {
+      "unwait": 79
+    },
+    "fromDpc": {
+      "unwait": 6
+    }
+  },
+  "readiesOfTheWorkloadByRoles": {
+    "coordinator\u003Ecoordinator": 96,
+    "coordinator\u003Ecreator": 3,
+    "coordinator\u003Eopener": 3,
+    "coordinator\u003Eother": 248,
+    "creator\u003Ecoordinator": 5,
+    "creator\u003Ecreator": 50,
+    "creator\u003Eopener": 175,
+    "creator\u003Eother": 289,
+    "opener\u003Ecoordinator": 3,
+    "opener\u003Ecreator": 93,
+    "opener\u003Eopener": 48,
+    "opener\u003Eother": 671,
+    "other\u003Ecoordinator": 62,
+    "other\u003Ecreator": 90,
+    "other\u003Eopener": 32
+  },
+  "counts": {
+    "handleEvents": 420637,
+    "handleCreatesNamed": 0,
+    "handleClosesNamed": 11184,
+    "objectManagerByOpcode": {
+      "32": 68435,
+      "33": 68405,
+      "34": 530,
+      "37": 74,
+      "39": 283267
+    },
+    "contextSwitches": 235005,
+    "readyThreads": 136139,
+    "readyThreadsWithTheirReadyingThread": 135979,
+    "readyThreadsKept": 1868,
+    "typeNames": 74,
+    "objectLifetimesKept": 0
+  },
+  "schema": "intercat.sync-objects-measurement.v1",
+  "measuredUtc": "2026-11-05T03:22:55.0299309+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "session": {
+    "mode": "private system logger, uniquely named, owned and stopped by the probe",
+    "kernelFlags": [
+      "Process",
+      "Thread",
+      "ContextSwitch",
+      "Dispatcher"
+    ],
+    "groupMasks": [
+      "PERF_OB_HANDLE"
+    ],
+    "masksRead": [
+      "0x00000813",
+      "0x00000204",
+      "0x00000000",
+      "0x00000000",
+      "0x00000040",
+      "0x00000000",
+      "0x00000000",
+      "0x00000000"
+    ],
+    "eventsLost": 0
+  },
+  "workload": {
+    "scenario": "FX-SYNC-001",
+    "rounds": 64,
+    "holdMilliseconds": 5,
+    "seconds": 1.5
+  }
+}

@@ -145,6 +145,14 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         ServeMilliseconds = Integer(args, "--serve-ms") ?? 0,
     };
 
+    var syncOptions = new SyncObjectsOptions
+    {
+        TruthDirectory = truth,
+        Rounds = Integer(args, "--rounds") ?? 64,
+        HoldMilliseconds = Integer(args, "--hold-ms") ?? 5,
+        Name = Option(args, "--name"),
+    };
+
     if (args[0].StartsWith("unix-loopback", StringComparison.Ordinal) && churn && hold > 0)
     {
         await Console.Error.WriteLineAsync("--churn and --hold are two fixtures, FX-UNIX-002 and FX-UNIX-003: a run is one of them.")
@@ -183,6 +191,13 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
                 await ComLoopbackScenario.RunInProcessAsync(comOptions, cancellationToken).ConfigureAwait(false),
             "com-loopback" or "com-loopback-server" or "com-loopback-client" or "com-inproc" =>
                 await UnsupportedPlatformAsync().ConfigureAwait(false),
+            "sync-objects" when OperatingSystem.IsWindows() =>
+                await SyncObjectsScenario.RunCoordinatorAsync(syncOptions, cancellationToken).ConfigureAwait(false),
+            "sync-objects-creator" when OperatingSystem.IsWindows() =>
+                await SyncObjectsScenario.RunCreatorAsync(syncOptions, cancellationToken).ConfigureAwait(false),
+            "sync-objects-opener" when OperatingSystem.IsWindows() =>
+                await SyncObjectsScenario.RunOpenerAsync(syncOptions, cancellationToken).ConfigureAwait(false),
+            "sync-objects" or "sync-objects-creator" or "sync-objects-opener" => await UnsupportedPlatformAsync().ConfigureAwait(false),
             "rpc-local" when OperatingSystem.IsWindows() =>
                 await RpcLocalScenario.RunCoordinatorAsync(rpcOptions, cancellationToken).ConfigureAwait(false),
             "rpc-local-client" when OperatingSystem.IsWindows() =>
@@ -292,6 +307,14 @@ static void PrintHelp()
     Console.WriteLine("      FX-COM-002: one process calls the system's apartment-threaded in-memory dictionary, which COM");
     Console.WriteLine("      hosts in an apartment of its own and reaches through a proxy: calls that cross an apartment and");
     Console.WriteLine("      never a process, each one logged. Windows only.");
+    Console.WriteLine();
+    Console.WriteLine("  sync-objects --truth <dir> [--rounds n] [--hold-ms ms]");
+    Console.WriteLine("      FX-SYNC-001: two processes take turns through three named objects of the session's namespace -");
+    Console.WriteLine("      an event, a semaphore and a mutex - that one creates and the other opens by name. Each round the");
+    Console.WriteLine("      creator, holding the mutex, sets the event and releases the mutex that many milliseconds later;");
+    Console.WriteLine("      the opener waits on both, then releases the mutex and the semaphore, on which the creator waits.");
+    Console.WriteLine("      Each process logs every object it created or opened, every signal it gave, every wait that ended");
+    Console.WriteLine("      - whether it blocked first - and every handle it closed, by the object's name. Windows only.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

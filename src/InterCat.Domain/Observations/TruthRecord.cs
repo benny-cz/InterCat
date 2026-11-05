@@ -21,6 +21,21 @@ public enum TruthEventKind
 
     /// <summary>A call the workload served, logged by its server as it ran: the other end of a call another process issued.</summary>
     CallServed = 12,
+
+    /// <summary>A named kernel object the workload created, by its name; the status names its kind.</summary>
+    ObjectCreated = 13,
+
+    /// <summary>A named kernel object another process created, which the workload opened by its name.</summary>
+    ObjectOpened = 14,
+
+    /// <summary>A signal the workload gave an object it holds a handle to: an event set, a semaphore or a mutex released.</summary>
+    ObjectSignaled = 15,
+
+    /// <summary>A wait of the workload's on an object that ended satisfied; the status says whether it blocked first.</summary>
+    WaitEnded = 16,
+
+    /// <summary>A handle to a named object that the workload closed.</summary>
+    HandleClosed = 17,
 }
 
 /// <summary>

@@ -1,0 +1,568 @@
+{
+  "fixture": "FX-SYNC-001",
+  "question": "Whether the kernel's handle and object groups, collected by a private system logger, record each process's handles to three named objects two processes share - with the object's name, one address and its type - and each object's creation and deletion; and whether the dispatcher's ready thread, set against the thread running where it was raised, joins a signal of one process's to the wait it ended in the other.",
+  "answer": "In 4 runs of 64 rounds, machine-wide and nothing lost, every object was whole: each process's handle created and closed once, both processes' handles at one address, its type the object's - Event, Semaphore, Mutant - and its name carried by no creation and by every close. With the object group, each object was created in the creator just before its first handle and deleted just after its last close, beside 4.4 million reference records a run. Every wait the kernel blocked - its thread switched out in a user-mode wait inside the span its log bounds - had the ready thread of its thread from the signaling process's running thread, 21 microseconds to 3 after the signal's record; a wait whose first look failed but which the kernel never blocked had none. No ready of a thread in a user-mode wait between the two processes was left unpaired, and 67 to 93 readies at their exit, of threads in kernel waits, matched no signal.",
+  "method": {
+    "session": "a private system logger of the probe's own, its kernel flags Process, Thread, ContextSwitch and Dispatcher, with PERF_OB_HANDLE - and in the object run PERF_OB_OBJECT - added to its group masks by TraceSetInformation",
+    "names": "a handle's creation carries no name; its close carries the object's, read from the layout the machine registers, and joins its creation by process, handle and address",
+    "readies": "a ready thread's record names no thread of its own: its readying thread is the one its processor last switched to, a ready from a DPC is set apart, and the readied thread's wait reason is the one it was last switched out in",
+    "clock": "the offset of the kernel's clock from the workload's is the median, over each handle's creation, open and close, of the kernel's record less the truth record written once the call returned",
+    "pairing": "a blocked wait pairs with the ready nearest its signal's record, from the signaling process to the waiter's, inside the span between the waiter's record before the wait and its record of the wait's end, give or take 0.02 ms"
+  },
+  "runs": [
+    {
+      "run": "handles-1",
+      "report": "bench/results/sync-objects-feasibility-handles-1-20261105T032255Z/report.json",
+      "groupMasks": [
+        "PERF_OB_HANDLE"
+      ],
+      "eventsLost": 0,
+      "objects": [
+        {
+          "kind": "event",
+          "kernelName": "\\Sessions\\<n>\\BaseNamedObjects\\<run>-event",
+          "type": 21,
+          "typeName": "Event",
+          "distinctAddresses": 1,
+          "createsNamed": 0,
+          "closesNamed": 2,
+          "byRole": {
+            "creator": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            },
+            "opener": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            }
+          },
+          "lifetime": null
+        },
+        {
+          "kind": "semaphore",
+          "kernelName": "\\Sessions\\<n>\\BaseNamedObjects\\<run>-semaphore",
+          "type": 24,
+          "typeName": "Semaphore",
+          "distinctAddresses": 1,
+          "createsNamed": 0,
+          "closesNamed": 2,
+          "byRole": {
+            "creator": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            },
+            "opener": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            }
+          },
+          "lifetime": null
+        },
+        {
+          "kind": "mutex",
+          "kernelName": "\\Sessions\\<n>\\BaseNamedObjects\\<run>-mutex",
+          "type": 22,
+          "typeName": "Mutant",
+          "distinctAddresses": 1,
+          "createsNamed": 0,
+          "closesNamed": 2,
+          "byRole": {
+            "creator": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            },
+            "opener": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            }
+          },
+          "lifetime": null
+        }
+      ],
+      "objectsWhole": 3,
+      "clockOffsetMilliseconds": -0.004,
+      "truthWaitsWhoseFirstLookFailed": 185,
+      "waitsTheKernelBlocked": 178,
+      "waitsTheKernelBlockedWithTheirReady": 178,
+      "waitsPaired": 183,
+      "readyFromSignalRecordMilliseconds": {
+        "minimum": -0.016,
+        "median": -0.001,
+        "maximum": 0.002
+      },
+      "readiesBetweenTheProcesses": {
+        "creatorToOpener": 175,
+        "openerToCreator": 87
+      },
+      "readiesUnpaired": {
+        "beforeTheRounds": 0,
+        "duringTheRounds": 0,
+        "betweenTheRoundsAndTheLastRecord": 0,
+        "afterTheLastRecord": 79,
+        "afterTheLastRecordWithinMilliseconds": 5.974
+      },
+      "readiesUnpairedByWait": {
+        "WrPushLock": 1,
+        "WrResource": 43,
+        "not seen waiting": 28,
+        "reason 0": 6,
+        "reason 34": 1
+      },
+      "readiesPairedByWait": {
+        "UserRequest": 178,
+        "not seen waiting": 5
+      },
+      "counts": {
+        "handleCreations": 68435,
+        "handleCloses": 68405,
+        "handleDuplicates": 530,
+        "typeRundown": 74,
+        "handleRundown": 283267,
+        "objectCreations": null,
+        "objectDeletions": null,
+        "references": null,
+        "dereferences": null,
+        "handleCreationsNamed": 0,
+        "handleClosesNamed": 11184,
+        "contextSwitches": 235005,
+        "readyThreads": 136139
+      },
+      "workloadSeconds": 1.5
+    },
+    {
+      "run": "handles-2",
+      "report": "bench/results/sync-objects-feasibility-handles-2-20261105T032303Z/report.json",
+      "groupMasks": [
+        "PERF_OB_HANDLE"
+      ],
+      "eventsLost": 0,
+      "objects": [
+        {
+          "kind": "event",
+          "kernelName": "\\Sessions\\<n>\\BaseNamedObjects\\<run>-event",
+          "type": 21,
+          "typeName": "Event",
+          "distinctAddresses": 1,
+          "createsNamed": 0,
+          "closesNamed": 2,
+          "byRole": {
+            "creator": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            },
+            "opener": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            }
+          },
+          "lifetime": null
+        },
+        {
+          "kind": "semaphore",
+          "kernelName": "\\Sessions\\<n>\\BaseNamedObjects\\<run>-semaphore",
+          "type": 24,
+          "typeName": "Semaphore",
+          "distinctAddresses": 1,
+          "createsNamed": 0,
+          "closesNamed": 2,
+          "byRole": {
+            "creator": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            },
+            "opener": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            }
+          },
+          "lifetime": null
+        },
+        {
+          "kind": "mutex",
+          "kernelName": "\\Sessions\\<n>\\BaseNamedObjects\\<run>-mutex",
+          "type": 22,
+          "typeName": "Mutant",
+          "distinctAddresses": 1,
+          "createsNamed": 0,
+          "closesNamed": 2,
+          "byRole": {
+            "creator": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            },
+            "opener": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            }
+          },
+          "lifetime": null
+        }
+      ],
+      "objectsWhole": 3,
+      "clockOffsetMilliseconds": -0.004,
+      "truthWaitsWhoseFirstLookFailed": 179,
+      "waitsTheKernelBlocked": 174,
+      "waitsTheKernelBlockedWithTheirReady": 174,
+      "waitsPaired": 178,
+      "readyFromSignalRecordMilliseconds": {
+        "minimum": -0.021,
+        "median": -0.001,
+        "maximum": 0.003
+      },
+      "readiesBetweenTheProcesses": {
+        "creatorToOpener": 171,
+        "openerToCreator": 91
+      },
+      "readiesUnpaired": {
+        "beforeTheRounds": 0,
+        "duringTheRounds": 0,
+        "betweenTheRoundsAndTheLastRecord": 1,
+        "afterTheLastRecord": 83,
+        "afterTheLastRecordWithinMilliseconds": 6.357
+      },
+      "readiesUnpairedByWait": {
+        "WrResource": 19,
+        "not seen waiting": 33,
+        "reason 0": 32
+      },
+      "readiesPairedByWait": {
+        "UserRequest": 174,
+        "not seen waiting": 4
+      },
+      "counts": {
+        "handleCreations": 83784,
+        "handleCloses": 85340,
+        "handleDuplicates": 1901,
+        "typeRundown": 74,
+        "handleRundown": 283527,
+        "objectCreations": null,
+        "objectDeletions": null,
+        "references": null,
+        "dereferences": null,
+        "handleCreationsNamed": 0,
+        "handleClosesNamed": 16306,
+        "contextSwitches": 262022,
+        "readyThreads": 150247
+      },
+      "workloadSeconds": 1.5
+    },
+    {
+      "run": "handles-3",
+      "report": "bench/results/sync-objects-feasibility-handles-3-20261105T032312Z/report.json",
+      "groupMasks": [
+        "PERF_OB_HANDLE"
+      ],
+      "eventsLost": 0,
+      "objects": [
+        {
+          "kind": "event",
+          "kernelName": "\\Sessions\\<n>\\BaseNamedObjects\\<run>-event",
+          "type": 21,
+          "typeName": "Event",
+          "distinctAddresses": 1,
+          "createsNamed": 0,
+          "closesNamed": 2,
+          "byRole": {
+            "creator": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            },
+            "opener": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            }
+          },
+          "lifetime": null
+        },
+        {
+          "kind": "semaphore",
+          "kernelName": "\\Sessions\\<n>\\BaseNamedObjects\\<run>-semaphore",
+          "type": 24,
+          "typeName": "Semaphore",
+          "distinctAddresses": 1,
+          "createsNamed": 0,
+          "closesNamed": 2,
+          "byRole": {
+            "creator": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            },
+            "opener": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            }
+          },
+          "lifetime": null
+        },
+        {
+          "kind": "mutex",
+          "kernelName": "\\Sessions\\<n>\\BaseNamedObjects\\<run>-mutex",
+          "type": 22,
+          "typeName": "Mutant",
+          "distinctAddresses": 1,
+          "createsNamed": 0,
+          "closesNamed": 2,
+          "byRole": {
+            "creator": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            },
+            "opener": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            }
+          },
+          "lifetime": null
+        }
+      ],
+      "objectsWhole": 3,
+      "clockOffsetMilliseconds": -0.004,
+      "truthWaitsWhoseFirstLookFailed": 187,
+      "waitsTheKernelBlocked": 183,
+      "waitsTheKernelBlockedWithTheirReady": 183,
+      "waitsPaired": 186,
+      "readyFromSignalRecordMilliseconds": {
+        "minimum": -0.014,
+        "median": -0.001,
+        "maximum": 0.002
+      },
+      "readiesBetweenTheProcesses": {
+        "creatorToOpener": 167,
+        "openerToCreator": 112
+      },
+      "readiesUnpaired": {
+        "beforeTheRounds": 0,
+        "duringTheRounds": 0,
+        "betweenTheRoundsAndTheLastRecord": 0,
+        "afterTheLastRecord": 93,
+        "afterTheLastRecordWithinMilliseconds": 10.345
+      },
+      "readiesUnpairedByWait": {
+        "WrResource": 35,
+        "not seen waiting": 37,
+        "reason 0": 21
+      },
+      "readiesPairedByWait": {
+        "UserRequest": 183,
+        "not seen waiting": 3
+      },
+      "counts": {
+        "handleCreations": 65937,
+        "handleCloses": 66160,
+        "handleDuplicates": 319,
+        "typeRundown": 74,
+        "handleRundown": 283576,
+        "objectCreations": null,
+        "objectDeletions": null,
+        "references": null,
+        "dereferences": null,
+        "handleCreationsNamed": 0,
+        "handleClosesNamed": 9000,
+        "contextSwitches": 227316,
+        "readyThreads": 132473
+      },
+      "workloadSeconds": 1.5
+    },
+    {
+      "run": "objects-1",
+      "report": "bench/results/sync-objects-feasibility-objects-20261105T032320Z/report.json",
+      "groupMasks": [
+        "PERF_OB_HANDLE",
+        "PERF_OB_OBJECT"
+      ],
+      "eventsLost": 0,
+      "objects": [
+        {
+          "kind": "event",
+          "kernelName": "\\Sessions\\<n>\\BaseNamedObjects\\<run>-event",
+          "type": 21,
+          "typeName": "Event",
+          "distinctAddresses": 1,
+          "createsNamed": 0,
+          "closesNamed": 2,
+          "byRole": {
+            "creator": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            },
+            "opener": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            }
+          },
+          "lifetime": {
+            "creationsAtItsAddress": 1,
+            "createdBeforeItsFirstHandle": true,
+            "createdInRole": "creator",
+            "creationBeforeFirstHandleMilliseconds": 0.04,
+            "deletionsAtItsAddress": 1,
+            "deletedAfterItsLastClose": true,
+            "deletedInRole": "opener",
+            "deletionAfterLastCloseMilliseconds": 0.002,
+            "typeAtCreation": 21
+          }
+        },
+        {
+          "kind": "semaphore",
+          "kernelName": "\\Sessions\\<n>\\BaseNamedObjects\\<run>-semaphore",
+          "type": 24,
+          "typeName": "Semaphore",
+          "distinctAddresses": 1,
+          "createsNamed": 0,
+          "closesNamed": 2,
+          "byRole": {
+            "creator": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            },
+            "opener": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            }
+          },
+          "lifetime": {
+            "creationsAtItsAddress": 1,
+            "createdBeforeItsFirstHandle": true,
+            "createdInRole": "creator",
+            "creationBeforeFirstHandleMilliseconds": 0.023,
+            "deletionsAtItsAddress": 1,
+            "deletedAfterItsLastClose": true,
+            "deletedInRole": "creator",
+            "deletionAfterLastCloseMilliseconds": 0.002,
+            "typeAtCreation": 24
+          }
+        },
+        {
+          "kind": "mutex",
+          "kernelName": "\\Sessions\\<n>\\BaseNamedObjects\\<run>-mutex",
+          "type": 22,
+          "typeName": "Mutant",
+          "distinctAddresses": 1,
+          "createsNamed": 0,
+          "closesNamed": 2,
+          "byRole": {
+            "creator": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            },
+            "opener": {
+              "truthOpens": 1,
+              "recordedOpens": 1,
+              "truthCloses": 1,
+              "recordedCloses": 1
+            }
+          },
+          "lifetime": {
+            "creationsAtItsAddress": 1,
+            "createdBeforeItsFirstHandle": true,
+            "createdInRole": "creator",
+            "creationBeforeFirstHandleMilliseconds": 0.017,
+            "deletionsAtItsAddress": 1,
+            "deletedAfterItsLastClose": true,
+            "deletedInRole": "creator",
+            "deletionAfterLastCloseMilliseconds": 0.001,
+            "typeAtCreation": 22
+          }
+        }
+      ],
+      "objectsWhole": 3,
+      "clockOffsetMilliseconds": -0.004,
+      "truthWaitsWhoseFirstLookFailed": 182,
+      "waitsTheKernelBlocked": 178,
+      "waitsTheKernelBlockedWithTheirReady": 178,
+      "waitsPaired": 182,
+      "readyFromSignalRecordMilliseconds": {
+        "minimum": -0.013,
+        "median": -0.001,
+        "maximum": 0.002
+      },
+      "readiesBetweenTheProcesses": {
+        "creatorToOpener": 158,
+        "openerToCreator": 91
+      },
+      "readiesUnpaired": {
+        "beforeTheRounds": 0,
+        "duringTheRounds": 0,
+        "betweenTheRoundsAndTheLastRecord": 0,
+        "afterTheLastRecord": 67,
+        "afterTheLastRecordWithinMilliseconds": 6.509
+      },
+      "readiesUnpairedByWait": {
+        "WrResource": 18,
+        "not seen waiting": 26,
+        "reason 0": 22,
+        "reason 34": 1
+      },
+      "readiesPairedByWait": {
+        "UserRequest": 178,
+        "not seen waiting": 4
+      },
+      "counts": {
+        "handleCreations": 68770,
+        "handleCloses": 68820,
+        "handleDuplicates": 351,
+        "typeRundown": 74,
+        "handleRundown": 283771,
+        "objectCreations": 64048,
+        "objectDeletions": 63783,
+        "references": 2176829,
+        "dereferences": 2266258,
+        "handleCreationsNamed": 0,
+        "handleClosesNamed": 10372,
+        "contextSwitches": 243636,
+        "readyThreads": 142609
+      },
+      "workloadSeconds": 1.5
+    }
+  ],
+  "ledgers": {
+    "ledger.csv": "the first run's handle records of the three objects, the ready threads between the creator and the opener either way, and each switch out of their threads into a user-mode wait: each by its time, record, role, object kind, object and handle ordinals, type, type name, whether it carried a name, the readied role, its wait, adjust reason and DPC flag, and the thread's ordinal - never a PID, a thread id, a handle value or an address",
+    "ledger-objects.csv": "the object run's ledger, with each object's creation and deletion as the object group recorded them"
+  }
+}

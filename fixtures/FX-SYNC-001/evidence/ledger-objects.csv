@@ -1,0 +1,472 @@
+utcTicks,record,role,kind,object,handle,type,typeName,nameCarried,awakenedRole,awakenedWait,adjustReason,fromDpc,thread
+639294457968830718,Waited,creator,,,,,,,,UserRequest,,,3
+639294457969014536,Waited,creator,,,,,,,,UserRequest,,,5
+639294457969018456,Waited,creator,,,,,,,,UserRequest,,,6
+639294457969021901,Waited,creator,,,,,,,,UserRequest,,,3
+639294457969026208,Waited,creator,,,,,,,,UserRequest,,,7
+639294457969028368,Waited,creator,,,,,,,,UserRequest,,,7
+639294457969028783,Waited,creator,,,,,,,,UserRequest,,,7
+639294457969528869,Waited,creator,,,,,,,,UserRequest,,,8
+639294457969538055,Waited,creator,,,,,,,,UserRequest,,,8
+639294457970458700,Created,creator,,1,,21,Event,,,,,,
+639294457970459105,Create,creator,event,1,1,21,Event,False,,,,,
+639294457970459640,Created,creator,,2,,24,Semaphore,,,,,,
+639294457970459874,Create,creator,semaphore,2,2,24,Semaphore,False,,,,,
+639294457970460057,Created,creator,,3,,22,Mutant,,,,,,
+639294457970460225,Create,creator,mutex,3,3,22,Mutant,False,,,,,
+639294457970805752,Waited,opener,,,,,,,,UserRequest,,,2
+639294457970989118,Waited,opener,,,,,,,,UserRequest,,,9
+639294457970992770,Waited,opener,,,,,,,,UserRequest,,,4
+639294457970996818,Waited,opener,,,,,,,,UserRequest,,,2
+639294457971002028,Waited,opener,,,,,,,,UserRequest,,,10
+639294457971004137,Waited,opener,,,,,,,,UserRequest,,,10
+639294457971004647,Waited,opener,,,,,,,,UserRequest,,,10
+639294457971177154,Ready,opener,,,,,,,creator,DelayExecution,unwait,True,1
+639294457971432378,Waited,opener,,,,,,,,UserRequest,,,11
+639294457971441318,Waited,opener,,,,,,,,UserRequest,,,11
+639294457972254559,Waited,creator,,,,,,,,UserRequest,,,1
+639294457972352845,Create,opener,event,1,4,21,Event,False,,,,,
+639294457972361286,Create,opener,semaphore,2,5,24,Semaphore,False,,,,,
+639294457972363961,Create,opener,mutex,3,6,22,Mutant,False,,,,,
+639294457972404534,Waited,opener,,,,,,,,UserRequest,,,2
+639294457972539115,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457972539725,Waited,creator,,,,,,,,UserRequest,,,3
+639294457972540286,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457972540546,Waited,opener,,,,,,,,UserRequest,,,2
+639294457972540832,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457972541225,Waited,opener,,,,,,,,UserRequest,,,2
+639294457972686200,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457972686839,Waited,opener,,,,,,,,UserRequest,,,2
+639294457972689766,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457972692398,Waited,opener,,,,,,,,UserRequest,,,2
+639294457972841178,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457972841578,Waited,creator,,,,,,,,UserRequest,,,3
+639294457972841658,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457972841972,Waited,opener,,,,,,,,UserRequest,,,2
+639294457972842320,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457972842737,Waited,opener,,,,,,,,UserRequest,,,2
+639294457972993860,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457972994382,Waited,opener,,,,,,,,UserRequest,,,2
+639294457972994538,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457972994884,Waited,opener,,,,,,,,UserRequest,,,2
+639294457973149702,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457973150571,Waited,creator,,,,,,,,UserRequest,,,3
+639294457973150656,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457973150872,Waited,opener,,,,,,,,UserRequest,,,2
+639294457973151130,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457973151600,Waited,opener,,,,,,,,UserRequest,,,2
+639294457973299832,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457973300255,Waited,creator,,,,,,,,UserRequest,,,3
+639294457973300312,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457973300469,Waited,opener,,,,,,,,UserRequest,,,2
+639294457973300812,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457973301171,Waited,opener,,,,,,,,UserRequest,,,2
+639294457973449936,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457973450340,Waited,creator,,,,,,,,UserRequest,,,3
+639294457973450593,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457973450779,Waited,opener,,,,,,,,UserRequest,,,2
+639294457973451326,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457973451932,Waited,opener,,,,,,,,UserRequest,,,2
+639294457973599964,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457973600417,Waited,creator,,,,,,,,UserRequest,,,3
+639294457973600490,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457973600683,Waited,opener,,,,,,,,UserRequest,,,2
+639294457973601207,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457973601602,Waited,opener,,,,,,,,UserRequest,,,2
+639294457973749290,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457973749765,Waited,creator,,,,,,,,UserRequest,,,3
+639294457973749948,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457973750136,Waited,opener,,,,,,,,UserRequest,,,2
+639294457973750282,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457973750807,Waited,opener,,,,,,,,UserRequest,,,2
+639294457973900173,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457973900895,Waited,creator,,,,,,,,UserRequest,,,3
+639294457973901022,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457973901304,Waited,opener,,,,,,,,UserRequest,,,2
+639294457973901512,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457973901945,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974055615,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974056156,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974056383,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974056939,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974204008,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974204375,Waited,creator,,,,,,,,UserRequest,,,3
+639294457974204565,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457974204696,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974205598,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974206497,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974215374,Waited,opener,,,,,,,,UserRequest,,,12
+639294457974355404,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974355809,Waited,creator,,,,,,,,UserRequest,,,3
+639294457974356602,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457974356923,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974357253,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974358008,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974390291,Waited,opener,,,,,,,,UserRequest,,,12
+639294457974508168,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974508903,Waited,creator,,,,,,,,UserRequest,,,3
+639294457974509276,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457974509528,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974509792,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974510325,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974664437,Ready,opener,,,,,,,creator,DelayExecution,unwait,True,3
+639294457974664530,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974665709,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457974665973,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974666093,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974666925,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974819867,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974820288,Waited,creator,,,,,,,,UserRequest,,,3
+639294457974820750,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457974821069,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974821202,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974821697,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974969672,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974970052,Waited,creator,,,,,,,,UserRequest,,,3
+639294457974970334,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457974970522,Waited,opener,,,,,,,,UserRequest,,,2
+639294457974971105,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457974971700,Waited,opener,,,,,,,,UserRequest,,,2
+639294457975125017,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457975125444,Waited,creator,,,,,,,,UserRequest,,,3
+639294457975125591,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457975125832,Waited,opener,,,,,,,,UserRequest,,,2
+639294457975126034,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457975126632,Waited,opener,,,,,,,,UserRequest,,,2
+639294457975274635,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457975275238,Waited,opener,,,,,,,,UserRequest,,,2
+639294457975275619,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457975276136,Waited,opener,,,,,,,,UserRequest,,,2
+639294457975424726,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457975425403,Waited,creator,,,,,,,,UserRequest,,,3
+639294457975426177,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457975426538,Waited,opener,,,,,,,,UserRequest,,,2
+639294457975426635,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457975427043,Waited,opener,,,,,,,,UserRequest,,,2
+639294457975573590,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457975573944,Waited,creator,,,,,,,,UserRequest,,,3
+639294457975574122,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457975574321,Waited,opener,,,,,,,,UserRequest,,,2
+639294457975574587,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457975574975,Waited,opener,,,,,,,,UserRequest,,,2
+639294457975729902,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457975730196,Waited,creator,,,,,,,,UserRequest,,,3
+639294457975730441,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457975730758,Waited,opener,,,,,,,,UserRequest,,,2
+639294457975731089,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457975731838,Waited,opener,,,,,,,,UserRequest,,,2
+639294457975881908,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457975882263,Waited,creator,,,,,,,,UserRequest,,,3
+639294457975882318,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457975882470,Waited,opener,,,,,,,,UserRequest,,,2
+639294457975882767,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457975883182,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976031804,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976032170,Waited,creator,,,,,,,,UserRequest,,,3
+639294457976032492,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457976032684,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976032908,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976033308,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976188059,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976188730,Waited,creator,,,,,,,,UserRequest,,,3
+639294457976188832,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457976189044,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976189331,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976189992,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976339228,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976339718,Waited,creator,,,,,,,,UserRequest,,,3
+639294457976339919,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457976340184,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976340768,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976341324,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976492617,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976493086,Waited,creator,,,,,,,,UserRequest,,,3
+639294457976493247,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457976493584,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976494127,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976494935,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976644199,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976644658,Waited,creator,,,,,,,,UserRequest,,,3
+639294457976644708,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457976644896,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976645215,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976645644,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976794736,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976795107,Waited,creator,,,,,,,,UserRequest,,,3
+639294457976795241,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457976795562,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976795611,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976796085,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976944696,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976945319,Waited,creator,,,,,,,,UserRequest,,,3
+639294457976945444,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457976945674,Waited,opener,,,,,,,,UserRequest,,,2
+639294457976946039,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457976946423,Waited,opener,,,,,,,,UserRequest,,,2
+639294457977095059,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457977095442,Waited,creator,,,,,,,,UserRequest,,,3
+639294457977095479,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457977095684,Waited,opener,,,,,,,,UserRequest,,,2
+639294457977095840,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457977096172,Waited,opener,,,,,,,,UserRequest,,,2
+639294457977251201,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457977251550,Waited,creator,,,,,,,,UserRequest,,,3
+639294457977251644,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457977251838,Waited,opener,,,,,,,,UserRequest,,,2
+639294457977252502,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457977253026,Waited,opener,,,,,,,,UserRequest,,,2
+639294457977401589,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457977401907,Waited,creator,,,,,,,,UserRequest,,,3
+639294457977402106,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457977402293,Waited,opener,,,,,,,,UserRequest,,,2
+639294457977402468,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457977402732,Waited,opener,,,,,,,,UserRequest,,,2
+639294457977558028,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457977558986,Waited,opener,,,,,,,,UserRequest,,,2
+639294457977559205,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457977559746,Waited,opener,,,,,,,,UserRequest,,,2
+639294457977709700,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457977710481,Waited,creator,,,,,,,,UserRequest,,,3
+639294457977710633,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457977710851,Waited,opener,,,,,,,,UserRequest,,,2
+639294457977711182,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457977711445,Waited,opener,,,,,,,,UserRequest,,,2
+639294457977864948,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457977865242,Waited,creator,,,,,,,,UserRequest,,,3
+639294457977865331,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457977865568,Waited,opener,,,,,,,,UserRequest,,,2
+639294457977865840,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457977866149,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978014899,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978015187,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457978015359,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978016026,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978016532,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978170637,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978170853,Waited,creator,,,,,,,,UserRequest,,,3
+639294457978171031,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457978171171,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978171513,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978171737,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978325511,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978325769,Waited,creator,,,,,,,,UserRequest,,,3
+639294457978325981,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457978326206,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978326821,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978327107,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978482073,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978482662,Waited,creator,,,,,,,,UserRequest,,,3
+639294457978483226,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457978483441,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978483801,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978484187,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978631870,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978632196,Waited,creator,,,,,,,,UserRequest,,,3
+639294457978632532,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457978632690,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978632996,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978633446,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978782326,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978782633,Waited,creator,,,,,,,,UserRequest,,,3
+639294457978782791,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457978782940,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978784041,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978784768,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978931677,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978932080,Waited,creator,,,,,,,,UserRequest,,,3
+639294457978932354,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457978932615,Waited,opener,,,,,,,,UserRequest,,,2
+639294457978932681,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457978933047,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979082372,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979082805,Waited,creator,,,,,,,,UserRequest,,,3
+639294457979083034,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457979083198,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979083454,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979083758,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979238327,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979238540,Waited,creator,,,,,,,,UserRequest,,,3
+639294457979238930,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457979239086,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979239220,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979239556,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979394332,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979394589,Waited,creator,,,,,,,,UserRequest,,,3
+639294457979394621,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457979394769,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979395021,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979395354,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979542458,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979542756,Waited,creator,,,,,,,,UserRequest,,,3
+639294457979543143,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457979543299,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979543739,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979544239,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979692776,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979693082,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457979693212,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979693414,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979693732,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979847141,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979847355,Waited,creator,,,,,,,,UserRequest,,,3
+639294457979847490,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457979847668,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979847878,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979848157,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979995764,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979995975,Waited,creator,,,,,,,,UserRequest,,,3
+639294457979996773,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457979997115,Waited,opener,,,,,,,,UserRequest,,,2
+639294457979997128,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457979997477,Waited,opener,,,,,,,,UserRequest,,,2
+639294457980146753,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457980147219,Waited,opener,,,,,,,,UserRequest,,,2
+639294457980147501,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457980147741,Waited,opener,,,,,,,,UserRequest,,,2
+639294457980295529,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457980295805,Waited,creator,,,,,,,,UserRequest,,,3
+639294457980295944,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457980296097,Waited,opener,,,,,,,,UserRequest,,,2
+639294457980296428,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457980296828,Waited,opener,,,,,,,,UserRequest,,,2
+639294457980447080,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457980447308,Waited,creator,,,,,,,,UserRequest,,,3
+639294457980447391,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457980447477,Waited,opener,,,,,,,,UserRequest,,,2
+639294457980447836,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457980447990,Waited,opener,,,,,,,,UserRequest,,,2
+639294457980596583,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457980596793,Waited,creator,,,,,,,,UserRequest,,,3
+639294457980597003,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457980597149,Waited,opener,,,,,,,,UserRequest,,,2
+639294457980597306,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457980597535,Waited,opener,,,,,,,,UserRequest,,,2
+639294457980748023,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457980748325,Waited,creator,,,,,,,,UserRequest,,,3
+639294457980748534,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457980748714,Waited,opener,,,,,,,,UserRequest,,,2
+639294457980748888,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457980749272,Waited,opener,,,,,,,,UserRequest,,,2
+639294457980902237,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457980902553,Waited,creator,,,,,,,,UserRequest,,,3
+639294457980902624,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457980902805,Waited,opener,,,,,,,,UserRequest,,,2
+639294457980902927,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457980903180,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981051188,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981051388,Waited,creator,,,,,,,,UserRequest,,,3
+639294457981051490,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457981051718,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981052204,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981052685,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981200935,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981201306,Waited,creator,,,,,,,,UserRequest,,,3
+639294457981201309,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457981201462,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981201734,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981201991,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981355735,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981355896,Waited,creator,,,,,,,,UserRequest,,,3
+639294457981356055,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457981356241,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981356411,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981356738,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981506187,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981506395,Waited,creator,,,,,,,,UserRequest,,,3
+639294457981506901,Ready,opener,,,,,,,creator,UserRequest,unwait,False,3
+639294457981507052,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981507314,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981507579,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981653598,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981654129,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981654163,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981654435,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981805588,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981806180,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981806440,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981806807,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981957965,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981958358,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457981958447,Waited,opener,,,,,,,,UserRequest,,,2
+639294457981958722,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457981958924,Waited,opener,,,,,,,,UserRequest,,,2
+639294457982046616,Waited,opener,,,,,,,,UserRequest,,,12
+639294457982105678,Ready,creator,,,,,,,opener,UserRequest,unwait,False,2
+639294457982108026,Close,opener,event,1,4,21,Event,True,,,,,
+639294457982108026,Close,creator,event,1,1,21,Event,True,,,,,
+639294457982108048,Deleted,opener,,1,,21,Event,,,,,,
+639294457982108165,Close,creator,semaphore,2,2,24,Semaphore,True,,,,,
+639294457982108165,Close,opener,semaphore,2,5,24,Semaphore,True,,,,,
+639294457982108180,Deleted,creator,,2,,24,Semaphore,,,,,,
+639294457982108582,Close,opener,mutex,3,6,22,Mutant,True,,,,,
+639294457982108583,Close,creator,mutex,3,3,22,Mutant,True,,,,,
+639294457982108594,Deleted,creator,,3,,22,Mutant,,,,,,
+639294457982121488,Ready,creator,,,,,,,opener,not seen waiting,unwait,False,2
+639294457982121536,Ready,creator,,,,,,,opener,not seen waiting,unwait,False,2
+639294457982121686,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457982121834,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457982122278,Ready,opener,,,,,,,creator,reason 34,unwait,False,3
+639294457982125814,Waited,opener,,,,,,,,UserRequest,,,2
+639294457982126580,Waited,creator,,,,,,,,UserRequest,,,3
+639294457982132941,Ready,creator,,,,,,,opener,not seen waiting,unwait,False,4
+639294457982148903,Ready,opener,,,,,,,creator,WrResource,unwait,False,3
+639294457982153534,Ready,opener,,,,,,,creator,reason 0,unwait,False,3
+639294457982154526,Ready,opener,,,,,,,creator,reason 0,unwait,False,3
+639294457982155245,Ready,opener,,,,,,,creator,reason 0,unwait,False,3
+639294457982156088,Ready,creator,,,,,,,opener,reason 0,unwait,False,2
+639294457982156290,Ready,opener,,,,,,,creator,reason 0,unwait,False,3
+639294457982156375,Ready,creator,,,,,,,opener,reason 0,unwait,False,2
+639294457982156735,Ready,creator,,,,,,,opener,WrResource,unwait,False,2
+639294457982157133,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457982157572,Ready,creator,,,,,,,opener,not seen waiting,unwait,False,2
+639294457982157668,Ready,opener,,,,,,,creator,reason 0,unwait,False,3
+639294457982157767,Ready,creator,,,,,,,opener,reason 0,unwait,False,2
+639294457982158014,Ready,creator,,,,,,,opener,WrResource,unwait,False,2
+639294457982158426,Ready,creator,,,,,,,opener,not seen waiting,unwait,False,2
+639294457982158756,Ready,opener,,,,,,,creator,reason 0,unwait,False,3
+639294457982158949,Ready,creator,,,,,,,opener,reason 0,unwait,False,2
+639294457982159036,Ready,opener,,,,,,,creator,reason 0,unwait,False,3
+639294457982159263,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457982159724,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457982159867,Ready,creator,,,,,,,opener,reason 0,unwait,False,2
+639294457982159948,Ready,opener,,,,,,,creator,reason 0,unwait,False,3
+639294457982160256,Ready,creator,,,,,,,opener,WrResource,unwait,False,2
+639294457982160851,Ready,creator,,,,,,,opener,not seen waiting,unwait,False,2
+639294457982160944,Ready,opener,,,,,,,creator,reason 0,unwait,False,3
+639294457982161083,Ready,creator,,,,,,,opener,reason 0,unwait,False,2
+639294457982161149,Ready,opener,,,,,,,creator,reason 0,unwait,False,3
+639294457982161367,Ready,opener,,,,,,,creator,WrResource,unwait,False,3
+639294457982161824,Ready,opener,,,,,,,creator,reason 0,unwait,False,3
+639294457982161941,Ready,creator,,,,,,,opener,reason 0,unwait,False,2
+639294457982162004,Ready,opener,,,,,,,creator,reason 0,unwait,False,3
+639294457982162476,Ready,creator,,,,,,,opener,reason 0,unwait,False,2
+639294457982162588,Ready,opener,,,,,,,creator,reason 0,unwait,False,3
+639294457982162647,Ready,creator,,,,,,,opener,reason 0,unwait,False,2
+639294457982163055,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457982163649,Ready,creator,,,,,,,opener,not seen waiting,unwait,False,2
+639294457982164165,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457982164337,Ready,creator,,,,,,,opener,WrResource,unwait,False,2
+639294457982164658,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457982164762,Ready,creator,,,,,,,opener,WrResource,unwait,False,2
+639294457982165103,Ready,creator,,,,,,,opener,WrResource,unwait,False,2
+639294457982165709,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457982165869,Ready,creator,,,,,,,opener,WrResource,unwait,False,2
+639294457982166154,Ready,creator,,,,,,,opener,not seen waiting,unwait,False,2
+639294457982166458,Ready,opener,,,,,,,creator,WrResource,unwait,False,3
+639294457982166602,Ready,creator,,,,,,,opener,WrResource,unwait,False,2
+639294457982166840,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457982167578,Ready,creator,,,,,,,opener,not seen waiting,unwait,False,2
+639294457982167731,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457982167950,Ready,opener,,,,,,,creator,WrResource,unwait,False,3
+639294457982168056,Ready,creator,,,,,,,opener,not seen waiting,unwait,False,2
+639294457982169256,Ready,creator,,,,,,,opener,WrResource,unwait,False,2
+639294457982169894,Ready,creator,,,,,,,opener,not seen waiting,unwait,False,2
+639294457982170907,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457982171036,Ready,creator,,,,,,,opener,not seen waiting,unwait,False,2
+639294457982171225,Ready,opener,,,,,,,creator,WrResource,unwait,False,3
+639294457982171814,Ready,opener,,,,,,,creator,WrResource,unwait,False,3
+639294457982172620,Ready,opener,,,,,,,creator,not seen waiting,unwait,False,3
+639294457982172846,Ready,opener,,,,,,,creator,WrResource,unwait,False,3
+639294457982173320,Ready,creator,,,,,,,opener,not seen waiting,unwait,False,2
+639294457982173506,Ready,opener,,,,,,,creator,WrResource,unwait,False,3
+639294457982173696,Ready,opener,,,,,,,creator,WrResource,unwait,False,3

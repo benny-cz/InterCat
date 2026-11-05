@@ -9,8 +9,9 @@ namespace InterCat.SyncProbe;
 /// evidence"): what this machine declares for the kernel's object manager and its dispatcher. Neither has a manifest: each
 /// is a classic kernel class, a flag group only a system logger receives (ADR-035). So it reads from TDH the layout the
 /// machine registers for each of their events, as the product reads ALPC's, and the registered schema of the one manifest
-/// provider whose name says it audits kernel API calls. It is read-only: it enables no provider, starts no session and
-/// raises no event, so what it writes is evidence of schemas on one machine, never of what the kernel emits.
+/// provider whose name says it audits kernel API calls. The inspection is read-only: it enables no provider, starts no
+/// session and raises no event, so what it writes is evidence of schemas on one machine, never of what the kernel emits.
+/// With --measure it records what the kernel emits of FX-SYNC-001, under a session of its own (<see cref="Measure"/>).
 /// </summary>
 internal static class Program
 {
@@ -30,15 +31,22 @@ internal static class Program
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    private static int Main(string[] args)
+    private static async Task<int> Main(string[] args)
     {
         string? output = Option(args, "--output");
-        if (!args.Contains("--inspect", StringComparer.Ordinal) || output is null)
+        bool inspect = args.Contains("--inspect", StringComparer.Ordinal);
+        bool measure = args.Contains("--measure", StringComparer.Ordinal);
+        if (inspect == measure || output is null)
         {
             Console.Error.WriteLine("InterCat.SyncProbe --inspect --output <new directory>");
             Console.Error.WriteLine("  Reads, without enabling any, the layouts this machine registers for the kernel object manager's");
             Console.Error.WriteLine("  events and the dispatcher's context switch and ready thread, and the schema of the provider that");
             Console.Error.WriteLine("  audits kernel API calls, and writes each event with its fields.");
+            Console.Error.WriteLine("InterCat.SyncProbe --measure --output <new directory> [--rounds n] [--hold-ms ms] [--ledger]");
+            Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]: runs FX-SYNC-001 under a private system logger of its own");
+            Console.Error.WriteLine("  collecting the kernel's handle and dispatcher events machine-wide, and writes what it recorded of the");
+            Console.Error.WriteLine("  run's three named objects and of the threads one process's signals readied in the other; with");
+            Console.Error.WriteLine("  --ledger each kept record by role, never a PID, a thread, a handle's value or an address.");
             return 2;
         }
 
@@ -50,6 +58,11 @@ internal static class Program
         }
 
         Directory.CreateDirectory(output);
+        return measure ? await Measure.RunAsync(output, args).ConfigureAwait(false) : Inspect(output);
+    }
+
+    private static int Inspect(string output)
+    {
         var metadata = new TdhEtwMetadataSource();
         var classes = new List<object>();
         foreach ((string name, Guid classGuid, int[] opcodes) in Classes)

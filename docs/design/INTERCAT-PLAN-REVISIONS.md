@@ -852,6 +852,7 @@ Revision 925 has the replaced-session test wait out the shown session's reader b
 Revision 926 adds FX-COM-004, nested COM calls, each linked to its own served call, 768 of 768: a nested call carries an activity of its own, so nesting makes nothing ambiguous (ADR-079's sixth addendum).
 Revision 927 adds FX-COM-005, calls a capture's start and stop cut, each stated cut and linked to nothing, with which the COM calls package meets M6's exit tests (ADR-080's fourth addendum).
 Revision 928 begins M6's named synchronization objects package with its metadata inspection (§4.2): the kernel's object manager declares a handle's creation, duplication and close with its object's address, type and name, rundowns of open handles, and an object's creation and deletion, and its dispatcher a ready thread naming the thread readied; no event records a signal or a wait on an object, and nothing is enabled or implemented.
+Revision 929 measures the kernel's handle, object and dispatcher records against FX-SYNC-001 (ADR-082): each process's handles to a named object two processes share at one address, the creation naming nothing and the close the object; each object's creation and deletion by address; every wait the kernel blocked readied from the signaling process, a ready naming no object; no source is inventoried.
 
 ## Revisions, a paragraph each, in order
 
@@ -3818,3 +3819,18 @@ target process or thread with an access, a symbolic link, a driver or a notify r
 No event records a signal or a wait on an object. §4.2 records it as evidence of layouts on one machine, not of
 emission: the handle events are measured against a truth fixture of named objects two processes share before any field
 is implemented.
+
+Revision 929 gives the named synchronization objects package its capability result (ADR-082). `InterCat.TestWorkloads
+sync-objects` has a creator make a named event, semaphore and mutex in the session's namespace and an opener open each by
+name, the two taking turns through them for 64 rounds, each logging every object, signal, wait and close by the object's
+name. `tools/InterCat.SyncProbe --measure` read four runs under a private system logger of its own, machine-wide, adding
+the object manager's handle group, and once its object group, to the session's masks with `TraceSetInformation`, which
+TraceEvent does only on the NT Kernel Logger. Nothing was lost. Each process's handle to each object was created and closed
+once, both processes' at one address, typed Event, Semaphore or Mutant; a creation carried no name and the close the
+object's, so a handle is named at its close. The object group recorded each object's creation before its first handle and
+its deletion after its last close, beside about a million reference records a second. The dispatcher's ready thread names
+neither the object nor its readier; set against the context switches, every wait the kernel blocked had the ready thread of
+its thread from the signaling process's running thread, within microseconds of the signal, while at the processes' exit
+their threads readied each other dozens of times in the kernel's own waits with no object between them. A named object is
+one object by its address within its lifetime, and a ready thread is never a signal by itself. No source is inventoried;
+the handle group's cost and a capture's group masks come first.

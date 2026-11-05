@@ -1,9 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- The source-generated interop that queries its own session for its handle and adds the object manager's groups. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <!-- For each candidate class's registered layouts and each provider's registered schema, read as the product reads one. -->
     <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- A lab probe, not a product adapter: its own private system logger collects the kernel's handle and dispatcher flag
+         groups, to measure what they record of named objects two processes share before any profile admits them. -->
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,15 @@
+{
+  "scenarioId": "FX-SYNC-001",
+  "rounds": 64,
+  "holdMilliseconds": 5,
+  "name": "Local\\InterCat-FX-SYNC-001-117dcce9e0494b6eb9fd16c874147e84",
+  "objects": [
+    "Local\\InterCat-FX-SYNC-001-117dcce9e0494b6eb9fd16c874147e84-event",
+    "Local\\InterCat-FX-SYNC-001-117dcce9e0494b6eb9fd16c874147e84-semaphore",
+    "Local\\InterCat-FX-SYNC-001-117dcce9e0494b6eb9fd16c874147e84-mutex"
+  ],
+  "creatorProcessId": 73668,
+  "openerProcessId": 68756,
+  "creatorExitCode": 0,
+  "openerExitCode": 0
+}
