@@ -7,6 +7,10 @@
   <ItemGroup>
     <!-- For each candidate provider's registered schema, read as the product's inventory reads it. -->
     <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+    <!-- To read the session a product capture published, and evaluate its workload's window message records against their
+         truth as the product evaluates window messages (ADR-088). -->
+    <ProjectReference Include="../../src/InterCat.Storage/InterCat.Storage.csproj" />
+    <ProjectReference Include="../../src/InterCat.Analysis/InterCat.Analysis.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- A lab probe, not a product adapter: it lists the machine's registered providers by name, to find those that could

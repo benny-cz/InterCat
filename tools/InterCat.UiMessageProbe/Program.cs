@@ -54,6 +54,9 @@ internal static class Program
             Console.Error.WriteLine("  size delivers each of FX-WMSG-001's messages' ends in the order they were raised, and what a gate");
             Console.Error.WriteLine("  following a message by its pointer as records arrive would number wrongly; the ledger is the run's ends");
             Console.Error.WriteLine("  as delivered, each pointer by the order it first appeared in.");
+            Console.Error.WriteLine("  --product [--runs n] [--copies n] [--posts n] [--bytes n] [--duration s] [--icat <InterCat.Cli.exe>]: FX-WMSG-001");
+            Console.Error.WriteLine("  recorded through the product by icat record under the window messages profile, each run's session read");
+            Console.Error.WriteLine("  into a ledger of the workload's records by role and evaluated against its truth, then deleted.");
             return 2;
         }
 
@@ -85,6 +88,29 @@ internal static class Program
                 impact["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
                 File.WriteAllText(Path.Combine(output, "impact.json"), JsonSerializer.Serialize(impact, Json));
                 Console.WriteLine(JsonSerializer.Serialize(impact, Json));
+                return 0;
+            }
+
+            // FX-WMSG-001 recorded through the product: icat record under the window messages profile, each run's session read
+            // into a ledger and evaluated against its truth (ADR-088).
+            if (args.Contains("--product", StringComparer.Ordinal))
+            {
+                // The evaluation's words are the invariant culture's, as a fixture's committed measurement states them.
+                CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+                string icat = Option(args, "--icat") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                    "src", "InterCat.Cli", "bin", "Release", "net10.0", "InterCat.Cli.exe"));
+                Dictionary<string, object?> product = await Product.RunAsync(icat, workload, output,
+                    int.Parse(Option(args, "--runs") ?? "3", CultureInfo.InvariantCulture),
+                    int.Parse(Option(args, "--copies") ?? "32", CultureInfo.InvariantCulture),
+                    int.Parse(Option(args, "--posts") ?? "32", CultureInfo.InvariantCulture),
+                    int.Parse(Option(args, "--bytes") ?? "2048", CultureInfo.InvariantCulture),
+                    int.Parse(Option(args, "--duration") ?? "15", CultureInfo.InvariantCulture)).ConfigureAwait(false);
+                product["schema"] = "intercat.window-message-product.v1";
+                product["measuredUtc"] = DateTimeOffset.UtcNow;
+                product["build"] = CapabilityInventoryProbe.DescribeEnvironment().BuildId;
+                product["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+                File.WriteAllText(Path.Combine(output, "report.json"), JsonSerializer.Serialize(product, Json));
+                Console.WriteLine(JsonSerializer.Serialize(product, Json));
                 return 0;
             }
 

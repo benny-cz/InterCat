@@ -116,6 +116,79 @@ public sealed class WindowMessageCoverageEvaluatorTests
         Assert.Equal(1, result.ObservationsOutsideScope);
     }
 
+    [Fact(DisplayName = "P27: FX-WMSG-001's committed ledger through the product reproduces its tier - each of its 32 sends and 33 posts the number of its rank, with every end in its own process and its other end the receiver - experimental evidence, in three runs with nothing lost")]
+    public void CommittedEvidenceReproducesItsTier()
+    {
+        string root = RepositoryRoot();
+        string evidence = Path.Combine(root, "fixtures", "FX-WMSG-001", "evidence", "product");
+        TruthRecord[] truth = [.. ReadTruth(Path.Combine(evidence, "truth-sender.jsonl")), .. ReadTruth(Path.Combine(evidence, "truth-receiver.jsonl"))];
+        Dictionary<string, int> processes = truth.GroupBy(static record => record.Role).ToDictionary(static group => group.Key, static group => group.First().ProcessId);
+        WindowMessageObservation[] ledger = [.. ReadLedger(Path.Combine(evidence, "ledger.csv"), processes)];
+        WindowMessageCoverageResult result = WindowMessageCoverageEvaluator.Evaluate(truth, ledger, Settings());
+
+        // The first run's ledger: the workload's 194 records, every one of its messages the number of its rank with every end
+        // in its own process, none of another process's, so the tier is the evaluator's, not the ledger's word.
+        Assert.Equal(CapabilityTier.ExperimentalEvidence, result.Assessment.Tier);
+        Assert.Equal(194, ledger.Length);
+        Assert.Equal((32, 32, 1), (result.Messages.Count(static message => message.Kind == "sent"),
+            result.Messages.Count(static message => message.Kind == WindowMessageCoverageEvaluator.PostedStatus),
+            result.Messages.Count(static message => message.Kind == "close")));
+        Assert.Equal((65L, 65, 0L, 0), (result.Measurement.TruthOperationsWithAdmittedObservation, result.MessagesWithEveryEnd,
+            result.Measurement.FalsePeerAttributions, result.ObservationsOutsideScope));
+        Assert.All(result.Messages, message => Assert.Equal(processes["receiver"], message.OtherEndProcessId));
+
+        // The three runs' report, as the probe wrote it from each capture's own health: each experimental evidence, every
+        // message observed with every end, nothing lost, dropped or delivered out of order.
+        using var report = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            Assert.Single(Directory.GetDirectories(Path.Combine(root, "bench", "results"), "window-message-product-*")), "report.json")));
+        System.Text.Json.JsonElement[] runs = [.. report.RootElement.GetProperty("runs").EnumerateArray()];
+        Assert.Equal(3, runs.Length);
+        Assert.All(runs, run =>
+        {
+            Assert.Equal(("ExperimentalEvidence", 65, 65, 0), (run.GetProperty("tier").GetString(), run.GetProperty("observed").GetInt32(),
+                run.GetProperty("withEveryEnd").GetInt32(), run.GetProperty("falsePeerAttributions").GetInt32()));
+            System.Text.Json.JsonElement health = run.GetProperty("health");
+            Assert.Equal((0L, 0L, 0L, 0L), (health.GetProperty("providerReportedEventLoss").GetInt64(), health.GetProperty("consumerReportedBufferLoss").GetInt64(),
+                health.GetProperty("applicationDrops").GetInt64(), health.GetProperty("gateOmissionsOutOfOrder").GetInt64()));
+        });
+    }
+
+    private static IEnumerable<TruthRecord> ReadTruth(string path)
+    {
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        return File.ReadLines(path).Where(line => line.Length > 0).Select(line => System.Text.Json.JsonSerializer.Deserialize<TruthRecord>(line, options)!);
+    }
+
+    // A ledger's records as the evaluator reads a session's: each role of the truth its process, each other process one of its
+    // own the truth never names, and a send's peer by its role likewise.
+    private static IEnumerable<WindowMessageObservation> ReadLedger(string path, Dictionary<string, int> processes)
+    {
+        int? Process(string role) => role.Length == 0 ? null
+            : processes.TryGetValue(role, out int process) ? process
+            : -int.Parse(role["other-".Length..], System.Globalization.CultureInfo.InvariantCulture);
+        return File.ReadLines(path).Skip(1).Where(line => line.Length > 0).Select(line => line.Split(',')).Select(field => new WindowMessageObservation
+        {
+            Ordinal = long.Parse(field[0], System.Globalization.CultureInfo.InvariantCulture),
+            Kind = Enum.Parse<ObservationKind>(field[3]),
+            Direction = Enum.Parse<Direction>(field[4]),
+            ProcessId = Process(field[2]),
+            MessageNumber = field[5].Length == 0 ? null : long.Parse(field[5], System.Globalization.CultureInfo.InvariantCulture),
+            PeerProcessId = Process(field[6]),
+        });
+    }
+
+    private static string RepositoryRoot()
+    {
+        DirectoryInfo? current = new(AppContext.BaseDirectory);
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "InterCat.slnx")))
+        {
+            current = current.Parent;
+        }
+
+        return current?.FullName ?? throw new DirectoryNotFoundException("Could not locate the InterCat repository root.");
+    }
+
     private static WindowMessageCoverageSettings Settings(bool reproduced = true) => new()
     {
         FixtureId = "FX-WMSG-001",

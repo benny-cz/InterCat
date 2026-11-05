@@ -1,6 +1,7 @@
 # ADR-088: A window message is measured as the number of its rank, and is experimental evidence at most
 
-- Status: accepted for M6's UI messaging work package; no fixture is measured through the product yet
+- Status: accepted for M6's UI messaging work package; FX-WMSG-001 measured through the product, experimental evidence on
+  10.0.26220.0-x64 (addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-080, ADR-084, ADR-086, ADR-087, §14.2, R3, R22, P1, P27, FX-WMSG-001, `CoverageTierCalculator`,
@@ -49,3 +50,22 @@ message number and parameters (ADR-086) - nor the window it went to, nor a size.
 - Tests hold it on synthetic captures: a whole run is experimental evidence and an unreproduced one reaches no tier; a missing
   end and a stranger's retrieval are said; a count that differs matches none; other windows and processes are scope; and a
   capture of none of the truth's messages observes none. Nine mutations are caught.
+
+## Addendum: FX-WMSG-001 through the product (revision 964)
+
+`InterCat.UiMessageProbe --measure --product` records FX-WMSG-001 by the product's own `icat record` under the opt-in
+window messages profile, the workload started once the session runs, and reads the session it published as the product
+holds it: each window message record's process under `process-binding-v7`, the number the gate wrote over its pointer, and
+the process a send's start names. It writes the ledger of the workload's records, and of other processes' on the
+workload's messages, by role - never a PID, a window, a pointer or a message - evaluates it as decided here, and deletes
+the session, which holds every window's messages on the machine.
+
+- In three runs of 32 sends and 32 posts, machine-wide and loss-free - 37,367, 40,677, 37,627
+  records admitted, none dropped and none a gate omitted - each of the run's 65 messages was the number of its rank among
+  the capture's messages of its kind from the sender to the receiver, with every end in its own process and its other end
+  the receiver: 65 of 65 a run, no false attribution.
+- Other processes' window messages, tens of thousands a run, never shared a number with the workload's, so none is in
+  the ledger.
+- Window messages are experimental evidence on 10.0.26220.0-x64: the build's per-build coverage carries the tier from
+  FX-WMSG-001, and a test reproduces it from the first run's committed ledger; nine alterations of that evidence and the
+  runs' report are caught.

@@ -91,7 +91,7 @@ public sealed class WindowMessageFeasibilityTests
         Assert.Equal([(32, 32), (2048, 2048), (20_000, 20_000)], sizes);
     }
 
-    [Fact(DisplayName = "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by the opt-in window messages profile alone, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build")]
+    [Fact(DisplayName = "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by the opt-in window messages profile alone, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and are experimental evidence on the one build their fixture measured them on through the product")]
     public void WindowMessagesHaveALeadAndNoTier()
     {
         WindowsSourceDefinition win32k = WindowsSourceCatalog.Find(WindowsSourceCatalog.Win32kSourceId)!;
@@ -131,14 +131,18 @@ public sealed class WindowMessageFeasibilityTests
         Assert.Contains(win32k.Notes, note => note.StartsWith("No record names which message it was", StringComparison.Ordinal));
         Assert.Contains(win32k.Notes, note => note.Contains("only within a message's life", StringComparison.Ordinal));
 
-        // Only the opt-in window messages profile requests it, no other source claims window messages, and no build carries
-        // a tier for them.
+        // Only the opt-in window messages profile requests it, no other source claims window messages, and only the build their
+        // fixture measured them on through the product carries a tier for them, FX-WMSG-001's: experimental evidence, as a
+        // message names no window and carries no size; no other build borrows it.
         Assert.Equal(["window-messages"], CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures)
             .Where(profile => profile.Sources.Any(source => source.SourceId == win32k.SourceId)).Select(profile => profile.Id));
         Assert.StartsWith("Only the opt-in window messages profile requests it.", win32k.FilteringNotes, StringComparison.Ordinal);
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != win32k.SourceId),
             source => Assert.DoesNotContain(Mechanism.WindowMessage, source.Mechanisms));
-        Assert.DoesNotContain(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.WindowMessage);
+        MeasuredCoverageEntry measured = Assert.Single(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.WindowMessage);
+        Assert.Equal((CapabilityTier.ExperimentalEvidence, "FX-WMSG-001", "10.0.26220.0-x64"), (measured.Tier, measured.Fixture, measured.Build));
+        Assert.Contains(win32k.Notes, note => note.Contains("through the product", StringComparison.Ordinal)
+            && note.Contains("its tier is experimental evidence (ADR-088)", StringComparison.Ordinal));
     }
 
     [Fact(DisplayName = "§12: collecting Win32k's message pump is measured in two series of pairs over a message-bound workload - Low in the processor time it adds, the workload's own a twentieth more and its throughput past §12's target, nothing lost - and the machine's other windows raise its records whatever the workload")]

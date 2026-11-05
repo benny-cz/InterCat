@@ -887,6 +887,7 @@ Revision 960 binds a window message's records to the process that raised them, a
 Revision 961 has the synchronization handle and window message gates' allocation tests read three warmed passes and hold the least to none, as a loaded suite's pass twice allocated 7,752 bytes never seen alone; no product code changes.
 Revision 962 adds the opt-in window messages profile, `window-messages` (ADR-087's third addendum): Kernel-Process and Win32k's message pump, both required, its Moderate class stated beside the message pump's measured throughput regression; nothing has measured it whole yet.
 Revision 963 adds the window message coverage evaluator (ADR-088): each truth message is the number of its rank among the capture's messages of its kind from the sender to the receiver, observed with every end in its own process, and window messages are experimental evidence at most.
+Revision 964 measures window messages through the product (ADR-088's addendum): FX-WMSG-001 recorded by icat record under the window messages profile three times, nothing lost, has each of its 65 messages observed with every end, so window messages are experimental evidence on 10.0.26220.0-x64.
 
 ## Revisions, a paragraph each, in order
 
@@ -4214,3 +4215,12 @@ the capture holds more or fewer of a kind than the truth logged, none of that ki
 with every end where its number has each end in its own process, and its peer, the process at its other end, is false
 unless it is the receiver. No record names the window or carries a size, so a message is bound to no resource and the
 byte criterion is not measured: window messages claim operations and reach experimental evidence at most (P27).
+
+Revision 964 measures window messages through the product (ADR-088's addendum), as revision 945 measured named
+synchronization objects. `InterCat.UiMessageProbe --measure --product` records FX-WMSG-001 by the product's own `icat
+record` under the opt-in window messages profile, reads the session as the product holds it - each record's process under
+`process-binding-v7`, its message's number and a send's peer - writes the ledger of the workload's records by role, never a
+PID, evaluates it with `WindowMessageCoverageEvaluator` and deletes the session. In three runs, machine-wide and nothing
+lost, dropped or omitted by a gate, each of the run's 65 messages - 32 sends, 32 posts and the close - was the number of its
+rank with every end in its own process, its other end the receiver. A test reproduces the tier from the first run's
+ledger, and the build's per-build coverage carries WindowMessage at ExperimentalEvidence from FX-WMSG-001.

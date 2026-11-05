@@ -98,6 +98,14 @@
       "fixture": "FX-UNIX-002",
       "date": "2026-11-04",
       "supportTier": "Primary"
+    },
+    {
+      "mechanism": "WindowMessage",
+      "build": "10.0.26220.0-x64",
+      "tier": "ExperimentalEvidence",
+      "fixture": "FX-WMSG-001",
+      "date": "2026-11-05",
+      "supportTier": "Primary"
     }
   ]
 }
