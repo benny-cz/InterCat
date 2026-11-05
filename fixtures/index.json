@@ -856,6 +856,7 @@
         "rules": [],
         "invariants": [],
         "prohibitions": [
+          "P27",
           "P7"
         ]
       },
@@ -874,7 +875,7 @@
           "build": "10.0.26220.0-x64",
           "supportTier": "Primary",
           "date": "2026-11-05",
-          "result": "Measured by tools/InterCat.UiMessageProbe, three runs, nothing lost: every message the sender sent or posted the receiver's window recorded at both ends, a send's start naming the receiver, each end joined to the other by its queue message pointer, and no record naming which message it was. No tier is assigned: no source in the catalog records window messages yet, and no capture has recorded them through the product (ADR-086)."
+          "result": "Measured by tools/InterCat.UiMessageProbe, three runs, nothing lost: every message the sender sent or posted the receiver's window recorded at both ends, a send's start naming the receiver, each end joined to the other by its queue message pointer, and no record naming which message it was. No tier is assigned: Win32k's message pump is inventoried as window messages' lead, requested by no profile and admitting no event, so no capture has recorded them through the product (ADR-086)."
         }
       ],
       "provenance": {
@@ -883,7 +884,8 @@
         "contents": "The two processes' truth logs and scenario of the first run - the window by the run's own class, messages by their number, copies by their size, of seeded bytes - and the measurement's counters: per run, the records delivered and lost, each end's records of the run's messages and those joined by pointer, and the two processes' records carrying a message number or a parameter, never a window's handle, a pointer or another process's message."
       },
       "tests": [
-        "P7: FX-WMSG-001's every message one process sent or posted another's window is recorded at both ends by Win32k's message pump - a send's start naming its receiver's process and thread, each end joined to the other by its queue message pointer - and none names which message it was"
+        "P7: FX-WMSG-001's every message one process sent or posted another's window is recorded at both ends by Win32k's message pump - a send's start naming its receiver's process and thread, each end joined to the other by its queue message pointer - and none names which message it was",
+        "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build"
       ]
     },
     {
@@ -2624,7 +2626,8 @@
         "P27: icat capabilities reports a mechanism no source covers where a fixture measured it on the build - mailslots unsupported, by FX-MAIL-001 - and leaves it out on a build none measured it on",
         "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build their fixtures measured them on through the product",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",
-        "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build"
+        "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build",
+        "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build"
       ],
       "P28": [
         "P28: WinINet's payload-producing capture is enabled by an explicit content request only, for its named processes alone"

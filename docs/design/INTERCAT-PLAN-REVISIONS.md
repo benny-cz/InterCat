@@ -879,6 +879,7 @@ Revision 952 measures FX-MAIL-001 (ADR-085): neither the kernel's classic file I
 Revision 953 begins the UI messaging package with its metadata inspection: Win32k declares under its message pump keyword a posted message's queueing and retrieval and a sent message's start and stop, the start naming the receiver's process, and the clipboard's writes and reads by process; no event names DDE or a copied payload's size.
 Revision 954 measures FX-WMSG-001 (ADR-086): Win32k's message pump records every message one process sends or posts another's window at both ends, a send naming its receiver and each end joined by its queue message pointer, but no record names which message or a payload's size.
 Revision 955 measures what collecting Win32k's message pump costs (ADR-086's addendum): Low in the processor time it adds, a message-bound workload spending a twentieth more of its own and past §12's throughput target, so only an opt-in profile may admit it.
+Revision 956 inventories Win32k's message pump as window messages' lead (ADR-086's second addendum): `etw/manifest/Microsoft-Windows-Win32k` at its message pump keyword, experimental, requested by no profile and admitting no event.
 
 ## Revisions, a paragraph each, in order
 
@@ -4134,3 +4135,12 @@ each message raising its records in the threads that send, post and retrieve it,
 throughput, past §12's 5% target. The consumer took about half a microsecond a record, and the machine's other windows
 raised about 3,100 records a second with no workload of the probe's. Only an opt-in profile stating the cost may admit
 the keyword; Explore never does.
+
+Revision 956 inventories Win32k's message pump as window messages' lead (ADR-086's second addendum), as COM-Perf and the
+object manager's handle group entered as their mechanisms' leads. `etw/manifest/Microsoft-Windows-Win32k` is the manifest
+provider at its `MessagePump` keyword, `0x400000`, at the informational level its six message events are declared at. It
+is experimental, requested by no profile and admits no event: a message's ends are joined by a kernel address reused once
+the message is retrieved, so a capture must number each message first. Its notes, which `icat capabilities` states, carry
+what FX-WMSG-001 measured - every message at both ends, a send naming its receiver, none naming which message - and its
+cost, Low beside a message-bound workload's throughput regression, so only an opt-in profile stating it may admit it,
+never Explore. No build carries a tier for window messages.

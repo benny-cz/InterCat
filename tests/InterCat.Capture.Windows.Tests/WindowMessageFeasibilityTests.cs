@@ -7,7 +7,8 @@ namespace InterCat.Capture.Windows.Tests;
 /// <summary>
 /// Window messages (ADR-086): FX-WMSG-001's messages, one process sending and posting another's window, measured under
 /// Microsoft-Windows-Win32k's message pump keyword: every one at both ends, each send naming its receiver, each end joined to
-/// the other by its queue message pointer, and none naming which message it was; and what collecting the keyword costs.
+/// the other by its queue message pointer, and none naming which message it was; what collecting the keyword costs; and the
+/// keyword inventoried as the mechanism's lead.
 /// </summary>
 public sealed class WindowMessageFeasibilityTests
 {
@@ -46,9 +47,50 @@ public sealed class WindowMessageFeasibilityTests
             // And no record of the two processes says which message it was: no number, no parameter.
             Assert.Equal((0, 0), (r.GetProperty("workloadRecordsCarryingAMessageNumber").GetInt32(), r.GetProperty("workloadRecordsCarryingAParameter").GetInt32()));
         }
+    }
 
-        // No catalog source records window messages yet, and no build carries a tier for them.
-        Assert.DoesNotContain(WindowsSourceCatalog.All, source => source.Mechanisms.Contains(Mechanism.WindowMessage));
+    [Fact(DisplayName = "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build")]
+    public void WindowMessagesHaveALeadAndNoTier()
+    {
+        WindowsSourceDefinition win32k = WindowsSourceCatalog.Find(WindowsSourceCatalog.Win32kSourceId)!;
+        Assert.Equal((SourceKind.ManifestProvider, "Microsoft-Windows-Win32k", "win:Informational"), (win32k.Kind, win32k.ProviderName, win32k.Level));
+        Assert.Equal([Mechanism.WindowMessage], win32k.Mechanisms);
+        Assert.Equal((SourceContractStatus.Experimental, false), (win32k.ContractStatus, win32k.SupportsCaptureSideProcessFilter));
+        Assert.Empty(win32k.AdmittedEvents);
+
+        // Its keyword is the one FX-WMSG-001 was measured under, by the name and mask the inspection read from this build's
+        // registered schema.
+        Assert.Equal((0x40_0000UL, 0UL), (win32k.MatchAnyKeyword, win32k.MatchAllKeyword));
+        Assert.Equal(["MessagePump"], win32k.RequestedKeywords);
+        using (JsonDocument inspection = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepositoryRoot(), "bench", "results",
+            "ui-message-provider-inspection-20261105T163256Z", "report.json"))))
+        {
+            JsonElement provider = inspection.RootElement.GetProperty("providers").EnumerateArray()
+                .Single(candidate => candidate.GetProperty("name").GetString() == win32k.ProviderName);
+            Assert.Contains(provider.GetProperty("keywords").EnumerateArray(), keyword
+                => (keyword.GetProperty("name").GetString(), keyword.GetProperty("mask").GetString()) == ("MessagePump", "0x400000"));
+        }
+
+        // Its cost is measured, Low in the processor time it adds, with the throughput regression its notes state beside the class.
+        Assert.Equal(OverheadClass.Low, win32k.Overhead);
+        Assert.Matches(@"^bench/results/window-message-impact-\d{8}T\d{6}Z/impact\.json$", win32k.OverheadEvidence);
+        using (JsonDocument impact = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepositoryRoot(), win32k.OverheadEvidence!))))
+        {
+            Assert.Equal((win32k.Overhead.ToString(), false), (impact.RootElement.GetProperty("attributedOverhead").GetString(),
+                impact.RootElement.GetProperty("throughputTargetMet").GetBoolean()));
+        }
+
+        Assert.Contains(win32k.Notes, note => note.Contains("past the 5% target", StringComparison.Ordinal) && note.Contains("never Explore", StringComparison.Ordinal));
+        Assert.Contains(win32k.Notes, note => note.Contains("FX-WMSG-001", StringComparison.Ordinal) && note.Contains("at both ends", StringComparison.Ordinal));
+        Assert.Contains(win32k.Notes, note => note.StartsWith("No record names which message it was", StringComparison.Ordinal));
+        Assert.Contains(win32k.Notes, note => note.Contains("only within a message's life", StringComparison.Ordinal));
+
+        // No profile requests it, no other source claims window messages, and no build carries a tier for them.
+        Assert.DoesNotContain(CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures),
+            profile => profile.Sources.Any(source => source.SourceId == win32k.SourceId));
+        Assert.StartsWith("No capture profile requests it.", win32k.FilteringNotes, StringComparison.Ordinal);
+        Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != win32k.SourceId),
+            source => Assert.DoesNotContain(Mechanism.WindowMessage, source.Mechanisms));
         Assert.DoesNotContain(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.WindowMessage);
     }
 

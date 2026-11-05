@@ -2,7 +2,8 @@
 
 - Status: accepted for M6's UI messaging work package; no catalog source records window messages and no capture has
   recorded one through the product yet; since revision 955 collecting the message pump's cost is measured, Low in the
-  processor time it adds but a message-bound workload past §12's throughput target (its addendum)
+  processor time it adds but a message-bound workload past §12's throughput target (its addendum); since revision 956 it
+  is inventoried as the mechanism's lead, requested by no profile and admitting no event (its second addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: plan M6, §4.1, §4.2, §12, R3, R22, P7, P16, FX-WMSG-001, `tools/InterCat.UiMessageProbe`
@@ -92,3 +93,25 @@ a capture collecting the keyword receives with no messaging workload of its own,
 
 A test holds the two series to their class, the workload's time and regression, and their rates; fourteen alterations of
 them are caught.
+
+## Addendum: the message pump inventoried as window messages' lead (revision 956)
+
+The first decision named the message pump the mechanism's lead, and the first addendum measured its cost. It now enters
+the source catalog as window messages' lead, as COM-Perf entered as COM calls' and the handle group as named
+synchronization objects' (ADR-077's third addendum, ADR-082's second): `etw/manifest/Microsoft-Windows-Win32k`, the
+manifest provider at its `MessagePump` keyword, `0x400000`, at the informational level its six message events are declared
+at, experimental, requested by no profile and admitting no event.
+
+- **It admits no event.** A message's ends are joined by a kernel address reused once the message is retrieved, so a
+  capture must number each message from its queueing or start to its retrieval's end before any record is admitted (the
+  fourth decision).
+- **Its measured notes are what `icat capabilities` states of it:** every message at both ends, a send naming its
+  receiver; no record naming which message; a pointer joining two ends only within a message's life; and the machine's
+  other windows' records, about 3,100 a second with no messaging workload of the capture's own.
+- **Its cost is Low, stated beside its regression.** The first addendum's second series is its evidence, and its notes
+  say that a message-bound workload ran 8.3 and 5.2% lower in throughput, so only an opt-in profile stating it may admit
+  it, never Explore. Whether a session's process filter holds it is not measured, so it is stated as having none.
+
+No other source claims window messages, and no build carries a tier for them: no fixture has measured them through the
+product. A test holds the lead, its absence from every profile and the absence of a tier; nine mutations of the catalog
+entry are caught.

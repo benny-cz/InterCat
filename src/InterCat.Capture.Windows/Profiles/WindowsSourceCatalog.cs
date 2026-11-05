@@ -143,6 +143,15 @@ public static class WindowsSourceCatalog
     /// <summary>The object manager's handle group: named synchronization objects' lead, enabled by a group mask (ADR-082).</summary>
     public const string KernelObjectHandlesSourceId = "etw/kernel-group/ObjectHandles";
 
+    /// <summary>Win32k's message pump: window messages' lead (ADR-086).</summary>
+    public const string Win32kSourceId = "etw/manifest/Microsoft-Windows-Win32k";
+
+    /// <summary>
+    /// Win32k's <c>MessagePump</c> keyword: a sent message's start and stop at both ends and a posted message's queueing and
+    /// retrieval, the six events a message between windows raises, each declared at the informational level (ADR-086).
+    /// </summary>
+    public const ulong Win32kMessagePumpKeyword = 0x40_0000;
+
     /// <summary>The classic event class of the kernel's ALPC events, measured on this workstation (ADR-035's addendum).</summary>
     public static readonly Guid AlpcEventClass = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
 
@@ -1179,6 +1188,51 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc, winInetCapture, winsockAfd, comPerf, objectHandles];
+        // Window messages' lead (ADR-086): inventoried and requested by no profile, admitting no event until a capture numbers
+        // each message's ends; its measured notes are what icat capabilities states of it.
+        var win32k = new WindowsSourceDefinition
+        {
+            SourceId = Win32kSourceId,
+            DisplayName = "Win32k message pump (window message lead)",
+            Kind = SourceKind.ManifestProvider,
+            ProviderName = "Microsoft-Windows-Win32k",
+            Mechanisms = [Mechanism.WindowMessage],
+            RequiredPrivilege = PrivilegeRequirement.Administrator,
+            Level = "win:Informational",
+            MatchAnyKeyword = Win32kMessagePumpKeyword,
+            RequestedKeywords = ["MessagePump"],
+            SupportsCaptureSideProcessFilter = false,
+            FilteringNotes =
+                "No capture profile requests it. Its message pump keyword records every message sent or posted to any window on "
+                + "the machine, each raised in the thread that sends, posts or retrieves it; whether a session's process filter "
+                + "holds it is not measured.",
+            StartupBehaviour = "No rundown: a message sent or posted before a capture starts is not seen.",
+            SupportsCaptureState = false,
+            ContractStatus = SourceContractStatus.Experimental,
+            Overhead = OverheadClass.Low,
+            OverheadEvidence = "bench/results/window-message-impact-20261105T175321Z/impact.json",
+            Notes =
+            [
+                "Collection alone, two series of nine pairs over a message-bound workload, loss-free: the processor time it "
+                + "added, the workload's and its consumer's, a median of 0.36 and 0.28 CPU pp, Low; but the workload spent about a "
+                + "twentieth more processor time of its own and ran 8.3 and 5.2% lower in throughput, past the 5% target, as a "
+                + "message's records are raised in the threads that send, post and retrieve it. Only an opt-in profile stating "
+                + "it may admit it, never Explore.",
+                "Measured on FX-WMSG-001: every message one process sent or posted another's window at both ends - a send's start "
+                + "at the sender naming the receiver's process and thread, its stop, and the receiver's retrieval and its end; a "
+                + "post's queueing, raised in the poster, and its retrieval in the receiver - each end joined to the others by the "
+                + "queue message's pointer.",
+                "No record names which message it was: every record of the two processes carried zero for its message number and "
+                + "parameters, and none a payload's size, so a WM_COPYDATA message's bytes are not measured and a DDE conversation "
+                + "is not told from any other message (ADR-086).",
+                "A queue message's pointer is a kernel address, reused once its message is retrieved, so it joins two ends only "
+                + "within a message's life: a capture must number each message from its queueing or start to its retrieval's end.",
+                "Every window on the machine pumps messages: with no messaging workload of its own, a capture collecting it "
+                + "receives the other windows' records, about 3,100 a second on the measuring machine.",
+                "Registration is not evidence of traffic; only a measured fixture assigns a tier.",
+            ],
+        };
+
+        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc, winInetCapture, winsockAfd, comPerf, objectHandles, win32k];
     }
 }
