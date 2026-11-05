@@ -94,18 +94,44 @@ public sealed class ReplacedSessionTests
     /// <summary>
     /// Empties <paramref name="to"/> and moves what <paramref name="from"/> holds into it, over any file a reader made there
     /// meanwhile: one that finds the evidence guard gone while the pointer is still there makes the guard again, as a
-    /// reader of a session older than the guard does, and the guard moved in takes its place.
+    /// reader of a session older than the guard does, and the guard moved in takes its place. The shown session's own
+    /// reader may hold a file open for a moment, sharing it for reading alone, and a delete or replace of it is then
+    /// refused: each is tried again as the store's own replace waits a reader out, pausing up to a second.
     /// </summary>
     private static void Move(string from, string to)
     {
         foreach (string file in Directory.EnumerateFiles(to))
         {
-            File.Delete(file);
+            WaitingOutAReader(() => File.Delete(file));
         }
 
         foreach (string file in Directory.EnumerateFiles(from))
         {
-            File.Move(file, Path.Combine(to, Path.GetFileName(file)), overwrite: true);
+            WaitingOutAReader(() => File.Move(file, Path.Combine(to, Path.GetFileName(file)), overwrite: true));
+        }
+    }
+
+    /// <summary>The store's pauses before it tries a replace again that another handle refused.</summary>
+    private static readonly int[] Pauses = [10, 20, 50, 100, 200, 500, 1_000];
+
+    /// <summary>
+    /// Makes <paramref name="change"/>, trying it again after each of <see cref="Pauses"/> while another handle holds the
+    /// file - a sharing or lock violation, or access refused as a rename is told of a reader - and failing as it fails after.
+    /// </summary>
+    private static void WaitingOutAReader(Action change)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                change();
+                return;
+            }
+            catch (Exception exception) when (attempt < Pauses.Length
+                && exception is UnauthorizedAccessException or IOException { HResult: unchecked((int)0x80070020) or unchecked((int)0x80070021) })
+            {
+                Thread.Sleep(Pauses[attempt]);
+            }
         }
     }
 }

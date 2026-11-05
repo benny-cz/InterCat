@@ -136,6 +136,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 925 — the replaced-session test waits out a reader, as the store's replace does:**
+  - The test of a view that cannot count its own records moves another session into the shown session's folder while the
+    workspace shows it, deleting the folder's files first. The store reads the generation pointer sharing it for reading
+    alone, so a delete made while the workspace's reader held it was refused; one Release suite failed so.
+  - Its move now tries a delete or replace another handle refused again after each of the store's own pauses, up to a
+    second (revision 865), and fails as it fails after. No product code changes.
+
 - **Revision 924 — FX-COM-003: a client following servers restarted one after another (ADR-080's third addendum):**
   - `com-loopback --servers n` starts n servers one after another, each a process of its own under its own moniker and
     stopped before the next, and one client follows them, told each moniker in turn.

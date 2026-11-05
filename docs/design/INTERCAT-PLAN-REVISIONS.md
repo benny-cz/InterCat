@@ -848,6 +848,7 @@ Revision 921 sizes a capture's acquisition queue by §12's 256 MiB budget, 262,1
 Revision 922 has `icat processes` count a process's COM call records, of the calls it made and served, and name the `icat evidence` command that lists each with its source record (ADR-080's second addendum).
 Revision 923 refuses a COM-Perf whose schema lacks a field `com-call-link-v1` pairs, carries or links by, so the COM calls profile does not start on such a build and says why (ADR-079's fifth addendum).
 Revision 924 adds FX-COM-003, a client following servers restarted one after another, each call linked to the server instance that served it, 1,792 of 1,792 over 56 instances (ADR-080's third addendum).
+Revision 925 has the replaced-session test wait out the shown session's reader before it deletes or replaces a file, as the store's replace does.
 
 ## Revisions, a paragraph each, in order
 
@@ -3770,3 +3771,11 @@ of 32 calls twice, 32 servers of 8 calls, eight servers of 128 calls unpaced - h
 the instance that served it and carried by an RPC call that instance served through it, 1,792 of 1,792 over 56
 instances, none attributed to another, each served call inside its instance's logged lifetime; no process ID was
 reused. The first run is committed with its truth, and COM calls' tier now cites FX-COM-003.
+
+Revision 925 removes a race from a test. The test of a view whose own count cannot be read moves another session into
+the shown session's folder while the workspace shows it, deleting the folder's files first. The store reads its
+generation pointer sharing it for reading alone, so a delete made at the moment the workspace's reader held the pointer
+was refused with a sharing violation; one Release suite under full load failed so, and the same commit passed in a
+clean worktree. The product's own writer waits such a reader out (revision 865). The test's move now does too: it tries
+a delete or replace another handle refused again after each of the store's pauses, up to a second, and fails as it
+fails after. No product code changes.
