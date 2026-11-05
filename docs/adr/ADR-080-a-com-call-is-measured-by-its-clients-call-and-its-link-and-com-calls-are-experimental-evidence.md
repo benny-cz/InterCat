@@ -2,7 +2,8 @@
 
 - Status: accepted; FX-COM-001 measured through the product, and COM calls carry their tier on `10.0.26220.0-x64`;
   since revision 920 the COM calls profile's cost is measured through the product (its addendum), and since revision 921
-  a capture's queue holds §12's acquisition budget, so the profile's unpaced series drops nothing (ADR-081)
+  a capture's queue holds §12's acquisition budget, so the profile's unpaced series drops nothing (ADR-081); since
+  revision 922 a process's COM call records drill down exactly (its second addendum)
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
 - Relates to: ADR-004, ADR-075, ADR-077, ADR-078, ADR-079, §14.2, R3, P1, P4, P7, P8, P16, P27, FX-COM-001,
@@ -126,3 +127,18 @@ first. §12 asks a capture to sustain 100,000 records a second with no applicati
 20-second analysis stall; unpaced, neither profile does. That is the next step, not COM's alone: a burst of RPC calls
 fills Explore's queue too. The drops never produced a false link: a recording that dropped a third of its records had
 10,226 of 16,384 truth calls observed and none attributed to another process.
+
+## Addendum: a process's COM calls drill down exactly (revision 922)
+
+M6's exit asks each mechanism for exact source drill-down: what a view counts reaches the rows it counted, each with
+the record it was admitted from. `icat processes --pid` counted a process's RPC call records and named `icat
+operations`, which lists the calls carrying its COM calls with each one's other end, but said nothing of its COM call
+records. It now counts them, of the calls the process made and those it served, and names the `icat evidence` command,
+by the process's instance and the mechanism `com-call`, that lists each of them with its source record. A process with
+no COM call record is given no such line.
+
+On FX-COM-001's first paced run through the product, the client was stated 390 COM call records and the server 390.
+The command named listed 390 distinct source records of each: at the client, 195 client-call starts and 195 stops; at
+the server, 195 served-call starts and 195 stops, the 195 calls at each end the session's ledger holds. A test runs the
+command the view names on a session that also holds the same process's RPC call records and another process's COM
+call records, and finds each COM call record the view counted, of the calls it made and served, and no other.

@@ -845,6 +845,7 @@ Revision 918 adds the opt-in COM calls profile (ADR-079's fourth addendum): Kern
 Revision 919 measures FX-COM-001 through `icat record --profile com-calls` (ADR-080): every truth call its client's COM call, linked to the server's call of the same truth call and carried by one RPC call served through it, 1,920 of 1,920, with no byte and no object named, so COM calls carry ExperimentalEvidence.
 Revision 920 measures the COM calls profile's cost through the product (ADR-080's addendum): Moderate; unpaced, a COM-heavy workload 38.6% slower and a third of its records dropped by the capture's own full queue in every round; in bursts, 0.9% slower and nothing dropped.
 Revision 921 sizes a capture's acquisition queue by §12's 256 MiB budget, 262,144 records where it held 65,536 (ADR-081), so FX-COM-001's unpaced burst, which dropped a third of its records, drops none.
+Revision 922 has `icat processes` count a process's COM call records, of the calls it made and served, and name the `icat evidence` command that lists each with its source record (ADR-080's second addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -3735,3 +3736,12 @@ CPU points and the workload ran 35.2% slower, and one recording kept all 421,448
 calls profile's statement and evidence cite the new series. §12's sustained ingest, 100,000 records a second for ten
 minutes, is still not shown, as publishing still stops the drain. Tests hold the queue to the budget and both series to
 what they measured.
+
+Revision 922 gives COM calls exact source drill-down (ADR-080's second addendum). `icat processes --pid` counted a
+process's RPC call records and named `icat operations`, but said nothing of its COM call records. It now counts them,
+of the calls the process made and those it served, and names the `icat evidence --owner-process <instance> --mechanism
+com-call` command that lists each with its source record; a process with none is given no such line. On FX-COM-001's
+first paced run through the product, the client and the server were each stated 390 records, and the command listed
+390 distinct source records of each: the start and stop of the 195 calls at each end. Tests run the command the view
+names on a session that also holds the same process's RPC call records and another process's COM call records, and
+find each record the view counted and no other; four mutations are caught.

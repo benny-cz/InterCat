@@ -131,6 +131,13 @@ internal sealed record ProcessActivityDocument
     /// </summary>
     public long? UnixSocketRecords { get; init; }
 
+    /// <summary>
+    /// Its own COM call records, of the calls it made and those it served, when one PID was asked about; null otherwise, as
+    /// <see cref="Peers"/> is. A COM call is the RPC call that carries it (ADR-079): those calls' other ends are its RPC
+    /// calls', and no transport record holds them.
+    /// </summary>
+    public long? ComCallRecords { get; init; }
+
     /// <summary>How many instances held its PID in the capture; its <c>lifecycleEpoch</c> says which of them it was.</summary>
     public required int PidHolders { get; init; }
 
@@ -463,6 +470,8 @@ internal static class ProcessesCommand
                                 .Where(count => count.Mechanism == Mechanism.Rpc).Sum(count => count.Records),
                             UnixSocketRecords = nodes[new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))].Activity
                                 .Where(count => count.Mechanism == Mechanism.UnixDomainSocket).Sum(count => count.Records),
+                            ComCallRecords = nodes[new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))].Activity
+                                .Where(count => count.Mechanism == Mechanism.ComCall).Sum(count => count.Records),
                         }),
                 ],
             };
@@ -973,6 +982,16 @@ internal static class ProcessesCommand
             ConsoleUi.Line($"    icat evidence \"{path}\" --owner-process {process.InstanceId} --mechanism unix-domain-socket");
         }
 
+        // Its COM calls, which annotate the RPC calls carrying them (ADR-079): icat operations names those calls' other ends,
+        // and the records counted are the ones icat evidence lists by its instance and the mechanism, each with its source record.
+        if (item.ComCallRecords is > 0 and var com)
+        {
+            ConsoleUi.Field("COM calls", CountText.Of(com, "record") + " of the COM calls it made and served, each annotating the "
+                + "RPC call that carries it, whose other end icat operations names");
+            ConsoleUi.Note(com == 1 ? "To list it with its source record:" : "To list each of them with its source record:");
+            ConsoleUi.Line($"    icat evidence \"{path}\" --owner-process {process.InstanceId} --mechanism com-call");
+        }
+
         if (item.Peers is not { } peers)
         {
             return;
@@ -1180,7 +1199,8 @@ internal static class ProcessesCommand
         ConsoleUi.Line($"      at the other end ({TransportRelationIndex.RelationRule}) and the connections it");
         ConsoleUi.Line("      made to each and accepted from each, each other host its connections ran to, by");
         ConsoleUi.Line("      address, the most bytes first, and its RPC call records, whose calls icat operations");
-        ConsoleUi.Line("      lists with the process at each one's other end.");
+        ConsoleUi.Line("      lists with the process at each one's other end; and of its AF_UNIX and COM call records,");
+        ConsoleUi.Line("      the icat evidence command that lists each with its source record.");
         ConsoleUi.Line("      --port lists the instances that accepted connections at that port of their own, whoever");
         ConsoleUi.Line("      connected - its own machine's processes or other hosts - the most connections first;");
         ConsoleUi.Line("      icat ports lists every port they accepted at.");
