@@ -1,0 +1,97 @@
+{
+  "fixture": "FX-SYNC-004",
+  "question": "Whether a capture through the product - icat record under the opt-in synchronization objects profile - joins two processes' handles to a named object it never saw made: FX-SYNC-001's processes make and open their three objects, then hold their handles while the capture is launched, and take their rounds and close them inside it; FX-SYNC-001 itself, made and ended inside the same capture, is the control.",
+  "answer": "In two runs, machine-wide and loss-free, every held handle was made before the session's first synchronization record and closed after it, and the product joined none of them: each of the six closes naming a held object was numbered alone - a number no other record of the session carries - so each object was two numbers, one a process, and none was discovered or its handles bound to one another by its name; the evaluation names each as an object its closes named under two numbers. The control made inside the same capture was whole each time: three of three objects discovered with their lifetimes, every membership resolved and every handle open and close seen. No tier is assigned: the fixture measures what a capture refuses to join, not how much of the mechanism it observes.",
+  "method": "Each run: FX-SYNC-001's workload started with --held-ms 20000, icat record --profile sync-objects launched three seconds later, and once its session ran FX-SYNC-001 itself as the control. The session's records are read by InterCat.SyncProbe --session into a role-only ledger of each workload and evaluated by SyncObjectCoverageEvaluator; the order of events sets the held processes' truth against the session's first synchronization record on the capture's calibrated wall clock.",
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-11-05",
+  "runs": [
+    {
+      "run": "held-1",
+      "capture": {
+        "profile": "sync-objects",
+        "lossFree": true,
+        "observedRecords": 1303710,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissionsBeyondBound": 0,
+        "synchronizationRecords": 141921
+      },
+      "order": {
+        "lastHeldHandleMadeUtc": "2026-11-05T14:09:49.691Z",
+        "firstSynchronizationRecordOfTheSessionUtc": "2026-11-05T14:09:53.319Z",
+        "firstHeldCloseUtc": "2026-11-05T14:10:09.945Z",
+        "handlesMadeBeforeTheCaptureAndClosedInIt": true
+      },
+      "held": {
+        "truthObjects": 3,
+        "discoveredWithLifetime": 0,
+        "truthOperations": 12,
+        "observed": 0,
+        "memberships": 0,
+        "closesNamingAnObject": 6,
+        "closesNumberedAlone": 6,
+        "numbersOfThoseCloses": 6,
+        "gaps": [
+          "Its closes named it under 2 numbers, so no one number is the object."
+        ],
+        "workloadRecords": 178,
+        "tier": "Unsupported"
+      },
+      "control": {
+        "truthObjects": 3,
+        "discoveredWithLifetime": 3,
+        "expectedMemberships": 6,
+        "resolvedMemberships": 6,
+        "falseMemberships": 0,
+        "truthOperations": 12,
+        "observed": 12,
+        "tier": "TopologyOnly"
+      }
+    },
+    {
+      "run": "held-2",
+      "capture": {
+        "profile": "sync-objects",
+        "lossFree": true,
+        "observedRecords": 965990,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissionsBeyondBound": 0,
+        "synchronizationRecords": 129103
+      },
+      "order": {
+        "lastHeldHandleMadeUtc": "2026-11-05T14:11:14.634Z",
+        "firstSynchronizationRecordOfTheSessionUtc": "2026-11-05T14:11:17.808Z",
+        "firstHeldCloseUtc": "2026-11-05T14:11:34.880Z",
+        "handlesMadeBeforeTheCaptureAndClosedInIt": true
+      },
+      "held": {
+        "truthObjects": 3,
+        "discoveredWithLifetime": 0,
+        "truthOperations": 12,
+        "observed": 0,
+        "memberships": 0,
+        "closesNamingAnObject": 6,
+        "closesNumberedAlone": 6,
+        "numbersOfThoseCloses": 6,
+        "gaps": [
+          "Its closes named it under 2 numbers, so no one number is the object."
+        ],
+        "workloadRecords": 178,
+        "tier": "Unsupported"
+      },
+      "control": {
+        "truthObjects": 3,
+        "discoveredWithLifetime": 3,
+        "expectedMemberships": 6,
+        "resolvedMemberships": 6,
+        "falseMemberships": 0,
+        "truthOperations": 12,
+        "observed": 12,
+        "tier": "TopologyOnly"
+      }
+    }
+  ],
+  "ledgers": "fixtures/FX-SYNC-004/evidence/held and control, of the first run: each workload's truth logs and scenario and the ledger of its synchronization handle records and of other processes' on objects its processes held, by role, kind, opcode, object number and the run's own objects' names, never a PID, a handle value, an address or another object's name."
+}

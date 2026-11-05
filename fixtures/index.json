@@ -756,6 +756,49 @@
       ]
     },
     {
+      "id": "FX-SYNC-004",
+      "title": "Named synchronization objects whose handles were made before a capture began: no two processes' handles joined, none discovered",
+      "scenario": "Plan M6's named synchronization objects work package (§4.2, ADR-084): FX-SYNC-001's two processes make and open their three objects, then hold their handles 20 seconds while a capture is launched, and take their 16 rounds and close their handles inside it; FX-SYNC-001 itself, made and ended inside the same capture, is the control. Recorded through icat record under the synchronization objects profile: the ambiguity case M6's exit asks for, objects whose handles the capture never saw made, met only at their closes.",
+      "milestone": "M6",
+      "mechanism": "Synchronization",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads sync-objects --held-ms 20000 --rounds 16 --hold-ms 1, and sync-objects --rounds 16 --hold-ms 1 as its control, under icat record --profile sync-objects, read by tools/InterCat.SyncProbe --session",
+        "seed": 0,
+        "log": "fixtures/FX-SYNC-004/evidence/held/truth-creator.jsonl",
+        "independence": "Each process of each workload logs every object it created or opened, every signal it gave, every wait that ended and every handle it closed, by the object's name; none reads InterCat state, and the capture reads the kernel's records apart from them."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-SYNC-004/evidence/measurement.json",
+        "note": "Two runs through icat record, machine-wide and nothing lost: every held handle made before the session's first synchronization record and closed after it, and each of the six closes naming a held object numbered alone, a number no other record carries - so each object two numbers, one a process, none discovered and no two processes' handles joined by its name - while the control made inside the same capture was whole, three of three objects discovered with their lifetimes and every handle open and close seen. A test checks the first run's order of events and its two ledgers against their truth."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-05",
+          "result": "Recorded by icat record under the opt-in synchronization objects profile, twice, machine-wide and nothing lost: of three objects whose handles were made before the capture began, each close was numbered alone and none was discovered, while FX-SYNC-001's objects made inside the same capture were each whole. No tier is assigned: the fixture measures what a capture refuses to join, not how much of the mechanism it observes."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two workloads' truth logs and scenarios of the first run - objects by the run's own name, signals and waits by round - and the ledgers of their synchronization handle records and of other processes' on objects their processes held, by role, kind, opcode, object number and the run's own objects' names, never a PID, a handle value, an address or another object's name; and the measurement's counters and times."
+      },
+      "tests": [
+        "R22: FX-SYNC-004's objects, each process's handle to them made before the capture began, are no one object through the product - each close numbered alone, no two processes' handles joined by the object's name and none discovered - while the same capture's control is whole"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -3107,6 +3150,7 @@
         "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart",
         "R22: FX-SYNC-002's duplications are each raised in the process that asked for it - a push in its source, a pull in its target, one between two others in a third - at version 3, its fourth field naming its source process, with its source's handle and its target, and no creation of the handle made, whose close its target raises naming the object",
         "R22: FX-SYNC-003's handle records through the product keep each of 384 named objects made and ended in 128 generations one number of its own, from its creation to both closes, while the kernel made some of them where an earlier generation's object had been",
+        "R22: FX-SYNC-004's objects, each process's handle to them made before the capture began, are no one object through the product - each close numbered alone, no two processes' handles joined by the object's name and none discovered - while the same capture's control is whole",
         "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
         "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other",
         "R22: FX-UNIX-002's rows through the product keep each of sixty-four connections made one at a time on its own socket at both ends, while the kernel reused their addresses",

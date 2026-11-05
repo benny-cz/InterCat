@@ -1,7 +1,8 @@
 # ADR-084: A named synchronization object is measured as the one number its closes name, and is topology at most
 
 - Status: accepted; FX-SYNC-001 measured through the product, topology only on 10.0.26220.0-x64 (addendum); one number is one
-  object (second addendum); FX-SYNC-003's objects made in generations each their own (third addendum)
+  object (second addendum); FX-SYNC-003's objects made in generations each their own (third addendum); FX-SYNC-004's handles made
+  before a capture joined to none (fourth addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-082, ADR-083, §14.2, R3, P1, P7, P27, FX-SYNC-001, `CoverageTierCalculator`, `SyncObjectCoverageEvaluator`,
@@ -99,3 +100,19 @@ objects the kernel made at an address an earlier generation's object held.
   own tests hold reuse deterministically, and this fixture holds it as the kernel makes it.
 - The build's per-build coverage now carries the tier from FX-SYNC-003, its latest fixture, still TopologyOnly; a test
   reproduces it from the committed run's ledger and holds the probe's count to that run.
+
+## Fourth addendum: FX-SYNC-004, handles made before the capture (2026-11-05)
+
+FX-SYNC-004 is the mechanism's ambiguity case: FX-SYNC-001's two processes make and open their three objects, then hold
+their handles while a capture is launched, and take their rounds and close their handles inside it; FX-SYNC-001 itself,
+made and ended inside the same capture, is the control.
+
+- In two runs, machine-wide and loss-free, every held handle was made before the session's first synchronization record
+  and closed after it. The gate met each only at its close, of an address no followed object held, and numbered it alone
+  (ADR-083): each of the six closes naming a held object carries a number no other record of the session does.
+- So each held object is two numbers, one a process, and decision 1 finds no one number the object: none is discovered,
+  no operation of it is bound, and no two processes' handles to it are joined by its name - a name is never a
+  correlation key by itself.
+- The control made inside the same capture was whole each time: three of three objects discovered with their lifetimes,
+  every membership resolved and every handle open and close seen.
+- No tier is assigned to the fixture: it measures what a capture refuses to join, not how much of the mechanism it observes.

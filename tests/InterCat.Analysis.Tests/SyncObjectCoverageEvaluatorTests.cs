@@ -197,6 +197,54 @@ public sealed class SyncObjectCoverageEvaluatorTests
         Assert.InRange(reused, 1, 383);
     }
 
+    [Fact(DisplayName = "R22: FX-SYNC-004's objects, each process's handle to them made before the capture began, are no one object through the product - each close numbered alone, no two processes' handles joined by the object's name and none discovered - while the same capture's control is whole")]
+    public void HandlesMadeBeforeTheCaptureAreNoOneObject()
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-SYNC-004", "evidence");
+        (SyncObjectCoverageResult Result, SyncObjectObservation[] Records, TruthRecord[] Truth) Evaluate(string part, string fixture)
+        {
+            string at = Path.Combine(evidence, part);
+            TruthRecord[] truth = [.. ReadTruth(Path.Combine(at, "truth-creator.jsonl")), .. ReadTruth(Path.Combine(at, "truth-opener.jsonl"))];
+            Dictionary<string, int> processes = truth.GroupBy(record => record.Role).ToDictionary(group => group.Key, group => group.First().ProcessId);
+            SyncObjectObservation[] records = [.. ReadLedger(Path.Combine(at, "records.csv"), processes)];
+            return (SyncObjectCoverageEvaluator.Evaluate(truth, records, Settings() with { FixtureId = fixture }), records, truth);
+        }
+
+        (SyncObjectCoverageResult held, SyncObjectObservation[] heldRecords, TruthRecord[] heldTruth) = Evaluate("held", "FX-SYNC-004");
+        (SyncObjectCoverageResult control, _, _) = Evaluate("control", "FX-SYNC-001");
+        using System.Text.Json.JsonDocument measurement = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "measurement.json")));
+        System.Text.Json.JsonElement run = measurement.RootElement.GetProperty("runs")[0];
+
+        // Each held object was two numbers, each close of it numbered alone - a number no other record carries - so no two
+        // processes' handles to it were joined by its name, and none was discovered or had an operation bound.
+        Assert.All(held.Objects, item => Assert.Equal(((long?)null, false, "Its closes named it under 2 numbers, so no one number is the object."),
+            (item.ObjectNumber, item.DiscoveredWithLifetime, item.Gap)));
+        SyncObjectObservation[] closes = [.. heldRecords.Where(record => record.Kind == ObservationKind.Close && record.Name is { } name
+            && heldTruth.Any(logged => logged.ResourceName is { } truthName && SyncObjectCoverageEvaluator.Names(name, truthName)))];
+        Assert.Equal(6, closes.Length);
+        Assert.Equal(6, closes.Select(close => close.ObjectNumber).Distinct().Count());
+        Assert.All(closes, close => Assert.Single(heldRecords, record => record.ObjectNumber == close.ObjectNumber));
+        Assert.Equal([3, 3], closes.GroupBy(close => close.ProcessId).Select(group => group.Count()));
+        Assert.Equal((0L, 0L, 0L), (held.Measurement.DiscoveredResourcesWithLifetime, held.Measurement.TruthOperationsWithAdmittedObservation,
+            held.Measurement.PeerAttributions));
+        System.Text.Json.JsonElement stated = run.GetProperty("held");
+        Assert.Equal((stated.GetProperty("closesNumberedAlone").GetInt32(), stated.GetProperty("discoveredWithLifetime").GetInt64()), (closes.Length, 0L));
+
+        // Every held handle was made before the session's first synchronization record and closed after it.
+        DateTimeOffset first = DateTimeOffset.Parse(run.GetProperty("order").GetProperty("firstSynchronizationRecordOfTheSessionUtc").GetString()!,
+            System.Globalization.CultureInfo.InvariantCulture);
+        Assert.True(heldTruth.Where(record => record.Kind is TruthEventKind.ObjectCreated or TruthEventKind.ObjectOpened).Max(record => record.RecordedUtc) < first);
+        Assert.True(heldTruth.Where(record => record.Kind == TruthEventKind.HandleClosed).Min(record => record.RecordedUtc) > first);
+
+        // While the control, made and ended inside the same capture, is whole: each of its objects one number from its
+        // creation to both closes, bound to exactly its two processes.
+        MechanismMeasurement whole = control.Measurement;
+        Assert.Equal((3L, 3L, 6L, 6L, 0L, 12L, 12L), (whole.TruthResources, whole.DiscoveredResourcesWithLifetime, whole.ExpectedMemberships,
+            whole.ResolvedMemberships, whole.FalsePeerAttributions, whole.TruthOperations, whole.TruthOperationsWithAdmittedObservation));
+        Assert.Equal(CapabilityTier.TopologyOnly, control.Assessment.Tier);
+        Assert.Equal(control.Assessment.Tier.ToString(), run.GetProperty("control").GetProperty("tier").GetString());
+    }
+
     private static IEnumerable<TruthRecord> ReadTruth(string path)
     {
         var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);

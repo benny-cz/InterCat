@@ -154,6 +154,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Churn = Integer(args, "--churn") ?? 0,
         Duplicate = args.Contains("--duplicate", StringComparer.Ordinal),
         Generations = Integer(args, "--generations") ?? 1,
+        HeldMilliseconds = Integer(args, "--held-ms") ?? 0,
     };
 
     if (args[0].StartsWith("unix-loopback", StringComparison.Ordinal) && churn && hold > 0)
@@ -163,9 +164,11 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         return 2;
     }
 
-    if (args[0].StartsWith("sync-objects", StringComparison.Ordinal) && (syncOptions.Generations < 1 || (syncOptions.Duplicate && syncOptions.Generations > 1)))
+    // --duplicate, --generations and --held-ms are three fixtures, FX-SYNC-002, FX-SYNC-003 and FX-SYNC-004: a run is one of them.
+    if (args[0].StartsWith("sync-objects", StringComparison.Ordinal) && (syncOptions.Generations < 1 || syncOptions.HeldMilliseconds < 0
+        || (syncOptions.Duplicate ? 1 : 0) + (syncOptions.Generations > 1 ? 1 : 0) + (syncOptions.HeldMilliseconds > 0 ? 1 : 0) > 1))
     {
-        await Console.Error.WriteLineAsync("--generations is at least one, and --duplicate and --generations are two fixtures, FX-SYNC-002 and FX-SYNC-003: a run is one of them.")
+        await Console.Error.WriteLineAsync("--generations is at least one and --held-ms not negative, and --duplicate, --generations and --held-ms are three fixtures, FX-SYNC-002, FX-SYNC-003 and FX-SYNC-004: a run is one of them.")
             .ConfigureAwait(false);
         return 2;
     }
@@ -318,7 +321,7 @@ static void PrintHelp()
     Console.WriteLine("      hosts in an apartment of its own and reaches through a proxy: calls that cross an apartment and");
     Console.WriteLine("      never a process, each one logged. Windows only.");
     Console.WriteLine();
-    Console.WriteLine("  sync-objects --truth <dir> [--rounds n] [--hold-ms ms] [--churn n] [--duplicate | --generations n]");
+    Console.WriteLine("  sync-objects --truth <dir> [--rounds n] [--hold-ms ms] [--churn n] [--duplicate | --generations n | --held-ms ms]");
     Console.WriteLine("      FX-SYNC-001: two processes take turns through three named objects of the session's namespace -");
     Console.WriteLine("      an event, a semaphore and a mutex - that one creates and the other opens by name. Each round the");
     Console.WriteLine("      creator, holding the mutex, sets the event and releases the mutex that many milliseconds later;");
@@ -330,6 +333,8 @@ static void PrintHelp()
     Console.WriteLine("      duplication. --generations runs it as FX-SYNC-003: the three objects made that many times one after");
     Console.WriteLine("      another, each generation under names of its own and that many rounds through it, both processes");
     Console.WriteLine("      closing it before the next is made, so the kernel makes later objects where earlier ones were.");
+    Console.WriteLine("      --held-ms runs it as FX-SYNC-004: both processes hold their handles that many milliseconds before");
+    Console.WriteLine("      the first round, so a capture begun meanwhile sees none of them made, only their closes.");
     Console.WriteLine("      Windows only.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");

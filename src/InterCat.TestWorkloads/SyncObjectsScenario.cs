@@ -20,6 +20,9 @@ internal sealed record SyncObjectsOptions
     /// <summary>The scenario of a run whose objects are made and ended one generation after another.</summary>
     public const string GenerationsScenarioId = "FX-SYNC-003";
 
+    /// <summary>The scenario of a run whose processes hold their handles a while before their first round.</summary>
+    public const string HeldScenarioId = "FX-SYNC-004";
+
     public required string TruthDirectory { get; init; }
 
     /// <summary>How many rounds the two processes take turns through the objects.</summary>
@@ -54,10 +57,19 @@ internal sealed record SyncObjectsOptions
     public int Generations { get; init; } = 1;
 
     /// <summary>
-    /// The run's scenario: FX-SYNC-002 when the opener is also given handles by duplication, FX-SYNC-003 when its objects are
-    /// made in generations, FX-SYNC-001 otherwise.
+    /// When above zero, the run is FX-SYNC-004: both processes hold their handles to the three objects that many milliseconds
+    /// before their first round, so a capture begun meanwhile sees no handle of theirs made, only each one's close.
     /// </summary>
-    public string Scenario => Duplicate ? DuplicationScenarioId : Generations > 1 ? GenerationsScenarioId : ScenarioId;
+    public int HeldMilliseconds { get; init; }
+
+    /// <summary>
+    /// The run's scenario: FX-SYNC-002 when the opener is also given handles by duplication, FX-SYNC-003 when its objects are
+    /// made in generations, FX-SYNC-004 when its handles are held before the rounds, FX-SYNC-001 otherwise.
+    /// </summary>
+    public string Scenario => Duplicate ? DuplicationScenarioId
+        : Generations > 1 ? GenerationsScenarioId
+        : HeldMilliseconds > 0 ? HeldScenarioId
+        : ScenarioId;
 
     /// <summary>An object's name: the run's name and the object's kind, and in FX-SYNC-003 its generation between them.</summary>
     public string ObjectName(string name, int generation, string kind) => Generations > 1
@@ -72,8 +84,10 @@ internal sealed record SyncObjectsOptions
 /// creator releases it, and it releases the mutex and then the semaphore, on which the creator waits. Each process logs
 /// every object it created or opened, every signal it gave and every wait that ended - whether it blocked first - and
 /// every handle it closed, by the object's name. Neither reads InterCat state. FX-SYNC-002 is the same run with each object's
-/// handle also duplicated into the opener three ways (<see cref="SyncObjectsOptions.Duplicate"/>), and FX-SYNC-003 the same run
-/// made one generation of objects after another, each ended before the next (<see cref="SyncObjectsOptions.Generations"/>).
+/// handle also duplicated into the opener three ways (<see cref="SyncObjectsOptions.Duplicate"/>), FX-SYNC-003 the same run
+/// made one generation of objects after another, each ended before the next (<see cref="SyncObjectsOptions.Generations"/>), and
+/// FX-SYNC-004 the same run with both processes' handles held a while before the first round
+/// (<see cref="SyncObjectsOptions.HeldMilliseconds"/>).
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static partial class SyncObjectsScenario
@@ -150,6 +164,12 @@ internal static partial class SyncObjectsScenario
                 return 1;
             }
 
+            // In FX-SYNC-004 both processes hold their handles a while first, so a capture can begin while they do.
+            if (generation == 1 && options.HeldMilliseconds > 0)
+            {
+                await Task.Delay(options.HeldMilliseconds, cancellationToken).ConfigureAwait(false);
+            }
+
             foreach (Process process in new[] { creator, opener })
             {
                 await process.StandardInput.WriteLineAsync("go").ConfigureAwait(false);
@@ -180,6 +200,7 @@ internal static partial class SyncObjectsScenario
             options.Churn,
             options.Duplicate,
             options.Generations,
+            options.HeldMilliseconds,
             name,
             objects,
             coordinatorProcessId = Environment.ProcessId,
@@ -570,6 +591,7 @@ internal static partial class SyncObjectsScenario
             "--hold-ms", options.HoldMilliseconds.ToString(CultureInfo.InvariantCulture),
             "--churn", options.Churn.ToString(CultureInfo.InvariantCulture),
             "--generations", options.Generations.ToString(CultureInfo.InvariantCulture),
+            "--held-ms", options.HeldMilliseconds.ToString(CultureInfo.InvariantCulture),
         })
         {
             start.ArgumentList.Add(argument);
