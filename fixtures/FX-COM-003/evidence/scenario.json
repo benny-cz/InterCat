@@ -1,0 +1,58 @@
+{
+  "scenarioId": "FX-COM-003",
+  "callsPerServer": 32,
+  "interCallDelayMilliseconds": 5,
+  "burst": 0,
+  "servers": [
+    {
+      "index": 0,
+      "moniker": "InterCat.FX-COM-003.7436",
+      "processId": 7436,
+      "exitCode": 0
+    },
+    {
+      "index": 1,
+      "moniker": "InterCat.FX-COM-003.75256",
+      "processId": 75256,
+      "exitCode": 0
+    },
+    {
+      "index": 2,
+      "moniker": "InterCat.FX-COM-003.69644",
+      "processId": 69644,
+      "exitCode": 0
+    },
+    {
+      "index": 3,
+      "moniker": "InterCat.FX-COM-003.38312",
+      "processId": 38312,
+      "exitCode": 0
+    },
+    {
+      "index": 4,
+      "moniker": "InterCat.FX-COM-003.66236",
+      "processId": 66236,
+      "exitCode": 0
+    },
+    {
+      "index": 5,
+      "moniker": "InterCat.FX-COM-003.65608",
+      "processId": 65608,
+      "exitCode": 0
+    },
+    {
+      "index": 6,
+      "moniker": "InterCat.FX-COM-003.59520",
+      "processId": 59520,
+      "exitCode": 0
+    },
+    {
+      "index": 7,
+      "moniker": "InterCat.FX-COM-003.35452",
+      "processId": 35452,
+      "exitCode": 0
+    }
+  ],
+  "clientProcessId": 47488,
+  "clientExitCode": 0
+}

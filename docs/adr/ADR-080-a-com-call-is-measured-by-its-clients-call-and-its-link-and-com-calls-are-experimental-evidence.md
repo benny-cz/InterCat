@@ -3,7 +3,9 @@
 - Status: accepted; FX-COM-001 measured through the product, and COM calls carry their tier on `10.0.26220.0-x64`;
   since revision 920 the COM calls profile's cost is measured through the product (its addendum), and since revision 921
   a capture's queue holds §12's acquisition budget, so the profile's unpaced series drops nothing (ADR-081); since
-  revision 922 a process's COM call records drill down exactly (its second addendum)
+  revision 922 a process's COM call records drill down exactly (its second addendum); since revision 924 FX-COM-003,
+  a client following servers restarted one after another, is COM calls' second instance and lifetime fixture (its third
+  addendum)
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
 - Relates to: ADR-004, ADR-075, ADR-077, ADR-078, ADR-079, §14.2, R3, P1, P4, P7, P8, P16, P27, FX-COM-001,
@@ -142,3 +144,25 @@ The command named listed 390 distinct source records of each: at the client, 195
 the server, 195 served-call starts and 195 stops, the 195 calls at each end the session's ledger holds. A test runs the
 command the view names on a session that also holds the same process's RPC call records and another process's COM
 call records, and finds each COM call record the view counted, of the calls it made and served, and no other.
+
+## Addendum: servers restarted one after another (revision 924)
+
+FX-COM-001 had one client and one server. M6's exit asks for a second instance and lifetime fixture. FX-COM-003 restarts
+the server: `com-loopback --servers n` starts n servers one after another, each a process of its own under a moniker of
+its own, stopped before the next starts, and one client follows them, told each moniker in turn, its call numbers running
+on. Each server logs under its own place. `ComCallCoverageEvaluator` now pairs each process's records with that process's
+own calls, and judges each call's peer against the server whose log served it, so a link to another of the truth's
+servers is a false attribution.
+
+Four runs through `icat record --profile com-calls`, machine-wide and loss-free: eight servers of 32 calls twice, 32
+servers of 8 calls, and eight servers of 128 calls unpaced.
+
+- Every truth call was its client's COM call with the HRESULT it logged, linked to the call of the server instance whose
+  log served it, and carried by one RPC call that instance served through it: 1,792 of 1,792, over 56 server instances.
+- No call was attributed to another instance, and each instance's records paired with its own calls by rank.
+- Each served call lies inside its instance's logged lifetime, from its object's registration to its exit.
+- No server's process ID was reused within a run, so the instances were told apart by their lifetimes and their IDs alike;
+  reuse is `process-binding-v5`'s to resolve, as for every mechanism.
+
+The first run is committed under `fixtures/FX-COM-003/evidence/`, and a test reproduces its counters. COM calls' tier on
+the build now cites FX-COM-003, its latest fixture.

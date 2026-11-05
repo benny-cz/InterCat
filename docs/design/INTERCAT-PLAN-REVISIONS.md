@@ -847,6 +847,7 @@ Revision 920 measures the COM calls profile's cost through the product (ADR-080'
 Revision 921 sizes a capture's acquisition queue by §12's 256 MiB budget, 262,144 records where it held 65,536 (ADR-081), so FX-COM-001's unpaced burst, which dropped a third of its records, drops none.
 Revision 922 has `icat processes` count a process's COM call records, of the calls it made and served, and name the `icat evidence` command that lists each with its source record (ADR-080's second addendum).
 Revision 923 refuses a COM-Perf whose schema lacks a field `com-call-link-v1` pairs, carries or links by, so the COM calls profile does not start on such a build and says why (ADR-079's fifth addendum).
+Revision 924 adds FX-COM-003, a client following servers restarted one after another, each call linked to the server instance that served it, 1,792 of 1,792 over 56 instances (ADR-080's third addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -3758,3 +3759,14 @@ fields. The COM calls profile then does not start and says why, and `icat capabi
 unknown; a call's HRESULT, which no rule decides by, may be absent. Tests take each such field out of COM-Perf's
 registered layout in turn, and its client call stop, and hold the plan, the compilation, the profile and the capability
 report to the refusal.
+
+Revision 924 gives COM calls their second instance and lifetime fixture (ADR-080's third addendum). FX-COM-003 restarts
+FX-COM-001's server: `com-loopback --servers n` starts n servers one after another, each a process of its own under a
+moniker of its own and stopped before the next starts, and one client follows them, told each moniker in turn. Each
+server logs under its own place. `ComCallCoverageEvaluator` now pairs each process's records with that process's own
+calls and judges each call's peer against the server whose log served it, so a link to another of the truth's servers
+is a false attribution. Four runs through `icat record --profile com-calls`, machine-wide and loss-free - eight servers
+of 32 calls twice, 32 servers of 8 calls, eight servers of 128 calls unpaced - had every truth call linked to the call of
+the instance that served it and carried by an RPC call that instance served through it, 1,792 of 1,792 over 56
+instances, none attributed to another, each served call inside its instance's logged lifetime; no process ID was
+reused. The first run is committed with its truth, and COM calls' tier now cites FX-COM-003.

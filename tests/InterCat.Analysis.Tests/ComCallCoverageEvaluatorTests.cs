@@ -119,6 +119,98 @@ public sealed class ComCallCoverageEvaluatorTests
         Assert.Equal(CapabilityTier.ExperimentalEvidence, result.Assessment.Tier);
     }
 
+    [Fact(DisplayName = "P7: with servers one after another, each truth call's peer is the server whose log served it - a link to another of the truth's servers is a false peer attribution")]
+    public void EachCallsPeerIsItsOwnServer()
+    {
+        const int First = 10, Second = 11;
+        TruthRecord[] truth =
+        [
+            Truth("client", Client, 1, TruthEventKind.CallIssued, 10, callId: 0),
+            Truth("client", Client, 2, TruthEventKind.CallIssued, 20, callId: 1),
+            Truth("client", Client, 3, TruthEventKind.CallIssued, 100, callId: 2),
+            Truth("client", Client, 4, TruthEventKind.CallIssued, 110, callId: 3),
+            Truth("server-00", First, 1, TruthEventKind.CallServed, 11, callId: 0),
+            Truth("server-00", First, 2, TruthEventKind.CallServed, 21, callId: 1),
+            Truth("server-01", Second, 1, TruthEventKind.CallServed, 101, callId: 2),
+            Truth("server-01", Second, 2, TruthEventKind.CallServed, 111, callId: 3),
+        ];
+        ComCallObservation[] calls =
+        [
+            Call(0, ComCallSide.Client, Client, 10, First, Invoke, otherEnd: 1, otherEndProcess: First),
+            Call(1, ComCallSide.Server, First, 11, Client, Invoke, otherEnd: 0, otherEndProcess: Client),
+            Call(2, ComCallSide.Client, Client, 20, First, Invoke, otherEnd: 3, otherEndProcess: First),
+            Call(3, ComCallSide.Server, First, 21, Client, Invoke, otherEnd: 2, otherEndProcess: Client),
+            Call(4, ComCallSide.Client, Client, 100, Second, Invoke, otherEnd: 5, otherEndProcess: Second),
+            Call(5, ComCallSide.Server, Second, 101, Client, Invoke, otherEnd: 4, otherEndProcess: Client),
+
+            // A link reaching the first server's call, while the truth's second server served it.
+            Call(6, ComCallSide.Client, Client, 110, Second, Invoke, otherEnd: 3, otherEndProcess: First),
+            Call(7, ComCallSide.Server, Second, 111, Client, Invoke),
+        ];
+
+        ComCallCoverageResult result = ComCallCoverageEvaluator.Evaluate(truth, calls, Settings());
+
+        // Each server's records pair with its own calls by rank, each call answered by its own server.
+        Assert.Equal([(First, 1L), (First, 3L), (Second, 5L), (Second, 7L)], result.Calls.Select(call => (call.ServerProcessId!.Value, call.ServedCall!.Value)));
+        Assert.Equal([First, First, Second, First], result.Calls.Select(call => call.LinkedProcessId!.Value));
+        Assert.Equal([true, true, true, false], result.Calls.Select(call => call.LinkedToItsServedCall));
+        Assert.Equal([true, true, true, false], result.Calls.Select(call => call.CarrierServedThroughCom));
+        Assert.Equal((4, 8), (result.ServedCallsObserved, result.CallsPairedByRank));
+        Assert.Equal((4L, 1L), (result.Measurement.PeerAttributions, result.Measurement.FalsePeerAttributions));
+    }
+
+    [Fact(DisplayName = "P7: with several clients, a truth call is matched to a call of its own client's process alone, never to another client's, though nearer and unclaimed")]
+    public void ACallIsItsOwnClientsAlone()
+    {
+        const int Second = 21;
+        TruthRecord[] truth =
+        [
+            // Two clients each log a call at the same moment; the capture holds the second client's alone, and an invoke of
+            // it the truth does not log, so neither client's records pair by rank.
+            Truth("client", Client, 1, TruthEventKind.CallIssued, 10, callId: 0),
+            Truth("second", Second, 1, TruthEventKind.CallIssued, 12, callId: 0),
+        ];
+        ComCallObservation[] calls =
+        [
+            Call(0, ComCallSide.Client, Second, 10, Server, Invoke),
+            Call(1, ComCallSide.Client, Second, 12, Server, Invoke),
+        ];
+
+        ComCallCoverageResult result = ComCallCoverageEvaluator.Evaluate(truth, calls, Settings());
+
+        // The first client's call is a gap; the second's is its own nearest call.
+        Assert.Equal([(Client, (long?)null), (Second, 1L)], result.Calls.Select(call => (call.ClientProcessId, call.ClientCall)));
+        Assert.Equal((2L, 1L, 0), (result.Measurement.TruthOperations, result.Measurement.TruthOperationsWithAdmittedObservation, result.CallsPairedByRank));
+    }
+
+    [Fact(DisplayName = "P7: a call number two servers' logs both hold names no server for it - the call is linked to no served call of the truth's, and its attribution is never counted true")]
+    public void ACallNumberTwoServersHoldNamesNoServer()
+    {
+        const int Second = 21, OtherServer = 11;
+        TruthRecord[] truth =
+        [
+            Truth("client", Client, 1, TruthEventKind.CallIssued, 10, callId: 0),
+            Truth("second", Second, 1, TruthEventKind.CallIssued, 20, callId: 0),
+            Truth("server", Server, 1, TruthEventKind.CallServed, 11, callId: 0),
+            Truth("other-server", OtherServer, 1, TruthEventKind.CallServed, 21, callId: 0),
+        ];
+        ComCallObservation[] calls =
+        [
+            Call(0, ComCallSide.Client, Client, 10, Server, Invoke, otherEnd: 1, otherEndProcess: Server),
+            Call(1, ComCallSide.Server, Server, 11, Client, Invoke, otherEnd: 0, otherEndProcess: Client),
+            Call(2, ComCallSide.Client, Second, 20, OtherServer, Invoke, otherEnd: 3, otherEndProcess: OtherServer),
+            Call(3, ComCallSide.Server, OtherServer, 21, Second, Invoke, otherEnd: 2, otherEndProcess: Second),
+        ];
+
+        ComCallCoverageResult result = ComCallCoverageEvaluator.Evaluate(truth, calls, Settings());
+
+        // Each call is observed and linked, but the truth does not say which server served which, so neither is checked true.
+        Assert.All(result.Calls, call => Assert.Equal(((int?)null, (long?)null, false, false),
+            (call.ServerProcessId, call.ServedCall, call.LinkedToItsServedCall, call.CarrierServedThroughCom)));
+        Assert.Equal((2L, 2L, 2L), (result.Measurement.TruthOperationsWithAdmittedObservation, result.Measurement.PeerAttributions,
+            result.Measurement.FalsePeerAttributions));
+    }
+
     [Fact(DisplayName = "P27: a truth call with no call of its client's process, interface and method inside the window is a gap, never matched by another process's call, another method or the server's end")]
     public void AnUnmatchedCallIsAGap()
     {
@@ -243,6 +335,63 @@ public sealed class ComCallCoverageEvaluatorTests
         Assert.All(calls, call => Assert.Contains(call.ProcessId, processes.Values));
         Assert.All(calls, call => Assert.Equal((ComCallState.Completed, ComCarrierState.Carried, ComLinkState.Linked), (call.State, call.Carrier, call.Link)));
         Assert.Equal(0, result.ObservationsOutsideScope);
+    }
+
+    [Fact(DisplayName = "P7: FX-COM-003's calls through the product, a client following eight servers started one after another, have every call linked to the server instance whose log served it, inside that instance's lifetime, and carried by an RPC call it served through it - none attributed to another instance")]
+    public void EachCallReachesTheInstanceThatServedIt()
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-COM-003", "evidence");
+        TruthRecord[] truth = [.. Directory.EnumerateFiles(evidence, "truth-*.jsonl").Order(StringComparer.Ordinal).SelectMany(ReadTruth)];
+        Dictionary<string, int> processes = truth.GroupBy(record => record.Role).ToDictionary(group => group.Key, group => group.First().ProcessId);
+        int[] servers;
+        using (JsonDocument scenario = JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "scenario.json"))))
+        {
+            servers = [.. scenario.RootElement.GetProperty("servers").EnumerateArray().Select(server => server.GetProperty("processId").GetInt32())];
+        }
+
+        // Eight server instances, each logging under its place, none the client.
+        Assert.Equal(8, servers.Distinct().Count());
+        Assert.Equal(servers.Order(), processes.Where(role => role.Key.StartsWith("server-", StringComparison.Ordinal)).Select(role => role.Value).Order());
+
+        ComCallObservation[] calls = [.. ReadLedger(Path.Combine(evidence, "calls.csv"), processes)];
+        ComCallCoverageResult result = ComCallCoverageEvaluator.Evaluate(truth, calls, Settings() with { FixtureId = "FX-COM-003" });
+
+        using JsonDocument measurement = JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "measurement.json")));
+        JsonElement stated = measurement.RootElement.GetProperty("throughTheProduct").GetProperty("runs").EnumerateArray()
+            .Single(run => run.GetProperty("run").GetString() == "restarts-1").GetProperty("evaluation");
+        Assert.Equal(
+            (stated.GetProperty("truthCalls").GetInt64(), stated.GetProperty("observed").GetInt64(), stated.GetProperty("peerAttributions").GetInt64(),
+                stated.GetProperty("falsePeerAttributions").GetInt64()),
+            (result.Measurement.TruthOperations, result.Measurement.TruthOperationsWithAdmittedObservation, result.Measurement.PeerAttributions,
+                result.Measurement.FalsePeerAttributions));
+        Assert.Equal(
+            (stated.GetProperty("linkedToTheirServedCall").GetInt32(), stated.GetProperty("carriersServedThroughCom").GetInt32(),
+                stated.GetProperty("servedCallsObserved").GetInt32(), stated.GetProperty("callsPairedByRank").GetInt32()),
+            (result.LinkedToTheirServedCall, result.CarriersServedThroughCom, result.ServedCallsObserved, result.CallsPairedByRank));
+        Assert.Equal(Enum.Parse<CapabilityTier>(stated.GetProperty("tier").GetString()!), result.Assessment.Tier);
+
+        // Each of the 256 calls is linked to the instance whose log served it, 32 to each, its RPC call served through it by
+        // that instance; none is attributed to another.
+        Assert.Equal((256L, 256L, 0L), (result.Measurement.TruthOperations, result.Measurement.PeerAttributions, result.Measurement.FalsePeerAttributions));
+        Assert.All(result.Calls, call =>
+        {
+            Assert.Equal(call.ServerProcessId, call.LinkedProcessId);
+            Assert.True(call.LinkedToItsServedCall && call.CarrierServedThroughCom, $"call {call.CallId}");
+        });
+        Assert.Equal(servers.Order().Select(server => (server, 32)),
+            result.Calls.GroupBy(call => call.LinkedProcessId!.Value).Select(group => (group.Key, group.Count())).OrderBy(pair => pair.Key));
+
+        // And each served call lies inside its own instance's lifetime, as its log states it: from its object's registration
+        // to its exit, a millisecond either side for the two clocks.
+        long margin = TimeSpan.FromMilliseconds(1).Ticks;
+        Assert.All(result.Calls, call =>
+        {
+            ComCallObservation served = calls.Single(candidate => candidate.Ordinal == call.ServedCall);
+            TruthRecord[] lifetime = [.. truth.Where(record => record.ProcessId == call.ServerProcessId
+                && record.Kind is TruthEventKind.ListenerBound or TruthEventKind.ProcessExiting)];
+            Assert.InRange(served.StartUtcTicks!.Value, lifetime.Min(record => record.RecordedUtc.UtcTicks) - margin,
+                lifetime.Max(record => record.RecordedUtc.UtcTicks) + margin);
+        });
     }
 
     private static IEnumerable<TruthRecord> ReadTruth(string path)

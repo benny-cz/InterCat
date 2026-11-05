@@ -16,7 +16,27 @@ internal sealed record ComLoopbackOptions
 
     public const string InProcessScenarioId = "FX-COM-002";
 
+    public const string RestartedServersScenarioId = "FX-COM-003";
+
     public required string TruthDirectory { get; init; }
+
+    /// <summary>
+    /// When above one, FX-COM-003: that many servers one after another, each a process of its own under a moniker of its own,
+    /// which one client follows, making <see cref="Calls"/> calls to each in turn.
+    /// </summary>
+    public int Servers { get; init; } = 1;
+
+    /// <summary>A server's place among FX-COM-003's servers, which names its truth log and its role; null for FX-COM-001's one.</summary>
+    public int? ServerIndex { get; init; }
+
+    /// <summary>
+    /// Whether the client reads each server's moniker from standard input in turn, until a line says the end, and says on
+    /// standard output when it is done with each: FX-COM-003's client.
+    /// </summary>
+    public bool MonikersOnInput { get; init; }
+
+    /// <summary>The fixture this run is: FX-COM-003 with several servers, FX-COM-001 with one.</summary>
+    public string RunScenarioId => Servers > 1 ? RestartedServersScenarioId : ScenarioId;
     public int Calls { get; init; } = 64;
     public int InterCallDelayMilliseconds { get; init; } = 5;
 
@@ -57,6 +77,10 @@ internal static partial class ComLoopbackScenario
         Directory.CreateDirectory(options.TruthDirectory);
         string executable = System.Environment.ProcessPath
             ?? throw new InvalidOperationException("The workload executable path could not be resolved.");
+        if (options.Servers > 1)
+        {
+            return await RunRestartedServersAsync(options, executable, cancellationToken).ConfigureAwait(false);
+        }
 
         using Process server = StartChild(executable, "com-loopback-server", options, redirect: true);
         string? handshake = await server.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false);
@@ -94,18 +118,81 @@ internal static partial class ComLoopbackScenario
     }
 
     /// <summary>
+    /// FX-COM-003: one client follows servers started one after another, each a process of its own under a moniker of its
+    /// own. The coordinator starts each server, tells the client its moniker, waits for the client to be done with it, and
+    /// stops it before starting the next; the client then has every server's calls of its one lifetime, each server only
+    /// its own.
+    /// </summary>
+    private static async Task<int> RunRestartedServersAsync(ComLoopbackOptions options, string executable, CancellationToken cancellationToken)
+    {
+        using Process client = StartChild(executable, "com-loopback-client", options with { MonikersOnInput = true }, redirect: true);
+        var servers = new List<object>();
+        int failures = 0;
+        for (int index = 0; index < options.Servers; index++)
+        {
+            using Process server = StartChild(executable, "com-loopback-server", options with { ServerIndex = index }, redirect: true);
+            string? handshake = await server.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            string? moniker = handshake is null ? null : JsonDocument.Parse(handshake).RootElement.GetProperty("moniker").GetString();
+            if (moniker is null)
+            {
+                await server.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                await Console.Error.WriteLineAsync($"Server {index} exited before it registered its object.").ConfigureAwait(false);
+                failures++;
+                break;
+            }
+
+            await client.StandardInput.WriteLineAsync(moniker).ConfigureAwait(false);
+            await client.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+            string? done = await client.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+
+            // The client is done with this server: it revokes its object and exits before the next one starts.
+            await server.StandardInput.WriteLineAsync("stop").ConfigureAwait(false);
+            await server.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await server.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            failures += server.ExitCode != 0 || done != "done" ? 1 : 0;
+            servers.Add(new { index, moniker, processId = server.Id, exitCode = server.ExitCode });
+            if (done != "done")
+            {
+                break;
+            }
+        }
+
+        await client.StandardInput.WriteLineAsync("end").ConfigureAwait(false);
+        await client.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+        await client.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+
+        var summary = new
+        {
+            scenarioId = ComLoopbackOptions.RestartedServersScenarioId,
+            callsPerServer = options.Calls,
+            options.InterCallDelayMilliseconds,
+            options.Burst,
+            servers,
+            clientProcessId = client.Id,
+            clientExitCode = client.ExitCode,
+        };
+        await File.WriteAllTextAsync(Path.Combine(options.TruthDirectory, "scenario.json"),
+            JsonSerializer.Serialize(summary, SummaryOptions), cancellationToken).ConfigureAwait(false);
+        return failures != 0 || client.ExitCode != 0 ? 1 : 0;
+    }
+
+    /// <summary>
     /// Registers the object under an item moniker named for this process, says so on standard output, serves every call
-    /// that reaches it until a line arrives on standard input, and revokes it.
+    /// that reaches it until a line arrives on standard input, and revokes it. One of FX-COM-003's servers logs to a truth log
+    /// of its own place, under a role naming it.
     /// </summary>
     public static async Task<int> RunServerAsync(ComLoopbackOptions options, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(options.TruthDirectory);
-        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-server.jsonl"), ComLoopbackOptions.ScenarioId, "server");
+        (string file, string role) = options.ServerIndex is { } index
+            ? (string.Create(CultureInfo.InvariantCulture, $"truth-server-{index:D2}.jsonl"), string.Create(CultureInfo.InvariantCulture, $"server-{index:D2}"))
+            : ("truth-server.jsonl", "server");
+        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, file), options.RunScenarioId, role);
         truth.Write(TruthEventKind.ProcessStarted);
         await WaitForStartAsync(options, cancellationToken).ConfigureAwait(false);
         Initialize();
 
-        string name = string.Create(CultureInfo.InvariantCulture, $"InterCat.{ComLoopbackOptions.ScenarioId}.{truth.ProcessId}");
+        string name = string.Create(CultureInfo.InvariantCulture, $"InterCat.{options.RunScenarioId}.{truth.ProcessId}");
         IRunningObjectTable table = Table();
         IMoniker moniker = Moniker(name);
         var served = new ComFixtureObject(truth, name);
@@ -126,22 +213,56 @@ internal static partial class ComLoopbackScenario
         return 0;
     }
 
-    /// <summary>Takes the server's object from the running object table and calls it, logging each call and its completion.</summary>
+    /// <summary>
+    /// Takes the server's object from the running object table and calls it, logging each call and its completion. FX-COM-003's
+    /// client reads each server's moniker from standard input in turn and does the same with each, its call numbers running
+    /// on from one server to the next, saying on standard output when it is done with each, until a line says the end.
+    /// </summary>
     public static async Task<int> RunClientAsync(ComLoopbackOptions options, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(options.TruthDirectory);
-        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-client.jsonl"), ComLoopbackOptions.ScenarioId, "client");
+        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-client.jsonl"), options.RunScenarioId, "client");
         truth.Write(TruthEventKind.ProcessStarted);
-        string name = options.Moniker ?? throw new InvalidOperationException("--moniker names the server's object.");
+        if (!options.MonikersOnInput && options.Moniker is null)
+        {
+            throw new InvalidOperationException("--moniker names the server's object.");
+        }
+
         await WaitForStartAsync(options, cancellationToken).ConfigureAwait(false);
         Initialize();
+        int failures = 0;
+        if (!options.MonikersOnInput)
+        {
+            failures = await CallAsync(truth, options, options.Moniker!, 0, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            int first = 0;
+            while (await Console.In.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line && line != "end")
+            {
+                failures += await CallAsync(truth, options, line, first, cancellationToken).ConfigureAwait(false);
+                first += options.Calls;
+                await Console.Out.WriteLineAsync("done").ConfigureAwait(false);
+                await Console.Out.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
 
+        truth.Write(TruthEventKind.ProcessExiting);
+        return failures == 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// Takes the object registered under <paramref name="name"/> and makes the run's calls to it, numbered from
+    /// <paramref name="first"/>, logging each and its completion; the calls that failed or answered wrongly.
+    /// </summary>
+    private static async Task<int> CallAsync(TruthLog truth, ComLoopbackOptions options, string name, int first, CancellationToken cancellationToken)
+    {
         Table().GetObject(Moniker(name), out object proxy);
         truth.Write(TruthEventKind.ConnectionEstablished, resourceName: name);
         int failures = 0;
         try
         {
-            for (int call = 0; call < options.Calls; call++)
+            for (int call = first; call < first + options.Calls; call++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 truth.Write(TruthEventKind.CallIssued, callId: call, resourceName: nameof(ComFixtureObject.Echo));
@@ -171,8 +292,7 @@ internal static partial class ComLoopbackScenario
         }
 
         truth.Write(TruthEventKind.ConnectionClosed, resourceName: name);
-        truth.Write(TruthEventKind.ProcessExiting);
-        return failures == 0 ? 0 : 1;
+        return failures;
     }
 
     /// <summary>
@@ -305,6 +425,24 @@ internal static partial class ComLoopbackScenario
         {
             start.ArgumentList.Add("--moniker");
             start.ArgumentList.Add(moniker);
+        }
+
+        // FX-COM-003's children: how many servers the run has, a server's place among them, and a client told each in turn.
+        if (options.Servers > 1)
+        {
+            start.ArgumentList.Add("--servers");
+            start.ArgumentList.Add(options.Servers.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (options.ServerIndex is { } index)
+        {
+            start.ArgumentList.Add("--server-index");
+            start.ArgumentList.Add(index.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (options.MonikersOnInput)
+        {
+            start.ArgumentList.Add("--monikers-on-input");
         }
 
         return Process.Start(start) ?? throw new InvalidOperationException($"The {verb} process could not be started.");

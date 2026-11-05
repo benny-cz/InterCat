@@ -136,6 +136,9 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Burst = Integer(args, "--burst") ?? 0,
         Moniker = Option(args, "--moniker"),
         WaitForStart = args.Contains("--wait-for-start", StringComparer.Ordinal),
+        Servers = Integer(args, "--servers") ?? 1,
+        ServerIndex = Integer(args, "--server-index"),
+        MonikersOnInput = args.Contains("--monikers-on-input", StringComparer.Ordinal),
     };
 
     if (args[0].StartsWith("unix-loopback", StringComparison.Ordinal) && churn && hold > 0)
@@ -267,14 +270,16 @@ static void PrintHelp()
     Console.WriteLine("      connections opened at once, each waiting that many milliseconds before its first of 16 messages,");
     Console.WriteLine("      unpaced, so a capture started meanwhile finds them open.");
     Console.WriteLine();
-    Console.WriteLine("  com-loopback --truth <dir> [--calls n] [--delay ms] [--burst n]");
+    Console.WriteLine("  com-loopback --truth <dir> [--calls n] [--delay ms] [--burst n] [--servers n]");
     Console.WriteLine("      FX-COM-001: a two-process out-of-process COM exchange. The server puts an automation object in");
     Console.WriteLine("      the running object table under an item moniker of its own, and the client takes it from there and");
     Console.WriteLine("      calls it through IDispatch, each process logging every call it made or served. Nothing is");
     Console.WriteLine("      registered with the machine. --burst has the client make its calls in bursts of that many,");
     Console.WriteLine("      unpaced, the delay between bursts. com-loopback-server and com-loopback-client, started apart,");
     Console.WriteLine("      take --wait-for-start: each waits for a line on standard input before it initializes COM.");
-    Console.WriteLine("      Windows only.");
+    Console.WriteLine("      --servers n is FX-COM-003: n servers one after another, each a process of its own under a");
+    Console.WriteLine("      moniker of its own and logging to a truth log of its place, which one client follows, making");
+    Console.WriteLine("      --calls calls to each in turn. Windows only.");
     Console.WriteLine();
     Console.WriteLine("  com-inproc --truth <dir> [--calls n] [--delay ms]");
     Console.WriteLine("      FX-COM-002: one process calls the system's apartment-threaded in-memory dictionary, which COM");

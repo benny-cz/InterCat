@@ -74,10 +74,14 @@ public sealed record ComCallObservation
     public int? CarrierServedByProcessId { get; init; }
 }
 
-/// <summary>One truth call and what the capture showed of it, at its client's end and at its server's.</summary>
+/// <summary>
+/// One truth call and what the capture showed of it, at its client's end and at its server's: the server whose log served it,
+/// null where no one server's did.
+/// </summary>
 public sealed record ComCallTruthCoverage(
     long? CallId,
     int ClientProcessId,
+    int? ServerProcessId,
     long? TruthHresult,
     long? ClientCall,
     bool PairedByRank,
@@ -98,7 +102,7 @@ public sealed record ComCallCoverageResult
     public required TierAssessment Assessment { get; init; }
     public required IReadOnlyList<ComCallTruthCoverage> Calls { get; init; }
 
-    /// <summary>The calls the truth's server logged serving, and those matched to a server COM call of its process.</summary>
+    /// <summary>The calls the truth's servers logged serving, and those matched to a server COM call of the process that logged it.</summary>
     public required int TruthCallsServed { get; init; }
 
     public required int ServedCallsObserved { get; init; }
@@ -116,7 +120,7 @@ public sealed record ComCallCoverageResult
 
     /// <summary>
     /// The matched client calls whose carrying RPC call was served through the COM call it carries, by an RPC call of the
-    /// truth's server: the same two ends `rpc-call-peer-v2` relates (ADR-079).
+    /// server whose log served the truth call: the same two ends `rpc-call-peer-v2` relates (ADR-079).
     /// </summary>
     public required int CarriersServedThroughCom { get; init; }
 
@@ -142,17 +146,18 @@ public sealed record ComCallCoverageResult
 }
 
 /// <summary>
-/// Compares an independent COM truth log - each call its client issued and completed, and each call its server served - with
-/// the COM calls `com-call-link-v1` derived from a capture (ADR-079), and computes the section 14.2 counters (ADR-080). A truth
-/// call is its client's COM call on the interface and method the workload called, raised in the client's process: where an
-/// end's truth records are as many as its calls and each pair lies inside the window, each record is the call of its rank,
-/// so the truth's wall clock decides nothing; every other record is matched to its end's nearest call inside the window, on
-/// the truth's time moved by the offset the ranked pairs measured. A call names its interface and method and never its
-/// object - COM-Perf's IPID and OID are not admitted - so, as an RPC call's (RpcCoverageEvaluator), a call is bound to the
-/// interface it names, which has no lifetime of its own. Its peer is the process of the server call its link reached, never
-/// the process its start names. A COM call carries no size, so no byte value is produced and the byte criterion is not
-/// measured rather than a measured zero (R3, P1). It is pure and portable: the same evaluation runs in a test on committed
-/// evidence (R19, R18).
+/// Compares an independent COM truth log - each call each client issued and completed, and each call each server served -
+/// with the COM calls `com-call-link-v1` derived from a capture (ADR-079), and computes the section 14.2 counters (ADR-080). A
+/// truth call is its client's COM call on the interface and method the workload called, raised in the client's process: where
+/// a process's truth records of one end are as many as its calls of that end and each pair lies inside the window, each record
+/// is the call of its rank, so the truth's wall clock decides nothing; every other record is matched to its process's nearest
+/// call inside the window, on the truth's time moved by the offset the ranked pairs measured. A call names its interface and
+/// method and never its object - COM-Perf's IPID and OID are not admitted - so, as an RPC call's (RpcCoverageEvaluator), a call
+/// is bound to the interface it names, which has no lifetime of its own. Its peer is the process of the server call its link
+/// reached, never the process its start names, and it is false unless that is the process whose log served the truth call:
+/// with several servers, each call has its own (FX-COM-003). A COM call carries no size, so no byte value is produced and the
+/// byte criterion is not measured rather than a measured zero (R3, P1). It is pure and portable: the same evaluation runs in a
+/// test on committed evidence (R19, R18).
 /// </summary>
 public static class ComCallCoverageEvaluator
 {
@@ -167,16 +172,23 @@ public static class ComCallCoverageEvaluator
 
         TruthRecord[] issued = [.. truth.Where(static record => record.Kind == TruthEventKind.CallIssued).OrderBy(static record => record.Sequence)];
         TruthRecord[] served = [.. truth.Where(static record => record.Kind == TruthEventKind.CallServed).OrderBy(static record => record.Sequence)];
-        int client = issued.Length > 0 ? issued[0].ProcessId : 0;
-        int server = served.Length > 0 ? served[0].ProcessId : 0;
-        Dictionary<long, long?> completions = [];
+        HashSet<int> clients = [.. issued.Select(static record => record.ProcessId)];
+        HashSet<int> servers = [.. served.Select(static record => record.ProcessId)];
+        Dictionary<(int Process, long Call), long?> completions = [];
         foreach (TruthRecord record in truth)
         {
             if (record is { Kind: TruthEventKind.CallCompleted, CallId: { } completed })
             {
-                completions[completed] = HresultOf(record.Status);
+                completions[(record.ProcessId, completed)] = HresultOf(record.Status);
             }
         }
+
+        // The server the truth says served each call: the one whose log has the call's number, where only one has it.
+        Dictionary<long, TruthRecord> servedRecordOf = served
+            .Where(static record => record.CallId is not null)
+            .GroupBy(static record => record.CallId!.Value)
+            .Where(static group => group.Count() == 1)
+            .ToDictionary(static group => group.Key, static group => group.Single());
 
         // Each end's calls on the interface and method the workload called, in the order they started.
         HashSet<int> processes = [.. truth.Select(static record => record.ProcessId)];
@@ -194,13 +206,15 @@ public static class ComCallCoverageEvaluator
             }
         }
 
-        ComCallObservation[] clientCalls = [.. inScope.Where(call => call.Side == ComCallSide.Client && call.ProcessId == client && Called(call, settings))];
-        ComCallObservation[] serverCalls = [.. inScope.Where(call => call.Side == ComCallSide.Server && call.ProcessId == server && Called(call, settings))];
+        // Each client's records against its own client calls, and each server's against its own served calls, on the
+        // interface and method the workload called: an end's records are never matched to another process's calls.
+        ComCallObservation[] clientCalls = [.. inScope.Where(call => call.Side == ComCallSide.Client && clients.Contains(call.ProcessId) && Called(call, settings))];
+        ComCallObservation[] serverCalls = [.. inScope.Where(call => call.Side == ComCallSide.Server && servers.Contains(call.ProcessId) && Called(call, settings))];
 
         long window = settings.MatchWindow.Ticks;
         List<long> rankedDistances = [];
-        Dictionary<TruthRecord, ComCallObservation> clientByRank = ByRank(issued, clientCalls, window, rankedDistances);
-        Dictionary<TruthRecord, ComCallObservation> serverByRank = ByRank(served, serverCalls, window, rankedDistances);
+        Dictionary<TruthRecord, ComCallObservation> clientByRank = ByRankPerProcess(issued, clientCalls, window, rankedDistances);
+        Dictionary<TruthRecord, ComCallObservation> serverByRank = ByRankPerProcess(served, serverCalls, window, rankedDistances);
         rankedDistances.Sort();
         long offset = rankedDistances.Count == 0 ? 0 : rankedDistances[rankedDistances.Count / 2];
         var matched = new HashSet<long>();
@@ -209,7 +223,7 @@ public static class ComCallCoverageEvaluator
         Dictionary<long, ComCallObservation> servedCallOf = [];
         foreach ((TruthRecord record, ComCallObservation call) in serverMatches)
         {
-            if (record.CallId is { } id)
+            if (record.CallId is { } id && servedRecordOf.ContainsKey(id))
             {
                 servedCallOf.TryAdd(id, call);
             }
@@ -220,11 +234,15 @@ public static class ComCallCoverageEvaluator
         {
             clientMatches.TryGetValue(record, out ComCallObservation? call);
             ComCallObservation? servedCall = record.CallId is { } id ? servedCallOf.GetValueOrDefault(id) : null;
-            long? truthHresult = record.CallId is { } callId ? completions.GetValueOrDefault(callId) : null;
+            long? truthHresult = record.CallId is { } callId ? completions.GetValueOrDefault((record.ProcessId, callId)) : null;
+            int? server = record.CallId is { } servedId && servedRecordOf.TryGetValue(servedId, out TruthRecord? servedRecord)
+                ? servedRecord.ProcessId
+                : null;
             bool linked = call is { Link: ComLinkState.Linked, OtherEndProcessId: not null };
             calls.Add(new(
                 record.CallId,
                 record.ProcessId,
+                server,
                 truthHresult,
                 call?.Ordinal,
                 clientByRank.ContainsKey(record),
@@ -236,7 +254,7 @@ public static class ComCallCoverageEvaluator
                 servedCall?.Ordinal,
                 linked && servedCall is not null && call!.OtherEnd == servedCall.Ordinal,
                 call is { Carrier: ComCarrierState.Carried, CarrierPeer: RpcPeerState.Served, CarrierLinkedThroughCom: true }
-                    && call.CarrierServedByProcessId == server,
+                    && server is not null && call.CarrierServedByProcessId == server,
                 call is null
                     ? "No COM call of the client's process on the interface and method the workload called was found inside the match window."
                     : call.State != ComCallState.Completed
@@ -248,7 +266,7 @@ public static class ComCallCoverageEvaluator
 
         long withObservation = calls.Count(static call => call.ClientCall is not null);
         long attributed = calls.Count(static call => call.LinkedProcessId is not null);
-        long falsePeers = calls.Count(call => call.LinkedProcessId is { } linked && linked != server);
+        long falsePeers = calls.Count(static call => call.LinkedProcessId is { } linked && linked != call.ServerProcessId);
         int servedObserved = serverMatches.Count;
         var measurement = new MechanismMeasurement
         {
@@ -288,9 +306,10 @@ public static class ComCallCoverageEvaluator
         int byRank = clientByRank.Count + serverByRank.Count;
         var notes = new List<string>
         {
-            $"{byRank} of {issued.Length + served.Length} truth records were the call of their end of the same rank, at the "
-            + "client its client calls and at the server its server calls on the interface and method the workload called; the rest "
-            + $"were matched to their end's nearest such call inside a {settings.MatchWindow.TotalMilliseconds.ToString("N0", CultureInfo.InvariantCulture)} ms window.",
+            $"{byRank} of {issued.Length + served.Length} truth records were the call of their end of the same rank, each "
+            + "client's among its client calls and each server's among its served calls on the interface and method the workload "
+            + "called; the rest were matched to their process's nearest such call inside a "
+            + $"{settings.MatchWindow.TotalMilliseconds.ToString("N0", CultureInfo.InvariantCulture)} ms window.",
             $"The capture's calibrated clock read {TimeSpan.FromTicks(offset).TotalMilliseconds.ToString("F3", CultureInfo.InvariantCulture)} ms ahead "
             + "of the truth's, the median distance of the ranked pairs; the records matched by nearness were matched on the "
             + "truth's time moved by it.",
@@ -301,9 +320,9 @@ public static class ComCallCoverageEvaluator
             $"{completedCalls} of {calls.Count} truth calls were a client call whose start and stop paired, {agreeing} of them "
             + "with the HRESULT the client logged; "
             + $"{carried} were carried by one RPC call, and {carriersServed} of those RPC calls were served through it by an RPC "
-            + "call of the truth's server.",
-            $"{servedObserved} of {served.Length} calls the server logged serving were a server call of its process on the "
-            + $"interface and method, and {linkedToServed} client calls were linked to the server call of their own truth call.",
+            + "call of the server that served the truth call.",
+            $"{servedObserved} of {served.Length} calls the servers logged serving were a server call of the process that logged "
+            + $"it on the interface and method, and {linkedToServed} client calls were linked to the server call of their own truth call.",
         };
         if (beyondTruth > 0)
         {
@@ -357,6 +376,25 @@ public static class ComCallCoverageEvaluator
 
     private static bool Called(ComCallObservation call, ComCallCoverageSettings settings) =>
         call.Interface == settings.ExpectedInterface && call.Method == settings.ExpectedMethod && call.StartUtcTicks is not null;
+
+    // Each process's truth records of one end against that process's calls of the end, paired by rank where they can be.
+    private static Dictionary<TruthRecord, ComCallObservation> ByRankPerProcess(
+        TruthRecord[] records,
+        ComCallObservation[] calls,
+        long window,
+        List<long> distances)
+    {
+        var paired = new Dictionary<TruthRecord, ComCallObservation>(ReferenceEqualityComparer.Instance);
+        foreach (IGrouping<int, TruthRecord> process in records.GroupBy(static record => record.ProcessId))
+        {
+            foreach ((TruthRecord record, ComCallObservation call) in ByRank([.. process], [.. calls.Where(call => call.ProcessId == process.Key)], window, distances))
+            {
+                paired[record] = call;
+            }
+        }
+
+        return paired;
+    }
 
     // An end's truth records against its calls, both in their own order: paired by rank when they are as many and every
     // pair lies inside the window, which no clock reorders.
@@ -412,7 +450,7 @@ public static class ComCallCoverageEvaluator
             foreach (ComCallObservation candidate in calls)
             {
                 long distance = Math.Abs(candidate.StartUtcTicks!.Value - at);
-                if (matched.Contains(candidate.Ordinal) || distance > window || distance >= nearestDistance)
+                if (candidate.ProcessId != record.ProcessId || matched.Contains(candidate.Ordinal) || distance > window || distance >= nearestDistance)
                 {
                     continue;
                 }

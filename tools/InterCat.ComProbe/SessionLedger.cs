@@ -30,8 +30,6 @@ internal static class SessionLedger
     /// <summary>The role a ledger names a process the truth does not, read back as no process the truth names.</summary>
     private const string Other = "other";
 
-    private static readonly string[] TruthFiles = ["truth-server.jsonl", "truth-client.jsonl"];
-
     public static int Write(string session, string? truth, string? output)
     {
         if (truth is null || output is null)
@@ -46,12 +44,22 @@ internal static class SessionLedger
         string fixture;
         using (JsonDocument scenario = JsonDocument.Parse(File.ReadAllText(Path.Combine(truth, "scenario.json"))))
         {
-            fixture = scenario.RootElement.GetProperty("scenarioId").GetString()!;
-            roles = new()
+            // FX-COM-001's one server, or FX-COM-003's servers by their place, each a role of its own as its truth log names it.
+            JsonElement root = scenario.RootElement;
+            fixture = root.GetProperty("scenarioId").GetString()!;
+            roles = new() { [root.GetProperty("clientProcessId").GetInt32()] = "client" };
+            if (root.TryGetProperty("servers", out JsonElement servers))
             {
-                [scenario.RootElement.GetProperty("serverProcessId").GetInt32()] = "server",
-                [scenario.RootElement.GetProperty("clientProcessId").GetInt32()] = "client",
-            };
+                foreach (JsonElement server in servers.EnumerateArray())
+                {
+                    roles[server.GetProperty("processId").GetInt32()] = string.Create(CultureInfo.InvariantCulture,
+                        $"server-{server.GetProperty("index").GetInt32():D2}");
+                }
+            }
+            else
+            {
+                roles[root.GetProperty("serverProcessId").GetInt32()] = "server";
+            }
         }
 
         string Role(int? process) => process is not { } id ? string.Empty : roles.GetValueOrDefault(id, Other);
@@ -152,14 +160,14 @@ internal static class SessionLedger
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
         File.WriteAllText(output, text.ToString());
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-            $"{written} COM calls of the workload's two processes written to {output}; {others} of other processes left out."));
+            $"{written} COM calls of the workload's {roles.Count} processes written to {output}; {others} of other processes left out."));
 
         var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true };
         json.Converters.Add(new JsonStringEnumConverter());
         TruthRecord[] records =
         [
-            .. TruthFiles
-                .SelectMany(file => File.ReadAllLines(Path.Combine(truth, file)))
+            .. Directory.EnumerateFiles(truth, "truth-*.jsonl").Order(StringComparer.Ordinal)
+                .SelectMany(File.ReadAllLines)
                 .Where(line => line.Length > 0)
                 .Select(line => JsonSerializer.Deserialize<TruthRecord>(line, json)!),
         ];

@@ -194,12 +194,12 @@ public sealed class ComPerfLeadTests
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != WindowsSourceCatalog.ComPerfSourceId),
             source => Assert.DoesNotContain(Mechanism.ComCall, source.Mechanisms));
 
-        // The build carries the tier FX-COM-001 measured through the product, experimental evidence: a COM call carries no
-        // byte and names no object (ADR-080); its notes say so, and no other build carries one.
+        // The build carries the tier its fixtures measured through the product, experimental evidence, the latest of them
+        // FX-COM-003's: a COM call carries no byte and names no object (ADR-080); its notes say so, and no other build carries one.
         MeasuredCoverageEntry measured = Assert.Single(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.ComCall);
-        Assert.Equal(("10.0.26220.0-x64", CapabilityTier.ExperimentalEvidence, "FX-COM-001"), (measured.Build, measured.Tier, measured.Fixture));
+        Assert.Equal(("10.0.26220.0-x64", CapabilityTier.ExperimentalEvidence, "FX-COM-003"), (measured.Build, measured.Tier, measured.Fixture));
         Assert.Contains(comPerf.Notes, note => note.Contains("Measured through the product on FX-COM-001", StringComparison.Ordinal)
-            && note.Contains("experimental evidence (ADR-080)", StringComparison.Ordinal));
+            && note.Contains("on FX-COM-003", StringComparison.Ordinal) && note.Contains("experimental evidence (ADR-080)", StringComparison.Ordinal));
     }
 
     [Fact(DisplayName = "§12: COM-Perf's collection is measured in two series of pairs - Low in processor time, and a COM-heavy workload slower past §12's throughput target, so only an opt-in profile stating it may admit the source")]
