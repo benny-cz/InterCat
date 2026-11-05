@@ -661,7 +661,8 @@
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
         "R22: an object's address names it only from its creation to its deletion - FX-SYNC-001's object group records each named object created in the creator before its first handle and deleted after its last close, at the address its handles carry",
         "P8: FX-SYNC-001's every wait the kernel blocked has the ready of its thread from the signaling process inside the wait's span, and no ready of a thread in a user-mode wait between the two processes is left unpaired - a ready names no object, so only a truth's wait makes one a signal",
-        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build"
+        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
+        "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart"
       ]
     },
     {
@@ -3009,6 +3010,7 @@
         "R22: FX-HTTP-011's requests challenged for credentials, eight clients at once, are an exchange to each leg, each part whole, each challenge answered by its own request and each request carrying credentials said to",
         "R22: FX-HTTP-012's requests through a proxy that challenges, eight clients at once, are an exchange to each leg and each CONNECT, each part whole, and each challenge answered by the proxy's credentials",
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
+        "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart",
         "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
         "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other",
         "R22: FX-UNIX-002's rows through the product keep each of sixty-four connections made one at a time on its own socket at both ends, while the kernel reused their addresses",
@@ -3024,6 +3026,7 @@
         "R22: a candidate with another for either connection is ambiguous, and loopback joins only one host's captures",
         "R22: a capture is one member however many copies of it there are, and a store's source name makes none the same",
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",
+        "R22: a close or the stop's rundown of a handle made before the capture is numbered alone, never joined to another record at its address",
         "R22: a comparison is a saved one only where both compare the same two intervals of the same sessions, by the same metric and rows",
         "R22: a comparison's row by executable opens the executable's rung where the window has one, and says why not",
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
@@ -3032,6 +3035,7 @@
         "R22: a content capture's review names each process by what it runs and the start the broker pinned, and refuses one whose ID passed to another",
         "R22: a content capture's review states what it keeps and each named process's start, all or none, every start once prepared",
         "R22: a content plan is refused without each of its processes named by its start, and a plan keeping no content is refused one naming processes",
+        "R22: a duplication makes its handle in its target process, which holds the object until it closes it",
         "R22: a file an earlier version wrote keeps reading, with everything that version could hold",
         "R22: a kernel record whose payload names no owner binds to no instance, whatever its header says",
         "R22: a kind's operations are paired with its rows by rank only when every pair's bytes agree; otherwise each is its nearest row on the truth's time moved by the ranked pairs' median offset",
@@ -3074,6 +3078,7 @@
         "R22: a session opened from an investigation keeps its pinned lanes there, in the order pinned, and gets them back",
         "R22: a session opened from an investigation keeps its pins, ranking, evidence policy and lane scale there, which its window lists, and gets them back when opened from it again",
         "R22: a session that published a newer generation reads as advanced, and one an earlier copy was put in place of as replaced, each saying what to do",
+        "R22: a synchronization object's handles are one object from the first the capture sees made at its address to the close of the last it saw made, and the next handle made there begins another",
         "R22: a tile index whose bindings are not the derivation's is not counted by a brush, which reads its segments, and a checkpoint publishes it again",
         "R22: a tile index's derivation is its rules, instances and channels: another instance, paired channel or unpaired channel is another derivation",
         "R22: a truth connection is discovered with its lifetime only as a socket its process both created and closed in the capture",
@@ -3120,6 +3125,7 @@
         "R22: the Compare window knows a comparison its investigation saved alike, the one it opened as first, and says why it can keep no note",
         "R22: the Compare window saves the comparison shown in its investigation by name, and a saved one opens as saved",
         "R22: the Compare window says the notes about the saved comparison it shows, marks each noted row, and adds one about it or its chosen row",
+        "R22: the gate follows only the synchronization types, by the numbers measured for the capture's build, and no more objects than its bound",
         "R22: the investigation window keeps notes: pinned at an instant, reworded, shown on the timeline, removed",
         "R22: the investigation window lists candidate joins with their evidence, none established",
         "R22: the investigation window packages the investigation with the sessions a person chooses",

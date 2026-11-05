@@ -858,6 +858,7 @@ Revision 931 inventories the object manager's handle group as named synchronizat
 Revision 932 has two window tests wait out a loaded machine's layout - a reached host's hit test and Enter's rung taking the keyboard - each dispatching until what it checks holds, up to five seconds; no product code changes.
 Revision 933 has a capture set a kernel group's mask on its private system logger (ADR-082's third addendum): by the session's handle, after the kernel flags that start it - the kernel's process flag where the group has none - and before any manifest provider, a refused mask refusing the capture; on this machine an owned capture was delivered the object manager's handle records, nothing lost.
 Revision 934 measures whether a capture can know a handle record's type as it starts (ADR-082's fourth addendum): the object type table read from user mode before a session names each type number as the type rundown at its stop does, and Event, Mutant and Semaphore were about one handle creation in thirty machine-wide.
+Revision 935 adds a synchronization handle gate (ADR-083): it admits only the object manager's handle records of Event, Mutant and Semaphore, by the numbers measured for the capture's build, and follows an object from the first handle a capture sees made at its address to the close of the last, numbering a handle made before the capture alone; no profile compiles it yet.
 
 ## Revisions, a paragraph each, in order
 
@@ -3892,3 +3893,17 @@ handle record carries. Event, Mutant and Semaphore were 21, 22 and 24, the numbe
 of 69,510 handle creations machine-wide, 2,071 were of those types, about one in thirty; timers were two thirds. A capture
 can know the synchronization types' numbers as it starts and check them against the rundown at its stop, and a gate
 admitting only their handles would keep about a thirtieth of the group's records.
+
+Revision 935 adds a synchronization handle gate (ADR-083), as AF_UNIX's gate came before its profile (ADR-073). The
+object manager's handle group delivers every type's handles and names an object only by its kernel address, which the
+kernel reuses, so `SynchronizationHandleGate` decides each record as it arrives. It admits only Event's, Mutant's and
+Semaphore's, by the numbers measured for the capture's build, and omits every other type's: no product code reads the
+object type table, as the query that reads it is the one that names a duplicated handle's object, which P20's fitness check
+keeps out, so each capture holds the build's numbers to its own type rundown at its stop. It
+follows an object from the first handle the capture sees made at its address - created by any process, or duplicated
+into a target process - to the close of the last handle it saw made, numbering it in the capture and never by its address;
+the next handle made at the address is another object's. A close, or the stop's rundown, of a handle at an address no
+followed object holds is of a handle made before the capture: its object's other handles are unseen, so it is numbered
+alone, never joined to another record by its address or its name. It follows at most 65,536 objects and holds back no
+record. Tests hold it on synthetic records and on FX-SYNC-001's ledger, read through it as delivered - three objects,
+numbered apart - and hold its numbers to the probe's measurement; ten mutations are caught. No profile compiles it yet.
