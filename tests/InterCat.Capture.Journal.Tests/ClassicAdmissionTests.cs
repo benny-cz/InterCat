@@ -99,6 +99,45 @@ public sealed class ClassicAdmissionTests
         Assert.Throws<InvalidDataException>(() => AdmittedEventEnvelopeMapper.FromEnvelope(envelope, send));
     }
 
+    [Fact(DisplayName = "§18.3: the object manager's handle events, laid out apart by opcode, carry their class's one fingerprint, so a journal holds one schema entry for them and a replay picks each record's plan by its opcode")]
+    public void HandleEventsCarryTheirClasssFingerprint()
+    {
+        SourceAdmissionPlan source = HandleGroupSource();
+        int[] opcodes = [32, 33, 34, 37, 39];
+        Assert.Equal(opcodes, source.Events.Select(plan => plan.Opcode!.Value).Order());
+
+        // Their layouts differ, so the class's fingerprint is over each opcode's own: one for all five, and none of theirs.
+        string shared = Assert.Single(source.Events.Select(plan => plan.SchemaFingerprint).Distinct());
+        Assert.Equal(5, source.Events.Select(plan => string.Join(",", plan.Slots.Select(slot => slot.FieldName))).Distinct().Count());
+        string schemaFingerprint = HandleGroupSchema().SchemaFingerprint;
+        AdmittedEventPlan[] own = [.. source.Events.Select(plan => plan with { SchemaFingerprint = Own(schemaFingerprint, plan) })];
+        Assert.Equal(5, own.Select(plan => plan.SchemaFingerprint).Distinct().Count());
+        Assert.Equal(AdmissionPlanCompiler.ComputeClassFingerprint(WindowsSourceCatalog.ObjectManagerEventClass, 0, 2, own), shared);
+
+        // A change to one opcode's layout - a close carrying no name - changes the class's fingerprint.
+        Assert.NotEqual(shared, HandleGroupSource(closeWithoutName: true).Events[0].SchemaFingerprint);
+
+        // A capture's journal interns one schema for the class at its version, and every record of it references that one.
+        var mapper = new AdmittedEventEnvelopeMapper([source], ClockId.New());
+        Assert.Equal(shared, Assert.Single(mapper.Schemas.Schemas).Fingerprint);
+        JournalNormalizationPlanV1 plan = JournalNormalizationPlanV1.Decode(JournalNormalizationPlanV1.FromSources([source]).Encode());
+        plan.ValidateAgainst(mapper.Schemas);
+        foreach (int opcode in opcodes)
+        {
+            using RecordEnvelopeV1 envelope = mapper.ToEnvelope(Admitted(opcode), Plan(source, opcode), CaptureId.New());
+            Assert.Equal((uint?)1, envelope.SchemaReference);
+            Assert.Equal(opcode, plan.Resolve(envelope, mapper.Schemas).Opcode);
+        }
+
+        // ALPC's send and receive, laid out alike, keep the fingerprint each always had: its own.
+        SourceAdmissionPlan alpc = AlpcSource();
+        Assert.All(alpc.Events, plan => Assert.Equal(Own(AlpcSchema().SchemaFingerprint, plan), plan.SchemaFingerprint));
+    }
+
+    // A descriptor's own fingerprint, as its compilation alone gives it.
+    private static string Own(string schemaFingerprint, AdmittedEventPlan plan) => AdmissionPlanCompiler.ComputeFingerprint(
+        schemaFingerprint, plan.ProviderGuid, plan.EventId, plan.Version, plan.PointerSize, plan.MinimumBodyLength, plan.Slots, plan.BodyPolicy);
+
     [Fact(DisplayName = "§18.3: a plan file names a classic descriptor's opcode and leaves a manifest descriptor's plan as it was")]
     public void APlanFileCarriesTheOpcodeOnlyWhereItIsIdentity()
     {
@@ -213,15 +252,47 @@ public sealed class ClassicAdmissionTests
     }
 
     /// <summary>ALPC's source compiled from the layout this machine registers for it (ADR-035's addendum).</summary>
-    private static SourceAdmissionPlan AlpcSource()
+    private static SourceAdmissionPlan AlpcSource() =>
+        AdmissionPlanCompiler.Compile(WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelAlpcSourceId)!, AlpcSchema(), 0);
+
+    private static ProviderSchema AlpcSchema()
     {
         ProviderSchemaEvent Message(int opcode) =>
             new(0, 2, null, "ALPC", null, null, opcode, null, [], 0, null, [ProviderSchemaField.Create("MessageID", "win:UInt32")]);
         ProviderSchemaEvent[] events = [Message(33), Message(34), Message(35)];
-        var schema = new ProviderSchema("ALPC", WindowsSourceCatalog.AlpcEventClass,
+        return new ProviderSchema("ALPC", WindowsSourceCatalog.AlpcEventClass,
             TdhClassicSchemaReader.Fingerprint(WindowsSourceCatalog.AlpcEventClass, 2, 8, events), new Dictionary<string, ulong>(), events);
-        return AdmissionPlanCompiler.Compile(WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelAlpcSourceId)!, schema, 0);
     }
+
+    /// <summary>
+    /// The object manager's handle group compiled from the layout this build registers for its class (revision 928): a
+    /// handle's creation and close, its duplication, and the stop's type and handle rundowns, each laid out apart.
+    /// </summary>
+    private static SourceAdmissionPlan HandleGroupSource(bool closeWithoutName = false) =>
+        AdmissionPlanCompiler.Compile(WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelObjectHandlesSourceId)!,
+            HandleGroupSchema(closeWithoutName), 0);
+
+    private static ProviderSchema HandleGroupSchema(bool closeWithoutName = false)
+    {
+        ProviderSchemaField Field(string name, string type) => ProviderSchemaField.Create(name, type);
+        ProviderSchemaEvent Event(int opcode, params ProviderSchemaField[] fields) =>
+            new(0, 2, null, "Object", null, null, opcode, null, [], 0, null, fields);
+        ProviderSchemaField[] handle = [Field("Object", "win:Pointer"), Field("Handle", "win:UInt32"), Field("ObjectType", "win:UInt16"), Field("ObjectName", "win:UnicodeString")];
+        ProviderSchemaEvent[] events =
+        [
+            Event(32, handle),
+            closeWithoutName ? Event(33, [.. handle.Take(3)]) : Event(33, handle),
+            Event(34, Field("Object", "win:Pointer"), Field("SourceHandle", "win:UInt32"), Field("TargetHandle", "win:UInt32"),
+                Field("TargetProcessId", "win:UInt32"), Field("ObjectType", "win:UInt16")),
+            Event(37, Field("ObjectType", "win:UInt16"), Field("Reserved", "win:UInt16"), Field("TypeName", "win:UnicodeString")),
+            Event(39, Field("Object", "win:Pointer"), Field("ProcessId", "win:UInt32"), Field("Handle", "win:UInt32"),
+                Field("ObjectType", "win:UInt16"), Field("ObjectName", "win:UnicodeString")),
+        ];
+        return new ProviderSchema("Object manager", WindowsSourceCatalog.ObjectManagerEventClass,
+            TdhClassicSchemaReader.Fingerprint(WindowsSourceCatalog.ObjectManagerEventClass, 2, 8, events), new Dictionary<string, ulong>(), events);
+    }
+
+    private static AdmittedEventPlan Plan(SourceAdmissionPlan source, int opcode) => source.Events.Single(plan => plan.Opcode == opcode);
 
     private static AdmittedEvent Admitted(int opcode) => new()
     {

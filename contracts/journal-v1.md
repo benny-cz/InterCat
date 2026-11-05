@@ -112,8 +112,9 @@ policyCount  i32
 
 A classic kernel record, one with no manifest (ADR-035), is stored with its header as its source gave it: its event
 class as `providerId`, `eventId` 0, its class's `version` and its `opcode`. Its schema entry is its class's at
-that version, shared by every opcode of the class a capture admits, which therefore share one layout and fingerprint
-(revision 221); the record's opcode, not its schema, says which event it is.
+that version, shared by every opcode of the class a capture admits, which therefore share one fingerprint (revision
+221): where their layouts agree, the one each has; where they differ, the class's, over each opcode's own in opcode
+order (revision 941). The record's opcode, not its schema, says which event it is.
 
 ### RecordBatchFrame payload
 

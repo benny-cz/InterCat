@@ -61,7 +61,8 @@ is its event class, its `eventId` is 0 and its `version` is the class's, as its 
 member names which of the class's events it is: 33 an ALPC send, 34 a receive. The opcode is part of the descriptor's
 key, so the stream/event/version and provider/event/version keys above are unique with it, and a record's plan is
 selected by its header's opcode too. A class's descriptors at one version share one journal schema entry, so they must
-share one layout fingerprint, and a file where they do not is refused. A manifest descriptor has no `opcode` member,
+share one fingerprint - their layout's where they agree, the class's over each opcode's own where they differ
+(revision 941) - and a file where they do not is refused. A manifest descriptor has no `opcode` member,
 so its plan file is exactly what it was before this revision.
 
 A record that two descriptors both select - one with no `opcode` beside one naming the record's - is refused as an

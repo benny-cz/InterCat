@@ -88,9 +88,58 @@ public static class AdmissionPlanCompiler
             SourceId = definition.SourceId,
             ProviderGuid = schema.ProviderGuid,
             SourceIndex = sourceIndex,
-            Events = events,
+            Events = SharedClassFingerprints(events),
             Diagnostics = diagnostics,
         };
+    }
+
+    /// <summary>
+    /// A classic class's descriptors at one version share its id, 0, and so one schema entry in a journal, which keys a
+    /// schema by provider, id and version; a record's opcode names its descriptor. Where their layouts differ - the object
+    /// manager's handle events, not ALPC's send and receive - each carries the class's fingerprint at that version, over
+    /// every opcode's own, so the one entry identifies the interpretation of all of them and a change to any changes it.
+    /// Where they agree, each keeps its own, as it always had.
+    /// </summary>
+    private static List<AdmittedEventPlan> SharedClassFingerprints(List<AdmittedEventPlan> events)
+    {
+        var shared = new Dictionary<(Guid Provider, int EventId, int Version), string>();
+        foreach (IGrouping<(Guid Provider, int EventId, int Version), AdmittedEventPlan> group in events
+            .Where(descriptor => descriptor.Opcode is not null)
+            .GroupBy(descriptor => (descriptor.ProviderGuid, descriptor.EventId, descriptor.Version)))
+        {
+            if (group.Select(descriptor => descriptor.SchemaFingerprint).Distinct(StringComparer.Ordinal).Skip(1).Any())
+            {
+                shared[group.Key] = ComputeClassFingerprint(group.Key.Provider, group.Key.EventId, group.Key.Version, group);
+            }
+        }
+
+        return shared.Count == 0
+            ? events
+            : [.. events.Select(descriptor => descriptor.Opcode is not null
+                && shared.TryGetValue((descriptor.ProviderGuid, descriptor.EventId, descriptor.Version), out string? fingerprint)
+                    ? descriptor with { SchemaFingerprint = fingerprint }
+                    : descriptor)];
+    }
+
+    /// <summary>
+    /// The fingerprint of a classic class's descriptors at one version whose layouts differ: each opcode's own fingerprint,
+    /// in opcode order, so it changes when any of them does.
+    /// </summary>
+    public static string ComputeClassFingerprint(Guid providerGuid, int eventId, int version, IEnumerable<AdmittedEventPlan> descriptors)
+    {
+        ArgumentNullException.ThrowIfNull(descriptors);
+        var canonical = new StringBuilder(512);
+        canonical.Append("intercat-admission-class-schema-v1\n")
+            .Append(providerGuid.ToString("N", CultureInfo.InvariantCulture)).Append('\n')
+            .Append(eventId.ToString(CultureInfo.InvariantCulture)).Append('\n')
+            .Append(version.ToString(CultureInfo.InvariantCulture)).Append('\n');
+        foreach (AdmittedEventPlan descriptor in descriptors.OrderBy(descriptor => descriptor.Opcode))
+        {
+            canonical.Append("opcode:").Append(descriptor.Opcode?.ToString(CultureInfo.InvariantCulture)).Append('|')
+                .Append(descriptor.SchemaFingerprint).Append('\n');
+        }
+
+        return "sha256:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToString())));
     }
 
     private static AdmittedEventPlan CompileDescriptor(

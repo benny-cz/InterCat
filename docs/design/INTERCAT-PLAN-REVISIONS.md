@@ -864,6 +864,7 @@ Revision 937 measures FX-SYNC-002 (ADR-082's fifth addendum): each handle duplic
 Revision 938 makes a handle duplication the open of the target its record names, its payload owner, and has the synchronization handle gate follow no kernel handle, whose creation and close FX-SYNC-002 had raised wherever the kernel ran (ADR-083's second addendum).
 Revision 939 binds a named synchronization object's handle creation and close to the process that raised them, and binds no inventory by its header, as `process-binding-v6` (ADR-083's third addendum); a checkpoint of an earlier rule is read as this one's wherever every record named its owner.
 Revision 940 adds the opt-in synchronization objects profile, `sync-objects` (ADR-083's fourth addendum): Kernel-Process and the object manager's handle group, both required, its Moderate class stated beside the group's measured throughput regression; nothing has measured it whole yet.
+Revision 941 gives a classic class's descriptors laid out apart their class's fingerprint, so a journal's one schema entry for the class holds them and the synchronization objects profile records through the product (ADR-035's addendum); duplications, raised at a version no registered layout describes, are counted undecodable.
 
 ## Revisions, a paragraph each, in order
 
@@ -3963,3 +3964,13 @@ numbers, or a schema without a field its gate decides by - it does not start. It
 statement names the handle group's measured cost: Low in processor time, but a handle-heavy workload 5.3 and 8.3% lower
 in throughput, past §12's target, which is why it is opt-in and Explore never admits the source. Nothing has measured
 the profile whole yet, and no build carries a tier for named synchronization objects.
+
+Revision 941 fixes what the synchronization objects profile's first recording through the product found (ADR-035's
+addendum). A journal keys a schema entry by provider, event id and version, so a classic class's descriptors at one
+version share one, which revision 221 held to one layout; the object manager's five handle events are laid out apart,
+and the journal refused the second as a descriptor that had changed shape, stopping the capture as it began. Such
+descriptors now each carry the class's fingerprint, over every opcode's own in opcode order; descriptors laid out
+alike, as ALPC's send and receive, keep the fingerprint they always had, so no earlier journal reads differently. The
+journal and normalizer-plan contracts say so. The recording then ran its six seconds, about 103,000 records admitted
+and none dropped or lost, and found the kernel raising a handle's duplication at version 3, which no layout the machine
+registers describes: those records are counted undecodable, as its coverage ledger states.

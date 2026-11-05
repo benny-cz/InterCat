@@ -144,3 +144,23 @@ Explore's default is because the system logger is held for as long as the captur
 - **Kernel flags enabled into a running ordinary session.** Not possible: the mode is set when the session starts, and
   TraceEvent refuses (measured).
 - **The NT Kernel Logger.** Rejected by ADR-002: it is a shared session other tools own and restart.
+
+## Addendum: a class's events laid out apart share the class's fingerprint (revision 941)
+
+A journal keys a schema entry by its provider, event id and version (`contracts/journal-v1.md`), so a classic class's
+descriptors at one version share one entry, and revision 221 held them to one layout and so one fingerprint, as ALPC's
+send and receive have. The object manager's handle events, which the synchronization objects profile admits (ADR-083),
+are laid out apart: a creation's and a close's handle, a close's name, a duplication's handles and target, the stop's
+type and handle rundowns. The profile's first recording through the product stopped as it began, its journal refusing
+the second of them as a descriptor that had changed shape.
+
+So a class's descriptors at one version whose layouts differ now each carry the class's fingerprint, over every
+opcode's own in opcode order: the one entry identifies all of them, and a change to any changes it. Where their layouts
+agree, as ALPC's do, each keeps the fingerprint it always had, so no journal recorded before reads differently; a
+manifest descriptor is untouched. The record's opcode, as before, says which descriptor reads it. The same recording
+then ran to its end: six seconds machine-wide, about 103,000 records admitted, none dropped or lost, the gate omitting
+about 509,000 of other types. It also found the kernel raising a handle's duplication at version 3, which no layout the
+machine registers describes, so those records are counted undecodable, as its ledger says. Tests hold the handle
+group's five descriptors to one fingerprint, defined over each opcode's own and changed by a change to one, a journal
+of them to one schema entry, a replay's choice of each record's plan by its opcode, and ALPC's fingerprints as they
+were; four mutations are caught.
