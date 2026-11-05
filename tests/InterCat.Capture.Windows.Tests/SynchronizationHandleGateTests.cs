@@ -15,6 +15,7 @@ public sealed class SynchronizationHandleGateTests
     private const int Mutant = 22;
     private const int Semaphore = 24;
     private const int File = 37;
+    private const int SystemProcess = 4;
     private static readonly int[] Synchronization = [Event, Mutant, Semaphore];
 
     [Fact(DisplayName = "R22: a synchronization object's handles are one object from the first the capture sees made at its address to the close of the last it saw made, and the next handle made there begins another")]
@@ -100,6 +101,29 @@ public sealed class SynchronizationHandleGateTests
             [2] = "Type", [Event] = "Event", [Mutant] = "Mutant", [Semaphore] = "Semaphore", [File] = "File", [23] = "Section",
         }));
         Assert.Throws<ArgumentOutOfRangeException>(() => gate.Read(new(48, 0x8000, 0, Event, 100)));
+    }
+
+    [Fact(DisplayName = "R22: the gate follows no kernel handle - its creation, close or rundown, or a duplication into the system process's table - and a duplication from one makes its target a handle of its own")]
+    public void TheGateFollowsNoKernelHandle()
+    {
+        // A kernel handle, its value's top bit set, made and closed in processes the kernel ran for: never followed, and
+        // never ending or beginning an object at its address.
+        var gate = new SynchronizationHandleGate(Synchronization);
+        (HandleGateOutcome, SynchronizationObjectIncarnation?) kernel = (HandleGateOutcome.KernelHandle, null);
+        Assert.Equal(kernel, gate.Read(new(Create, 0xA000, 0x8000_0010, Event, 100)));
+        Assert.Equal(0, gate.Following);
+        SynchronizationObjectIncarnation made = Admitted(gate.Read(new(Create, 0xA000, 0x10, Event, 100)));
+        Assert.Equal(kernel, gate.Read(new(Close, 0xA000, 0x8000_0010, Event, 200)));
+        Assert.Equal(kernel, gate.Read(new(Rundown, 0xA000, 0x8000_0010, Event, SystemProcess)));
+        Assert.Equal(kernel, gate.Read(new(Duplicate, 0xA000, 0x10, Event, 100, TargetProcess: SystemProcess, TargetHandle: 0x8000_0020)));
+        Assert.Equal((1, 1), (gate.Following, gate.Holding));
+
+        // A duplication from a kernel handle into a process makes that process a handle the gate holds, of the object.
+        Assert.Equal(made, Admitted(gate.Read(new(Duplicate, 0xA000, 0x8000_0010, Event, 300, TargetProcess: 300, TargetHandle: 0x44))));
+        Assert.Equal((1, 2), (gate.Following, gate.Holding));
+        Assert.Equal(made, Admitted(gate.Read(new(Close, 0xA000, 0x10, Event, 100))));
+        Assert.Equal(made, Admitted(gate.Read(new(Close, 0xA000, 0x44, Event, 300))));
+        Assert.Equal((0, 0), (gate.Following, gate.Holding));
     }
 
     [Fact(DisplayName = "P12: the synchronization handle gate, which reads its records on the capture's callback, allocates nothing per record once its tables hold what it followed at once")]

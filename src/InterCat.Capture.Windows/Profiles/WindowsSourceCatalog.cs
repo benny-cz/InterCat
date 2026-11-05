@@ -401,19 +401,25 @@ public static class WindowsSourceCatalog
     /// <summary>A handle's close: its creation's fields and the object's name.</summary>
     private static readonly IReadOnlyList<AdmittedFieldIntent> HandleCloseFields = [.. HandleCreateFields, HandleName];
 
-    /// <summary>A duplication: the object, the source's handle, the handle it made in its target process, and that process.</summary>
+    /// <summary>
+    /// A duplication: an open in the process it made its handle in, which its record names and so owns it - the record is
+    /// raised in the process that asked for the duplication, which its header alone names (FX-SYNC-002) - with the object,
+    /// the handle it made, the handle it was duplicated from, and the type.
+    /// </summary>
     private static readonly IReadOnlyList<AdmittedFieldIntent> HandleDuplicateFields =
     [
         HandleObject,
-        new("SourceHandle", FieldRole.ResourceHandle, SourceField: SourceField.HandleValue,
-            Notes: "The duplicated handle's value in the record's own process."),
-        new("TargetHandle", FieldRole.ResourceHandle, SourceField: SourceField.PeerHandleValue,
-            Notes: "The handle the duplication made, by its value in the target process.")
+        new("SourceHandle", FieldRole.ResourceHandle, SourceField: SourceField.PeerHandleValue,
+            Notes: "The handle it was duplicated from, by its value in a process the record does not name: the process that "
+                + "asked for the duplication only where that process gave its own (FX-SYNC-002)."),
+        new("TargetHandle", FieldRole.ResourceHandle, SourceField: SourceField.HandleValue,
+            Notes: "The handle the duplication made, by its value in the record's owner, which closes it.")
         {
             Decides = "the synchronization handle gate holds the handle a duplication made in its target process",
         },
-        new("TargetProcessId", FieldRole.CorrelationKey, SourceField: SourceField.PeerProcessId,
-            Notes: "The process the duplication made its handle in: the other end of the record, never its owner.")
+        new("TargetProcessId", FieldRole.ProcessAttribution,
+            Notes: "Payload owner: the process the duplication made its handle in. The event header names the process that asked "
+                + "for the duplication - its source, its target, or a third process (FX-SYNC-002).")
         {
             Decides = "the synchronization handle gate holds a duplication's handle in the process it was made in",
         },
@@ -1133,7 +1139,7 @@ public static class WindowsSourceCatalog
             [
                 new(0, 2, "Handle created", Mechanism.Synchronization, ObservationLayer.Resource, ObservationKind.Open, Direction.DirectionNotApplicable, HandleCreateFields) { Opcode = SynchronizationHandleGate.Create },
                 new(0, 2, "Handle closed", Mechanism.Synchronization, ObservationLayer.Resource, ObservationKind.Close, Direction.DirectionNotApplicable, HandleCloseFields) { Opcode = SynchronizationHandleGate.Close },
-                new(0, 2, "Handle duplicated", Mechanism.Synchronization, ObservationLayer.Resource, ObservationKind.Open, Direction.Outbound, HandleDuplicateFields) { Opcode = SynchronizationHandleGate.Duplicate },
+                new(0, 2, "Handle duplicated", Mechanism.Synchronization, ObservationLayer.Resource, ObservationKind.Open, Direction.Inbound, HandleDuplicateFields) { Opcode = SynchronizationHandleGate.Duplicate },
                 new(0, 2, "Object type at the stop", Mechanism.Synchronization, ObservationLayer.Resource, ObservationKind.Inventory, Direction.DirectionNotApplicable, TypeRundownFields) { Opcode = SynchronizationHandleGate.TypeRundown },
                 new(0, 2, "Handle open at the stop", Mechanism.Synchronization, ObservationLayer.Resource, ObservationKind.Inventory, Direction.DirectionNotApplicable, HandleRundownFields) { Opcode = SynchronizationHandleGate.Rundown },
             ],
@@ -1143,7 +1149,11 @@ public static class WindowsSourceCatalog
                 "Its records admit through the synchronization handle gate (ADR-083): only an event's, a mutant's or a semaphore's, "
                 + "by the type numbers measured for the build, each object numbered in the capture from the first handle it saw made "
                 + "at its address to the close of the last, never by its address; a handle made before the capture, met at its close "
-                + "or the stop's rundown, is numbered alone. A build without measured numbers refuses it.",
+                + "or the stop's rundown, is numbered alone. It follows no kernel handle. A build without measured numbers refuses it.",
+                "Measured on FX-SYNC-002: a duplication is raised in the process that asked for it - the handle's source, its target "
+                + "or a third process - so it is the open of the process it made its handle in, which its record names; no record "
+                + "names the process it was duplicated from. A kernel handle, its value's top bit set, is the system process's, but "
+                + "its creation and close are raised in whichever process the kernel ran for, so none of its records is admitted.",
                 "Collection alone, two series of nine pairs over a handle-heavy workload, loss-free: a median of 0.4 and 0.0 CPU "
                 + "pp, Low; but the workload ran 5.3 and 8.3% lower in throughput, past the 5% target, as a handle's creation and "
                 + "close each raise a record in the thread that makes the call. Only an opt-in profile stating it may admit it, "

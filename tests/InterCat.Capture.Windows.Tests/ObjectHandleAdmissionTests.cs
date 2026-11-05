@@ -36,7 +36,7 @@ public sealed class ObjectHandleAdmissionTests
                 $"{descriptor.OpcodeValue}: {string.Join(", ", descriptor.Fields.Select(field => field.Name + " " + field.InType))}"));
     }
 
-    [Fact(DisplayName = "R22: the handle group's events compile from the class's layout to fixed slots - the object, which the gate writes its number over, the handle, the type, a close's and a rundown's name, a duplication's handles and target - and nothing else")]
+    [Fact(DisplayName = "R22: the handle group's events compile from the class's layout to fixed slots - the object, which the gate writes its number over, the handle, the type, a close's and a rundown's name, a duplication's handles and the target that owns it - and nothing else")]
     public void TheHandleEventsCompileToFixedSlots()
     {
         SourceAdmissionPlan plan = Compiled();
@@ -57,23 +57,25 @@ public sealed class ObjectHandleAdmissionTests
             Assert.Equal(expected, slots);
         }
 
-        // The object is the gate's number, never an address; a handle's value is its own, a duplication's target the other
-        // end; a name is read as one where a record carries it.
+        // The object is the gate's number, never an address; a handle's value is its owner's - a duplication's, the handle it
+        // made in the target its record names, which owns it as an open coming in, and the handle it was duplicated from a
+        // process no record names; a name is read as one where a record carries it.
         Assert.All(plan.Events.SelectMany(descriptor => descriptor.Slots).Where(slot => slot.FieldName == "Object"),
             slot => Assert.Equal((FieldRole.CorrelationKey, (SourceField?)SourceField.SynchronizationObjectNumber), (slot.Role, slot.SourceField)));
-        Assert.All(plan.Events.SelectMany(descriptor => descriptor.Slots).Where(slot => slot.FieldName is "Handle" or "SourceHandle"),
+        Assert.All(plan.Events.SelectMany(descriptor => descriptor.Slots).Where(slot => slot.FieldName is "Handle" or "TargetHandle"),
             slot => Assert.Equal((FieldRole.ResourceHandle, (SourceField?)SourceField.HandleValue), (slot.Role, slot.SourceField)));
         Assert.All(plan.Events.SelectMany(descriptor => descriptor.Slots).Where(slot => slot.FieldName == "ObjectType"),
             slot => Assert.Equal((SourceField?)SourceField.ObjectTypeNumber, slot.SourceField));
         AdmittedEventPlan duplicate = Plan(plan, Duplicate);
-        Assert.Contains(duplicate.Slots, slot => slot is { FieldName: "TargetHandle", SourceField: SourceField.PeerHandleValue });
-        Assert.Contains(duplicate.Slots, slot => slot is { FieldName: "TargetProcessId", SourceField: SourceField.PeerProcessId });
+        Assert.Equal((ObservationKind.Open, Direction.Inbound), (duplicate.Kind, duplicate.Direction));
+        Assert.Contains(duplicate.Slots, slot => slot is { FieldName: "SourceHandle", Role: FieldRole.ResourceHandle, SourceField: SourceField.PeerHandleValue });
+        Assert.Contains(duplicate.Slots, slot => slot is { FieldName: "TargetProcessId", Role: FieldRole.ProcessAttribution, SourceField: null });
         Assert.All(plan.Events.SelectMany(descriptor => descriptor.Slots).Where(slot => slot.FieldName is "ObjectName" or "TypeName"),
             slot => Assert.Equal((FieldRole.ResourceName, AdmittedSlotKind.ResourceName), (slot.Role, slot.Kind)));
         Assert.Contains(Plan(plan, Rundown).Slots, slot => slot is { FieldName: "ProcessId", Role: FieldRole.ProcessAttribution });
     }
 
-    [Fact(DisplayName = "R22: through its gate the handle group admits a synchronization type's handle records with the object's number written over its address, a duplication's for its target, and omits another type's and those beyond its bound")]
+    [Fact(DisplayName = "R22: through its gate the handle group admits a synchronization type's handle records with the object's number written over its address, a duplication's for its target, and omits another type's, a kernel handle's and those beyond its bound")]
     public void TheGateAdmitsWithTheObjectsNumber()
     {
         SourceAdmissionPlan plan = Compiled();
@@ -112,6 +114,24 @@ public sealed class ObjectHandleAdmissionTests
         AdmittedEvent reused = Record(plan, Create, 100, ("Object", Address), ("Handle", 0x10), ("ObjectType", Semaphore));
         Assert.Null(gate.Read(ref reused, Plan(plan, Create)));
         Assert.Equal(3L, Slot(plan, reused, "Object"));
+
+        // A kernel handle to it, made and closed in a process the kernel ran for, is no record the gate admits, nor a
+        // duplication into the system process's table, nor the stop's rundown of one; the object is followed unchanged.
+        AdmittedEvent kernel = Record(plan, Create, 100, ("Object", Address), ("Handle", 0x8000_0010), ("ObjectType", Semaphore));
+        Assert.Equal(GateOmission.NoFollowedResource, gate.Read(ref kernel, Plan(plan, Create)));
+        AdmittedEvent kernelClosed = Record(plan, Close, 500, ("Object", Address), ("Handle", 0x8000_0010), ("ObjectType", Semaphore));
+        Assert.Equal(GateOmission.NoFollowedResource, gate.Read(ref kernelClosed, Plan(plan, Close)));
+        AdmittedEvent intoSystem = Record(plan, Duplicate, 100, ("Object", Address), ("SourceHandle", 0x10), ("TargetHandle", 0x8000_0024),
+            ("TargetProcessId", 4), ("ObjectType", Semaphore));
+        Assert.Equal(GateOmission.NoFollowedResource, gate.Read(ref intoSystem, Plan(plan, Duplicate)));
+        AdmittedEvent kernelOpen = Record(plan, Rundown, 600, ("Object", Address), ("ProcessId", 4), ("Handle", 0x8000_0030), ("ObjectType", Semaphore));
+        Assert.Equal(GateOmission.NoFollowedResource, gate.Read(ref kernelOpen, Plan(plan, Rundown)));
+
+        // A duplication from a kernel handle into a process makes that process a handle of its own, the object's.
+        AdmittedEvent outOfSystem = Record(plan, Duplicate, 100, ("Object", Address), ("SourceHandle", 0x8000_0040), ("TargetHandle", 0x44),
+            ("TargetProcessId", 300), ("ObjectType", Semaphore));
+        Assert.Null(gate.Read(ref outOfSystem, Plan(plan, Duplicate)));
+        Assert.Equal((3L, 300L), (Slot(plan, outOfSystem, "Object"), Slot(plan, outOfSystem, "TargetProcessId")));
 
         // A gate holding as many objects as it may begins no more.
         var full = new ObjectHandleRecordGate([Event], capacity: 1);

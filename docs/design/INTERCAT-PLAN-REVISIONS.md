@@ -861,6 +861,7 @@ Revision 934 measures whether a capture can know a handle record's type as it st
 Revision 935 adds a synchronization handle gate (ADR-083): it admits only the object manager's handle records of Event, Mutant and Semaphore, by the numbers measured for the capture's build, and follows an object from the first handle a capture sees made at its address to the close of the last, numbering a handle made before the capture alone; no profile compiles it yet.
 Revision 936 admits the handle group's events through the synchronization handle gate (ADR-083's addendum): a handle's creation, close and duplication and the stop's type and handle rundowns, with four source fields, the object's number written over its address; the gate allocates nothing per record on the capture's callback, its bound holding the handles; a build with no measured type numbers refuses the source, and no profile requests it yet.
 Revision 937 measures FX-SYNC-002 (ADR-082's fifth addendum): each handle duplication is raised in the process that asked for it, its record naming its target and the handle made there but no source process, and each kernel handle's records are raised wherever the kernel ran, never in the system process that holds it; no binding changes yet.
+Revision 938 makes a handle duplication the open of the target its record names, its payload owner, and has the synchronization handle gate follow no kernel handle, whose creation and close FX-SYNC-002 had raised wherever the kernel ran (ADR-083's second addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -3935,3 +3936,11 @@ creation of the handle made was raised, and its close was raised in its target. 
 handles were created and closed in other processes' contexts, never the system process's, and only the stop's rundown
 named their holder. So a user handle's creation and close bind by their header, a duplication by its target, a rundown
 entry by the process it names, and a kernel handle by none of its headers. No binding changes in this revision.
+
+Revision 938 applies FX-SYNC-002 to the handle group's admission (ADR-083's second addendum). A duplication, raised in
+the process that asked for it, is now an open coming into the process its record names: its `TargetProcessId` is its
+payload owner, the handle it made its `HandleValue`, and the handle it was duplicated from its `PeerHandleValue`, a value
+in a process no record names. The synchronization handle gate follows no kernel handle, its value's top bit set: its
+creation, close and rundown, and a duplication into the system process's table, are omitted as of no object it follows,
+since their headers name whichever process the kernel ran for; a duplication from a kernel handle into a process makes
+that process a handle the gate holds. A creation's or a close's header still binds nothing.

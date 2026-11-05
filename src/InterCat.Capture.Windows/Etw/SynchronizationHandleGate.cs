@@ -26,6 +26,12 @@ public enum HandleGateOutcome
 
     /// <summary>A handle that would begin an object the gate does not follow, holding as many as it may.</summary>
     Untracked = 3,
+
+    /// <summary>
+    /// A kernel handle's record - its value's top bit set, a duplication's made handle's - which the system process holds while
+    /// its creation and close are raised in whichever process the kernel ran for (FX-SYNC-002): the gate follows none.
+    /// </summary>
+    KernelHandle = 4,
 }
 
 /// <summary>Where the gate first met an object: at a handle the capture saw made, or at one made before the capture began.</summary>
@@ -53,15 +59,16 @@ public readonly record struct SynchronizationObjectIncarnation(long Number, Hand
 /// stop - and numbers the object each is of (ADR-083). No product code asks the object manager for its type table: the
 /// query that reads it is the one that names a duplicated handle's object, which P20's fitness check keeps out of the
 /// product, so only the probe reads it, to measure a build. The handle group delivers every type's handles, a
-/// synchronization object's about one in thirty, and
-/// names an object only by its kernel address, which the kernel reuses once the object is gone. So an object is followed
-/// from the first handle the capture sees made at its address - created or duplicated - to the close of the last handle it
-/// saw made to it, the processes holding them and the duplications between them included; whatever the address held before
-/// ended, seen or not. A close, or the stop's rundown, of a handle at an address no followed object holds is of a handle
-/// made before the capture began: its object's other handles are unseen, so nothing says it is one object with any other
-/// record, and it is numbered alone (R22). Records are read as they arrive, and the gate holds none back. It reads them on
-/// the capture's callback, so it allocates nothing per record (P12): a followed object is a value in one table and each
-/// handle it holds an entry in another, both grown only as far as its bound.
+/// synchronization object's about one in thirty, and names an object only by its kernel address, which the kernel reuses
+/// once the object is gone. So an object is followed from the first handle the capture sees made at its address - created
+/// or duplicated - to the close of the last handle it saw made to it, the processes holding them and the duplications
+/// between them included; whatever the address held before ended, seen or not. A close, or the stop's rundown, of a handle
+/// at an address no followed object holds is of a handle made before the capture began: its object's other handles are
+/// unseen, so nothing says it is one object with any other record, and it is numbered alone (R22). A kernel handle is the
+/// system process's, but its creation and close are raised in whichever process the kernel ran for, so the gate follows
+/// none (FX-SYNC-002). Records are read as they arrive, and the gate holds none back. It reads them on the capture's
+/// callback, so it allocates nothing per record (P12): a followed object is a value in one table and each handle it holds
+/// an entry in another, both grown only as far as its bound.
 /// </summary>
 public sealed class SynchronizationHandleGate
 {
@@ -73,6 +80,9 @@ public sealed class SynchronizationHandleGate
 
     /// <summary>The type rundown at the stop: each type's number and name, which a capture holds the build's numbers to.</summary>
     public const int TypeRundown = 37;
+
+    /// <summary>The bit a kernel handle's value has set, as the records carry a handle in 32 bits.</summary>
+    public const uint KernelHandleBit = 0x8000_0000;
 
     /// <summary>
     /// How many handles the gate holds at most, and so how many objects it follows, each holding one at least: a handle that
@@ -142,6 +152,13 @@ public sealed class SynchronizationHandleGate
         if (!types.Contains(record.ObjectType))
         {
             return (HandleGateOutcome.OtherType, null);
+        }
+
+        // A kernel handle, made or closed in whichever process the kernel ran for, is never followed, nor a duplication into
+        // the system process's table; a duplication from one into a process makes that process a handle of its own.
+        if (((record.Opcode == Duplicate ? record.TargetHandle : record.Handle) & KernelHandleBit) != 0)
+        {
+            return (HandleGateOutcome.KernelHandle, null);
         }
 
         bool isFollowed = followed.TryGetValue(record.ObjectAddress, out Followed found);

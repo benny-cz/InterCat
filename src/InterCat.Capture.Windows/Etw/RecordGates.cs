@@ -213,7 +213,8 @@ internal sealed class AfdRecordGate(int capacity = UnixSocketGate.DefaultCapacit
 /// The object manager handle group's gate: reads its handle records through <see cref="SynchronizationHandleGate"/> and writes
 /// into an admitted record, in place of the object's kernel address, the object's number in the capture, so no record keeps
 /// an address (ADR-083). A handle is the record's own process's - the header's - but at the stop's rundown, which names it in
-/// its record, and a duplication's is made in its target process. The type rundown at the stop admits the synchronization
+/// its record, and a duplication's is made in its target process, which its record names. A kernel handle's records, raised
+/// wherever the kernel ran, are omitted as of no object it follows. The type rundown at the stop admits the synchronization
 /// types' own entries, by which a capture holds the build's measured numbers to its session.
 /// </summary>
 internal sealed class ObjectHandleRecordGate(IReadOnlyList<int> types, int capacity = SynchronizationHandleGate.DefaultCapacity) : IRecordGate

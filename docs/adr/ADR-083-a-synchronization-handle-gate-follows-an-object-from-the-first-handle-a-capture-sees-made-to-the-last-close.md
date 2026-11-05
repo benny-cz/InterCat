@@ -1,7 +1,8 @@
 # ADR-083: A synchronization handle gate follows an object from the first handle a capture sees made to the last close
 
 - Status: accepted for M6's named synchronization objects work package; since revision 936 the handle group's events
-  admit through the gate (its addendum), and no profile requests the group yet
+  admit through the gate (its addendum); since revision 938 a duplication is the open of the target its record names, and
+  the gate follows no kernel handle (its second addendum); no profile requests the group yet
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-073, ADR-082, plan M6, §4.2, R22, P7, FX-SYNC-001, `bench/results/sync-objects-types-20261105T053215Z`
@@ -85,3 +86,22 @@ Tests hold the layout TDH describes on this machine, the compiled slots, the gat
 records, and the refusals; the gate's callback path reached and allocating only where reviewed; and a thousand objects
 begun and ended again through warmed tables allocating nothing. Nine mutations of the admission and six of the gate's
 tables are caught.
+
+## Addendum: a duplication is its target's open, and no kernel handle is followed (revision 938)
+
+FX-SYNC-002 measured where the object manager raises a handle's records (ADR-082's fifth addendum). A duplication is
+raised in the process that asked for it - its source, its target or a third process - and its record names the process
+it made a handle in and that handle, but no source process. So the handle group's duplication is now an open coming
+into the process its record names: `TargetProcessId` is its payload owner, as a rundown's `ProcessId` is; the handle it
+made is its `HandleValue`, which its owner closes; and the handle it was duplicated from is its `PeerHandleValue`, a
+value in a process no record names. Its header, which names the process that asked, owns nothing.
+
+A kernel handle, its value's top bit set, is held in the system process's table, but FX-SYNC-002's were created and
+closed in other processes' contexts, never the system process's, and only the stop's rundown named its holder. Bound by
+its header, a kernel handle would be a process's it never was. So the gate follows no kernel handle: its creation, close
+and rundown, and a duplication making one in the system process's table, are omitted as of no object it follows, and
+never begin or end one. A duplication from a kernel handle into a process makes that process a handle of its own, which
+the gate holds as the object's.
+
+A creation's or a close's header still binds nothing (`contracts/entities-v1.md` §2a). Tests hold the duplication's
+compiled roles and direction, and the gate's omissions on synthetic and compiled records; eight mutations are caught.
