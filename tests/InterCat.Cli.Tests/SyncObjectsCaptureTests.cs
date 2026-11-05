@@ -65,16 +65,16 @@ public sealed class SyncObjectsCaptureTests
         }
     }
 
-    [Fact(DisplayName = "R18: icat profiles sync-objects states its sources' cost - the handle group Low in processor time but past the throughput target - and the evidence it rests on")]
+    [Fact(DisplayName = "R18: icat profiles sync-objects states the cost measured through the product - High on a handle-heavy workload, past both targets, nothing dropped - and the evidence it rests on")]
     public async Task ItsPreviewStatesItsCost()
     {
         (InterCatExitCode code, string preview) = await Run("profiles", "sync-objects");
         Assert.Equal(InterCatExitCode.Success, code);
         string words = System.Text.RegularExpressions.Regex.Replace(preview, @"\s+", " ");
-        Assert.Contains("Measured cost moderate: its sources measured Moderate at most", words, StringComparison.Ordinal);
-        Assert.Contains("a handle-heavy workload ran 5.3 and 8.3% lower in throughput, past the 5% target", words, StringComparison.Ordinal);
-        Assert.Contains("Nothing has measured the profile whole yet.", words, StringComparison.Ordinal);
-        Assert.Matches(@"(?m)^  Cost evidence +bench/results/sync-objects-impact-handles-\d{8}T\d{6}Z/impact\.json\r?$", preview);
+        Assert.Contains("Measured cost high: measured through the product on FX-SYNC-001's opener", words, StringComparison.Ordinal);
+        Assert.Contains("the workload ran 18.4% slower, past the 5% throughput target, nothing dropped or lost", words, StringComparison.Ordinal);
+        Assert.Contains("past the 5 pp processor target as well as the throughput one", words, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^  Cost evidence +bench/results/sync-objects-impact-\d{8}T\d{6}Z/product-impact\.json\r?$", preview);
     }
 
     private static ContentRequestOptions Options(string[] words) => ContentRequestOptions.Take(new CommandLine(words));

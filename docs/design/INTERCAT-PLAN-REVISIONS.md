@@ -866,6 +866,7 @@ Revision 939 binds a named synchronization object's handle creation and close to
 Revision 940 adds the opt-in synchronization objects profile, `sync-objects` (ADR-083's fourth addendum): Kernel-Process and the object manager's handle group, both required, its Moderate class stated beside the group's measured throughput regression; nothing has measured it whole yet.
 Revision 941 gives a classic class's descriptors laid out apart their class's fingerprint, so a journal's one schema entry for the class holds them and the synchronization objects profile records through the product (ADR-035's addendum); duplications, raised at a version no registered layout describes, are counted undecodable.
 Revision 942 measures FX-SYNC-002 again (ADR-082's sixth addendum): every duplication is raised at version 3, whose fourth field names the process it was duplicated from - correcting revision 937's reading by the registered version 2 layout, which names none - and no layout the machine registers describes it, so a capture counts it undecodable.
+Revision 943 measures the synchronization objects profile through the product (ADR-083's fifth addendum): on a handle-heavy workload a median 11.8 CPU pp and the workload 18.4% slower, nothing dropped or lost, so the profile states High, past both of §12's targets.
 
 ## Revisions, a paragraph each, in order
 
@@ -3985,3 +3986,12 @@ named the process it was duplicated from, and every duplication of the machine w
 registers describes that field, and InterCat admits a classic record only by one, so a capture counts every duplication
 undecodable, as its ledger says; reading version 3 by its measured layout, held to the builds that measured it, is a
 decision of its own. The fixture's evidence, ledger and tests are renewed, and the handle group's catalog notes say so.
+
+Revision 943 measures the synchronization objects profile's cost through the product (ADR-083's fifth addendum), as the
+COM calls profile's was: nine rounds of FX-SYNC-001's opener opening and closing each object 32,768 times, then its
+rounds unpaced, with no capture, under `icat record --profile sync-objects` and under Explore. About 78,000 handle records
+a second reached the capture, which its gate cut to about 17,600 admitted; the profile added a median 11.8 CPU points, its
+own process 4.2, and the workload ran 18.4% slower, nothing dropped, lost or beyond the gate's bound, while Explore beside
+it added none measurable. A first series of 4,096 times each, on a machine already 43% busy, measured 6.2 points and 14.8%
+slower. So the profile is High on a handle-heavy workload, past §12's processor target as well as its throughput one; it
+states that and both series, stays opt-in, and Explore never admits the source.

@@ -426,7 +426,7 @@ public sealed class CaptureProfileCompilerTests
         }
     }
 
-    [Fact(DisplayName = "§9.4: synchronization objects admits the object manager's handle group beside lifecycle, both required and the group by its mask rather than a manifest request, its cost stated with the throughput regression its source measured, and the handle group is never Explore's")]
+    [Fact(DisplayName = "§9.4: synchronization objects admits the object manager's handle group beside lifecycle, both required and the group by its mask rather than a manifest request, its cost the one measured through the product, and the handle group is never Explore's")]
     public void SyncObjectsAdmitsTheHandleGroupBesideLifecycle()
     {
         SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
@@ -445,15 +445,16 @@ public sealed class CaptureProfileCompilerTests
         Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.KernelObjectHandlesSourceId
             && decision is { State: ProfileSourceDecisionState.Included, Required: true, Overhead: OverheadClass.Low });
 
-        // The profile keeps its sources' class and states, beside it, how much the handle group's collection lowered a
-        // handle-heavy workload's throughput, which is why it is opt-in and Explore never admits the source.
+        // The profile states the class measured through the product, High on a handle-heavy workload, and beside it what its
+        // sources measured alone, which is why it is opt-in and Explore never admits the source.
         CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("sync-objects")!;
-        Assert.Equal((CaptureProfileKind.SyncObjects, OverheadClass.Moderate, AdmissionMode.MetadataOnly),
+        Assert.Equal((CaptureProfileKind.SyncObjects, OverheadClass.High, AdmissionMode.MetadataOnly),
             (profile.Kind, profile.Overhead, profile.Admission));
-        Assert.Contains("5.3 and 8.3% lower in throughput, past the 5% target", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.Contains("past the 5 pp processor target as well as the throughput one", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.Contains("5.3 and 8.3% lower in throughput", profile.OverheadStatement, StringComparison.Ordinal);
         Assert.Contains("slows a handle-heavy workload", profile.Summary, StringComparison.Ordinal);
         Assert.Contains("no object's address and no kernel handle", profile.CollectionStatement, StringComparison.Ordinal);
-        Assert.Equal(WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelObjectHandlesSourceId)!.OverheadEvidence, profile.OverheadEvidence);
+        Assert.Matches(@"^bench/results/sync-objects-impact-\d{8}T\d{6}Z/product-impact\.json$", profile.OverheadEvidence);
         Assert.DoesNotContain(CaptureProfileCatalog.Find("explore")!.Sources,
             source => source.SourceId == WindowsSourceCatalog.KernelObjectHandlesSourceId);
     }

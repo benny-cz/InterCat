@@ -211,13 +211,17 @@ public static class CaptureProfileCatalog
                 + "creation, duplication and close in the process that holds it, its object's number in the capture, and the "
                 + "name a close and the stop's rundown carry. It keeps no object's address and no kernel handle, retains no "
                 + "payload bytes and requests no call stacks.",
-            Overhead = OverheadClass.Moderate,
+            Overhead = OverheadClass.High,
             OverheadStatement =
-                "its sources measured Moderate at most (Kernel-Process 1.75 CPU pp). The object manager's handle group's "
-                + "collection alone took a median 0.4 and 0.0 CPU pp, Low, but a handle-heavy workload ran 5.3 and 8.3% lower "
-                + "in throughput, past the 5% target, as each handle's creation and close raises a record in the thread that "
-                + "makes the call. Nothing has measured the profile whole yet.",
-            OverheadEvidence = "bench/results/sync-objects-impact-handles-20261105T035540Z/impact.json",
+                "measured through the product on FX-SYNC-001's opener opening and closing each object 32,768 times unpaced, "
+                + "about 78,000 handle records a second machine-wide, which its gate cut to about 17,600 admitted, in nine "
+                + "rounds: it added a median 11.8 pp to no capture, its own process 4.2, and the workload ran 18.4% slower, past "
+                + "the 5% throughput target, nothing dropped or lost, while Explore beside it added none measurable. A first "
+                + "series, 4,096 times each on a machine already 43% busy, measured 6.2 pp and 14.8% slower: on a handle-heavy "
+                + "workload the profile is High, past the 5 pp processor target as well as the throughput one. Its sources "
+                + "alone measured less: Kernel-Process 1.75 pp, and the handle group's collection 0.4 and 0.0 pp, though a "
+                + "handle-heavy workload ran 5.3 and 8.3% lower in throughput.",
+            OverheadEvidence = "bench/results/sync-objects-impact-20261105T112016Z/product-impact.json",
         },
         Unavailable(
             CaptureProfileKind.Timing,

@@ -7,6 +7,8 @@
   <ItemGroup>
     <!-- For each candidate class's registered layouts and each provider's registered schema, read as the product reads one. -->
     <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+    <!-- To read what a product capture published - its health and coverage ledger - when it measures a profile's cost. -->
+    <ProjectReference Include="../../src/InterCat.Storage/InterCat.Storage.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- A lab probe, not a product adapter: its own private system logger collects the kernel's handle and dispatcher flag

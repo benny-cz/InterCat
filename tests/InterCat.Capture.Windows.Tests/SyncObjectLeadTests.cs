@@ -304,6 +304,52 @@ public sealed class SyncObjectLeadTests
         Assert.InRange(both.GetProperty("medianObjectManagerEventsPerSecond").GetDouble(), 1_000_000, double.MaxValue);
     }
 
+    [Fact(DisplayName = "§12: the synchronization objects profile's cost is measured through the product in two series over a handle-heavy workload - High in processor time and the workload past the throughput target, nothing dropped, lost or beyond the gate's bound - and its statement says what each measured")]
+    public void TheProfilesCostIsMeasuredThroughTheProduct()
+    {
+        CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("sync-objects")!;
+        string root = RepositoryRoot();
+        string[] series = [.. Directory.EnumerateDirectories(Path.Combine(root, "bench", "results"), "sync-objects-impact-2*")
+            .Select(directory => Path.Combine(directory, "product-impact.json")).Where(File.Exists).Order(StringComparer.Ordinal)];
+        Assert.Equal(2, series.Length);
+        Assert.Equal(Path.GetFullPath(Path.Combine(root, profile.OverheadEvidence!)), Path.GetFullPath(series[1]));
+        using JsonDocument first = JsonDocument.Parse(File.ReadAllText(series[0]));
+        using JsonDocument longer = JsonDocument.Parse(File.ReadAllText(series[1]));
+
+        // Each series is nine rounds of three trials over FX-SYNC-001's opener churning handles, the first 4,096 times each
+        // object and the longer 32,768; no capture of either, the profile's or Explore's, dropped or lost a record, and the
+        // gate never held as many handles as it may.
+        foreach ((JsonDocument document, int churn) in new[] { (first, 4_096), (longer, 32_768) })
+        {
+            JsonElement measured = document.RootElement;
+            Assert.Equal(27, measured.GetProperty("trials").GetArrayLength());
+            Assert.Equal(("sync-objects", churn), (measured.GetProperty("workload").GetProperty("verb").GetString(),
+                measured.GetProperty("workload").GetProperty("churn").GetInt32()));
+            Assert.All(measured.GetProperty("profiles").EnumerateObject(), captured => Assert.Equal((0, true),
+                (captured.Value.GetProperty("capturesWithApplicationDrops").GetInt32(), captured.Value.GetProperty("lossFree").GetBoolean())));
+            JsonElement sync = measured.GetProperty("profiles").GetProperty("sync-objects");
+            Assert.Equal((0, nameof(OverheadClass.High), false), (sync.GetProperty("capturesBeyondTheGatesBound").GetInt32(),
+                sync.GetProperty("overhead").GetString(), sync.GetProperty("throughputTargetMet").GetBoolean()));
+        }
+
+        // The profile states the class both measured, and what each measured, in tenths.
+        Assert.Equal(OverheadClass.High, profile.Overhead);
+        JsonElement fast = longer.RootElement.GetProperty("profiles").GetProperty("sync-objects");
+        JsonElement busy = first.RootElement.GetProperty("profiles").GetProperty("sync-objects");
+        string statement = profile.OverheadStatement!;
+        Assert.Contains($"it added a median {Tenths(fast, "medianCpuPercentagePoints")} pp to no capture, its own process "
+            + Tenths(fast, "medianCaptureProcessCpuPercentagePoints"), statement, StringComparison.Ordinal);
+        Assert.Contains($"the workload ran {Tenths(fast, "medianWorkloadSlowdownPercent")}% slower, past the 5% throughput target, "
+            + "nothing dropped or lost", statement, StringComparison.Ordinal);
+        Assert.Contains($"measured {Tenths(busy, "medianCpuPercentagePoints")} pp and {Tenths(busy, "medianWorkloadSlowdownPercent")}% slower",
+            statement, StringComparison.Ordinal);
+        Assert.Contains($"{Math.Round(first.RootElement.GetProperty("quietMachineBusyPercent").GetDouble()):0}% busy", statement, StringComparison.Ordinal);
+    }
+
+    // A measured value as the statement writes it, to a tenth.
+    private static string Tenths(JsonElement summary, string property) =>
+        summary.GetProperty(property).GetDouble().ToString("0.0", CultureInfo.InvariantCulture);
+
     private static string? KindOf(string? resource) => Kinds.FirstOrDefault(kind => resource?.EndsWith("-" + kind, StringComparison.Ordinal) == true);
 
     private static Row[] Ledger(string file) =>

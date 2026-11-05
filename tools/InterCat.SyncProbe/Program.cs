@@ -54,6 +54,9 @@ internal static class Program
             Console.Error.WriteLine("  while FX-SYNC-001 runs: what its session delivered by class and opcode, and its group masks.");
             Console.Error.WriteLine("  --types: the object type table read from user mode before a session, against the type rundown at its");
             Console.Error.WriteLine("  stop, and the machine's handle records by type over FX-SYNC-001.");
+            Console.Error.WriteLine("  --product-impact [--rounds n] [--churn n] [--icat <InterCat.Cli.exe>]: machine CPU and workload time over");
+            Console.Error.WriteLine("  FX-SYNC-001's opener churning handles, in rounds with no capture, under icat record --profile sync-objects");
+            Console.Error.WriteLine("  and under icat record --profile explore, keeping only counters.");
             Console.Error.WriteLine("  --duplication [--ledger]: FX-SYNC-002, the opener also given each object's handle by a duplication -");
             Console.Error.WriteLine("  pushed, pulled, and made between the two by a third process: which process raised each duplication's");
             Console.Error.WriteLine("  record and its handle's, and where the synchronization types' kernel handles' records are raised.");
@@ -80,6 +83,36 @@ internal static class Program
             types["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
             File.WriteAllText(Path.Combine(output, "report.json"), JsonSerializer.Serialize(types, Json));
             Console.WriteLine(JsonSerializer.Serialize(types, Json));
+            return 0;
+        }
+
+        // What the synchronization objects profile costs through the product: icat record itself, beside Explore and no
+        // capture, over FX-SYNC-001's opener churning handles.
+        if (measure && args.Contains("--product-impact", StringComparer.Ordinal))
+        {
+            string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+            string icat = Option(args, "--icat") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.Cli", "bin", "Release", "net10.0", "InterCat.Cli.exe"));
+            int rounds = int.Parse(Option(args, "--rounds") ?? "9", CultureInfo.InvariantCulture);
+            int churn = int.Parse(Option(args, "--churn") ?? "4096", CultureInfo.InvariantCulture);
+            string scratch = Path.Combine(output, "scratch");
+            Directory.CreateDirectory(scratch);
+            Dictionary<string, object?> impact = await ProductImpact.MeasureAsync(workload, icat, churn, rounds, scratch).ConfigureAwait(false);
+            Directory.Delete(scratch, recursive: true);
+            var document = new Dictionary<string, object?>
+            {
+                ["schema"] = "intercat.sync-objects-product-impact.v1",
+                ["measuredUtc"] = DateTimeOffset.UtcNow,
+                ["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}",
+            };
+            foreach ((string key, object? value) in impact)
+            {
+                document[key] = value;
+            }
+
+            File.WriteAllText(Path.Combine(output, "product-impact.json"), JsonSerializer.Serialize(document, Json));
+            Console.WriteLine(JsonSerializer.Serialize(document, Json));
             return 0;
         }
 

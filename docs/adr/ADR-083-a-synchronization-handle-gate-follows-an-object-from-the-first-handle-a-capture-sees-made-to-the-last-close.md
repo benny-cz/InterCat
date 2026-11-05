@@ -5,7 +5,8 @@
   the gate follows no kernel handle (its second addendum); since revision 939 a handle's creation and close bind to the
   process that raised them, as `process-binding-v6` (its third addendum); since revision 940 the opt-in synchronization
   objects profile requests the group, stating its cost (its fourth addendum); its duplication, compiled at version 2,
-  admits no record on this build, which raises every duplication at version 3 (ADR-082's sixth addendum)
+  admits no record on this build, which raises every duplication at version 3 (ADR-082's sixth addendum); since revision
+  943 the profile's cost is measured through the product, High on a handle-heavy workload (its fifth addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-073, ADR-082, plan M6, §4.2, R22, P7, FX-SYNC-001, `bench/results/sync-objects-types-20261105T053215Z`
@@ -142,3 +143,25 @@ measured: the handle group's collection alone took a median 0.4 and 0.0 CPU poin
 makes the call. That is why it is opt-in and Explore never admits the source. Nothing has measured the profile whole
 yet, and no build carries a tier for named synchronization objects: a fixture measured through the product is next.
 Tests compile the profile with and without the handle group and check both commands' profile lists, help and preview.
+
+## Addendum: the profile's cost through the product (revision 943)
+
+The fourth addendum stated the profile's class as its sources' at most, Moderate, nothing having measured it whole.
+`tools/InterCat.SyncProbe --measure --product-impact` now has, as the COM calls profile's measurement had, FX-SYNC-001's
+opener opening and closing each object by its name that many times, then its rounds unpaced, in nine rounds of three
+trials: no capture, `icat record --profile sync-objects` and `icat record --profile explore`, in an order rotating each
+round, machine processor time over the workload alone and the workload's own time measured, a capture's start and stop
+outside both.
+
+- 32,768 times each object (`bench/results/sync-objects-impact-20261105T112016Z`): about 78,000 handle records a second
+  machine-wide, which the gate cut to about 17,600 admitted, about a million omitted a capture and none beyond its
+  bound. The profile added a median 11.8 CPU points to no capture, every round above 5, its own process 4.2, and the
+  workload ran 18.4% slower; Explore beside it added none measurable. Nothing was dropped or lost.
+- 4,096 times each (`bench/results/sync-objects-impact-20261105T111353Z`), its workloads under a second on a machine
+  already 43% busy: a median 6.2 points and 14.8% slower, nothing dropped or lost.
+
+So on a handle-heavy workload the profile is High, past §12's 5-point processor target as well as its throughput one:
+its records are the machine's every handle's, which a capture reads, gates and mostly omits, and its own process alone
+is four points. The profile now states High and both series, the longer its evidence; it stays opt-in, and Explore never
+admits the source. Tests hold both series to their rounds, their loss and their class, and the statement to their
+medians; four alterations of the evidence and two of the statement are caught.
