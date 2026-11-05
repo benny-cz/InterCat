@@ -3,12 +3,13 @@
 - Status: accepted for M6's named synchronization objects work package; since revision 930 the handle group's collection
   cost is measured, Low in processor time but a handle-heavy workload past §12's throughput target, and the object group's
   Moderate (its addendum); since revision 931 the handle group is inventoried as named synchronization objects' lead,
-  requested by no profile and admitting no event (its second addendum)
+  requested by no profile and admitting no event (its second addendum); since revision 933 a capture sets a kernel
+  group's mask on its private system logger by the session's handle (its third addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: plan §4.1, §4.2, M6, P7, P8, R22, ADR-035, FX-SYNC-001, `tools/InterCat.SyncProbe`,
   `bench/results/sync-provider-inspection-20261105T022919Z`, `bench/results/sync-objects-feasibility-*`,
-  `bench/results/sync-objects-impact-*`
+  `bench/results/sync-objects-impact-*`, `bench/results/sync-objects-session-check-20261105T050334Z`
 
 ## Context
 
@@ -139,3 +140,27 @@ by itself. Its cost is Low with this ADR's addendum as evidence, its notes stati
 regression beside the class, so only an opt-in profile stating it may admit it, never Explore. It has no process filter,
 and its rundown at the session's stop names every handle still open. No other source claims named synchronization objects,
 and no build carries a tier for them. A test holds the lead, its absence from every profile and the absence of a tier.
+
+## Addendum: a capture sets a kernel group's mask on its private system logger (revision 933)
+
+The fourth decision asked how the capture sets a group mask on its private system logger, which TraceEvent does only on
+the NT Kernel Logger. A source now states the group masks that enable it, as PERF_* values beside its kernel flags, and
+the handle group states `PERF_OB_HANDLE`. A capture's plan gathers its sources' masks, and a capture sets them after the
+kernel flags start its logger and before any manifest provider: it queries its own session by name for its handle, reads
+the session's eight group masks, sets each mask's bits in the word its top three bits name, keeping every bit the session
+holds, and writes them back. A kernel group with no flag of its own still needs a system logger, which only kernel flags
+start (ADR-035), so a plan whose kernel groups have masks and no flag starts its logger with the kernel's process flag,
+the least one; beside another group's flags it adds none. A refused mask refuses the capture with the reason, before any
+manifest provider, and stops only the session it made, as refused kernel flags do. The masks are set while the capture
+starts and never after, so its configuration stays fixed (P13).
+
+On this machine's ETW, `tools/InterCat.SyncProbe --measure --session-check` ran an owned capture through the product's
+session host, its plan the handle group alone and admitting none of its events, while FX-SYNC-001 ran
+(`bench/results/sync-objects-session-check-20261105T050334Z`). It started, its logger holding the process flag - and the
+thread flag TraceEvent sets beside it - and the handle group's bit in its fifth mask, read while it recorded. Its session
+delivered 453,057 of the object manager's records, 82,153 handle creations, 83,146 closes, 456 duplications and the
+type and handle rundowns at its stop, each omitted as not admitted, beside the kernel's process and thread records it
+delivers unasked; nothing was lost, the capture stopped its own session through the stop, and none was left. What remains
+before a profile admits the group is a binding and a join of its records, and what a handle opened before a capture began
+records. Tests hold the plan, the order of the enablements, a refused mask, the masks' words and the session check; ten
+mutations of the code and of the check are caught.

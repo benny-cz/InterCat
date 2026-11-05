@@ -30,7 +30,10 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
     /// <summary>Refuses kernel flags, as a machine at its limit of eight system loggers would.</summary>
     public bool RefuseKernelFlags { get; set; }
 
-    /// <summary>Every enablement, in order: "kernel:<flags>" or a provider's source id.</summary>
+    /// <summary>Refuses kernel group masks, as a session that cannot be queried for its handle would.</summary>
+    public bool RefuseKernelGroups { get; set; }
+
+    /// <summary>Every enablement, in order: "kernel:<flags>", "groups:<masks>" or a provider's source id.</summary>
     public List<string> Enablements { get; } = [];
 
     /// <summary>Records this host produces once the pump starts.</summary>
@@ -102,6 +105,15 @@ internal sealed class FakeEtwSessionHost : IEtwSessionHost
             host.Enablements.Add(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"kernel:0x{flags:X}"));
             return host.RefuseKernelFlags
                 ? new(sourceId, false, "the machine already runs eight system loggers")
+                : new(sourceId, true, null);
+        }
+
+        public ProviderEnablementResult EnableKernelGroups(string sourceId, IReadOnlyList<uint> groupMasks)
+        {
+            host.Enablements.Add("groups:" + string.Join("+", groupMasks.Select(mask =>
+                string.Create(System.Globalization.CultureInfo.InvariantCulture, $"0x{mask:X}"))));
+            return host.RefuseKernelGroups
+                ? new(sourceId, false, "the group masks could not be set in this test")
                 : new(sourceId, true, null);
         }
 

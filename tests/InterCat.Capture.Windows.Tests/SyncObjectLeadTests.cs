@@ -21,6 +21,9 @@ public sealed class SyncObjectLeadTests
     // A paired ready readied its waiter in a user-mode wait, or a thread the session did not see switched out waiting.
     private static readonly string[] PairedWaits = ["UserRequest", "not seen waiting"];
 
+    // The object manager's handle creations, closes and handle rundown, by their opcodes.
+    private static readonly string[] HandleOpcodes = ["32", "33", "39"];
+
     // A wait's span is the waiter's two records about it; the two clocks are read apart by this much.
     private static readonly long Slack = TimeSpan.FromMilliseconds(0.02).Ticks;
 
@@ -179,6 +182,8 @@ public sealed class SyncObjectLeadTests
         WindowsSourceDefinition handles = WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelObjectHandlesSourceId)!;
         Assert.Equal((SourceKind.KernelFlagGroup, 0UL, WindowsSourceCatalog.ObjectManagerEventClass),
             (handles.Kind, handles.KernelFlags, handles.ClassicEventClass));
+        Assert.Equal([WindowsSourceCatalog.ObjectHandlesGroupMask], handles.KernelGroupMasks);
+        Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != handles.SourceId), source => Assert.Empty(source.KernelGroupMasks));
         Assert.Equal([Mechanism.Synchronization], handles.Mechanisms);
         Assert.Equal((SourceContractStatus.Experimental, false), (handles.ContractStatus, handles.SupportsCaptureSideProcessFilter));
         Assert.Empty(handles.AdmittedEvents);
@@ -202,6 +207,37 @@ public sealed class SyncObjectLeadTests
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != handles.SourceId),
             source => Assert.DoesNotContain(Mechanism.Synchronization, source.Mechanisms));
         Assert.DoesNotContain(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.Synchronization);
+    }
+
+    [Fact(DisplayName = "§9.2: a capture whose plan holds the handle group alone started its private system logger with the process flag, set the group's mask by its handle, and was delivered the object manager's records through the product's session, none admitted, nothing lost and no session left")]
+    public void ACaptureSetsTheHandleGroupsMaskOnItsLogger()
+    {
+        using JsonDocument check = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            Assert.Single(Directory.EnumerateDirectories(Path.Combine(RepositoryRoot(), "bench", "results"), "sync-objects-session-check-*")),
+            "report.json")));
+        JsonElement root = check.RootElement;
+
+        // The plan the product compiles for the group: the process flag to start the logger, the handle group's mask.
+        Assert.True(root.GetProperty("started").GetBoolean());
+        Assert.Equal("0x1", root.GetProperty("planKernelFlags").GetString());
+        Assert.Equal(["0x80000040"], root.GetProperty("planGroupMasks").EnumerateArray().Select(mask => mask.GetString()));
+
+        // The session held the mask while it recorded - the fifth word, the object manager's handle bit - beside its flags.
+        string[] masks = [.. root.GetProperty("masksReadWhileRecording").EnumerateArray().Select(mask => mask.GetString()!)];
+        Assert.Equal(8, masks.Length);
+        Assert.Equal("0x00000040", masks[4]);
+        Assert.Equal(1u, uint.Parse(masks[0][2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture) & 1);
+
+        // It was delivered the object manager's handle creations, closes and rundowns, none admitted as none is planned, and
+        // stopped its own session through the stop, losing nothing and leaving none behind.
+        JsonElement opcodes = root.GetProperty("objectManagerByOpcode");
+        Assert.All(HandleOpcodes, opcode => Assert.InRange(opcodes.GetProperty(opcode).GetInt64(), 1, long.MaxValue));
+        Assert.Equal(0, root.GetProperty("admitted").GetInt64());
+        Assert.Equal(root.GetProperty("deliveredByClass").GetProperty("Kernel object manager handles (PERF_OB_HANDLE)").GetInt64(),
+            root.GetProperty("omittedNotAdmitted").GetInt64());
+        Assert.Equal((true, true, true, 0L, 0L), (root.GetProperty("lossFree").GetBoolean(), root.GetProperty("providersStopped").GetBoolean(),
+            root.GetProperty("deliveredThroughStop").GetBoolean(), root.GetProperty("eventsLost").GetInt64(), root.GetProperty("buffersLost").GetInt64()));
+        Assert.False(root.GetProperty("sessionLeftBehind").GetBoolean());
     }
 
     [Fact(DisplayName = "§12: collecting the handle group is measured in two series of pairs over a handle-heavy workload - Low in processor time, the workload slower past §12's throughput target - and the object group beside it Moderate, millions of records a second, so only an opt-in profile stating it may admit either")]

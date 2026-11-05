@@ -856,6 +856,7 @@ Revision 929 measures the kernel's handle, object and dispatcher records against
 Revision 930 measures what collecting the object manager's groups costs (ADR-082's addendum): the handle group Low in processor time but a handle-heavy workload 5.3 and 8.3% lower in throughput, past §12's target, so only an opt-in profile stating it may admit it; the object group beside it Moderate, 23.7% lower, about 2.7 million records a second.
 Revision 931 inventories the object manager's handle group as named synchronization objects' lead (ADR-082's second addendum): `etw/kernel-group/ObjectHandles`, enabled by a group mask and no kernel flag, experimental, requested by no profile and admitting no event, its measured notes and Low cost stated by `icat capabilities`; no build carries a tier for named objects.
 Revision 932 has two window tests wait out a loaded machine's layout - a reached host's hit test and Enter's rung taking the keyboard - each dispatching until what it checks holds, up to five seconds; no product code changes.
+Revision 933 has a capture set a kernel group's mask on its private system logger (ADR-082's third addendum): by the session's handle, after the kernel flags that start it - the kernel's process flag where the group has none - and before any manifest provider, a refused mask refusing the capture; on this machine an owned capture was delivered the object manager's handle records, nothing lost.
 
 ## Revisions, a paragraph each, in order
 
@@ -3868,3 +3869,14 @@ passed alone five times of five, and the product does what each asks, only later
 dispatching, up to five seconds for what it checks - the row's middle hit once it has settled, and the rung's rows
 holding the keyboard - and fails as before after. No product code changes, and no mutation can catch a race the tests
 now tolerate; the full suite exercises them.
+
+Revision 933 has a capture set a kernel group's mask on its private system logger (ADR-082's third addendum), which
+TraceEvent does only on the NT Kernel Logger. A source states the group masks that enable it as PERF_* values, and the
+handle group states `PERF_OB_HANDLE`. A capture's plan gathers its sources' masks, and its session, once the kernel flags
+have started its logger, queries itself by name for its handle, reads its eight group masks, sets each mask's bits in
+the word its top three bits name, keeping every bit it holds, and writes them back, before any manifest provider. A
+kernel group with no flag of its own still needs a system logger, so a plan whose groups have masks and no flag starts
+it with the kernel's process flag. A refused mask refuses the capture with its reason and stops only the session it made.
+On this machine's ETW, an owned capture through the product's session host, its plan the handle group alone, held the
+mask while it recorded and was delivered 453,057 of the object manager's records - handle creations, closes, duplications
+and the rundowns at its stop - each omitted as not admitted; nothing was lost, and its session was stopped and gone.

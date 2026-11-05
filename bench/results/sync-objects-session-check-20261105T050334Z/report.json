@@ -1,0 +1,58 @@
+{
+  "question": "Whether a capture whose plan holds the object manager\u0027s handle group, a kernel group with no flag of its own, starts its private system logger with the kernel\u0027s process flag, sets the group\u0027s mask on it by its handle, and is delivered the object manager\u0027s handle records through the product\u0027s own session.",
+  "started": true,
+  "failureReason": null,
+  "enablements": [
+    {
+      "sourceId": "etw/kernel-group/ObjectHandles",
+      "enabled": true,
+      "failureReason": null
+    }
+  ],
+  "planKernelFlags": "0x1",
+  "planGroupMasks": [
+    "0x80000040"
+  ],
+  "masksReadWhileRecording": [
+    "0x00000003",
+    "0x00000000",
+    "0x00000000",
+    "0x00000000",
+    "0x00000040",
+    "0x00000000",
+    "0x00000000",
+    "0x00000000"
+  ],
+  "deliveredByClass": {
+    "Kernel trace records (EventTrace class)": 12,
+    "Kernel process events (Process class)": 1060,
+    "Kernel thread events (Thread class)": 22646,
+    "Kernel object manager handles (PERF_OB_HANDLE)": 453057,
+    "Kernel system configuration (SystemConfig class)": 595
+  },
+  "objectManagerByOpcode": {
+    "32": 82153,
+    "33": 83146,
+    "34": 456,
+    "37": 74,
+    "39": 287228
+  },
+  "admitted": 0,
+  "observedRecords": 477370,
+  "omittedNotAdmitted": 453057,
+  "omittedUnrequested": 24313,
+  "lossFree": true,
+  "omittedByReason": {
+    "UnrequestedProvider": 24313,
+    "DescriptorNotAdmitted": 453057
+  },
+  "stopped": true,
+  "providersStopped": true,
+  "deliveredThroughStop": true,
+  "eventsLost": 0,
+  "buffersLost": 0,
+  "sessionLeftBehind": false,
+  "schema": "intercat.sync-objects-session-check.v1",
+  "measuredUtc": "2026-11-05T05:03:34.3147561+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

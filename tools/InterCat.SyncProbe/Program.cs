@@ -50,6 +50,8 @@ internal static class Program
             Console.Error.WriteLine("  --impact [--pairs n] [--churn n] [--objects]: machine CPU and workload time with and without a session");
             Console.Error.WriteLine("  collecting the object manager's handle group - and with --objects its object group - machine-wide, in");
             Console.Error.WriteLine("  pairs, over FX-SYNC-001's opener opening and closing each object that many times, its rounds unpaced.");
+            Console.Error.WriteLine("  --session-check: an owned capture through the product's session host, its plan the handle group alone,");
+            Console.Error.WriteLine("  while FX-SYNC-001 runs: what its session delivered by class and opcode, and its group masks.");
             return 2;
         }
 
@@ -61,6 +63,20 @@ internal static class Program
         }
 
         Directory.CreateDirectory(output);
+
+        // The product's own capture path for the handle group: an owned capture through the product's session host.
+        if (measure && args.Contains("--session-check", StringComparer.Ordinal))
+        {
+            string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+            Dictionary<string, object?> check = await SessionCheck.RunAsync(workload, Path.Combine(output, "truth")).ConfigureAwait(false);
+            check["schema"] = "intercat.sync-objects-session-check.v1";
+            check["measuredUtc"] = DateTimeOffset.UtcNow;
+            check["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+            File.WriteAllText(Path.Combine(output, "report.json"), JsonSerializer.Serialize(check, Json));
+            Console.WriteLine(JsonSerializer.Serialize(check, Json));
+            return 0;
+        }
 
         // What collecting the object manager's groups costs, in pairs with and without a session collecting them
         // machine-wide, over FX-SYNC-001's opener churning handles.

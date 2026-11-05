@@ -169,6 +169,14 @@ public sealed class TraceEventSessionHost : IEtwSessionHost, IEtwSessionReclaime
             }
         }
 
+        public ProviderEnablementResult EnableKernelGroups(string sourceId, IReadOnlyList<uint> groupMasks)
+        {
+            // Set by the session's handle, never through TraceEvent, which sets group masks only on the NT Kernel Logger.
+            return KernelGroupMaskControl.Add(session.SessionName, groupMasks) is { } problem
+                ? new(sourceId, false, "The kernel group masks could not be set on the private system logger. " + problem)
+                : new(sourceId, true, null);
+        }
+
         public bool TryFlushDelivery()
         {
             if (stopped)

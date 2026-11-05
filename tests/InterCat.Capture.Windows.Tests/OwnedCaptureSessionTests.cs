@@ -161,6 +161,85 @@ public sealed class OwnedCaptureSessionTests
         Assert.Equal(CaptureLifecycle.Closed, session.State);
     }
 
+    /// <summary>The sample plan with the object manager's handle group beside it, a kernel group with no flag of its own.</summary>
+    private static OwnedSessionPlan BuildPlanWithObjectHandles(bool withAlpc = false)
+    {
+        OwnedSessionPlan plan = withAlpc ? BuildPlanWithAlpc() : BuildPlan();
+        var handles = new SourceAdmissionPlan
+        {
+            SourceId = WindowsSourceCatalog.KernelObjectHandlesSourceId,
+            ProviderGuid = WindowsSourceCatalog.ObjectManagerEventClass,
+            SourceIndex = plan.Sources.Count,
+            Events = [],
+            Diagnostics = [],
+        };
+        return plan with { Sources = [.. plan.Sources, handles] };
+    }
+
+    [Fact(DisplayName = "§9.2: a kernel group with no flag of its own starts its system logger with the kernel's process flag, then sets its group mask, both before any manifest provider")]
+    public async Task AKernelGroupsMaskFollowsTheFlagsThatStartItsLogger()
+    {
+        var host = new FakeEtwSessionHost();
+        OwnedSessionPlan plan = BuildPlanWithObjectHandles();
+        Assert.Equal(WindowsSourceCatalog.ProcessKernelFlag, plan.KernelFlags);
+        Assert.Equal([WindowsSourceCatalog.ObjectHandlesGroupMask], plan.KernelGroupMasks);
+        Assert.Equal(WindowsSourceCatalog.KernelObjectHandlesSourceId, plan.KernelFlagSources);
+        await using var session = new OwnedCaptureSession(plan, host);
+
+        CaptureStartResult start = await session.StartAsync(CancellationToken.None);
+
+        Assert.True(start.Started);
+        Assert.Equal(["kernel:0x1", "groups:0x80000040", "etw/manifest/Sample"], host.Enablements);
+        Assert.Single(start.Providers, result => result.SourceId == WindowsSourceCatalog.KernelObjectHandlesSourceId && result.Enabled);
+        await session.StopAsync(CancellationToken.None);
+    }
+
+    [Fact(DisplayName = "§9.2: beside a kernel flag group, a kernel group's mask is set on the logger its flags start, and no process flag is added")]
+    public async Task AKernelGroupsMaskJoinsAnotherGroupsFlags()
+    {
+        var host = new FakeEtwSessionHost();
+        OwnedSessionPlan plan = BuildPlanWithObjectHandles(withAlpc: true);
+        Assert.Equal(WindowsSourceCatalog.AlpcKernelFlag, plan.KernelFlags);
+        Assert.Equal(WindowsSourceCatalog.KernelAlpcSourceId + ", " + WindowsSourceCatalog.KernelObjectHandlesSourceId, plan.KernelFlagSources);
+        await using var session = new OwnedCaptureSession(plan, host);
+
+        Assert.True((await session.StartAsync(CancellationToken.None)).Started);
+        Assert.Equal(["kernel:0x100000", "groups:0x80000040", "etw/manifest/Sample"], host.Enablements);
+        await session.StopAsync(CancellationToken.None);
+    }
+
+    [Fact(DisplayName = "§9.2: a refused kernel group mask refuses the capture before any manifest provider, says why, and stops only the session it made")]
+    public async Task ARefusedKernelGroupMaskRefusesTheCapture()
+    {
+        var host = new FakeEtwSessionHost("Some-Other-Tool-Session") { RefuseKernelGroups = true };
+        OwnedSessionPlan plan = BuildPlanWithObjectHandles();
+        await using var session = new OwnedCaptureSession(plan, host);
+
+        CaptureStartResult start = await session.StartAsync(CancellationToken.None);
+
+        Assert.False(start.Started);
+        Assert.Contains("group masks could not be set", start.FailureReason, StringComparison.Ordinal);
+        Assert.Equal(["kernel:0x1", "groups:0x80000040"], host.Enablements);
+        ProviderEnablementResult refused = Assert.Single(start.Providers);
+        Assert.False(refused.Enabled);
+        Assert.Equal(plan.Identity.SessionName, Assert.Single(host.StoppedSessions));
+        Assert.Equal(CaptureLifecycle.Closed, session.State);
+    }
+
+    [Fact(DisplayName = "§9.2: a kernel group mask sets its bits in the mask its top three bits name, keeping every mask the session holds")]
+    public void AGroupMaskSetsItsBitsInTheMaskItNames()
+    {
+        // The flags a logger holds, then the object manager's handle and object groups: both in the fifth mask.
+        Span<uint> masks = [0x0000_0803, 0x0000_0200, 0, 0, 0, 0, 0, 0];
+        KernelGroupMaskControl.Merge(masks, [WindowsSourceCatalog.ObjectHandlesGroupMask, 0x8000_0080]);
+        Assert.Equal([0x0000_0803u, 0x0000_0200u, 0u, 0u, 0x0000_00C0u, 0u, 0u, 0u], masks.ToArray());
+
+        // A group of the first word sets a flag; one of the seventh, its own bits there.
+        KernelGroupMaskControl.Merge(masks, [0x0000_0010, 0xC000_0001]);
+        Assert.Equal([0x0000_0813u, 0x0000_0200u, 0u, 0u, 0x0000_00C0u, 0u, 0x0000_0001u, 0u], masks.ToArray());
+        Assert.Throws<ArgumentException>(() => KernelGroupMaskControl.Merge(new uint[7], [WindowsSourceCatalog.ObjectHandlesGroupMask]));
+    }
+
     [Fact(DisplayName = "§9.2: a plan without a kernel flag group enables only its manifest providers, and no kernel provider")]
     public async Task APlanWithoutKernelFlagsEnablesOnlyItsProviders()
     {

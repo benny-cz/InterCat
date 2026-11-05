@@ -69,10 +69,16 @@ public sealed class CaptureConfigurationTests
             ["InterCat.Capture.Windows.TraceEventProviderControl.TryRequestCaptureState"],
             CallersOf(typeof(TraceEventSession), name => name == "CaptureState"));
 
-        // ... and an owned session does either only while its capture starts.
+        // A kernel group's masks are set, by the session's handle, only by an owned session asked to set them ...
+        Type groupMasks = windows.GetType("InterCat.Capture.Windows.KernelGroupMaskControl", throwOnError: true)!;
+        Assert.Equal(
+            ["InterCat.Capture.Windows.TraceEventSessionHost+TraceEventOwnedSession.EnableKernelGroups"],
+            CallersOf(groupMasks, name => name == "Add"));
+
+        // ... and an owned session does any of these only while its capture starts.
         Assert.Equal(
             ["InterCat.Capture.Windows.OwnedCaptureSession.StartAsync"],
-            CallersOf(typeof(IOwnedEtwSession), name => name is "Enable" or "EnableKernelFlags" or "TryRequestCaptureState"));
+            CallersOf(typeof(IOwnedEtwSession), name => name is "Enable" or "EnableKernelFlags" or "EnableKernelGroups" or "TryRequestCaptureState"));
         Assert.Equal(
             ["InterCat.Capture.Windows.OwnedEtlFileCapture.StartAsync"],
             CallersOf(typeof(IOwnedEtlFileSession), name => name is "Enable" or "TryRequestCaptureState"));

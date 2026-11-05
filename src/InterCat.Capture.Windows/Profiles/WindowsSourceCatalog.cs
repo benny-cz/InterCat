@@ -111,6 +111,12 @@ public sealed record WindowsSourceDefinition
     public ulong KernelFlags { get; init; }
 
     /// <summary>
+    /// The kernel group masks, as PERF_* values, that enable a kernel group with no flag of its own in a private system
+    /// logger, as the object manager's handles (ADR-082); empty for every other source.
+    /// </summary>
+    public IReadOnlyList<uint> KernelGroupMasks { get; init; } = [];
+
+    /// <summary>
     /// The manifest of a provider InterCat defines itself - the content fixture - generated from the type that raises its
     /// events, so its layout is read from that type rather than from a registration the machine may not have; null for
     /// every Windows provider, whose manifest the machine's registration supplies.
@@ -145,6 +151,15 @@ public static class WindowsSourceCatalog
 
     /// <summary><c>EVENT_TRACE_FLAG_ALPC</c>.</summary>
     public const ulong AlpcKernelFlag = 0x0010_0000;
+
+    /// <summary>
+    /// <c>EVENT_TRACE_FLAG_PROCESS</c>: the least kernel flag, which starts a private system logger for a kernel group with
+    /// no flag of its own (ADR-082).
+    /// </summary>
+    public const ulong ProcessKernelFlag = 0x0000_0001;
+
+    /// <summary><c>PERF_OB_HANDLE</c>: the object manager's handle group, a handle's creation, close and duplication (ADR-082).</summary>
+    public const uint ObjectHandlesGroupMask = 0x8000_0040;
 
     private static readonly IReadOnlyList<AdmittedFieldIntent> AlpcMessageFields =
     [
@@ -1002,8 +1017,9 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        // Named synchronization objects' lead (ADR-082): inventoried and requested by no profile, admitting no event until a
-        // capture sets a group mask on its private system logger; its measured notes are what icat capabilities states of it.
+        // Named synchronization objects' lead (ADR-082): inventoried and requested by no profile, admitting no event until its
+        // records are bound and joined; a capture that asks for it sets its group mask on its private system logger. Its
+        // measured notes are what icat capabilities states of it.
         var objectHandles = new WindowsSourceDefinition
         {
             SourceId = KernelObjectHandlesSourceId,
@@ -1018,9 +1034,10 @@ public static class WindowsSourceCatalog
             SupportsCaptureSideProcessFilter = false,
             FilteringNotes =
                 "No capture profile requests it. A kernel group of the object manager, enabled by the group mask PERF_OB_HANDLE "
-                + "and by no kernel flag: only a private system logger receives it, its masks set by the session's handle, which "
-                + "TraceEvent does only on the NT Kernel Logger, a session a capture never uses (ADR-035, ADR-082). It has no "
-                + "process filter: it records every process's handles.",
+                + "and by no kernel flag: only a private system logger receives it. A capture that asks for it sets the mask on its "
+                + "own logger by the session's handle, once the kernel's process flag has started the logger where no other flag "
+                + "does; TraceEvent sets group masks only on the NT Kernel Logger, a session a capture never uses (ADR-035, "
+                + "ADR-082). It has no process filter: it records every process's handles.",
             StartupBehaviour =
                 "At the session's stop a rundown names every handle still open, with its process and its object's name, and every "
                 + "object type's name; a handle opened before the capture began is seen only at its close or in that rundown.",
@@ -1029,6 +1046,7 @@ public static class WindowsSourceCatalog
             Overhead = OverheadClass.Low,
             OverheadEvidence = "bench/results/sync-objects-impact-handles-20261105T035540Z/impact.json",
             ClassicEventClass = ObjectManagerEventClass,
+            KernelGroupMasks = [ObjectHandlesGroupMask],
             Notes =
             [
                 "There is no registered object manager manifest provider to inventory, so its absence from the registry is expected.",

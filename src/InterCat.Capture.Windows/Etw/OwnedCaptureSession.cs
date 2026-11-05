@@ -243,6 +243,20 @@ public sealed class OwnedCaptureSession : IAsyncDisposable
                     await CleanUpCreatedResourcesAsync().ConfigureAwait(false);
                     return Fail($"{kernel.SourceId}: {kernel.FailureReason ?? "the kernel flags were refused."}", providerResults);
                 }
+
+                // A kernel group with no flag of its own is enabled by its group masks, set on the logger the flags have
+                // started and before any manifest provider (ADR-082). Set, they add nothing to the flags' result for the same
+                // sources; refused, the capture is, as the flags' refusal refuses it.
+                if (plan.KernelGroupMasks is { Count: > 0 } groupMasks)
+                {
+                    ProviderEnablementResult groups = created.EnableKernelGroups(plan.KernelFlagSources, groupMasks);
+                    if (!groups.Enabled)
+                    {
+                        providerResults[^1] = groups;
+                        await CleanUpCreatedResourcesAsync().ConfigureAwait(false);
+                        return Fail($"{groups.SourceId}: {groups.FailureReason ?? "the kernel group masks were refused."}", providerResults);
+                    }
+                }
             }
 
             foreach (ProviderEnablementRequest request in plan.Providers)

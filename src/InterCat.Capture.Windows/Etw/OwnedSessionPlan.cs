@@ -202,11 +202,32 @@ public sealed record OwnedSessionPlan
     /// The kernel flags the plan's kernel flag groups need, 0 when it has none. Non-zero makes the session a private
     /// system logger, which only a first enablement of the kernel flags can make it (ADR-035).
     /// </summary>
-    public ulong KernelFlags => Sources.Aggregate(0UL, (flags, source) => flags | (WindowsSourceCatalog.Find(source.SourceId)?.KernelFlags ?? 0));
+    public ulong KernelFlags
+    {
+        get
+        {
+            ulong flags = Sources.Aggregate(0UL, (all, source) => all | (WindowsSourceCatalog.Find(source.SourceId)?.KernelFlags ?? 0));
 
-    /// <summary>The kernel flag groups among the plan's sources: sources the kernel flags enable, not a manifest provider.</summary>
+            // A kernel group with no flag of its own still needs a system logger, which only kernel flags start: the
+            // kernel's process flag, the least a system logger takes, starts it (ADR-082).
+            return flags == 0 && KernelGroupMasks.Count > 0 ? WindowsSourceCatalog.ProcessKernelFlag : flags;
+        }
+    }
+
+    /// <summary>
+    /// The kernel group masks, as PERF_* values, that the plan's kernel groups with no flag of their own need, each once;
+    /// empty when it has none. A private system logger takes them by its handle once its kernel flags start it (ADR-082).
+    /// </summary>
+    public IReadOnlyList<uint> KernelGroupMasks =>
+        [.. Sources.SelectMany(source => WindowsSourceCatalog.Find(source.SourceId)?.KernelGroupMasks ?? []).Distinct()];
+
+    /// <summary>
+    /// The kernel flag groups among the plan's sources: sources the kernel flags or group masks enable, not a manifest
+    /// provider.
+    /// </summary>
     public IEnumerable<SourceAdmissionPlan> KernelFlagGroups => Sources
-        .Where(source => WindowsSourceCatalog.Find(source.SourceId) is { Kind: SourceKind.KernelFlagGroup, KernelFlags: > 0 });
+        .Where(source => WindowsSourceCatalog.Find(source.SourceId) is { Kind: SourceKind.KernelFlagGroup } definition
+            && (definition.KernelFlags > 0 || definition.KernelGroupMasks.Count > 0));
 
     /// <summary>The kernel flag groups' sources, named together in the one enablement they share.</summary>
     public string KernelFlagSources => string.Join(", ", KernelFlagGroups.Select(source => source.SourceId));

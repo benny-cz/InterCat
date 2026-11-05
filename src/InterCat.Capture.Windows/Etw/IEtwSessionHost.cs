@@ -106,6 +106,13 @@ public interface IOwnedEtwSession : IDisposable
     ProviderEnablementResult EnableKernelFlags(string sourceId, ulong flags) =>
         new(sourceId, false, "This session host cannot enable kernel flags.");
 
+    /// <summary>
+    /// Adds kernel group masks, as PERF_* values, to a private system logger the kernel flags have started: a kernel group
+    /// with no flag of its own is enabled so, after the flags and before any manifest provider (ADR-082).
+    /// </summary>
+    ProviderEnablementResult EnableKernelGroups(string sourceId, IReadOnlyList<uint> groupMasks) =>
+        new(sourceId, false, "This session host cannot set kernel group masks.");
+
     /// <summary>Requests a provider state rundown after delivery has started (section 18.5).</summary>
     bool TryRequestCaptureState(ProviderEnablementRequest request, out string? failureReason);
 
