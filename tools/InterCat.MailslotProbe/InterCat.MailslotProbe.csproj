@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- For the classic file I/O class's registered layouts and the file provider's registered schema, read as the product reads one. -->
+    <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- A lab probe, not a product adapter: it lists the machine's registered providers by name, to find any that says it
+         records mailslots, before any source is measured against a mailslot truth fixture. -->
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
+  </ItemGroup>
+</Project>

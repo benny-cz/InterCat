@@ -874,6 +874,7 @@ Revision 947 adds FX-SYNC-003 (ADR-084's third addendum): named objects made and
 Revision 948 adds FX-SYNC-004 (ADR-084's fourth addendum): named objects whose handles were made before a capture began, each close numbered alone and none joined or discovered while a control inside the same capture is whole - the mechanism's ambiguity case.
 Revision 949 has a capture's compilation refuse the handle group where its gate could not decide its records (ADR-083's sixth addendum): on a build with no measured type numbers, or a layout without a field the gate decides by, the synchronization objects profile does not start, and icat capabilities says its schema is unknown.
 Revision 950 has a process's synchronization records drill down exactly (ADR-084's fifth addendum): icat processes names the icat evidence command that lists them, and the named synchronization objects package meets M6's exit tests.
+Revision 951 begins the mailslots package with its metadata inspection: no registered provider is named for mailslots and Kernel-File declares no mailslot event, while the kernel's classic file I/O class, never measured for ADR-003, declares a create with its open path, reads and writes with their requested size and an operation end with its completion.
 
 ## Revisions, a paragraph each, in order
 
@@ -4070,3 +4071,16 @@ the `icat evidence --owner-process <instance> --mechanism synchronization` comma
 source record: its own creation and close, a handle another process duplicated into it and its handle at the stop, never
 another process's handle or the type rundown. With two instance and lifetime fixtures, an ambiguity case, a schema-failure
 case, exact drill-down and its cost measured through the product, the package meets M6's exit tests.
+
+Revision 951 begins M6's mailslots package as every package begins, with what the machine declares. A mailslot is a file
+of the mailslot file system, made by its server and opened, written and closed by its clients as a file is, so its
+candidates are file I/O's. `tools/InterCat.MailslotProbe --inspect` reads, without enabling any, the layouts this build
+registers for the kernel's classic file I/O class, a flag group only a system logger receives (ADR-035), the registered
+schema of Microsoft-Windows-Kernel-File, and the name of every registered provider (`bench/results/mailslot-provider-inspection-20261105T153228Z`). No
+provider of 1230 is named for mailslots or the mailslot file system, and Kernel-File - which ADR-003 measured
+recording no named pipe - declares no mailslot event or keyword. The classic class, which ADR-003 never measured,
+declares 27 events at version 3: names by file object, a create with its open path, create options and share access, reads
+and writes with their offset and requested size, cleanups and closes, an operation end with its extra information and
+status joined to its operation by its IRP, each by its file object and the thread that issued it. It is evidence of layouts
+on one machine, not of emission: a mailslot's creation, a client's open and each message are measured against a truth
+fixture before any field is implemented.

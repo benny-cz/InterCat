@@ -1,0 +1,2972 @@
+{
+  "schema": "intercat.mailslot-provider-inspection.v1",
+  "inspectedUtc": "2026-11-05T15:32:29.5746176+00:00",
+  "build": "10.0.26220.0-x64",
+  "note": "Read-only: the classic class\u0027s layouts and the provider\u0027s registered schema as TDH gives them, read as the product reads one, and the registered providers\u0027 names. No provider was enabled and no session started, so nothing here says what the kernel emits.",
+  "classes": [
+    {
+      "name": "File I/O (FileIo class)",
+      "guid": "90cbdc39-4a3e-11d1-84f4-0000f80464e3",
+      "events": [
+        {
+          "version": 0,
+          "opcode": 0,
+          "task": "FileIo",
+          "opcodeName": "Name",
+          "fields": [
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 1,
+          "opcode": 0,
+          "task": "FileIo",
+          "opcodeName": "Name",
+          "fields": [
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 1,
+          "opcode": 32,
+          "task": "FileIo",
+          "opcodeName": "FileCreate",
+          "fields": [
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 0,
+          "task": "FileIo",
+          "opcodeName": "Name",
+          "fields": [
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 32,
+          "task": "FileIo",
+          "opcodeName": "FileCreate",
+          "fields": [
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 35,
+          "task": "FileIo",
+          "opcodeName": "FileDelete",
+          "fields": [
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 36,
+          "task": "FileIo",
+          "opcodeName": "FileRundown",
+          "fields": [
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 37,
+          "task": "FileIo",
+          "opcodeName": "MapFile",
+          "fields": [
+            {
+              "name": "ViewBase",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "MiscInfo",
+              "type": "win:UInt64"
+            },
+            {
+              "name": "ViewSize",
+              "type": "classic:intype-308"
+            },
+            {
+              "name": "ProcessId",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 38,
+          "task": "FileIo",
+          "opcodeName": "UnmapFile",
+          "fields": [
+            {
+              "name": "ViewBase",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "MiscInfo",
+              "type": "win:UInt64"
+            },
+            {
+              "name": "ViewSize",
+              "type": "classic:intype-308"
+            },
+            {
+              "name": "ProcessId",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 39,
+          "task": "FileIo",
+          "opcodeName": "MapFileDCStart",
+          "fields": [
+            {
+              "name": "ViewBase",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "MiscInfo",
+              "type": "win:UInt64"
+            },
+            {
+              "name": "ViewSize",
+              "type": "classic:intype-308"
+            },
+            {
+              "name": "ProcessId",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 40,
+          "task": "FileIo",
+          "opcodeName": "MapFileDCEnd",
+          "fields": [
+            {
+              "name": "ViewBase",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "MiscInfo",
+              "type": "win:UInt64"
+            },
+            {
+              "name": "ViewSize",
+              "type": "classic:intype-308"
+            },
+            {
+              "name": "ProcessId",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 64,
+          "task": "FileIo",
+          "opcodeName": "Create",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "CreateOptions",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "FileAttributes",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "ShareAccess",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "OpenPath",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 65,
+          "task": "FileIo",
+          "opcodeName": "Cleanup",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 66,
+          "task": "FileIo",
+          "opcodeName": "Close",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 67,
+          "task": "FileIo",
+          "opcodeName": "Read",
+          "fields": [
+            {
+              "name": "Offset",
+              "type": "win:UInt64"
+            },
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "IoSize",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "IoFlags",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 68,
+          "task": "FileIo",
+          "opcodeName": "Write",
+          "fields": [
+            {
+              "name": "Offset",
+              "type": "win:UInt64"
+            },
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "IoSize",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "IoFlags",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 69,
+          "task": "FileIo",
+          "opcodeName": "SetInfo",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 70,
+          "task": "FileIo",
+          "opcodeName": "Delete",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 71,
+          "task": "FileIo",
+          "opcodeName": "Rename",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 72,
+          "task": "FileIo",
+          "opcodeName": "DirEnum",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "Length",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "FileIndex",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 73,
+          "task": "FileIo",
+          "opcodeName": "Flush",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 74,
+          "task": "FileIo",
+          "opcodeName": "QueryInfo",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 75,
+          "task": "FileIo",
+          "opcodeName": "FSControl",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 76,
+          "task": "FileIo",
+          "opcodeName": "OperationEnd",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "NtStatus",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 77,
+          "task": "FileIo",
+          "opcodeName": "DirNotify",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "Length",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "FileIndex",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 0,
+          "task": "FileIo",
+          "opcodeName": "Name",
+          "fields": [
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 32,
+          "task": "FileIo",
+          "opcodeName": "FileCreate",
+          "fields": [
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 35,
+          "task": "FileIo",
+          "opcodeName": "FileDelete",
+          "fields": [
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 36,
+          "task": "FileIo",
+          "opcodeName": "FileRundown",
+          "fields": [
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 64,
+          "task": "FileIo",
+          "opcodeName": "Create",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "CreateOptions",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "FileAttributes",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "ShareAccess",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "OpenPath",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 65,
+          "task": "FileIo",
+          "opcodeName": "Cleanup",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 66,
+          "task": "FileIo",
+          "opcodeName": "Close",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 67,
+          "task": "FileIo",
+          "opcodeName": "Read",
+          "fields": [
+            {
+              "name": "Offset",
+              "type": "win:UInt64"
+            },
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "IoSize",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "IoFlags",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 68,
+          "task": "FileIo",
+          "opcodeName": "Write",
+          "fields": [
+            {
+              "name": "Offset",
+              "type": "win:UInt64"
+            },
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "IoSize",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "IoFlags",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 69,
+          "task": "FileIo",
+          "opcodeName": "SetInfo",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 70,
+          "task": "FileIo",
+          "opcodeName": "Delete",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 71,
+          "task": "FileIo",
+          "opcodeName": "Rename",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 72,
+          "task": "FileIo",
+          "opcodeName": "DirEnum",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "Length",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "FileIndex",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 73,
+          "task": "FileIo",
+          "opcodeName": "Flush",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 74,
+          "task": "FileIo",
+          "opcodeName": "QueryInfo",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 75,
+          "task": "FileIo",
+          "opcodeName": "FSControl",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 76,
+          "task": "FileIo",
+          "opcodeName": "OperationEnd",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "NtStatus",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 77,
+          "task": "FileIo",
+          "opcodeName": "DirNotify",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "Length",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "FileIndex",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 79,
+          "task": "FileIo",
+          "opcodeName": "DletePath",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 80,
+          "task": "FileIo",
+          "opcodeName": "RenamePath",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 81,
+          "task": "FileIo",
+          "opcodeName": "SetLinkPath",
+          "fields": [
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ExtraInfo",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "TTID",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 96,
+          "task": "FileIo",
+          "opcodeName": "PreOpInit",
+          "fields": [
+            {
+              "name": "RoutineAddr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileContext",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "CallbackDataPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "MajorFunction",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 97,
+          "task": "FileIo",
+          "opcodeName": "PostOpInit",
+          "fields": [
+            {
+              "name": "RoutineAddr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileContext",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "CallbackDataPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "MajorFunction",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 98,
+          "task": "FileIo",
+          "opcodeName": "PreOpCompletion",
+          "fields": [
+            {
+              "name": "InitialTime",
+              "type": "win:UInt64"
+            },
+            {
+              "name": "RoutineAddr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileContext",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "CallbackDataPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "MajorFunction",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 99,
+          "task": "FileIo",
+          "opcodeName": "PostOpCompletion",
+          "fields": [
+            {
+              "name": "InitialTime",
+              "type": "win:UInt64"
+            },
+            {
+              "name": "RoutineAddr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileContext",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "CallbackDataPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "MajorFunction",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 100,
+          "task": "FileIo",
+          "opcodeName": "PreOpFailure",
+          "fields": [
+            {
+              "name": "RoutineAddr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileContext",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "CallbackDataPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "MajorFunction",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "Status",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 101,
+          "task": "FileIo",
+          "opcodeName": "PostOpFailure",
+          "fields": [
+            {
+              "name": "RoutineAddr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "FileContext",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "IrpPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "CallbackDataPtr",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "MajorFunction",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "Status",
+              "type": "win:UInt32"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "providers": [
+    {
+      "name": "Microsoft-Windows-Kernel-File",
+      "guid": "edd08927-9cc4-4e65-b970-c2560fb5c289",
+      "registered": true,
+      "schemaFingerprint": "652d00b402e918f14715a3b0ff633289106e5dc9a78dd42d79f376319055b758",
+      "keywords": [
+        {
+          "name": "KERNEL_FILE_KEYWORD_FILENAME",
+          "mask": "0x10"
+        },
+        {
+          "name": "KERNEL_FILE_KEYWORD_FILEIO",
+          "mask": "0x20"
+        },
+        {
+          "name": "KERNEL_FILE_KEYWORD_OP_END",
+          "mask": "0x40"
+        },
+        {
+          "name": "KERNEL_FILE_KEYWORD_CREATE",
+          "mask": "0x80"
+        },
+        {
+          "name": "KERNEL_FILE_KEYWORD_READ",
+          "mask": "0x100"
+        },
+        {
+          "name": "KERNEL_FILE_KEYWORD_WRITE",
+          "mask": "0x200"
+        },
+        {
+          "name": "KERNEL_FILE_KEYWORD_DELETE_PATH",
+          "mask": "0x400"
+        },
+        {
+          "name": "KERNEL_FILE_KEYWORD_RENAME_SETLINK_PATH",
+          "mask": "0x800"
+        },
+        {
+          "name": "KERNEL_FILE_KEYWORD_CREATE_NEW_FILE",
+          "mask": "0x1000"
+        }
+      ],
+      "events": [
+        {
+          "id": 10,
+          "version": 0,
+          "symbol": "NameCreate",
+          "task": "NameCreate",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileName",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "version": 0,
+          "symbol": "NameDelete",
+          "task": "NameDelete",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileName",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "version": 0,
+          "symbol": "Create",
+          "task": "Create",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "CreateOptions",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "CreateAttributes",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ShareAccess",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "version": 1,
+          "symbol": "Create_V1",
+          "task": "Create",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "CreateOptions",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "CreateAttributes",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ShareAccess",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "version": 0,
+          "symbol": "Cleanup",
+          "task": "Cleanup",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "version": 1,
+          "symbol": "Cleanup_V1",
+          "task": "Cleanup",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "version": 0,
+          "symbol": "Close",
+          "task": "Close",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "version": 1,
+          "symbol": "Close_V1",
+          "task": "Close",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "version": 0,
+          "symbol": "Read",
+          "task": "Read",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "ByteOffset",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IOSize",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "IOFlags",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "version": 1,
+          "symbol": "Read_V1",
+          "task": "Read",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "ByteOffset",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "IOSize",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "IOFlags",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ExtraFlags",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "version": 0,
+          "symbol": "Write",
+          "task": "Write",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "ByteOffset",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IOSize",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "IOFlags",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "version": 1,
+          "symbol": "Write_V1",
+          "task": "Write",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "ByteOffset",
+              "inType": "win:UInt64"
+            },
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "IOSize",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "IOFlags",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ExtraFlags",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 17,
+          "version": 0,
+          "symbol": "SetInformation",
+          "task": "SetInformation",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 17,
+          "version": 1,
+          "symbol": "SetInformation_V1",
+          "task": "SetInformation",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "version": 0,
+          "symbol": "SetDelete",
+          "task": "SetDelete",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "version": 1,
+          "symbol": "SetDelete_V1",
+          "task": "SetDelete",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 19,
+          "version": 0,
+          "symbol": "Rename",
+          "task": "Rename",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 19,
+          "version": 1,
+          "symbol": "Rename_V1",
+          "task": "Rename",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 20,
+          "version": 0,
+          "symbol": "DirEnum",
+          "task": "DirEnum",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "Length",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FileIndex",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 20,
+          "version": 1,
+          "symbol": "DirEnum_V1",
+          "task": "DirEnum",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Length",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FileIndex",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "version": 0,
+          "symbol": "Flush",
+          "task": "Flush",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "version": 1,
+          "symbol": "Flush_V1",
+          "task": "Flush",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 22,
+          "version": 0,
+          "symbol": "QueryInformation",
+          "task": "QueryInformation",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 22,
+          "version": 1,
+          "symbol": "QueryInformation_V1",
+          "task": "QueryInformation",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 23,
+          "version": 0,
+          "symbol": "FSCTL",
+          "task": "FSCTL",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 23,
+          "version": 1,
+          "symbol": "FSCTL_V1",
+          "task": "FSCTL",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 24,
+          "version": 0,
+          "symbol": "OperationEnd",
+          "task": "OperationEnd",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "Status",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 25,
+          "version": 0,
+          "symbol": "DirNotify",
+          "task": "DirNotify",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "Length",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FileIndex",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 25,
+          "version": 1,
+          "symbol": "DirNotify_V1",
+          "task": "DirNotify",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "Length",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FileIndex",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 26,
+          "version": 0,
+          "symbol": "DeletePath",
+          "task": "DeletePath",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FilePath",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 26,
+          "version": 1,
+          "symbol": "DeletePath_V1",
+          "task": "DeletePath",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FilePath",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 27,
+          "version": 0,
+          "symbol": "RenamePath",
+          "task": "RenamePath",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FilePath",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 27,
+          "version": 1,
+          "symbol": "RenamePath_V1",
+          "task": "RenamePath",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FilePath",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 28,
+          "version": 0,
+          "symbol": "SetLinkPath",
+          "task": "SetLinkPath",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FilePath",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 28,
+          "version": 1,
+          "symbol": "SetLinkPath_V1",
+          "task": "SetLinkPath",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FilePath",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 29,
+          "version": 0,
+          "symbol": "Rename29",
+          "task": "Rename",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 29,
+          "version": 1,
+          "symbol": "Rename29_V1",
+          "task": "Rename",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 30,
+          "version": 0,
+          "symbol": "CreateNewFile",
+          "task": "CreateNewFile",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ThreadId",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "CreateOptions",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "CreateAttributes",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ShareAccess",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 30,
+          "version": 1,
+          "symbol": "CreateNewFile_V1",
+          "task": "CreateNewFile",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "CreateOptions",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "CreateAttributes",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "ShareAccess",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "FileName",
+              "inType": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "id": 31,
+          "version": 1,
+          "symbol": "SetSecurity_V1",
+          "task": "SetSecurity",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 32,
+          "version": 1,
+          "symbol": "QuerySecurity_V1",
+          "task": "QuerySecurity",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 33,
+          "version": 1,
+          "symbol": "SetEA_V1",
+          "task": "SetEA",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "id": 34,
+          "version": 1,
+          "symbol": "QueryEA_V1",
+          "task": "QueryEA",
+          "opcode": null,
+          "fields": [
+            {
+              "name": "Irp",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileObject",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "FileKey",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "ExtraInformation",
+              "inType": "win:Pointer"
+            },
+            {
+              "name": "IssuingThreadId",
+              "inType": "win:UInt32"
+            },
+            {
+              "name": "InfoClass",
+              "inType": "win:UInt32"
+            }
+          ]
+        }
+      ],
+      "namesMailslots": false
+    }
+  ],
+  "publishedProviders": 1230,
+  "providersNamedForMailslots": []
+}
