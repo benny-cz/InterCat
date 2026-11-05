@@ -2,7 +2,7 @@
 
 - Status: accepted; FX-SYNC-001 measured through the product, topology only on 10.0.26220.0-x64 (addendum); one number is one
   object (second addendum); FX-SYNC-003's objects made in generations each their own (third addendum); FX-SYNC-004's handles made
-  before a capture joined to none (fourth addendum)
+  before a capture joined to none (fourth addendum); a process's records drill down exactly (fifth addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-082, ADR-083, §14.2, R3, P1, P7, P27, FX-SYNC-001, `CoverageTierCalculator`, `SyncObjectCoverageEvaluator`,
@@ -116,3 +116,17 @@ made and ended inside the same capture, is the control.
 - The control made inside the same capture was whole each time: three of three objects discovered with their lifetimes,
   every membership resolved and every handle open and close seen.
 - No tier is assigned to the fixture: it measures what a capture refuses to join, not how much of the mechanism it observes.
+
+## Fifth addendum: a process's synchronization records drill down exactly (2026-11-05)
+
+`icat processes --pid` says a process's synchronization handle records apart - each handle to an event, a mutant or a
+semaphore it made, was given or closed, and each it still held at the stop, by its object's number in the capture - as no
+signal, wait or byte, and names the `icat evidence --owner-process <instance> --mechanism synchronization` command that
+lists them. That command lists exactly the records the line counts, each of that process instance and the mechanism, with
+the raw record it was admitted from: its creation and close, raised in it, a handle another process duplicated into it,
+whose record names it, and its handle at the stop, which the rundown raised elsewhere names its - never another process's
+handle or the type rundown, which names no process. A process with no such record has no line and no command.
+
+With it the named synchronization objects package meets M6's exit tests: two instance and lifetime fixtures (FX-SYNC-001,
+FX-SYNC-003), its ambiguity case (FX-SYNC-004), its schema-failure case (ADR-083's sixth addendum), exact drill-down, and
+its cost measured against no capture and Explore through the product (ADR-083's fifth addendum).

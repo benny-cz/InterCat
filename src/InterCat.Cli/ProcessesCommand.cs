@@ -138,6 +138,13 @@ internal sealed record ProcessActivityDocument
     /// </summary>
     public long? ComCallRecords { get; init; }
 
+    /// <summary>
+    /// Its own synchronization handle records, when one PID was asked about; null otherwise, as <see cref="Peers"/> is: each
+    /// handle to an event, a mutant or a semaphore it made, was given or closed, and each it held at the stop, by its object's
+    /// number in the capture. They say which objects it shared, never a signal, a wait or a byte (ADR-084).
+    /// </summary>
+    public long? SynchronizationRecords { get; init; }
+
     /// <summary>How many instances held its PID in the capture; its <c>lifecycleEpoch</c> says which of them it was.</summary>
     public required int PidHolders { get; init; }
 
@@ -472,6 +479,8 @@ internal static class ProcessesCommand
                                 .Where(count => count.Mechanism == Mechanism.UnixDomainSocket).Sum(count => count.Records),
                             ComCallRecords = nodes[new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))].Activity
                                 .Where(count => count.Mechanism == Mechanism.ComCall).Sum(count => count.Records),
+                            SynchronizationRecords = nodes[new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))].Activity
+                                .Where(count => count.Mechanism == Mechanism.Synchronization).Sum(count => count.Records),
                         }),
                 ],
             };
@@ -990,6 +999,17 @@ internal static class ProcessesCommand
                 + "RPC call that carries it, whose other end icat operations names");
             ConsoleUi.Note(com == 1 ? "To list it with its source record:" : "To list each of them with its source record:");
             ConsoleUi.Line($"    icat evidence \"{path}\" --owner-process {process.InstanceId} --mechanism com-call");
+        }
+
+        // Its handles to events, mutants and semaphores, which say which objects it shared and never a signal, a wait or a byte
+        // (ADR-084): the records counted are the ones icat evidence lists by its instance and the mechanism, each with its
+        // source record.
+        if (item.SynchronizationRecords is > 0 and var handles)
+        {
+            ConsoleUi.Field("Synchronization", CountText.Of(handles, "record") + " of its handles to events, mutants and semaphores, "
+                + "each by its object's number in the capture; none is a signal, a wait or a byte");
+            ConsoleUi.Note(handles == 1 ? "To list it with its source record:" : "To list each of them with its source record:");
+            ConsoleUi.Line($"    icat evidence \"{path}\" --owner-process {process.InstanceId} --mechanism synchronization");
         }
 
         if (item.Peers is not { } peers)

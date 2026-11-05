@@ -873,6 +873,7 @@ Revision 946 makes one number one object (ADR-084's second addendum): a number t
 Revision 947 adds FX-SYNC-003 (ADR-084's third addendum): named objects made and ended one generation after another, recorded through the product four times, every object a number of its own while the kernel made 27 at an address an earlier generation's object held - the mechanism's second instance and lifetime fixture.
 Revision 948 adds FX-SYNC-004 (ADR-084's fourth addendum): named objects whose handles were made before a capture began, each close numbered alone and none joined or discovered while a control inside the same capture is whole - the mechanism's ambiguity case.
 Revision 949 has a capture's compilation refuse the handle group where its gate could not decide its records (ADR-083's sixth addendum): on a build with no measured type numbers, or a layout without a field the gate decides by, the synchronization objects profile does not start, and icat capabilities says its schema is unknown.
+Revision 950 has a process's synchronization records drill down exactly (ADR-084's fifth addendum): icat processes names the icat evidence command that lists them, and the named synchronization objects package meets M6's exit tests.
 
 ## Revisions, a paragraph each, in order
 
@@ -4061,3 +4062,11 @@ the capture is compiled for, and refuses the group with the gate's reason; `Capt
 sources for the build of its environment, so the synchronization objects profile does not start, the group blocking with
 that reason; and `icat capabilities` says the group's schema is unknown. A test holds the measured layout and build, an
 unmeasured build and a layout whose creation carries no handle; four mutations are caught.
+
+Revision 950 completes the named synchronization objects package (ADR-084's fifth addendum). `icat processes --pid` says a
+process's synchronization handle records apart - each handle to an event, a mutant or a semaphore it made, was given or
+closed, and each it still held at the stop, by its object's number in the capture - as no signal, wait or byte, and names
+the `icat evidence --owner-process <instance> --mechanism synchronization` command that lists exactly them, each with its
+source record: its own creation and close, a handle another process duplicated into it and its handle at the stop, never
+another process's handle or the type rundown. With two instance and lifetime fixtures, an ambiguity case, a schema-failure
+case, exact drill-down and its cost measured through the product, the package meets M6's exit tests.
