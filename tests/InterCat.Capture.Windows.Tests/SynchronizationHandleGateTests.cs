@@ -154,10 +154,20 @@ public sealed class SynchronizationHandleGateTests
         Assert.Equal(0, Read(gate, records));
         Assert.Equal((0, 0), (gate.Following, gate.Holding));
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        int untracked = Read(gate, records);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal((0, 0L), (untracked, allocated));
+        // An allocation per record recurs in every pass. Under a full suite's load one measured pass has twice allocated
+        // 7,752 bytes, never seen when the assembly runs alone, so the least of three warmed passes is held to none, and
+        // the message names each pass's bytes.
+        long[] allocated = new long[3];
+        int untracked = 0;
+        for (int pass = 0; pass < allocated.Length; pass++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            untracked += Read(gate, records);
+            allocated[pass] = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+
+        Assert.Equal(0, untracked);
+        Assert.True(allocated.Min() == 0, $"Each warmed pass allocated {string.Join(", ", allocated)} bytes.");
         Assert.Equal((0, 0), (gate.Following, gate.Holding));
 
         // How many records the gate did not follow, counted without an assertion's allocations among the gate's.

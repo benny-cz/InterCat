@@ -136,16 +136,22 @@ public sealed class WindowMessageGateTests
     public void TheGateAllocatesNothingPerRecord()
     {
         // A thousand sends and a thousand posts at a few hundred reused pointers, each from its start to its end, and every
-        // tenth post never retrieved, so the bound gives up the oldest: read once to run every path, then again, raised
-        // later, counting what the gate allocated.
+        // tenth post never retrieved, so the bound gives up the oldest: read once to run every path, then three times more,
+        // each raised later, counting what the gate allocated. An allocation per record recurs in every pass, so the least
+        // of the three is held to none, as the synchronization handle gate's is, and the message names each pass's bytes.
         WindowMessageRecord[] first = Records(0);
-        WindowMessageRecord[] again = Records(first.Length);
+        WindowMessageRecord[][] passes = [Records(first.Length), Records(2L * first.Length), Records(3L * first.Length)];
         var gate = new WindowMessageGate(capacity: 64);
         Read(gate, first);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        Read(gate, again);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(0L, allocated);
+        long[] allocated = new long[passes.Length];
+        for (int pass = 0; pass < passes.Length; pass++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            Read(gate, passes[pass]);
+            allocated[pass] = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+
+        Assert.True(allocated.Min() == 0, $"Each warmed pass allocated {string.Join(", ", allocated)} bytes.");
         Assert.True(gate.GivenUp > 0);
         Assert.Equal(0, gate.DeliveredOutOfOrder);
 

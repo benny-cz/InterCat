@@ -136,6 +136,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Recent slices
 
+- **Revision 961 — the gates' allocation tests hold the least of three warmed passes to none:**
+  - Under a full suite's load the synchronization handle gate's measured pass twice allocated 7,752 bytes, never seen
+    when its assembly runs alone.
+  - It and the window message gate's test now read three warmed passes and hold the least to none, as an allocation per
+    record recurs in every pass; the message names each pass's bytes. No product code changes.
+
 - **Revision 960 — a window message's records bind to the process that raised them, `process-binding-v7` (ADR-087's second addendum):**
   - FX-WMSG-001 had every end raised in the process that sent, posted or retrieved it, so ADR-030's header binding reaches
     window messages; a send's start names its receiver only as its other end.

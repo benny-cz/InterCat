@@ -884,6 +884,7 @@ Revision 957 measures the order a session delivers a window message's ends in (A
 Revision 958 adds a window message gate (ADR-087): it follows a message at its queue message pointer from its start to its end and numbers it in the capture, a message begun before the capture its own and a record delivered out of order numbered alone; no profile compiles it yet.
 Revision 959 admits Win32k's six message events through the window message gate (ADR-087's addendum): each end by its message's number, written over its pointer, a send's start keeping its receiving process, and a record delivered out of order omitted as a gate omission of its own.
 Revision 960 binds a window message's records to the process that raised them, as `process-binding-v7` (ADR-087's second addendum): FX-WMSG-001 had every end raised in the process that sent, posted or retrieved it.
+Revision 961 has the synchronization handle and window message gates' allocation tests read three warmed passes and hold the least to none, as a loaded suite's pass twice allocated 7,752 bytes never seen alone; no product code changes.
 
 ## Revisions, a paragraph each, in order
 
@@ -4186,3 +4187,10 @@ runs raised at both ends in the process that sent, posted or retrieved it. So AD
 is read as version 7's wherever every record named its owner, and one counting a record without an owner is derived
 again, its refusal naming window messages. The contracts that name the binding rule, the grouped answer's caveat and the
 Desktop's explanations name version 7. No profile requests the source yet.
+
+Revision 961 has two allocation tests wait out a loaded suite. The synchronization handle gate's test read its records
+once to warm its tables and again counting what the gate allocated, and under the full suite's load that pass twice
+measured 7,752 bytes, once in each configuration, though the assembly alone passed every time. An allocation per record
+recurs in every pass of the same records, so it and the window message gate's test now read three warmed passes and hold
+the least to none, the message naming each pass's bytes, which says whether a pass allocated once or every pass did. No
+product code changes.
