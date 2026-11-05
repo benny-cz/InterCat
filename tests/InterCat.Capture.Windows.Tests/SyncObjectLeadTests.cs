@@ -240,6 +240,31 @@ public sealed class SyncObjectLeadTests
         Assert.False(root.GetProperty("sessionLeftBehind").GetBoolean());
     }
 
+    [Fact(DisplayName = "§4.2: the object type table read from user mode before a capture names every type number its handle records carry as the type rundown at its stop does, so a capture can tell an event's, a mutant's or a semaphore's handle as it arrives - about one handle record in thirty")]
+    public void ACaptureCanKnowAHandlesTypeAsItStarts()
+    {
+        using JsonDocument types = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            Assert.Single(Directory.EnumerateDirectories(Path.Combine(RepositoryRoot(), "bench", "results"), "sync-objects-types-*")),
+            "report.json")));
+        JsonElement root = types.RootElement;
+
+        // The table before and after the session alike, and the rundown naming every number the table does, but the type
+        // of types, which no handle record carries.
+        Assert.Equal(root.GetProperty("typesBefore").GetInt32(), root.GetProperty("typesAfter").GetInt32());
+        Assert.Equal(root.GetProperty("typesBefore").GetInt32() - 1, root.GetProperty("typesInRundown").GetInt32());
+        string disagreement = Assert.Single(root.GetProperty("disagreements").EnumerateArray()).GetString()!;
+        Assert.Equal("2: before Type, rundown none, after Type", disagreement);
+
+        // The synchronization types by the numbers FX-SYNC-001's records carried, and their share of the machine's handles.
+        JsonElement synchronization = root.GetProperty("synchronizationTypes");
+        Assert.Equal((21, 22, 24), (synchronization.GetProperty("Event").GetInt32(), synchronization.GetProperty("Mutant").GetInt32(),
+            synchronization.GetProperty("Semaphore").GetInt32()));
+        double share = (double)root.GetProperty("createsOfSynchronizationTypes").GetInt64() / root.GetProperty("creates").GetInt64();
+        Assert.InRange(share, 0.01, 0.1);
+        Assert.InRange(root.GetProperty("namedClosesOfSynchronizationTypes").GetInt64(), 1, root.GetProperty("closesOfSynchronizationTypes").GetInt64());
+        Assert.Equal(0, root.GetProperty("eventsLost").GetInt64());
+    }
+
     [Fact(DisplayName = "§12: collecting the handle group is measured in two series of pairs over a handle-heavy workload - Low in processor time, the workload slower past §12's throughput target - and the object group beside it Moderate, millions of records a second, so only an opt-in profile stating it may admit either")]
     public void TheGroupsCollectionCostIsMeasured()
     {

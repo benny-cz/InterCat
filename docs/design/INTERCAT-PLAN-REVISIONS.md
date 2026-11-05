@@ -857,6 +857,7 @@ Revision 930 measures what collecting the object manager's groups costs (ADR-082
 Revision 931 inventories the object manager's handle group as named synchronization objects' lead (ADR-082's second addendum): `etw/kernel-group/ObjectHandles`, enabled by a group mask and no kernel flag, experimental, requested by no profile and admitting no event, its measured notes and Low cost stated by `icat capabilities`; no build carries a tier for named objects.
 Revision 932 has two window tests wait out a loaded machine's layout - a reached host's hit test and Enter's rung taking the keyboard - each dispatching until what it checks holds, up to five seconds; no product code changes.
 Revision 933 has a capture set a kernel group's mask on its private system logger (ADR-082's third addendum): by the session's handle, after the kernel flags that start it - the kernel's process flag where the group has none - and before any manifest provider, a refused mask refusing the capture; on this machine an owned capture was delivered the object manager's handle records, nothing lost.
+Revision 934 measures whether a capture can know a handle record's type as it starts (ADR-082's fourth addendum): the object type table read from user mode before a session names each type number as the type rundown at its stop does, and Event, Mutant and Semaphore were about one handle creation in thirty machine-wide.
 
 ## Revisions, a paragraph each, in order
 
@@ -3880,3 +3881,14 @@ it with the kernel's process flag. A refused mask refuses the capture with its r
 On this machine's ETW, an owned capture through the product's session host, its plan the handle group alone, held the
 mask while it recorded and was delivered 453,057 of the object manager's records - handle creations, closes, duplications
 and the rundowns at its stop - each omitted as not admitted; nothing was lost, and its session was stopped and gone.
+
+Revision 934 measures whether a capture can know a handle record's type as it starts (ADR-082's fourth addendum). A
+gate keeping named synchronization objects' handles must tell a record's type as it arrives, and a handle record names
+its object's type only by a number, which the session names in its type rundown at its stop. `tools/InterCat.SyncProbe
+--measure --types` read the object type table from user mode, by `NtQueryObject`'s undocumented object types class,
+before a session collecting the handle group started, ran FX-SYNC-001 under it, and read it again after. The table held
+75 types both times, and the rundown named 74, each number with the table's name, all but the type of types, which no
+handle record carries. Event, Mutant and Semaphore were 21, 22 and 24, the numbers FX-SYNC-001's records carried, and
+of 69,510 handle creations machine-wide, 2,071 were of those types, about one in thirty; timers were two thirds. A capture
+can know the synchronization types' numbers as it starts and check them against the rundown at its stop, and a gate
+admitting only their handles would keep about a thirtieth of the group's records.

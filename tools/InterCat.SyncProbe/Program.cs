@@ -52,6 +52,8 @@ internal static class Program
             Console.Error.WriteLine("  pairs, over FX-SYNC-001's opener opening and closing each object that many times, its rounds unpaced.");
             Console.Error.WriteLine("  --session-check: an owned capture through the product's session host, its plan the handle group alone,");
             Console.Error.WriteLine("  while FX-SYNC-001 runs: what its session delivered by class and opcode, and its group masks.");
+            Console.Error.WriteLine("  --types: the object type table read from user mode before a session, against the type rundown at its");
+            Console.Error.WriteLine("  stop, and the machine's handle records by type over FX-SYNC-001.");
             return 2;
         }
 
@@ -63,6 +65,20 @@ internal static class Program
         }
 
         Directory.CreateDirectory(output);
+
+        // Whether a capture can know the handle records' type numbers as it starts, and how the records divide among types.
+        if (measure && args.Contains("--types", StringComparer.Ordinal))
+        {
+            string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+            Dictionary<string, object?> types = await Types.RunAsync(workload, Path.Combine(output, "truth")).ConfigureAwait(false);
+            types["schema"] = "intercat.sync-objects-types.v1";
+            types["measuredUtc"] = DateTimeOffset.UtcNow;
+            types["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+            File.WriteAllText(Path.Combine(output, "report.json"), JsonSerializer.Serialize(types, Json));
+            Console.WriteLine(JsonSerializer.Serialize(types, Json));
+            return 0;
+        }
 
         // The product's own capture path for the handle group: an owned capture through the product's session host.
         if (measure && args.Contains("--session-check", StringComparer.Ordinal))

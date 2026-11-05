@@ -4,12 +4,15 @@
   cost is measured, Low in processor time but a handle-heavy workload past §12's throughput target, and the object group's
   Moderate (its addendum); since revision 931 the handle group is inventoried as named synchronization objects' lead,
   requested by no profile and admitting no event (its second addendum); since revision 933 a capture sets a kernel
-  group's mask on its private system logger by the session's handle (its third addendum)
+  group's mask on its private system logger by the session's handle (its third addendum); since revision 934 the object
+  type table read from user mode as a capture starts names each handle record's type number as the stop's rundown does
+  (its fourth addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: plan §4.1, §4.2, M6, P7, P8, R22, ADR-035, FX-SYNC-001, `tools/InterCat.SyncProbe`,
   `bench/results/sync-provider-inspection-20261105T022919Z`, `bench/results/sync-objects-feasibility-*`,
-  `bench/results/sync-objects-impact-*`, `bench/results/sync-objects-session-check-20261105T050334Z`
+  `bench/results/sync-objects-impact-*`, `bench/results/sync-objects-session-check-20261105T050334Z`,
+  `bench/results/sync-objects-types-20261105T053215Z`
 
 ## Context
 
@@ -164,3 +167,24 @@ delivers unasked; nothing was lost, the capture stopped its own session through 
 before a profile admits the group is a binding and a join of its records, and what a handle opened before a capture began
 records. Tests hold the plan, the order of the enablements, a refused mask, the masks' words and the session check; ten
 mutations of the code and of the check are caught.
+
+## Addendum: a handle record's type known as a capture starts (revision 934)
+
+A capture admits records one at a time as they arrive (ADR-073), and the handle group delivers every object type's
+handles, about 15,000 records a second machine-wide on this workstation. A gate keeping named synchronization objects'
+handles must tell a record's type as it arrives, but a handle record names its object's type only by a number, which the
+session names in its type rundown at its stop. `tools/InterCat.SyncProbe --measure --types` read the object type table
+from user mode, by `NtQueryObject`'s undocumented `ObjectTypesInformation` class, before a session collecting the handle
+group started, ran FX-SYNC-001 under it, and read the table again after
+(`bench/results/sync-objects-types-20261105T053215Z`). Nothing was lost:
+
+- The table held 75 types before and after. The type rundown at the stop named 74, each number with the table's name,
+  all but the type of types, number 2, which no handle record carries.
+- Event, Mutant and Semaphore were 21, 22 and 24, the numbers FX-SYNC-001's records carried.
+- Of 69,510 handle creations machine-wide, 2,071 were of those three types, about one in thirty; timers were two thirds,
+  47,444. Of 11,002 closes naming their object, 133 were.
+
+So a capture can know, as it starts, which numbers are the synchronization types, and a gate admitting only their
+handles would keep about a thirtieth of the group's records. The table is an undocumented query of the object manager, so
+its reading is a lead held to the rundown at each capture's stop: a disagreement on a type a gate decides by is the
+capture's to state. A test holds the report; five alterations of it are caught.
