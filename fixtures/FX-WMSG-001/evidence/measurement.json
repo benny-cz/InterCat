@@ -1,0 +1,106 @@
+{
+  "fixture": "FX-WMSG-001",
+  "question": "Whether Microsoft-Windows-Win32k, enabled at its message pump keyword in an owned session, records the messages one process sends and posts to another's window - each sent message at both ends, naming its receiver, each posted message's queueing and retrieval - joined end to end, and which message each was.",
+  "answer": "In 3 runs, machine-wide and nothing lost, every message was recorded at both ends: each of 168 WM_COPYDATA sends a start and a stop at the sender, the start naming the receiver's process and one thread of it, and a retrieval start and stop at the receiver, all four joined by the queue message's kernel pointer; each of 168 posted messages, and the close posted after them, queued in the sender and retrieved in the receiver, joined by that pointer. No record of the two processes carried a message number or a parameter - Win32k writes them as zero - and none a copied payload's size: the records say which process messaged which and when, never which message or how much it carried (ADR-086).",
+  "method": "Each run: the lab probe started an owned session enabling Microsoft-Windows-Win32k at keyword 0x400000 (MessagePump), machine-wide, then ran the workload: a receiver's message-only window of a class of the run's own, and a sender sending it WM_COPYDATA messages, posting it numbered messages of the application's range and last its close. The receiver's window is the one the sender's sends naming the receiver went to; each end is joined to the other by the queue message pointer both carry. The probe writes counts alone, never a window's handle, a pointer or another process's message.",
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-11-05",
+  "runs": [
+    {
+      "run": "1",
+      "bench": "bench/results/window-message-feasibility-1-20261105T170228Z",
+      "workload": {
+        "copies": 32,
+        "posts": 32,
+        "maximumBytes": 2048
+      },
+      "recordsDelivered": 13556,
+      "eventsLost": 0,
+      "sends": {
+        "truth": 32,
+        "startsAtTheSender": 32,
+        "startsNamingTheReceiversProcess": 32,
+        "startsNamingOneReceiverThread": true,
+        "stopsAtTheSenderJoinedToAStart": 32,
+        "retrievedAtTheReceiverJoinedToAStart": 32,
+        "retrievalStopsJoinedToAStart": 32
+      },
+      "posts": {
+        "truth": 32,
+        "closePostedAfterThem": 1,
+        "queuedToTheWindow": 33,
+        "queuedRaisedIn": {
+          "sender": 33
+        },
+        "retrievedAtTheReceiver": 33,
+        "retrievedJoinedToTheirQueueingByPointer": 33
+      },
+      "workloadRecordsCarryingAMessageNumber": 0,
+      "workloadRecordsCarryingAParameter": 0
+    },
+    {
+      "run": "2",
+      "bench": "bench/results/window-message-feasibility-2-20261105T170234Z",
+      "workload": {
+        "copies": 128,
+        "posts": 8,
+        "maximumBytes": 64
+      },
+      "recordsDelivered": 13083,
+      "eventsLost": 0,
+      "sends": {
+        "truth": 128,
+        "startsAtTheSender": 128,
+        "startsNamingTheReceiversProcess": 128,
+        "startsNamingOneReceiverThread": true,
+        "stopsAtTheSenderJoinedToAStart": 128,
+        "retrievedAtTheReceiverJoinedToAStart": 128,
+        "retrievalStopsJoinedToAStart": 128
+      },
+      "posts": {
+        "truth": 8,
+        "closePostedAfterThem": 1,
+        "queuedToTheWindow": 9,
+        "queuedRaisedIn": {
+          "sender": 9
+        },
+        "retrievedAtTheReceiver": 9,
+        "retrievedJoinedToTheirQueueingByPointer": 9
+      },
+      "workloadRecordsCarryingAMessageNumber": 0,
+      "workloadRecordsCarryingAParameter": 0
+    },
+    {
+      "run": "3",
+      "bench": "bench/results/window-message-feasibility-3-20261105T170239Z",
+      "workload": {
+        "copies": 8,
+        "posts": 128,
+        "maximumBytes": 32768
+      },
+      "recordsDelivered": 14369,
+      "eventsLost": 0,
+      "sends": {
+        "truth": 8,
+        "startsAtTheSender": 8,
+        "startsNamingTheReceiversProcess": 8,
+        "startsNamingOneReceiverThread": true,
+        "stopsAtTheSenderJoinedToAStart": 8,
+        "retrievedAtTheReceiverJoinedToAStart": 8,
+        "retrievalStopsJoinedToAStart": 8
+      },
+      "posts": {
+        "truth": 128,
+        "closePostedAfterThem": 1,
+        "queuedToTheWindow": 129,
+        "queuedRaisedIn": {
+          "sender": 129
+        },
+        "retrievedAtTheReceiver": 129,
+        "retrievedJoinedToTheirQueueingByPointer": 129
+      },
+      "workloadRecordsCarryingAMessageNumber": 0,
+      "workloadRecordsCarryingAParameter": 0
+    }
+  ]
+}

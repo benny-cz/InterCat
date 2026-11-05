@@ -1,0 +1,47 @@
+{
+  "question": "Whether Microsoft-Windows-Win32k, at its message pump keyword, records the messages one process sent and posted to another\u0027s window - each sent message\u0027s start and stop at the sender naming the receiver, its retrieval at the receiver, each posted message\u0027s queueing and retrieval - with the window, the message, a posted message\u0027s number and the pointer joining its two ends.",
+  "scenario": "FX-WMSG-001",
+  "truth": {
+    "copiesSent": 32,
+    "messagesPosted": 32,
+    "copyDataMessage": 74,
+    "postedMessage": 32769
+  },
+  "recordsDelivered": 13556,
+  "eventsLost": 0,
+  "measuredRecordsByEventAndRole": {
+    "426 by other": 2742,
+    "426 by receiver": 5,
+    "59 by other": 1161,
+    "59 by sender": 33,
+    "60 by other": 2036,
+    "60 by sender": 32,
+    "61 by other": 1287,
+    "61 by receiver": 33,
+    "62 by other": 2036,
+    "62 by receiver": 32,
+    "70 by other": 2036,
+    "70 by sender": 32,
+    "83 by other": 2036,
+    "83 by receiver": 32
+  },
+  "receiversWindowFound": true,
+  "sentStartsAtTheSender": 32,
+  "sentStartsNamingTheReceiversProcess": 32,
+  "sentStartsNamingOneReceiverThread": true,
+  "sentStopsAtTheSenderJoinedToAStart": 32,
+  "sendsRetrievedAtTheReceiverJoinedToAStart": 32,
+  "retrievalStopsAtTheReceiverJoinedToAStart": 32,
+  "postsQueuedToTheWindow": 33,
+  "postsQueuedRaisedIn": {
+    "sender": 33
+  },
+  "postsRetrievedAtTheReceiver": 33,
+  "postsRetrievedJoinedToTheirQueueingByPointer": 33,
+  "workloadRecordsCarryingAMessageNumber": 0,
+  "workloadRecordsCarryingAParameter": 0,
+  "schema": "intercat.ui-message-measurement.v1",
+  "measuredUtc": "2026-11-05T17:02:34.1246152+00:00",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

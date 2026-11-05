@@ -1,0 +1,15 @@
+{
+  "scenarioId": "FX-WMSG-001",
+  "seed": 20261105,
+  "copyData": 32,
+  "posted": 32,
+  "maximumBytes": 2048,
+  "className": "InterCat.FX-WMSG-001.8cf87b01e15a4c728ecef44ae2567965",
+  "copyDataMessage": 74,
+  "postedMessage": 32769,
+  "coordinatorProcessId": 55244,
+  "receiverProcessId": 47508,
+  "senderProcessId": 42252,
+  "receiverExitCode": 0,
+  "senderExitCode": 0
+}

@@ -844,6 +844,49 @@
       ]
     },
     {
+      "id": "FX-WMSG-001",
+      "title": "Window messages one process sends and posts another's window, as Win32k's message pump records them",
+      "scenario": "Plan M6's UI messaging work package (§4.2, ADR-086): a receiver makes a message-only window of a class of the run's own and pumps its messages; a sender finds it by its class, sends it WM_COPYDATA messages of seeded payloads, posts it numbered messages of the application's range and last posts it a close. Read by an owned session of tools/InterCat.UiMessageProbe enabling Microsoft-Windows-Win32k at its message pump keyword, machine-wide.",
+      "milestone": "M6",
+      "mechanism": "WindowMessage",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [],
+        "invariants": [],
+        "prohibitions": [
+          "P7"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads window-message --copies 32 --posts 32 --bytes 2048, under tools/InterCat.UiMessageProbe --measure",
+        "seed": 20261105,
+        "log": "fixtures/FX-WMSG-001/evidence/truth-sender.jsonl",
+        "independence": "The sender logs every message it sent or posted, by number and with a copy's size, and the receiver every one its window received, by the window's class; neither reads InterCat state, and the probe's session reads Win32k's records apart from both."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-WMSG-001/evidence/measurement.json",
+        "note": "Three runs - 32 copies and 32 posts, 128 and 8, 8 and 128 - machine-wide and nothing lost: each of 168 WM_COPYDATA sends a start and a stop at the sender, the start naming the receiver's process and one thread of it, and a retrieval start and stop at the receiver, all joined by the queue message's pointer; each of 168 posted messages and each close queued in the sender and retrieved in the receiver, joined by that pointer; and no record of the two processes carrying a message number or a parameter. A test holds the three runs."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-05",
+          "result": "Measured by tools/InterCat.UiMessageProbe, three runs, nothing lost: every message the sender sent or posted the receiver's window recorded at both ends, a send's start naming the receiver, each end joined to the other by its queue message pointer, and no record naming which message it was. No tier is assigned: no source in the catalog records window messages yet, and no capture has recorded them through the product (ADR-086)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two processes' truth logs and scenario of the first run - the window by the run's own class, messages by their number, copies by their size, of seeded bytes - and the measurement's counters: per run, the records delivered and lost, each end's records of the run's messages and those joined by pointer, and the two processes' records carrying a message number or a parameter, never a window's handle, a pointer or another process's message."
+      },
+      "tests": [
+        "P7: FX-WMSG-001's every message one process sent or posted another's window is recorded at both ends by Win32k's message pump - a send's start naming its receiver's process and thread, each end joined to the other by its queue message pointer - and none names which message it was"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -2621,6 +2664,7 @@
         "P7: FX-COM-002's calls across an apartment are recorded as an out-of-process call is, each naming its own process at both ends, so a call is between processes only where the process it names is another",
         "P7: FX-COM-003's calls through the product, a client following eight servers started one after another, have every call linked to the server instance whose log served it, inside that instance's lifetime, and carried by an RPC call it served through it - none attributed to another instance",
         "P7: FX-COM-004's nested calls through the product - the server calling a second server while serving each call - are calls of their own, each linked to the call that served it inside the one it is nested in, which is linked to its own, none ambiguous",
+        "P7: FX-WMSG-001's every message one process sent or posted another's window is recorded at both ends by Win32k's message pump - a send's start naming its receiver's process and thread, each end joined to the other by its queue message pointer - and none names which message it was",
         "P7: a COM call linked to a server call of a process other than the truth's server is a false peer attribution, and one not linked attributes none",
         "P7: a COM call's ends are never linked by an activity alone - a server in the client's own process, two server calls of one activity, ends that do not name each other, or a served call outside the client's link nothing, each with its reason",
         "P7: a call number two servers' logs both hold names no server for it - the call is linked to no served call of the truth's, and its attribution is never counted true",

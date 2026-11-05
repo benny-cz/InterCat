@@ -877,6 +877,7 @@ Revision 950 has a process's synchronization records drill down exactly (ADR-084
 Revision 951 begins the mailslots package with its metadata inspection: no registered provider is named for mailslots and Kernel-File declares no mailslot event, while the kernel's classic file I/O class, never measured for ADR-003, declares a create with its open path, reads and writes with their requested size and an operation end with its completion.
 Revision 952 measures FX-MAIL-001 (ADR-085): neither the kernel's classic file I/O class nor Kernel-File records a mailslot, while both record the same processes' own files, so mailslots are unsupported on this build, and the capability report states a mechanism no source covers where a fixture measured it.
 Revision 953 begins the UI messaging package with its metadata inspection: Win32k declares under its message pump keyword a posted message's queueing and retrieval and a sent message's start and stop, the start naming the receiver's process, and the clipboard's writes and reads by process; no event names DDE or a copied payload's size.
+Revision 954 measures FX-WMSG-001 (ADR-086): Win32k's message pump records every message one process sends or posts another's window at both ends, a send naming its receiver and each end joined by its queue message pointer, but no record names which message or a payload's size.
 
 ## Revisions, a paragraph each, in order
 
@@ -4109,3 +4110,14 @@ its caller, the clipboard's owner and its sequence number; and under `UIPI` what
 conversations are window messages, nor a `WM_COPYDATA` payload's size. It is evidence of layouts on one machine, not of
 emission: a message one process sends another and a clipboard write another reads are measured against a truth fixture
 before any field is implemented.
+
+Revision 954 gives window messages their capability result (ADR-086). The workload's `window-message`, FX-WMSG-001, has a
+receiver make a message-only window of a class of the run's own and a sender find it, send it `WM_COPYDATA` messages of
+seeded payloads, post it numbered messages and last its close. `tools/InterCat.UiMessageProbe --measure` runs it under an
+owned session enabling Microsoft-Windows-Win32k at its message pump keyword, machine-wide. In three runs, nothing lost,
+every one of 168 sends was a start and a stop at the sender, the start naming the receiver's process and one thread of it, and a
+retrieval start and stop at the receiver, and every one of 168 posts and each close a queueing raised in the sender and a
+retrieval in the receiver, each end joined to the other by the queue message's kernel pointer. Every record of the two
+processes carried zero for its message number and parameters, and none a payload's size: the records say which process
+messaged which and when, never which message. No catalog source records window messages yet, and the clipboard is
+measured only with the machine user's consent, as a workload writing it would replace what the user holds on it.

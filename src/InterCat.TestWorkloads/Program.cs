@@ -92,6 +92,16 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Name = Option(args, "--name"),
     };
 
+    var windowMessageOptions = new WindowMessageOptions
+    {
+        TruthDirectory = truth,
+        Seed = Integer(args, "--seed") ?? 20_261_105,
+        CopyData = Integer(args, "--copies") ?? 32,
+        Posted = Integer(args, "--posts") ?? 32,
+        MaximumBytes = Integer(args, "--bytes") ?? 2_048,
+        ClassName = Option(args, "--class"),
+    };
+
     var udpOptions = new UdpLoopbackOptions
     {
         TruthDirectory = truth,
@@ -211,6 +221,14 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             "mailslot-loopback-client" when OperatingSystem.IsWindows() =>
                 await MailslotLoopbackScenario.RunClientAsync(mailslotOptions, cancellationToken).ConfigureAwait(false),
             "mailslot-loopback" or "mailslot-loopback-server" or "mailslot-loopback-client" =>
+                await UnsupportedPlatformAsync().ConfigureAwait(false),
+            "window-message" when OperatingSystem.IsWindows() =>
+                await WindowMessageScenario.RunCoordinatorAsync(windowMessageOptions, cancellationToken).ConfigureAwait(false),
+            "window-message-receiver" when OperatingSystem.IsWindows() =>
+                await WindowMessageScenario.RunReceiverAsync(windowMessageOptions, cancellationToken).ConfigureAwait(false),
+            "window-message-sender" when OperatingSystem.IsWindows() =>
+                await WindowMessageScenario.RunSenderAsync(windowMessageOptions, cancellationToken).ConfigureAwait(false),
+            "window-message" or "window-message-receiver" or "window-message-sender" =>
                 await UnsupportedPlatformAsync().ConfigureAwait(false),
             "com-loopback" when OperatingSystem.IsWindows() =>
                 await ComLoopbackScenario.RunCoordinatorAsync(comOptions, cancellationToken).ConfigureAwait(false),
@@ -360,6 +378,13 @@ static void PrintHelp()
     Console.WriteLine("      its name and writes seeded messages of up to that many bytes, which the server reads one at a");
     Console.WriteLine("      time, each read asking for more than any message holds. Each process logs the mailslot it made");
     Console.WriteLine("      or opened, every message with the bytes asked for and moved, and its close. Windows only.");
+    Console.WriteLine();
+    Console.WriteLine("  window-message --truth <dir> [--seed n] [--copies n] [--posts n] [--bytes n]");
+    Console.WriteLine("      FX-WMSG-001: a receiver makes a message-only window of a class of the run's own and pumps its");
+    Console.WriteLine("      messages; a sender finds it by its class, sends it that many WM_COPYDATA messages of seeded");
+    Console.WriteLine("      payloads of up to that many bytes, posts it that many numbered messages, and last posts it a");
+    Console.WriteLine("      close. Each process logs every message it sent or posted and every one its window received.");
+    Console.WriteLine("      Windows only.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

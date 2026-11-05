@@ -31,15 +31,21 @@ internal static class Program
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    private static int Main(string[] args)
+    private static async Task<int> Main(string[] args)
     {
         string? output = Option(args, "--output");
-        if (!args.Contains("--inspect", StringComparer.Ordinal) || output is null)
+        bool inspect = args.Contains("--inspect", StringComparer.Ordinal);
+        bool measure = args.Contains("--measure", StringComparer.Ordinal);
+        if (inspect == measure || output is null)
         {
             Console.Error.WriteLine("InterCat.UiMessageProbe --inspect --output <new directory>");
             Console.Error.WriteLine("  Reads, without enabling any, the schema of every registered provider whose name says windowing,");
             Console.Error.WriteLine("  input, messages, the clipboard or DDE, and lists their events that name a message, a window, the");
             Console.Error.WriteLine("  clipboard or DDE.");
+            Console.Error.WriteLine("InterCat.UiMessageProbe --measure --output <new directory> [--copies n] [--posts n] [--bytes n]");
+            Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]: runs FX-WMSG-001 under an owned session enabling");
+            Console.Error.WriteLine("  Microsoft-Windows-Win32k at its message pump keyword, machine-wide, and writes what it recorded of the");
+            Console.Error.WriteLine("  messages the sender sent and posted to the receiver's window.");
             return 2;
         }
 
@@ -51,6 +57,23 @@ internal static class Program
         }
 
         Directory.CreateDirectory(output);
+        if (measure)
+        {
+            string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+            Dictionary<string, object?> measured = await Measure.RunAsync(workload, output,
+                int.Parse(Option(args, "--copies") ?? "32", CultureInfo.InvariantCulture),
+                int.Parse(Option(args, "--posts") ?? "32", CultureInfo.InvariantCulture),
+                int.Parse(Option(args, "--bytes") ?? "2048", CultureInfo.InvariantCulture), Option(args, "--dump")).ConfigureAwait(false);
+            measured["schema"] = "intercat.ui-message-measurement.v1";
+            measured["measuredUtc"] = DateTimeOffset.UtcNow;
+            measured["build"] = CapabilityInventoryProbe.DescribeEnvironment().BuildId;
+            measured["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+            File.WriteAllText(Path.Combine(output, "report.json"), JsonSerializer.Serialize(measured, Json));
+            Console.WriteLine(JsonSerializer.Serialize(measured, Json));
+            return 0;
+        }
+
         var metadata = new TdhEtwMetadataSource();
         string[] named = [.. TraceEventProviders.GetPublishedProviders()
             .Select(TraceEventProviders.GetProviderName)
