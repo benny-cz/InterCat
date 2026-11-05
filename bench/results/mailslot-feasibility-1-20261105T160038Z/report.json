@@ -1,0 +1,55 @@
+{
+  "question": "Whether the kernel\u0027s classic file I/O class, collected by a private system logger, or Microsoft-Windows-Kernel-File records a mailslot a server made and a client opened by its name - the mailslot\u0027s creation, the client\u0027s open, each message written and read with the size asked for and the size moved, each close - and the two processes\u0027 other files, the control.",
+  "scenario": "FX-MAIL-001",
+  "truth": {
+    "messagesWritten": 32,
+    "messagesRead": 32,
+    "bytesWritten": 30545,
+    "bytesRead": 30545,
+    "readAskedFor": 65536
+  },
+  "classicFileIo": {
+    "recordsDelivered": 101628,
+    "eventsLost": 0,
+    "mailslotFileObjects": 0,
+    "mailslotRecordsByKindAndRole": {},
+    "mailslotNamesSeen": [],
+    "writesWithTheTruthsSizes": false,
+    "readsAskingTheTruthsSize": false,
+    "readsWhoseEndMovedTheTruthsSize": false,
+    "clientWritesOfATruthMessagesSize": 0,
+    "serverReadsAskingTheTruthsSize": 0,
+    "readsAndWritesOfTheTwoByKind": {
+      "Read by client": 1,
+      "Write by client": 4,
+      "Write by server": 4
+    },
+    "controlRecordsOfTheServer": 1496,
+    "controlRecordsOfTheClient": 1498,
+    "controlFilesOfTheTwo": 101
+  },
+  "kernelFile": {
+    "recordsDelivered": 115729,
+    "eventsLost": 0,
+    "mailslotFileObjects": 0,
+    "mailslotRecordsByKindAndRole": {},
+    "mailslotNamesSeen": [],
+    "writesWithTheTruthsSizes": false,
+    "readsAskingTheTruthsSize": false,
+    "readsWhoseEndMovedTheTruthsSize": false,
+    "clientWritesOfATruthMessagesSize": 0,
+    "serverReadsAskingTheTruthsSize": 0,
+    "readsAndWritesOfTheTwoByKind": {
+      "Read by client": 1,
+      "Write by client": 4,
+      "Write by server": 4
+    },
+    "controlRecordsOfTheServer": 1745,
+    "controlRecordsOfTheClient": 1747,
+    "controlFilesOfTheTwo": 102
+  },
+  "schema": "intercat.mailslot-measurement.v1",
+  "measuredUtc": "2026-11-05T16:00:44.4171148+00:00",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

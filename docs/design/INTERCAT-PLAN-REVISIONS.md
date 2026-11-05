@@ -875,6 +875,7 @@ Revision 948 adds FX-SYNC-004 (ADR-084's fourth addendum): named objects whose h
 Revision 949 has a capture's compilation refuse the handle group where its gate could not decide its records (ADR-083's sixth addendum): on a build with no measured type numbers, or a layout without a field the gate decides by, the synchronization objects profile does not start, and icat capabilities says its schema is unknown.
 Revision 950 has a process's synchronization records drill down exactly (ADR-084's fifth addendum): icat processes names the icat evidence command that lists them, and the named synchronization objects package meets M6's exit tests.
 Revision 951 begins the mailslots package with its metadata inspection: no registered provider is named for mailslots and Kernel-File declares no mailslot event, while the kernel's classic file I/O class, never measured for ADR-003, declares a create with its open path, reads and writes with their requested size and an operation end with its completion.
+Revision 952 measures FX-MAIL-001 (ADR-085): neither the kernel's classic file I/O class nor Kernel-File records a mailslot, while both record the same processes' own files, so mailslots are unsupported on this build, and the capability report states a mechanism no source covers where a fixture measured it.
 
 ## Revisions, a paragraph each, in order
 
@@ -4084,3 +4085,13 @@ and writes with their offset and requested size, cleanups and closes, an operati
 status joined to its operation by its IRP, each by its file object and the thread that issued it. It is evidence of layouts
 on one machine, not of emission: a mailslot's creation, a client's open and each message are measured against a truth
 fixture before any field is implemented.
+
+Revision 952 gives mailslots their capability result (ADR-085). The workload's `mailslot-loopback`, FX-MAIL-001, has a
+server make a mailslot under a name of the run's own and a client open it by that name and write seeded messages, each of the
+server's reads asking for more than any message holds. `tools/InterCat.MailslotProbe --measure` runs it under a private
+system logger collecting the kernel's classic file I/O class and an owned session enabling Microsoft-Windows-Kernel-File at
+ADR-003's keywords, machine-wide. In three runs, nothing lost, neither recorded the mailslot's creation, the client's open, any of its 104
+messages or a close, by its name or by a message's size, while each recorded about 1,500 records of each process's own
+files in the same session. Mailslots are Unsupported on this build; no inference replaces the evidence, and the gap is
+routed to M7, to M9a's NPFS/MSFS minifilter and to M10. No source covers the mechanism, so the capability report now states
+a mechanism no source covers where a fixture measured it on the build, and leaves it out where none did.

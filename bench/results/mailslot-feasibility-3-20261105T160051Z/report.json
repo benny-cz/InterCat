@@ -1,0 +1,53 @@
+{
+  "question": "Whether the kernel\u0027s classic file I/O class, collected by a private system logger, or Microsoft-Windows-Kernel-File records a mailslot a server made and a client opened by its name - the mailslot\u0027s creation, the client\u0027s open, each message written and read with the size asked for and the size moved, each close - and the two processes\u0027 other files, the control.",
+  "scenario": "FX-MAIL-001",
+  "truth": {
+    "messagesWritten": 8,
+    "messagesRead": 8,
+    "bytesWritten": 151766,
+    "bytesRead": 151766,
+    "readAskedFor": 65536
+  },
+  "classicFileIo": {
+    "recordsDelivered": 39425,
+    "eventsLost": 0,
+    "mailslotFileObjects": 0,
+    "mailslotRecordsByKindAndRole": {},
+    "mailslotNamesSeen": [],
+    "writesWithTheTruthsSizes": false,
+    "readsAskingTheTruthsSize": false,
+    "readsWhoseEndMovedTheTruthsSize": false,
+    "clientWritesOfATruthMessagesSize": 0,
+    "serverReadsAskingTheTruthsSize": 0,
+    "readsAndWritesOfTheTwoByKind": {
+      "Write by client": 2,
+      "Write by server": 2
+    },
+    "controlRecordsOfTheServer": 1489,
+    "controlRecordsOfTheClient": 1492,
+    "controlFilesOfTheTwo": 101
+  },
+  "kernelFile": {
+    "recordsDelivered": 38048,
+    "eventsLost": 0,
+    "mailslotFileObjects": 0,
+    "mailslotRecordsByKindAndRole": {},
+    "mailslotNamesSeen": [],
+    "writesWithTheTruthsSizes": false,
+    "readsAskingTheTruthsSize": false,
+    "readsWhoseEndMovedTheTruthsSize": false,
+    "clientWritesOfATruthMessagesSize": 0,
+    "serverReadsAskingTheTruthsSize": 0,
+    "readsAndWritesOfTheTwoByKind": {
+      "Write by client": 2,
+      "Write by server": 2
+    },
+    "controlRecordsOfTheServer": 1738,
+    "controlRecordsOfTheClient": 1741,
+    "controlFilesOfTheTwo": 102
+  },
+  "schema": "intercat.mailslot-measurement.v1",
+  "measuredUtc": "2026-11-05T16:00:56.2578757+00:00",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

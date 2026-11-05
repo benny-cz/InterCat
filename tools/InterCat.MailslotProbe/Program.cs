@@ -12,7 +12,8 @@ namespace InterCat.MailslotProbe;
 /// logger receives (ADR-035), whose every event's layout it reads from TDH as the product reads ALPC's, and the registered
 /// schema of Microsoft-Windows-Kernel-File, which ADR-003 measured recording no named pipe; and any registered provider whose
 /// name says it records mailslots. The inspection is read-only: it enables no provider, starts no session and raises no
-/// event, so what it writes is evidence of schemas on one machine, never of what the kernel emits.
+/// event, so what it writes is evidence of schemas on one machine, never of what the kernel emits. With --measure it records
+/// what both candidates emit of FX-MAIL-001, under sessions of its own (<see cref="Measure"/>).
 /// </summary>
 internal static class Program
 {
@@ -32,15 +33,21 @@ internal static class Program
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    private static int Main(string[] args)
+    private static async Task<int> Main(string[] args)
     {
         string? output = Option(args, "--output");
-        if (!args.Contains("--inspect", StringComparer.Ordinal) || output is null)
+        bool inspect = args.Contains("--inspect", StringComparer.Ordinal);
+        bool measure = args.Contains("--measure", StringComparer.Ordinal);
+        if (inspect == measure || output is null)
         {
             Console.Error.WriteLine("InterCat.MailslotProbe --inspect --output <new directory>");
             Console.Error.WriteLine("  Reads, without enabling any, the layouts this machine registers for the kernel's classic file I/O");
             Console.Error.WriteLine("  class and the schema of Microsoft-Windows-Kernel-File, and lists every registered provider whose");
             Console.Error.WriteLine("  name says it records mailslots.");
+            Console.Error.WriteLine("InterCat.MailslotProbe --measure --output <new directory> [--messages n] [--bytes n] [--delay ms]");
+            Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]: runs FX-MAIL-001 under a private system logger of its own");
+            Console.Error.WriteLine("  collecting the kernel's classic file I/O class and an owned session enabling Microsoft-Windows-Kernel-File,");
+            Console.Error.WriteLine("  machine-wide, and writes what each recorded of the run's mailslot and of its processes' other files.");
             return 2;
         }
 
@@ -52,6 +59,23 @@ internal static class Program
         }
 
         Directory.CreateDirectory(output);
+        if (measure)
+        {
+            string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+            Dictionary<string, object?> measured = await Measure.RunAsync(workload, output,
+                int.Parse(Option(args, "--messages") ?? "32", CultureInfo.InvariantCulture),
+                int.Parse(Option(args, "--bytes") ?? "2048", CultureInfo.InvariantCulture),
+                int.Parse(Option(args, "--delay") ?? "0", CultureInfo.InvariantCulture), Option(args, "--dump")).ConfigureAwait(false);
+            measured["schema"] = "intercat.mailslot-measurement.v1";
+            measured["measuredUtc"] = DateTimeOffset.UtcNow;
+            measured["build"] = CapabilityInventoryProbe.DescribeEnvironment().BuildId;
+            measured["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+            File.WriteAllText(Path.Combine(output, "report.json"), JsonSerializer.Serialize(measured, Json));
+            Console.WriteLine(JsonSerializer.Serialize(measured, Json));
+            return 0;
+        }
+
         var metadata = new TdhEtwMetadataSource();
         var classes = new List<object>();
         foreach ((string name, Guid classGuid, int[] opcodes) in Classes)

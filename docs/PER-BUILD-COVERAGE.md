@@ -11,6 +11,7 @@ says so, and never borrows another build's tier (P27).
 |---|---|---|---|---|
 | ComCall | ExperimentalEvidence | FX-COM-003 | 2026-11-05 | Primary |
 | Http | ExperimentalEvidence | FX-HTTP-012 | 2026-11-04 | Primary |
+| Mailslot | Unsupported | FX-MAIL-001 | 2026-11-05 | Primary |
 | NamedPipe | Unsupported | FX-PIPE-001 | 2026-09-21 | Untested at the time of the run; ADR-007 later added this build |
 | Rpc | ExperimentalEvidence | FX-RPC-002 | 2026-11-04 | Primary |
 | Synchronization | TopologyOnly | FX-SYNC-003 | 2026-11-05 | Primary |

@@ -1,0 +1,127 @@
+{
+  "fixture": "FX-MAIL-001",
+  "question": "Whether a driverless source records a mailslot a server made and a client opened by its name - the mailslot's creation, the client's open, each message written and read with the size asked for and the size moved, each close - under the two candidates the inspection found: the kernel's classic file I/O class, collected by a private system logger, and Microsoft-Windows-Kernel-File at the keywords ADR-003 measured named pipes under.",
+  "answer": "In 3 runs, machine-wide and nothing lost - 32 messages of up to 2,048 bytes, 64 messages of up to 400 bytes, 5 ms apart, 8 messages of up to 32,768 bytes - neither source recorded the mailslot's creation, the client's open, any of the 104 messages written or read, or a close: no record named the mailslot, and none of the two processes' reads or writes had a message's size or a read's. Each source recorded about 1,500 records of each process's own files in the same session - the truth logs' writes among them - so it was live for them. No driverless source records a mailslot on this build: the tier is Unsupported (ADR-085).",
+  "method": "Each run: the lab probe started a private system logger of its own with the kernel's process, thread, file I/O and file I/O init flags, and an owned session enabling Microsoft-Windows-Kernel-File at keywords 0x3F0, both machine-wide, then ran the workload. A record is the mailslot's where it names the run's own name or carries a file object such a record named; the two processes' reads and writes of the truth's sizes are counted apart, as a mailslot's would carry no name where its creation was not recorded. The probe writes counts alone, never a file's name or an address.",
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-11-05",
+  "runs": [
+    {
+      "run": "1",
+      "bench": "bench/results/mailslot-feasibility-1-20261105T160038Z",
+      "workload": {
+        "messages": 32,
+        "maximumBytes": 2048,
+        "delayMilliseconds": 0,
+        "readBytes": 65536
+      },
+      "truth": {
+        "messagesWritten": 32,
+        "messagesRead": 32,
+        "bytesWritten": 30545,
+        "bytesRead": 30545,
+        "readAskedFor": 65536
+      },
+      "classicFileIo": {
+        "recordsDelivered": 101628,
+        "eventsLost": 0,
+        "mailslotFileObjects": 0,
+        "mailslotRecords": 0,
+        "clientWritesOfATruthMessagesSize": 0,
+        "serverReadsAskingTheTruthsSize": 0,
+        "controlRecordsOfTheServer": 1496,
+        "controlRecordsOfTheClient": 1498,
+        "controlFilesOfTheTwo": 101
+      },
+      "kernelFile": {
+        "recordsDelivered": 115729,
+        "eventsLost": 0,
+        "mailslotFileObjects": 0,
+        "mailslotRecords": 0,
+        "clientWritesOfATruthMessagesSize": 0,
+        "serverReadsAskingTheTruthsSize": 0,
+        "controlRecordsOfTheServer": 1745,
+        "controlRecordsOfTheClient": 1747,
+        "controlFilesOfTheTwo": 102
+      }
+    },
+    {
+      "run": "2",
+      "bench": "bench/results/mailslot-feasibility-2-20261105T160044Z",
+      "workload": {
+        "messages": 64,
+        "maximumBytes": 400,
+        "delayMilliseconds": 5,
+        "readBytes": 65536
+      },
+      "truth": {
+        "messagesWritten": 64,
+        "messagesRead": 64,
+        "bytesWritten": 11665,
+        "bytesRead": 11665,
+        "readAskedFor": 65536
+      },
+      "classicFileIo": {
+        "recordsDelivered": 239876,
+        "eventsLost": 0,
+        "mailslotFileObjects": 0,
+        "mailslotRecords": 0,
+        "clientWritesOfATruthMessagesSize": 0,
+        "serverReadsAskingTheTruthsSize": 0,
+        "controlRecordsOfTheServer": 1502,
+        "controlRecordsOfTheClient": 1502,
+        "controlFilesOfTheTwo": 101
+      },
+      "kernelFile": {
+        "recordsDelivered": 254484,
+        "eventsLost": 0,
+        "mailslotFileObjects": 0,
+        "mailslotRecords": 0,
+        "clientWritesOfATruthMessagesSize": 0,
+        "serverReadsAskingTheTruthsSize": 0,
+        "controlRecordsOfTheServer": 1751,
+        "controlRecordsOfTheClient": 1751,
+        "controlFilesOfTheTwo": 102
+      }
+    },
+    {
+      "run": "3",
+      "bench": "bench/results/mailslot-feasibility-3-20261105T160051Z",
+      "workload": {
+        "messages": 8,
+        "maximumBytes": 32768,
+        "delayMilliseconds": 0,
+        "readBytes": 65536
+      },
+      "truth": {
+        "messagesWritten": 8,
+        "messagesRead": 8,
+        "bytesWritten": 151766,
+        "bytesRead": 151766,
+        "readAskedFor": 65536
+      },
+      "classicFileIo": {
+        "recordsDelivered": 39425,
+        "eventsLost": 0,
+        "mailslotFileObjects": 0,
+        "mailslotRecords": 0,
+        "clientWritesOfATruthMessagesSize": 0,
+        "serverReadsAskingTheTruthsSize": 0,
+        "controlRecordsOfTheServer": 1489,
+        "controlRecordsOfTheClient": 1492,
+        "controlFilesOfTheTwo": 101
+      },
+      "kernelFile": {
+        "recordsDelivered": 38048,
+        "eventsLost": 0,
+        "mailslotFileObjects": 0,
+        "mailslotRecords": 0,
+        "clientWritesOfATruthMessagesSize": 0,
+        "serverReadsAskingTheTruthsSize": 0,
+        "controlRecordsOfTheServer": 1738,
+        "controlRecordsOfTheClient": 1741,
+        "controlFilesOfTheTwo": 102
+      }
+    }
+  ]
+}

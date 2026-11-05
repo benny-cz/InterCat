@@ -82,6 +82,16 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         PipeName = Option(args, "--pipe") ?? string.Empty,
     };
 
+    var mailslotOptions = new MailslotLoopbackOptions
+    {
+        TruthDirectory = truth,
+        Seed = Integer(args, "--seed") ?? 20_261_105,
+        Messages = Integer(args, "--messages") ?? 32,
+        MaximumBytes = Integer(args, "--bytes") ?? 2_048,
+        DelayMilliseconds = Integer(args, "--delay") ?? 0,
+        Name = Option(args, "--name"),
+    };
+
     var udpOptions = new UdpLoopbackOptions
     {
         TruthDirectory = truth,
@@ -193,6 +203,14 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             "pipe-loopback-client" when OperatingSystem.IsWindows() =>
                 await PipeLoopbackScenario.RunClientAsync(pipeOptions, cancellationToken).ConfigureAwait(false),
             "pipe-loopback" or "pipe-loopback-server" or "pipe-loopback-client" =>
+                await UnsupportedPlatformAsync().ConfigureAwait(false),
+            "mailslot-loopback" when OperatingSystem.IsWindows() =>
+                await MailslotLoopbackScenario.RunCoordinatorAsync(mailslotOptions, cancellationToken).ConfigureAwait(false),
+            "mailslot-loopback-server" when OperatingSystem.IsWindows() =>
+                await MailslotLoopbackScenario.RunServerAsync(mailslotOptions, cancellationToken).ConfigureAwait(false),
+            "mailslot-loopback-client" when OperatingSystem.IsWindows() =>
+                await MailslotLoopbackScenario.RunClientAsync(mailslotOptions, cancellationToken).ConfigureAwait(false),
+            "mailslot-loopback" or "mailslot-loopback-server" or "mailslot-loopback-client" =>
                 await UnsupportedPlatformAsync().ConfigureAwait(false),
             "com-loopback" when OperatingSystem.IsWindows() =>
                 await ComLoopbackScenario.RunCoordinatorAsync(comOptions, cancellationToken).ConfigureAwait(false),
@@ -336,6 +354,12 @@ static void PrintHelp()
     Console.WriteLine("      --held-ms runs it as FX-SYNC-004: both processes hold their handles that many milliseconds before");
     Console.WriteLine("      the first round, so a capture begun meanwhile sees none of them made, only their closes.");
     Console.WriteLine("      Windows only.");
+    Console.WriteLine();
+    Console.WriteLine("  mailslot-loopback --truth <dir> [--seed n] [--messages n] [--bytes n] [--delay ms]");
+    Console.WriteLine("      FX-MAIL-001: a server makes a mailslot under a name of the run's own and a client opens it by");
+    Console.WriteLine("      its name and writes seeded messages of up to that many bytes, which the server reads one at a");
+    Console.WriteLine("      time, each read asking for more than any message holds. Each process logs the mailslot it made");
+    Console.WriteLine("      or opened, every message with the bytes asked for and moved, and its close. Windows only.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

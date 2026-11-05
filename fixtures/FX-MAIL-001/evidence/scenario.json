@@ -1,0 +1,14 @@
+{
+  "scenarioId": "FX-MAIL-001",
+  "seed": 20261105,
+  "messages": 32,
+  "maximumBytes": 2048,
+  "delayMilliseconds": 0,
+  "readBytes": 65536,
+  "name": "\\\\.\\mailslot\\InterCat\\FX-MAIL-001-190f6826216541ce96a88fcf3ee6ceec",
+  "coordinatorProcessId": 88020,
+  "serverProcessId": 48060,
+  "clientProcessId": 68712,
+  "serverExitCode": 0,
+  "clientExitCode": 0
+}

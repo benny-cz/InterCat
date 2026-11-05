@@ -799,6 +799,51 @@
       ]
     },
     {
+      "id": "FX-MAIL-001",
+      "title": "A mailslot a server made and a client wrote to: no driverless source records it",
+      "scenario": "Plan M6's mailslots work package (§4.2, ADR-085): a server makes a mailslot under a name of the run's own, and a client opens it by its name and writes seeded messages, which the server reads one at a time, each read asking for more than any message holds. Read by the lab probe's private system logger collecting the kernel's classic file I/O class and by an owned session enabling Microsoft-Windows-Kernel-File at ADR-003's keywords, machine-wide.",
+      "milestone": "M6",
+      "mechanism": "Mailslot",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [],
+        "invariants": [],
+        "prohibitions": [
+          "P27"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads mailslot-loopback --messages 32 --bytes 2048, under tools/InterCat.MailslotProbe --measure",
+        "seed": 20261105,
+        "log": "fixtures/FX-MAIL-001/evidence/truth-client.jsonl",
+        "independence": "Each process logs the mailslot it made or opened, every message it wrote or read with the bytes asked for and moved, and its close, by the mailslot's name; neither reads InterCat state, and the probe's sessions read the kernel's records apart from both."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-MAIL-001/evidence/measurement.json",
+        "note": "Three runs - 32 messages of up to 2,048 bytes, 64 of up to 400 paced 5 ms apart, and 8 of up to 32,768 - machine-wide and nothing lost: neither the classic file I/O class nor Kernel-File recorded the mailslot's creation, the client's open, any of its 104 messages written or read, or a close, by its name or by a message's size, while each recorded about 1,500 records of each of the two processes' own files in the same session. A test holds the three runs, their control and the build's coverage."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-05",
+          "tier": "Unsupported",
+          "result": "Measured by tools/InterCat.MailslotProbe, three runs, nothing lost: neither the kernel's classic file I/O class nor Microsoft-Windows-Kernel-File recorded a mailslot's creation, an open, a message or a close, while both recorded the same processes' own files. Tier Unsupported: no driverless source records a mailslot (ADR-085)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two processes' truth logs and scenario of the first run - the mailslot by the run's own name, messages by their sizes, of seeded bytes - and the measurement's counters: per run and source, the records delivered and lost, the mailslot's records, the two processes' reads and writes of the truth's sizes and their other files' records, never a file's name or an address."
+      },
+      "tests": [
+        "P27: FX-MAIL-001's mailslot is unsupported on its build - in three runs neither the kernel's classic file I/O class nor Microsoft-Windows-Kernel-File recorded its creation, an open or a message, while both recorded the two processes' own files",
+        "P27: icat capabilities reports a mechanism no source covers where a fixture measured it on the build - mailslots unsupported, by FX-MAIL-001 - and leaves it out on a build none measured it on"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -2509,6 +2554,7 @@
       "P27": [
         "P27: COM calls have an inventoried source admitting its four synchronous call events, requested by the opt-in COM calls profile alone, its process filter and cost measured, and the tier its fixture measured through the product",
         "P27: FX-COM-001's calls through the product reproduce its measured tier - every truth call its client's call linked to the server call of its own, carried by one RPC call served through it, and no byte",
+        "P27: FX-MAIL-001's mailslot is unsupported on its build - in three runs neither the kernel's classic file I/O class nor Microsoft-Windows-Kernel-File recorded its creation, an open or a message, while both recorded the two processes' own files",
         "P27: FX-SYNC-001's handle records through the product reproduce its measured tier - each named object the one number its closes name, from the creator's creation to both processes' closes, bound to exactly the two processes, and topology only",
         "P27: FX-UNIX-001's rows through the product reproduce its measured tier - every truth send and receive its owner's row, bound to its socket with its bytes, and no peer named",
         "P27: Unix-domain sockets have an inventoried source that admits through its gate, which only the opt-in Unix sockets profile requests, its cost measured, and the tier its latest fixture measured through the product",
@@ -2532,6 +2578,7 @@
         "P27: discovered resources without a byte claim are topology only",
         "P27: every section 14.2 threshold met on a supported build yields traffic visualization",
         "P27: false peer attribution above one percent blocks traffic visualization",
+        "P27: icat capabilities reports a mechanism no source covers where a fixture measured it on the build - mailslots unsupported, by FX-MAIL-001 - and leaves it out on a build none measured it on",
         "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build their fixtures measured them on through the product",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",
         "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build"

@@ -584,8 +584,16 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
             }
         }
 
+        // A mechanism no source covers is reported too where a fixture measured it on this build: a measured absence is a visible
+        // entry with its tier, never left out of the report (§4.1).
         var results = new List<MechanismCapability>();
-        SortedSet<Mechanism> all = [.. byMechanism.Keys, .. omittedByProfile.Keys];
+        SortedSet<Mechanism> all =
+        [
+            .. byMechanism.Keys,
+            .. omittedByProfile.Keys,
+            .. MeasuredCoverage.Entries.Where(entry => string.Equals(entry.Build, environment.BuildId, StringComparison.Ordinal))
+                .Select(static entry => entry.Mechanism),
+        ];
         foreach (Mechanism mechanism in all)
         {
             byMechanism.TryGetValue(mechanism, out List<SourceCapability>? covering);
@@ -612,6 +620,10 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
                 {
                     sourceIds.Add(source.SourceId);
                 }
+            }
+            else if (covering.Count == 0)
+            {
+                reason = "No source in the catalog records this mechanism, so no capture observes it.";
             }
 
             MechanismMeasurement? measurement = null;
