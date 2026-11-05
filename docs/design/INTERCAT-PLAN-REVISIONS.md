@@ -886,6 +886,7 @@ Revision 959 admits Win32k's six message events through the window message gate 
 Revision 960 binds a window message's records to the process that raised them, as `process-binding-v7` (ADR-087's second addendum): FX-WMSG-001 had every end raised in the process that sent, posted or retrieved it.
 Revision 961 has the synchronization handle and window message gates' allocation tests read three warmed passes and hold the least to none, as a loaded suite's pass twice allocated 7,752 bytes never seen alone; no product code changes.
 Revision 962 adds the opt-in window messages profile, `window-messages` (ADR-087's third addendum): Kernel-Process and Win32k's message pump, both required, its Moderate class stated beside the message pump's measured throughput regression; nothing has measured it whole yet.
+Revision 963 adds the window message coverage evaluator (ADR-088): each truth message is the number of its rank among the capture's messages of its kind from the sender to the receiver, observed with every end in its own process, and window messages are experimental evidence at most.
 
 ## Revisions, a paragraph each, in order
 
@@ -4203,3 +4204,13 @@ schema without an end's pointer - it does not start rather than record lifecycle
 Moderate for Kernel-Process, and its statement names the message pump's collection, Low in the processor time it adds
 but a message-bound workload 8.3 and 5.2% lower in throughput, past the 5% target, so the profile is opt-in and Explore
 never admits the source. Nothing has measured the profile whole yet; the catalog now counts ten profiles.
+
+Revision 963 decides how a window message is measured against a truth (ADR-088), as ADR-084 decided a named
+synchronization object's. No record names which message it is, so `WindowMessageCoverageEvaluator` takes each truth
+message as the number of its rank among the capture's messages of its kind from the sender to the receiver: a send a
+number whose start the sender raised naming the receiver, a post, the close last, one the sender queued that no other
+process alone retrieved, each in the order of its first record, as the sender sends and posts one after another. Where
+the capture holds more or fewer of a kind than the truth logged, none of that kind is matched. A message is observed
+with every end where its number has each end in its own process, and its peer, the process at its other end, is false
+unless it is the receiver. No record names the window or carries a size, so a message is bound to no resource and the
+byte criterion is not measured: window messages claim operations and reach experimental evidence at most (P27).

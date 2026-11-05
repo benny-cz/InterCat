@@ -2619,6 +2619,7 @@
         "P27: a synchronization objects evaluation finds each truth object as the one number its closes name, from its creation to every close in the processes that held it, and is topology only - it claims no byte and no operation",
         "P27: a truth call with no call of its client's process, interface and method inside the window is a gap, never matched by another process's call, another method or the server's end",
         "P27: a truth message with no row of its owner and kind inside the window is a gap, never matched by another process's row or another kind",
+        "P27: a whole window message run - every send at both ends, every post and the close queued and retrieved, each end in its own process - is experimental evidence, each message observed with every end and its other end the receiver, bound to no window and no byte criterion measured",
         "P27: an AF_UNIX evaluation matches each truth message to its owner's nearest row of its kind, bound to its socket with its bytes, and names no peer",
         "P27: an IPv6 loopback workload is matched on its own flows, never on the same ports over IPv4",
         "P27: an impact run captures only the sources it names, the Explore pair unless told otherwise",
@@ -3290,6 +3291,8 @@
         "R22: a member's layout is kept by node, ranking, evidence policy and lane scale, replaced as it changes, and refused where it cannot be",
         "R22: a member's layout keeps a grouping by terminal session, and refuses one no view offers",
         "R22: a member's layout keeps its pinned timeline lanes in the order pinned, and refuses what no window can pin",
+        "R22: a message the sender sent or posted another process's window, and every record of a process the truth does not name, are neither the run's messages nor error - they are scope",
+        "R22: a message whose number lacks an end is observed but not with every end, and one whose retrieval binds to a process the truth says did not receive it is a false attribution",
         "R22: a new investigation starts empty, and an existing file is opened, never written over",
         "R22: a note about a saved comparison names it as saved and a row by its key, never by rank, and is kept as revisions",
         "R22: a note about a saved comparison or one of its rows is said when the comparison runs, each row's by its rank and ends",
@@ -3404,6 +3407,7 @@
         "R22: two identities a person confirms are one host have their captures compared as one host's, and say why",
         "R22: what an evidence policy leaves unattributed is said as what it is, a reused PID's candidates or all but lifecycle records",
         "R22: when a process's connections never overlap, a connection is its own socket only if all its operations landed on one socket no other connection's did",
+        "R22: where the capture holds more or fewer messages of a kind than the truth logged, no rank says which is which, and none of that kind is matched",
         "R22: without a relation a participant is its own records, with every undecided record disclosed"
       ],
       "R3": [
@@ -3423,6 +3427,7 @@
         "R3: a call served by a process the evidence policy does not admit names no server, and its server's time is said only where admitted",
         "R3: a capture impact with no elapsed time is unmeasured rather than infinite",
         "R3: a capture names its boot and start from its first publication, so one that ends before its last still has them",
+        "R3: a capture of none of the truth's messages observes none and reaches no tier, its memberships unresolved",
         "R3: a capture that attributes no peer has its false-peer ceiling not measured, never met, and stays below traffic visualization",
         "R3: a capture's compilation refuses the handle group where its gate could not decide its records - on a build with no measured type numbers, or a layout without a field the gate decides by - so the synchronization objects profile does not start, and icat capabilities says its schema is unknown",
         "R3: a clock calibration round-trips its samples and boot, and refuses what it cannot hold",
