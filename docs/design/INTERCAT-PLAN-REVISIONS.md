@@ -851,6 +851,7 @@ Revision 924 adds FX-COM-003, a client following servers restarted one after ano
 Revision 925 has the replaced-session test wait out the shown session's reader before it deletes or replaces a file, as the store's replace does.
 Revision 926 adds FX-COM-004, nested COM calls, each linked to its own served call, 768 of 768: a nested call carries an activity of its own, so nesting makes nothing ambiguous (ADR-079's sixth addendum).
 Revision 927 adds FX-COM-005, calls a capture's start and stop cut, each stated cut and linked to nothing, with which the COM calls package meets M6's exit tests (ADR-080's fourth addendum).
+Revision 928 begins M6's named synchronization objects package with its metadata inspection (§4.2): the kernel's object manager declares a handle's creation, duplication and close with its object's address, type and name, rundowns of open handles, and an object's creation and deletion, and its dispatcher a ready thread naming the thread readied; no event records a signal or a wait on an object, and nothing is enabled or implemented.
 
 ## Revisions, a paragraph each, in order
 
@@ -3802,3 +3803,18 @@ record took its end's nearest unclaimed call in time order, so the cut call's re
 pair shifted one on, the totals right and the pairs wrong. A record and a call are now paired only as each other's
 nearest, in rounds; every earlier fixture pairs by rank and measures as it did. With it the COM calls package meets M6's
 exit tests.
+
+Revision 928 begins M6's named synchronization objects package as the plan begins every package, with what the machine
+declares. Neither the kernel's object manager nor its dispatcher has a manifest: each is a classic kernel class, a flag
+group only a system logger receives (ADR-035). `tools/InterCat.SyncProbe --inspect` reads from TDH, without enabling
+any, the layout this build registers for each of their events, as the product reads ALPC's, and the registered schema of
+`Microsoft-Windows-Kernel-Audit-API-Calls`. The object manager's `ObTrace` class declares eleven events at version 2: a
+handle's creation and close with the object's address, the handle, a numeric type and the object's name; a handle's
+duplication with both handles and the target's process, but no source; rundowns of the types' names and of every open
+handle with its process; an object's creation and deletion by address and type; and its references with a tag and a
+count. The thread class declares the dispatcher's context switch, versions 1 to 4, with the old thread's wait reason,
+mode and state, and its ready thread, version 2, naming the thread readied. The audit provider's nine events name a
+target process or thread with an access, a symbolic link, a driver or a notify routine, never a synchronization object.
+No event records a signal or a wait on an object. §4.2 records it as evidence of layouts on one machine, not of
+emission: the handle events are measured against a truth fixture of named objects two processes share before any field
+is implemented.

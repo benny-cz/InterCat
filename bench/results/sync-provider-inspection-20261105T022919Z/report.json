@@ -1,0 +1,738 @@
+{
+  "schema": "intercat.sync-provider-inspection.v1",
+  "inspectedUtc": "2026-11-05T02:29:23.0770135+00:00",
+  "build": "10.0.26220.0-x64",
+  "note": "Read-only: each classic class\u0027s layouts and each provider\u0027s registered schema as TDH gives them, read as the product reads one. No provider was enabled and no session started, so nothing here says what the kernel emits.",
+  "classes": [
+    {
+      "name": "Object manager (ObTrace class)",
+      "guid": "89497f50-effe-4440-8cf2-ce6b1cdcaca7",
+      "events": [
+        {
+          "version": 2,
+          "opcode": 32,
+          "task": "Object",
+          "opcodeName": "CreateHandle",
+          "fields": [
+            {
+              "name": "Object",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "Handle",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "ObjectType",
+              "type": "win:UInt16"
+            },
+            {
+              "name": "ObjectName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 33,
+          "task": "Object",
+          "opcodeName": "CloseHandle",
+          "fields": [
+            {
+              "name": "Object",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "Handle",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "ObjectType",
+              "type": "win:UInt16"
+            },
+            {
+              "name": "ObjectName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 34,
+          "task": "Object",
+          "opcodeName": "DuplicateHandle",
+          "fields": [
+            {
+              "name": "Object",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "SourceHandle",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "TargetHandle",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "TargetProcessId",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "ObjectType",
+              "type": "win:UInt16"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 36,
+          "task": "Object",
+          "opcodeName": "TypeDCStart",
+          "fields": [
+            {
+              "name": "ObjectType",
+              "type": "win:UInt16"
+            },
+            {
+              "name": "Reserved",
+              "type": "win:UInt16"
+            },
+            {
+              "name": "TypeName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 37,
+          "task": "Object",
+          "opcodeName": "TypeDCEnd",
+          "fields": [
+            {
+              "name": "ObjectType",
+              "type": "win:UInt16"
+            },
+            {
+              "name": "Reserved",
+              "type": "win:UInt16"
+            },
+            {
+              "name": "TypeName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 38,
+          "task": "Object",
+          "opcodeName": "HandleDCStart",
+          "fields": [
+            {
+              "name": "Object",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ProcessId",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "Handle",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "ObjectType",
+              "type": "win:UInt16"
+            },
+            {
+              "name": "ObjectName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 39,
+          "task": "Object",
+          "opcodeName": "HandleDCEnd",
+          "fields": [
+            {
+              "name": "Object",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ProcessId",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "Handle",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "ObjectType",
+              "type": "win:UInt16"
+            },
+            {
+              "name": "ObjectName",
+              "type": "win:UnicodeString"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 48,
+          "task": "Object",
+          "opcodeName": "CreateObject",
+          "fields": [
+            {
+              "name": "Object",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ObjectType",
+              "type": "win:UInt16"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 49,
+          "task": "Object",
+          "opcodeName": "DeleteObject",
+          "fields": [
+            {
+              "name": "Object",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "ObjectType",
+              "type": "win:UInt16"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 50,
+          "task": "Object",
+          "opcodeName": "ReferenceObject",
+          "fields": [
+            {
+              "name": "Object",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "Tag",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "Count",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 51,
+          "task": "Object",
+          "opcodeName": "DereferenceObject",
+          "fields": [
+            {
+              "name": "Object",
+              "type": "win:Pointer"
+            },
+            {
+              "name": "Tag",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "Count",
+              "type": "win:UInt32"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Thread dispatcher (Thread class)",
+      "guid": "3d6fa8d1-fe05-11d0-9dda-00c04fd7ba7c",
+      "events": [
+        {
+          "version": 1,
+          "opcode": 36,
+          "task": "Thread",
+          "opcodeName": "CSwitch",
+          "fields": [
+            {
+              "name": "NewThreadId",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "OldThreadId",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "NewThreadPriority",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadPriority",
+              "type": "win:Int8"
+            },
+            {
+              "name": "NewThreadQuantum",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadQuantum",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadWaitReason",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadWaitMode",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadState",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadWaitIdealProcessor",
+              "type": "win:Int8"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 36,
+          "task": "Thread",
+          "opcodeName": "CSwitch",
+          "fields": [
+            {
+              "name": "NewThreadId",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "OldThreadId",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "NewThreadPriority",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadPriority",
+              "type": "win:Int8"
+            },
+            {
+              "name": "PreviousCState",
+              "type": "win:UInt8"
+            },
+            {
+              "name": "SpareByte",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadWaitReason",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadWaitMode",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadState",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadWaitIdealProcessor",
+              "type": "win:Int8"
+            },
+            {
+              "name": "NewThreadWaitTime",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "Reserved",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "opcode": 50,
+          "task": "Thread",
+          "opcodeName": "ReadyThread",
+          "fields": [
+            {
+              "name": "TThreadId",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "AdjustReason",
+              "type": "win:Int8"
+            },
+            {
+              "name": "AdjustIncrement",
+              "type": "win:Int8"
+            },
+            {
+              "name": "Flag",
+              "type": "win:Int8"
+            },
+            {
+              "name": "Reserved",
+              "type": "win:Int8"
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "opcode": 36,
+          "task": "Thread",
+          "opcodeName": "CSwitch",
+          "fields": [
+            {
+              "name": "NewThreadId",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "OldThreadId",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "NewThreadPriority",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadPriority",
+              "type": "win:Int8"
+            },
+            {
+              "name": "PreviousCState",
+              "type": "win:UInt8"
+            },
+            {
+              "name": "SpareByte",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadWaitReason",
+              "type": "win:Int8"
+            },
+            {
+              "name": "ThreadFlags",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadState",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadWaitIdealProcessor",
+              "type": "win:Int8"
+            },
+            {
+              "name": "NewThreadWaitTime",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "Reserved",
+              "type": "win:UInt32"
+            }
+          ]
+        },
+        {
+          "version": 4,
+          "opcode": 36,
+          "task": "Thread",
+          "opcodeName": "CSwitch",
+          "fields": [
+            {
+              "name": "NewThreadId",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "OldThreadId",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "NewThreadPriority",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadPriority",
+              "type": "win:Int8"
+            },
+            {
+              "name": "PreviousCState",
+              "type": "win:UInt8"
+            },
+            {
+              "name": "SpareByte",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadWaitReason",
+              "type": "win:Int8"
+            },
+            {
+              "name": "ThreadFlags",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadState",
+              "type": "win:Int8"
+            },
+            {
+              "name": "OldThreadWaitIdealProcessor",
+              "type": "win:Int8"
+            },
+            {
+              "name": "NewThreadWaitTime",
+              "type": "win:UInt32"
+            },
+            {
+              "name": "Reserved",
+              "type": "win:UInt32"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "providers": [
+    {
+      "name": "Microsoft-Windows-Kernel-Audit-API-Calls",
+      "guid": "e02a841c-75a3-4fa7-afc8-ae09cf9b7f23",
+      "registered": true,
+      "schemaFingerprint": "752b672de2ddf136e04ee6eca5eddcfb124e48de00254028b9836fcad1cb12ac",
+      "keywords": [],
+      "events": [
+        {
+          "id": 1,
+          "version": 0,
+          "symbol": "task_0",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "NotifyRoutineAddress",
+              "inType": "win:Pointer",
+              "outType": null
+            },
+            {
+              "name": "ReturnCode",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "version": 0,
+          "symbol": "task_02",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "TargetProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "ReturnCode",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "version": 1,
+          "symbol": "task_02_V1",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "TargetProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "ReturnCode",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetProcessStartKey",
+              "inType": "win:UInt64",
+              "outType": null
+            },
+            {
+              "name": "TargetProcessCreationTime",
+              "inType": "win:FILETIME",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "version": 0,
+          "symbol": "task_03",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "LinkSourceName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "LinkTargetName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "DesiredAccess",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "ReturnCode",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "version": 0,
+          "symbol": "task_04",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "ReturnCode",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "version": 0,
+          "symbol": "task_05",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "TargetProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "DesiredAccess",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "ReturnCode",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "version": 0,
+          "symbol": "task_06",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "TargetProcessId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "TargetThreatId",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "DesiredAccess",
+              "inType": "win:UInt32",
+              "outType": null
+            },
+            {
+              "name": "ReturnCode",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "version": 0,
+          "symbol": "task_07",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "DriverName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ReturnCode",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "version": 0,
+          "symbol": "task_08",
+          "task": "task_0",
+          "opcode": null,
+          "level": "win:Informational",
+          "keywords": [],
+          "fields": [
+            {
+              "name": "DriverName",
+              "inType": "win:UnicodeString",
+              "outType": null
+            },
+            {
+              "name": "ReturnCode",
+              "inType": "win:UInt32",
+              "outType": null
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
