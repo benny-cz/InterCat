@@ -176,7 +176,7 @@ public sealed class SyncObjectLeadTests
         Assert.All(taken.Keys, row => Assert.Contains(row.AwakenedWait, PairedWaits));
     }
 
-    [Fact(DisplayName = "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build")]
+    [Fact(DisplayName = "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build")]
     public void NamedObjectsHaveALeadAndNoTier()
     {
         WindowsSourceDefinition handles = WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelObjectHandlesSourceId)!;
@@ -204,9 +204,11 @@ public sealed class SyncObjectLeadTests
         Assert.Contains(handles.Notes, note => note.Contains("FX-SYNC-001", StringComparison.Ordinal) && note.Contains("named at its close", StringComparison.Ordinal));
         Assert.Contains(handles.Notes, note => note.Contains("never a signal by itself", StringComparison.Ordinal));
 
-        // No profile requests it, no other source claims named synchronization objects, and no build carries a tier for them.
-        Assert.DoesNotContain(CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures),
-            profile => profile.Sources.Any(source => source.SourceId == handles.SourceId));
+        // Only the opt-in synchronization objects profile requests it, no other source claims named synchronization objects,
+        // and no build carries a tier for them.
+        Assert.Equal(["sync-objects"], CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures)
+            .Where(profile => profile.Sources.Any(source => source.SourceId == handles.SourceId)).Select(profile => profile.Id));
+        Assert.Contains("Only the opt-in synchronization objects profile requests it.", handles.FilteringNotes, StringComparison.Ordinal);
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != handles.SourceId),
             source => Assert.DoesNotContain(Mechanism.Synchronization, source.Mechanisms));
         Assert.DoesNotContain(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.Synchronization);

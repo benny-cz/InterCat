@@ -3,7 +3,8 @@
 - Status: accepted for M6's named synchronization objects work package; since revision 936 the handle group's events
   admit through the gate (its addendum); since revision 938 a duplication is the open of the target its record names, and
   the gate follows no kernel handle (its second addendum); since revision 939 a handle's creation and close bind to the
-  process that raised them, as `process-binding-v6` (its third addendum); no profile requests the group yet
+  process that raised them, as `process-binding-v6` (its third addendum); since revision 940 the opt-in synchronization
+  objects profile requests the group, stating its cost (its fourth addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-073, ADR-082, plan M6, §4.2, R22, P7, FX-SYNC-001, `bench/results/sync-objects-types-20261105T053215Z`
@@ -125,3 +126,18 @@ entities, checkpoint, operations, operation index, metrics, relations, query ide
 contracts name the new rule; the grouped answer's caveat and the checkpoint's refusal name synchronization handles, and
 the Desktop's explanations say version 6. Tests pin the mechanisms a header binds and the inventory it never does, bind
 a session's handle records each way, and read a version 5 checkpoint; six mutations are caught.
+
+## Addendum: the synchronization objects profile (revision 940)
+
+The fifth decision's last requirement is met: an opt-in profile collecting the handle group and stating its cost.
+`sync-objects` requires Kernel-Process and the object manager's handle group, so on a build with no measured type
+numbers, or a schema without a field the gate decides by, it does not start rather than record lifecycle and no handle.
+It takes no focus, as Explore takes none, and `icat capture` and `icat record` take it as they take the other opt-in
+profiles; a capture asking for it sets the group's mask on its own private system logger (ADR-082's third addendum).
+
+Its class is its sources' at most, Moderate for Kernel-Process. Its statement says, beside it, what ADR-082's addendum
+measured: the handle group's collection alone took a median 0.4 and 0.0 CPU points, but a handle-heavy workload ran
+5.3 and 8.3% lower in throughput, past §12's target, as each creation and close raises a record in the thread that
+makes the call. That is why it is opt-in and Explore never admits the source. Nothing has measured the profile whole
+yet, and no build carries a tier for named synchronization objects: a fixture measured through the product is next.
+Tests compile the profile with and without the handle group and check both commands' profile lists, help and preview.

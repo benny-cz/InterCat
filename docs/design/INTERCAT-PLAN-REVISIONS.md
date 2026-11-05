@@ -863,6 +863,7 @@ Revision 936 admits the handle group's events through the synchronization handle
 Revision 937 measures FX-SYNC-002 (ADR-082's fifth addendum): each handle duplication is raised in the process that asked for it, its record naming its target and the handle made there but no source process, and each kernel handle's records are raised wherever the kernel ran, never in the system process that holds it; no binding changes yet.
 Revision 938 makes a handle duplication the open of the target its record names, its payload owner, and has the synchronization handle gate follow no kernel handle, whose creation and close FX-SYNC-002 had raised wherever the kernel ran (ADR-083's second addendum).
 Revision 939 binds a named synchronization object's handle creation and close to the process that raised them, and binds no inventory by its header, as `process-binding-v6` (ADR-083's third addendum); a checkpoint of an earlier rule is read as this one's wherever every record named its owner.
+Revision 940 adds the opt-in synchronization objects profile, `sync-objects` (ADR-083's fourth addendum): Kernel-Process and the object manager's handle group, both required, its Moderate class stated beside the group's measured throughput regression; nothing has measured it whole yet.
 
 ## Revisions, a paragraph each, in order
 
@@ -3954,3 +3955,11 @@ holder. A header now binds no inventory, of any mechanism, as a rundown is raise
 stop is no process's, and no mechanism bound by its header before has an inventory. A checkpoint derived under version 2
 to 5 is read as version 6's wherever every record named its owner; the entities, checkpoint, operations, operation
 index, metrics, relations, query identity, HTTP exchange and COM call contracts name the new rule.
+
+Revision 940 adds `sync-objects`, the opt-in synchronization objects profile (ADR-083's fourth addendum). It requires
+Kernel-Process and the object manager's handle group, so where the group is refused - a build with no measured type
+numbers, or a schema without a field its gate decides by - it does not start. It takes no focus, and `icat capture` and
+`icat record` take it as they take the other opt-in profiles. Its class is Moderate, its sources' at most, and its
+statement names the handle group's measured cost: Low in processor time, but a handle-heavy workload 5.3 and 8.3% lower
+in throughput, past §12's target, which is why it is opt-in and Explore never admits the source. Nothing has measured
+the profile whole yet, and no build carries a tier for named synchronization objects.

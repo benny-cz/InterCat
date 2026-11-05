@@ -415,6 +415,14 @@ public enum CaptureProfileKind
     /// slowed a COM-heavy workload 17 to 18%.
     /// </summary>
     ComCalls = 9,
+
+    /// <summary>
+    /// Lifecycle and named synchronization objects' handles - an event's, a mutant's or a semaphore's creation, duplication
+    /// and close in the process that holds it, and those open at the stop - from the kernel's object manager handle group,
+    /// each object numbered in the capture (ADR-083). Opt-in: collecting the group, Low in processor time, lowered a
+    /// handle-heavy workload's throughput 5.3 and 8.3%.
+    /// </summary>
+    SyncObjects = 10,
 }
 
 public enum CaptureLifecycle { Idle = 1, Probing = 2, Starting = 3, Recording = 4, Stopping = 5, Finalizing = 6, Closed = 7 }

@@ -33,7 +33,7 @@ public sealed class RpcPeersCaptureTests
         foreach ((string? mechanism, string[] words, bool broader, string refusal) in new (string?, string[], bool, string)[]
         {
             ("tcp", [], false, "focused-transport takes --mechanism tcp and optionally --pid <id,...> and --allow-broader; "
-                + "explore, rpc-peers, unix-sockets and com-calls take neither."),
+                + "explore, rpc-peers, unix-sockets, com-calls and sync-objects take neither."),
             (null, ["--pid", "4242"], false, "focused-transport takes --mechanism tcp"),
             (null, [], true, "focused-transport takes --mechanism tcp"),
             (null, ["--max-record-bytes", "1"], false, "--source, --channel, the byte limits, --inspection and --retention"),
@@ -48,10 +48,10 @@ public sealed class RpcPeersCaptureTests
     [Fact(DisplayName = "R18: icat's help names every profile icat capture takes, and capture refuses any other by the same list")]
     public async Task TheHelpNamesEveryProfileCaptureTakes()
     {
-        Assert.Equal(["explore", "focused-transport", "rpc-peers", "unix-sockets", "com-calls", "content"], CaptureRequests.Profiles);
+        Assert.Equal(["explore", "focused-transport", "rpc-peers", "unix-sockets", "com-calls", "sync-objects", "content"], CaptureRequests.Profiles);
         (InterCatExitCode code, string help) = await Run("--help");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Contains("[--profile explore|focused-transport|rpc-peers|unix-sockets|com-calls|content]", help, StringComparison.Ordinal);
+        Assert.Contains("[--profile explore|focused-transport|rpc-peers|unix-sockets|com-calls|sync-objects|content]", help, StringComparison.Ordinal);
 
         // Each is one it takes, whatever else a profile then asks for; any other word is refused by naming them.
         foreach (string profile in CaptureRequests.Profiles)
@@ -61,7 +61,7 @@ public sealed class RpcPeersCaptureTests
         }
 
         Assert.Null(CaptureRequests.Parse("timing", null, false, null, null, null, false, Options([]), out string? refused));
-        Assert.Equal("--profile is explore, focused-transport, rpc-peers, unix-sockets, com-calls or content; 'timing' is not one. icat profiles lists "
+        Assert.Equal("--profile is explore, focused-transport, rpc-peers, unix-sockets, com-calls, sync-objects or content; 'timing' is not one. icat profiles lists "
             + "what each collects.", refused);
     }
 

@@ -661,7 +661,7 @@
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
         "R22: an object's address names it only from its creation to its deletion - FX-SYNC-001's object group records each named object created in the creator before its first handle and deleted after its last close, at the address its handles carry",
         "P8: FX-SYNC-001's every wait the kernel blocked has the ready of its thread from the signaling process inside the wait's span, and no ready of a thread in a user-mode wait between the two processes is left unpaired - a ready names no object, so only a truth's wait makes one a signal",
-        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
+        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
         "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart"
       ]
     },
@@ -2440,7 +2440,7 @@
         "P27: discovered resources without a byte claim are topology only",
         "P27: every section 14.2 threshold met on a supported build yields traffic visualization",
         "P27: false peer attribution above one percent blocks traffic visualization",
-        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
+        "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",
         "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build"
       ],
@@ -3453,6 +3453,7 @@
         "R18: icat capture records COM calls through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture records RPC peers through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture records Unix sockets through the broker as it records Explore, live, and refuses a focus or content it does not take",
+        "R18: icat capture records synchronization objects through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture takes a content request in icat record's words, and refuses what a content capture does not take",
         "R18: icat channels pages the busiest channels first, channels of as many records by key, and its JSON names that order",
         "R18: icat channels says how each channel was paired - its rule, strength, lifetime and coverage - in the inspector's words",
@@ -3512,6 +3513,7 @@
         "R18: icat processes gives a process with no COM call record no COM calls line and no command to list any",
         "R18: icat processes, operations, exchanges and metric name the evidence policy as it is typed, and their JSON as the format stores it",
         "R18: icat profiles com-calls states the cost measured through the product - the throughput regression unpaced, within the target in bursts, nothing dropped - and the evidence it rests on",
+        "R18: icat profiles sync-objects states its sources' cost - the handle group Low in processor time but past the throughput target - and the evidence it rests on",
         "R18: icat profiles unix-sockets states the cost measured through the product and the evidence it rests on",
         "R18: icat profiles writes its catalog to --output as --json prints it, into a folder it makes, and says it wrote the catalog there",
         "R18: icat programs --program lists the pairs one program is in, named as listed, by its executable's file name with or without its extension, or by its path",
@@ -3521,6 +3523,7 @@
         "R18: icat raw says a record's facts as the window does, in words - its provider named, its lengths counted - and its bytes only when asked",
         "R18: icat record and icat capture say what COM calls records and that collecting COM-Perf slows a COM-heavy workload",
         "R18: icat record and icat capture say what Unix sockets records and that AFD collects every socket call of the machine",
+        "R18: icat record and icat capture say what synchronization objects records and that collecting it slows a handle-heavy workload",
         "R18: icat record takes every profile its help names, each by the catalog's id, and refuses any other by the same list",
         "R18: icat rederive needs a session's folder, and says so of none and of one that is not there",
         "R18: icat rederive refuses an option it cannot read, saying what it expects",

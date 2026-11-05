@@ -1104,10 +1104,10 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        // Named synchronization objects' lead (ADR-082): inventoried and requested by no profile. Its handle records admit
-        // through the synchronization handle gate (ADR-083), which keeps only the synchronization types' and writes each
-        // object's number over its address; a capture that asks for it sets its group mask on its private system logger.
-        // Its measured notes are what icat capabilities states of it.
+        // Named synchronization objects' lead (ADR-082): inventoried and requested by the opt-in synchronization objects
+        // profile. Its handle records admit through the synchronization handle gate (ADR-083), which keeps only the
+        // synchronization types' and writes each object's number over its address; a capture that asks for it sets its group
+        // mask on its private system logger. Its measured notes are what icat capabilities states of it.
         var objectHandles = new WindowsSourceDefinition
         {
             SourceId = KernelObjectHandlesSourceId,
@@ -1121,7 +1121,7 @@ public static class WindowsSourceCatalog
             RequestedKeywords = [],
             SupportsCaptureSideProcessFilter = false,
             FilteringNotes =
-                "No capture profile requests it. A kernel group of the object manager, enabled by the group mask PERF_OB_HANDLE "
+                "Only the opt-in synchronization objects profile requests it. A kernel group of the object manager, enabled by the group mask PERF_OB_HANDLE "
                 + "and by no kernel flag: only a private system logger receives it. A capture that asks for it sets the mask on its "
                 + "own logger by the session's handle, once the kernel's process flag has started the logger where no other flag "
                 + "does; TraceEvent sets group masks only on the NT Kernel Logger, a session a capture never uses (ADR-035, "
@@ -1156,8 +1156,8 @@ public static class WindowsSourceCatalog
                 + "its creation and close are raised in whichever process the kernel ran for, so none of its records is admitted.",
                 "Collection alone, two series of nine pairs over a handle-heavy workload, loss-free: a median of 0.4 and 0.0 CPU "
                 + "pp, Low; but the workload ran 5.3 and 8.3% lower in throughput, past the 5% target, as a handle's creation and "
-                + "close each raise a record in the thread that makes the call. Only an opt-in profile stating it may admit it, "
-                + "never Explore.",
+                + "close each raise a record in the thread that makes the call. Only the opt-in synchronization objects profile, "
+                + "which states it, requests this source, never Explore.",
                 "Measured on FX-SYNC-001: each process's handle to a named object two processes share, its creation and its "
                 + "close, both processes' at the object's one address, typed by the type rundown. A creation names nothing; the "
                 + "close names the object, so a handle is named at its close.",

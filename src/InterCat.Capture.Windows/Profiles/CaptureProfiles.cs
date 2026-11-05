@@ -186,6 +186,39 @@ public static class CaptureProfileCatalog
                 + "whole profile keeps its sources' class.",
             OverheadEvidence = "bench/results/com-calls-impact-20261104T230451Z/product-impact.json",
         },
+        new()
+        {
+            Kind = CaptureProfileKind.SyncObjects,
+            Id = "sync-objects",
+            DisplayName = "Synchronization objects",
+            Summary = "Lifecycle and the handles of each event, mutex and semaphore - created, duplicated and closed in each "
+                + "process, and open at the stop - from the kernel's object manager, each object numbered in the capture. "
+                + "Opt-in: collecting the handle group slows a handle-heavy workload.",
+            Admission = AdmissionMode.MetadataOnly,
+            CompilationAvailable = true,
+            RequestPreviewAvailable = true,
+            Sources =
+            [
+                new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Process identity and PID-reuse-safe lifecycle context."),
+                new(WindowsSourceCatalog.KernelObjectHandlesSourceId, true, true,
+                    "Each synchronization object's handles, owned by the process that holds each and numbered by its object in the "
+                    + "capture, never by its address (ADR-083)."),
+            ],
+            PreserveExtendedData = true,
+            RequestCallStacks = false,
+            CollectionStatement =
+                "Collects process lifecycle and, of every handle the machine makes, each event's, mutant's and semaphore's: its "
+                + "creation, duplication and close in the process that holds it, its object's number in the capture, and the "
+                + "name a close and the stop's rundown carry. It keeps no object's address and no kernel handle, retains no "
+                + "payload bytes and requests no call stacks.",
+            Overhead = OverheadClass.Moderate,
+            OverheadStatement =
+                "its sources measured Moderate at most (Kernel-Process 1.75 CPU pp). The object manager's handle group's "
+                + "collection alone took a median 0.4 and 0.0 CPU pp, Low, but a handle-heavy workload ran 5.3 and 8.3% lower "
+                + "in throughput, past the 5% target, as each handle's creation and close raises a record in the thread that "
+                + "makes the call. Nothing has measured the profile whole yet.",
+            OverheadEvidence = "bench/results/sync-objects-impact-handles-20261105T035540Z/impact.json",
+        },
         Unavailable(
             CaptureProfileKind.Timing,
             "timing",
