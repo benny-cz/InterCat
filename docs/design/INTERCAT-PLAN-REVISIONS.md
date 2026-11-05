@@ -883,6 +883,7 @@ Revision 956 inventories Win32k's message pump as window messages' lead (ADR-086
 Revision 957 measures the order a session delivers a window message's ends in (ADR-086's third addendum): none of 195,781 records in three runs arrived after one raised later, so a gate may number a message by its pointer as records arrive.
 Revision 958 adds a window message gate (ADR-087): it follows a message at its queue message pointer from its start to its end and numbers it in the capture, a message begun before the capture its own and a record delivered out of order numbered alone; no profile compiles it yet.
 Revision 959 admits Win32k's six message events through the window message gate (ADR-087's addendum): each end by its message's number, written over its pointer, a send's start keeping its receiving process, and a record delivered out of order omitted as a gate omission of its own.
+Revision 960 binds a window message's records to the process that raised them, as `process-binding-v7` (ADR-087's second addendum): FX-WMSG-001 had every end raised in the process that sent, posted or retrieved it.
 
 ## Revisions, a paragraph each, in order
 
@@ -4177,3 +4178,11 @@ no window, thread, message number or parameter is admitted, and window messages 
 delivered out of the order raised is omitted as `OutOfOrder`, a new gate omission the ledger counts by reason, the
 capture's health reports, `icat record` says and coverage makes a partial gap. A schema without an end's pointer refuses
 the source. No binding rule or profile reaches the source yet.
+
+Revision 960 is `process-binding-v7` (ADR-087's second addendum, ADR-030). A window message record's payload names no
+owner, a send's start naming its receiver only as the message's other end, and FX-WMSG-001 had every message of three
+runs raised at both ends in the process that sent, posted or retrieved it. So ADR-030's header binding reaches the
+`WindowMessage` mechanism. What binds changes, so the rule is a new identity: a checkpoint derived under version 2 to 6
+is read as version 7's wherever every record named its owner, and one counting a record without an owner is derived
+again, its refusal naming window messages. The contracts that name the binding rule, the grouped answer's caveat and the
+Desktop's explanations name version 7. No profile requests the source yet.

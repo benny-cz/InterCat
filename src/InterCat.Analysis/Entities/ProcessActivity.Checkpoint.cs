@@ -145,7 +145,7 @@ public sealed partial class ProcessActivityIndex
             throw reader.Invalid(
                 $"it was derived under {earlierRule}, which left {withoutOwner:N0} "
                 + $"{(withoutOwner == 1 ? "record" : "records")} naming no owner unbound, and "
-                + $"{ProcessInstanceIndex.BindingRule} binds an RPC, HTTP, COM call or synchronization handle record among them to the process that raised it.");
+                + $"{ProcessInstanceIndex.BindingRule} binds an RPC, HTTP, COM call, synchronization handle or window message record among them to the process that raised it.");
         }
 
         int count = reader.Count(4 + 8 + 8 + 8);

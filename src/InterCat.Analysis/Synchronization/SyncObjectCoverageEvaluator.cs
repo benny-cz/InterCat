@@ -13,7 +13,7 @@ public sealed record SyncObjectCoverageSettings
 
 /// <summary>
 /// One of a capture's synchronization handle records as a session holds it (ADR-083): its kind - a handle's creation or a
-/// duplication, an open; a close; or a handle open at the stop, an inventory - the process it is bound to under
+/// duplication, an open; a close; or a handle open at the stop, an inventory - the process it is bound to, since
 /// `process-binding-v6`, the object's number the gate wrote over its address, and the name a close and a rundown carry.
 /// </summary>
 public sealed record SyncObjectObservation

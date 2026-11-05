@@ -162,7 +162,7 @@ public sealed class WindowMessageAdmissionTests
         Assert.Equal(4L, Slot(plan, next, "pqmsg"));
     }
 
-    [Fact(DisplayName = "R22: an admitted window message record is a window message row of a family of its own, its message's number and a send's receiving process source fields, the process that raised it kept in its header")]
+    [Fact(DisplayName = "R22: an admitted window message record is a window message row of a family of its own, its message's number and a send's receiving process source fields, and the process that raised it its owner, never the receiver it names")]
     public void AnAdmittedRecordIsAWindowMessageRow()
     {
         SourceAdmissionPlan plan = Compiled();
@@ -188,7 +188,10 @@ public sealed class WindowMessageAdmissionTests
         Assert.Equal(
             (Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Outbound),
             (row.Mechanism, row.Layer, row.Kind, row.Direction));
+        // Its payload names no owner, so the process that raised it owns it (since `process-binding-v7`), the receiver it
+        // names a source field and never its owner.
         Assert.Equal(((int?)null, 400), (row.OwnerProcessId, row.HeaderProcessId));
+        Assert.Equal(400, RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.Kind, row.HeaderProcessId));
         Assert.Equal(
             [(SourceField.PeerProcessId, 700L), (SourceField.WindowMessageNumber, 1L)],
             ObservationNormalizerV1.FieldRows(started, Plan(plan, SendStart), row).Select(field => (field.Field, field.Value!.Value)).OrderBy(field => field.Field));
@@ -202,6 +205,7 @@ public sealed class WindowMessageAdmissionTests
         using RecordEnvelopeV1 retrieved = mapper.ToEnvelope(retrieval, Plan(plan, RetrieveSendStart), CaptureId.New());
         ObservationRowV1 end = normalizer.ToRow(retrieved, Plan(plan, RetrieveSendStart));
         Assert.Equal((ObservationKind.RequestStart, Direction.Inbound, 700), (end.Kind, end.Direction, end.HeaderProcessId));
+        Assert.Equal(700, RecordAttribution.OwnerOf(end.OwnerProcessId, end.Mechanism, end.Kind, end.HeaderProcessId));
         SourceFieldRowV1 number = Assert.Single(ObservationNormalizerV1.FieldRows(retrieved, Plan(plan, RetrieveSendStart), end));
         Assert.Equal((SourceField.WindowMessageNumber, (long?)1), (number.Field, number.Value));
         Assert.Null(end.Validate());

@@ -1,6 +1,6 @@
 # InterCat entities v1
 
-Status: **implemented** as `process-binding-v6` (revision 939), with the v1 fallback for older generations that
+Status: **implemented** as `process-binding-v7` (revision 960), with the v1 fallback for older generations that
 publish no `source-fields-v1`. Thread, endpoint, resource and channel instances remain undefined (§8); which process is
 at a record's other end is `contracts/relations-v1.md`'s, built on the bindings fixed here.
 
@@ -35,8 +35,9 @@ witnesses nothing and is counted.
 A record belongs to the PID its own payload names. A kernel source raises a record in whatever context the kernel
 was in, so its event header's process is context only and never an owner (§4.1).
 
-A user-mode provider raises a record in the process it describes, and the kernel's object manager raises a handle's
-creation and close in the process whose handle it is. For a mechanism where that is measured, a record whose payload
+A user-mode provider raises a record in the process it describes, the kernel's object manager raises a handle's
+creation and close in the process whose handle it is, and Win32k raises each of a window message's ends in the process
+that sends, posts or retrieves it. For a mechanism where that is measured, a record whose payload
 names no owner belongs to the process its event header names (ADR-030) - unless it is an inventory, which is raised
 wherever its rundown ran, never in the process it describes:
 
@@ -46,13 +47,14 @@ wherever its rundown ran, never in the process it describes:
 | `Http` | yes: WinINet raises its capture records in the client process that made the exchange | FX-HTTP-001: 444 of 444 records raised in the client process, and none of a decoy's reached a session scoped to that client (ADR-037) |
 | `ComCall` | yes: COM-Perf raises a call's client start and stop in the calling process, its served start and stop in the serving one | FX-COM-001: every call of four runs at both ends, each in the process that made or served it, and under a session's process filter none of a decoy pair's; FX-COM-002: a call across an apartment in its own process at both ends (ADR-077) |
 | `Synchronization` | yes for a handle's creation and close: the object manager raises each in the process that made or closed it. A duplication names the process it made its handle in, and a handle open at the stop its holder, so both bind by their payload; an object type at the stop, an inventory, binds to none | FX-SYNC-001: every handle's creation and close of four runs in the process that made and closed it; FX-SYNC-002: a duplicated handle's close in its target, a duplication raised in the process that asked for it, and the stop's rundown raised in processes other than the holders it named. No kernel handle's record is admitted, its header naming whichever process the kernel ran for (ADR-082, ADR-083) |
+| `WindowMessage` | yes: Win32k raises a send's start and stop in the sender, its retrieval's start and stop in the receiver, a post's queueing in the poster and its retrieval in the receiver. A send's start names the receiving process only as its other end, never its owner | FX-WMSG-001: every message of three runs at both ends, each end raised in the process that sent, posted or retrieved it (ADR-086, ADR-087) |
 | any other | no | — |
 
 A payload owner always wins. `process-binding-v2` bound payload owners only; `process-binding-v3` (revision 177)
 adds this table and changes nothing for a record whose payload names its owner; `process-binding-v4` (revision 238)
-adds its `Http` row, `process-binding-v5` (revision 914) its `ComCall` row, and `process-binding-v6` (revision 939) its
-`Synchronization` row and the rule that a header binds no inventory, which no earlier row's mechanism has, each changing
-nothing else. A record with no owner by either
+adds its `Http` row, `process-binding-v5` (revision 914) its `ComCall` row, `process-binding-v6` (revision 939) its
+`Synchronization` row and the rule that a header binds no inventory, which no earlier row's mechanism has, and
+`process-binding-v7` (revision 960) its `WindowMessage` row, each changing nothing else. A record with no owner by either
 belongs to no process and is counted as such.
 
 ## 3. Instances
@@ -147,10 +149,11 @@ states this as an assumption rather than a verified condition.
 
 ## 7. Identity of a derivation
 
-A derivation is identified by `process-binding-v6` and the generation it was derived from. A change to what binds,
+A derivation is identified by `process-binding-v7` and the generation it was derived from. A change to what binds,
 how strongly, or how an instance is keyed is a new rule identity (§24 `entityRevision`); a result names the rule it
-was grouped under. Version 3 adds §2a, version 4 its `Http` row, version 5 its `ComCall` row and version 6 its
-`Synchronization` row. A derivation under version 2, 3, 4 or 5 is version 6's wherever every record named its owner,
+was grouped under. Version 3 adds §2a, version 4 its `Http` row, version 5 its `ComCall` row, version 6 its
+`Synchronization` row and version 7 its `WindowMessage` row. A derivation under version 2, 3, 4, 5 or 6 is version 7's
+wherever every record named its owner,
 since each differs from it only in binding fewer records that name none; a
 derivation checkpoint's counts can show that (`contracts/derivation-checkpoint-v1.md` §4).
 

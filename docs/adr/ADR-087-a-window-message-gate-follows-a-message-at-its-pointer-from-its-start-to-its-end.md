@@ -1,7 +1,8 @@
 # ADR-087: A window message gate follows a message at its pointer from its start to its end
 
 - Status: accepted for M6's UI messaging work package; since revision 959 Win32k's six message events admit through it,
-  a record delivered out of order omitted as such (its addendum); no profile compiles the gate yet
+  a record delivered out of order omitted as such (its addendum); since revision 960 a window message's records bind to
+  the process that raised them, as `process-binding-v7` (its second addendum); no profile compiles the gate yet
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-073, ADR-083, ADR-086, plan M6, §4.2, R22, P7, P12, FX-WMSG-001
@@ -75,3 +76,23 @@ requests the source.
 Tests hold the layout this machine registers, the compiled slots, the gate's admissions and its omission on compiled
 records, an admitted record's row, the refusals, the gate on the callback's path, and the omission's count, coverage and
 words. Thirteen mutations are caught.
+
+## Addendum: a window message's records bind to the process that raised them (revision 960)
+
+The fifth decision asked for the records bound to the process that raised them. A window message record's payload names
+no owner: a send's start names the process that receives it, which is the message's other end, never the record's
+own. FX-WMSG-001 had every message of three runs raised at both ends in the process that sent, posted or retrieved it:
+a send's start and stop in the sender, its retrieval's start and stop in the receiver, a post's queueing in the poster
+and its retrieval in the receiver (ADR-086). So ADR-030's header binding now reaches the `WindowMessage` mechanism:
+each end belongs to the process that raised it.
+
+What binds changes, so the rule is `process-binding-v7`, as the entities contract's section 7 requires. A checkpoint
+derived under version 2 to 6 is read as version 7's wherever every record named its owner, and one counting a record
+without an owner is derived again, its refusal naming window messages. The entities, checkpoint, operations, operation
+index, metrics, relations, query identity, HTTP exchange and COM call contracts name the new rule; the grouped answer's
+caveat names window messages among the records a header binds, and the Desktop's explanations say version 7.
+
+Tests pin the mechanisms a header binds, bind a session's window message records - a send's start and stop to the
+sender, its retrieval to the receiver, a post's queueing to the poster and its retrieval to the receiver - bind an
+admitted record's row to the process that raised it, never the receiver it names, and read a version 6 checkpoint; five
+mutations are caught. No profile requests the source yet.

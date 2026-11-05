@@ -16,7 +16,7 @@ namespace InterCat.Desktop.Tests;
 /// </summary>
 public sealed class GroupingTests
 {
-    private const string Bound = " Each member's own records are bound to it by process-binding, version 6.";
+    private const string Bound = " Each member's own records are bound to it by process-binding, version 7.";
     private const string Coverage = " Coverage over the session: unknown.";
 
     [Fact(DisplayName = "§6.3: grouped by terminal session, a busy session folds into one graph node its card names, and the inspector, a search and the evidence step name the session")]

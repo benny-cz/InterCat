@@ -10,13 +10,14 @@ namespace InterCat.Domain.Tests;
 /// </summary>
 public sealed class RecordAttributionTests
 {
-    [Fact(DisplayName = "ADR-030: only RPC, HTTP, COM calls and synchronization handles, each measured on its fixture, bind a record by the process that raised it")]
+    [Fact(DisplayName = "ADR-030: only RPC, HTTP, COM calls, synchronization handles and window messages, each measured on its fixture, bind a record by the process that raised it")]
     public void OnlyMeasuredMechanismsBindByTheirHeader()
     {
         // A mechanism added here needs its own measurement - HTTP's is FX-HTTP-001's (ADR-037), COM calls' FX-COM-001's
-        // (ADR-077), synchronization handles' FX-SYNC-001's and FX-SYNC-002's (ADR-082) - a new binding rule identity, and
-        // the texts that name these mechanisms (the grouped-answer caveat and the checkpoint refusal).
-        Assert.Equal([Mechanism.Rpc, Mechanism.Synchronization, Mechanism.Http, Mechanism.ComCall],
+        // (ADR-077), synchronization handles' FX-SYNC-001's and FX-SYNC-002's (ADR-082), window messages' FX-WMSG-001's
+        // (ADR-086) - a new binding rule identity, and the texts that name these mechanisms (the grouped-answer caveat and
+        // the checkpoint refusal).
+        Assert.Equal([Mechanism.Rpc, Mechanism.Synchronization, Mechanism.WindowMessage, Mechanism.Http, Mechanism.ComCall],
             Enum.GetValues<Mechanism>().Where(RecordAttribution.RaisedByTheirProcess));
 
         // A COM activation is not a call and carries no field: none binds by its header.
@@ -43,5 +44,11 @@ public sealed class RecordAttributionTests
         Assert.Equal(6_200, RecordAttribution.OwnerOf(6_200, Mechanism.Synchronization, ObservationKind.Inventory, 6_100));
         Assert.Null(RecordAttribution.OwnerOf(null, Mechanism.Synchronization, ObservationKind.Inventory, 6_100));
         Assert.False(RecordAttribution.HeaderBinds(Mechanism.Rpc, ObservationKind.Inventory));
+
+        // Each end of a window message binds to the process that raised it: a send's start to the sender, never the
+        // receiver it names, and the receiver's retrieval to the receiver.
+        Assert.Equal(7_100, RecordAttribution.OwnerOf(null, Mechanism.WindowMessage, ObservationKind.RequestStart, 7_100));
+        Assert.Equal(7_200, RecordAttribution.OwnerOf(null, Mechanism.WindowMessage, ObservationKind.Receive, 7_200));
+        Assert.Null(RecordAttribution.OwnerOf(null, Mechanism.Clipboard, ObservationKind.Send, 7_100));
     }
 }

@@ -18,6 +18,7 @@ internal static class TestSessions
     public static readonly Guid AlpcClass = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
     public static readonly Guid ComPerfProvider = Guid.Parse("b8d6861b-d20f-4eec-bbae-87e0dd80602b");
     public static readonly Guid ObjectManagerClass = Guid.Parse("89497f50-effe-4440-8cf2-ce6b1cdcaca7");
+    public static readonly Guid Win32kProvider = Guid.Parse("8c416c79-d49b-4f01-a467-e56d3aa8234c");
     public static readonly DateTimeOffset Committed = new(2026, 9, 22, 16, 0, 0, TimeSpan.Zero);
 
     // The object manager's handle records by opcode: a handle's creation, close and duplication, an object type at the
@@ -251,6 +252,52 @@ internal static class TestSessions
             _ => ObservationKind.Inventory,
         },
         Direction = opcode == HandleDuplicated ? Direction.Inbound : Direction.DirectionNotApplicable,
+        ByteAvailability = FieldAvailability.NotApplicable,
+        StatusAvailability = FieldAvailability.NotApplicable,
+        AttributionQuality = QualityLevel.UnknownQuality,
+        CorrelationQuality = QualityLevel.UnknownQuality,
+        MeasurementQuality = QualityLevel.UnknownQuality,
+        TimingQuality = QualityLevel.Proven,
+    };
+
+    /// <summary>
+    /// A window message's end raised in <paramref name="raisedBy"/>, as Win32k's message pump admits one through its gate
+    /// (ADR-087's addendum): a send's start (60) and stop (70) in the sender, its retrieval's start (62) and stop (83) in the
+    /// receiver, a post's queueing (59) in the poster and its retrieval (61) in the receiver. Its payload names no owner, so
+    /// only its header says whose it is.
+    /// </summary>
+    public static ObservationRowV1 WindowMessage(long ticks, ushort eventId, int raisedBy, ulong ordinal) => new()
+    {
+        RawStreamId = 1,
+        RawSourceEpoch = 1,
+        RawRecordOrdinal = ordinal,
+        FactKey = FactKey.Create("window-message"),
+        ProviderId = Win32kProvider,
+        EventId = eventId,
+        DescriptorVersion = 0,
+        SchemaFingerprint = "sha256:" + new string('f', 64),
+
+        // As Win32k's manifest declares them: win:Start for a send's and a retrieval's start, win:Stop for their stops.
+        Opcode = eventId switch
+        {
+            60 or 62 => 1,
+            70 or 83 => 2,
+            _ => 0,
+        },
+        NativeTicks = ticks,
+        HeaderProcessId = raisedBy,
+        HeaderThreadId = raisedBy + 1,
+        ProcessorNumber = 0,
+        Mechanism = Mechanism.WindowMessage,
+        Layer = ObservationLayer.Application,
+        Kind = eventId switch
+        {
+            59 => ObservationKind.Send,
+            61 => ObservationKind.Receive,
+            60 or 62 => ObservationKind.RequestStart,
+            _ => ObservationKind.RequestEnd,
+        },
+        Direction = eventId is 59 or 60 or 70 ? Direction.Outbound : Direction.Inbound,
         ByteAvailability = FieldAvailability.NotApplicable,
         StatusAvailability = FieldAvailability.NotApplicable,
         AttributionQuality = QualityLevel.UnknownQuality,

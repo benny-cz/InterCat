@@ -297,7 +297,42 @@ public sealed class ProcessInstanceTests
         });
         Assert.Equal(5, grouped.Value);
         Assert.Contains(grouped.Caveats, caveat => caveat.Contains(
-            "used only for an RPC, HTTP, COM call or synchronization handle record, which names none", StringComparison.Ordinal));
+            "used only for an RPC, HTTP, COM call, synchronization handle or window message record, which names none", StringComparison.Ordinal));
+    }
+
+    [Fact(DisplayName = "R22: a window message record binds to the process that raised it - a send's start and stop to the sender, never the receiver its start names, the receiver's retrieval to the receiver, a post's queueing to the poster and its retrieval to the receiver")]
+    public void AWindowMessageRecordBindsWhereItWasRaised()
+    {
+        using var session = new TemporarySession();
+        Publish(
+            session.Store,
+            [
+                Lifecycle(100, ObservationKind.Create, 400, 1),
+                Lifecycle(110, ObservationKind.Create, 700, 2),
+                TestSessions.WindowMessage(150, 60, raisedBy: 400, 3),
+                TestSessions.WindowMessage(151, 62, raisedBy: 700, 4),
+                TestSessions.WindowMessage(152, 83, raisedBy: 700, 5),
+                TestSessions.WindowMessage(153, 70, raisedBy: 400, 6),
+                TestSessions.WindowMessage(160, 59, raisedBy: 400, 7),
+                TestSessions.WindowMessage(161, 61, raisedBy: 700, 8),
+            ]);
+
+        ProcessInstanceIndex index = Derive(session.Store);
+        int sender = index.Instances.ToList().FindIndex(instance => instance.ProcessId == 400);
+        int receiver = index.Instances.ToList().FindIndex(instance => instance.ProcessId == 700);
+        ProcessBinding[] owners = index.OwnersOf(Assert.Single(TestSessions.Segments(session.Store)));
+
+        // Each end is its raiser's: the sender's start and stop and its post's queueing, the receiver's retrievals.
+        Assert.Equal([sender, receiver, receiver, sender, sender, receiver], owners[2..].Select(owner => owner.Instance));
+        Assert.All(owners[2..], owner => Assert.Equal((RelationStrength.Correlated, ProcessBindingReason.Bound), (owner.Strength, owner.Reason)));
+        ProcessActivityIndex activity = ProcessActivityIndex.Derive(TestSessions.Segments(session.Store), index);
+        Assert.Equal(
+            [(Mechanism.ProcessLifecycle, 1L), (Mechanism.WindowMessage, 3L)],
+            activity.MechanismsOf(sender, EvidencePolicy.IncludeCorrelated).OrderBy(count => count.Mechanism));
+        Assert.Equal(
+            [(Mechanism.ProcessLifecycle, 1L), (Mechanism.WindowMessage, 3L)],
+            activity.MechanismsOf(receiver, EvidencePolicy.IncludeCorrelated).OrderBy(count => count.Mechanism));
+        Assert.Equal((0L, 0L), (activity.RecordsWithoutOwner, activity.RecordsNotBound));
     }
 
     [Fact(DisplayName = "R22: a synchronization handle record binds where it was raised or to what it names - a creation and a close to the process that raised them, a duplication to the target it names, the stop's rundown to the holder it names - and an object type's inventory to none")]

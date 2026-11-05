@@ -45,7 +45,7 @@ public sealed class ExplanationTests
             new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
         ProcessNode Holder(int pid, int holder) =>
             workspace.Snapshot.Processes.Single(node => node.ProcessId == pid && node.PidHolder == holder);
-        const string Rule = "process-binding, version 6";
+        const string Rule = "process-binding, version 7";
         const string Coverage = " Coverage over the session: unknown.";
 
         // Nothing selected, nothing to explain.
@@ -110,7 +110,7 @@ public sealed class ExplanationTests
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
             new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
-        const string Bound = " Each member's own records are bound to it by process-binding, version 6.";
+        const string Bound = " Each member's own records are bound to it by process-binding, version 7.";
         const string Coverage = " Coverage over the session: unknown.";
 
         // Both holders of PID 100 ran one executable, named in two cases, and the group's total leaves out the second's sends.

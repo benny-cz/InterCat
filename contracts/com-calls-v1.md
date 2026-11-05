@@ -20,7 +20,7 @@ A derivation reads every segment of one generation, of **one capture on one cloc
 
 A record is a COM call record when its mechanism is `ComCall` and its kind is `RequestStart` or `RequestEnd`. Its side is
 the client for `Outbound` - COM-Perf's client start and stop, 39 and 40 - and the server for `Inbound`, 43 and 44. Its
-process is the one that raised it, by `process-binding-v6` (`contracts/entities-v1.md` §2a); a COM call record of no
+process is the one that raised it, by `process-binding-v7` (`contracts/entities-v1.md` §2a); a COM call record of no
 process, or of another kind or direction, is counted and is no call record. It carries, as `source-fields-v1` rows
 (`contracts/segment-v1.md`):
 
@@ -112,7 +112,7 @@ RPC call that served it. A server RPC call two relations reach is related to nei
 
 ## 7. Identity of a derivation
 
-A derivation is identified by `com-call-link-v1`, the `rpc-call-operation-v1` and `process-binding-v6` derivations it
+A derivation is identified by `com-call-link-v1`, the `rpc-call-operation-v1` and `process-binding-v7` derivations it
 rests on, and the generation it was derived from. A change to what pairs, what carries, what links, or when either is
 refused is a new rule identity (§24 `correlationRevision`).
 
