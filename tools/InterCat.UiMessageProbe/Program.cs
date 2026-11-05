@@ -46,6 +46,10 @@ internal static class Program
             Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]: runs FX-WMSG-001 under an owned session enabling");
             Console.Error.WriteLine("  Microsoft-Windows-Win32k at its message pump keyword, machine-wide, and writes what it recorded of the");
             Console.Error.WriteLine("  messages the sender sent and posted to the receiver's window.");
+            Console.Error.WriteLine("  --impact [--pairs n] [--copies n] [--posts n]: machine CPU and workload time with and without a session");
+            Console.Error.WriteLine("  collecting the message pump keyword machine-wide, in pairs, over FX-WMSG-001's sender sending and");
+            Console.Error.WriteLine("  posting that many messages, and the processor time of the workload's processes and of the probe's");
+            Console.Error.WriteLine("  own consumer.");
             return 2;
         }
 
@@ -61,6 +65,25 @@ internal static class Program
         {
             string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
                 "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+
+            // What collecting the message pump costs, in pairs with and without a session collecting it machine-wide, over
+            // FX-WMSG-001's sender sending and posting thousands of messages.
+            if (args.Contains("--impact", StringComparer.Ordinal))
+            {
+                int pairs = int.Parse(Option(args, "--pairs") ?? "9", CultureInfo.InvariantCulture);
+                string copies = Option(args, "--copies") ?? "20000";
+                string posts = Option(args, "--posts") ?? "20000";
+                Dictionary<string, object?> impact = await Impact.MeasureAsync(workload,
+                    ["window-message", "--truth", "{truth}", "--copies", copies, "--posts", posts, "--bytes", "64"], pairs).ConfigureAwait(false);
+                impact["schema"] = "intercat.window-message-impact.v1";
+                impact["measuredUtc"] = DateTimeOffset.UtcNow;
+                impact["build"] = CapabilityInventoryProbe.DescribeEnvironment().BuildId;
+                impact["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+                File.WriteAllText(Path.Combine(output, "impact.json"), JsonSerializer.Serialize(impact, Json));
+                Console.WriteLine(JsonSerializer.Serialize(impact, Json));
+                return 0;
+            }
+
             Dictionary<string, object?> measured = await Measure.RunAsync(workload, output,
                 int.Parse(Option(args, "--copies") ?? "32", CultureInfo.InvariantCulture),
                 int.Parse(Option(args, "--posts") ?? "32", CultureInfo.InvariantCulture),

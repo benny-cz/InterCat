@@ -1,10 +1,11 @@
 # ADR-086: Win32k's message pump records a window message between processes at both ends, but not which message
 
 - Status: accepted for M6's UI messaging work package; no catalog source records window messages and no capture has
-  recorded one through the product yet
+  recorded one through the product yet; since revision 955 collecting the message pump's cost is measured, Low in the
+  processor time it adds but a message-bound workload past §12's throughput target (its addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
-- Relates to: plan M6, §4.1, §4.2, R3, R22, P7, P16, FX-WMSG-001, `tools/InterCat.UiMessageProbe`
+- Relates to: plan M6, §4.1, §4.2, §12, R3, R22, P7, P16, FX-WMSG-001, `tools/InterCat.UiMessageProbe`
 
 ## Context
 
@@ -58,3 +59,36 @@ carry.
   through the product. With no byte measured, a tier through the product would be experimental evidence at most.
 - Tests hold the three runs: every message at both ends, each send naming its receiver, each end joined by its pointer, and no
   message number or parameter in any record of the two processes.
+
+## Addendum: what collecting the message pump costs (revision 955)
+
+The first consequence asked for the message pump's cost, every GUI thread's pumping being machine-wide.
+`tools/InterCat.UiMessageProbe --measure --impact` ran a message-bound workload - FX-WMSG-001 with `--copies 20000
+--posts 20000 --bytes 64`, its sender sending its receiver's window 20,000 `WM_COPYDATA` messages and posting it 20,000
+more, about two and a half seconds - in alternating pairs, once with no session and once while an owned session of its own
+collected `Microsoft-Windows-Win32k` at keyword `0x400000` machine-wide, its consumer only counting the records by when each
+was raised, as the object manager's, COM-Perf's and AFD's costs were measured (ADR-082's, ADR-077's and ADR-072's
+addenda). A pair run first and not kept warmed the consumer. The machine ran a virtual machine and other applications
+beside the measurement, and its busy share with no session moved between 15 and 26% from trial to trial, far more than the
+session added; so each trial also accounted the processor time of the workload's processes, through a job holding them,
+and of the probe's own, the consumer's: what the session added, apart from anything else the machine ran. Nine pairs a
+series, nothing lost:
+
+| Series | Processor time added | Busy share | Workload's own time | Workload slower by | Throughput regression | Records a second; in the second before |
+|---|---|---|---|---|---|---|
+| `bench/results/window-message-impact-20261105T175136Z` | 0.36 pp: Low | 1.56 pp | 5.3% more | 9.0% | 8.3% | about 52,000; about 3,100 |
+| `bench/results/window-message-impact-20261105T175321Z` | 0.28 pp: Low | none | 4.6% more | 5.4% | 5.2% | about 53,000; about 3,100 |
+
+A message raises its records in the threads that send, post and retrieve it - a send four, at both ends, a post two - so
+the time is the messages' own: a workload messaging as fast as it can spends about a twentieth more processor time, and its
+throughput fell past §12's 5% target in both series' medians, the second's by little. The consumer took about half a
+microsecond a record. In the second before each workload ran, the machine's other windows raised about 3,100 records: what
+a capture collecting the keyword receives with no messaging workload of its own, well within §12's 100,000 records a second.
+
+1. Collecting the message pump is Low in the processor time it adds, stated beside the regression a message-bound workload
+   measured, and only an opt-in profile saying so may admit it; Explore never does.
+2. What remains before a profile admits it: inventorying it as the mechanism's lead, numbering each message's ends from its
+   queueing or start to its retrieval's end, and a capture through the product.
+
+A test holds the two series to their class, the workload's time and regression, and their rates; fourteen alterations of
+them are caught.

@@ -878,6 +878,7 @@ Revision 951 begins the mailslots package with its metadata inspection: no regis
 Revision 952 measures FX-MAIL-001 (ADR-085): neither the kernel's classic file I/O class nor Kernel-File records a mailslot, while both record the same processes' own files, so mailslots are unsupported on this build, and the capability report states a mechanism no source covers where a fixture measured it.
 Revision 953 begins the UI messaging package with its metadata inspection: Win32k declares under its message pump keyword a posted message's queueing and retrieval and a sent message's start and stop, the start naming the receiver's process, and the clipboard's writes and reads by process; no event names DDE or a copied payload's size.
 Revision 954 measures FX-WMSG-001 (ADR-086): Win32k's message pump records every message one process sends or posts another's window at both ends, a send naming its receiver and each end joined by its queue message pointer, but no record names which message or a payload's size.
+Revision 955 measures what collecting Win32k's message pump costs (ADR-086's addendum): Low in the processor time it adds, a message-bound workload spending a twentieth more of its own and past §12's throughput target, so only an opt-in profile may admit it.
 
 ## Revisions, a paragraph each, in order
 
@@ -4121,3 +4122,15 @@ retrieval in the receiver, each end joined to the other by the queue message's k
 processes carried zero for its message number and parameters, and none a payload's size: the records say which process
 messaged which and when, never which message. No catalog source records window messages yet, and the clipboard is
 measured only with the machine user's consent, as a workload writing it would replace what the user holds on it.
+
+Revision 955 measures what collecting Win32k's message pump costs (ADR-086's addendum). `tools/InterCat.UiMessageProbe
+--measure --impact` runs FX-WMSG-001's sender sending its receiver's window 20,000 `WM_COPYDATA` messages and posting it
+20,000 more, in alternating pairs, once with no session and once while an owned session collects Win32k's message pump
+keyword machine-wide, its consumer only counting the records by when each was raised. The machine's busy share moved with
+its other load far more than the session added, so each trial also accounts the processor time of the workload's
+processes, through a job holding them, and of the probe's own consumer. In two series of nine pairs, nothing lost, the
+session added 0.36 and 0.28 pp of the machine, Low; the workload spent about a twentieth more processor time of its own,
+each message raising its records in the threads that send, post and retrieve it, and was 8.3 and 5.2% lower in
+throughput, past §12's 5% target. The consumer took about half a microsecond a record, and the machine's other windows
+raised about 3,100 records a second with no workload of the probe's. Only an opt-in profile stating the cost may admit
+the keyword; Explore never does.
