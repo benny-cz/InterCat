@@ -880,6 +880,7 @@ Revision 953 begins the UI messaging package with its metadata inspection: Win32
 Revision 954 measures FX-WMSG-001 (ADR-086): Win32k's message pump records every message one process sends or posts another's window at both ends, a send naming its receiver and each end joined by its queue message pointer, but no record names which message or a payload's size.
 Revision 955 measures what collecting Win32k's message pump costs (ADR-086's addendum): Low in the processor time it adds, a message-bound workload spending a twentieth more of its own and past §12's throughput target, so only an opt-in profile may admit it.
 Revision 956 inventories Win32k's message pump as window messages' lead (ADR-086's second addendum): `etw/manifest/Microsoft-Windows-Win32k` at its message pump keyword, experimental, requested by no profile and admitting no event.
+Revision 957 measures the order a session delivers a window message's ends in (ADR-086's third addendum): none of 195,781 records in three runs arrived after one raised later, so a gate may number a message by its pointer as records arrive.
 
 ## Revisions, a paragraph each, in order
 
@@ -4144,3 +4145,13 @@ the message is retrieved, so a capture must number each message first. Its notes
 what FX-WMSG-001 measured - every message at both ends, a send naming its receiver, none naming which message - and its
 cost, Low beside a message-bound workload's throughput regression, so only an opt-in profile stating it may admit it,
 never Explore. No build carries a tier for window messages.
+
+Revision 957 measures the order a session delivers a window message's ends in (ADR-086's third addendum), as a gate
+deciding records as they arrive meets them in that order. `tools/InterCat.UiMessageProbe --measure --order` runs
+FX-WMSG-001 under an owned session with the product's buffer size and keeps each record's delivery order, raise time and
+processor. In three runs of up to 20,000 sends and 20,000 posts, nothing lost, none of 195,781 records, the machine's other
+windows' among them, arrived after one raised later, though most messages' ends were raised on two processors; the runs'
+messages reused hundreds of pointers, and a gate following a message by its pointer as records arrive - a start beginning
+it, an end joining it, a send's stop or a post's retrieval ending it - numbered every record as its message's life is.
+The order is this build's, measured at these rates, so the gate that relies on it is to count each record delivered out
+of order.

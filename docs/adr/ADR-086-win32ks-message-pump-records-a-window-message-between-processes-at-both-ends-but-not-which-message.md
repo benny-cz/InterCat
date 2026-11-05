@@ -3,7 +3,9 @@
 - Status: accepted for M6's UI messaging work package; no catalog source records window messages and no capture has
   recorded one through the product yet; since revision 955 collecting the message pump's cost is measured, Low in the
   processor time it adds but a message-bound workload past §12's throughput target (its addendum); since revision 956 it
-  is inventoried as the mechanism's lead, requested by no profile and admitting no event (its second addendum)
+  is inventoried as the mechanism's lead, requested by no profile and admitting no event (its second addendum); since
+  revision 957 a session is measured delivering a message's ends in the order they were raised, so a gate may number a
+  message by its pointer as records arrive (its third addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: plan M6, §4.1, §4.2, §12, R3, R22, P7, P16, FX-WMSG-001, `tools/InterCat.UiMessageProbe`
@@ -115,3 +117,35 @@ at, experimental, requested by no profile and admitting no event.
 No other source claims window messages, and no build carries a tier for them: no fixture has measured them through the
 product. A test holds the lead, its absence from every profile and the absence of a tier; nine mutations of the catalog
 entry are caught.
+
+## Addendum: a session delivers a message's ends in the order they were raised (revision 957)
+
+The fourth decision asked a capture to number each message from its queueing or start to its retrieval's end before
+joining by its pointer. A capture's gates decide records one at a time as they arrive (ADR-073), so such a gate meets a
+message's ends in the order a session delivers them, and a message's ends are raised microseconds apart, often on two
+processors, whose buffers a session hands over apart. `tools/InterCat.UiMessageProbe --measure --order` ran FX-WMSG-001
+under an owned session with the product's buffer size, 128 KB, at the source's level and keyword, and kept each record
+with the order it was delivered in, the time it was raised and the processor it was raised on. Three runs, nothing lost:
+
+| Quantity | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| `WM_COPYDATA` sent, and messages posted, by the truth | 32, 32 | 2,048, 2,048 | 20,000, 20,000 |
+| Records delivered machine-wide, and those delivered after one raised later | 18,298, 0 | 29,143, 0 | 148,340, 0 |
+| Sends with every end, delivered in the order raised, and raised on two processors | 32, 32, 31 | 2,048, 2,048, 940 | 20,000, 20,000, 11,807 |
+| Posts and the close with both ends, delivered in the order raised, and raised on two processors | 33, 33, 31 | 2,049, 2,049, 1,544 | 20,001, 20,001, 17,547 |
+| Pointers the run's messages used more than once | 5 | 74 | 542 |
+| Records a gate following a message by its pointer as they arrive numbers apart from its life | 0 | 0 | 0 |
+
+1. **A session delivers its records in the order they were raised.** Not one of 195,781 records, the machine's other
+   windows' among them, arrived after one raised later, though most messages' ends were raised on two processors. So a
+   send's start arrives before the receiver's retrieval, the retrieval before the sender's stop, and a post's queueing
+   before its retrieval.
+2. **So a gate may number a message by its pointer as records arrive.** A send's start or a post's queueing begins a
+   message at its pointer, an end joins the message its pointer has, and a send's stop or a post's retrieval ends it. A
+   pointer the runs used hundreds of times over was another message's at each start, and the simulated gate numbered every
+   record as its message's life is (R22).
+3. **The order is measured, not promised.** It is this build's, with the product's buffer size, at these rates. A gate
+   relying on it is to count each record raised before one delivered ahead of it, so a capture whose delivery is ever out
+   of order says so instead of numbering by it.
+
+A test holds the three runs; thirteen alterations of them are caught.

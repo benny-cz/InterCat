@@ -49,6 +49,48 @@ public sealed class WindowMessageFeasibilityTests
         }
     }
 
+    [Fact(DisplayName = "R22: a session with the product's buffer size delivers FX-WMSG-001's message ends in the order they were raised - three runs of up to 40,000 messages, ends raised on two processors and pointers reused - so a gate following a message by its pointer as records arrive numbers each as its life is")]
+    public void MessageEndsArriveInTheOrderRaised()
+    {
+        string results = Path.Combine(RepositoryRoot(), "bench", "results");
+        string[] runs = [.. Directory.EnumerateDirectories(results, "window-message-order-*")
+            .Select(directory => Path.Combine(directory, "report.json")).Where(File.Exists).Order(StringComparer.Ordinal)];
+        Assert.Equal(3, runs.Length);
+        var sizes = new List<(int Copies, int Posts)>();
+        foreach (string run in runs)
+        {
+            using JsonDocument report = JsonDocument.Parse(File.ReadAllText(run));
+            JsonElement r = report.RootElement;
+            int copies = r.GetProperty("truth").GetProperty("copiesSent").GetInt32();
+            int posts = r.GetProperty("truth").GetProperty("messagesPosted").GetInt32();
+            sizes.Add((copies, posts));
+
+            // Under the product's buffer size (OwnedSessionPlan's), nothing lost: every message of the run, the close among its
+            // posts, with every end - a send's four, a post's two.
+            Assert.Equal((128, 0), (r.GetProperty("bufferKilobytes").GetInt32(), r.GetProperty("eventsLost").GetInt32()));
+            Assert.Equal((4 * copies + 2 * (posts + 1), copies + posts + 1, copies, posts + 1, 0),
+                (r.GetProperty("workloadEnds").GetInt32(), r.GetProperty("workloadMessageLives").GetInt32(), r.GetProperty("sendsWithEveryEnd").GetInt32(),
+                    r.GetProperty("postsWithBothEnds").GetInt32(), r.GetProperty("livesWithoutEveryEnd").GetInt32()));
+
+            // The whole stream was delivered in the order it was raised, and so every message's ends, though a message's ends
+            // were raised on two processors.
+            Assert.Equal((0L, 0L, 0.0), (r.GetProperty("recordsDeliveredAfterOneRaisedLater").GetInt64(),
+                r.GetProperty("workloadRecordsDeliveredAfterOneRaisedLater").GetInt64(), r.GetProperty("latestDeliveryMilliseconds").GetDouble()));
+            Assert.Equal((copies, posts + 1), (r.GetProperty("sendsDeliveredInTheOrderRaised").GetInt32(), r.GetProperty("postsDeliveredInTheOrderRaised").GetInt32()));
+            Assert.Equal((0, 0), (r.GetProperty("sendsWithTheReceiversRetrievalDeliveredAfterTheSendersStop").GetInt32(),
+                r.GetProperty("sendsWithAnEndDeliveredBeforeTheirStart").GetInt32()));
+            Assert.True(r.GetProperty("sendsRaisedOnTwoProcessors").GetInt32() > 0 && r.GetProperty("postsRaisedOnTwoProcessors").GetInt32() > 0, run);
+
+            // Pointers were reused within the run, and a gate following a message by its pointer as records arrive - a start
+            // beginning a message, an end joining the one its pointer has, a send's stop or a post's retrieval ending it -
+            // numbered every record as its message's life is.
+            Assert.True(r.GetProperty("pointersWithMoreThanOneLife").GetInt32() > 0, run);
+            Assert.Equal((0, 0), (r.GetProperty("recordsAPointerGateWouldMisnumber").GetInt32(), r.GetProperty("livesAPointerGateWouldMisnumber").GetInt32()));
+        }
+
+        Assert.Equal([(32, 32), (2048, 2048), (20_000, 20_000)], sizes);
+    }
+
     [Fact(DisplayName = "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build")]
     public void WindowMessagesHaveALeadAndNoTier()
     {

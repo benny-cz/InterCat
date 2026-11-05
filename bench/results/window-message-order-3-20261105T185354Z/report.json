@@ -1,0 +1,33 @@
+{
+  "question": "Whether a session with the product\u0027s buffer size delivers a window message\u0027s ends in the order they were raised - a send\u0027s start, its retrieval\u0027s start and stop at the receiver and the sender\u0027s stop; a post\u0027s queueing and its retrieval - and what a gate following a message by its pointer as records arrive would number wrongly.",
+  "scenario": "FX-WMSG-001",
+  "truth": {
+    "copiesSent": 20000,
+    "messagesPosted": 20000,
+    "bytes": 64
+  },
+  "bufferKilobytes": 128,
+  "recordsDelivered": 148340,
+  "eventsLost": 0,
+  "recordsDeliveredAfterOneRaisedLater": 0,
+  "workloadRecordsDeliveredAfterOneRaisedLater": 0,
+  "latestDeliveryMilliseconds": 0,
+  "workloadEnds": 120002,
+  "workloadMessageLives": 40001,
+  "pointersWithMoreThanOneLife": 542,
+  "sendsWithEveryEnd": 20000,
+  "sendsDeliveredInTheOrderRaised": 20000,
+  "sendsWithTheReceiversRetrievalDeliveredAfterTheSendersStop": 0,
+  "sendsWithAnEndDeliveredBeforeTheirStart": 0,
+  "sendsRaisedOnTwoProcessors": 11807,
+  "postsWithBothEnds": 20001,
+  "postsDeliveredInTheOrderRaised": 20001,
+  "postsRaisedOnTwoProcessors": 17547,
+  "livesWithoutEveryEnd": 0,
+  "recordsAPointerGateWouldMisnumber": 0,
+  "livesAPointerGateWouldMisnumber": 0,
+  "schema": "intercat.window-message-order.v1",
+  "measuredUtc": "2026-11-05T18:54:01.509095+00:00",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

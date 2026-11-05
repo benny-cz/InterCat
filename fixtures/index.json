@@ -853,7 +853,9 @@
         "IC-002"
       ],
       "covers": {
-        "rules": [],
+        "rules": [
+          "R22"
+        ],
         "invariants": [],
         "prohibitions": [
           "P27",
@@ -875,7 +877,7 @@
           "build": "10.0.26220.0-x64",
           "supportTier": "Primary",
           "date": "2026-11-05",
-          "result": "Measured by tools/InterCat.UiMessageProbe, three runs, nothing lost: every message the sender sent or posted the receiver's window recorded at both ends, a send's start naming the receiver, each end joined to the other by its queue message pointer, and no record naming which message it was. No tier is assigned: Win32k's message pump is inventoried as window messages' lead, requested by no profile and admitting no event, so no capture has recorded them through the product (ADR-086)."
+          "result": "Measured by tools/InterCat.UiMessageProbe, three runs, nothing lost: every message the sender sent or posted the receiver's window recorded at both ends, a send's start naming the receiver, each end joined to the other by its queue message pointer, and no record naming which message it was. Three further runs of up to 40,000 messages under the product's buffer size were delivered in the order they were raised, every message's ends included, so a gate following a message by its pointer as records arrive numbers each as its life is. No tier is assigned: Win32k's message pump is inventoried as window messages' lead, requested by no profile and admitting no event, so no capture has recorded them through the product (ADR-086)."
         }
       ],
       "provenance": {
@@ -885,7 +887,8 @@
       },
       "tests": [
         "P7: FX-WMSG-001's every message one process sent or posted another's window is recorded at both ends by Win32k's message pump - a send's start naming its receiver's process and thread, each end joined to the other by its queue message pointer - and none names which message it was",
-        "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build"
+        "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
+        "R22: a session with the product's buffer size delivers FX-WMSG-001's message ends in the order they were raised - three runs of up to 40,000 messages, ends raised on two processors and pointers reused - so a gate following a message by its pointer as records arrive numbers each as its life is"
       ]
     },
     {
@@ -3314,6 +3317,7 @@
         "R22: a session opened from an investigation keeps its pinned lanes there, in the order pinned, and gets them back",
         "R22: a session opened from an investigation keeps its pins, ranking, evidence policy and lane scale there, which its window lists, and gets them back when opened from it again",
         "R22: a session that published a newer generation reads as advanced, and one an earlier copy was put in place of as replaced, each saying what to do",
+        "R22: a session with the product's buffer size delivers FX-WMSG-001's message ends in the order they were raised - three runs of up to 40,000 messages, ends raised on two processors and pointers reused - so a gate following a message by its pointer as records arrive numbers each as its life is",
         "R22: a synchronization handle record binds where it was raised or to what it names - a creation and a close to the process that raised them, a duplication to the target it names, the stop's rundown to the holder it names - and an object type's inventory to none",
         "R22: a synchronization object's handles are one object from the first the capture sees made at its address to the close of the last it saw made, and the next handle made there begins another",
         "R22: a tile index whose bindings are not the derivation's is not counted by a brush, which reads its segments, and a checkpoint publishes it again",
