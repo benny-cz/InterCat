@@ -573,6 +573,49 @@
       ]
     },
     {
+      "id": "FX-COM-005",
+      "title": "COM calls a capture cuts: a capture started and stopped while slow calls run",
+      "scenario": "Plan M6's COM/DCOM/WinRT work package (ADR-080's fourth addendum): FX-COM-001's exchange of 40 calls the server takes 300 ms to answer, with icat record under the COM calls profile started two seconds after the workload and stopped six seconds later, so one call is in flight at the capture's start and one at its stop - the package's ambiguity case.",
+      "milestone": "M6",
+      "mechanism": "ComCall",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [],
+        "invariants": [],
+        "prohibitions": [
+          "P8"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads com-loopback --calls 40 --delay 0 --serve-ms 300, with icat record --profile com-calls --duration 6 started two seconds into it",
+        "seed": 0,
+        "log": "fixtures/FX-COM-005/evidence/truth-client.jsonl",
+        "independence": "Each process logs every call it issued or served through ordinary COM, by its number; neither reads InterCat state, and the capture reads the provider's records apart from both."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-COM-005/evidence/measurement.json",
+        "note": "Three runs through icat record, loss-free: one call in flight at each edge. At the start, a call whose starts came before the capture: at the client StartNotObserved and linked to nothing for want of its start's activity, at the server StartNotObserved and reached by no call, neither carried. At the stop, a call whose stops came after it: at the client OpenAtCaptureEnd, carried, its link not completed and its RPC call unresolved, at the server OpenAtCaptureEnd and reached by no call. No cut call is linked, and every truth call wholly inside the capture is linked to its served call, none falsely: 20, 19 and 20 a run. The first run's ledger is evaluated by a test against its truth and the capture's calibrated window."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-05",
+          "result": "Recorded by icat record under the opt-in COM calls profile, three times, nothing lost: the call in flight at each edge stated cut at both its ends and linked to nothing, every call wholly inside linked to its served call, none falsely. It measures what a cut call is stated; COM calls' tier is FX-COM-003's."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two processes' truth logs and the scenario of the first run - calls by their number, of a synthetic object - and the ledger of their COM calls as the product derives them, by role, with the columns of FX-COM-001's ledger, never a PID, a thread, an activity id or another process's call; and the measurement's counters, with each capture's calibrated window."
+      },
+      "tests": [
+        "P8: FX-COM-005's calls a capture's start and stop cut are stated cut, never linked - at the start their starts not observed, at the stop open at capture end - while every truth call wholly inside the capture is linked to its served call"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -2359,6 +2402,7 @@
       ],
       "P8": [
         "P8: FX-COM-001's COM-Perf records pair as measured - each truth call one invoke at the client and one at the server, of its causality and rank, the server's inside the client's call, each start joined to its stop by its trace number",
+        "P8: FX-COM-005's calls a capture's start and stop cut are stated cut, never linked - at the start their starts not observed, at the stop open at capture end - while every truth call wholly inside the capture is linked to its served call",
         "P8: FX-RPC-001's calls pair as measured - 62 client calls by activity id, 61 served ones",
         "P8: a COM call's records pair by process, side and trace number - a stop without its start, a start without its stop, a record without a number and a number used again before its stop pair nothing",
         "P8: a channel's calls page in reading order, and each call's key finds it again",
@@ -2368,12 +2412,14 @@
         "P8: a process created within a second of another and linked to it by nothing is near it, the nearest first, and none a second and a tick away",
         "P8: a process's RPC calls are channels by interface, listed a page at a time, each call's records one step away",
         "P8: a start still open at capture end is censored, and a stop without its start is given none",
+        "P8: a truth call whose own call the capture did not hold takes no neighbour's call, though inside the window - a record and a call are paired only as each other's nearest",
         "P8: an RPC call is its start and the stop of the same activity, never the nearest stop in time",
         "P8: an activity id reused before its stop leaves those calls ambiguous, and the key pairs again after",
         "P8: an end's truth records are its calls by rank only when they are as many and every pair lies inside the window; otherwise each is its nearest call on the truth's time moved by the ranked pairs' offset",
         "P8: icat links --to follows a known dependency link by link, and finds none from an unrelated process at the same moment",
         "P8: icat links lists what led to a process and what it led to, and says what is only near it in time",
         "P8: over random calls, each count equals the calls whose counted record is in scope, derived independently",
+        "P8: pairing goes on in rounds - a record whose nearest call lies nearer another record waits for that one to take it, then pairs with its own nearest left",
         "P8: the calls a timeline draws are those running in its interval, and a denser one says how many it left out",
         "P8: the evidence of an RPC channel is its calls' records, and of one call its start and stop",
         "P8: the links window lists a link the evidence policy does not admit apart, and never follows it",

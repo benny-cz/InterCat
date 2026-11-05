@@ -142,6 +142,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Nested = args.Contains("--nested", StringComparer.Ordinal),
         Forward = Option(args, "--forward"),
         Forwarded = args.Contains("--forwarded", StringComparer.Ordinal),
+        ServeMilliseconds = Integer(args, "--serve-ms") ?? 0,
     };
 
     if (args[0].StartsWith("unix-loopback", StringComparison.Ordinal) && churn && hold > 0)
@@ -273,7 +274,7 @@ static void PrintHelp()
     Console.WriteLine("      connections opened at once, each waiting that many milliseconds before its first of 16 messages,");
     Console.WriteLine("      unpaced, so a capture started meanwhile finds them open.");
     Console.WriteLine();
-    Console.WriteLine("  com-loopback --truth <dir> [--calls n] [--delay ms] [--burst n] [--servers n | --nested]");
+    Console.WriteLine("  com-loopback --truth <dir> [--calls n] [--delay ms] [--burst n] [--servers n | --nested | --serve-ms ms]");
     Console.WriteLine("      FX-COM-001: a two-process out-of-process COM exchange. The server puts an automation object in");
     Console.WriteLine("      the running object table under an item moniker of its own, and the client takes it from there and");
     Console.WriteLine("      calls it through IDispatch, each process logging every call it made or served. Nothing is");
@@ -284,7 +285,8 @@ static void PrintHelp()
     Console.WriteLine("      moniker of its own and logging to a truth log of its place, which one client follows, making");
     Console.WriteLine("      --calls calls to each in turn. --nested is FX-COM-004: the server, while serving each call,");
     Console.WriteLine("      calls a second server's object - a nested call, numbered 1,000,000 past the client's - logging");
-    Console.WriteLine("      it as a client does. Windows only.");
+    Console.WriteLine("      it as a client does. --serve-ms is FX-COM-005: the server takes that long to answer each call,");
+    Console.WriteLine("      so a capture started or stopped while calls run cuts some. Windows only.");
     Console.WriteLine();
     Console.WriteLine("  com-inproc --truth <dir> [--calls n] [--delay ms]");
     Console.WriteLine("      FX-COM-002: one process calls the system's apartment-threaded in-memory dictionary, which COM");

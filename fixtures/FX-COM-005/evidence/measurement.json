@@ -1,0 +1,258 @@
+{
+  "fixture": "FX-COM-005",
+  "question": "Whether a capture through the product that starts and stops while COM calls run states each call it cut as cut - a call whose start came before it, a call whose stop came after it - and links none of them by a guess, while it links every call wholly inside it.",
+  "answer": "In 3 runs through icat record under the COM calls profile, loss-free, each started two seconds into a run of 40 calls the server took 300 ms to answer and stopped six seconds later, one call was in flight at each edge. The call in flight at the start had its starts before the capture: at the client StartNotObserved, its link NoActivityId, at the server StartNotObserved and reached by no call, neither carried. The call in flight at the stop had its stops after it: at the client OpenAtCaptureEnd, carried but its link NotCompleted, its RPC call unresolved, and at the server OpenAtCaptureEnd and reached by no call. No cut call was linked, and every truth call wholly inside the capture was linked to its served call, none falsely: 20, 19 and 20 calls a run.",
+  "throughTheProduct": {
+    "runs": [
+      {
+        "run": "cut-1",
+        "workload": {
+          "calls": 40,
+          "serveMilliseconds": 300,
+          "captureStartedAfterSeconds": 2,
+          "captureSeconds": 6
+        },
+        "capture": {
+          "profile": "com-calls",
+          "lossFree": true,
+          "journaledRecords": 7665,
+          "coverage": {
+            "ProcessLifecycle": "Covered",
+            "Rpc": "Covered",
+            "ComCall": "Covered"
+          },
+          "calibratedMilliseconds": 6222.6304,
+          "calibratedFromUtcTicks": "639294403617405696",
+          "calibratedToUtcTicks": "639294403679632000"
+        },
+        "truth": {
+          "calls": 40,
+          "whollyInside": 20,
+          "inFlightAtStart": 1,
+          "inFlightAtStop": 1
+        },
+        "evaluation": {
+          "observed": 21,
+          "peerAttributions": 20,
+          "falsePeerAttributions": 0,
+          "linkedToTheirServedCall": 20,
+          "carriersServedThroughCom": 20
+        },
+        "completedInvokesAtEachEnd": {
+          "client": 20,
+          "server": 20
+        },
+        "cutCalls": [
+          {
+            "side": "Server",
+            "role": "server",
+            "state": "StartNotObserved",
+            "interface": null,
+            "method": null,
+            "carrier": "NotCompleted",
+            "link": "NotReached",
+            "carrierPeer": null
+          },
+          {
+            "side": "Client",
+            "role": "client",
+            "state": "StartNotObserved",
+            "interface": null,
+            "method": null,
+            "carrier": "NotCompleted",
+            "link": "NoActivityId",
+            "carrierPeer": null
+          },
+          {
+            "side": "Client",
+            "role": "client",
+            "state": "OpenAtCaptureEnd",
+            "interface": "00020400-0000-0000-c000-000000000046",
+            "method": 6,
+            "carrier": "Carried",
+            "link": "NotCompleted",
+            "carrierPeer": "NoAlpcEvidence"
+          },
+          {
+            "side": "Server",
+            "role": "server",
+            "state": "OpenAtCaptureEnd",
+            "interface": "00020400-0000-0000-c000-000000000046",
+            "method": 6,
+            "carrier": "NotCompleted",
+            "link": "NotReached",
+            "carrierPeer": null
+          }
+        ]
+      },
+      {
+        "run": "cut-2",
+        "workload": {
+          "calls": 40,
+          "serveMilliseconds": 300,
+          "captureStartedAfterSeconds": 2,
+          "captureSeconds": 6
+        },
+        "capture": {
+          "profile": "com-calls",
+          "lossFree": true,
+          "journaledRecords": 5479,
+          "coverage": {
+            "ProcessLifecycle": "Covered",
+            "Rpc": "Covered",
+            "ComCall": "Covered"
+          },
+          "calibratedMilliseconds": 6172.096,
+          "calibratedFromUtcTicks": "639294403755219200",
+          "calibratedToUtcTicks": "639294403816940160"
+        },
+        "truth": {
+          "calls": 40,
+          "whollyInside": 19,
+          "inFlightAtStart": 1,
+          "inFlightAtStop": 1
+        },
+        "evaluation": {
+          "observed": 20,
+          "peerAttributions": 19,
+          "falsePeerAttributions": 0,
+          "linkedToTheirServedCall": 19,
+          "carriersServedThroughCom": 19
+        },
+        "completedInvokesAtEachEnd": {
+          "client": 19,
+          "server": 19
+        },
+        "cutCalls": [
+          {
+            "side": "Server",
+            "role": "server",
+            "state": "StartNotObserved",
+            "interface": null,
+            "method": null,
+            "carrier": "NotCompleted",
+            "link": "NotReached",
+            "carrierPeer": null
+          },
+          {
+            "side": "Client",
+            "role": "client",
+            "state": "StartNotObserved",
+            "interface": null,
+            "method": null,
+            "carrier": "NotCompleted",
+            "link": "NoActivityId",
+            "carrierPeer": null
+          },
+          {
+            "side": "Client",
+            "role": "client",
+            "state": "OpenAtCaptureEnd",
+            "interface": "00020400-0000-0000-c000-000000000046",
+            "method": 6,
+            "carrier": "Carried",
+            "link": "NotCompleted",
+            "carrierPeer": "NoAlpcEvidence"
+          },
+          {
+            "side": "Server",
+            "role": "server",
+            "state": "OpenAtCaptureEnd",
+            "interface": "00020400-0000-0000-c000-000000000046",
+            "method": 6,
+            "carrier": "NotCompleted",
+            "link": "NotReached",
+            "carrierPeer": null
+          }
+        ]
+      },
+      {
+        "run": "cut-3",
+        "workload": {
+          "calls": 40,
+          "serveMilliseconds": 300,
+          "captureStartedAfterSeconds": 2,
+          "captureSeconds": 6
+        },
+        "capture": {
+          "profile": "com-calls",
+          "lossFree": true,
+          "journaledRecords": 3052,
+          "coverage": {
+            "ProcessLifecycle": "Covered",
+            "Rpc": "Covered",
+            "ComCall": "Covered"
+          },
+          "calibratedMilliseconds": 6171.8144,
+          "calibratedFromUtcTicks": "639294403894334464",
+          "calibratedToUtcTicks": "639294403956052608"
+        },
+        "truth": {
+          "calls": 40,
+          "whollyInside": 20,
+          "inFlightAtStart": 1,
+          "inFlightAtStop": 1
+        },
+        "evaluation": {
+          "observed": 21,
+          "peerAttributions": 20,
+          "falsePeerAttributions": 0,
+          "linkedToTheirServedCall": 20,
+          "carriersServedThroughCom": 20
+        },
+        "completedInvokesAtEachEnd": {
+          "client": 20,
+          "server": 20
+        },
+        "cutCalls": [
+          {
+            "side": "Server",
+            "role": "server",
+            "state": "StartNotObserved",
+            "interface": null,
+            "method": null,
+            "carrier": "NotCompleted",
+            "link": "NotReached",
+            "carrierPeer": null
+          },
+          {
+            "side": "Client",
+            "role": "client",
+            "state": "StartNotObserved",
+            "interface": null,
+            "method": null,
+            "carrier": "NotCompleted",
+            "link": "NoActivityId",
+            "carrierPeer": null
+          },
+          {
+            "side": "Client",
+            "role": "client",
+            "state": "OpenAtCaptureEnd",
+            "interface": "00020400-0000-0000-c000-000000000046",
+            "method": 6,
+            "carrier": "Carried",
+            "link": "NotCompleted",
+            "carrierPeer": "NoAlpcEvidence"
+          },
+          {
+            "side": "Server",
+            "role": "server",
+            "state": "OpenAtCaptureEnd",
+            "interface": "00020400-0000-0000-c000-000000000046",
+            "method": 6,
+            "carrier": "NotCompleted",
+            "link": "NotReached",
+            "carrierPeer": null
+          }
+        ]
+      }
+    ],
+    "ledger": "fixtures/FX-COM-005/evidence/calls.csv and its truth logs and scenario, of the first run: each COM call of the two processes as the product derives it, by role, with the columns of FX-COM-001's ledger, never a PID, a thread, an activity id or another process's call; the capture's calibrated window is the measurement's.",
+    "captureWindows": [
+      6222.6304,
+      6172.096,
+      6171.8144
+    ]
+  }
+}

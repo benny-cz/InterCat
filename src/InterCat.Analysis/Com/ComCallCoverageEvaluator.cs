@@ -150,8 +150,9 @@ public sealed record ComCallCoverageResult
 /// with the COM calls `com-call-link-v1` derived from a capture (ADR-079), and computes the section 14.2 counters (ADR-080). A
 /// truth call is its client's COM call on the interface and method the workload called, raised in the client's process: where
 /// a process's truth records of one end are as many as its calls of that end and each pair lies inside the window, each record
-/// is the call of its rank, so the truth's wall clock decides nothing; every other record is matched to its process's nearest
-/// call inside the window, on the truth's time moved by the offset the ranked pairs measured. A call names its interface and
+/// is the call of its rank, so the truth's wall clock decides nothing; every other record is paired with a call of its process
+/// where each is the other's nearest inside the window, on the truth's time moved by the offset the ranked pairs measured, so
+/// a record whose own call the capture did not hold takes no other's (FX-COM-005). A call names its interface and
 /// method and never its object - COM-Perf's IPID and OID are not admitted - so, as an RPC call's (RpcCoverageEvaluator), a call
 /// is bound to the interface it names, which has no lifetime of its own. Its peer is the process of the server call its link
 /// reached, never the process its start names, and it is false unless that is the process whose log served the truth call:
@@ -421,8 +422,11 @@ public static class ComCallCoverageEvaluator
         return paired;
     }
 
-    // Every record paired by rank keeps its call; each other is its end's nearest call no record holds yet, inside the
-    // window, on the truth's time moved by the ranked pairs' offset.
+    // Every record paired by rank keeps its call. The rest are matched in rounds, each process apart: a record and a call
+    // are paired when each is the other's nearest - the record's among the calls no record holds, the call's among the
+    // records no call holds - inside the window, on the truth's time moved by the ranked pairs' offset. A record whose own
+    // call the capture did not hold, as one a capture's start cut, is then never paired with its neighbour's call, which
+    // its own record lies nearer (FX-COM-005), as a record taking its nearest call in time order would be.
     private static Dictionary<TruthRecord, ComCallObservation> Nearest(
         TruthRecord[] records,
         ComCallObservation[] calls,
@@ -437,35 +441,69 @@ public static class ComCallCoverageEvaluator
             matched.Add(call.Ordinal);
         }
 
-        foreach (TruthRecord record in records.OrderBy(static record => record.RecordedUtc.UtcTicks).ThenBy(static record => record.Sequence))
+        foreach (IGrouping<int, TruthRecord> process in records.GroupBy(static record => record.ProcessId))
         {
-            if (matches.ContainsKey(record))
+            // Both in time order: the records on the truth's clock moved by the offset, the calls by their starts.
+            TruthRecord[] own = [.. process.OrderBy(static record => record.RecordedUtc.UtcTicks).ThenBy(static record => record.Sequence)];
+            long[] at = [.. own.Select(record => record.RecordedUtc.UtcTicks + offset)];
+            ComCallObservation[] theirs = [.. calls.Where(call => call.ProcessId == process.Key)
+                .OrderBy(static call => call.StartUtcTicks).ThenBy(static call => call.Ordinal)];
+            long[] starts = [.. theirs.Select(static call => call.StartUtcTicks!.Value)];
+            bool[] taken = [.. theirs.Select(call => matched.Contains(call.Ordinal))];
+            bool[] done = [.. own.Select(matches.ContainsKey)];
+            bool added;
+            do
             {
-                continue;
-            }
-
-            long at = record.RecordedUtc.UtcTicks + offset;
-            ComCallObservation? nearest = null;
-            long nearestDistance = long.MaxValue;
-            foreach (ComCallObservation candidate in calls)
-            {
-                long distance = Math.Abs(candidate.StartUtcTicks!.Value - at);
-                if (candidate.ProcessId != record.ProcessId || matched.Contains(candidate.Ordinal) || distance > window || distance >= nearestDistance)
+                added = false;
+                for (int index = 0; index < own.Length; index++)
                 {
-                    continue;
+                    if (done[index] || Closest(starts, taken, at[index], window) is not (>= 0 and var call)
+                        || Closest(at, done, starts[call], window) != index)
+                    {
+                        continue;
+                    }
+
+                    matches[own[index]] = theirs[call];
+                    matched.Add(theirs[call].Ordinal);
+                    (taken[call], done[index], added) = (true, true, true);
                 }
-
-                nearest = candidate;
-                nearestDistance = distance;
             }
-
-            if (nearest is not null)
-            {
-                matches[record] = nearest;
-                matched.Add(nearest.Ordinal);
-            }
+            while (added);
         }
 
         return matches;
+    }
+
+    // Where in ascending <paramref name="values"/> the one nearest <paramref name="target"/> is, of those not excluded and
+    // inside the window, the earlier on a tie; -1 for none.
+    private static int Closest(long[] values, bool[] excluded, long target, long window)
+    {
+        int at = Array.BinarySearch(values, target);
+        at = at < 0 ? ~at : at;
+        int best = -1;
+        long bestDistance = long.MaxValue;
+        for (int index = at - 1; index >= 0 && target - values[index] <= window; index--)
+        {
+            if (!excluded[index])
+            {
+                (best, bestDistance) = (index, target - values[index]);
+                break;
+            }
+        }
+
+        for (int index = at; index < values.Length && values[index] - target <= window; index++)
+        {
+            if (!excluded[index])
+            {
+                if (values[index] - target < bestDistance)
+                {
+                    best = index;
+                }
+
+                break;
+            }
+        }
+
+        return best;
     }
 }

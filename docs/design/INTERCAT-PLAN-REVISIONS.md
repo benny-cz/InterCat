@@ -850,6 +850,7 @@ Revision 923 refuses a COM-Perf whose schema lacks a field `com-call-link-v1` pa
 Revision 924 adds FX-COM-003, a client following servers restarted one after another, each call linked to the server instance that served it, 1,792 of 1,792 over 56 instances (ADR-080's third addendum).
 Revision 925 has the replaced-session test wait out the shown session's reader before it deletes or replaces a file, as the store's replace does.
 Revision 926 adds FX-COM-004, nested COM calls, each linked to its own served call, 768 of 768: a nested call carries an activity of its own, so nesting makes nothing ambiguous (ADR-079's sixth addendum).
+Revision 927 adds FX-COM-005, calls a capture's start and stop cut, each stated cut and linked to nothing, with which the COM calls package meets M6's exit tests (ADR-080's fourth addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -3790,3 +3791,14 @@ the server's call and every nested call to the forwarded server's, inside the ca
 RPC call served through it, 768 of 768, and every COM call of the three processes carried and linked. COM gives a nested
 call an activity of its own, so the contract's assumption is now this measurement and nesting makes nothing ambiguous;
 the package's ambiguity case remains.
+
+Revision 927 gives COM calls their ambiguity case (ADR-080's fourth addendum). FX-COM-005's server takes 300 ms to answer
+each of 40 calls, and `icat record --profile com-calls` starts two seconds into the run and stops six seconds later, so
+one call is in flight at each edge. In three loss-free runs the call cut at the start was `StartNotObserved` at both ends,
+its client end linked to nothing for want of its start's activity and neither end carried; the call cut at the stop was
+`OpenAtCaptureEnd` at both ends, its client end carried but its link not completed and its RPC call unresolved; every
+call wholly inside the capture's calibrated window was linked, none falsely. It found a flaw in the evaluator: a truth
+record took its end's nearest unclaimed call in time order, so the cut call's record took its neighbour's and every later
+pair shifted one on, the totals right and the pairs wrong. A record and a call are now paired only as each other's
+nearest, in rounds; every earlier fixture pairs by rank and measures as it did. With it the COM calls package meets M6's
+exit tests.

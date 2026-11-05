@@ -159,6 +159,52 @@ public sealed class ComCallCoverageEvaluatorTests
         Assert.Equal((4L, 1L), (result.Measurement.PeerAttributions, result.Measurement.FalsePeerAttributions));
     }
 
+    [Fact(DisplayName = "P8: a truth call whose own call the capture did not hold takes no neighbour's call, though inside the window - a record and a call are paired only as each other's nearest")]
+    public void AMissingCallTakesNoNeighboursCall()
+    {
+        // Three calls 300 ms apart; the capture holds the second's and the third's alone, as one that began after the first
+        // started would, and no end pairs by rank.
+        TruthRecord[] truth =
+        [
+            Truth("client", Client, 1, TruthEventKind.CallIssued, 0, callId: 0),
+            Truth("client", Client, 2, TruthEventKind.CallIssued, 300, callId: 1),
+            Truth("client", Client, 3, TruthEventKind.CallIssued, 600, callId: 2),
+        ];
+        ComCallObservation[] calls =
+        [
+            Call(0, ComCallSide.Client, Client, 300.2, Server, Invoke),
+            Call(1, ComCallSide.Client, Client, 600.2, Server, Invoke),
+        ];
+
+        ComCallCoverageResult result = ComCallCoverageEvaluator.Evaluate(truth, calls, Settings());
+
+        // The first call is a gap; the second and third are their own calls, never shifted one on.
+        Assert.Equal([(0L, (long?)null), (1L, 0L), (2L, 1L)], result.Calls.Select(call => (call.CallId!.Value, call.ClientCall)));
+        Assert.Equal(0, result.CallsPairedByRank);
+    }
+
+    [Fact(DisplayName = "P8: pairing goes on in rounds - a record whose nearest call lies nearer another record waits for that one to take it, then pairs with its own nearest left")]
+    public void PairingGoesOnInRounds()
+    {
+        // The first record's nearest call is the second record's nearer still; the first's next is its own. A third call far
+        // past the window keeps the ends from pairing by rank.
+        TruthRecord[] truth =
+        [
+            Truth("client", Client, 1, TruthEventKind.CallIssued, 1_000, callId: 0),
+            Truth("client", Client, 2, TruthEventKind.CallIssued, 1_100, callId: 1),
+        ];
+        ComCallObservation[] calls =
+        [
+            Call(0, ComCallSide.Client, Client, 900, Server, Invoke),
+            Call(1, ComCallSide.Client, Client, 1_060, Server, Invoke),
+            Call(2, ComCallSide.Client, Client, 5_000, Server, Invoke),
+        ];
+
+        ComCallCoverageResult result = ComCallCoverageEvaluator.Evaluate(truth, calls, Settings());
+
+        Assert.Equal([(0L, (long?)0L), (1L, 1L)], result.Calls.Select(call => (call.CallId!.Value, call.ClientCall)));
+    }
+
     [Fact(DisplayName = "P7: with several clients, a truth call is matched to a call of its own client's process alone, never to another client's, though nearer and unclaimed")]
     public void ACallIsItsOwnClientsAlone()
     {
@@ -435,6 +481,48 @@ public sealed class ComCallCoverageEvaluatorTests
 
         // And no COM call of the three processes was left uncarried or unlinked: no served call or activity held two calls.
         Assert.All(calls, call => Assert.Equal((ComCarrierState.Carried, ComLinkState.Linked), (call.Carrier, call.Link)));
+    }
+
+    [Fact(DisplayName = "P8: FX-COM-005's calls a capture's start and stop cut are stated cut, never linked - at the start their starts not observed, at the stop open at capture end - while every truth call wholly inside the capture is linked to its served call")]
+    public void CallsTheCaptureCutAreStatedCut()
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-COM-005", "evidence");
+        TruthRecord[] truth = [.. Directory.EnumerateFiles(evidence, "truth-*.jsonl").Order(StringComparer.Ordinal).SelectMany(ReadTruth)];
+        Dictionary<string, int> processes = truth.GroupBy(record => record.Role).ToDictionary(group => group.Key, group => group.First().ProcessId);
+        ComCallObservation[] calls = [.. ReadLedger(Path.Combine(evidence, "calls.csv"), processes)];
+        ComCallCoverageResult result = ComCallCoverageEvaluator.Evaluate(truth, calls, Settings() with { FixtureId = "FX-COM-005" });
+
+        using JsonDocument measurement = JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "measurement.json")));
+        JsonElement run = measurement.RootElement.GetProperty("throughTheProduct").GetProperty("runs").EnumerateArray()
+            .Single(run => run.GetProperty("run").GetString() == "cut-1");
+        long from = long.Parse(run.GetProperty("capture").GetProperty("calibratedFromUtcTicks").GetString()!, CultureInfo.InvariantCulture);
+        long to = long.Parse(run.GetProperty("capture").GetProperty("calibratedToUtcTicks").GetString()!, CultureInfo.InvariantCulture);
+
+        // The capture cut one call at each edge, at both its ends, and stated each so: at its stop the call whose stops came
+        // after it, its client end carried but its link not completed; at its start the call whose starts came before it,
+        // which no RPC call carries and nothing links. None is linked.
+        Assert.Equal(
+            [
+                (ComCallSide.Client, ComCallState.OpenAtCaptureEnd, ComCarrierState.Carried, ComLinkState.NotCompleted),
+                (ComCallSide.Server, ComCallState.OpenAtCaptureEnd, ComCarrierState.NotCompleted, ComLinkState.NotReached),
+                (ComCallSide.Client, ComCallState.StartNotObserved, ComCarrierState.NotCompleted, ComLinkState.NoActivityId),
+                (ComCallSide.Server, ComCallState.StartNotObserved, ComCarrierState.NotCompleted, ComLinkState.NotReached),
+            ],
+            calls.Where(call => call.State != ComCallState.Completed).OrderBy(call => call.State).ThenBy(call => call.Side)
+                .Select(call => (call.Side, call.State, call.Carrier, call.Link)));
+        Assert.All(calls.Where(call => call.State != ComCallState.Completed), call => Assert.Null(call.OtherEnd));
+
+        // Every truth call wholly inside the capture is linked to its served call, and every other is not; none falsely.
+        Dictionary<long, TruthRecord> completed = truth.Where(record => record.Kind == TruthEventKind.CallCompleted)
+            .ToDictionary(record => record.CallId!.Value);
+        Assert.All(result.Calls, call =>
+        {
+            TruthRecord issued = truth.Single(record => record.Kind == TruthEventKind.CallIssued && record.CallId == call.CallId);
+            bool inside = issued.RecordedUtc.UtcTicks >= from && completed[call.CallId!.Value].RecordedUtc.UtcTicks <= to;
+            Assert.True(inside == call.LinkedToItsServedCall, $"call {call.CallId}: inside {inside}, linked {call.LinkedToItsServedCall}");
+        });
+        Assert.Equal((40L, 20L, 0L), (result.Measurement.TruthOperations, result.Measurement.PeerAttributions, result.Measurement.FalsePeerAttributions));
+        Assert.Equal(20, result.Calls.Count(call => call.LinkedToItsServedCall));
     }
 
     private static IEnumerable<TruthRecord> ReadTruth(string path)

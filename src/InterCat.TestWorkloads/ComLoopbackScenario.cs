@@ -20,6 +20,14 @@ internal sealed record ComLoopbackOptions
 
     public const string NestedCallsScenarioId = "FX-COM-004";
 
+    public const string CutCallsScenarioId = "FX-COM-005";
+
+    /// <summary>
+    /// When above zero, FX-COM-005: the server takes that many milliseconds to answer each call, so a capture started or
+    /// stopped while calls run cuts some of them.
+    /// </summary>
+    public int ServeMilliseconds { get; init; }
+
     /// <summary>How far past the client's call number the server numbers the nested call it makes while serving it.</summary>
     public const int NestedCallOffset = 1_000_000;
 
@@ -52,8 +60,14 @@ internal sealed record ComLoopbackOptions
     /// </summary>
     public bool MonikersOnInput { get; init; }
 
-    /// <summary>The fixture this run is: FX-COM-004 with nested calls, FX-COM-003 with several servers, FX-COM-001 with one.</summary>
-    public string RunScenarioId => Nested ? NestedCallsScenarioId : Servers > 1 ? RestartedServersScenarioId : ScenarioId;
+    /// <summary>
+    /// The fixture this run is: FX-COM-004 with nested calls, FX-COM-005 with slow calls, FX-COM-003 with several servers,
+    /// FX-COM-001 with one.
+    /// </summary>
+    public string RunScenarioId => Nested ? NestedCallsScenarioId
+        : ServeMilliseconds > 0 ? CutCallsScenarioId
+        : Servers > 1 ? RestartedServersScenarioId
+        : ScenarioId;
     public int Calls { get; init; } = 64;
     public int InterCallDelayMilliseconds { get; init; } = 5;
 
@@ -124,10 +138,11 @@ internal static partial class ComLoopbackScenario
 
         var summary = new
         {
-            scenarioId = ComLoopbackOptions.ScenarioId,
+            scenarioId = options.RunScenarioId,
             options.Calls,
             options.InterCallDelayMilliseconds,
             options.Burst,
+            options.ServeMilliseconds,
             moniker,
             serverProcessId = server.Id,
             clientProcessId = client.Id,
@@ -308,7 +323,7 @@ internal static partial class ComLoopbackScenario
         string name = string.Create(CultureInfo.InvariantCulture, $"InterCat.{options.RunScenarioId}.{truth.ProcessId}");
         IRunningObjectTable table = Table();
         IMoniker moniker = Moniker(name);
-        var served = new ComFixtureObject(truth, name, forward);
+        var served = new ComFixtureObject(truth, name, forward, options.ServeMilliseconds);
         int cookie = table.Register(RegistrationKeepsAlive, served, moniker);
         truth.Write(TruthEventKind.ListenerBound, resourceName: name);
         try
@@ -545,6 +560,13 @@ internal static partial class ComLoopbackScenario
             start.ArgumentList.Add(moniker);
         }
 
+        // FX-COM-005's children: how long the server takes to answer each call.
+        if (options.ServeMilliseconds > 0)
+        {
+            start.ArgumentList.Add("--serve-ms");
+            start.ArgumentList.Add(options.ServeMilliseconds.ToString(CultureInfo.InvariantCulture));
+        }
+
         // FX-COM-004's children: the run's nested calls, the forwarded server, and the object a server calls while serving.
         if (options.Nested)
         {
@@ -604,13 +626,15 @@ public sealed class ComFixtureObject
     private readonly TruthLog truth;
     private readonly string name;
     private readonly object? forward;
+    private readonly int serveMilliseconds;
     private int failures;
 
-    internal ComFixtureObject(TruthLog truth, string name, object? forward = null)
+    internal ComFixtureObject(TruthLog truth, string name, object? forward = null, int serveMilliseconds = 0)
     {
         this.truth = truth;
         this.name = name;
         this.forward = forward;
+        this.serveMilliseconds = serveMilliseconds;
     }
 
     /// <summary>The nested calls that failed or answered wrongly.</summary>
@@ -645,6 +669,12 @@ public sealed class ComFixtureObject
             }
 
             truth.Write(TruthEventKind.CallCompleted, callId: nested, resourceName: nameof(Echo), status: status);
+        }
+
+        // FX-COM-005's server takes its time to answer, so a capture's start or stop can fall inside a call.
+        if (serveMilliseconds > 0)
+        {
+            Thread.Sleep(serveMilliseconds);
         }
 
         return call;

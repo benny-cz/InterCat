@@ -5,7 +5,7 @@
   a capture's queue holds §12's acquisition budget, so the profile's unpaced series drops nothing (ADR-081); since
   revision 922 a process's COM call records drill down exactly (its second addendum); since revision 924 FX-COM-003,
   a client following servers restarted one after another, is COM calls' second instance and lifetime fixture (its third
-  addendum)
+  addendum); since revision 927 FX-COM-005, calls a capture cuts, is their ambiguity case (its fourth addendum)
 - Date: 2026-11-04
 - Decision owners: InterCat maintainers
 - Relates to: ADR-004, ADR-075, ADR-077, ADR-078, ADR-079, §14.2, R3, P1, P4, P7, P8, P16, P27, FX-COM-001,
@@ -166,3 +166,31 @@ servers of 8 calls, and eight servers of 128 calls unpaced.
 
 The first run is committed under `fixtures/FX-COM-003/evidence/`, and a test reproduces its counters. COM calls' tier on
 the build now cites FX-COM-003, its latest fixture.
+
+## Addendum: calls a capture cuts (revision 927)
+
+M6's exit asks each mechanism for an ambiguity case: evidence that cannot decide, stated so rather than resolved by a
+guess. FX-COM-005 cuts calls: `com-loopback --serve-ms 300` has the server take 300 ms to answer each of 40 calls, and
+`icat record --profile com-calls` starts two seconds into the run and stops six seconds later, so one call is in flight at
+each edge. Three runs, loss-free:
+
+- the call in flight at the start had its starts before the capture: at the client `StartNotObserved`, its link
+  `NoActivityId`, at the server `StartNotObserved` and reached by no call, neither carried;
+- the call in flight at the stop had its stops after it: at the client `OpenAtCaptureEnd`, carried but its link
+  `NotCompleted` and its RPC call unresolved, at the server `OpenAtCaptureEnd` and reached by no call;
+- no cut call was linked, and every truth call wholly inside the capture's calibrated window was linked to its served
+  call, none falsely: 20, 19 and 20 a run.
+
+It found a flaw in the evaluator, not the product. A truth record took its end's nearest unclaimed call in time order, so
+the record of the call the start cut, holding no call of its own, took its neighbour's 300 ms away inside the 500 ms
+window, and every later record shifted one on at both ends. The totals came out right, the pairs did not.
+`ComCallCoverageEvaluator` now pairs a record and a call only where each is the other's nearest, in rounds, so a record
+whose own call the capture did not hold takes none. Every earlier fixture pairs by rank and measures as it did. A
+synthetic test holds the case and another the rounds, and the first run is committed under
+`fixtures/FX-COM-005/evidence/` with its capture's window. With it the COM calls package meets M6's exit tests:
+
+- two instance and lifetime fixtures, FX-COM-001 and FX-COM-003;
+- an ambiguity case, FX-COM-005;
+- a schema-failure case, ADR-079's fifth addendum;
+- exact source drill-down, this ADR's second addendum;
+- the baseline overhead comparison, its first addendum and ADR-081.
