@@ -2956,6 +2956,9 @@
       "R3": [
         "R3: 21.1 scenario 8 - a window with a gap has an observed rate over the whole window",
         "R3: CRC-32C matches its published vectors",
+        "R3: a COM-Perf whose schema does not admit a field com-call-link-v1 pairs, carries or links its calls by is refused, never admitted to state calls from a value never observed - the COM calls profile does not start, and icat capabilities says its schema is unknown",
+        "R3: a COM-Perf whose schema lacks a call's HRESULT, which no rule decides by, is admitted, the call's answer then unknown",
+        "R3: a COM-Perf whose schema registers no client call stop is refused, its calls never left open at capture end for want of a stop it could not have recorded",
         "R3: a TCP transfer admits its byte count, and a connection attempted, established or closed admits none",
         "R3: a bound is written rounded up at the precision written, so it never reads smaller than it is",
         "R3: a budget is met or missed against its own direction, not against a bare number",

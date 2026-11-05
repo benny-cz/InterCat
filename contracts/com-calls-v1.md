@@ -105,6 +105,9 @@ RPC call that served it. A server RPC call two relations reach is related to nei
   stated as ambiguity rather than paired.
 - A client call's activity id is its own and travels to the server's records (ADR-079); a nested call made while serving
   another is unmeasured, and one id carried by several server calls links none of them.
+- A capture records every field §2 names: a COM-Perf whose schema does not admit a start's trace number, other end, method
+  or interface, or a stop's trace number, is refused as the capture compiles (ADR-079's fifth addendum), so no call is
+  paired, carried or linked by a value never observed. A stop's HRESULT may be absent, and is then unknown.
 
 ## 7. Identity of a derivation
 

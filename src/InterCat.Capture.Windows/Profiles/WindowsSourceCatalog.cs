@@ -35,6 +35,13 @@ public sealed record AdmittedFieldIntent(
 
     /// <summary>For a content field: how its bytes are encoded, as the source declares it; never guessed.</summary>
     public ContentFieldEncoding? ContentEncoding { get; init; }
+
+    /// <summary>
+    /// What a derivation rule decides its source's records by this field, completing "by which": a schema that does not
+    /// admit it refuses the source, rather than admit records the rule would decide by a value never observed (R3); null
+    /// for a field no rule decides by, whose absence a record states as unknown.
+    /// </summary>
+    public string? Decides { get; init; }
 }
 
 /// <summary>One event descriptor the adapter intends to admit under a metadata-only policy (§18.2).</summary>
@@ -326,7 +333,10 @@ public static class WindowsSourceCatalog
     private static readonly IReadOnlyList<AdmittedFieldIntent> ComCallStopFields =
     [
         new("CallTraceId", FieldRole.CorrelationKey, SourceField: SourceField.ComCallTraceId,
-            Notes: "The number its start carried, which joins the two in the process that raised them."),
+            Notes: "The number its start carried, which joins the two in the process that raised them.")
+        {
+            Decides = TraceNumberDecides,
+        },
         new("HRESULT", FieldRole.Status,
             Notes: "The method's answer, which the RPC call carrying it does not report: a call answered E_NOINTERFACE "
                 + "completes as an RPC call with status 0 (ADR-079)."),
@@ -344,14 +354,29 @@ public static class WindowsSourceCatalog
     [
         new("CallTraceId", FieldRole.CorrelationKey, SourceField: SourceField.ComCallTraceId,
             Notes: "The call's number within the process that raised it, which its stop repeats: it joins the two there, "
-                + "never one process's records to another's."),
+                + "never one process's records to another's.")
+        {
+            Decides = TraceNumberDecides,
+        },
         new(otherEnd, FieldRole.CorrelationKey, SourceField: SourceField.PeerProcessId,
-            Notes: "The process at the call's other end, never the record's own: a peer only where ADR-079's link checks it."),
+            Notes: "The process at the call's other end, never the record's own: a peer only where ADR-079's link checks it.")
+        {
+            Decides = "com-call-link-v1 checks the process at a call's other end against the process of the call it reached",
+        },
         new("TargetMethod", FieldRole.CorrelationKey, SourceField: SourceField.ComMethodNumber,
-            Notes: "The method's number within its interface, which the RPC call carrying it names as its procedure (ADR-079)."),
+            Notes: "The method's number within its interface, which the RPC call carrying it names as its procedure (ADR-079).")
+        {
+            Decides = "com-call-link-v1 checks a call's method against the RPC call carrying it and the call at its other end",
+        },
         new("TargetInterface", FieldRole.CorrelationKey,
-            Notes: "The interface the call targets. It identifies an interface, never a process (R22)."),
+            Notes: "The interface the call targets. It identifies an interface, never a process (R22).")
+        {
+            Decides = "com-call-link-v1 checks a call's interface against the RPC call carrying it and the call at its other end",
+        },
     ];
+
+    /// <summary>What the link rule decides by a COM call record's trace number, at its start and at its stop.</summary>
+    private const string TraceNumberDecides = "com-call-link-v1 joins a call's start to its stop in the process that raised them";
 
     /// <summary>The content fixture's source: InterCat's own provider, raised only by its content-fixture workload (ADR-036).</summary>
     public const string ContentFixtureSourceId = "etw/eventsource/InterCat-Fixture-Content";

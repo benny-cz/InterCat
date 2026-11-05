@@ -3,7 +3,8 @@
 - Status: accepted for M6's COM/DCOM/WinRT work package; since revision 916 `com-call-link-v1` implements its second and
   third decisions (`contracts/com-calls-v1.md`), and since revision 917 `rpc-call-peer-v2` serves a call through it,
   and since revision 918 the opt-in COM calls profile collects COM-Perf beside RPC, and since revision 919 COM calls
-  measured through it carry ExperimentalEvidence (ADR-080); since
+  measured through it carry ExperimentalEvidence (ADR-080), and since revision 923 a COM-Perf whose schema lacks a field
+  the rule decides by is refused (its fifth addendum); since
   revision 914 a COM call's records bind to the process that raised them (ADR-077's fifth addendum), and since revision
   915 COM-Perf's call events are admitted, the process at a call's other end a source field of its own (its addendum)
 - Date: 2026-11-04
@@ -191,3 +192,25 @@ to 18% slower, past §12's throughput target, in proportion to its COM call rate
 never admits the source. Nothing has measured the profile whole yet, and no build carries a tier for COM calls: a
 fixture measured through the product is next. Tests compile the profile with and without each call source and check
 both commands' profile lists, help and preview.
+
+## Addendum: a COM-Perf whose schema lacks a field the link decides by is refused (revision 923)
+
+M6's exit asks each mechanism for a schema-failure case. The admission plan compiler leaves out a field the machine's
+schema does not admit, and admits the event without it. For COM-Perf that would have had `com-call-link-v1` state what
+was never observed:
+
+- without a stop's trace number, or with no client call stop registered at all, no call's start would pair with its
+  stop, and each would read as open at capture end or as a call of its own;
+- without a start's other end, a link would read as `PeerMismatch`, two ends that disagree, where nothing was seen to
+  disagree;
+- without a start's method or interface, no call would be carried or linked, each stated `CannotCheck`.
+
+A field intent now says what a derivation rule decides by it (`AdmittedFieldIntent.Decides`). COM-Perf's starts mark
+their trace number, other end, method and interface, and its stops their trace number. A source whose compiled plan has
+a descriptor without such a field, or no compiled version of its event, is refused as its plan compiles, naming the
+descriptor, the field and what the rule decides by it, as Winsock AFD is for a field its gate decides by (ADR-074's
+addendum). The COM calls profile then does not start, `icat record` says why, and `icat capabilities` states the
+source's schema unknown. A call's HRESULT, which no rule decides by, may be absent: the call's answer is then unknown.
+The check runs as the plan compiles, never on the callback path, and the link rule is unchanged. Tests take each such
+field out of COM-Perf's registered layout in turn, and its client call stop, and hold the plan, the capture's
+compilation, the profile and the capability report to the refusal.

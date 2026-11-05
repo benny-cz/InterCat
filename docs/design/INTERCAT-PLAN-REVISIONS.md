@@ -846,6 +846,7 @@ Revision 919 measures FX-COM-001 through `icat record --profile com-calls` (ADR-
 Revision 920 measures the COM calls profile's cost through the product (ADR-080's addendum): Moderate; unpaced, a COM-heavy workload 38.6% slower and a third of its records dropped by the capture's own full queue in every round; in bursts, 0.9% slower and nothing dropped.
 Revision 921 sizes a capture's acquisition queue by §12's 256 MiB budget, 262,144 records where it held 65,536 (ADR-081), so FX-COM-001's unpaced burst, which dropped a third of its records, drops none.
 Revision 922 has `icat processes` count a process's COM call records, of the calls it made and served, and name the `icat evidence` command that lists each with its source record (ADR-080's second addendum).
+Revision 923 refuses a COM-Perf whose schema lacks a field `com-call-link-v1` pairs, carries or links by, so the COM calls profile does not start on such a build and says why (ADR-079's fifth addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -3745,3 +3746,15 @@ first paced run through the product, the client and the server were each stated 
 390 distinct source records of each: the start and stop of the 195 calls at each end. Tests run the command the view
 names on a session that also holds the same process's RPC call records and another process's COM call records, and
 find each record the view counted and no other; four mutations are caught.
+
+Revision 923 gives COM calls their schema-failure case (ADR-079's fifth addendum). The admission plan compiler admits an
+event without a field the machine's schema lacks, and `com-call-link-v1` would then state what was never observed: with
+no stop's trace number a call's start pairs with nothing, with no start's other end a link reads as two ends that
+disagree, and with no method or interface nothing is carried or linked. A field intent now says what a derivation rule
+decides by it, and COM-Perf's starts mark their trace number, other end, method and interface, its stops their trace
+number. A source whose compiled plan has a descriptor without such a field, or no version of its event, is refused as
+its plan compiles, naming the descriptor, the field and what the rule decides by it, as Winsock AFD is for its gate's
+fields. The COM calls profile then does not start and says why, and `icat capabilities` states the source's schema
+unknown; a call's HRESULT, which no rule decides by, may be absent. Tests take each such field out of COM-Perf's
+registered layout in turn, and its client call stop, and hold the plan, the compilation, the profile and the capability
+report to the refusal.

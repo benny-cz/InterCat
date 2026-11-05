@@ -24,15 +24,54 @@ internal static class RecordGates
     }
 
     /// <summary>
-    /// Why a source's gate could not decide the records of its compiled plan, or null when it can - when every descriptor
-    /// admits each field the gate decides it by, or the source has no gate. A field the machine's schema does not admit
-    /// would be read as zero, a value never observed (R3): a gate reading its family as zero would follow no socket, and its
-    /// capture would say it saw none. Such a source is refused rather than admitted (ADR-074).
+    /// Why a source's records could not be decided by the fields its compiled plan admits, or null when they can. A gated
+    /// source's gate decides each record by fields of its descriptor (ADR-074): one the machine's schema does not admit
+    /// would be read as zero, a value never observed (R3), and a gate reading its family as zero would follow no socket and
+    /// say it saw none. A source whose records a derivation rule pairs or links by fields of its own - each field intent
+    /// that says what it <see cref="AdmittedFieldIntent.Decides"/> - would have the rule state what was never observed: a
+    /// COM call whose stop carries no trace number pairs with nothing, and one whose start names no other end reads as one
+    /// whose ends disagree (ADR-079's fifth addendum). Either source is refused rather than admitted.
     /// </summary>
     public static string? Undecidable(SourceAdmissionPlan plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        return plan.SourceId == WindowsSourceCatalog.WinsockAfdSourceId ? AfdRecordGate.Undecidable(plan) : null;
+        return plan.SourceId == WindowsSourceCatalog.WinsockAfdSourceId ? AfdRecordGate.Undecidable(plan) : WithoutDecidingField(plan);
+    }
+
+    /// <summary>
+    /// The first field a rule decides its source's records by that a compiled descriptor does not admit - or that no
+    /// descriptor admits, as the schema registers no version of its event - said with what the rule decides by it; null
+    /// when every one is admitted, or the source names none. Compiled once, before a capture starts, never on the callback path.
+    /// </summary>
+    private static string? WithoutDecidingField(SourceAdmissionPlan plan)
+    {
+        if (WindowsSourceCatalog.Find(plan.SourceId) is not { } definition)
+        {
+            return null;
+        }
+
+        foreach (AdmittedEventIntent intent in definition.AdmittedEvents)
+        {
+            AdmittedEventPlan[] descriptors = [.. plan.Events.Where(descriptor => descriptor.EventId == intent.EventId)];
+            foreach (AdmittedFieldIntent field in intent.Fields.Where(field => field.Decides is not null))
+            {
+                AdmittedEventPlan? without = descriptors.Length == 0
+                    ? null
+                    : descriptors.FirstOrDefault(descriptor => !descriptor.Slots.Any(slot =>
+                        string.Equals(slot.FieldName, field.FieldName, StringComparison.Ordinal)));
+                if (descriptors.Length > 0 && without is null)
+                {
+                    continue;
+                }
+
+                string at = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                    $"event {intent.EventId} v{without?.Version ?? intent.Version}");
+                return $"This machine's schema admits no {field.FieldName} for {at} ({intent.Name}), by which {field.Decides}. "
+                    + "Without it the rule would decide by a value never observed, so the source is refused rather than admitted (R3).";
+            }
+        }
+
+        return null;
     }
 }
 

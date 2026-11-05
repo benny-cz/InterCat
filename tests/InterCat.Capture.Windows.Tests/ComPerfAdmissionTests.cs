@@ -154,6 +154,147 @@ public sealed class ComPerfAdmissionTests
         Assert.Null(end.Validate());
     }
 
+    [Theory(DisplayName = "R3: a COM-Perf whose schema does not admit a field com-call-link-v1 pairs, carries or links its calls by is refused, never admitted to state calls from a value never observed - the COM calls profile does not start, and icat capabilities says its schema is unknown")]
+    [InlineData("ClientSyncCallStart", "CallTraceId", 39, 1)]
+    [InlineData("ClientSyncCallStart", "TargetProcessId", 39, 1)]
+    [InlineData("ClientSyncCallStart", "TargetMethod", 39, 1)]
+    [InlineData("ClientSyncCallStop", "CallTraceId", 40, 0)]
+    [InlineData("ServerSyncCallStart", "SourceProcessId", 43, 2)]
+    [InlineData("ServerSyncCallStart", "TargetInterface", 43, 2)]
+    [InlineData("ServerSyncCallStop", "CallTraceId", 44, 0)]
+    public void AComPerfWithoutAFieldItsLinkDecidesByIsRefused(string template, string field, int eventId, int version)
+    {
+        // The registered layout as another build might report it, one field the link rule decides by gone from one template.
+        string manifest = Without(Manifest, template, field);
+        string reason = Assert.IsType<string>(RecordGates.Undecidable(AdmissionPlanCompiler.Compile(Source, ManifestParser.Parse(manifest), 0)));
+        Assert.Contains($"no {field} for event {eventId} v{version}", reason, StringComparison.Ordinal);
+        Assert.Contains("com-call-link-v1", reason, StringComparison.Ordinal);
+        Assert.Null(RecordGates.Undecidable(Compiled()));
+
+        // A capture's compilation refuses the source with that reason, and compiles no plan of it.
+        var inventory = new CapabilityInventoryProbe(new ComPerfMetadata(manifest));
+        SourcePlanCompilation compilation = inventory.CompilePlanSet([WindowsSourceCatalog.ComPerfSourceId]);
+        Assert.Empty(compilation.Plans);
+        SourcePlanIssue refusal = Assert.Single(compilation.Issues, issue => issue.Severity == SourcePlanIssueSeverity.Refusal);
+        Assert.Equal((WindowsSourceCatalog.ComPerfSourceId, reason), (refusal.SourceId, refusal.Reason));
+
+        // So the COM calls profile does not start, COM-Perf blocking with that reason; with the whole layout it starts.
+        EffectiveCapturePlan refused = ComCalls(compilation);
+        Assert.False(refused.CanStart);
+        ProfileSourceDecision com = Assert.Single(refused.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.ComPerfSourceId);
+        Assert.Equal((ProfileSourceDecisionState.Blocking, true, reason), (com.State, com.Required, com.Reason));
+        var whole = new CapabilityInventoryProbe(new ComPerfMetadata(Manifest));
+        Assert.True(ComCalls(whole.CompilePlanSet([WindowsSourceCatalog.ComPerfSourceId])).CanStart);
+
+        // And the capability report says its schema is unknown, for that reason, where the whole layout is experimental.
+        ProbeEnvironment environment = CapabilityInventoryProbe.DescribeEnvironment(isElevated: false);
+        SourceCapability unknown = inventory.Probe(environment).Sources.Single(source => source.SourceId == WindowsSourceCatalog.ComPerfSourceId);
+        Assert.Equal((CapabilityState.SchemaUnknown, reason), (unknown.State, unknown.UnavailableReason));
+        Assert.Equal(CapabilityState.Experimental,
+            whole.Probe(environment).Sources.Single(source => source.SourceId == WindowsSourceCatalog.ComPerfSourceId).State);
+    }
+
+    [Fact(DisplayName = "R3: a COM-Perf whose schema registers no client call stop is refused, its calls never left open at capture end for want of a stop it could not have recorded")]
+    public void AComPerfWithoutAStopIsRefused()
+    {
+        string manifest = Manifest.Replace(
+            """<event value="40" version="0" level="win:Informational" template="ClientSyncCallStop" />""", string.Empty, StringComparison.Ordinal);
+        Assert.NotEqual(Manifest, manifest);
+        string reason = Assert.IsType<string>(RecordGates.Undecidable(AdmissionPlanCompiler.Compile(Source, ManifestParser.Parse(manifest), 0)));
+        Assert.Contains("no CallTraceId for event 40 v0 (COM client call stop), by which com-call-link-v1 joins a call's start to its stop",
+            reason, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R3: a COM-Perf whose schema lacks a call's HRESULT, which no rule decides by, is admitted, the call's answer then unknown")]
+    public void AComPerfWithoutAnHresultIsAdmitted()
+    {
+        SourceAdmissionPlan plan = AdmissionPlanCompiler.Compile(Source, ManifestParser.Parse(Without(Manifest, "ClientSyncCallStop", "HRESULT")), 0);
+        Assert.Null(RecordGates.Undecidable(plan));
+        Assert.DoesNotContain(Plan(plan, 40).Slots, slot => slot.FieldName == "HRESULT");
+        Assert.Contains(Plan(plan, 40).Slots, slot => slot.FieldName == "CallTraceId");
+    }
+
+    /// <summary>The manifest with one field of one template taken out.</summary>
+    private static string Without(string manifest, string template, string field)
+    {
+        int start = manifest.IndexOf($"<template tid=\"{template}\">", StringComparison.Ordinal);
+        int end = manifest.IndexOf("</template>", start, StringComparison.Ordinal);
+        int at = manifest.IndexOf($"<data name=\"{field}\"", start, StringComparison.Ordinal);
+        Assert.InRange(at, start, end);
+        int close = manifest.IndexOf("/>", at, StringComparison.Ordinal) + 2;
+        return manifest[..at] + manifest[close..];
+    }
+
+    /// <summary>The COM calls profile compiled with lifecycle and RPC beside COM-Perf's compilation: it asks for all three.</summary>
+    private static EffectiveCapturePlan ComCalls(SourcePlanCompilation comPerf) =>
+        CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.ComCalls),
+            new SourcePlanCompilation(
+                [
+                    Fixture(WindowsSourceCatalog.KernelProcessSourceId, Guid.Parse("22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716"), 0, 1,
+                        Mechanism.ProcessLifecycle, ObservationLayer.Lifecycle, ObservationKind.Create),
+                    Fixture(WindowsSourceCatalog.RpcSourceId, Guid.Parse("6ad52b32-d609-4be9-ae07-ce8dae937e39"), 1, 5,
+                        Mechanism.Rpc, ObservationLayer.Application, ObservationKind.RequestStart),
+                    .. comPerf.Plans.Select(plan => plan with
+                    {
+                        SourceIndex = 2,
+                        Events = [.. plan.Events.Select(descriptor => descriptor with { SourceIndex = 2 })],
+                    }),
+                ],
+                comPerf.Issues));
+
+    /// <summary>A source's compiled plan of one fixture descriptor, as a machine registering it would compile.</summary>
+    private static SourceAdmissionPlan Fixture(string sourceId, Guid provider, int index, int eventId, Mechanism mechanism,
+        ObservationLayer layer, ObservationKind kind) => new()
+    {
+        SourceId = sourceId,
+        ProviderGuid = provider,
+        SourceIndex = index,
+        Events =
+        [
+            new AdmittedEventPlan
+            {
+                SourceIndex = index,
+                ProviderGuid = provider,
+                EventId = eventId,
+                Version = 0,
+                Name = "fixture",
+                Mechanism = mechanism,
+                Layer = layer,
+                Kind = kind,
+                Direction = Direction.DirectionNotApplicable,
+                MinimumBodyLength = 0,
+                PointerSize = 8,
+                SchemaFingerprint = "sha256:fixture-" + sourceId.Length.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                BodyPolicy = CaptureBodyAdmissionPolicies.MetadataOnly,
+                Slots = [],
+                FieldReport = [],
+            },
+        ],
+        Diagnostics = [],
+    };
+
+    /// <summary>A machine that registers COM-Perf with the layout given, and nothing else.</summary>
+    private sealed class ComPerfMetadata(string manifest) : IEtwMetadataSource
+    {
+        private static readonly Guid Provider = Guid.Parse("b8d6861b-d20f-4eec-bbae-87e0dd80602b");
+
+        public bool IsAvailable => true;
+
+        public string? UnavailableReason => null;
+
+        public RegisteredProvider? TryResolveProvider(string providerName) =>
+            string.Equals(providerName, "Microsoft-Windows-COM-Perf", StringComparison.Ordinal) ? new(providerName, Provider) : null;
+
+        public int CountPublishedProviders() => 1;
+
+        public ManifestReadResult TryReadManifest(Guid providerGuid) => providerGuid == Provider
+            ? ManifestReadResult.Success(manifest)
+            : ManifestReadResult.Failure("not registered in this test");
+
+        public ProviderSchema? TryReadClassic(Guid classGuid, string className, int version, IReadOnlyList<int> opcodes) => null;
+    }
+
     private static AdmittedEventPlan Plan(SourceAdmissionPlan plan, int eventId) =>
         plan.Events.Single(descriptor => descriptor.EventId == eventId);
 
