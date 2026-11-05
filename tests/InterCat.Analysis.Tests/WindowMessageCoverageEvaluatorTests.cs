@@ -105,6 +105,36 @@ public sealed class WindowMessageCoverageEvaluatorTests
         Assert.Equal(CapabilityTier.ExperimentalEvidence, result.Assessment.Tier);
     }
 
+    [Fact(DisplayName = "R22: messages to windows made one after another are each the number of its rank, every window's close ranked among the posts where the sender posted it, and each window's two ends resolved by its own messages though no window is discovered")]
+    public void WindowsOneAfterAnotherRankEachClose()
+    {
+        // Three windows, each sent one message and posted two before its close: the gate numbers them 1 to 12 in that order.
+        WindowMessageCoverageResult result = WindowMessageCoverageEvaluator.Evaluate(Truth(sends: 1, posts: 2, windows: 3),
+            Capture(sends: 1, posts: 2, windows: 3), Settings());
+
+        Assert.Equal(CapabilityTier.ExperimentalEvidence, result.Assessment.Tier);
+        Assert.Equal((12, 0), (result.MessagesWithEveryEnd, result.MessagesBeyondTruth));
+        long[] Numbers(string kind) => [.. result.Messages.Where(message => message.Kind == kind).Select(static message => message.MessageNumber!.Value)];
+        Assert.Equal([1L, 5L, 9L], Numbers("sent"));
+        Assert.Equal([2L, 3L, 6L, 7L, 10L, 11L], Numbers(WindowMessageCoverageEvaluator.PostedStatus));
+        Assert.Equal([4L, 8L, 12L], Numbers("close"));
+        Assert.Equal([Window(1), Window(2), Window(3)], result.Messages.Where(static message => message.Kind == "close").Select(static message => message.Window));
+        Assert.All(result.Messages, message => Assert.Equal(Window((int)((message.MessageNumber!.Value + 3) / 4)), message.Window));
+
+        // Three windows, none discovered, each one's two ends resolved by its own messages.
+        MechanismMeasurement measured = result.Measurement;
+        Assert.Equal((3L, 0L, 6L, 6L), (measured.TruthResources, measured.DiscoveredResourcesWithLifetime, measured.ExpectedMemberships,
+            measured.ResolvedMemberships));
+
+        // Where every message to the second window is also retrieved by a stranger, as numbers joining two messages would be,
+        // that window's receiving end is resolved by none of its messages, and each of them is a false attribution.
+        List<WindowMessageObservation> joined = Capture(sends: 1, posts: 2, windows: 3);
+        joined.AddRange([.. Enumerable.Range(5, 4).Select(number => Record(100 + number, ObservationKind.Receive, Direction.Inbound, Stranger, number))]);
+        WindowMessageCoverageResult shared = WindowMessageCoverageEvaluator.Evaluate(Truth(sends: 1, posts: 2, windows: 3), joined, Settings());
+        Assert.Equal((5L, 4L), (shared.Measurement.ResolvedMemberships, shared.Measurement.FalsePeerAttributions));
+        Assert.All(shared.Messages.Where(static message => message.Window == Window(2)), message => Assert.Null(message.OtherEndProcessId));
+    }
+
     [Fact(DisplayName = "R3: a capture of none of the truth's messages observes none and reaches no tier, its memberships unresolved")]
     public void ACaptureOfNoneObservesNone()
     {
@@ -119,11 +149,7 @@ public sealed class WindowMessageCoverageEvaluatorTests
     [Fact(DisplayName = "P27: FX-WMSG-001's committed ledger through the product reproduces its tier - each of its 32 sends and 33 posts the number of its rank, with every end in its own process and its other end the receiver - experimental evidence, in three runs with nothing lost")]
     public void CommittedEvidenceReproducesItsTier()
     {
-        string root = RepositoryRoot();
-        string evidence = Path.Combine(root, "fixtures", "FX-WMSG-001", "evidence", "product");
-        TruthRecord[] truth = [.. ReadTruth(Path.Combine(evidence, "truth-sender.jsonl")), .. ReadTruth(Path.Combine(evidence, "truth-receiver.jsonl"))];
-        Dictionary<string, int> processes = truth.GroupBy(static record => record.Role).ToDictionary(static group => group.Key, static group => group.First().ProcessId);
-        WindowMessageObservation[] ledger = [.. ReadLedger(Path.Combine(evidence, "ledger.csv"), processes)];
+        (TruthRecord[] truth, WindowMessageObservation[] ledger, Dictionary<string, int> processes) = Committed("FX-WMSG-001", "evidence", "product");
         WindowMessageCoverageResult result = WindowMessageCoverageEvaluator.Evaluate(truth, ledger, Settings());
 
         // The first run's ledger: the workload's 194 records, every one of its messages the number of its rank with every end
@@ -139,18 +165,89 @@ public sealed class WindowMessageCoverageEvaluatorTests
 
         // The three runs' report, as the probe wrote it from each capture's own health: each experimental evidence, every
         // message observed with every end, nothing lost, dropped or delivered out of order.
-        using var report = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(
-            Assert.Single(Directory.GetDirectories(Path.Combine(root, "bench", "results"), "window-message-product-*")), "report.json")));
-        System.Text.Json.JsonElement[] runs = [.. report.RootElement.GetProperty("runs").EnumerateArray()];
+        System.Text.Json.JsonElement[] runs = Runs("window-message-product-*");
         Assert.Equal(3, runs.Length);
         Assert.All(runs, run =>
         {
             Assert.Equal(("ExperimentalEvidence", 65, 65, 0), (run.GetProperty("tier").GetString(), run.GetProperty("observed").GetInt32(),
                 run.GetProperty("withEveryEnd").GetInt32(), run.GetProperty("falsePeerAttributions").GetInt32()));
-            System.Text.Json.JsonElement health = run.GetProperty("health");
-            Assert.Equal((0L, 0L, 0L, 0L), (health.GetProperty("providerReportedEventLoss").GetInt64(), health.GetProperty("consumerReportedBufferLoss").GetInt64(),
-                health.GetProperty("applicationDrops").GetInt64(), health.GetProperty("gateOmissionsOutOfOrder").GetInt64()));
+            AssertNothingLost(run);
         });
+    }
+
+    [Fact(DisplayName = "R22: FX-WMSG-002's committed ledger through the product keeps each of its 144 messages to 16 windows made one after another the number of its rank - every window's messages numbers of their own before the next window's, its close the last of them - with every end in its own process and its other end the receiver, experimental evidence in three runs with nothing lost")]
+    public void WindowsOneAfterAnotherReproduceTheirTier()
+    {
+        (TruthRecord[] truth, WindowMessageObservation[] ledger, Dictionary<string, int> processes) = Committed("FX-WMSG-002", "evidence");
+        WindowMessageCoverageResult result = WindowMessageCoverageEvaluator.Evaluate(truth, ledger, Settings(fixture: "FX-WMSG-002"));
+
+        // The first run's ledger: the workload's 416 records, every one of its messages the number of its rank with every end
+        // in its own process, none of another process's.
+        Assert.Equal(CapabilityTier.ExperimentalEvidence, result.Assessment.Tier);
+        Assert.Equal(416, ledger.Length);
+        Assert.Equal((64, 64, 16), (result.Messages.Count(static message => message.Kind == "sent"),
+            result.Messages.Count(static message => message.Kind == WindowMessageCoverageEvaluator.PostedStatus),
+            result.Messages.Count(static message => message.Kind == "close")));
+        Assert.Equal((144L, 144, 0L, 0), (result.Measurement.TruthOperationsWithAdmittedObservation, result.MessagesWithEveryEnd,
+            result.Measurement.FalsePeerAttributions, result.ObservationsOutsideScope));
+        Assert.All(result.Messages, message => Assert.Equal(processes["receiver"], message.OtherEndProcessId));
+
+        // Sixteen windows, none discovered, each one's two ends resolved by its own messages; in the order the sender opened
+        // them, each window's nine messages are numbers of their own, all after the last window's, its close the last of them.
+        MechanismMeasurement measured = result.Measurement;
+        Assert.Equal((16L, 0L, 32L, 32L), (measured.TruthResources, measured.DiscoveredResourcesWithLifetime, measured.ExpectedMemberships,
+            measured.ResolvedMemberships));
+        string[] opened = [.. truth.Where(static record => record is { Role: "sender", Kind: TruthEventKind.ObjectOpened })
+            .OrderBy(static record => record.Sequence).Select(static record => record.ResourceName!)];
+        Assert.Equal(16, opened.Distinct().Count());
+        long last = long.MinValue;
+        foreach (string window in opened)
+        {
+            WindowMessageTruthCoverage[] its = [.. result.Messages.Where(message => message.Window == window)];
+            long[] numbers = [.. its.Select(static message => message.MessageNumber!.Value).Order()];
+            Assert.Equal(9, numbers.Length);
+            Assert.True(numbers[0] > last, $"{window}'s messages are not all after the last window's.");
+            Assert.Equal(numbers[^1], Assert.Single(its, static message => message.Kind == "close").MessageNumber);
+            last = numbers[^1];
+        }
+
+        // The three runs' report, as the probe wrote it from each capture's own health: each experimental evidence, every
+        // message observed with every end and every window's two ends resolved, nothing lost, dropped or delivered out of order.
+        System.Text.Json.JsonElement[] runs = Runs("window-message-generations-product-*");
+        Assert.Equal(3, runs.Length);
+        Assert.All(runs, run =>
+        {
+            Assert.Equal(("ExperimentalEvidence", 144, 144, 0), (run.GetProperty("tier").GetString(), run.GetProperty("observed").GetInt32(),
+                run.GetProperty("withEveryEnd").GetInt32(), run.GetProperty("falsePeerAttributions").GetInt32()));
+            Assert.Equal((16, 32), (run.GetProperty("truthWindows").GetInt32(), run.GetProperty("resolvedMemberships").GetInt32()));
+            AssertNothingLost(run);
+        });
+    }
+
+    // A run's capture lost nothing at its source or consumer, dropped nothing and omitted no record delivered out of order.
+    private static void AssertNothingLost(System.Text.Json.JsonElement run)
+    {
+        System.Text.Json.JsonElement health = run.GetProperty("health");
+        Assert.Equal((0L, 0L, 0L, 0L), (health.GetProperty("providerReportedEventLoss").GetInt64(), health.GetProperty("consumerReportedBufferLoss").GetInt64(),
+            health.GetProperty("applicationDrops").GetInt64(), health.GetProperty("gateOmissionsOutOfOrder").GetInt64()));
+    }
+
+    // A fixture's committed run through the product: its two processes' truth, its ledger as the evaluator reads a session's,
+    // and the truth's processes by role.
+    private static (TruthRecord[] Truth, WindowMessageObservation[] Ledger, Dictionary<string, int> Processes) Committed(string fixture, params string[] folders)
+    {
+        string evidence = Path.Combine([RepositoryRoot(), "fixtures", fixture, .. folders]);
+        TruthRecord[] truth = [.. ReadTruth(Path.Combine(evidence, "truth-sender.jsonl")), .. ReadTruth(Path.Combine(evidence, "truth-receiver.jsonl"))];
+        Dictionary<string, int> processes = truth.GroupBy(static record => record.Role).ToDictionary(static group => group.Key, static group => group.First().ProcessId);
+        return (truth, [.. ReadLedger(Path.Combine(evidence, "ledger.csv"), processes)], processes);
+    }
+
+    // The runs of the one report the probe wrote under the bench results folder the pattern names.
+    private static System.Text.Json.JsonElement[] Runs(string pattern)
+    {
+        using var report = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            Assert.Single(Directory.GetDirectories(Path.Combine(RepositoryRoot(), "bench", "results"), pattern)), "report.json")));
+        return [.. report.RootElement.GetProperty("runs").EnumerateArray().Select(static run => run.Clone())];
     }
 
     private static IEnumerable<TruthRecord> ReadTruth(string path)
@@ -189,22 +286,29 @@ public sealed class WindowMessageCoverageEvaluatorTests
         return current?.FullName ?? throw new DirectoryNotFoundException("Could not locate the InterCat repository root.");
     }
 
-    private static WindowMessageCoverageSettings Settings(bool reproduced = true) => new()
+    private static WindowMessageCoverageSettings Settings(bool reproduced = true, string fixture = "FX-WMSG-001") => new()
     {
-        FixtureId = "FX-WMSG-001",
+        FixtureId = fixture,
         BuildId = "10.0.26220.0-x64",
         BuildIsSupported = true,
         Reproduced = reproduced,
     };
 
-    /// <summary>FX-WMSG-001's truth: the sender's sends and posts, numbered, and the close it posts last; the receiver's receipts.</summary>
-    private static TruthRecord[] Truth(int sends, int posts)
+    // A window's name in a synthetic truth: FX-WMSG-001's one, or the generation's of FX-WMSG-002's several.
+    private static string Window(int generation, int windows = 3) =>
+        windows == 1 ? "InterCat.FX-WMSG-001.window" : $"InterCat.FX-WMSG-002.window/{generation:D2}";
+
+    /// <summary>
+    /// FX-WMSG-001's truth - the sender's sends and posts, numbered, and the close it posts last; the receiver's receipts - or
+    /// FX-WMSG-002's, the same to each of several windows one after another, numbered on from the last window's.
+    /// </summary>
+    private static TruthRecord[] Truth(int sends, int posts, int windows = 1)
     {
         var records = new List<TruthRecord>();
         long sequence = 0;
-        TruthRecord Logged(string role, int process, TruthEventKind kind, long? call, string status) => new()
+        TruthRecord Logged(string role, int process, TruthEventKind kind, long? call, string status, string window) => new()
         {
-            ScenarioId = "FX-WMSG-001",
+            ScenarioId = windows == 1 ? "FX-WMSG-001" : "FX-WMSG-002",
             Role = role,
             Sequence = ++sequence,
             Kind = kind,
@@ -213,46 +317,56 @@ public sealed class WindowMessageCoverageEvaluatorTests
             MonotonicTicks = sequence,
             RecordedUtc = new DateTimeOffset(2026, 11, 5, 17, 0, 0, TimeSpan.Zero).AddTicks(sequence),
             CallId = call,
-            ResourceName = "InterCat.FX-WMSG-001.window",
+            ResourceName = window,
             Status = status,
         };
 
-        for (int call = 1; call <= sends; call++)
+        for (int generation = 1; generation <= windows; generation++)
         {
-            records.Add(Logged("receiver", Receiver, TruthEventKind.MessageReceived, call, "WM_COPYDATA"));
-            records.Add(Logged("sender", Sender, TruthEventKind.MessageSent, call, "WM_COPYDATA"));
+            string window = Window(generation, windows);
+            for (int call = (generation - 1) * sends + 1; call <= generation * sends; call++)
+            {
+                records.Add(Logged("receiver", Receiver, TruthEventKind.MessageReceived, call, "WM_COPYDATA", window));
+                records.Add(Logged("sender", Sender, TruthEventKind.MessageSent, call, "WM_COPYDATA", window));
+            }
+
+            for (int call = (generation - 1) * posts + 1; call <= generation * posts; call++)
+            {
+                records.Add(Logged("sender", Sender, TruthEventKind.MessageSent, call, WindowMessageCoverageEvaluator.PostedStatus, window));
+                records.Add(Logged("receiver", Receiver, TruthEventKind.MessageReceived, call, WindowMessageCoverageEvaluator.PostedStatus, window));
+            }
+
+            records.Add(Logged("sender", Sender, TruthEventKind.HandleClosed, null, WindowMessageCoverageEvaluator.WindowStatus, window));
+            records.Add(Logged("receiver", Receiver, TruthEventKind.HandleClosed, null, WindowMessageCoverageEvaluator.WindowStatus, window));
         }
 
-        for (int call = 1; call <= posts; call++)
-        {
-            records.Add(Logged("sender", Sender, TruthEventKind.MessageSent, call, WindowMessageCoverageEvaluator.PostedStatus));
-            records.Add(Logged("receiver", Receiver, TruthEventKind.MessageReceived, call, WindowMessageCoverageEvaluator.PostedStatus));
-        }
-
-        records.Add(Logged("sender", Sender, TruthEventKind.HandleClosed, null, WindowMessageCoverageEvaluator.WindowStatus));
-        records.Add(Logged("receiver", Receiver, TruthEventKind.HandleClosed, null, WindowMessageCoverageEvaluator.WindowStatus));
         return [.. records];
     }
 
-    /// <summary>A capture of the run, each message numbered from 1 as the gate numbers them: the sends, the posts, the close.</summary>
-    private static List<WindowMessageObservation> Capture(int sends, int posts)
+    /// <summary>
+    /// A capture of the run, each message numbered from 1 as the gate numbers them: each window's sends, its posts, its close.
+    /// </summary>
+    private static List<WindowMessageObservation> Capture(int sends, int posts, int windows = 1)
     {
         var records = new List<WindowMessageObservation>();
         long number = 0;
-        for (int send = 0; send < sends; send++)
+        for (int generation = 0; generation < windows; generation++)
         {
-            number++;
-            records.Add(Record(records.Count, ObservationKind.RequestStart, Direction.Outbound, Sender, number, peer: Receiver));
-            records.Add(Record(records.Count, ObservationKind.RequestStart, Direction.Inbound, Receiver, number));
-            records.Add(Record(records.Count, ObservationKind.RequestEnd, Direction.Inbound, Receiver, number));
-            records.Add(Record(records.Count, ObservationKind.RequestEnd, Direction.Outbound, Sender, number));
-        }
+            for (int send = 0; send < sends; send++)
+            {
+                number++;
+                records.Add(Record(records.Count, ObservationKind.RequestStart, Direction.Outbound, Sender, number, peer: Receiver));
+                records.Add(Record(records.Count, ObservationKind.RequestStart, Direction.Inbound, Receiver, number));
+                records.Add(Record(records.Count, ObservationKind.RequestEnd, Direction.Inbound, Receiver, number));
+                records.Add(Record(records.Count, ObservationKind.RequestEnd, Direction.Outbound, Sender, number));
+            }
 
-        for (int post = 0; post <= posts; post++)
-        {
-            number++;
-            records.Add(Record(records.Count, ObservationKind.Send, Direction.Outbound, Sender, number));
-            records.Add(Record(records.Count, ObservationKind.Receive, Direction.Inbound, Receiver, number));
+            for (int post = 0; post <= posts; post++)
+            {
+                number++;
+                records.Add(Record(records.Count, ObservationKind.Send, Direction.Outbound, Sender, number));
+                records.Add(Record(records.Count, ObservationKind.Receive, Direction.Inbound, Receiver, number));
+            }
         }
 
         return records;

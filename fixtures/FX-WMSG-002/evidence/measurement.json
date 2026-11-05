@@ -1,0 +1,63 @@
+{
+  "fixture": "FX-WMSG-002",
+  "question": "Whether a capture through the product - icat record under the opt-in window messages profile - keeps each message a sender sends and posts to windows a receiver makes and closes one after another the number of its rank among the capture's messages of its kind from the sender to the receiver, with every end in its own process and its other end the receiver, every window's close ranked among its posts; and which tier that measures.",
+  "answer": "In 3 runs through the product, machine-wide and loss-free - 16 windows each, each window sent 4 WM_COPYDATA messages and posted 4 numbered messages and its close - every one of the run's 144 messages was the number of its rank with every end in its own process and its other end the receiver, 144 of 144 a run, no false attribution; every window's nine messages were numbers of their own before the next window's, its close the last of them. No record names a window, so none of the 16 is discovered, and each one's two ends were resolved by its own messages, 32 of 32. A message carries no size, so the tier is ExperimentalEvidence.",
+  "method": "Each run: tools/InterCat.UiMessageProbe --measure --product --generations 16 started icat record --profile window-messages and, once its session ran, the workload window-message --generations 16 --copies 4 --posts 4. The session the capture published was read as the product holds it - each window message record's process under process-binding-v7, its message's number and a send's peer - into the role-only ledger, evaluated by WindowMessageCoverageEvaluator against the run's truth, and deleted. The probe writes counts and roles alone.",
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-11-05",
+  "committedRun": 1,
+  "bench": "bench/results/window-message-generations-product-20261105T231440Z",
+  "runs": [
+    {
+      "run": 1,
+      "tier": "ExperimentalEvidence",
+      "truthMessages": 144,
+      "truthWindows": 16,
+      "observed": 144,
+      "withEveryEnd": 144,
+      "falsePeerAttributions": 0,
+      "resolvedMemberships": 32,
+      "beyondTruth": 0,
+      "outsideScope": 0,
+      "admittedRecords": 37730,
+      "providerReportedEventLoss": 0,
+      "consumerReportedBufferLoss": 0,
+      "applicationDrops": 0,
+      "gateOmissionsOutOfOrder": 0
+    },
+    {
+      "run": 2,
+      "tier": "ExperimentalEvidence",
+      "truthMessages": 144,
+      "truthWindows": 16,
+      "observed": 144,
+      "withEveryEnd": 144,
+      "falsePeerAttributions": 0,
+      "resolvedMemberships": 32,
+      "beyondTruth": 0,
+      "outsideScope": 0,
+      "admittedRecords": 38724,
+      "providerReportedEventLoss": 0,
+      "consumerReportedBufferLoss": 0,
+      "applicationDrops": 0,
+      "gateOmissionsOutOfOrder": 0
+    },
+    {
+      "run": 3,
+      "tier": "ExperimentalEvidence",
+      "truthMessages": 144,
+      "truthWindows": 16,
+      "observed": 144,
+      "withEveryEnd": 144,
+      "falsePeerAttributions": 0,
+      "resolvedMemberships": 32,
+      "beyondTruth": 0,
+      "outsideScope": 0,
+      "admittedRecords": 41831,
+      "providerReportedEventLoss": 0,
+      "consumerReportedBufferLoss": 0,
+      "applicationDrops": 0,
+      "gateOmissionsOutOfOrder": 0
+    }
+  ]
+}

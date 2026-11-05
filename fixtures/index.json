@@ -895,6 +895,50 @@
       ]
     },
     {
+      "id": "FX-WMSG-002",
+      "title": "Window messages to windows made and closed one after another, each message a number of its own",
+      "scenario": "Plan M6's UI messaging work package (§4.2, ADR-088): FX-WMSG-001's sender and receiver over 16 message-only windows of the run's own class made one after another - the receiver making each under a name of its own once the last is destroyed, the sender finding it by its class and name, sending it 4 WM_COPYDATA messages and posting it 4 numbered messages and last its close - so the receiver's one queue carries every window's messages in turn. Recorded through icat record under the opt-in window messages profile, machine-wide.",
+      "milestone": "M6",
+      "mechanism": "WindowMessage",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads window-message --generations 16 --copies 4 --posts 4 --bytes 2048, under tools/InterCat.UiMessageProbe --measure --product --generations 16 and icat record --profile window-messages",
+        "seed": 20261105,
+        "log": "fixtures/FX-WMSG-002/evidence/truth-sender.jsonl",
+        "independence": "The sender logs every window it found and every message it sent or posted each, by number and with a copy's size, and the receiver every window it made and every message each received, by the window's name; neither reads InterCat state, and the capture reads Win32k's records apart from both."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-WMSG-002/evidence/measurement.json",
+        "note": "Three runs through icat record, machine-wide and nothing lost: each of the 144 messages - 64 sends, 64 posts and the 16 windows' closes - the number of its rank among the capture's messages of its kind from the sender to the receiver, with every end in its own process and its other end the receiver, 144 of 144 a run; every window's nine messages numbers of their own before the next window's, its close the last of them; no record names a window, so none of the 16 is discovered, and each one's two ends are resolved by its own messages, 32 of 32. The first run's ledger is evaluated by a test against its truth."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-05",
+          "tier": "ExperimentalEvidence",
+          "result": "Recorded by icat record under the opt-in window messages profile, three times, nothing lost: each of the run's 144 messages to 16 windows made and closed one after another the number of its rank with every end in its own process, its other end the receiver, every window's close ranked among its posts and each window's two ends resolved by its own messages. Tier ExperimentalEvidence: a message names no window and carries no size (ADR-088)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two processes' truth logs and scenario of the first run - windows by the run's own class and each generation's name, messages by their number, copies by their size, of seeded bytes - and the ledger of its window message records, by role - sender, receiver, other-01 onward - kind, direction, message number and a send's peer by its role, never a PID, a window, a pointer or a message; and the measurement's counters of the three runs."
+      },
+      "tests": [
+        "R22: FX-WMSG-002's committed ledger through the product keeps each of its 144 messages to 16 windows made one after another the number of its rank - every window's messages numbers of their own before the next window's, its close the last of them - with every end in its own process and its other end the receiver, experimental evidence in three runs with nothing lost"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -3258,6 +3302,7 @@
         "R22: FX-UNIX-002's rows through the product keep each of sixty-four connections made one at a time on its own socket at both ends, while the kernel reused their addresses",
         "R22: FX-UNIX-003's connections, open before the capture began, bind to no socket - not one of their calls is a row of any process - while the same capture follows its own connections whole",
         "R22: FX-WMSG-001's message ends, read through the gate as delivered, are its 32 sends and 33 posts - each send's start and stop at the sender and its retrieval at the receiver one message, each post's queueing and retrieval another - numbered apart, though the run reused its pointers",
+        "R22: FX-WMSG-002's committed ledger through the product keeps each of its 144 messages to 16 windows made one after another the number of its rank - every window's messages numbers of their own before the next window's, its close the last of them - with every end in its own process and its other end the receiver, experimental evidence in three runs with nothing lost",
         "R22: Win32k's message events compile from its registered layout to fixed slots - each end's queue message pointer, which the gate writes the message's number over, and a send's receiving process - never a window, a thread, a message number or a parameter",
         "R22: Winsock AFD's admitted calls compile from its registered layout to fixed slots, none an address the kernel reuses or a buffer's",
         "R22: a COM call record binds to the process that raised it - a client call's to the caller, a served call's to the server - as an RPC record does",
@@ -3369,6 +3414,7 @@
         "R22: icat workspace show states what each session's layout keeps, its pins, pinned lanes, grouping, ranking, evidence policy, lane scale and Other hosts opened, and the window's panes",
         "R22: in the saved views Enter in the name saves the view shown, and Enter on a view shows it as a double click does",
         "R22: loopback joins two identities' captures only while a person confirms they are one host, and says so",
+        "R22: messages to windows made one after another are each the number of its rank, every window's close ranked among the posts where the sender posted it, and each window's two ends resolved by its own messages though no window is discovered",
         "R22: owner filters use the instance binding, not a reused PID or a nearby lifetime",
         "R22: owner(P) keeps the calls P made or served, and a grouping by process partitions the count",
         "R22: participant(P) takes P's records and those whose other end is P, and discloses what it cannot decide",

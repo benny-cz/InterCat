@@ -1,0 +1,94 @@
+{
+  "question": "Whether FX-WMSG-002\u0027s messages to windows made one after another, recorded through the product by icat record under the opt-in window messages profile, are each one number with every end in its own process, its other end the receiver, every window\u0027s close among the posts where the sender posted it, as ADR-088 measures them.",
+  "scenario": "FX-WMSG-002",
+  "truth": {
+    "windows": 16,
+    "copiesSentEach": 4,
+    "messagesPostedEach": 4,
+    "bytes": 2048
+  },
+  "profile": "window-messages",
+  "durationSeconds": 15,
+  "runs": [
+    {
+      "run": 1,
+      "health": {
+        "observedRecords": 37730,
+        "admittedRecords": 37730,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 0,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "tier": "ExperimentalEvidence",
+      "truthMessages": 144,
+      "truthWindows": 16,
+      "resolvedMemberships": 32,
+      "observed": 144,
+      "withEveryEnd": 144,
+      "peerAttributions": 144,
+      "falsePeerAttributions": 0,
+      "beyondTruth": 0,
+      "outsideScope": 0
+    },
+    {
+      "run": 2,
+      "health": {
+        "observedRecords": 38724,
+        "admittedRecords": 38724,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 0,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "tier": "ExperimentalEvidence",
+      "truthMessages": 144,
+      "truthWindows": 16,
+      "resolvedMemberships": 32,
+      "observed": 144,
+      "withEveryEnd": 144,
+      "peerAttributions": 144,
+      "falsePeerAttributions": 0,
+      "beyondTruth": 0,
+      "outsideScope": 0
+    },
+    {
+      "run": 3,
+      "health": {
+        "observedRecords": 41831,
+        "admittedRecords": 41831,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 0,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "tier": "ExperimentalEvidence",
+      "truthMessages": 144,
+      "truthWindows": 16,
+      "resolvedMemberships": 32,
+      "observed": 144,
+      "withEveryEnd": 144,
+      "peerAttributions": 144,
+      "falsePeerAttributions": 0,
+      "beyondTruth": 0,
+      "outsideScope": 0
+    }
+  ],
+  "notes": [
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once its ledger is written.",
+    "A run\u0027s health is the capture\u0027s own report: what its sources lost, what its queue dropped, and what a source\u0027s gate did not admit, by reason."
+  ],
+  "schema": "intercat.window-message-product.v1",
+  "measuredUtc": "2026-11-05T23:15:33.6924072+00:00",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

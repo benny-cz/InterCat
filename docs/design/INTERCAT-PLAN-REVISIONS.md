@@ -888,6 +888,7 @@ Revision 961 has the synchronization handle and window message gates' allocation
 Revision 962 adds the opt-in window messages profile, `window-messages` (ADR-087's third addendum): Kernel-Process and Win32k's message pump, both required, its Moderate class stated beside the message pump's measured throughput regression; nothing has measured it whole yet.
 Revision 963 adds the window message coverage evaluator (ADR-088): each truth message is the number of its rank among the capture's messages of its kind from the sender to the receiver, observed with every end in its own process, and window messages are experimental evidence at most.
 Revision 964 measures window messages through the product (ADR-088's addendum): FX-WMSG-001 recorded by icat record under the window messages profile three times, nothing lost, has each of its 65 messages observed with every end, so window messages are experimental evidence on 10.0.26220.0-x64.
+Revision 965 measures FX-WMSG-002, messages to 16 windows made and closed one after another, through the product (ADR-088's second addendum): each of its 144 messages is the number of its rank with every end in its own process, each window's close ranked among its posts - window messages' second instance and lifetime fixture.
 
 ## Revisions, a paragraph each, in order
 
@@ -4224,3 +4225,15 @@ PID, evaluates it with `WindowMessageCoverageEvaluator` and deletes the session.
 lost, dropped or omitted by a gate, each of the run's 65 messages - 32 sends, 32 posts and the close - was the number of its
 rank with every end in its own process, its other end the receiver. A test reproduces the tier from the first run's
 ledger, and the build's per-build coverage carries WindowMessage at ExperimentalEvidence from FX-WMSG-001.
+
+Revision 965 gives window messages their second instance and lifetime fixture (ADR-088's second addendum), as revision 947
+gave named synchronization objects theirs. The window message workload's `--generations` runs FX-WMSG-002: the receiver
+makes 16 message-only windows one after another, each under a name of its own once the last is destroyed, and the sender
+finds each by its class and name and sends and posts it its messages, numbered on from the last window's, before its close.
+`WindowMessageCoverageEvaluator` now ranks the sender's posts and closes together in the order it logged them, so each
+window's close is ranked among its posts, and counts each window a truth resource whose two ends its own messages resolve.
+Recorded three times by `icat record` under the window messages profile, machine-wide and nothing lost, dropped or omitted,
+each of the run's 144 messages was the number of its rank with every end in its own process and its other end the
+receiver, every window's messages numbers of their own before the next window's, and each window's two ends were resolved,
+32 of 32. A test reproduces the tier from the first run's ledger, and the build's per-build coverage carries WindowMessage
+from FX-WMSG-002.

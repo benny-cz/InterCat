@@ -8,17 +8,18 @@ using Microsoft.Diagnostics.Tracing.Session;
 namespace InterCat.UiMessageProbe;
 
 /// <summary>
-/// FX-WMSG-001 recorded through the product (ADR-088's addendum): each run is the product's own <c>icat record</c> under the
-/// opt-in window messages profile, the workload started once its session runs, and the ledger of the workload's window
-/// message records read from the session it published and evaluated against the run's truth. Each run's session is read
-/// and then deleted, as it holds every window's messages on the machine; what is kept is each run's ledger, evaluation and
-/// truth, and the capture's own counters.
+/// FX-WMSG-001 recorded through the product (ADR-088's addendum), or FX-WMSG-002, its messages to windows made one after
+/// another (its second addendum): each run is the product's own <c>icat record</c> under the opt-in window messages profile,
+/// the workload started once its session runs, and the ledger of the workload's window message records read from the session
+/// it published and evaluated against the run's truth. Each run's session is read and then deleted, as it holds every
+/// window's messages on the machine; what is kept is each run's ledger, evaluation and truth, and the capture's own counters.
 /// </summary>
 internal static partial class Product
 {
     public static async Task<Dictionary<string, object?>> RunAsync(string icat, string workload, string output, int runs, int copies,
-        int posts, int bytes, int duration)
+        int posts, int bytes, int generations, int duration)
     {
+        string fixture = generations > 1 ? "FX-WMSG-002" : "FX-WMSG-001";
         var results = new List<Dictionary<string, object?>>();
         for (int run = 1; run <= runs; run++)
         {
@@ -33,7 +34,8 @@ internal static partial class Product
                 {
                     using (Process started = Process.Start(new ProcessStartInfo(workload,
                         ["window-message", "--truth", truth, "--copies", copies.ToString(CultureInfo.InvariantCulture),
-                            "--posts", posts.ToString(CultureInfo.InvariantCulture), "--bytes", bytes.ToString(CultureInfo.InvariantCulture)])
+                            "--posts", posts.ToString(CultureInfo.InvariantCulture), "--bytes", bytes.ToString(CultureInfo.InvariantCulture),
+                            "--generations", generations.ToString(CultureInfo.InvariantCulture)])
                     {
                         UseShellExecute = false,
                         CreateNoWindow = true,
@@ -56,6 +58,8 @@ internal static partial class Product
                     ["health"] = health,
                     ["tier"] = result.Assessment.Tier.ToString(),
                     ["truthMessages"] = result.Measurement.TruthOperations,
+                    ["truthWindows"] = result.Measurement.TruthResources,
+                    ["resolvedMemberships"] = result.Measurement.ResolvedMemberships,
                     ["observed"] = result.Measurement.TruthOperationsWithAdmittedObservation,
                     ["withEveryEnd"] = result.MessagesWithEveryEnd,
                     ["peerAttributions"] = result.Measurement.PeerAttributions,
@@ -75,10 +79,16 @@ internal static partial class Product
 
         return new()
         {
-            ["question"] = "Whether FX-WMSG-001's messages, recorded through the product by icat record under the opt-in window messages "
-                + "profile, are each one number with every end in its own process, its other end the receiver, as ADR-088 measures them.",
-            ["scenario"] = "FX-WMSG-001",
-            ["truth"] = new Dictionary<string, object?> { ["copiesSent"] = copies, ["messagesPosted"] = posts, ["bytes"] = bytes },
+            ["question"] = generations > 1
+                ? "Whether FX-WMSG-002's messages to windows made one after another, recorded through the product by icat record under "
+                    + "the opt-in window messages profile, are each one number with every end in its own process, its other end the "
+                    + "receiver, every window's close among the posts where the sender posted it, as ADR-088 measures them."
+                : "Whether FX-WMSG-001's messages, recorded through the product by icat record under the opt-in window messages "
+                    + "profile, are each one number with every end in its own process, its other end the receiver, as ADR-088 measures them.",
+            ["scenario"] = fixture,
+            ["truth"] = generations > 1
+                ? new Dictionary<string, object?> { ["windows"] = generations, ["copiesSentEach"] = copies, ["messagesPostedEach"] = posts, ["bytes"] = bytes }
+                : new Dictionary<string, object?> { ["copiesSent"] = copies, ["messagesPosted"] = posts, ["bytes"] = bytes },
             ["profile"] = "window-messages",
             ["durationSeconds"] = duration,
             ["runs"] = results,

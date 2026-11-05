@@ -54,9 +54,10 @@ internal static class Program
             Console.Error.WriteLine("  size delivers each of FX-WMSG-001's messages' ends in the order they were raised, and what a gate");
             Console.Error.WriteLine("  following a message by its pointer as records arrive would number wrongly; the ledger is the run's ends");
             Console.Error.WriteLine("  as delivered, each pointer by the order it first appeared in.");
-            Console.Error.WriteLine("  --product [--runs n] [--copies n] [--posts n] [--bytes n] [--duration s] [--icat <InterCat.Cli.exe>]: FX-WMSG-001");
-            Console.Error.WriteLine("  recorded through the product by icat record under the window messages profile, each run's session read");
-            Console.Error.WriteLine("  into a ledger of the workload's records by role and evaluated against its truth, then deleted.");
+            Console.Error.WriteLine("  --product [--runs n] [--copies n] [--posts n] [--bytes n] [--generations n] [--duration s] [--icat <InterCat.Cli.exe>]:");
+            Console.Error.WriteLine("  FX-WMSG-001, or with --generations FX-WMSG-002's windows made one after another, recorded through the");
+            Console.Error.WriteLine("  product by icat record under the window messages profile, each run's session read into a ledger of the");
+            Console.Error.WriteLine("  workload's records by role and evaluated against its truth, then deleted.");
             return 2;
         }
 
@@ -104,6 +105,7 @@ internal static class Program
                     int.Parse(Option(args, "--copies") ?? "32", CultureInfo.InvariantCulture),
                     int.Parse(Option(args, "--posts") ?? "32", CultureInfo.InvariantCulture),
                     int.Parse(Option(args, "--bytes") ?? "2048", CultureInfo.InvariantCulture),
+                    int.Parse(Option(args, "--generations") ?? "1", CultureInfo.InvariantCulture),
                     int.Parse(Option(args, "--duration") ?? "15", CultureInfo.InvariantCulture)).ConfigureAwait(false);
                 product["schema"] = "intercat.window-message-product.v1";
                 product["measuredUtc"] = DateTimeOffset.UtcNow;

@@ -1,10 +1,11 @@
 # ADR-088: A window message is measured as the number of its rank, and is experimental evidence at most
 
 - Status: accepted for M6's UI messaging work package; FX-WMSG-001 measured through the product, experimental evidence on
-  10.0.26220.0-x64 (addendum)
+  10.0.26220.0-x64 (addendum); FX-WMSG-002, windows made one after another, its second instance and lifetime fixture (second
+  addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
-- Relates to: ADR-080, ADR-084, ADR-086, ADR-087, §14.2, R3, R22, P1, P27, FX-WMSG-001, `CoverageTierCalculator`,
+- Relates to: ADR-080, ADR-084, ADR-086, ADR-087, §14.2, R3, R22, P1, P27, FX-WMSG-001, FX-WMSG-002, `CoverageTierCalculator`,
   `WindowMessageCoverageEvaluator`, `ComCallCoverageEvaluator`, `SyncObjectCoverageEvaluator`
 
 ## Context
@@ -69,3 +70,26 @@ the session, which holds every window's messages on the machine.
 - Window messages are experimental evidence on 10.0.26220.0-x64: the build's per-build coverage carries the tier from
   FX-WMSG-001, and a test reproduces it from the first run's committed ledger; nine alterations of that evidence and the
   runs' report are caught.
+
+## Addendum: FX-WMSG-002, windows made one after another (revision 965)
+
+FX-WMSG-002 is FX-WMSG-001's sender and receiver over 16 message-only windows of the run's own class, made one after
+another: the receiver makes each under a name of its own once the last is destroyed, and the sender finds it by its class
+and name, sends it 4 WM_COPYDATA messages, posts it 4 numbered messages and last its close, its messages numbered on from
+the last window's. The receiver's one queue carries every window's messages in turn, and no record names a window.
+
+- The sender posts each window's close after that window's posts and before the next window's messages, so its posts and
+  closes are one order: `WindowMessageCoverageEvaluator` ranks them together in the order the sender logged them, as
+  decision 1 ranks a run of one window, its close last. The windows are the truth's resources, by its name for each: none
+  has a record of its own, so none is discovered, and each one's two ends are memberships, resolved where a message to it
+  was observed at that end.
+- `InterCat.UiMessageProbe --measure --product --generations 16` recorded it three times by `icat record` under the opt-in
+  window messages profile, machine-wide and loss-free - 37,730, 38,724, 41,831 records admitted, none dropped
+  and none a gate omitted. Each of the run's 144 messages - 64 sends, 64 posts and the 16 closes - was the number of its
+  rank with every end in its own process and its other end the receiver, 144 of 144 a run, no false attribution. Every
+  window's nine messages were numbers of their own before the next window's, its close the last of them, and each window's
+  two ends were resolved by its own messages, 32 of 32.
+- So a window made after another's close is messaged as the first was, its messages its own: window messages stay
+  experimental evidence on 10.0.26220.0-x64, the build's per-build coverage carrying the tier from FX-WMSG-002, its latest
+  fixture. A test reproduces it from the first run's committed ledger, and eleven alterations of that evidence and the runs'
+  report are caught. FX-WMSG-002 is the package's second instance and lifetime fixture.

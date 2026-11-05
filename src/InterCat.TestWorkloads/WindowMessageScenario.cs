@@ -8,12 +8,19 @@ using InterCat.Domain;
 
 namespace InterCat.TestWorkloads;
 
-/// <summary>Parameters of one FX-WMSG-001 run: the messages a sender sends and posts to a receiver's window.</summary>
+/// <summary>
+/// Parameters of one FX-WMSG-001 run - the messages a sender sends and posts to a receiver's window - or of an FX-WMSG-002
+/// run, the same messages to each of the receiver's windows made one after another.
+/// </summary>
 internal sealed record WindowMessageOptions
 {
-    public const string ScenarioId = "FX-WMSG-001";
+    /// <summary>The fixture a run is: FX-WMSG-002 where the receiver makes its windows in generations.</summary>
+    public string ScenarioId => Generations > 1 ? "FX-WMSG-002" : "FX-WMSG-001";
 
     public required string TruthDirectory { get; init; }
+
+    /// <summary>How many windows the receiver makes one after another, each closed by the sender before the next is made.</summary>
+    public int Generations { get; init; } = 1;
 
     /// <summary>The seed of the copied data's sizes and bytes.</summary>
     public int Seed { get; init; } = 20_261_105;
@@ -36,7 +43,9 @@ internal sealed record WindowMessageOptions
 /// by its class and sends it seeded WM_COPYDATA messages, each a payload the system copies into the receiver, then posts it
 /// numbered messages of the application's range, and last posts it a close, which its pump reaches after them. Each process
 /// logs every message it sent or posted and every one its window received, by number and with a copy's size, and the window
-/// it made or found, by its class. Neither reads InterCat state.
+/// it made or found, by its class. FX-WMSG-002 is the same over windows made one after another: the receiver makes each
+/// generation's window under a name of its own once the last is destroyed, and the sender finds each by its class and name and
+/// sends and posts it the messages, numbered on from the last window's, before its close. Neither reads InterCat state.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static partial class WindowMessageScenario
@@ -53,13 +62,14 @@ internal static partial class WindowMessageScenario
 
     private static readonly JsonSerializerOptions SummaryOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    // The receiver's truth log and counts, which its window procedure, called by the system on its pump, reaches.
+    // The receiver's truth log and counts, and the name of the window it pumps, which its window procedure, called by the
+    // system on its pump, reaches.
     private static TruthLog? receiverTruth;
-    private static string receiverClass = string.Empty;
+    private static string receiverWindow = string.Empty;
     private static int copiesReceived;
     private static int postsReceived;
 
-    /// <summary>Starts the receiver, then the sender once the receiver's window exists, and waits for both.</summary>
+    /// <summary>Starts the receiver, then the sender once the receiver's first window exists, and waits for both.</summary>
     public static async Task<int> RunCoordinatorAsync(WindowMessageOptions options, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(options.TruthDirectory);
@@ -67,7 +77,7 @@ internal static partial class WindowMessageScenario
             ?? throw new InvalidOperationException("The workload executable path could not be resolved.");
 
         // A class of its own each run, so no other run's window or any other program's shares it.
-        string className = $"InterCat.{WindowMessageOptions.ScenarioId}.{Guid.NewGuid():N}";
+        string className = $"InterCat.{options.ScenarioId}.{Guid.NewGuid():N}";
         using Process receiver = StartChild(executable, "window-message-receiver", options with { ClassName = className });
         if (await receiver.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not "ready")
         {
@@ -80,8 +90,9 @@ internal static partial class WindowMessageScenario
         await Task.WhenAll(receiver.WaitForExitAsync(cancellationToken), sender.WaitForExitAsync(cancellationToken)).ConfigureAwait(false);
         var summary = new
         {
-            scenarioId = WindowMessageOptions.ScenarioId,
+            scenarioId = options.ScenarioId,
             options.Seed,
+            options.Generations,
             options.CopyData,
             options.Posted,
             options.MaximumBytes,
@@ -99,27 +110,30 @@ internal static partial class WindowMessageScenario
         return receiver.ExitCode != 0 || sender.ExitCode != 0 ? 1 : 0;
     }
 
-    /// <summary>The receiver: makes the message-only window, says so, and pumps its messages until the sender's close.</summary>
+    /// <summary>
+    /// The receiver: makes each generation's message-only window in turn, says so once the first exists, and pumps each one's
+    /// messages until the sender's close destroys it.
+    /// </summary>
     public static async Task<int> RunReceiverAsync(WindowMessageOptions options, CancellationToken cancellationToken)
     {
         string className = options.ClassName ?? throw new InvalidOperationException("The receiver takes its window's class from --class.");
-        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-receiver.jsonl"), WindowMessageOptions.ScenarioId, "receiver");
+        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-receiver.jsonl"), options.ScenarioId, "receiver");
         truth.Write(TruthEventKind.ProcessStarted, resourceName: className);
         receiverTruth = truth;
-        receiverClass = className;
-        if (Pump(truth, className, cancellationToken) is { } failure)
+        if (Pump(truth, className, options.Generations, cancellationToken) is { } failure)
         {
             truth.Write(TruthEventKind.Failure, status: failure, resourceName: className);
             return 1;
         }
 
         truth.Write(TruthEventKind.ProcessExiting);
-        return copiesReceived == options.CopyData && postsReceived == options.Posted ? 0 : 1;
+        return copiesReceived == options.CopyData * options.Generations && postsReceived == options.Posted * options.Generations ? 0 : 1;
     }
 
-    // Makes the message-only window and pumps its messages on this thread, which owns it, until the close's destruction
-    // posts the quit; null once it has, or why the window could not be made.
-    private static unsafe string? Pump(TruthLog truth, string className, CancellationToken cancellationToken)
+    // Registers the class, then makes each generation's message-only window once the last is destroyed and pumps its messages
+    // on this thread, which owns it, until the close's destruction posts the quit; null once the last window's has, or why a
+    // window could not be made.
+    private static unsafe string? Pump(TruthLog truth, string className, int generations, CancellationToken cancellationToken)
     {
         nint instance = GetModuleHandleW(null);
         fixed (char* name = className)
@@ -136,77 +150,118 @@ internal static partial class WindowMessageScenario
                 return "The window class could not be registered.";
             }
 
-            if (CreateWindowExW(0, name, name, 0, 0, 0, 0, 0, MessageOnly, 0, instance, 0) == 0)
+            for (int generation = 1; generation <= generations; generation++)
             {
-                return "The window could not be made.";
-            }
+                string windowName = WindowName(className, generation, generations);
+                receiverWindow = windowName;
+                fixed (char* title = windowName)
+                {
+                    if (CreateWindowExW(0, name, title, 0, 0, 0, 0, 0, MessageOnly, 0, instance, 0) == 0)
+                    {
+                        return "The window could not be made.";
+                    }
+                }
 
-            truth.Write(TruthEventKind.ObjectCreated, status: "window", resourceName: className);
-            Console.WriteLine("ready");
-            Console.Out.Flush();
-            Message message;
-            while (GetMessageW(&message, 0, 0, 0) > 0)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                _ = TranslateMessage(&message);
-                _ = DispatchMessageW(&message);
+                truth.Write(TruthEventKind.ObjectCreated, status: "window", resourceName: windowName);
+                if (generation == 1)
+                {
+                    Console.WriteLine("ready");
+                    Console.Out.Flush();
+                }
+
+                Message message;
+                while (GetMessageW(&message, 0, 0, 0) > 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    _ = TranslateMessage(&message);
+                    _ = DispatchMessageW(&message);
+                }
             }
         }
 
         return null;
     }
 
-    /// <summary>The sender: finds the receiver's window by its class, sends it the copies, posts it the messages, then its close.</summary>
+    /// <summary>
+    /// The sender: finds each of the receiver's windows by its class and name once it is made, sends it the copies, posts it
+    /// the messages, then its close.
+    /// </summary>
     public static async Task<int> RunSenderAsync(WindowMessageOptions options, CancellationToken cancellationToken)
     {
         string className = options.ClassName ?? throw new InvalidOperationException("The sender takes the window's class from --class.");
-        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-sender.jsonl"), WindowMessageOptions.ScenarioId, "sender");
+        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-sender.jsonl"), options.ScenarioId, "sender");
         truth.Write(TruthEventKind.ProcessStarted, resourceName: className);
-        nint window = Find(className);
-        if (window == 0)
-        {
-            truth.Write(TruthEventKind.Failure, status: "The receiver's window was not found.", resourceName: className);
-            return 1;
-        }
-
-        truth.Write(TruthEventKind.ObjectOpened, status: "window", resourceName: className);
         var random = new Random(options.Seed);
-        for (int copy = 1; copy <= options.CopyData; copy++)
+        for (int generation = 1; generation <= options.Generations; generation++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            byte[] bytes = new byte[random.Next(1, options.MaximumBytes + 1)];
-            random.NextBytes(bytes);
-
-            // A sent message returns once the receiver's procedure has answered it, its copy taken.
-            nint answered = SendCopy(window, copy, bytes);
-            truth.Write(TruthEventKind.MessageSent, callId: copy, declaredBytes: bytes.Length, completedBytes: bytes.Length,
-                status: answered == 1 ? "WM_COPYDATA" : "WM_COPYDATA unanswered", resourceName: className);
-        }
-
-        for (int post = 1; post <= options.Posted; post++)
-        {
-            if (!PostMessageW(window, ApplicationMessage, post, 0))
+            string windowName = WindowName(className, generation, options.Generations);
+            nint window = Find(className, windowName, cancellationToken);
+            if (window == 0)
             {
-                truth.Write(TruthEventKind.Failure, callId: post, status: "A message could not be posted.", resourceName: className);
+                truth.Write(TruthEventKind.Failure, status: "The receiver's window was not found.", resourceName: windowName);
                 return 1;
             }
 
-            truth.Write(TruthEventKind.MessageSent, callId: post, status: "posted", resourceName: className);
+            truth.Write(TruthEventKind.ObjectOpened, status: "window", resourceName: windowName);
+
+            // Each window's messages numbered on from the last window's, so no two of the run's messages share a number.
+            for (int copy = (generation - 1) * options.CopyData + 1; copy <= generation * options.CopyData; copy++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                byte[] bytes = new byte[random.Next(1, options.MaximumBytes + 1)];
+                random.NextBytes(bytes);
+
+                // A sent message returns once the receiver's procedure has answered it, its copy taken.
+                nint answered = SendCopy(window, copy, bytes);
+                truth.Write(TruthEventKind.MessageSent, callId: copy, declaredBytes: bytes.Length, completedBytes: bytes.Length,
+                    status: answered == 1 ? "WM_COPYDATA" : "WM_COPYDATA unanswered", resourceName: windowName);
+            }
+
+            for (int post = (generation - 1) * options.Posted + 1; post <= generation * options.Posted; post++)
+            {
+                if (!PostMessageW(window, ApplicationMessage, post, 0))
+                {
+                    truth.Write(TruthEventKind.Failure, callId: post, status: "A message could not be posted.", resourceName: windowName);
+                    return 1;
+                }
+
+                truth.Write(TruthEventKind.MessageSent, callId: post, status: "posted", resourceName: windowName);
+            }
+
+            // Last, a close posted behind them, which the pump reaches after every posted message; the receiver makes the
+            // next generation's window once this one is destroyed.
+            _ = PostMessageW(window, Close, 0, 0);
+            truth.Write(TruthEventKind.HandleClosed, status: "window", resourceName: windowName);
         }
 
-        // Last, a close posted behind them, which the pump reaches after every posted message.
-        _ = PostMessageW(window, Close, 0, 0);
-        truth.Write(TruthEventKind.HandleClosed, status: "window", resourceName: className);
         truth.Write(TruthEventKind.ProcessExiting);
         return 0;
     }
 
-    // The receiver's message-only window, found by its class among the message-only windows.
-    private static unsafe nint Find(string className)
+    // A window's name: its class's for a run of one window, as FX-WMSG-001's was, and the class's numbered by its generation
+    // for a run of several, so a generation's window is found only once the receiver has made it.
+    private static string WindowName(string className, int generation, int generations) =>
+        generations == 1 ? className : string.Create(CultureInfo.InvariantCulture, $"{className}/{generation:D2}");
+
+    // The receiver's message-only window of the name given, found among the message-only windows of its class once the
+    // receiver has made it, which it does once the last generation's is destroyed; zero if it is not made within a minute.
+    private static unsafe nint Find(string className, string windowName, CancellationToken cancellationToken)
     {
+        var waited = Stopwatch.StartNew();
         fixed (char* name = className)
+        fixed (char* title = windowName)
         {
-            return FindWindowExW(MessageOnly, 0, name, null);
+            while (true)
+            {
+                nint window = FindWindowExW(MessageOnly, 0, name, title);
+                if (window != 0 || waited.Elapsed > TimeSpan.FromMinutes(1))
+                {
+                    return window;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                Thread.Sleep(1);
+            }
         }
     }
 
@@ -231,20 +286,21 @@ internal static partial class WindowMessageScenario
                 var copied = (CopyDataStruct*)lParam;
                 copiesReceived++;
                 receiverTruth?.Write(TruthEventKind.MessageReceived, callId: (long)copied->Data, completedBytes: copied->Bytes,
-                    status: "WM_COPYDATA", resourceName: receiverClass);
+                    status: "WM_COPYDATA", resourceName: receiverWindow);
                 return 1;
             }
 
             case ApplicationMessage:
                 postsReceived++;
-                receiverTruth?.Write(TruthEventKind.MessageReceived, callId: wParam, status: "posted", resourceName: receiverClass);
+                receiverTruth?.Write(TruthEventKind.MessageReceived, callId: wParam, status: "posted", resourceName: receiverWindow);
                 return 0;
 
             case Close:
-                receiverTruth?.Write(TruthEventKind.HandleClosed, status: "window", resourceName: receiverClass);
+                receiverTruth?.Write(TruthEventKind.HandleClosed, status: "window", resourceName: receiverWindow);
                 _ = DestroyWindow(window);
                 return 0;
 
+            // The window's destruction ends its pump, after which the receiver makes the next generation's window, if any.
             case Destroy:
                 PostQuitMessage(0);
                 return 0;
@@ -266,6 +322,7 @@ internal static partial class WindowMessageScenario
         {
             verb, "--truth", options.TruthDirectory, "--class", options.ClassName!,
             "--seed", options.Seed.ToString(CultureInfo.InvariantCulture),
+            "--generations", options.Generations.ToString(CultureInfo.InvariantCulture),
             "--copies", options.CopyData.ToString(CultureInfo.InvariantCulture),
             "--posts", options.Posted.ToString(CultureInfo.InvariantCulture),
             "--bytes", options.MaximumBytes.ToString(CultureInfo.InvariantCulture),

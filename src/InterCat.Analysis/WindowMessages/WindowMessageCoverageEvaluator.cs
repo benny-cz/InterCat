@@ -62,12 +62,14 @@ public enum WindowMessageEnd
 }
 
 /// <summary>
-/// One truth message and what the capture showed of it: its kind - sent, posted, or the close posted last - the number of
-/// its rank among the capture's messages of its kind from the sender to the receiver, whether that number has every end
-/// each in its own process, and the process at its other end; or why not.
+/// One truth message and what the capture showed of it: its kind - sent, posted, or a window's close, posted after its
+/// messages - the window it went to by the truth's name for it, the number of its rank among the capture's messages of its
+/// kind from the sender to the receiver, whether that number has every end each in its own process, and the process at its
+/// other end; or why not.
 /// </summary>
 public sealed record WindowMessageTruthCoverage(
     string Kind,
+    string? Window,
     long? CallId,
     long? MessageNumber,
     bool EveryEnd,
@@ -95,26 +97,27 @@ public sealed record WindowMessageCoverageResult
 
 /// <summary>
 /// Compares an independent truth log of window messages - each message a sender sent or posted a receiver's window, and the
-/// close it posted last - with a capture's window message records (ADR-086, ADR-087), and computes the section 14.2
-/// counters (ADR-088). No record names which message it is - Win32k carries no message number, parameter or size - so a truth
-/// message is the number of its rank among the capture's messages of its kind from the sender to the receiver: a sent one
-/// among the numbers whose start the sender raised naming the receiver, a posted one among those the sender queued that no
-/// other process alone retrieved, each in the order of its first record, as the sender sends and posts them one after another. Where the
-/// capture holds as many of a kind as the truth logged, each truth message is the number of its rank; where it holds more or
-/// fewer, no rank says which is which, and none of that kind is matched. A message is observed with every end where its
-/// number has a send's start and stop raised in the sender and its retrieval's start and stop in the receiver, or a post's
-/// queueing in the sender and its retrieval in the receiver. Its peer is the process at its other end - the receiver a send's
-/// start names, and the process its retrieval binds to - false unless it is the receiver the truth logged. No record names
-/// the window or carries a size, so no message is bound to a resource instance and the byte criterion is not measured; the
-/// mechanism claims operations, so it reaches experimental evidence at most (P27). It is pure and portable: the same evaluation
-/// runs in a test on committed evidence (R19, R18).
+/// close it posted each window after its messages - with a capture's window message records (ADR-086, ADR-087), and computes
+/// the section 14.2 counters (ADR-088). No record names which message it is - Win32k carries no message number, parameter or
+/// size - so a truth message is the number of its rank among the capture's messages of its kind from the sender to the
+/// receiver: a sent one among the numbers whose start the sender raised naming the receiver, a posted one or a close among
+/// those the sender queued that no other process alone retrieved, each in the order of its first record, as the sender sends
+/// and posts them one after another, the windows one after another too. Where the capture holds as many of a kind as the
+/// truth logged, each truth message is the number of its rank; where it holds more or fewer, no rank says which is which, and
+/// none of that kind is matched. A message is observed with every end where its number has a send's start and stop raised in
+/// the sender and its retrieval's start and stop in the receiver, or a post's queueing in the sender and its retrieval in the
+/// receiver. Its peer is the process at its other end - the receiver a send's start names, and the process its retrieval
+/// binds to - false unless it is the receiver the truth logged. No record names the window or carries a size, so no message
+/// is bound to a resource instance, no window is discovered and the byte criterion is not measured; the mechanism claims
+/// operations, so it reaches experimental evidence at most (P27). It is pure and portable: the same evaluation runs in a test
+/// on committed evidence (R19, R18).
 /// </summary>
 public static class WindowMessageCoverageEvaluator
 {
     /// <summary>The status a sender's truth logs a posted message with; a sent one's names its message, WM_COPYDATA.</summary>
     public const string PostedStatus = "posted";
 
-    /// <summary>The status a truth logs the receiver's window with, whose close the sender posts last.</summary>
+    /// <summary>The status a truth logs each of the receiver's windows with, whose close the sender posts after its messages.</summary>
     public const string WindowStatus = "window";
 
     /// <summary>Which of a message's ends a record is, by its kind and direction.</summary>
@@ -144,16 +147,17 @@ public static class WindowMessageCoverageEvaluator
         int? sender = senders.Length == 1 ? senders[0] : null;
         int? receiver = receivers.Length == 1 ? receivers[0] : null;
 
-        // The truth's messages in the sender's order: its sends, its posts, and the close of the window it posted last.
+        // The truth's messages in the sender's order: its sends, and its posts with the close it posted each window after
+        // them, in the one order it logged them - every window's posts and its close before the next window's.
         TruthRecord[] sent = [.. truth.Where(record => record.Kind == TruthEventKind.MessageSent && record.ProcessId == sender
             && !string.Equals(record.Status, PostedStatus, StringComparison.Ordinal)).OrderBy(static record => record.Sequence)];
-        TruthRecord[] posted =
-        [
-            .. truth.Where(record => record.Kind == TruthEventKind.MessageSent && record.ProcessId == sender
-                && string.Equals(record.Status, PostedStatus, StringComparison.Ordinal)).OrderBy(static record => record.Sequence),
-            .. truth.Where(record => record.Kind == TruthEventKind.HandleClosed && record.ProcessId == sender
-                && string.Equals(record.Status, WindowStatus, StringComparison.Ordinal)).OrderBy(static record => record.Sequence),
-        ];
+        TruthRecord[] posted = [.. truth.Where(record => record.ProcessId == sender
+            && ((record.Kind == TruthEventKind.MessageSent && string.Equals(record.Status, PostedStatus, StringComparison.Ordinal))
+                || (record.Kind == TruthEventKind.HandleClosed && string.Equals(record.Status, WindowStatus, StringComparison.Ordinal))))
+            .OrderBy(static record => record.Sequence)];
+
+        // The windows the sender's messages went to, by the truth's name for each, in the order it first messaged them.
+        string?[] windows = [.. sent.Concat(posted).OrderBy(static record => record.Sequence).Select(static record => record.ResourceName).Distinct()];
 
         // Every number's records in the capture's order, whichever process each binds to: a message the sender made to another
         // process's window shows there. Records of processes the truth does not name are scope.
@@ -185,7 +189,7 @@ public static class WindowMessageCoverageEvaluator
                 string kind = isSent ? "sent" : record.Kind == TruthEventKind.HandleClosed ? "close" : PostedStatus;
                 if (!ranked)
                 {
-                    messages.Add(new(kind, record.CallId, null, false, null, sender is null || receiver is null
+                    messages.Add(new(kind, record.ResourceName, record.CallId, null, false, null, sender is null || receiver is null
                         ? "The truth names no one sender and one receiver."
                         : $"The capture holds {numbers.Length} {(isSent ? "sent" : "posted")} messages from the sender to the receiver "
                             + $"where the truth logged {records.Length}, so no rank says which is which."));
@@ -213,7 +217,7 @@ public static class WindowMessageCoverageEvaluator
                     ? Has(ends, WindowMessageEnd.SendStart, sender) && Has(ends, WindowMessageEnd.SendStop, sender)
                         && Has(ends, WindowMessageEnd.RetrieveSendStart, receiver) && Has(ends, WindowMessageEnd.RetrieveSendStop, receiver)
                     : Has(ends, WindowMessageEnd.QueuePost, sender) && Has(ends, WindowMessageEnd.RetrievePost, receiver);
-                messages.Add(new(kind, record.CallId, number, every && !falsely, otherEnd, every && !falsely ? null
+                messages.Add(new(kind, record.ResourceName, record.CallId, number, every && !falsely, otherEnd, every && !falsely ? null
                     : falsely ? "Its ends name a process at its other end the truth says did not receive it."
                     : isSent ? "Its number lacks a send's start or stop in the sender, or its retrieval's start or stop in the receiver."
                     : "Its number lacks its queueing in the sender or its retrieval in the receiver."));
@@ -242,12 +246,14 @@ public static class WindowMessageCoverageEvaluator
             ByteEligibleOperations = 0,
             ByteMeasuredOperations = 0,
 
-            // The receiver's window has no record of its own, so no lifetime can be shown for it; its two ends are its
-            // memberships, each resolved where a message was observed at it.
-            TruthResources = 1,
+            // None of the receiver's windows has a record of its own, so none is discovered and no lifetime can be shown for
+            // one; a window's two ends are its memberships, each resolved where a message to it was observed at that end.
+            TruthResources = windows.Length,
             DiscoveredResourcesWithLifetime = 0,
-            ExpectedMemberships = 2,
-            ResolvedMemberships = (observed > 0 ? 1 : 0) + (messages.Any(message => message.MessageNumber is not null && message.OtherEndProcessId == receiver) ? 1 : 0),
+            ExpectedMemberships = 2L * windows.Length,
+            ResolvedMemberships = windows.Sum(window =>
+                (messages.Any(message => message.Window == window && message.MessageNumber is not null) ? 1 : 0)
+                + (messages.Any(message => message.Window == window && message.MessageNumber is not null && message.OtherEndProcessId == receiver) ? 1 : 0)),
             ClaimsBytesOrOperations = true,
         };
 
@@ -257,6 +263,8 @@ public static class WindowMessageCoverageEvaluator
             + $"kind from the sender to the receiver, and {withEveryEnd} of them had every end, each raised in its own process.",
             "No record names which message it is, the window it went to or its size: a message is bound to no resource instance, "
             + "and the byte criterion is not measured (R3, P1).",
+            $"The truth's messages went to {windows.Length} of the receiver's windows, which no record names: none is discovered, "
+            + "and each one's two ends are memberships resolved where a message to it was observed at that end.",
             $"{outsideScope} window message records were of processes the truth does not name: a machine-wide capture's scope, not error.",
         };
         if (beyond > 0)

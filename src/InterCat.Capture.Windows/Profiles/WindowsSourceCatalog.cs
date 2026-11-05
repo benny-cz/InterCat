@@ -1270,8 +1270,9 @@ public static class WindowsSourceCatalog
                 + "a thread, a message number or a parameter, which every record of FX-WMSG-001's processes carried as zero.",
                 "Measured through the product on FX-WMSG-001, three runs of the opt-in window messages profile, nothing lost: each "
                 + "of its 65 messages - 32 sends, 32 posts and the close - the number of its rank with every end in its own process, "
-                + "its other end the receiver. A message names no window and carries no size, so its tier is experimental evidence "
-                + "(ADR-088).",
+                + "its other end the receiver; and on FX-WMSG-002, messages to 16 windows made and closed one after another, each "
+                + "of its 144 the number of its rank with every end in its own process, every window's close among its posts. A "
+                + "message names no window and carries no size, so its tier is experimental evidence (ADR-088).",
                 "Every window on the machine pumps messages: with no messaging workload of its own, a capture collecting it "
                 + "receives the other windows' records, about 3,100 a second on the measuring machine.",
                 "Registration is not evidence of traffic; only a measured fixture assigns a tier.",

@@ -18,7 +18,7 @@ says so, and never borrows another build's tier (P27).
 | Tcp | TrafficVisualization | FX-TCP-002 | 2026-09-27 | Primary |
 | Udp | TrafficVisualization | FX-UDP-002 | 2026-09-27 | Primary |
 | UnixDomainSocket | ExperimentalEvidence | FX-UNIX-002 | 2026-11-04 | Primary |
-| WindowMessage | ExperimentalEvidence | FX-WMSG-001 | 2026-11-05 | Primary |
+| WindowMessage | ExperimentalEvidence | FX-WMSG-002 | 2026-11-05 | Primary |
 
 ## 10.0.26220.9223-x64
 

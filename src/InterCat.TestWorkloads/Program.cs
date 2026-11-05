@@ -100,6 +100,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Posted = Integer(args, "--posts") ?? 32,
         MaximumBytes = Integer(args, "--bytes") ?? 2_048,
         ClassName = Option(args, "--class"),
+        Generations = Integer(args, "--generations") ?? 1,
     };
 
     var udpOptions = new UdpLoopbackOptions
@@ -190,6 +191,12 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
     {
         await Console.Error.WriteLineAsync("--generations is at least one and --held-ms not negative, and --duplicate, --generations and --held-ms are three fixtures, FX-SYNC-002, FX-SYNC-003 and FX-SYNC-004: a run is one of them.")
             .ConfigureAwait(false);
+        return 2;
+    }
+
+    if (args[0].StartsWith("window-message", StringComparison.Ordinal) && windowMessageOptions.Generations < 1)
+    {
+        await Console.Error.WriteLineAsync("--generations is at least one: the windows the receiver makes one after another.").ConfigureAwait(false);
         return 2;
     }
 
@@ -379,11 +386,14 @@ static void PrintHelp()
     Console.WriteLine("      time, each read asking for more than any message holds. Each process logs the mailslot it made");
     Console.WriteLine("      or opened, every message with the bytes asked for and moved, and its close. Windows only.");
     Console.WriteLine();
-    Console.WriteLine("  window-message --truth <dir> [--seed n] [--copies n] [--posts n] [--bytes n]");
+    Console.WriteLine("  window-message --truth <dir> [--seed n] [--copies n] [--posts n] [--bytes n] [--generations n]");
     Console.WriteLine("      FX-WMSG-001: a receiver makes a message-only window of a class of the run's own and pumps its");
     Console.WriteLine("      messages; a sender finds it by its class, sends it that many WM_COPYDATA messages of seeded");
     Console.WriteLine("      payloads of up to that many bytes, posts it that many numbered messages, and last posts it a");
     Console.WriteLine("      close. Each process logs every message it sent or posted and every one its window received.");
+    Console.WriteLine("      --generations runs it as FX-WMSG-002: the receiver makes that many windows one after another,");
+    Console.WriteLine("      each under a name of its own once the last is destroyed, and the sender finds each by its class");
+    Console.WriteLine("      and name and sends and posts it the messages, numbered on from the last window's, then its close.");
     Console.WriteLine("      Windows only.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");

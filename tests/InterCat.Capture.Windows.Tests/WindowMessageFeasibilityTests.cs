@@ -132,17 +132,17 @@ public sealed class WindowMessageFeasibilityTests
         Assert.Contains(win32k.Notes, note => note.Contains("only within a message's life", StringComparison.Ordinal));
 
         // Only the opt-in window messages profile requests it, no other source claims window messages, and only the build their
-        // fixture measured them on through the product carries a tier for them, FX-WMSG-001's: experimental evidence, as a
-        // message names no window and carries no size; no other build borrows it.
+        // fixtures measured them on through the product carries a tier for them, from FX-WMSG-002, the later of the two:
+        // experimental evidence, as a message names no window and carries no size; no other build borrows it.
         Assert.Equal(["window-messages"], CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures)
             .Where(profile => profile.Sources.Any(source => source.SourceId == win32k.SourceId)).Select(profile => profile.Id));
         Assert.StartsWith("Only the opt-in window messages profile requests it.", win32k.FilteringNotes, StringComparison.Ordinal);
         Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != win32k.SourceId),
             source => Assert.DoesNotContain(Mechanism.WindowMessage, source.Mechanisms));
         MeasuredCoverageEntry measured = Assert.Single(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.WindowMessage);
-        Assert.Equal((CapabilityTier.ExperimentalEvidence, "FX-WMSG-001", "10.0.26220.0-x64"), (measured.Tier, measured.Fixture, measured.Build));
-        Assert.Contains(win32k.Notes, note => note.Contains("through the product", StringComparison.Ordinal)
-            && note.Contains("its tier is experimental evidence (ADR-088)", StringComparison.Ordinal));
+        Assert.Equal((CapabilityTier.ExperimentalEvidence, "FX-WMSG-002", "10.0.26220.0-x64"), (measured.Tier, measured.Fixture, measured.Build));
+        Assert.Contains(win32k.Notes, note => note.Contains("through the product on FX-WMSG-001", StringComparison.Ordinal)
+            && note.Contains("on FX-WMSG-002", StringComparison.Ordinal) && note.Contains("its tier is experimental evidence (ADR-088)", StringComparison.Ordinal));
     }
 
     [Fact(DisplayName = "§12: collecting Win32k's message pump is measured in two series of pairs over a message-bound workload - Low in the processor time it adds, the workload's own a twentieth more and its throughput past §12's target, nothing lost - and the machine's other windows raise its records whatever the workload")]
