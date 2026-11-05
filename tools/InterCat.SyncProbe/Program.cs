@@ -54,6 +54,9 @@ internal static class Program
             Console.Error.WriteLine("  while FX-SYNC-001 runs: what its session delivered by class and opcode, and its group masks.");
             Console.Error.WriteLine("  --types: the object type table read from user mode before a session, against the type rundown at its");
             Console.Error.WriteLine("  stop, and the machine's handle records by type over FX-SYNC-001.");
+            Console.Error.WriteLine("  --duplication [--ledger]: FX-SYNC-002, the opener also given each object's handle by a duplication -");
+            Console.Error.WriteLine("  pushed, pulled, and made between the two by a third process: which process raised each duplication's");
+            Console.Error.WriteLine("  record and its handle's, and where the synchronization types' kernel handles' records are raised.");
             return 2;
         }
 
@@ -77,6 +80,21 @@ internal static class Program
             types["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
             File.WriteAllText(Path.Combine(output, "report.json"), JsonSerializer.Serialize(types, Json));
             Console.WriteLine(JsonSerializer.Serialize(types, Json));
+            return 0;
+        }
+
+        // Which process a handle's duplication is raised in, and the kernel's own handles' records: FX-SYNC-002.
+        if (measure && args.Contains("--duplication", StringComparer.Ordinal))
+        {
+            string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+            Dictionary<string, object?> duplication = await Duplication.RunAsync(workload, output,
+                args.Contains("--ledger", StringComparer.Ordinal)).ConfigureAwait(false);
+            duplication["schema"] = "intercat.sync-objects-duplication.v1";
+            duplication["measuredUtc"] = DateTimeOffset.UtcNow;
+            duplication["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+            File.WriteAllText(Path.Combine(output, "report.json"), JsonSerializer.Serialize(duplication, Json));
+            Console.WriteLine(JsonSerializer.Serialize(duplication, Json));
             return 0;
         }
 

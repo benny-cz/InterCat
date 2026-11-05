@@ -59,11 +59,12 @@ internal sealed class TruthLog : IAsyncDisposable
         long? declaredBytes = null,
         long? completedBytes = null,
         string? status = null,
-        string? resourceName = null)
+        string? resourceName = null,
+        HandleDuplication? duplication = null)
     {
         lock (gate)
         {
-            WriteLocked(kind, callId, localPort, remotePort, declaredBytes, completedBytes, status, resourceName);
+            WriteLocked(kind, callId, localPort, remotePort, declaredBytes, completedBytes, status, resourceName, duplication);
         }
     }
 
@@ -75,7 +76,8 @@ internal sealed class TruthLog : IAsyncDisposable
         long? declaredBytes,
         long? completedBytes,
         string? status,
-        string? resourceName)
+        string? resourceName,
+        HandleDuplication? duplication)
     {
         var record = new TruthRecord
         {
@@ -94,6 +96,7 @@ internal sealed class TruthLog : IAsyncDisposable
             DeclaredBytes = declaredBytes,
             CompletedBytes = completedBytes,
             Status = status,
+            Duplication = duplication,
         };
 
         writer.WriteLine(JsonSerializer.Serialize(record, Options));

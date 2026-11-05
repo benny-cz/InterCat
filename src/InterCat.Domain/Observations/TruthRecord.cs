@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace InterCat.Domain;
 
 /// <summary>What a truth workload recorded. The log is an oracle for a test, never an input to capture (section 13.1).</summary>
@@ -36,7 +38,19 @@ public enum TruthEventKind
 
     /// <summary>A handle to a named object that the workload closed.</summary>
     HandleClosed = 17,
+
+    /// <summary>
+    /// A handle the workload duplicated from a process into a process, its own or another's, logged by the process that
+    /// asked for it with both ends (<see cref="TruthRecord.Duplication"/>); the status names the object's kind.
+    /// </summary>
+    HandleDuplicated = 18,
 }
+
+/// <summary>
+/// A handle duplication's two ends as the process that asked for it logged them: the process the handle was duplicated
+/// from and its value there, and the process the duplication made a handle in and that handle's value.
+/// </summary>
+public sealed record HandleDuplication(int SourceProcessId, long SourceHandle, int TargetProcessId, long TargetHandle);
 
 /// <summary>
 /// One line of an independent truth log. It carries the scenario, the process instance that produced it,
@@ -71,4 +85,12 @@ public sealed record TruthRecord
     public long? CompletedBytes { get; init; }
 
     public string? Status { get; init; }
+
+    /// <summary>
+    /// A duplication's two ends: on a <see cref="TruthEventKind.HandleDuplicated"/> record, and on the close of the handle
+    /// a duplication made, which names that handle; null on any other record, where it is not written, so a record of any
+    /// other kind reads as it always has and a log rebuilt from a published run is that run's, byte for byte (I14).
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public HandleDuplication? Duplication { get; init; }
 }

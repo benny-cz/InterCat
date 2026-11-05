@@ -1,0 +1,18 @@
+{
+  "scenarioId": "FX-SYNC-002",
+  "rounds": 16,
+  "holdMilliseconds": 5,
+  "churn": 0,
+  "duplicate": true,
+  "name": "Local\\InterCat-FX-SYNC-002-e2c18625c3864b179dd8710720586a09",
+  "objects": [
+    "Local\\InterCat-FX-SYNC-002-e2c18625c3864b179dd8710720586a09-event",
+    "Local\\InterCat-FX-SYNC-002-e2c18625c3864b179dd8710720586a09-semaphore",
+    "Local\\InterCat-FX-SYNC-002-e2c18625c3864b179dd8710720586a09-mutex"
+  ],
+  "coordinatorProcessId": 43716,
+  "creatorProcessId": 66952,
+  "openerProcessId": 3732,
+  "creatorExitCode": 0,
+  "openerExitCode": 0
+}

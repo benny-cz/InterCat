@@ -649,7 +649,7 @@
           "build": "10.0.26220.0-x64",
           "supportTier": "Primary",
           "date": "2026-11-05",
-          "result": "Measured by tools/InterCat.SyncProbe, four runs, nothing lost: each process's handles to each named object at one address, named at their close, and each wait the kernel blocked readied from the signaling process. No tier is assigned: the object manager's handle group is inventoried as named synchronization objects' lead, requested by no profile and admitting no event, so no capture has recorded them through the product (ADR-082)."
+          "result": "Measured by tools/InterCat.SyncProbe, four runs, nothing lost: each process's handles to each named object at one address, named at their close, and each wait the kernel blocked readied from the signaling process. No tier is assigned: the object manager's handle group is inventoried as named synchronization objects' lead and requested by no profile, so no capture has recorded them through the product (ADR-082, ADR-083)."
         }
       ],
       "provenance": {
@@ -663,6 +663,50 @@
         "P8: FX-SYNC-001's every wait the kernel blocked has the ready of its thread from the signaling process inside the wait's span, and no ready of a thread in a user-mode wait between the two processes is left unpaired - a ready names no object, so only a truth's wait makes one a signal",
         "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by no profile, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and no tier on any build",
         "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart"
+      ]
+    },
+    {
+      "id": "FX-SYNC-002",
+      "title": "A named object's handles duplicated into a process three ways, and where the kernel raises a duplication's record",
+      "scenario": "Plan M6's named synchronization objects work package (ADR-082's fifth addendum): FX-SYNC-001's creator and opener, the opener also given a handle of each object by a duplication before the rounds - the creator duplicating its event's handle into the opener, the opener duplicating the semaphore's from the creator into itself, and the coordinator, which started both, duplicating the mutex's from the creator into the opener - for 16 rounds. Read by a private system logger of tools/InterCat.SyncProbe --duplication collecting the object manager's handle group machine-wide, which also counts where the synchronization types' kernel handles' records are raised.",
+      "milestone": "M6",
+      "mechanism": "Synchronization",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads sync-objects --rounds 16 --hold-ms 5 --duplicate, under tools/InterCat.SyncProbe --measure --duplication",
+        "seed": 0,
+        "log": "fixtures/FX-SYNC-002/evidence/truth-coordinator.jsonl",
+        "independence": "The process that asked for each duplication logs it with both ends - the process and handle it started from, and the process and handle it made - and the opener logs each duplicated handle's close with them; no process reads InterCat state, and the probe's session reads the kernel's records apart from all three."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-SYNC-002/evidence/measurement.json",
+        "note": "Four runs under the probe's private system logger, machine-wide, nothing lost: each duplication recorded once at its object's address with the source's handle value, the target process and the handle it made, raised in the process that asked for it - the push in the creator, the pull in the opener, the third's in the coordinator - so its record names no source process; no creation of the handle a duplication made, whose close its target raised naming the object. The synchronization types' kernel handles were created and closed in other processes' contexts, never the system process's, and the stop's rundown named the system process the holder of each. The first run's ledger is held to its truth by a test."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-05",
+          "result": "Measured by tools/InterCat.SyncProbe, four runs, nothing lost: each duplication raised in the process that asked for it, naming its target and the handle it made there but no source process, and each kernel handle's creation and close raised outside the system process that holds it. No tier is assigned: the handle group is requested by no profile (ADR-082, ADR-083)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The three processes' truth logs and scenario of the first run - objects by the run's own name, each duplication by its two ends - and the first run's ledger: the handle records of the run's three objects by role, object kind, object and handle ordinals and type, never a PID, a handle value or an address; and the measurement's counters, machine-wide counts by role or by whether a record's process is the system's, never a process named."
+      },
+      "tests": [
+        "R22: FX-SYNC-002's duplications are each raised in the process that asked for it - a push in its source, a pull in its target, one between two others in a third - with its source's handle and its target, and no creation of the handle made, whose close its target raises naming the object",
+        "R22: a kernel handle's records are raised wherever the kernel ran, never in its holder - FX-SYNC-002's synchronization kernel handles created and closed outside the system process in every run, and the stop's rundown naming it the holder of each"
       ]
     },
     {
@@ -3011,6 +3055,7 @@
         "R22: FX-HTTP-012's requests through a proxy that challenges, eight clients at once, are an exchange to each leg and each CONNECT, each part whole, and each challenge answered by the proxy's credentials",
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
         "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart",
+        "R22: FX-SYNC-002's duplications are each raised in the process that asked for it - a push in its source, a pull in its target, one between two others in a third - with its source's handle and its target, and no creation of the handle made, whose close its target raises naming the object",
         "R22: FX-UNIX-001's AFD records, each its socket's from its create to the next create at its address, count the truth's every send and receive at both ends",
         "R22: FX-UNIX-001's records through the AF_UNIX gate are one a call - each send and receive with the bytes it moved, each connect, accept and close - of every AF_UNIX socket and of no other",
         "R22: FX-UNIX-002's rows through the product keep each of sixty-four connections made one at a time on its own socket at both ends, while the kernel reused their addresses",
@@ -3037,6 +3082,7 @@
         "R22: a content plan is refused without each of its processes named by its start, and a plan keeping no content is refused one naming processes",
         "R22: a duplication makes its handle in its target process, which holds the object until it closes it",
         "R22: a file an earlier version wrote keeps reading, with everything that version could hold",
+        "R22: a kernel handle's records are raised wherever the kernel ran, never in its holder - FX-SYNC-002's synchronization kernel handles created and closed outside the system process in every run, and the stop's rundown naming it the holder of each",
         "R22: a kernel record whose payload names no owner binds to no instance, whatever its header says",
         "R22: a kind's operations are paired with its rows by rank only when every pair's bytes agree; otherwise each is its nearest row on the truth's time moved by the ranked pairs' median offset",
         "R22: a known address translation lets mirrored endpoints meet through it, and the candidate rests on it",

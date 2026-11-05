@@ -1,0 +1,443 @@
+{
+  "fixture": "FX-SYNC-002",
+  "question": "Which process the object manager raises a handle's duplication in - pushed by its source, pulled by its target, or made between two others by a third - what its record names of the two ends, and where it raises the records of the handle a duplication made; and, machine-wide, where the records of the synchronization types' kernel handles are raised.",
+  "answer": "In 4 runs of 16 rounds, machine-wide and nothing lost, each of the three duplications was recorded once, at its object's address, with the source's handle value, the target process and the handle it made there, and was raised in the process that asked for it: the creator's push of its event's handle in the creator, the opener's pull of the semaphore's in the opener, and the coordinator's duplication of the mutex's, between the two, in the coordinator. So a duplication's header names the process that asked for it - its source only when the source pushed - and its record names no source process. No duplication raised a creation of the handle it made, and each such handle's close was raised in its target, naming the object. Machine-wide, the synchronization types' kernel handles - their value's top bit set - were created in 1 to 8 processes' contexts and closed in 14 to 23, never the system process's, duplicated into the system process's table from 12 to 18, and the stop's rundown named the system process the holder of every one, 1,888 to 1,904, raising its records in 4 other processes' contexts.",
+  "method": {
+    "session": "a private system logger of the probe's own, its kernel flag Process, with PERF_OB_HANDLE added to its group masks by its handle",
+    "workload": "src/InterCat.TestWorkloads sync-objects --rounds 16 --hold-ms 5 --duplicate: FX-SYNC-001's creator and opener, the opener also given a handle of each object by a duplication before the rounds - the creator duplicating its event's handle into the opener, the opener duplicating the semaphore's from the creator into itself, and the coordinator, which started both, duplicating the mutex's from the creator into the opener - each logged by the process that asked for it with both ends; the opener closes each at its end, after its own",
+    "reading": "each handle record read from its payload by the layout the machine registers, its header's process beside it; a duplication found at its object's address - the address of the creator's close, naming the object, of the handle it started from - by the target process and handle the truth logged; a kernel handle by its value's top bit"
+  },
+  "runs": [
+    {
+      "run": "duplication-1",
+      "report": "bench/results/sync-objects-duplication-1-20261105T081800Z/report.json",
+      "eventsLost": 0,
+      "handleRecords": 565476,
+      "synchronizationRecords": 106219,
+      "duplications": [
+        {
+          "object": "event",
+          "way": "push",
+          "askedBy": "creator",
+          "source": "creator",
+          "target": "opener",
+          "records": 1,
+          "raisedIn": {
+            "creator": 1
+          },
+          "sourceHandleCarried": true,
+          "creationsOfTheHandleMade": {},
+          "closesOfTheHandleMade": {
+            "opener": 1
+          },
+          "closesNamed": 1
+        },
+        {
+          "object": "semaphore",
+          "way": "pull",
+          "askedBy": "opener",
+          "source": "creator",
+          "target": "opener",
+          "records": 1,
+          "raisedIn": {
+            "opener": 1
+          },
+          "sourceHandleCarried": true,
+          "creationsOfTheHandleMade": {},
+          "closesOfTheHandleMade": {
+            "opener": 1
+          },
+          "closesNamed": 1
+        },
+        {
+          "object": "mutex",
+          "way": "between two others",
+          "askedBy": "coordinator",
+          "source": "creator",
+          "target": "opener",
+          "records": 1,
+          "raisedIn": {
+            "coordinator": 1
+          },
+          "sourceHandleCarried": true,
+          "creationsOfTheHandleMade": {},
+          "closesOfTheHandleMade": {
+            "opener": 1
+          },
+          "closesNamed": 1
+        }
+      ],
+      "kernelHandles": {
+        "creations": {
+          "kernelHandles": 1100,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 1100,
+          "kernelRaisedInProcesses": 1,
+          "kernelHeldBySystem": 0,
+          "userHandles": 4982,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        },
+        "closes": {
+          "kernelHandles": 1118,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 1118,
+          "kernelRaisedInProcesses": 15,
+          "kernelHeldBySystem": 0,
+          "userHandles": 4258,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        },
+        "duplications": {
+          "kernelHandles": 22,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 22,
+          "kernelRaisedInProcesses": 14,
+          "kernelHeldBySystem": 22,
+          "userHandles": 61,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        },
+        "rundown": {
+          "kernelHandles": 1888,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 1888,
+          "kernelRaisedInProcesses": 4,
+          "kernelHeldBySystem": 1888,
+          "userHandles": 92790,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        }
+      },
+      "machineDuplications": {
+        "records": 83,
+        "raisedInTheirTarget": 22,
+        "raisedElsewhere": 61
+      }
+    },
+    {
+      "run": "duplication-2",
+      "report": "bench/results/sync-objects-duplication-2-20261105T081806Z/report.json",
+      "eventsLost": 0,
+      "handleRecords": 602747,
+      "synchronizationRecords": 113485,
+      "duplications": [
+        {
+          "object": "event",
+          "way": "push",
+          "askedBy": "creator",
+          "source": "creator",
+          "target": "opener",
+          "records": 1,
+          "raisedIn": {
+            "creator": 1
+          },
+          "sourceHandleCarried": true,
+          "creationsOfTheHandleMade": {},
+          "closesOfTheHandleMade": {
+            "opener": 1
+          },
+          "closesNamed": 1
+        },
+        {
+          "object": "semaphore",
+          "way": "pull",
+          "askedBy": "opener",
+          "source": "creator",
+          "target": "opener",
+          "records": 1,
+          "raisedIn": {
+            "opener": 1
+          },
+          "sourceHandleCarried": true,
+          "creationsOfTheHandleMade": {},
+          "closesOfTheHandleMade": {
+            "opener": 1
+          },
+          "closesNamed": 1
+        },
+        {
+          "object": "mutex",
+          "way": "between two others",
+          "askedBy": "coordinator",
+          "source": "creator",
+          "target": "opener",
+          "records": 1,
+          "raisedIn": {
+            "coordinator": 1
+          },
+          "sourceHandleCarried": true,
+          "creationsOfTheHandleMade": {},
+          "closesOfTheHandleMade": {
+            "opener": 1
+          },
+          "closesNamed": 1
+        }
+      ],
+      "kernelHandles": {
+        "creations": {
+          "kernelHandles": 1598,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 1598,
+          "kernelRaisedInProcesses": 8,
+          "kernelHeldBySystem": 0,
+          "userHandles": 7684,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        },
+        "closes": {
+          "kernelHandles": 1610,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 1610,
+          "kernelRaisedInProcesses": 17,
+          "kernelHeldBySystem": 0,
+          "userHandles": 7097,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        },
+        "duplications": {
+          "kernelHandles": 26,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 26,
+          "kernelRaisedInProcesses": 18,
+          "kernelHeldBySystem": 26,
+          "userHandles": 82,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        },
+        "rundown": {
+          "kernelHandles": 1904,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 1904,
+          "kernelRaisedInProcesses": 4,
+          "kernelHeldBySystem": 1904,
+          "userHandles": 93484,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        }
+      },
+      "machineDuplications": {
+        "records": 108,
+        "raisedInTheirTarget": 22,
+        "raisedElsewhere": 86
+      }
+    },
+    {
+      "run": "duplication-3",
+      "report": "bench/results/sync-objects-duplication-3-20261105T081812Z/report.json",
+      "eventsLost": 0,
+      "handleRecords": 674438,
+      "synchronizationRecords": 118230,
+      "duplications": [
+        {
+          "object": "event",
+          "way": "push",
+          "askedBy": "creator",
+          "source": "creator",
+          "target": "opener",
+          "records": 1,
+          "raisedIn": {
+            "creator": 1
+          },
+          "sourceHandleCarried": true,
+          "creationsOfTheHandleMade": {},
+          "closesOfTheHandleMade": {
+            "opener": 1
+          },
+          "closesNamed": 1
+        },
+        {
+          "object": "semaphore",
+          "way": "pull",
+          "askedBy": "opener",
+          "source": "creator",
+          "target": "opener",
+          "records": 1,
+          "raisedIn": {
+            "opener": 1
+          },
+          "sourceHandleCarried": true,
+          "creationsOfTheHandleMade": {},
+          "closesOfTheHandleMade": {
+            "opener": 1
+          },
+          "closesNamed": 1
+        },
+        {
+          "object": "mutex",
+          "way": "between two others",
+          "askedBy": "coordinator",
+          "source": "creator",
+          "target": "opener",
+          "records": 1,
+          "raisedIn": {
+            "coordinator": 1
+          },
+          "sourceHandleCarried": true,
+          "creationsOfTheHandleMade": {},
+          "closesOfTheHandleMade": {
+            "opener": 1
+          },
+          "closesNamed": 1
+        }
+      ],
+      "kernelHandles": {
+        "creations": {
+          "kernelHandles": 1266,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 1266,
+          "kernelRaisedInProcesses": 4,
+          "kernelHeldBySystem": 0,
+          "userHandles": 9956,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        },
+        "closes": {
+          "kernelHandles": 1291,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 1291,
+          "kernelRaisedInProcesses": 23,
+          "kernelHeldBySystem": 0,
+          "userHandles": 9542,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        },
+        "duplications": {
+          "kernelHandles": 22,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 22,
+          "kernelRaisedInProcesses": 14,
+          "kernelHeldBySystem": 22,
+          "userHandles": 146,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        },
+        "rundown": {
+          "kernelHandles": 1903,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 1903,
+          "kernelRaisedInProcesses": 4,
+          "kernelHeldBySystem": 1903,
+          "userHandles": 94104,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        }
+      },
+      "machineDuplications": {
+        "records": 168,
+        "raisedInTheirTarget": 19,
+        "raisedElsewhere": 149
+      }
+    },
+    {
+      "run": "duplication-4",
+      "report": "bench/results/sync-objects-duplication-4-20261105T081819Z/report.json",
+      "eventsLost": 0,
+      "handleRecords": 571263,
+      "synchronizationRecords": 107410,
+      "duplications": [
+        {
+          "object": "event",
+          "way": "push",
+          "askedBy": "creator",
+          "source": "creator",
+          "target": "opener",
+          "records": 1,
+          "raisedIn": {
+            "creator": 1
+          },
+          "sourceHandleCarried": true,
+          "creationsOfTheHandleMade": {},
+          "closesOfTheHandleMade": {
+            "opener": 1
+          },
+          "closesNamed": 1
+        },
+        {
+          "object": "semaphore",
+          "way": "pull",
+          "askedBy": "opener",
+          "source": "creator",
+          "target": "opener",
+          "records": 1,
+          "raisedIn": {
+            "opener": 1
+          },
+          "sourceHandleCarried": true,
+          "creationsOfTheHandleMade": {},
+          "closesOfTheHandleMade": {
+            "opener": 1
+          },
+          "closesNamed": 1
+        },
+        {
+          "object": "mutex",
+          "way": "between two others",
+          "askedBy": "coordinator",
+          "source": "creator",
+          "target": "opener",
+          "records": 1,
+          "raisedIn": {
+            "coordinator": 1
+          },
+          "sourceHandleCarried": true,
+          "creationsOfTheHandleMade": {},
+          "closesOfTheHandleMade": {
+            "opener": 1
+          },
+          "closesNamed": 1
+        }
+      ],
+      "kernelHandles": {
+        "creations": {
+          "kernelHandles": 814,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 814,
+          "kernelRaisedInProcesses": 1,
+          "kernelHeldBySystem": 0,
+          "userHandles": 4734,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        },
+        "closes": {
+          "kernelHandles": 830,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 830,
+          "kernelRaisedInProcesses": 14,
+          "kernelHeldBySystem": 0,
+          "userHandles": 4684,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        },
+        "duplications": {
+          "kernelHandles": 17,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 17,
+          "kernelRaisedInProcesses": 12,
+          "kernelHeldBySystem": 17,
+          "userHandles": 47,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        },
+        "rundown": {
+          "kernelHandles": 1903,
+          "kernelRaisedInSystem": 0,
+          "kernelRaisedElsewhere": 1903,
+          "kernelRaisedInProcesses": 4,
+          "kernelHeldBySystem": 1903,
+          "userHandles": 94381,
+          "userRaisedInSystem": 0,
+          "userHeldBySystem": 0
+        }
+      },
+      "machineDuplications": {
+        "records": 64,
+        "raisedInTheirTarget": 17,
+        "raisedElsewhere": 47
+      }
+    }
+  ],
+  "ledgers": {
+    "ledger.csv": "the first run's handle records of the three objects - creations, duplications and closes - by role and object kind, a duplication with its source handle by the ordinal of the handle of that value to the object a process was seen to hold and its target handle by the target's, never a PID, a handle's value or an address"
+  }
+}

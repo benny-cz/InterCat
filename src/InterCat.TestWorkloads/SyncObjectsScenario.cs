@@ -1,7 +1,11 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using InterCat.Domain;
+using Microsoft.Win32.SafeHandles;
 
 namespace InterCat.TestWorkloads;
 
@@ -9,6 +13,9 @@ namespace InterCat.TestWorkloads;
 internal sealed record SyncObjectsOptions
 {
     public const string ScenarioId = "FX-SYNC-001";
+
+    /// <summary>The scenario of a run whose opener is also given a handle of each object by a duplication.</summary>
+    public const string DuplicationScenarioId = "FX-SYNC-002";
 
     public required string TruthDirectory { get; init; }
 
@@ -26,6 +33,17 @@ internal sealed record SyncObjectsOptions
     /// a workload heavy in handles, for what collecting the kernel's handle records costs.
     /// </summary>
     public int Churn { get; init; }
+
+    /// <summary>
+    /// When set, the run is FX-SYNC-002: besides the handles it opens by name, the opener is given one of each object by a
+    /// duplication - the event's pushed into it by the creator, the semaphore's pulled from the creator by itself, and the
+    /// mutex's duplicated from the creator into it by the coordinator, a process at neither end - each logged by the process
+    /// that asked for it with both ends; the opener closes each at its end, after its own.
+    /// </summary>
+    public bool Duplicate { get; init; }
+
+    /// <summary>The run's scenario: FX-SYNC-002 when the opener is also given handles by duplication, FX-SYNC-001 otherwise.</summary>
+    public string Scenario => Duplicate ? DuplicationScenarioId : ScenarioId;
 }
 
 /// <summary>
@@ -34,11 +52,16 @@ internal sealed record SyncObjectsOptions
 /// the event and releases the mutex a hold later; the opener's wait on the event ends, its wait on the mutex ends once the
 /// creator releases it, and it releases the mutex and then the semaphore, on which the creator waits. Each process logs
 /// every object it created or opened, every signal it gave and every wait that ended - whether it blocked first - and
-/// every handle it closed, by the object's name. Neither reads InterCat state.
+/// every handle it closed, by the object's name. Neither reads InterCat state. FX-SYNC-002 is the same run with each object's
+/// handle also duplicated into the opener three ways (<see cref="SyncObjectsOptions.Duplicate"/>).
 /// </summary>
 [SupportedOSPlatform("windows")]
-internal static class SyncObjectsScenario
+internal static partial class SyncObjectsScenario
 {
+    // OpenProcess's right to duplicate a process's handles, and a duplication's option to keep the source's access.
+    private const uint ProcessDuplicateHandles = 0x0040;
+    private const uint SameAccess = 0x0002;
+
     private const string EventKind = "event";
     private const string SemaphoreKind = "semaphore";
     private const string MutexKind = "mutex";
@@ -64,7 +87,7 @@ internal static class SyncObjectsScenario
             ?? throw new InvalidOperationException("The workload executable path could not be resolved.");
 
         // A name of its own each run, in the session's namespace, so no other run's objects or any other program's share it.
-        string name = $@"Local\InterCat-{SyncObjectsOptions.ScenarioId}-{Guid.NewGuid():N}";
+        string name = $@"Local\InterCat-{options.Scenario}-{Guid.NewGuid():N}";
         using Process creator = StartChild(executable, "sync-objects-creator", options with { Name = name });
         if (await creator.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not "created")
         {
@@ -82,6 +105,14 @@ internal static class SyncObjectsScenario
             return 1;
         }
 
+        if (options.Duplicate && !await DuplicateAsync(options, name, creator, opener, cancellationToken).ConfigureAwait(false))
+        {
+            await StopAsync(creator, cancellationToken).ConfigureAwait(false);
+            await StopAsync(opener, cancellationToken).ConfigureAwait(false);
+            await Console.Error.WriteLineAsync("The objects' handles were not duplicated into the opener.").ConfigureAwait(false);
+            return 1;
+        }
+
         foreach (Process process in new[] { creator, opener })
         {
             await process.StandardInput.WriteLineAsync("go").ConfigureAwait(false);
@@ -91,12 +122,14 @@ internal static class SyncObjectsScenario
         await Task.WhenAll(creator.WaitForExitAsync(cancellationToken), opener.WaitForExitAsync(cancellationToken)).ConfigureAwait(false);
         var summary = new
         {
-            scenarioId = SyncObjectsOptions.ScenarioId,
+            scenarioId = options.Scenario,
             options.Rounds,
             options.HoldMilliseconds,
             options.Churn,
+            options.Duplicate,
             name,
             objects = new[] { (name + "-" + EventKind), (name + "-" + SemaphoreKind), (name + "-" + MutexKind) },
+            coordinatorProcessId = Environment.ProcessId,
             creatorProcessId = creator.Id,
             openerProcessId = opener.Id,
             creatorExitCode = creator.ExitCode,
@@ -111,7 +144,7 @@ internal static class SyncObjectsScenario
     public static async Task<int> RunCreatorAsync(SyncObjectsOptions options, CancellationToken cancellationToken)
     {
         string name = options.Name ?? throw new InvalidOperationException("The creator takes the objects' name from --name.");
-        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-creator.jsonl"), SyncObjectsOptions.ScenarioId, "creator");
+        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-creator.jsonl"), options.Scenario, "creator");
         truth.Write(TruthEventKind.ProcessStarted);
 
         using var signal = new EventWaitHandle(false, EventResetMode.AutoReset, name + "-" + EventKind, out bool newEvent);
@@ -128,10 +161,35 @@ internal static class SyncObjectsScenario
         truth.Write(TruthEventKind.ObjectCreated, status: SemaphoreKind, resourceName: name + "-" + SemaphoreKind);
         truth.Write(TruthEventKind.ObjectCreated, status: MutexKind, resourceName: name + "-" + MutexKind);
         Console.WriteLine("created");
-        Console.Out.Flush();
-        if (await Console.In.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not "go")
+        if (options.Duplicate)
         {
-            return 1;
+            // Its handles' values, from which the duplications start: the event's, the semaphore's and the mutex's.
+            Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                $"handles {Value(signal)} {Value(answer)} {Value(mutex)}"));
+        }
+
+        Console.Out.Flush();
+
+        // Until told to begin: in FX-SYNC-002 first asked to push its event's handle into the opener.
+        while (true)
+        {
+            string? command = await Console.In.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            if (command == "go")
+            {
+                break;
+            }
+
+            if (!options.Duplicate || command?.Split(' ') is not ["push", string target])
+            {
+                return 1;
+            }
+
+            int opener = int.Parse(target, CultureInfo.InvariantCulture);
+            long made = Duplicate(truth.ProcessId, Value(signal), opener);
+            truth.Write(TruthEventKind.HandleDuplicated, status: EventKind, resourceName: name + "-" + EventKind,
+                duplication: new(truth.ProcessId, Value(signal), opener, made));
+            Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"pushed {made}"));
+            Console.Out.Flush();
         }
 
         // Every round on this one thread, which owns the mutex while it holds it.
@@ -157,7 +215,7 @@ internal static class SyncObjectsScenario
     public static async Task<int> RunOpenerAsync(SyncObjectsOptions options, CancellationToken cancellationToken)
     {
         string name = options.Name ?? throw new InvalidOperationException("The opener takes the objects' name from --name.");
-        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-opener.jsonl"), SyncObjectsOptions.ScenarioId, "opener");
+        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-opener.jsonl"), options.Scenario, "opener");
         truth.Write(TruthEventKind.ProcessStarted);
 
         using var signal = EventWaitHandle.OpenExisting(name + "-" + EventKind);
@@ -168,11 +226,70 @@ internal static class SyncObjectsScenario
         truth.Write(TruthEventKind.ObjectOpened, status: MutexKind, resourceName: name + "-" + MutexKind);
         Console.WriteLine("opened");
         Console.Out.Flush();
-        if (await Console.In.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not "go")
-        {
-            return 1;
-        }
 
+        // Until told to begin: in FX-SYNC-002 first asked to pull the semaphore's handle from the creator, then given the
+        // handles the creator and the coordinator made in it, each with the duplication that made it.
+        var duplicated = new List<(string Kind, SafeWaitHandle Handle, HandleDuplication Made)>();
+        try
+        {
+            while (true)
+            {
+                string? command = await Console.In.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                if (command == "go")
+                {
+                    break;
+                }
+
+                switch (options.Duplicate ? command?.Split(' ') : null)
+                {
+                    case ["pull", string creatorId, string sourceHandle]:
+                    {
+                        int creator = int.Parse(creatorId, CultureInfo.InvariantCulture);
+                        long source = long.Parse(sourceHandle, CultureInfo.InvariantCulture);
+                        var made = new HandleDuplication(creator, source, truth.ProcessId, Duplicate(creator, source, truth.ProcessId));
+                        duplicated.Add((SemaphoreKind, new SafeWaitHandle((nint)made.TargetHandle, ownsHandle: true), made));
+                        truth.Write(TruthEventKind.HandleDuplicated, status: SemaphoreKind, resourceName: name + "-" + SemaphoreKind, duplication: made);
+                        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"pulled {made.TargetHandle}"));
+                        Console.Out.Flush();
+                        break;
+                    }
+
+                    case ["hold", string creatorId, string eventSource, string pushed, string mutexSource, string brokered]:
+                    {
+                        int creator = int.Parse(creatorId, CultureInfo.InvariantCulture);
+                        foreach ((string kind, string source, string made) in new[] { (EventKind, eventSource, pushed), (MutexKind, mutexSource, brokered) })
+                        {
+                            long handle = long.Parse(made, CultureInfo.InvariantCulture);
+                            duplicated.Add((kind, new SafeWaitHandle((nint)handle, ownsHandle: true),
+                                new HandleDuplication(creator, long.Parse(source, CultureInfo.InvariantCulture), truth.ProcessId, handle)));
+                        }
+
+                        Console.WriteLine("held");
+                        Console.Out.Flush();
+                        break;
+                    }
+
+                    default:
+                        return 1;
+                }
+            }
+
+            return RunOpenerRounds(options, name, truth, signal, answer, mutex, duplicated);
+        }
+        finally
+        {
+            foreach ((_, SafeWaitHandle handle, _) in duplicated)
+            {
+                handle.Dispose();
+            }
+        }
+    }
+
+    // The opener's rounds and its closes: its own handles, then those duplications made in it, each logged with the
+    // duplication that made it.
+    private static int RunOpenerRounds(SyncObjectsOptions options, string name, TruthLog truth, EventWaitHandle signal,
+        Semaphore answer, Mutex mutex, List<(string Kind, SafeWaitHandle Handle, HandleDuplication Made)> duplicated)
+    {
         // A handle of each object opened by its name and closed again, as many times as asked, each logged by its turn.
         for (int turn = 1; turn <= options.Churn; turn++)
         {
@@ -200,9 +317,106 @@ internal static class SyncObjectsScenario
         Close(truth, signal, name + "-" + EventKind, EventKind);
         Close(truth, answer, name + "-" + SemaphoreKind, SemaphoreKind);
         Close(truth, mutex, name + "-" + MutexKind, MutexKind);
+        foreach ((string kind, SafeWaitHandle handle, HandleDuplication made) in duplicated)
+        {
+            handle.Dispose();
+            truth.Write(TruthEventKind.HandleClosed, status: kind, resourceName: name + "-" + kind, duplication: made);
+        }
+
         truth.Write(TruthEventKind.ProcessExiting);
         return 0;
     }
+
+    /// <summary>
+    /// FX-SYNC-002's three duplications, between the opener's opens and the rounds: the creator pushes its event's handle into
+    /// the opener, the opener pulls the semaphore's from the creator, and this process, at neither end, duplicates the
+    /// mutex's from the creator into the opener; the opener is then given the handles the other two made in it.
+    /// </summary>
+    private static async Task<bool> DuplicateAsync(SyncObjectsOptions options, string name, Process creator, Process opener,
+        CancellationToken cancellationToken)
+    {
+        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-coordinator.jsonl"), options.Scenario, "coordinator");
+        truth.Write(TruthEventKind.ProcessStarted);
+
+        // The creator's handles by their values in it: its event's, its semaphore's and its mutex's.
+        if (await creator.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not { } line
+            || line.Split(' ') is not ["handles", string eventHandle, string semaphoreHandle, string mutexHandle])
+        {
+            return false;
+        }
+
+        if (await AskAsync(creator, string.Create(CultureInfo.InvariantCulture, $"push {opener.Id}"), cancellationToken).ConfigureAwait(false)
+                is not ["pushed", string pushed]
+            || await AskAsync(opener, string.Create(CultureInfo.InvariantCulture, $"pull {creator.Id} {semaphoreHandle}"), cancellationToken).ConfigureAwait(false)
+                is not ["pulled", _])
+        {
+            return false;
+        }
+
+        long mutexSource = long.Parse(mutexHandle, CultureInfo.InvariantCulture);
+        long brokered = Duplicate(creator.Id, mutexSource, opener.Id);
+        truth.Write(TruthEventKind.HandleDuplicated, status: MutexKind, resourceName: name + "-" + MutexKind,
+            duplication: new(creator.Id, mutexSource, opener.Id, brokered));
+        return await AskAsync(opener, string.Create(CultureInfo.InvariantCulture,
+            $"hold {creator.Id} {eventHandle} {pushed} {mutexHandle} {brokered}"), cancellationToken).ConfigureAwait(false) is ["held"];
+    }
+
+    // One command to a child and its answer's words; none when it answered nothing.
+    private static async Task<string[]> AskAsync(Process child, string command, CancellationToken cancellationToken)
+    {
+        await child.StandardInput.WriteLineAsync(command).ConfigureAwait(false);
+        await child.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+        return (await child.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false))?.Split(' ') ?? [];
+    }
+
+    // A handle duplicated from one process into another with the source's access, by this process: one of the two ends, or
+    // neither. The pseudo-handle of this process needs no opening.
+    private static long Duplicate(int sourceProcessId, long sourceHandle, int targetProcessId)
+    {
+        nint source = sourceProcessId == Environment.ProcessId ? CurrentProcess() : OpenForDuplication(sourceProcessId);
+        nint target = targetProcessId == Environment.ProcessId ? CurrentProcess() : OpenForDuplication(targetProcessId);
+        try
+        {
+            return DuplicateHandle(source, (nint)sourceHandle, target, out nint made, 0, false, SameAccess)
+                ? made
+                : throw new Win32Exception(Marshal.GetLastPInvokeError(), "The handle could not be duplicated.");
+        }
+        finally
+        {
+            if (source != CurrentProcess())
+            {
+                _ = CloseHandle(source);
+            }
+
+            if (target != CurrentProcess())
+            {
+                _ = CloseHandle(target);
+            }
+        }
+    }
+
+    private static nint OpenForDuplication(int processId) =>
+        OpenProcess(ProcessDuplicateHandles, false, processId) is var process and not 0
+            ? process
+            : throw new Win32Exception(Marshal.GetLastPInvokeError(), $"Process {processId} could not be opened to duplicate its handles.");
+
+    // A handle's value in this process, as a duplication names it.
+    private static long Value(WaitHandle handle) => handle.SafeWaitHandle.DangerousGetHandle();
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetCurrentProcess")]
+    private static partial nint CurrentProcess();
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    private static partial nint OpenProcess(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, int processId);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DuplicateHandle(nint sourceProcess, nint sourceHandle, nint targetProcess, out nint targetHandle,
+        uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, uint options);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CloseHandle(nint handle);
 
     // A wait that first asks without waiting, so the log says whether it blocked: only a wait that blocked has a thread for
     // another's signal to ready.
@@ -235,12 +449,17 @@ internal static class SyncObjectsScenario
         foreach (string argument in new[]
         {
             verb, "--truth", options.TruthDirectory, "--name", options.Name!,
-            "--rounds", options.Rounds.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "--hold-ms", options.HoldMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "--churn", options.Churn.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "--rounds", options.Rounds.ToString(CultureInfo.InvariantCulture),
+            "--hold-ms", options.HoldMilliseconds.ToString(CultureInfo.InvariantCulture),
+            "--churn", options.Churn.ToString(CultureInfo.InvariantCulture),
         })
         {
             start.ArgumentList.Add(argument);
+        }
+
+        if (options.Duplicate)
+        {
+            start.ArgumentList.Add("--duplicate");
         }
 
         return Process.Start(start) ?? throw new InvalidOperationException($"The {verb} process could not be started.");

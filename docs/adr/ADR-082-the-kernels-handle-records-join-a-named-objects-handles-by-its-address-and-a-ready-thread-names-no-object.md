@@ -6,13 +6,15 @@
   requested by no profile and admitting no event (its second addendum); since revision 933 a capture sets a kernel
   group's mask on its private system logger by the session's handle (its third addendum); since revision 934 the object
   type table read from user mode as a capture starts names each handle record's type number as the stop's rundown does
-  (its fourth addendum)
+  (its fourth addendum); since revision 937 FX-SYNC-002 has each duplication raised in the process that asked for it and
+  each kernel handle's records raised wherever the kernel ran, never in the system process that holds it (its fifth
+  addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: plan §4.1, §4.2, M6, P7, P8, R22, ADR-035, FX-SYNC-001, `tools/InterCat.SyncProbe`,
   `bench/results/sync-provider-inspection-20261105T022919Z`, `bench/results/sync-objects-feasibility-*`,
   `bench/results/sync-objects-impact-*`, `bench/results/sync-objects-session-check-20261105T050334Z`,
-  `bench/results/sync-objects-types-20261105T053215Z`
+  `bench/results/sync-objects-types-20261105T053215Z`, FX-SYNC-002, `bench/results/sync-objects-duplication-*`
 
 ## Context
 
@@ -188,3 +190,31 @@ So a capture can know, as it starts, which numbers are the synchronization types
 handles would keep about a thirtieth of the group's records. The table is an undocumented query of the object manager, so
 its reading is a lead held to the rundown at each capture's stop: a disagreement on a type a gate decides by is the
 capture's to state. A test holds the report; five alterations of it are caught.
+
+## Addendum: a duplication is raised in the process that asked for it, and a kernel handle in none that holds it (revision 937)
+
+Before a handle record binds to a process (`contracts/entities-v1.md` §2a), it must be known in which process the kernel
+raises it. FX-SYNC-001's two processes made every handle by name, and each record was raised in the process whose handle
+it was. A duplication's record names the process it made a handle in and that handle, but not the process it duplicated
+from. FX-SYNC-002 runs FX-SYNC-001 with the opener also given a handle of each object by a duplication, three ways: the
+creator pushing its event's handle into it, the opener pulling the semaphore's from the creator, and the coordinator, a
+process at neither end, duplicating the mutex's from the one into the other. `tools/InterCat.SyncProbe --measure
+--duplication` read four runs machine-wide (`bench/results/sync-objects-duplication-*`), nothing lost:
+
+- Each duplication was recorded once, at its object's address, with the source's handle value, the target process and the
+  handle it made there. Each was raised in the process that asked for it: the push in the creator, the pull in the opener,
+  the third's in the coordinator. So a duplication's header names the process that asked, its source only when the source
+  pushed, and nothing in its record names its source process.
+- No duplication raised a creation of the handle it made. Each such handle's close was raised in its target, naming the
+  object, as every close of the run was raised in the process whose handle it closed.
+- Machine-wide, the synchronization types' kernel handles, their value's top bit set, were created in 1 to 8 processes'
+  contexts and closed in 14 to 23, never the system process's, and duplicated into the system process's table from 12 to
+  18. The stop's rundown named the system process the holder of every one, 1,888 to 1,904, raising its own records in
+  4 other processes' contexts.
+
+So a user handle's creation and close bind to the process that raised them, and a duplication to the process it made its
+handle in, by its record. A rundown entry binds to the process it names, never to its header. A kernel handle binds to
+none by its header, which names whichever process the kernel ran for; only the rundown names its holder. The process a
+duplication started from is in no record: only a handle of that value to the object, seen made in one process, could
+name it. No binding changes in this revision. A test holds the first run's ledger to the three processes' truth, and one
+holds the four runs' counts; eight alterations of the evidence are caught.

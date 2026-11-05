@@ -860,6 +860,7 @@ Revision 933 has a capture set a kernel group's mask on its private system logge
 Revision 934 measures whether a capture can know a handle record's type as it starts (ADR-082's fourth addendum): the object type table read from user mode before a session names each type number as the type rundown at its stop does, and Event, Mutant and Semaphore were about one handle creation in thirty machine-wide.
 Revision 935 adds a synchronization handle gate (ADR-083): it admits only the object manager's handle records of Event, Mutant and Semaphore, by the numbers measured for the capture's build, and follows an object from the first handle a capture sees made at its address to the close of the last, numbering a handle made before the capture alone; no profile compiles it yet.
 Revision 936 admits the handle group's events through the synchronization handle gate (ADR-083's addendum): a handle's creation, close and duplication and the stop's type and handle rundowns, with four source fields, the object's number written over its address; the gate allocates nothing per record on the capture's callback, its bound holding the handles; a build with no measured type numbers refuses the source, and no profile requests it yet.
+Revision 937 measures FX-SYNC-002 (ADR-082's fifth addendum): each handle duplication is raised in the process that asked for it, its record naming its target and the handle made there but no source process, and each kernel handle's records are raised wherever the kernel ran, never in the system process that holds it; no binding changes yet.
 
 ## Revisions, a paragraph each, in order
 
@@ -3922,3 +3923,15 @@ classic class, whose events share event id 0. On the capture's callback the gate
 each followed object is a value in one table and each handle it holds an entry in another, and its bound of 65,536 holds
 the handles, and so the objects; a further handle of a followed object is its object's but not held. No profile requests
 the group yet.
+
+Revision 937 measures where the object manager raises a handle's records before they bind to a process (ADR-082's fifth
+addendum). FX-SYNC-002 is FX-SYNC-001 with the opener also given a handle of each object by a duplication: the creator
+pushing its event's, the opener pulling the semaphore's, and the coordinator duplicating the mutex's between the two,
+each logged by the process that asked for it with both ends, a truth record kind and field of their own, the field written
+only where it is set, so every other truth record, and a curated run's rebuilt log, reads as before (I14). In four runs
+machine-wide, nothing lost, each duplication was recorded once with the source's handle value, its target process and
+the handle made there, and was raised in the process that asked for it, so its record names no source process; no
+creation of the handle made was raised, and its close was raised in its target. The synchronization types' kernel
+handles were created and closed in other processes' contexts, never the system process's, and only the stop's rundown
+named their holder. So a user handle's creation and close bind by their header, a duplication by its target, a rundown
+entry by the process it names, and a kernel handle by none of its headers. No binding changes in this revision.

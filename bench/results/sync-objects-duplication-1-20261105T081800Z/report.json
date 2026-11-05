@@ -1,0 +1,118 @@
+{
+  "question": "Which process the object manager raises a handle\u0027s duplication in - pushed by its source, pulled by its target, or made between two others by a third - and where it raises the records of the handle a duplication made; and, machine-wide, where the records of the synchronization types\u0027 kernel handles are raised.",
+  "scenario": "FX-SYNC-002",
+  "duplications": [
+    {
+      "object": "event",
+      "way": "push",
+      "askedBy": "creator",
+      "source": "creator",
+      "target": "opener",
+      "objectsFound": 1,
+      "records": 1,
+      "raisedIn": {
+        "creator": 1
+      },
+      "sourceHandleCarried": true,
+      "creationsOfTheHandleMade": {},
+      "closesOfTheHandleMade": {
+        "opener": 1
+      },
+      "closesNamed": 1
+    },
+    {
+      "object": "semaphore",
+      "way": "pull",
+      "askedBy": "opener",
+      "source": "creator",
+      "target": "opener",
+      "objectsFound": 1,
+      "records": 1,
+      "raisedIn": {
+        "opener": 1
+      },
+      "sourceHandleCarried": true,
+      "creationsOfTheHandleMade": {},
+      "closesOfTheHandleMade": {
+        "opener": 1
+      },
+      "closesNamed": 1
+    },
+    {
+      "object": "mutex",
+      "way": "between two others",
+      "askedBy": "coordinator",
+      "source": "creator",
+      "target": "opener",
+      "objectsFound": 1,
+      "records": 1,
+      "raisedIn": {
+        "coordinator": 1
+      },
+      "sourceHandleCarried": true,
+      "creationsOfTheHandleMade": {},
+      "closesOfTheHandleMade": {
+        "opener": 1
+      },
+      "closesNamed": 1
+    }
+  ],
+  "kernelHandles": {
+    "creations": {
+      "kernelHandles": 1100,
+      "kernelRaisedInSystem": 0,
+      "kernelRaisedElsewhere": 1100,
+      "kernelRaisedInProcesses": 1,
+      "kernelHeldBySystem": 0,
+      "userHandles": 4982,
+      "userRaisedInSystem": 0,
+      "userHeldBySystem": 0
+    },
+    "closes": {
+      "kernelHandles": 1118,
+      "kernelRaisedInSystem": 0,
+      "kernelRaisedElsewhere": 1118,
+      "kernelRaisedInProcesses": 15,
+      "kernelHeldBySystem": 0,
+      "userHandles": 4258,
+      "userRaisedInSystem": 0,
+      "userHeldBySystem": 0
+    },
+    "duplications": {
+      "kernelHandles": 22,
+      "kernelRaisedInSystem": 0,
+      "kernelRaisedElsewhere": 22,
+      "kernelRaisedInProcesses": 14,
+      "kernelHeldBySystem": 22,
+      "userHandles": 61,
+      "userRaisedInSystem": 0,
+      "userHeldBySystem": 0
+    },
+    "rundown": {
+      "kernelHandles": 1888,
+      "kernelRaisedInSystem": 0,
+      "kernelRaisedElsewhere": 1888,
+      "kernelRaisedInProcesses": 4,
+      "kernelHeldBySystem": 1888,
+      "userHandles": 92790,
+      "userRaisedInSystem": 0,
+      "userHeldBySystem": 0
+    }
+  },
+  "machineDuplications": {
+    "records": 83,
+    "raisedInTheirTarget": 22,
+    "raisedElsewhere": 61
+  },
+  "synchronizationTypes": {
+    "Event": 21,
+    "Mutant": 22,
+    "Semaphore": 24
+  },
+  "handleRecords": 565476,
+  "synchronizationRecords": 106219,
+  "eventsLost": 0,
+  "schema": "intercat.sync-objects-duplication.v1",
+  "measuredUtc": "2026-11-05T08:18:00.5509987+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

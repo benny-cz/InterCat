@@ -152,6 +152,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         HoldMilliseconds = Integer(args, "--hold-ms") ?? 5,
         Name = Option(args, "--name"),
         Churn = Integer(args, "--churn") ?? 0,
+        Duplicate = args.Contains("--duplicate", StringComparer.Ordinal),
     };
 
     if (args[0].StartsWith("unix-loopback", StringComparison.Ordinal) && churn && hold > 0)
@@ -309,7 +310,7 @@ static void PrintHelp()
     Console.WriteLine("      hosts in an apartment of its own and reaches through a proxy: calls that cross an apartment and");
     Console.WriteLine("      never a process, each one logged. Windows only.");
     Console.WriteLine();
-    Console.WriteLine("  sync-objects --truth <dir> [--rounds n] [--hold-ms ms] [--churn n]");
+    Console.WriteLine("  sync-objects --truth <dir> [--rounds n] [--hold-ms ms] [--churn n] [--duplicate]");
     Console.WriteLine("      FX-SYNC-001: two processes take turns through three named objects of the session's namespace -");
     Console.WriteLine("      an event, a semaphore and a mutex - that one creates and the other opens by name. Each round the");
     Console.WriteLine("      creator, holding the mutex, sets the event and releases the mutex that many milliseconds later;");
