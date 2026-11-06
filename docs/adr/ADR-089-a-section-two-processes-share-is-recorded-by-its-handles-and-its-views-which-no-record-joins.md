@@ -3,7 +3,8 @@
 - Status: accepted for M6's section discovery work package; no source is inventoried yet; since revision 971 the file view
   flag's collection cost is measured, Low in processor time but a view-heavy workload past the throughput target (addendum);
   since revision 972 the flag is inventoried as sections' lead, requested by no profile and admitting no event (second
-  addendum); since revision 973 the Section type's number is measured for the build, 49 (third addendum)
+  addendum); since revision 973 the Section type's number is measured for the build, 49 (third addendum); since revision
+  974 gates number its sections and views as their records arrive, keeping no address (ADR-090)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-035, ADR-082, ADR-083, plan M6, §4.2, R22, P2, P3, P6, FX-SECT-001

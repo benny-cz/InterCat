@@ -298,7 +298,7 @@ internal sealed class ObjectHandleRecordGate(IReadOnlyList<int> types, int capac
             admitted.Opcode == SynchronizationHandleGate.Rundown ? (int)Value(in admitted, at.ProcessId) : admitted.HeaderProcessId,
             duplicate ? (int)Value(in admitted, at.TargetProcessId) : 0,
             duplicate ? (uint)Value(in admitted, at.TargetHandle) : 0);
-        (HandleGateOutcome outcome, SynchronizationObjectIncarnation? incarnation) = gate.Read(in record);
+        (HandleGateOutcome outcome, ObjectIncarnation? incarnation) = gate.Read(in record);
         switch (outcome)
         {
             case HandleGateOutcome.Admitted:

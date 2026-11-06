@@ -1024,7 +1024,8 @@
       },
       "tests": [
         "R22: FX-SECT-001's handle records join each process's handles to a section by its object's address - each creation named by nothing but its close, typed Section - and every view each process mapped and unmapped is a record of that process with its size, each section's views naming one value in both processes, while one base held both sections' views and no record names a byte moved through one",
-        "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections"
+        "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections",
+        "R22: FX-SECT-001's committed ledger read through the section gates as it was delivered is its two sections - each section's handles in both processes one number, every view of a section in both processes one section number, and each mapping a view of its own though the opener mapped them all at one base"
       ]
     },
     {
@@ -3382,6 +3383,7 @@
         "R22: FX-HTTP-010's requests through a proxy, eight clients at once, are each one exchange and over TLS each CONNECT one more, every part whole and each said to have gone to a proxy",
         "R22: FX-HTTP-011's requests challenged for credentials, eight clients at once, are an exchange to each leg, each part whole, each challenge answered by its own request and each request carrying credentials said to",
         "R22: FX-HTTP-012's requests through a proxy that challenges, eight clients at once, are an exchange to each leg and each CONNECT, each part whole, and each challenge answered by the proxy's credentials",
+        "R22: FX-SECT-001's committed ledger read through the section gates as it was delivered is its two sections - each section's handles in both processes one number, every view of a section in both processes one section number, and each mapping a view of its own though the opener mapped them all at one base",
         "R22: FX-SECT-001's handle records join each process's handles to a section by its object's address - each creation named by nothing but its close, typed Section - and every view each process mapped and unmapped is a record of that process with its size, each section's views naming one value in both processes, while one base held both sections' views and no record names a byte moved through one",
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
         "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart",
@@ -3473,6 +3475,7 @@
         "R22: a tile index whose bindings are not the derivation's is not counted by a brush, which reads its segments, and a checkpoint publishes it again",
         "R22: a tile index's derivation is its rules, instances and channels: another instance, paired channel or unpaired channel is another derivation",
         "R22: a truth connection is discovered with its lifetime only as a socket its process both created and closed in the capture",
+        "R22: a view the section view gate never saw begin is numbered alone at its unmapping or the stop's rundown, joining the section its value names only while a followed view holds it; the start's rundown begins views; a view naming no value joins no section; and beyond its bound a view is not followed",
         "R22: a window message record binds to the process that raised it - a send's start and stop to the sender, never the receiver its start names, the receiver's retrieval to the receiver, a post's queueing to the poster and its retrieval to the receiver",
         "R22: an AF_UNIX record admitted through its gate derives a Unix-domain socket row of its socket's owner, its socket its connection, with the bytes it moved",
         "R22: an IPv6 connection relates its two ends as an IPv4 one does, and never meets an end of the other family",
@@ -3534,6 +3537,8 @@
         "R22: the investigation window takes a person's word that two host identities are one host, and its withdrawal",
         "R22: the investigation's Comparisons… opens a saved comparison in InterCat's window as saved, and removes one",
         "R22: the processes a person may choose are this sign-in's, each with the start a client can read, never the client itself",
+        "R22: the section handle gate follows a section from the first handle a capture sees made at its address to the close of the last - both processes' handles one number, the address's next section another - and a handle made before the capture, met at its close, is numbered alone; another type's handle is never followed",
+        "R22: the section view gate follows a view by its process and base from its mapping to its unmapping, and a section by the value its views carry from the first followed view to the last unmapped - two processes' views at one base two views of one section, the value's next view another section - and a base its process maps again is another view",
         "R22: the window compares executables, a restarted process's executable one row, and opens its rung",
         "R22: the window starts a content capture only after its review, with a plan prepared again that keeps what was reviewed",
         "R22: the window's live view of an Explore capture shaped as Windows delivers it relates its loopback connections over IPv4 and IPv6",
@@ -4029,6 +4034,8 @@
         "P12: once a capture's descriptors have been seen, a callback's queue, counters and coverage tally allocate nothing",
         "P12: the capture callback allocates from a pool, and otherwise only where a reviewed bound holds",
         "P12: the capture callback reaches no query, store, file, network, name or symbol lookup, decoder or wait, and only reviewed locks",
+        "P12: the section gates, which a capture's callback is to read as their records arrive, reach nothing that blocks, take no lock and allocate nothing, both their tables grown only as far as their bounds (ADR-090)",
+        "P12: the section view gate, which is to read its records on the capture's callback, grows its tables only as far as its bound and, once they hold what it followed at once, allocates nothing per record",
         "P12: the synchronization handle gate, which reads its records on the capture's callback, allocates nothing per record once its tables hold what it followed at once",
         "P12: the window message gate, which reads its records on the capture's callback, allocates nothing per record, its tables sized once to its bound"
       ],

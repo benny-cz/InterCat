@@ -61,6 +61,24 @@ public sealed class CallbackPathTests
         Assert.Equal(ReviewedAllocations.Order(StringComparer.Ordinal), walk.Allocations);
     }
 
+    [Fact(DisplayName = "P12: the section gates, which a capture's callback is to read as their records arrive, reach nothing that blocks, take no lock and allocate nothing, both their tables grown only as far as their bounds (ADR-090)")]
+    public void TheSectionGatesAllocateNothing()
+    {
+        CallbackReach walk = CallbackReach.From(
+            [typeof(SectionHandleGate).GetMethod(nameof(SectionHandleGate.Read))!, typeof(SectionViewGate).GetMethod(nameof(SectionViewGate.Read))!],
+            typeof(OwnedCaptureSession).Assembly, typeof(CaptureCoverageTally).Assembly, typeof(CaptureId).Assembly);
+
+        // The walk reached the handle gate's algorithm and the view gate's sections: a refactoring that hid them from it would
+        // otherwise pass by reaching nothing.
+        Assert.Contains("InterCat.Capture.Windows.ObjectHandleGate.Read", walk.Reached);
+        Assert.Contains("InterCat.Capture.Windows.SectionViewGate.Hold", walk.Reached);
+        Assert.Contains("InterCat.Capture.Windows.SectionViewGate.Release", walk.Reached);
+        Assert.Contains("InterCat.Capture.Windows.SectionViewGate.SectionOf", walk.Reached);
+        Assert.True(walk.Forbidden.Count == 0, string.Join(Environment.NewLine, walk.Forbidden));
+        Assert.Empty(walk.Locks);
+        Assert.Empty(walk.Allocations);
+    }
+
     [Fact(DisplayName = "P12: once a capture's descriptors have been seen, a callback's queue, counters and coverage tally allocate nothing")]
     public async Task TheSinkAllocatesNothingPerRecord()
     {
@@ -113,6 +131,7 @@ public sealed class CallbackPathTests
         Assert.Contains("InterCat.Capture.Windows.UnixSocketGate.Read", walk.Reached);
         Assert.Contains("InterCat.Capture.Windows.ObjectHandleRecordGate.Read", walk.Reached);
         Assert.Contains("InterCat.Capture.Windows.SynchronizationHandleGate.Read", walk.Reached);
+        Assert.Contains("InterCat.Capture.Windows.ObjectHandleGate.Read", walk.Reached);
         Assert.Contains("InterCat.Capture.Recording.CaptureCoverageTally.Gated", walk.Reached);
 
         // And Win32k's, whose messages are held to its bound, both its tables sized once (ADR-087).

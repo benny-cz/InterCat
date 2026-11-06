@@ -22,7 +22,7 @@ public sealed class SynchronizationHandleGateTests
     public void AnObjectEndsWithTheLastHandleSeenMade()
     {
         var gate = new SynchronizationHandleGate(Synchronization);
-        SynchronizationObjectIncarnation made = Admitted(gate.Read(new(Create, 0x1000, 0x10, Event, 100)));
+        ObjectIncarnation made = Admitted(gate.Read(new(Create, 0x1000, 0x10, Event, 100)));
         Assert.Equal(new(1, HandleFirstSeen.Creation), made);
 
         // Another process opens it by name, then each closes its handle: one object throughout, followed until the last. A
@@ -49,7 +49,7 @@ public sealed class SynchronizationHandleGateTests
         Assert.Equal(0, gate.Following);
 
         // At the stop: a followed object's open handle is its own, and one made before the capture is numbered alone.
-        SynchronizationObjectIncarnation held = Admitted(gate.Read(new(Create, 0x3000, 0x50, Mutant, 100)));
+        ObjectIncarnation held = Admitted(gate.Read(new(Create, 0x3000, 0x50, Mutant, 100)));
         Assert.Equal(held, Admitted(gate.Read(new(Rundown, 0x3000, 0x50, Mutant, 100))));
         Assert.Equal(new(4, HandleFirstSeen.Rundown), Admitted(gate.Read(new(Rundown, 0x4000, 0x60, Mutant, 300))));
         Assert.Equal(1, gate.Following);
@@ -59,7 +59,7 @@ public sealed class SynchronizationHandleGateTests
     public void ADuplicationMakesAHandleInItsTarget()
     {
         var gate = new SynchronizationHandleGate(Synchronization);
-        SynchronizationObjectIncarnation made = Admitted(gate.Read(new(Create, 0x5000, 0x10, Event, 100)));
+        ObjectIncarnation made = Admitted(gate.Read(new(Create, 0x5000, 0x10, Event, 100)));
         Assert.Equal(made, Admitted(gate.Read(new(Duplicate, 0x5000, 0x10, Event, 100, TargetProcess: 200, TargetHandle: 0x88))));
 
         // The source closes its handle; the target's still holds the object, and its close ends it.
@@ -79,13 +79,13 @@ public sealed class SynchronizationHandleGateTests
     {
         // Another type's handles are never followed, whatever their address.
         var gate = new SynchronizationHandleGate(Synchronization, capacity: 1);
-        Assert.Equal((HandleGateOutcome.OtherType, (SynchronizationObjectIncarnation?)null), gate.Read(new(Create, 0x7000, 0x10, File, 100)));
-        Assert.Equal((HandleGateOutcome.OtherType, (SynchronizationObjectIncarnation?)null), gate.Read(new(Close, 0x7000, 0x10, File, 100)));
+        Assert.Equal((HandleGateOutcome.OtherType, (ObjectIncarnation?)null), gate.Read(new(Create, 0x7000, 0x10, File, 100)));
+        Assert.Equal((HandleGateOutcome.OtherType, (ObjectIncarnation?)null), gate.Read(new(Close, 0x7000, 0x10, File, 100)));
 
         // Beyond its bound a handle that would begin an object is not followed; one of a followed object is still its
         // object's, but not held.
-        SynchronizationObjectIncarnation made = Admitted(gate.Read(new(Create, 0x8000, 0x10, Event, 100)));
-        Assert.Equal((HandleGateOutcome.Untracked, (SynchronizationObjectIncarnation?)null), gate.Read(new(Create, 0x9000, 0x10, Event, 100)));
+        ObjectIncarnation made = Admitted(gate.Read(new(Create, 0x8000, 0x10, Event, 100)));
+        Assert.Equal((HandleGateOutcome.Untracked, (ObjectIncarnation?)null), gate.Read(new(Create, 0x9000, 0x10, Event, 100)));
         Assert.Equal(made, Admitted(gate.Read(new(Create, 0x8000, 0x14, Event, 200))));
         Assert.Equal((1, 1), (gate.Following, gate.Holding));
 
@@ -109,10 +109,10 @@ public sealed class SynchronizationHandleGateTests
         // A kernel handle, its value's top bit set, made and closed in processes the kernel ran for: never followed, and
         // never ending or beginning an object at its address.
         var gate = new SynchronizationHandleGate(Synchronization);
-        (HandleGateOutcome, SynchronizationObjectIncarnation?) kernel = (HandleGateOutcome.KernelHandle, null);
+        (HandleGateOutcome, ObjectIncarnation?) kernel = (HandleGateOutcome.KernelHandle, null);
         Assert.Equal(kernel, gate.Read(new(Create, 0xA000, 0x8000_0010, Event, 100)));
         Assert.Equal(0, gate.Following);
-        SynchronizationObjectIncarnation made = Admitted(gate.Read(new(Create, 0xA000, 0x10, Event, 100)));
+        ObjectIncarnation made = Admitted(gate.Read(new(Create, 0xA000, 0x10, Event, 100)));
         Assert.Equal(kernel, gate.Read(new(Close, 0xA000, 0x8000_0010, Event, 200)));
         Assert.Equal(kernel, gate.Read(new(Rundown, 0xA000, 0x8000_0010, Event, SystemProcess)));
         Assert.Equal(kernel, gate.Read(new(Duplicate, 0xA000, 0x10, Event, 100, TargetProcess: SystemProcess, TargetHandle: 0x8000_0020)));
@@ -193,7 +193,7 @@ public sealed class SynchronizationHandleGateTests
         string[][] rows = [.. System.IO.File.ReadLines(ledger).Skip(1).Select(line => line.Split(','))
             .Where(field => field[1] is "Create" or "Close")];
         var gate = new SynchronizationHandleGate(Synchronization);
-        var objects = new Dictionary<string, HashSet<SynchronizationObjectIncarnation>>(StringComparer.Ordinal);
+        var objects = new Dictionary<string, HashSet<ObjectIncarnation>>(StringComparer.Ordinal);
         foreach (string[] field in rows)
         {
             // The ledger's ordinals stand for the addresses and handle values it never states, and its roles for the processes.
@@ -203,7 +203,7 @@ public sealed class SynchronizationHandleGateTests
                 uint.Parse(field[5], CultureInfo.InvariantCulture),
                 int.Parse(field[6], CultureInfo.InvariantCulture),
                 field[2] == "creator" ? 1 : 2);
-            SynchronizationObjectIncarnation incarnation = Admitted(gate.Read(record));
+            ObjectIncarnation incarnation = Admitted(gate.Read(record));
             objects.TryAdd(field[3], []);
             objects[field[3]].Add(incarnation);
         }
@@ -227,7 +227,7 @@ public sealed class SynchronizationHandleGateTests
         Assert.Null(MeasuredTypes("10.0.19045.0-x64"));
     }
 
-    private static SynchronizationObjectIncarnation Admitted((HandleGateOutcome Outcome, SynchronizationObjectIncarnation? Incarnation) read)
+    private static ObjectIncarnation Admitted((HandleGateOutcome Outcome, ObjectIncarnation? Incarnation) read)
     {
         Assert.Equal(HandleGateOutcome.Admitted, read.Outcome);
         return read.Incarnation!.Value;

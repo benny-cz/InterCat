@@ -897,6 +897,7 @@ Revision 970 measures sections two processes share (ADR-089, FX-SECT-001): each 
 Revision 971 measures collecting the kernel's file view flag (ADR-089's addendum): Low in the processor time it adds, but a view-heavy workload past the throughput target in three series of four, so only an opt-in profile stating it may admit it.
 Revision 972 inventories the kernel's file view flag as sections' lead (ADR-089's second addendum), requested by no profile and admitting no event; Kernel-Memory, whose events name no section, claims none.
 Revision 973 measures the Section type's number for the build (ADR-089's third addendum): the object type table and the session's type rundown both name it 49, which a gate admitting sections' handles carries.
+Revision 974 adds the section gates (ADR-090): a section followed by its handles through the algorithm the synchronization handle gate now shares, and a view by its process and base, its section by the value its views carry while a followed view holds it, keeping no address.
 
 ## Revisions, a paragraph each, in order
 
@@ -4319,3 +4320,13 @@ object type table from user mode before and after FX-SECT-001 runs under the han
 rundown: all three name Section 49 and agree on every type but the type of types, and of the machine's handle records
 meanwhile about one in thirty was a section's, nothing lost. The product never reads the table (P20); a gate admitting
 sections' handles carries the measured number and holds it to each capture's type rundown.
+
+Revision 974 adds the gates that number sections and views as their records arrive (ADR-090). The synchronization handle
+gate's algorithm, which follows an object from the first handle a capture sees made at its address to the close of the
+last, becomes `ObjectHandleGate`, shared by that gate and a section handle gate, each giving it the types measured for
+the build. A section view gate follows each view by its process and base from its mapping, or the start's rundown, to
+its unmapping, and each section by the value every view of it carries, from the first followed view carrying it to the
+unmapping of the last; a view the gate never saw begin is numbered alone, joining the section its value names only while
+a followed view holds it. Both are bounded and allocate nothing per record once their tables have grown - the view
+gate's, to its bound of 262,144 views, by 57.3 MiB with the arrays they outgrew - and FX-SECT-001's ledger reads through
+them as its two sections. No record admits through them yet.
