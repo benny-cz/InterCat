@@ -41,7 +41,38 @@ public static class WorkspaceGrouping
     public static string ContainerExecutableKey(string executableKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(executableKey);
-        return "container|" + executableKey;
+        return ContainerExecutablePrefix + executableKey;
+    }
+
+    private const string ContainerExecutablePrefix = "container|";
+
+    /// <summary>
+    /// Whether <paramref name="group"/> is a service container's: a group of that kind that gathers neither an executable's
+    /// processes hosting none nor the processes a listed service may have run in - regrouped, one process hosting the
+    /// services its capture listed, which <see cref="ProcessGroup.Services"/> names.
+    /// </summary>
+    public static bool IsContainer(ProcessGroup group)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+        return group.Kind == LaneGrouping.ServiceContainer && ExecutableKeyOf(group) is null
+            && !string.Equals(group.Key, ServiceHostUnknownKey, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The key of the executable <paramref name="group"/> gathers the processes of: its own grouped by executable, and the
+    /// executable's under a grouping by service container; null for a session's, a container's, or the processes a listed
+    /// service may have run in.
+    /// </summary>
+    public static string? ExecutableKeyOf(ProcessGroup group)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+        return group.Kind switch
+        {
+            LaneGrouping.Executable => group.Key,
+            LaneGrouping.ServiceContainer when group.Key.StartsWith(ContainerExecutablePrefix, StringComparison.Ordinal) =>
+                group.Key[ContainerExecutablePrefix.Length..],
+            _ => null,
+        };
     }
 
     /// <summary>
@@ -100,12 +131,16 @@ public static class WorkspaceGrouping
         ];
     }
 
-    /// <summary>How a snapshot's processes are grouped now, as its groups say; by executable when they say nothing else.</summary>
+    /// <summary>
+    /// How a snapshot's processes are grouped now, as its groups say: by session when they are sessions, by service container
+    /// when every one is of that grouping, as a regrouping makes them, and otherwise by executable.
+    /// </summary>
     public static LaneGrouping Of(WorkspaceSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         return snapshot.Groups.Any(group => group.Kind == LaneGrouping.UserSession) ? LaneGrouping.UserSession
-            : snapshot.Groups.Any(group => group.Kind == LaneGrouping.ServiceContainer) ? LaneGrouping.ServiceContainer
+            : snapshot.Groups.Count > 0 && snapshot.Groups.All(group => group.Kind == LaneGrouping.ServiceContainer)
+                ? LaneGrouping.ServiceContainer
             : LaneGrouping.Executable;
     }
 

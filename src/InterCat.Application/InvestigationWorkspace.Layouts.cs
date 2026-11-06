@@ -38,8 +38,9 @@ public sealed record WorkspaceLayout
 
     /// <summary>
     /// How the session's processes are grouped (§6.3) when not by executable: <see cref="LaneGrouping.UserSession"/>, by the
-    /// terminal session their lifecycle records name; null groups them by executable. A file of a version before 17 groups
-    /// none otherwise.
+    /// terminal session their lifecycle records name, or <see cref="LaneGrouping.ServiceContainer"/>, each host of the
+    /// services its capture listed apart (ADR-096); null groups them by executable. A file of a version before 17 groups
+    /// none otherwise, and one before 24 none by service container.
     /// </summary>
     public LaneGrouping? Grouping { get; init; }
 
@@ -128,7 +129,12 @@ public sealed record WorkspaceLayout
             lanes == 0
                 ? null
                 : string.Create(culture, $"{lanes:N0} {(lanes == 1 ? "process lane" : "process lanes")} pinned on its timeline"),
-            grouping == LaneGrouping.UserSession ? "its processes grouped by terminal session" : null,
+            grouping switch
+            {
+                LaneGrouping.UserSession => "its processes grouped by terminal session",
+                LaneGrouping.ServiceContainer => "its processes grouped by service container",
+                _ => null,
+            },
             rankBy == RankingMetric.Records && !perSecond
                 ? null
                 : $"its rows ranked by {RankingMetrics.Phrase(rankBy)}{(perSecond ? " per second" : string.Empty)}",
@@ -192,10 +198,10 @@ public static partial class InvestigationWorkspace
             throw new InvalidOperationException("The layout is refused: it ranks by no metric §6.1 offers.");
         }
 
-        if (grouping is not (LaneGrouping.Executable or LaneGrouping.UserSession))
+        if (grouping is not (LaneGrouping.Executable or LaneGrouping.UserSession or LaneGrouping.ServiceContainer))
         {
-            throw new InvalidOperationException(
-                "The layout is refused: a view groups its processes by executable or by terminal session, and by nothing else.");
+            throw new InvalidOperationException("The layout is refused: a view groups its processes by executable, by terminal "
+                + "session or by service container, and by nothing else.");
         }
 
         if (evidencePolicy is not (Domain.EvidencePolicy.IncludeCorrelated or Domain.EvidencePolicy.IncludeCandidates))
@@ -263,7 +269,7 @@ public static partial class InvestigationWorkspace
         : lanes.Distinct().Count() != lanes.Count ? "a lane is pinned twice"
         : null;
 
-    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v23.md` §7).</summary>
+    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v24.md` §7).</summary>
     private static string? LayoutProblem(InvestigationWorkspaceFile workspace)
     {
         // Layouts arrived with the eleventh version (revision 280).
@@ -325,6 +331,12 @@ public static partial class InvestigationWorkspace
             return $"a {workspace.Contract} file opens no session's Other hosts";
         }
 
+        // A grouping by service container arrived with the twenty-fourth version (revision 1001).
+        if (VersionOf(workspace) < 24 && workspace.Layouts.Any(layout => layout.Grouping == LaneGrouping.ServiceContainer))
+        {
+            return $"a {workspace.Contract} file groups no session's processes by service container";
+        }
+
         HashSet<Guid> members = [.. workspace.Members.Select(member => member.SessionId)];
         if (workspace.Layouts.GroupBy(layout => layout.SessionId).FirstOrDefault(group => group.Count() > 1) is { } twice)
         {
@@ -334,11 +346,11 @@ public static partial class InvestigationWorkspace
         // Records are what no ranking ranks by, so a layout names another metric or none; correlated evidence is what every
         // view counts unless told otherwise, and candidates the one other policy a view offers, so a layout names them or
         // none: a reader puts back no policy it cannot show. Executables are how every view first groups, and terminal
-        // sessions the one other grouping a view offers, so a layout names them or none.
+        // sessions and service containers the other groupings a view offers, so a layout names one of them or none.
         return workspace.Layouts.FirstOrDefault(layout => !members.Contains(layout.SessionId) || !layout.KeepsAnything
             || layout.RankBy is { } rankBy && (rankBy == RankingMetric.Records || !Enum.IsDefined(rankBy))
             || layout.EvidencePolicy is not (null or Domain.EvidencePolicy.IncludeCandidates)
-            || layout.Grouping is not (null or LaneGrouping.UserSession)
+            || layout.Grouping is not (null or LaneGrouping.UserSession or LaneGrouping.ServiceContainer)
             || PinsProblem(layout.Pins) is not null || LanesProblem(layout.PinnedLanes) is not null) is { } wrong
             ? $"the layout of session {Short(wrong.SessionId)} "
                 + (!members.Contains(wrong.SessionId) ? "is of a session not in it"
@@ -346,7 +358,7 @@ public static partial class InvestigationWorkspace
                     : (PinsProblem(wrong.Pins) ?? LanesProblem(wrong.PinnedLanes)) is { } problem ? "is refused: " + problem
                     : wrong.EvidencePolicy is not (null or Domain.EvidencePolicy.IncludeCandidates)
                         ? "counts its records under a policy no view offers, or under correlated evidence by name"
-                    : wrong.Grouping is not (null or LaneGrouping.UserSession)
+                    : wrong.Grouping is not (null or LaneGrouping.UserSession or LaneGrouping.ServiceContainer)
                         ? "groups its processes in a way no view offers, or by executable by name"
                     : "ranks by no metric §6.1 offers, or by records by name")
             : null;

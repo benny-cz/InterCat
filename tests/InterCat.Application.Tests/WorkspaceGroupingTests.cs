@@ -83,6 +83,9 @@ public sealed class WorkspaceGroupingTests
         Assert.All(projected.Processes, process => Assert.Null(process.TerminalSession));
         Assert.Equal([LaneGrouping.Executable], WorkspaceGrouping.Offered(projected));
         Assert.Equal([LaneGrouping.Executable], WorkspaceGrouping.Offered(SyntheticWorkspace.Create()));
+
+        // The synthetic workspace mixes an executable's group with a hand-made container's: it is grouped by executable.
+        Assert.Equal(LaneGrouping.Executable, WorkspaceGrouping.Of(SyntheticWorkspace.Create()));
     }
 
     [Fact(DisplayName = "§6.3: regrouped by service container, each host of the services listed is a row of its own named by its services, every other process its executable's row, those a listed service may have run in one row apart, under keys the rankings read, with the same total")]

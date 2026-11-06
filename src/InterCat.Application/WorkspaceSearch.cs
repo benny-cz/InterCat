@@ -94,7 +94,7 @@ public static class WorkspaceSearch
             if (rank < 0) continue;
             int members = memberCounts.GetValueOrDefault(group.Key);
             candidates.Add((rank, new(SearchHitKind.Group, group.Key, group.Name,
-                string.Create(CultureInfo.CurrentCulture, $"{KindOf(group.Kind)} · {members:N0} {(members == 1 ? "process" : "processes")}")
+                string.Create(CultureInfo.CurrentCulture, $"{KindOf(group)} · {members:N0} {(members == 1 ? "process" : "processes")}")
                     + (group.Detail is { } path ? " · " + path : string.Empty),
                 groupObservations.GetValueOrDefault(group.Key), [group.Key])));
         }
@@ -432,11 +432,16 @@ public static class WorkspaceSearch
             : -1;
     }
 
-    /// <summary>What a group's members have in common, as its hit names it.</summary>
-    private static string KindOf(LaneGrouping grouping) => grouping switch
+    /// <summary>
+    /// What a group's members have in common, as its hit names it: grouped by service container, a container's hit says so,
+    /// an executable's processes hosting none say their executable, and those a listed service may have run in say nothing
+    /// more than a group (ADR-096).
+    /// </summary>
+    private static string KindOf(ProcessGroup group) => group.Kind switch
     {
         LaneGrouping.Executable => "Executable",
-        LaneGrouping.ServiceContainer => "Service container",
+        LaneGrouping.ServiceContainer when WorkspaceGrouping.IsContainer(group) => "Service container",
+        LaneGrouping.ServiceContainer when WorkspaceGrouping.ExecutableKeyOf(group) is not null => "Executable",
         LaneGrouping.UserSession => "Terminal session",
         LaneGrouping.Package => "Package",
         _ => "Group",

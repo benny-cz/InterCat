@@ -1,7 +1,8 @@
 # ADR-096: A service container is the instance hosting listed services, and any other process keeps its executable's group
 
-- Status: accepted for M6's process enrichment; metrics and `icat metric` group by service container (revision 999), and
-  the machine rung's rows and `icat export` (revision 1000)
+- Status: accepted for M6's process enrichment; metrics and `icat metric` group by service container (revision 999), the
+  machine rung's rows and `icat export` (revision 1000), and the window, an investigation keeping the grouping
+  (revision 1001)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-095, plan M6, §3.2, §6.3, `metrics-v1` §6, `query-identity-v1` §4, R3, P6
@@ -60,3 +61,13 @@ unattributed. A row's distinct peers and call times are read for every grouping 
 of grouping reads nothing again, and the ranking query names `--group-by service-container`. A capture that listed no
 services is not offered the grouping, and an export of it is refused. The window's selector and a saved layout keeping
 the grouping are the next slices'. 22 mutations of the path are caught.
+
+## Second addendum: the window groups by service container, and an investigation keeps it (revision 1001)
+
+The window's Group by offers Service container once the session's capture listed its services, beside Executable and
+Terminal session. The inspector says how each group was formed - a container by the services its process hosted, its
+records never one service's; an executable's processes as hosting none of the services listed; the processes a listed
+service may have run in as placed in no guessed container - and a search names a container's hit as one and an
+executable's as one. An investigation keeps the grouping in a member's layout from `workspace-v24`, so the session opens
+grouped so from it again; a file of an earlier version that holds it is refused, and one that does not reads as it was.
+19 mutations of the path are caught.

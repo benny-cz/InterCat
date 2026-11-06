@@ -346,7 +346,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         // A version this one does not read is named, with the versions it does.
         File.WriteAllText(workspace, refused[0]);
-        Assert.Contains("it is 'workspace-v999', not one of workspace-v1 to workspace-v23, the versions this InterCat reads",
+        Assert.Contains("it is 'workspace-v999', not one of workspace-v1 to workspace-v24, the versions this InterCat reads",
             Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
 
         // Two members of one capture, however written, are refused whole.
@@ -1168,8 +1168,9 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
         // Refused: a grouping no view offers.
-        Assert.Contains("groups its processes by executable or by terminal session", Assert.Throws<InvalidOperationException>(() =>
-            InvestigationWorkspace.SetLayout(workspace, a, [], Now, grouping: LaneGrouping.ServiceContainer)).Message,
+        Assert.Contains("groups its processes by executable, by terminal session or by service container",
+            Assert.Throws<InvalidOperationException>(() =>
+                InvestigationWorkspace.SetLayout(workspace, a, [], Now, grouping: LaneGrouping.Package)).Message,
             StringComparison.Ordinal);
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
@@ -1203,6 +1204,40 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             (rewritten.Contract, rewritten.Layouts.Single().Grouping));
     }
 
+    [Fact(DisplayName = "R22: a member's layout keeps a grouping by service container, which a file before version 24 cannot")]
+    public void AMembersServiceContainerGroupingIsKept()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now).SessionId;
+
+        // Kept by name, said in the rail's words, and read back.
+        WorkspaceLayout kept = InvestigationWorkspace.SetLayout(workspace, a, [], Now, grouping: LaneGrouping.ServiceContainer)!;
+        Assert.Equal(LaneGrouping.ServiceContainer, kept.Grouping);
+        Assert.True(kept.KeepsAnything);
+        Assert.Equal("its processes grouped by service container", kept.Describe(CultureInfo.InvariantCulture));
+        Assert.Equal(LaneGrouping.ServiceContainer, InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.Grouping);
+        string written = File.ReadAllText(workspace);
+        Assert.Contains("\"grouping\": \"ServiceContainer\"", written, StringComparison.Ordinal);
+        Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
+
+        // A file of the version before groups none by service container, and one that says otherwise is refused; one of
+        // that version grouping by terminal session is read as it was.
+        File.WriteAllText(workspace, written.Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.TwentyThirdContract}\"", StringComparison.Ordinal));
+        Assert.Contains("file groups no session's processes by service container",
+            Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+        File.WriteAllText(workspace, written.Replace($"\"{InvestigationWorkspace.Contract}\"",
+                $"\"{InvestigationWorkspace.TwentyThirdContract}\"", StringComparison.Ordinal)
+            .Replace("\"grouping\": \"ServiceContainer\"", "\"grouping\": \"UserSession\"", StringComparison.Ordinal));
+        Assert.Equal(LaneGrouping.UserSession, InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.Grouping);
+
+        // Grouped by service container again, the file is written as the current version.
+        InvestigationWorkspace.SetLayout(workspace, a, [], Now, grouping: LaneGrouping.ServiceContainer);
+        InvestigationWorkspaceFile rewritten = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((InvestigationWorkspace.Contract, (LaneGrouping?)LaneGrouping.ServiceContainer),
+            (rewritten.Contract, rewritten.Layouts.Single().Grouping));
+    }
+
     [Fact(DisplayName = "§19.5: a member's layout keeps InterCat's own processes set aside, which a file before version 18 cannot")]
     public void AMembersCollectorsAsideIsKept()
     {
@@ -1218,7 +1253,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"collectorsAside\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v23", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v24", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, collectorsAside: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
@@ -1254,7 +1289,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"wallClock\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v23", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v24", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, wallClock: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 

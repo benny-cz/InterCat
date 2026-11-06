@@ -79,6 +79,64 @@ public sealed class GroupingTests
         Assert.False(workspace.ShowsGroupingChoice);
     });
 
+    [Fact(DisplayName = "§6.3: grouped by service container, each host of the services listed is a row named by them, every other process its executable's, and the inspector, a search and the evidence step say which")]
+    public void AServiceContainerIsNamedWhereverItIsShown() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields, ServiceInventoryV1[] inventories) = ServiceContainers();
+        Publish(session.Store, rows, fields: fields, services: inventories);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        WorkspaceSnapshot projected = OverviewWorkspace.From(overview);
+        var source = new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation);
+
+        // The capture listed its services and its records name no terminal session, so the selector offers executables and
+        // service containers.
+        using (var byExecutable = new WorkspaceViewModel(projected, overview.GraphIdentity, source))
+        {
+            await byExecutable.LayoutReady;
+            Assert.Equal(["Executable", "Service container"], byExecutable.GroupingOptions.Select(option => option.Label));
+            Assert.StartsWith("Service container: each process hosting the services the capture listed apart",
+                byExecutable.GroupingOptions[1].AccessibleName, StringComparison.Ordinal);
+            Assert.True(byExecutable.ShowsGroupingChoice);
+        }
+
+        using var workspace = new WorkspaceViewModel(WorkspaceGrouping.Regroup(projected, LaneGrouping.ServiceContainer),
+            WorkspaceGrouping.Identity(overview.GraphIdentity, LaneGrouping.ServiceContainer), source);
+        await workspace.LayoutReady;
+        Assert.Equal(("Service container", LaneGrouping.ServiceContainer), (workspace.SelectedGrouping.Label, workspace.Grouping));
+        Assert.Contains("PID 1820 svchost.exe hosting Dnscache, nsi", workspace.RungRows.Select(row => row.Label));
+        Assert.Contains(GroupingText.ServiceHostNotKnown, workspace.RungRows.Select(row => row.Label));
+
+        // The inspector says how each group was formed: a container by its services, an executable's processes as hosting
+        // none, and those a listed service may have run in apart, in no guessed container.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "PID 1820 svchost.exe hosting Dnscache, nsi");
+        Assert.Equal(("How its processes are grouped", "Grouped as a service container: its process hosted Dnscache and nsi as the "
+            + "capture listed them, and its records are its own, never one service's." + Bound + Coverage),
+            (workspace.ExplanationHeading, workspace.Explanation));
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "svchost.exe");
+        Assert.Equal("Grouped by the executable its members' records name, compared without case. None of them hosted a service "
+            + "the capture listed." + Bound + Coverage, workspace.Explanation);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == GroupingText.ServiceHostNotKnown);
+        Assert.Equal("Grouped here because a service the capture listed may have run in its members, and no creation time tells: "
+            + "none is placed in a guessed container." + Bound + Coverage, workspace.Explanation);
+
+        // A search names a container's hit as one, and an executable's as one.
+        workspace.SearchText = "W32Time";
+        SearchHit container = workspace.SearchResults[0].Hit;
+        Assert.Equal(("PID 2400 svchost.exe hosting W32Time", "Service container · 1 process"), (container.Label, container.Detail));
+        workspace.SearchText = "app.exe";
+        Assert.Contains(workspace.SearchResults, result => result.Hit.Kind == SearchHitKind.Group
+            && result.Hit.Detail.StartsWith("Executable · 1 process", StringComparison.Ordinal));
+        workspace.SearchText = string.Empty;
+
+        // Evidence from a selected container reads its one process's records, and says it was reached from it.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "PID 1820 svchost.exe hosting Dnscache, nsi");
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal("Evidence was reached from the machine rung with this service container group selected.",
+            workspace.Filters.Single().Reason);
+    });
+
     [Fact(DisplayName = "§6.3: the selector stands at the machine rung of a session that names a terminal session, and nowhere else")]
     public void TheSelectorStandsWhereTheGroupsAre() => SingleThreadedContext.Run(async () =>
     {

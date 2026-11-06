@@ -3662,6 +3662,7 @@
         "R22: a member whose folder changed since its window read it is never opened as another session, and the window says why and what to do",
         "R22: a member whose newest generation does not verify is its last complete one, said as such and not as a copy",
         "R22: a member's layout is kept by node, ranking, evidence policy and lane scale, replaced as it changes, and refused where it cannot be",
+        "R22: a member's layout keeps a grouping by service container, which a file before version 24 cannot",
         "R22: a member's layout keeps a grouping by terminal session, and refuses one no view offers",
         "R22: a member's layout keeps its pinned timeline lanes in the order pinned, and refuses what no window can pin",
         "R22: a message the sender sent or posted another process's window, and every record of a process the truth does not name, are neither the run's messages nor error - they are scope",

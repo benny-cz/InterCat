@@ -2,7 +2,7 @@
 
 - Status: accepted; revision 771. It records notes about saved comparisons, M12's annotations
 - Date: 2026-10-24
-- Relates to: plan M12, §8.4, R22, ADR-038, ADR-061; `contracts/workspace-v23.md`, `contracts/comparison-v1.md`
+- Relates to: plan M12, §8.4, R22, ADR-038, ADR-061; `contracts/workspace-v24.md`, `contracts/comparison-v1.md`
 
 ## Context
 
@@ -31,12 +31,12 @@ names the same row while the sessions hold it, a process's identity being a stab
 - **A rank is the run's; a key is the row's.** A note pinned by rank would move to whatever row ranks there next.
 - **A person's words are never discarded by another act**: notes, like every revision, are kept, so removing a
   comparison removes no note, and the note says what it was about.
-- **A note is never evidence** (`workspace-v23` §7): it is said beside the rows, and no row is ranked, compared or
+- **A note is never evidence** (`workspace-v24` §7): it is said beside the rows, and no row is ranked, compared or
   judged by it.
 
 ## Consequences
 
-- `workspace-v23`: a note's `about`, `{ comparison, row }`; a file before version 23 holds none.
+- `workspace-v24`: a note's `about`, `{ comparison, row }`; a file before version 23 holds none.
 - `icat workspace note <text> --about <comparison> [--row <key>]`; `icat workspace show` and the investigation window
   say what each is about; `icat compare --saved` says them, and its JSON carries them.
 - Revision 772 builds the Compare window's: showing a comparison its investigation saved alike, it says the notes

@@ -25,7 +25,7 @@ public sealed record ComparisonRow(
 
     /// <summary>
     /// How many notes in force are about the row, where the comparison is one its investigation saved
-    /// (`contracts/workspace-v23.md` §7); none otherwise.
+    /// (`contracts/workspace-v24.md` §7); none otherwise.
     /// </summary>
     public int Noted { get; init; }
 

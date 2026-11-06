@@ -628,14 +628,26 @@ public static class WorkspaceRowBuilder
         ArgumentNullException.ThrowIfNull(group);
         ArgumentNullException.ThrowIfNull(members);
         string rule = DescribeRule(RelationRule.Parse(ProcessInstanceIndex.BindingRule));
+
+        // Grouped by service container, a host of the services listed is its own group, and an executable's group holds
+        // only its processes that host none of them (ADR-096).
+        string hostingNone = group.Kind == LaneGrouping.ServiceContainer ? " None of them hosted a service the capture listed." : string.Empty;
         string grouped = group.Kind == LaneGrouping.UserSession
             ? group.Key == WorkspaceGrouping.UnrecordedSessionKey
                 ? "Grouped here because no lifecycle record names the terminal session its members ran in: none is "
                     + "given a guessed one."
                 : "Grouped by the terminal session its members' lifecycle records name."
-            : group.Key == ProcessGroup.UnwitnessedExecutableKey
-            ? "Grouped here because no record names the executable its members ran: none is given a guessed name."
-            : "Grouped by the executable its members' records name, compared without case.";
+            : WorkspaceGrouping.IsContainer(group)
+            ? group.Services is { Count: > 0 } services
+                ? $"Grouped as a service container: its process hosted {ServiceNames(services)} as the capture listed them, "
+                    + "and its records are its own, never one service's."
+                : "Grouped as a service container: its records are its own, never one service's."
+            : group.Key == WorkspaceGrouping.ServiceHostUnknownKey
+            ? "Grouped here because a service the capture listed may have run in its members, and no creation time tells: "
+                + "none is placed in a guessed container."
+            : WorkspaceGrouping.ExecutableKeyOf(group) == ProcessGroup.UnwitnessedExecutableKey
+            ? "Grouped here because no record names the executable its members ran: none is given a guessed name." + hostingNone
+            : "Grouped by the executable its members' records name, compared without case." + hostingNone;
         long withheld = members.Sum(member => member.WithheldRecords);
         long candidates = members.Sum(member => member.CandidateRecords);
         string left = withheld > 0
@@ -652,6 +664,15 @@ public static class WorkspaceRowBuilder
 
     private static string LaterHolders(int count) =>
         Spoken.Count(count, "later holder of a reused PID", "later holders of reused PIDs");
+
+    /// <summary>A container's services as a sentence names them: "Dnscache and nsi", the first six named and the rest counted.</summary>
+    private static string ServiceNames(IReadOnlyList<HostedService> services)
+    {
+        string[] named = [.. services.Take(ServiceText.Named).Select(service => service.Name)];
+        return services.Count > ServiceText.Named
+            ? string.Join(", ", named) + string.Create(CultureInfo.CurrentCulture, $" and {services.Count - ServiceText.Named:N0} more")
+            : named.Length == 1 ? named[0] : string.Join(", ", named[..^1]) + " and " + named[^1];
+    }
 
     /// <summary>
     /// How a paired channel's two ends were paired, in words (§6.8: a channel row is one action from the rule, version,

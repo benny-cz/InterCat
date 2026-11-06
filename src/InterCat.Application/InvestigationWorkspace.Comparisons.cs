@@ -4,7 +4,7 @@ using InterCat.Domain;
 namespace InterCat.Application;
 
 /// <summary>
-/// One interval a saved comparison names (`contracts/workspace-v23.md` §7): a member session's, half-open in its own
+/// One interval a saved comparison names (`contracts/workspace-v24.md` §7): a member session's, half-open in its own
 /// presentation ticks, as `icat compare` takes it.
 /// </summary>
 public sealed record SavedComparisonInterval
@@ -52,7 +52,7 @@ public sealed record SavedComparison
     public bool AcrossCaptures => Baseline is { } baseline && Compared is { } compared && baseline.SessionId != compared.SessionId;
 
     /// <summary>
-    /// Whether it compares just what <paramref name="comparison"/> did (`contracts/workspace-v23.md` §7): the same two
+    /// Whether it compares just what <paramref name="comparison"/> did (`contracts/workspace-v24.md` §7): the same two
     /// intervals of the same sessions, by the same metric, its rows of the same grouping - so a note about it, or about one of
     /// its rows by key, is about that comparison's.
     /// </summary>
@@ -185,7 +185,7 @@ public static partial class InvestigationWorkspace
     private static int NextComparisonRevision(InvestigationWorkspaceFile workspace) =>
         workspace.Comparisons.Count == 0 ? 1 : checked(workspace.Comparisons.Max(comparison => comparison.Revision) + 1);
 
-    /// <summary>What makes a file's saved comparisons contradict themselves, or null (`contracts/workspace-v23.md` §7).</summary>
+    /// <summary>What makes a file's saved comparisons contradict themselves, or null (`contracts/workspace-v24.md` §7).</summary>
     private static string? ComparisonProblem(InvestigationWorkspaceFile workspace)
     {
         // Saved comparisons arrived with the twenty-second version (revision 758).

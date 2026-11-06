@@ -1,8 +1,8 @@
-# Workspace contract, version 23
+# Workspace contract, version 24
 
-Status: M4 and M12, revision 771 (ADR-038 to ADR-042, ADR-061, ADR-069); versions 1 to 22 were revisions 253, 254,
-256, 260, 264, 265, 266, 269, 270, 271, 280, 301, 339, 343, 360, 388, 406, 419, 422, 470, 557 and 758's, and packages
-revision 263's
+Status: M4, M6 and M12, revision 1001 (ADR-038 to ADR-042, ADR-061, ADR-069, ADR-096); versions 1 to 23 were revisions
+253, 254, 256, 260, 264, 265, 266, 269, 270, 271, 280, 301, 339, 343, 360, 388, 406, 419, 422, 470, 557, 758 and 771's,
+and packages revision 263's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
 Produced by: `icat workspace new | add | relink | alias | align | join | same-host | translate | note | view | comparison |
 package`
@@ -23,10 +23,11 @@ timeline (§7), version 17 whether they grouped each session's processes by term
 they set InterCat's own processes aside from each session's view (§7), version 19 whether they read each session's
 times on the wall clock its capture's machine read (§7), version 20 the widths they gave the ranked table and the
 inspector by their edges (§7), version 21 whether they opened each session's Other hosts into its busiest hosts (§7),
-version 22 their saved comparisons of two intervals of its sessions (§7), and version 23 their notes about a saved
-comparison or one of its rows (§7). An earlier version's file is read as one without what later versions added - a
+version 22 their saved comparisons of two intervals of its sessions (§7), version 23 their notes about a saved
+comparison or one of its rows (§7), and version 24 whether they grouped each session's processes by service container
+(§7). An earlier version's file is read as one without what later versions added - a
 `workspace-v1` file holds members and host names and no time, a `workspace-v2` file manual alignments only, and a
-`workspace-v5` file members each aligned to the reference itself - and each is written as version 23. A kind of fact
+`workspace-v5` file members each aligned to the reference itself - and each is written as version 24. A kind of fact
 is refused only in a file of a version before the one that added it; until revision 279 each was refused in any
 version before the newest, so a file an earlier version wrote with what that version had added stopped reading once a
 later version appeared.
@@ -35,7 +36,7 @@ later version appeared.
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v23"` (`"workspace-v1"` to `"workspace-v22"` are read) |
+| `contract` | `"workspace-v24"` (`"workspace-v1"` to `"workspace-v23"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -399,7 +400,7 @@ changes, and none is kept as a revision:
 | `sessionId` | The member whose graph it lays out |
 | `pins` | The pinned nodes, by key: `{ key, x, y }`, the node's stable graph key - a process instance, a group, an aggregate, Other hosts or a host drawn on its own - at most 256 characters, and where it was put, each of `x` and `y` from 0 to 1 across and down the graph; at most 1,024, each key once |
 | `pinnedLanes` | The process instances whose lanes are pinned at the top of their group's lanes on the session's timeline (§6.2), by identity, in the order they were pinned, which is the order they are drawn in; at most 1,024, each once, none the empty identity. Empty when none is. Since version 16 |
-| `grouping` | How the session's processes are grouped (§6.3), when not by executable, the default: `UserSession`, by the terminal session their lifecycle records name; null groups them by executable. No other grouping is kept, since no view offers one to put back. Since version 17 |
+| `grouping` | How the session's processes are grouped (§6.3), when not by executable, the default: `UserSession`, by the terminal session their lifecycle records name, or `ServiceContainer`, each process its capture's lists of running services name as hosting one a group of its own and every other process its executable's (`metrics-v1` §6, ADR-096), since version 24; null groups them by executable. No other grouping is kept, since no view offers one to put back. Since version 17 |
 | `rankBy` | What the session's rows are ranked by (§6.1), when not by their own records: `BytesSent`, `BytesReceived`, `EndpointBytes`, `RpcCallsMade`, `RpcCallsServed`, `RpcErrors`, `RpcCallTime`, `RpcServeTime` or `ActivePeers`; null ranks by records. Since version 12 |
 | `perSecond` | Whether a count or sum it ranks by reads per second of the ranked interval. Since version 12 |
 | `evidencePolicy` | How strongly a record must bind to a process to count as that process's, when not by correlated evidence, the default: `IncludeCandidates`, which counts a reused PID's later holder's records as its own too, as candidates; null counts correlated evidence. No other policy is kept, since no view offers one to put back. Since version 13 |
@@ -413,7 +414,8 @@ The Desktop keeps a session's pins, its pinned lanes, its grouping, its ranking,
 whether InterCat's own processes are set aside, whether its times are read on the wall clock and whether its Other hosts
 is opened in the investigation it was opened from, and puts them back when it is opened from it again, its records counted
 under the policy kept before its first view, its processes grouped as kept from that view on where they name a terminal
-session, its lanes pinned before any group's are drawn, and its Other hosts opened from its first drawing, so a host
+session or, grouped by service container, where its capture listed its services, its lanes pinned before any group's are
+drawn, and its Other hosts opened from its first drawing, so a host
 pinned on its graph is drawn where it was pinned; a session opened on its own keeps them only while it is open. A pinned
 lane of an instance a later generation does not draw stays pinned, for when it is drawn, and so does a pinned host no
 longer among the busiest. A layout that
@@ -421,11 +423,11 @@ pins nothing, groups by executable, ranks by records, not per second, counts cor
 one scale, shows InterCat's own processes, reads session time and keeps Other hosts folded keeps nothing and is removed. A file whose layouts are of no member, keep nothing, pin a node twice, outside
 the graph or by no key, pin a lane twice, by the empty identity or more than 1,024 of them, rank by `Records` by name or
 by no metric §6.1 offers, count under `IncludeCorrelated` by name or under any policy but `IncludeCandidates`, group by
-`Executable` by name or by anything but `UserSession`, appear in a file before version 11, rank in a file before version
+`Executable` by name or by anything but `UserSession` or `ServiceContainer`, appear in a file before version 11, rank in a file before version
 12, name a policy in a file before version 13, read each lane on its own scale in a file before version 14, pin a lane
 in a file before version 16, group in a file before version 17, set InterCat's own processes aside in a file before
-version 18, read its times on the wall clock in a file before version 19, or open Other hosts in a file before version 21,
-is refused.
+version 18, read its times on the wall clock in a file before version 19, open Other hosts in a file before version 21,
+or group by service container in a file before version 24, is refused.
 
 The panes are how a person left the window's two main panes - the graph above the timeline - and the columns beside
 them while showing the investigation's sessions (§6.1's persistence): the graph's share of the height the two share, the
@@ -472,7 +474,7 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   `Missing`, to relink.
 - Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments`,
   `joins`, `hostEquivalences`, `addressTranslations`, `notes`, `views`, `comparisons`, `layouts` and `panes`. The file
-  is written as the current version, `workspace-v23`.
+  is written as the current version, `workspace-v24`.
 - The folder must not exist and must lie inside no session. It is built in a private folder beside it,
   `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or

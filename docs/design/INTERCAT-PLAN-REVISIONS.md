@@ -923,6 +923,7 @@ Revision 997 measures FX-SVC-002 through the product (ADR-095's fourth addendum)
 Revision 998 groups metrics by package (ADR-094's fourth addendum): each record under the package its process's lifecycle records name, the processes in none a group of their own, one whose records said neither unattributed, and icat metric --group-by package naming each.
 Revision 999 groups metrics by service container (ADR-096): each host of the services its capture listed a group of its own, named by its services, every other process its executable's, one a listed service may have run in unattributed, and icat metric --group-by service-container naming each.
 Revision 1000 groups the machine rung and icat export by service container (ADR-096's addendum): each host of the services listed a row of its own, every other process its executable's row, the processes a listed service may have run in one row apart, with their peers and call times.
+Revision 1001 lets the window group by service container and an investigation keep it (ADR-096's second addendum): Group by offers Service container where the capture listed its services, and workspace-v24 keeps the grouping in a member's layout.
 
 ## Revisions, a paragraph each, in order
 
@@ -4597,3 +4598,11 @@ processes a listed service may have run in, where no creation time tells, are on
 and call times are read for every grouping at once under those keys, and the ranking query names `--group-by
 service-container`. A capture that listed no services is not offered the grouping. The window's selector and a saved
 layout keeping it come next.
+
+Revision 1001 brings the grouping by service container to the window and to the investigation that keeps it (ADR-096's
+second addendum). Group by offers Service container once the session's capture listed its services; the inspector says
+how each group was formed - a container by the services its process hosted, an executable's processes as hosting none,
+the processes a listed service may have run in as placed in no guessed container - and a search and the evidence step
+name a container as one. `workspace-v24` keeps the grouping in a member's layout, so the session opens grouped so from
+the investigation again; a file of version 23 or before that holds it is refused, and every earlier file reads as it
+was, written as the current version.
