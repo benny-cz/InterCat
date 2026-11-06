@@ -7,6 +7,10 @@
   <ItemGroup>
     <!-- For each candidate class's registered layouts and each provider's registered schema, read as the product reads one. -->
     <ProjectReference Include="../../src/InterCat.Capture.Windows/InterCat.Capture.Windows.csproj" />
+
+    <!-- For a session icat record published, read as the product reads one, and evaluated as the product evaluates sections. -->
+    <ProjectReference Include="../../src/InterCat.Storage/InterCat.Storage.csproj" />
+    <ProjectReference Include="../../src/InterCat.Analysis/InterCat.Analysis.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- A lab probe, not a product adapter: it lists the machine's registered providers by name, as logman does. -->

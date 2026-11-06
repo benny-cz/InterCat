@@ -60,7 +60,7 @@ public sealed partial class MeasuredCoverageTests
             (MeasuredCoverage.On(Mechanism.Tcp, build)!.Tier, MeasuredCoverage.On(Mechanism.Tcp, build)!.Fixture));
         Assert.Null(MeasuredCoverage.On(Mechanism.Tcp, "10.0.99999.0-x64"));
         Assert.Contains(MeasuredCoverage.Elsewhere(Mechanism.Tcp, "10.0.99999.0-x64"), entry => entry.Build == build);
-        Assert.Null(MeasuredCoverage.On(Mechanism.SharedSection, build));
+        Assert.Null(MeasuredCoverage.On(Mechanism.Clipboard, build));
 
         // A build carrying no coverage file claims no tier at all.
         Assert.Empty(MeasuredCoverage.Read(null));

@@ -160,6 +160,86 @@ public sealed class SectionCoverageEvaluatorTests
             (memory.DiscoveredWithLifetime, memory.EveryCloseSeen, memory.Gap));
     }
 
+    [Fact(DisplayName = "P27: FX-SECT-001's section records through the product reproduce its measured tier - each section found twice, by its handles from the creator's creation to both processes' closes and by every view both processes mapped and unmapped, among their own views and images, bound to exactly the two processes - and topology only")]
+    public void CommittedEvidenceReproducesItsTier()
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-SECT-001", "evidence");
+        string product = Path.Combine(evidence, "product");
+        TruthRecord[] truth = [.. ReadTruth(Path.Combine(product, "truth-creator.jsonl")), .. ReadTruth(Path.Combine(product, "truth-opener.jsonl"))];
+        Dictionary<string, int> processes = truth.GroupBy(static record => record.Role).ToDictionary(static group => group.Key, static group => group.First().ProcessId);
+
+        // The committed ledger holds the workload's records by role, its runtimes' own views and images among them - never a PID.
+        SectionObservation[] records = [.. ReadLedger(Path.Combine(product, "records.csv"), processes)];
+        SectionCoverageResult result = SectionCoverageEvaluator.Evaluate(truth, records, Settings() with { Reproduced = true });
+
+        using System.Text.Json.JsonDocument measurement = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "measurement.json")));
+        System.Text.Json.JsonElement stated = measurement.RootElement.GetProperty("throughTheProduct").GetProperty("runs")[0].GetProperty("evaluation");
+        MechanismMeasurement measured = result.Measurement;
+        Assert.Equal(
+            (stated.GetProperty("truthSections").GetInt64(), stated.GetProperty("discoveredWithLifetime").GetInt64(),
+                stated.GetProperty("expectedMemberships").GetInt64(), stated.GetProperty("resolvedMemberships").GetInt64(),
+                stated.GetProperty("falseMemberships").GetInt64(), stated.GetProperty("truthOperations").GetInt64(), stated.GetProperty("observed").GetInt64()),
+            (measured.TruthResources, measured.DiscoveredResourcesWithLifetime, measured.ExpectedMemberships, measured.ResolvedMemberships,
+                measured.FalsePeerAttributions, measured.TruthOperations, measured.TruthOperationsWithAdmittedObservation));
+        Assert.Equal(stated.GetProperty("recordsOfOtherProcessesOnItsSections").GetInt32(), result.ObservationsOutsideScope);
+        Assert.Equal(stated.GetProperty("gaps").EnumerateArray().Select(static gap => gap.GetString()), result.Assessment.Gaps);
+        Assert.Equal(Enum.Parse<CapabilityTier>(stated.GetProperty("tier").GetString()!), result.Assessment.Tier);
+
+        // Every one of them: two sections, each found twice and bound to exactly the two processes, every handle open and close
+        // and every view mapping and unmapping the truth logged seen in its own process, among hundreds of the processes' own
+        // views and images; no byte claimed, so the tier is topology.
+        Assert.Equal((2L, 2L, 4L, 4L, 0L), (measured.TruthResources, measured.DiscoveredResourcesWithLifetime, measured.ExpectedMemberships,
+            measured.ResolvedMemberships, measured.FalsePeerAttributions));
+        Assert.Equal((28L, 28L, 0L, false), (measured.TruthOperations, measured.TruthOperationsWithAdmittedObservation,
+            measured.ByteEligibleOperations, measured.ClaimsBytesOrOperations));
+        int[] holders = [.. processes.Values.Order()];
+        Assert.All(result.Sections, section => Assert.Equal(holders, section.MemberProcesses));
+        Assert.True(records.Count(static record => record.IsView) > 500 && records.Any(static record => record.IsImage));
+        Assert.Equal(CapabilityTier.TopologyOnly, result.Assessment.Tier);
+    }
+
+    private static IEnumerable<TruthRecord> ReadTruth(string file)
+    {
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        return File.ReadLines(file).Where(static line => line.Length > 0).Select(line => System.Text.Json.JsonSerializer.Deserialize<TruthRecord>(line, options)!);
+    }
+
+    /// <summary>A product ledger read back as the session's records were, each role the process the truth names by it, others apart.</summary>
+    private static IEnumerable<SectionObservation> ReadLedger(string ledger, Dictionary<string, int> processes)
+    {
+        foreach (string[] field in File.ReadLines(ledger).Skip(1).Where(static line => line.Length > 0).Select(static line => line.Split(',')))
+        {
+            static long? Number(string value) => value.Length == 0 ? null : long.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+            yield return new()
+            {
+                Ordinal = long.Parse(field[0], System.Globalization.CultureInfo.InvariantCulture),
+                UtcTicks = Number(field[1]),
+                ProcessId = field[2].Length == 0 ? null : processes.TryGetValue(field[2], out int id) ? id
+                    : 1_000_000 + int.Parse(field[2]["other-".Length..], System.Globalization.CultureInfo.InvariantCulture),
+                Kind = Enum.Parse<ObservationKind>(field[3]),
+                SectionObjectNumber = Number(field[4]),
+                ViewNumber = Number(field[5]),
+                SectionNumber = Number(field[6]),
+                ViewSize = Number(field[7]),
+                ViewInformation = field[8].Length == 0 ? null
+                    : (long)(ulong.Parse(field[8][2..], System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture) << 48),
+                Name = field[9].Length == 0 ? null : field[9],
+            };
+        }
+    }
+
+    private static string RepositoryRoot()
+    {
+        DirectoryInfo? current = new(AppContext.BaseDirectory);
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "InterCat.slnx")))
+        {
+            current = current.Parent;
+        }
+
+        return current?.FullName ?? throw new DirectoryNotFoundException("Could not locate the InterCat repository root.");
+    }
+
     private static SectionCoverageSettings Settings() => new()
     {
         FixtureId = "FX-SECT-001",

@@ -127,5 +127,98 @@
       "viewRecordsAtVersion3": 5437,
       "workloadOtherViews": 736
     }
-  ]
+  ],
+  "throughTheProduct": {
+    "evidence": "bench/results/section-product-20261106T084922Z/product.json",
+    "method": "Each run: tools/InterCat.SectionProbe --product started icat record --profile sections and, once its session ran, the workload section-share --rounds 4 --view-bytes 65536; the session it published was read as the product holds it, each section record by the process it binds to under process-binding-v8, its numbers its source fields and its time on the capture's calibrated wall clock, ledgered by role and evaluated as ADR-092 decides, then deleted.",
+    "runs": [
+      {
+        "run": 1,
+        "health": {
+          "observedRecords": 771742,
+          "admittedRecords": 164165,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 0,
+          "undecodableRecords": 0,
+          "gateOmissionsNotCounted": 0,
+          "gateOmissionsNoFollowedResource": 579690,
+          "gateOmissionsBeyondBound": 0,
+          "gateOmissionsOutOfOrder": 0
+        },
+        "evaluation": {
+          "tier": "TopologyOnly",
+          "truthSections": 2,
+          "discoveredWithLifetime": 2,
+          "expectedMemberships": 4,
+          "resolvedMemberships": 4,
+          "falseMemberships": 0,
+          "truthOperations": 28,
+          "observed": 28,
+          "recordsOfOtherProcessesOnItsSections": 0,
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      },
+      {
+        "run": 2,
+        "health": {
+          "observedRecords": 1091005,
+          "admittedRecords": 305910,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 0,
+          "undecodableRecords": 0,
+          "gateOmissionsNotCounted": 0,
+          "gateOmissionsNoFollowedResource": 753701,
+          "gateOmissionsBeyondBound": 0,
+          "gateOmissionsOutOfOrder": 0
+        },
+        "evaluation": {
+          "tier": "TopologyOnly",
+          "truthSections": 2,
+          "discoveredWithLifetime": 2,
+          "expectedMemberships": 4,
+          "resolvedMemberships": 4,
+          "falseMemberships": 0,
+          "truthOperations": 28,
+          "observed": 28,
+          "recordsOfOtherProcessesOnItsSections": 0,
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      },
+      {
+        "run": 3,
+        "health": {
+          "observedRecords": 1177070,
+          "admittedRecords": 246298,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 0,
+          "undecodableRecords": 0,
+          "gateOmissionsNotCounted": 0,
+          "gateOmissionsNoFollowedResource": 899456,
+          "gateOmissionsBeyondBound": 0,
+          "gateOmissionsOutOfOrder": 0
+        },
+        "evaluation": {
+          "tier": "TopologyOnly",
+          "truthSections": 2,
+          "discoveredWithLifetime": 2,
+          "expectedMemberships": 4,
+          "resolvedMemberships": 4,
+          "falseMemberships": 0,
+          "truthOperations": 28,
+          "observed": 28,
+          "recordsOfOtherProcessesOnItsSections": 0,
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      }
+    ]
+  }
 }

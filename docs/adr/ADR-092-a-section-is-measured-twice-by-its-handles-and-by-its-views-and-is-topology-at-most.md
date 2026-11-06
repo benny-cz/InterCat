@@ -1,6 +1,7 @@
 # ADR-092: A section is measured twice, by its handles and by its views, and is topology at most
 
-- Status: accepted for M6's section discovery work package; no capture has been measured through the product yet
+- Status: accepted for M6's section discovery work package; FX-SECT-001 measured through the product, topology only on
+  10.0.26220.0-x64 (addendum)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-084, ADR-088, ADR-089, ADR-090, plan M6, §14.2, R3, R18, R19, R22, P1, P3, P27, FX-SECT-001
@@ -47,3 +48,21 @@ reading what the capture could not.
   process the truth never names mapping a section; a section whose closes name it by no number or by two, whose handles'
   number is another section's too, or one of whose closes went unseen; and a lone mapping whose only record lies beyond the
   window. Twelve mutations are caught.
+
+## Addendum: FX-SECT-001 through the product (revision 981)
+
+`tools/InterCat.SectionProbe --product` records FX-SECT-001 by the product's own `icat record` under the opt-in sections
+profile, the workload started once the session runs, and reads the session it published as the product holds it: each
+section record by the process it binds to under `process-binding-v8`, its numbers its source fields, and its time on the
+capture's calibrated wall clock. It writes the ledger of the workload's two processes' records - their runtimes' own views
+and images among them - and of other processes' on the run's numbers, by role, never a PID, a handle value or an address,
+evaluates it as decided here, and deletes the session, which holds every process's views and section handles.
+
+- In three runs, machine-wide and loss-free - 164,165, 305,910, 246,298 records admitted, none dropped, none undecodable, the
+  view records read by the layout measured for the build - each of the run's two sections was found twice: by its
+  handles' one number from the creator's creation to every close, and by every view both processes mapped and unmapped,
+  each matched among hundreds of the processes' own views of other sizes, images among them.
+- Each section's two numbers were bound to exactly its two processes, and no other process's record carried either; 28
+  of 28 truth operations a run were seen in their own processes.
+- Sections are topology only on 10.0.26220.0-x64: the build's per-build coverage carries the tier from FX-SECT-001, and a
+  test reproduces it from the first run's committed ledger.

@@ -904,6 +904,7 @@ Revision 977 inventories sections' handles as a source of their own over the han
 Revision 978 binds a section handle's creation and close to the process that raised them, as `process-binding-v8` (ADR-090's third addendum), as FX-SECT-001 measured them raised.
 Revision 979 adds the opt-in sections profile (ADR-090's fourth addendum): lifecycle, the file view flag and sections' handles, all required, its class its sources' at most, Moderate, with both kernel sources' throughput regressions stated.
 Revision 980 measures a section twice, by its handles and by its views, never joining the two, and topology at most (ADR-092).
+Revision 981 measures sections through the product (ADR-092's addendum): FX-SECT-001 recorded by icat record under the sections profile three times, nothing lost, has each of its two sections found twice and bound to exactly its two processes, so sections are topology only on 10.0.26220.0-x64.
 
 ## Revisions, a paragraph each, in order
 
@@ -4387,3 +4388,12 @@ the record's nearest mapping too, so a lost record leaves only its own mapping u
 that view. The section is discovered where both findings are whole, neither number another truth section's, and both
 numbers' records bind to exactly the truth's processes; the two numbers are never joined. No record says a byte moved,
 so the mechanism reaches topology at most. No capture has been measured through the product yet.
+
+Revision 981 measures sections through the product (ADR-092's addendum), as revision 945 measured named synchronization
+objects. `tools/InterCat.SectionProbe --product` records FX-SECT-001 by the product's own `icat record` under the opt-in
+sections profile, reads the session as the product holds it - each record's process under `process-binding-v8`, its
+numbers and its calibrated time - writes the ledger of the workload's records by role, never a PID, evaluates it with
+`SectionCoverageEvaluator` and deletes the session. In three runs, machine-wide and nothing lost, dropped or undecodable,
+each of the run's two sections was found twice - by its handles' one number and by every view both processes mapped and
+unmapped, among hundreds of their own - and bound to exactly its two processes. A test reproduces the tier from the first
+run's ledger, and the build's per-build coverage carries SharedSection at TopologyOnly from FX-SECT-001.

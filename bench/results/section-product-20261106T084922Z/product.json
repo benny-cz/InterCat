@@ -1,0 +1,102 @@
+{
+  "question": "Whether FX-SECT-001\u0027s two sections, recorded through the product by icat record under the opt-in sections profile, are each found twice - by its handles\u0027 one number from its creation to every close, and by its views\u0027 one number every mapping and unmapping - bound to exactly the two processes, as ADR-092 measures them.",
+  "scenario": "FX-SECT-001",
+  "truth": {
+    "sections": 2,
+    "openerRounds": 4,
+    "viewBytes": 65536
+  },
+  "profile": "sections",
+  "durationSeconds": 30,
+  "runs": [
+    {
+      "run": 1,
+      "health": {
+        "observedRecords": 771742,
+        "admittedRecords": 164165,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 579690,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "tier": "TopologyOnly",
+      "truthSections": 2,
+      "discoveredWithLifetime": 2,
+      "expectedMemberships": 4,
+      "resolvedMemberships": 4,
+      "falseMemberships": 0,
+      "truthOperations": 28,
+      "observed": 28,
+      "recordsOfOtherProcessesOnItsSections": 0,
+      "gaps": [
+        "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+      ]
+    },
+    {
+      "run": 2,
+      "health": {
+        "observedRecords": 1091005,
+        "admittedRecords": 305910,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 753701,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "tier": "TopologyOnly",
+      "truthSections": 2,
+      "discoveredWithLifetime": 2,
+      "expectedMemberships": 4,
+      "resolvedMemberships": 4,
+      "falseMemberships": 0,
+      "truthOperations": 28,
+      "observed": 28,
+      "recordsOfOtherProcessesOnItsSections": 0,
+      "gaps": [
+        "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+      ]
+    },
+    {
+      "run": 3,
+      "health": {
+        "observedRecords": 1177070,
+        "admittedRecords": 246298,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 899456,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "tier": "TopologyOnly",
+      "truthSections": 2,
+      "discoveredWithLifetime": 2,
+      "expectedMemberships": 4,
+      "resolvedMemberships": 4,
+      "falseMemberships": 0,
+      "truthOperations": 28,
+      "observed": 28,
+      "recordsOfOtherProcessesOnItsSections": 0,
+      "gaps": [
+        "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+      ]
+    }
+  ],
+  "notes": [
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once its ledger is written.",
+    "A run\u0027s health is the capture\u0027s own report: what its sources lost, what its queue dropped, and what a source\u0027s gate did not admit, by reason."
+  ],
+  "schema": "intercat.section-product.v1",
+  "measuredUtc": "2026-11-06T08:51:12.8773559+00:00",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

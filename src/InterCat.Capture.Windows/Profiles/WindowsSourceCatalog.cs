@@ -1086,6 +1086,10 @@ public static class WindowsSourceCatalog
                 "Measured on the probe's own views: the start's and the stop's rundowns named every view and every image it held "
                 + "across them, each record by the process it names - one the session's process rundown named alive - and none by "
                 + "its header. An image's view, named in a rundown or mapped, carries 0x47 in its extra information's high byte.",
+                "Measured through the product on FX-SECT-001, three runs of the opt-in sections profile, nothing lost: each of its "
+                + "two sections found twice - by its handles' one number from the creator's creation to every close, and by every "
+                + "view both processes mapped and unmapped, among hundreds of their own views and images - and bound to exactly its "
+                + "two processes. No record carries a byte moved through a view, so its tier is topology only (ADR-092).",
                 "No record says a byte moved through a view: a section's views are membership, never traffic, and neither a view's "
                 + "size nor its section's is transfer volume (P3).",
                 "Registration is not evidence of traffic; only a measured fixture assigns a tier.",

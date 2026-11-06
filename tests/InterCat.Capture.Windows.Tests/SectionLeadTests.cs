@@ -166,7 +166,7 @@ public sealed class SectionLeadTests
         Assert.Equal(3, regressions.Count(static regressed => regressed));
     }
 
-    [Fact(DisplayName = "P27: sections have an inventoried lead - the kernel's file view flag, requested by the opt-in sections profile alone, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections")]
+    [Fact(DisplayName = "P27: sections have an inventoried lead - the kernel's file view flag, requested by the opt-in sections profile alone, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and sections are topology only on the one build their fixture measured them on through the product")]
     public void SectionsHaveAnInventoriedLeadAndNoTier()
     {
         // A kernel flag of the file I/O class, the one FX-SECT-001 was measured under, with no process filter; its view's
@@ -208,7 +208,12 @@ public sealed class SectionLeadTests
         WindowsSourceDefinition memory = WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelMemorySourceId)!;
         Assert.Empty(memory.Mechanisms);
         Assert.Contains(memory.Notes, note => note.Contains("name no section", StringComparison.Ordinal));
-        Assert.DoesNotContain(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.SharedSection);
+
+        // Measured through the product on FX-SECT-001, topology only on that one build, which the lead's notes state.
+        MeasuredCoverageEntry measured = Assert.Single(MeasuredCoverage.Entries, static entry => entry.Mechanism == Mechanism.SharedSection);
+        Assert.Equal(("10.0.26220.0-x64", CapabilityTier.TopologyOnly, "FX-SECT-001"), (measured.Build, measured.Tier, measured.Fixture));
+        Assert.Contains(views.Notes, note => note.StartsWith("Measured through the product on FX-SECT-001", StringComparison.Ordinal)
+            && note.Contains("topology only", StringComparison.Ordinal));
     }
 
     [Fact(DisplayName = "§4.2: on this build the object type table read before a capture starts, the session's type rundown at its stop and the table after all name the Section type 49, as they name every type but the type of types alike - and during FX-SECT-001 about one of the machine's handle records in thirty was a section's, nothing lost")]

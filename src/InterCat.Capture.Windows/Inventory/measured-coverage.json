@@ -60,6 +60,14 @@
       "supportTier": "Primary"
     },
     {
+      "mechanism": "SharedSection",
+      "build": "10.0.26220.0-x64",
+      "tier": "TopologyOnly",
+      "fixture": "FX-SECT-001",
+      "date": "2026-11-06",
+      "supportTier": "Primary"
+    },
+    {
       "mechanism": "Synchronization",
       "build": "10.0.26220.0-x64",
       "tier": "TopologyOnly",
