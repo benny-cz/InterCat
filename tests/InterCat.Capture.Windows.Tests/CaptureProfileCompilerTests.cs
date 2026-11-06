@@ -474,7 +474,7 @@ public sealed class CaptureProfileCompilerTests
             && decision.Reason.Contains("No synchronization type numbers are measured", StringComparison.Ordinal));
     }
 
-    [Fact(DisplayName = "§9.4: window messages admits Win32k's message pump beside lifecycle, both required and Win32k at its message pump keyword, its cost its sources' with the regression the pump's collection measured, and Win32k is never Explore's")]
+    [Fact(DisplayName = "§9.4: window messages admits Win32k's message pump beside lifecycle, both required and Win32k at its message pump keyword, its cost the one measured through the product, and Win32k is never Explore's")]
     public void WindowMessagesAdmitsWin32kBesideLifecycle()
     {
         SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
@@ -493,17 +493,19 @@ public sealed class CaptureProfileCompilerTests
         Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.Win32kSourceId
             && decision is { State: ProfileSourceDecisionState.Included, Required: true, Overhead: OverheadClass.Low });
 
-        // The profile states its sources' class, Moderate at most, and beside it the message pump's measured regression,
-        // which is why it is opt-in and Explore never admits the source; nothing has measured it whole yet.
+        // The profile states the class measured through the product, Moderate, and the workload past the throughput target,
+        // which is why it is opt-in and Explore never admits the source; its evidence is the product's series, never the
+        // source's own measurement, which its statement cites beside it.
         CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("window-messages")!;
         Assert.Equal((CaptureProfileKind.WindowMessages, OverheadClass.Moderate, AdmissionMode.MetadataOnly),
             (profile.Kind, profile.Overhead, profile.Admission));
-        Assert.Contains("8.3 and 5.2% lower in throughput, past the 5% target", profile.OverheadStatement, StringComparison.Ordinal);
-        Assert.Contains("Nothing has measured the profile whole yet.", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.StartsWith("measured through the product on FX-WMSG-001's sender", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.Contains("past the 5% throughput target", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.Contains("8.3 and 5.2% lower in throughput", profile.OverheadStatement, StringComparison.Ordinal);
         Assert.Contains("slows a message-bound workload", profile.Summary, StringComparison.Ordinal);
         Assert.Contains("no window, thread, message number, parameter or pointer", profile.CollectionStatement, StringComparison.Ordinal);
-        Assert.Matches(@"^bench/results/window-message-impact-\d{8}T\d{6}Z/impact\.json$", profile.OverheadEvidence);
-        Assert.Equal(WindowsSourceCatalog.Find(WindowsSourceCatalog.Win32kSourceId)!.OverheadEvidence, profile.OverheadEvidence);
+        Assert.Matches(@"^bench/results/window-messages-impact-\d{8}T\d{6}Z/product-impact\.json$", profile.OverheadEvidence);
+        Assert.NotEqual(WindowsSourceCatalog.Find(WindowsSourceCatalog.Win32kSourceId)!.OverheadEvidence, profile.OverheadEvidence);
         Assert.DoesNotContain(CaptureProfileCatalog.Find("explore")!.Sources, source => source.SourceId == WindowsSourceCatalog.Win32kSourceId);
     }
 

@@ -68,16 +68,16 @@ public sealed class WindowMessagesCaptureTests
         }
     }
 
-    [Fact(DisplayName = "R18: icat profiles window-messages states its cost - its sources' Moderate at most, the message pump's collection Low but a message-bound workload past the throughput target, nothing measured whole yet - and the evidence it rests on")]
+    [Fact(DisplayName = "R18: icat profiles window-messages states the cost measured through the product - Moderate on a message-bound workload, past the throughput target, nothing dropped - and the evidence it rests on")]
     public async Task ItsPreviewStatesItsCost()
     {
         (InterCatExitCode code, string preview) = await Run("profiles", "window-messages");
         Assert.Equal(InterCatExitCode.Success, code);
         string words = System.Text.RegularExpressions.Regex.Replace(preview, @"\s+", " ");
-        Assert.Contains("Measured cost moderate: its sources measured Moderate at most (Kernel-Process 1.75 CPU pp)", words, StringComparison.Ordinal);
-        Assert.Contains("a message-bound workload ran 8.3 and 5.2% lower in throughput, past the 5% target", words, StringComparison.Ordinal);
-        Assert.Contains("Nothing has measured the profile whole yet.", words, StringComparison.Ordinal);
-        Assert.Matches(@"(?m)^  Cost evidence +bench/results/window-message-impact-\d{8}T\d{6}Z/impact\.json\r?$", preview);
+        Assert.Contains("Measured cost moderate: measured through the product on FX-WMSG-001's sender", words, StringComparison.Ordinal);
+        Assert.Contains("the workload ran 10.8% slower, past the 5% throughput target, nothing dropped, lost or omitted by its gate", words, StringComparison.Ordinal);
+        Assert.Contains("within the 5 pp processor target but past the throughput one", words, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^  Cost evidence +bench/results/window-messages-impact-\d{8}T\d{6}Z/product-impact\.json\r?$", preview);
     }
 
     private static ContentRequestOptions Options(string[] words) => ContentRequestOptions.Take(new CommandLine(words));

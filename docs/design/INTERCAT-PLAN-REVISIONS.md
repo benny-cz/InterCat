@@ -891,6 +891,7 @@ Revision 964 measures window messages through the product (ADR-088's addendum): 
 Revision 965 measures FX-WMSG-002, messages to 16 windows made and closed one after another, through the product (ADR-088's second addendum): each of its 144 messages is the number of its rank with every end in its own process, each window's close ranked among its posts - window messages' second instance and lifetime fixture.
 Revision 966 holds a window message evaluation to its capture's window (ADR-088's third addendum): FX-WMSG-003, a capture begun and ended while messages were in flight, has the messages it cut said to be cut and matched to no other, and every message it held whole with every end - window messages' ambiguity case.
 Revision 967 drills a process's window message records down exactly (ADR-088's fourth addendum): icat processes counts the ends of the messages it sent, posted and retrieved and names the icat evidence command that lists exactly them, each with its source record.
+Revision 968 measures the window messages profile's cost through the product (ADR-087's fourth addendum): Moderate, a message-bound workload 8.2 and 10.8% slower, past the throughput target, nothing dropped - so the UI messaging package meets M6's exit tests.
 
 ## Revisions, a paragraph each, in order
 
@@ -4257,3 +4258,13 @@ message it sent, posted or retrieved, raised in it, by the message's number in t
 or size, and names the `icat evidence --owner-process <instance> --mechanism window-message` command, which lists exactly
 those records with the raw record each was admitted from, never the other end's. Tests hold the drill-down on a session
 of a sender and a receiver, and a process with no such record has no line and no command; four mutations are caught.
+
+Revision 968 measures the window messages profile's cost through the product (ADR-087's fourth addendum), as revision 943
+measured the synchronization objects profile's. `InterCat.UiMessageProbe --measure --product-impact` runs FX-WMSG-001's
+sender sending and posting 20,000 messages each, unpaced, in nine rounds of no capture, the profile and Explore, the order
+rotating each round. Two series measured it Moderate - a median 1.6 and 3.5 pp over no capture, the workload 8.2 and
+10.8% slower, past the 5% throughput target, nothing dropped, lost or omitted by the gate - and the profile now states both,
+the second its evidence. Measuring it found the workload's sender could outrun a slowed receiver's 10,000-message queue
+and leave a run hanging; it now waits for room and closes its window on any failure, and the probe stops a workload that
+has not finished in five minutes. With two instance and lifetime fixtures, an ambiguity case, a schema-failure case, exact
+drill-down and this comparison, the UI messaging package meets M6's exit tests.

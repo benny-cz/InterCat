@@ -70,6 +70,9 @@ internal static partial class WindowMessageScenario
     /// <summary>The application's first message number, WM_APP; the posted messages are the next.</summary>
     private const uint ApplicationMessage = 0x8001;
 
+    /// <summary>ERROR_NOT_ENOUGH_QUOTA: a post to a thread whose queue already holds as many posted messages as it may.</summary>
+    private const int NotEnoughQuota = 1816;
+
     // The parent of a message-only window, HWND_MESSAGE.
     private static readonly nint MessageOnly = -3;
 
@@ -235,9 +238,12 @@ internal static partial class WindowMessageScenario
 
             for (int post = (generation - 1) * options.Posted + 1; post <= generation * options.Posted; post++)
             {
-                if (!PostMessageW(window, ApplicationMessage, post, 0))
+                if (!Post(window, ApplicationMessage, post))
                 {
                     truth.Write(TruthEventKind.Failure, callId: post, status: "A message could not be posted.", resourceName: windowName);
+
+                    // The receiver pumps until its window is closed: a run that failed closes it, so it ends rather than hangs.
+                    _ = Post(window, Close, 0);
                     return 1;
                 }
 
@@ -246,12 +252,36 @@ internal static partial class WindowMessageScenario
 
             // Last, a close posted behind them, which the pump reaches after every posted message; the receiver makes the
             // next generation's window once this one is destroyed.
-            _ = PostMessageW(window, Close, 0, 0);
+            if (!Post(window, Close, 0))
+            {
+                truth.Write(TruthEventKind.Failure, status: "The window's close could not be posted.", resourceName: windowName);
+                return 1;
+            }
+
             truth.Write(TruthEventKind.HandleClosed, status: "window", resourceName: windowName);
         }
 
         truth.Write(TruthEventKind.ProcessExiting);
         return 0;
+    }
+
+    // Posts one message, waiting while the receiver's queue is full - a thread's queue holds 10,000 posted messages at most,
+    // and a sender posting unpaced outruns a receiver the machine's other load slows - so the message waits for room rather
+    // than being lost; false if it could not be posted within a minute, or for any other reason.
+    private static bool Post(nint window, uint message, nint wParam)
+    {
+        var waited = Stopwatch.StartNew();
+        while (!PostMessageW(window, message, wParam, 0))
+        {
+            if (Marshal.GetLastPInvokeError() != NotEnoughQuota || waited.Elapsed > TimeSpan.FromMinutes(1))
+            {
+                return false;
+            }
+
+            Thread.Sleep(1);
+        }
+
+        return true;
     }
 
     // A window's name: its class's for a run of one window, as FX-WMSG-001's was, and the class's numbered by its generation

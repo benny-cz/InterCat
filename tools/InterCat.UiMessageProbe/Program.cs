@@ -60,6 +60,10 @@ internal static class Program
             Console.Error.WriteLine("  session read into a ledger of the workload's records by role and evaluated against its truth within the");
             Console.Error.WriteLine("  capture's window, then deleted; with --handle-ms FX-WMSG-003, the receiver taking that long over each");
             Console.Error.WriteLine("  message and the capture begun that many seconds into the run, so its start and stop cut messages.");
+            Console.Error.WriteLine("  --product-impact [--rounds n] [--copies n] [--posts n] [--icat <InterCat.Cli.exe>]: machine CPU and");
+            Console.Error.WriteLine("  workload time over FX-WMSG-001's sender sending and posting that many messages unpaced, in rounds with");
+            Console.Error.WriteLine("  no capture, under icat record --profile window-messages and under icat record --profile explore,");
+            Console.Error.WriteLine("  keeping only counters.");
             return 2;
         }
 
@@ -91,6 +95,36 @@ internal static class Program
                 impact["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
                 File.WriteAllText(Path.Combine(output, "impact.json"), JsonSerializer.Serialize(impact, Json));
                 Console.WriteLine(JsonSerializer.Serialize(impact, Json));
+                return 0;
+            }
+
+            // What the window messages profile costs through the product: icat record itself, beside Explore and no capture,
+            // over FX-WMSG-001's sender sending and posting thousands of messages.
+            if (args.Contains("--product-impact", StringComparer.Ordinal))
+            {
+                string icat = Option(args, "--icat") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                    "src", "InterCat.Cli", "bin", "Release", "net10.0", "InterCat.Cli.exe"));
+                string scratch = Path.Combine(output, "scratch");
+                Directory.CreateDirectory(scratch);
+                Dictionary<string, object?> impact = await ProductImpact.MeasureAsync(workload, icat,
+                    int.Parse(Option(args, "--copies") ?? "20000", CultureInfo.InvariantCulture),
+                    int.Parse(Option(args, "--posts") ?? "20000", CultureInfo.InvariantCulture),
+                    int.Parse(Option(args, "--rounds") ?? "9", CultureInfo.InvariantCulture), scratch).ConfigureAwait(false);
+                Directory.Delete(scratch, recursive: true);
+                var document = new Dictionary<string, object?>
+                {
+                    ["schema"] = "intercat.window-messages-product-impact.v1",
+                    ["measuredUtc"] = DateTimeOffset.UtcNow,
+                    ["build"] = CapabilityInventoryProbe.DescribeEnvironment().BuildId,
+                    ["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}",
+                };
+                foreach ((string key, object? value) in impact)
+                {
+                    document[key] = value;
+                }
+
+                File.WriteAllText(Path.Combine(output, "product-impact.json"), JsonSerializer.Serialize(document, Json));
+                Console.WriteLine(JsonSerializer.Serialize(document, Json));
                 return 0;
             }
 

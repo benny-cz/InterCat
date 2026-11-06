@@ -1,0 +1,486 @@
+{
+  "schema": "intercat.window-messages-product-impact.v1",
+  "measuredUtc": "2026-11-06T02:01:12.562301+00:00",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "quietMachineBusyPercent": 12.497,
+  "workload": {
+    "verb": "window-message",
+    "copies": 20000,
+    "posts": 20000,
+    "bytes": 64
+  },
+  "trials": [
+    {
+      "round": 1,
+      "kind": "none",
+      "busyPercent": 17.714,
+      "workloadSeconds": 1.999,
+      "capture": null
+    },
+    {
+      "round": 1,
+      "kind": "window-messages",
+      "busyPercent": 21.247,
+      "workloadSeconds": 2.364,
+      "capture": {
+        "observedPerSecond": 10055,
+        "admittedPerSecond": 10055,
+        "win32kAdmittedPerSecond": 10018,
+        "observedRecords": 163333,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 2.313
+      }
+    },
+    {
+      "round": 1,
+      "kind": "explore",
+      "busyPercent": 20.336,
+      "workloadSeconds": 2.103,
+      "capture": {
+        "observedPerSecond": 913,
+        "admittedPerSecond": 913,
+        "win32kAdmittedPerSecond": 0,
+        "observedRecords": 14802,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 0.681
+      }
+    },
+    {
+      "round": 2,
+      "kind": "window-messages",
+      "busyPercent": 21.479,
+      "workloadSeconds": 2.314,
+      "capture": {
+        "observedPerSecond": 9989,
+        "admittedPerSecond": 9989,
+        "win32kAdmittedPerSecond": 9957,
+        "observedRecords": 161883,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 1.66
+      }
+    },
+    {
+      "round": 2,
+      "kind": "explore",
+      "busyPercent": 20.681,
+      "workloadSeconds": 2.216,
+      "capture": {
+        "observedPerSecond": 793,
+        "admittedPerSecond": 793,
+        "win32kAdmittedPerSecond": 0,
+        "observedRecords": 12876,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 0.999
+      }
+    },
+    {
+      "round": 2,
+      "kind": "none",
+      "busyPercent": 21.4,
+      "workloadSeconds": 2.132,
+      "capture": null
+    },
+    {
+      "round": 3,
+      "kind": "explore",
+      "busyPercent": 24,
+      "workloadSeconds": 2.318,
+      "capture": {
+        "observedPerSecond": 1185,
+        "admittedPerSecond": 1185,
+        "win32kAdmittedPerSecond": 0,
+        "observedRecords": 19205,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 1.011
+      }
+    },
+    {
+      "round": 3,
+      "kind": "none",
+      "busyPercent": 26.227,
+      "workloadSeconds": 2.286,
+      "capture": null
+    },
+    {
+      "round": 3,
+      "kind": "window-messages",
+      "busyPercent": 44.732,
+      "workloadSeconds": 2.727,
+      "capture": {
+        "observedPerSecond": 9828,
+        "admittedPerSecond": 9828,
+        "win32kAdmittedPerSecond": 9796,
+        "observedRecords": 159466,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 1.933
+      }
+    },
+    {
+      "round": 4,
+      "kind": "none",
+      "busyPercent": 27.831,
+      "workloadSeconds": 2.433,
+      "capture": null
+    },
+    {
+      "round": 4,
+      "kind": "window-messages",
+      "busyPercent": 27.616,
+      "workloadSeconds": 2.696,
+      "capture": {
+        "observedPerSecond": 10054,
+        "admittedPerSecond": 10054,
+        "win32kAdmittedPerSecond": 10022,
+        "observedRecords": 162915,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 3.019
+      }
+    },
+    {
+      "round": 4,
+      "kind": "explore",
+      "busyPercent": 26.758,
+      "workloadSeconds": 2.705,
+      "capture": {
+        "observedPerSecond": 1150,
+        "admittedPerSecond": 1150,
+        "win32kAdmittedPerSecond": 0,
+        "observedRecords": 18595,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 0.89
+      }
+    },
+    {
+      "round": 5,
+      "kind": "window-messages",
+      "busyPercent": 31.016,
+      "workloadSeconds": 2.663,
+      "capture": {
+        "observedPerSecond": 9959,
+        "admittedPerSecond": 9959,
+        "win32kAdmittedPerSecond": 9927,
+        "observedRecords": 161451,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 2.567
+      }
+    },
+    {
+      "round": 5,
+      "kind": "explore",
+      "busyPercent": 23.87,
+      "workloadSeconds": 2.201,
+      "capture": {
+        "observedPerSecond": 742,
+        "admittedPerSecond": 742,
+        "win32kAdmittedPerSecond": 0,
+        "observedRecords": 12034,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 0.887
+      }
+    },
+    {
+      "round": 5,
+      "kind": "none",
+      "busyPercent": 23.757,
+      "workloadSeconds": 2.183,
+      "capture": null
+    },
+    {
+      "round": 6,
+      "kind": "explore",
+      "busyPercent": 23.897,
+      "workloadSeconds": 2.199,
+      "capture": {
+        "observedPerSecond": 687,
+        "admittedPerSecond": 687,
+        "win32kAdmittedPerSecond": 0,
+        "observedRecords": 11133,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 0.681
+      }
+    },
+    {
+      "round": 6,
+      "kind": "none",
+      "busyPercent": 27.155,
+      "workloadSeconds": 2.264,
+      "capture": null
+    },
+    {
+      "round": 6,
+      "kind": "window-messages",
+      "busyPercent": 32.32,
+      "workloadSeconds": 2.884,
+      "capture": {
+        "observedPerSecond": 10037,
+        "admittedPerSecond": 10037,
+        "win32kAdmittedPerSecond": 9995,
+        "observedRecords": 163069,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 1.874
+      }
+    },
+    {
+      "round": 7,
+      "kind": "none",
+      "busyPercent": 31.205,
+      "workloadSeconds": 2.607,
+      "capture": null
+    },
+    {
+      "round": 7,
+      "kind": "window-messages",
+      "busyPercent": 29.779,
+      "workloadSeconds": 2.663,
+      "capture": {
+        "observedPerSecond": 9951,
+        "admittedPerSecond": 9951,
+        "win32kAdmittedPerSecond": 9919,
+        "observedRecords": 161824,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 1.98
+      }
+    },
+    {
+      "round": 7,
+      "kind": "explore",
+      "busyPercent": 20.499,
+      "workloadSeconds": 2.301,
+      "capture": {
+        "observedPerSecond": 924,
+        "admittedPerSecond": 924,
+        "win32kAdmittedPerSecond": 0,
+        "observedRecords": 15005,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 0.99
+      }
+    },
+    {
+      "round": 8,
+      "kind": "window-messages",
+      "busyPercent": 25.81,
+      "workloadSeconds": 2.59,
+      "capture": {
+        "observedPerSecond": 9967,
+        "admittedPerSecond": 9967,
+        "win32kAdmittedPerSecond": 9935,
+        "observedRecords": 161540,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 1.86
+      }
+    },
+    {
+      "round": 8,
+      "kind": "explore",
+      "busyPercent": 21.775,
+      "workloadSeconds": 2.285,
+      "capture": {
+        "observedPerSecond": 902,
+        "admittedPerSecond": 902,
+        "win32kAdmittedPerSecond": 0,
+        "observedRecords": 14621,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 0.997
+      }
+    },
+    {
+      "round": 8,
+      "kind": "none",
+      "busyPercent": 28.65,
+      "workloadSeconds": 2.603,
+      "capture": null
+    },
+    {
+      "round": 9,
+      "kind": "explore",
+      "busyPercent": 22.554,
+      "workloadSeconds": 2.296,
+      "capture": {
+        "observedPerSecond": 791,
+        "admittedPerSecond": 791,
+        "win32kAdmittedPerSecond": 0,
+        "observedRecords": 12797,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 0.709
+      }
+    },
+    {
+      "round": 9,
+      "kind": "none",
+      "busyPercent": 21.312,
+      "workloadSeconds": 2.312,
+      "capture": null
+    },
+    {
+      "round": 9,
+      "kind": "window-messages",
+      "busyPercent": 25.281,
+      "workloadSeconds": 2.548,
+      "capture": {
+        "observedPerSecond": 9959,
+        "admittedPerSecond": 9959,
+        "win32kAdmittedPerSecond": 9926,
+        "observedRecords": 161540,
+        "applicationDrops": 0,
+        "sourceLoss": 0,
+        "gateOmissions": 0,
+        "captureProcessCpuPercentagePoints": 2.274
+      }
+    }
+  ],
+  "profiles": {
+    "window-messages": {
+      "against": "none",
+      "busyDifferencesPercentagePoints": [
+        3.533,
+        0.078,
+        18.505,
+        -0.215,
+        7.259,
+        5.165,
+        -1.425,
+        -2.84,
+        3.969
+      ],
+      "medianCpuPercentagePoints": 3.533,
+      "workloadSlowdownsPercent": [
+        18.28,
+        8.54,
+        19.31,
+        10.8,
+        22,
+        27.38,
+        2.16,
+        -0.51,
+        10.22
+      ],
+      "medianWorkloadSlowdownPercent": 10.8,
+      "medianThroughputRegressionPercent": 9.75,
+      "overhead": "Moderate",
+      "cpuTargetMet": true,
+      "throughputTargetMet": false,
+      "medianObservedPerSecond": 9967,
+      "medianAdmittedPerSecond": 9967,
+      "medianWin32kAdmittedPerSecond": 9935,
+      "lossFree": true,
+      "capturesWithApplicationDrops": 0,
+      "capturesWithSourceLoss": 0,
+      "capturesWithGateOmissions": 0,
+      "medianDroppedSharePercent": 0,
+      "medianCaptureProcessCpuPercentagePoints": 1.98
+    },
+    "explore": {
+      "against": "none",
+      "busyDifferencesPercentagePoints": [
+        2.622,
+        -0.72,
+        -2.227,
+        -1.073,
+        0.113,
+        -3.258,
+        -10.706,
+        -6.875,
+        1.242
+      ],
+      "medianCpuPercentagePoints": -1.073,
+      "workloadSlowdownsPercent": [
+        5.21,
+        3.92,
+        1.41,
+        11.19,
+        0.86,
+        -2.89,
+        -11.72,
+        -12.24,
+        -0.67
+      ],
+      "medianWorkloadSlowdownPercent": 0.86,
+      "medianThroughputRegressionPercent": 0.86,
+      "overhead": "Low",
+      "cpuTargetMet": true,
+      "throughputTargetMet": true,
+      "medianObservedPerSecond": 902,
+      "medianAdmittedPerSecond": 902,
+      "medianWin32kAdmittedPerSecond": 0,
+      "lossFree": true,
+      "capturesWithApplicationDrops": 0,
+      "capturesWithSourceLoss": 0,
+      "capturesWithGateOmissions": 0,
+      "medianDroppedSharePercent": 0,
+      "medianCaptureProcessCpuPercentagePoints": 0.89
+    }
+  },
+  "windowMessagesOverExplore": {
+    "against": "explore",
+    "busyDifferencesPercentagePoints": [
+      0.911,
+      0.798,
+      20.732,
+      0.858,
+      7.146,
+      8.423,
+      9.28,
+      4.035,
+      2.727
+    ],
+    "medianCpuPercentagePoints": 4.035,
+    "workloadSlowdownsPercent": [
+      12.43,
+      4.45,
+      17.65,
+      -0.34,
+      20.95,
+      31.17,
+      15.72,
+      13.37,
+      10.96
+    ],
+    "medianWorkloadSlowdownPercent": 13.37,
+    "medianThroughputRegressionPercent": 11.79
+  },
+  "notes": [
+    "Machine CPU is the GetSystemTimes busy share over the workload alone. A capture\u0027s start (profile compilation, session enablement) and its stop, last publication and checkpoint are outside it; its live publications every 5 s are inside it.",
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once its counters are read: it holds every window\u0027s messages on the machine.",
+    "A profile\u0027s cost is the median over rounds of its busy share minus the same round\u0027s no-capture share; signed differences are kept, and only the class clamps a negative median at zero.",
+    "A profile\u0027s throughput regression is the median over rounds of the workload\u0027s messages a second against the same round\u0027s no-capture run, a faster run counting none, as OverheadClassCalculator reads one; the signed slowdown is kept beside it.",
+    "windowMessagesOverExplore is the same medians between the two captures: what the opt-in adds to Explore on this workload.",
+    "A capture\u0027s observed and admitted rates are over the span its sources delivered in, from its first record to its last: the whole capture, longer than the workload, so they are averages, not the workload\u0027s peak.",
+    "applicationDrops are the records InterCat\u0027s own full queue dropped, and sourceLoss what ETW reported lost at a provider or in its buffers: different quantities, kept apart (\u00A79.3); gateOmissions are the window message gate\u0027s, out of order or beyond its bound. A capture with any states the gap in its coverage; its cost figures are then those of a capture that did not keep every record.",
+    "captureProcessCpuPercentagePoints is the icat record process\u0027s own processor time over the same window, as a share of the whole machine. It excludes the kernel\u0027s and the workload\u0027s own threads\u0027 work of raising events, so it is a lower bound on the capture\u0027s cost."
+  ]
+}

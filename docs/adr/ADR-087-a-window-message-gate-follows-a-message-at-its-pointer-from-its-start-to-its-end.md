@@ -3,7 +3,8 @@
 - Status: accepted for M6's UI messaging work package; since revision 959 Win32k's six message events admit through it,
   a record delivered out of order omitted as such (its addendum); since revision 960 a window message's records bind to
   the process that raised them, as `process-binding-v7` (its second addendum); since revision 962 the opt-in window
-  messages profile requests the message pump, stating its cost (its third addendum)
+  messages profile requests the message pump, stating its cost (its third addendum); since revision 968 the profile's
+  cost is measured through the product, Moderate, a message-bound workload past the throughput target (its fourth addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-073, ADR-083, ADR-086, plan M6, §4.2, R22, P7, P12, FX-WMSG-001
@@ -114,3 +115,34 @@ for window messages.
 
 Tests compile the profile with and without Win32k, hold the lead's one profile, and check both commands' profile lists,
 help and preview; the catalog now counts ten profiles. Five mutations are caught.
+
+## Addendum: the window messages profile's cost through the product (revision 968)
+
+The third addendum's profile stated its sources' class beside the message pump's measured regression, as nothing had
+measured it whole. `InterCat.UiMessageProbe --measure --product-impact` measures it as the synchronization objects
+profile's was measured (ADR-083's fifth addendum): FX-WMSG-001's sender sending and posting 20,000 messages each unpaced,
+in nine rounds of three trials - no capture, `icat record --profile window-messages` and `icat record --profile explore`,
+in an order that rotates each round - with machine processor time and the workload's own time taken over the workload
+alone.
+
+- On a machine kept 12% busy by other load, the profile added a median 3.5 pp to no capture, its own process 2.0,
+  and the workload ran 10.8% slower, past the 5% throughput target, while Explore beside it added none measurable;
+  each capture observed about 162,000 records, none dropped, lost or omitted by the gate.
+- A first series, on a machine 3% busy whose other load rose in its later rounds, measured 1.6 pp and 8.2%
+  slower, also with nothing dropped, lost or omitted.
+- So on a message-bound workload the profile is Moderate, within the 5 pp processor target but past the throughput one,
+  and says so, the second series its evidence; its sources alone measured less (ADR-086's addendum).
+
+Measuring it found a flaw in the workload, not the product. A thread's queue holds 10,000 posted messages, and a sender
+posting unpaced outran a receiver the machine's other load slowed: a post failed, and the sender left without closing
+the window, so the receiver pumped on and the run never ended. The sender now waits for room in a full queue and closes
+the window on any failure, and the probe stops a workload that has not finished in five minutes. No committed run met a
+full queue, so none changes.
+
+With it the UI messaging package meets M6's exit tests:
+
+- two instance and lifetime fixtures, FX-WMSG-001 and FX-WMSG-002;
+- an ambiguity case, FX-WMSG-003 (ADR-088's third addendum);
+- a schema-failure case, the first and third addenda;
+- exact source drill-down, ADR-088's fourth addendum;
+- the baseline overhead comparison, this addendum and ADR-086's first.

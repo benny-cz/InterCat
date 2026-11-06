@@ -138,7 +138,18 @@ internal static partial class Product
 
     private static async Task FinishedAsync(Process started)
     {
-        await started.WaitForExitAsync().ConfigureAwait(false);
+        // A workload that has not finished in five minutes never will: it is stopped, and the run with it.
+        using var patience = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        try
+        {
+            await started.WaitForExitAsync(patience.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            started.Kill(entireProcessTree: true);
+            throw new InvalidOperationException("The truth workload did not finish in five minutes, so it was stopped.");
+        }
+
         if (started.ExitCode != 0)
         {
             throw new InvalidOperationException($"The truth workload exited with {started.ExitCode}.");

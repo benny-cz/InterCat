@@ -3828,7 +3828,7 @@
         "R18: icat profiles com-calls states the cost measured through the product - the throughput regression unpaced, within the target in bursts, nothing dropped - and the evidence it rests on",
         "R18: icat profiles sync-objects states the cost measured through the product - High on a handle-heavy workload, past both targets, nothing dropped - and the evidence it rests on",
         "R18: icat profiles unix-sockets states the cost measured through the product and the evidence it rests on",
-        "R18: icat profiles window-messages states its cost - its sources' Moderate at most, the message pump's collection Low but a message-bound workload past the throughput target, nothing measured whole yet - and the evidence it rests on",
+        "R18: icat profiles window-messages states the cost measured through the product - Moderate on a message-bound workload, past the throughput target, nothing dropped - and the evidence it rests on",
         "R18: icat profiles writes its catalog to --output as --json prints it, into a folder it makes, and says it wrote the catalog there",
         "R18: icat programs --program lists the pairs one program is in, named as listed, by its executable's file name with or without its extension, or by its path",
         "R18: icat programs lists every pair of programs the session's relationships join, the busiest first, as many as asked",

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using InterCat.Domain;
 using Xunit;
@@ -183,6 +184,66 @@ public sealed class WindowMessageFeasibilityTests
             Assert.InRange(root.GetProperty("medianMessagePumpEventsInTheSecondBefore").GetDouble(), 1_000, 10_000);
         });
     }
+
+    [Fact(DisplayName = "§12: the window messages profile's cost is measured through the product in two series over a message-bound workload - Moderate in processor time and the workload past the throughput target, nothing dropped, lost or omitted by its gate - and its statement says what each measured")]
+    public void TheProfilesCostIsMeasuredThroughTheProduct()
+    {
+        CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("window-messages")!;
+        string root = RepositoryRoot();
+        string[] series = [.. Directory.EnumerateDirectories(Path.Combine(root, "bench", "results"), "window-messages-impact-*")
+            .Select(directory => Path.Combine(directory, "product-impact.json")).Where(File.Exists).Order(StringComparer.Ordinal)];
+        Assert.Equal(2, series.Length);
+        Assert.Equal(Path.GetFullPath(Path.Combine(root, profile.OverheadEvidence!)), Path.GetFullPath(series[1]));
+        using JsonDocument first = JsonDocument.Parse(File.ReadAllText(series[0]));
+        using JsonDocument second = JsonDocument.Parse(File.ReadAllText(series[1]));
+
+        // Each series is nine rounds of three trials over FX-WMSG-001's sender sending and posting 20,000 messages each; no
+        // capture of either, the profile's or Explore's, dropped, lost or omitted a record, and each measured the profile
+        // Moderate, its workload past the throughput target.
+        foreach (JsonDocument document in new[] { first, second })
+        {
+            JsonElement measured = document.RootElement;
+            Assert.Equal(27, measured.GetProperty("trials").GetArrayLength());
+            JsonElement workload = measured.GetProperty("workload");
+            Assert.Equal(("window-message", 20_000, 20_000), (workload.GetProperty("verb").GetString(), workload.GetProperty("copies").GetInt32(),
+                workload.GetProperty("posts").GetInt32()));
+            Assert.All(measured.GetProperty("profiles").EnumerateObject(), captured => Assert.Equal((0, 0, true),
+                (captured.Value.GetProperty("capturesWithApplicationDrops").GetInt32(), captured.Value.GetProperty("capturesWithGateOmissions").GetInt32(),
+                    captured.Value.GetProperty("lossFree").GetBoolean())));
+            JsonElement messages = measured.GetProperty("profiles").GetProperty("window-messages");
+            Assert.Equal((nameof(OverheadClass.Moderate), true, false), (messages.GetProperty("overhead").GetString(),
+                messages.GetProperty("cpuTargetMet").GetBoolean(), messages.GetProperty("throughputTargetMet").GetBoolean()));
+        }
+
+        // The profile states the class both measured, and what each measured, in tenths: the evidence's series first, on a
+        // machine its other load kept busy, then the first.
+        Assert.Equal(OverheadClass.Moderate, profile.Overhead);
+        JsonElement evidence = second.RootElement.GetProperty("profiles").GetProperty("window-messages");
+        JsonElement earlier = first.RootElement.GetProperty("profiles").GetProperty("window-messages");
+        string statement = profile.OverheadStatement!;
+        Assert.Contains($"it added a median {Tenths(evidence, "medianCpuPercentagePoints")} pp to no capture, its own process "
+            + Tenths(evidence, "medianCaptureProcessCpuPercentagePoints"), statement, StringComparison.Ordinal);
+        Assert.Contains($"the workload ran {Tenths(evidence, "medianWorkloadSlowdownPercent")}% slower, past the 5% throughput target, "
+            + "nothing dropped, lost or omitted by its gate", statement, StringComparison.Ordinal);
+        Assert.Contains($"on a machine kept {Math.Round(second.RootElement.GetProperty("quietMachineBusyPercent").GetDouble()):0}% busy", statement, StringComparison.Ordinal);
+        Assert.Contains($"on a machine {Math.Round(first.RootElement.GetProperty("quietMachineBusyPercent").GetDouble()):0}% busy whose other load rose",
+            statement, StringComparison.Ordinal);
+        Assert.Contains($"measured {Tenths(earlier, "medianCpuPercentagePoints")} pp and {Tenths(earlier, "medianWorkloadSlowdownPercent")}% slower",
+            statement, StringComparison.Ordinal);
+
+        // Explore beside it added none measurable in the evidence's series, and each capture observed about as many records as
+        // the statement says, to the thousand.
+        Assert.True(second.RootElement.GetProperty("profiles").GetProperty("explore").GetProperty("medianCpuPercentagePoints").GetDouble() <= 0);
+        Assert.Contains("while Explore beside it added none measurable", statement, StringComparison.Ordinal);
+        double[] observed = [.. second.RootElement.GetProperty("trials").EnumerateArray().Where(trial => trial.GetProperty("kind").GetString() == "window-messages")
+            .Select(trial => trial.GetProperty("capture").GetProperty("observedRecords").GetDouble()).Order()];
+        Assert.Contains(string.Create(CultureInfo.InvariantCulture, $"each capture observing about {Math.Round(observed[observed.Length / 2] / 1000) * 1000:N0} records"),
+            statement, StringComparison.Ordinal);
+    }
+
+    // A measured value as the statement writes it, to a tenth.
+    private static string Tenths(JsonElement summary, string property) =>
+        summary.GetProperty(property).GetDouble().ToString("0.0", CultureInfo.InvariantCulture);
 
     private static string RepositoryRoot()
     {

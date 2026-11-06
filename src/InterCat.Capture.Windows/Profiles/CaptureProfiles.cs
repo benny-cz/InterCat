@@ -250,11 +250,16 @@ public static class CaptureProfileCatalog
                 + "window, thread, message number, parameter or pointer, retains no payload bytes and requests no call stacks.",
             Overhead = OverheadClass.Moderate,
             OverheadStatement =
-                "its sources measured Moderate at most (Kernel-Process 1.75 CPU pp). Win32k's message pump's collection alone "
-                + "added a median 0.36 and 0.28 CPU pp, Low, but a message-bound workload ran 8.3 and 5.2% lower in throughput, "
-                + "past the 5% target, as a message's records are raised in the threads that send, post and retrieve it. "
-                + "Nothing has measured the profile whole yet.",
-            OverheadEvidence = "bench/results/window-message-impact-20261105T175321Z/impact.json",
+                "measured through the product on FX-WMSG-001's sender sending and posting 20,000 messages each unpaced, each "
+                + "capture observing about 162,000 records, in nine rounds on a machine kept 12% busy by other load: "
+                + "it added a median 3.5 pp to no capture, its own process 2.0, and the workload ran 10.8% slower, past the 5% "
+                + "throughput target, nothing dropped, lost or omitted by its gate, while Explore beside it added none measurable. "
+                + "A first series, on a machine 3% busy whose other load rose in its later rounds, measured 1.6 pp and 8.2% "
+                + "slower: on a message-bound workload the profile is Moderate, within the 5 pp processor target but past the "
+                + "throughput one, as a message's records are raised in the threads that send, post and retrieve it. Its "
+                + "sources alone measured less: Kernel-Process 1.75 CPU pp, and the message pump's collection 0.36 and 0.28 CPU "
+                + "pp, though a message-bound workload ran 8.3 and 5.2% lower in throughput.",
+            OverheadEvidence = "bench/results/window-messages-impact-20261106T015503Z/product-impact.json",
         },
         Unavailable(
             CaptureProfileKind.Timing,
