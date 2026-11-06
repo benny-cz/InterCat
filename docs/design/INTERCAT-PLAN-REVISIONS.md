@@ -908,6 +908,7 @@ Revision 981 measures sections through the product (ADR-092's addendum): FX-SECT
 Revision 982 adds FX-SECT-002 (ADR-092's second addendum): sections made and ended 64 generations one after another, recorded through the product three times, nothing lost, each found twice and a number of its own by its handles and by its views while the kernel gave the views of about a quarter of them a value an earlier generation's had carried - the mechanism's second instance and lifetime fixture.
 Revision 983 adds FX-SECT-003 (ADR-092's third addendum): sections whose handles and creator's views were made before a capture began, recorded through the product three times, nothing lost, have each close numbered alone and none discovered, though the start's rundown holds each one's views to one number in both processes, while the same capture's control is whole - the mechanism's ambiguity case.
 Revision 984 holds sections' schema-failure case (ADR-090's fifth addendum): a capture refuses either kernel source where its records could not be read and decided, so the sections profile does not start, and `icat capabilities` says a classic group's schema is unknown where no layout is registered or measured for the build, as a capture refuses it.
+Revision 985 has a process's section records drill down exactly (ADR-092's fourth addendum): icat processes names the icat evidence command that lists them, a view a rundown names the process holding among them; sections' cost through the product is what remains of their M6 exit tests.
 
 ## Revisions, a paragraph each, in order
 
@@ -4434,3 +4435,14 @@ capture refused it. `CapabilityInventoryProbe` now says that group's schema is u
 test compiles both kernel sources on the measured build, where the profile starts, and refuses each four ways - each on a
 build none measured, a view layout without the process, a handle layout whose creation carries no handle - each blocking
 the profile with its reason and the report saying its schema is unknown for it; five mutations are caught.
+
+Revision 985 has a process's section records drill down exactly (ADR-092's fourth addendum), as revision 950 had named
+synchronization objects'. `icat processes --pid` says a process's section records apart - each handle to a section it
+made, was given or closed, and each view it mapped, unmapped or held at the capture's start and stop, by its section's
+number in the capture - as no byte moved through a view, and names the
+`icat evidence --owner-process <instance> --mechanism shared-section` command that lists exactly them, each with its
+source record: its handle's creation and close, raised in it, its view's mapping and unmapping, naming it, and its view
+at the stop, which a rundown raised in another process names it holding - never another process's handle or view of the
+same section, or another's view a rundown raised in it. With two instance and lifetime fixtures, an ambiguity case, a
+schema-failure case and exact drill-down, sections' cost measured through the product is what remains of their M6 exit
+tests.

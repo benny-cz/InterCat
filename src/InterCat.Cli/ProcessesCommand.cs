@@ -152,6 +152,14 @@ internal sealed record ProcessActivityDocument
     /// </summary>
     public long? WindowMessageRecords { get; init; }
 
+    /// <summary>
+    /// Its own section records, when one PID was asked about; null otherwise, as <see cref="Peers"/> is: each handle to a
+    /// section it made, was given or closed, and each view it mapped, unmapped or held at the capture's start or stop, by its
+    /// section's number in the capture. They say which sections it shared and when it mapped them, never a byte moved
+    /// through a view (ADR-092).
+    /// </summary>
+    public long? SectionRecords { get; init; }
+
     /// <summary>How many instances held its PID in the capture; its <c>lifecycleEpoch</c> says which of them it was.</summary>
     public required int PidHolders { get; init; }
 
@@ -490,6 +498,8 @@ internal static class ProcessesCommand
                                 .Where(count => count.Mechanism == Mechanism.Synchronization).Sum(count => count.Records),
                             WindowMessageRecords = nodes[new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))].Activity
                                 .Where(count => count.Mechanism == Mechanism.WindowMessage).Sum(count => count.Records),
+                            SectionRecords = nodes[new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))].Activity
+                                .Where(count => count.Mechanism == Mechanism.SharedSection).Sum(count => count.Records),
                         }),
                 ],
             };
@@ -1030,6 +1040,17 @@ internal static class ProcessesCommand
                 + "retrieved, each end by its message's number in the capture; none names the window, the message or a size");
             ConsoleUi.Note(messages == 1 ? "To list it with its source record:" : "To list each of them with its source record:");
             ConsoleUi.Line($"    icat evidence \"{path}\" --owner-process {process.InstanceId} --mechanism window-message");
+        }
+
+        // Its handles to sections and its views, which say which sections it shared and when it mapped them, never a byte moved
+        // through a view (ADR-092): the records counted are the ones icat evidence lists by its instance and the mechanism, each
+        // with its source record - a view the start's or stop's rundown names it holding among them, though raised elsewhere.
+        if (item.SectionRecords is > 0 and var sections)
+        {
+            ConsoleUi.Field("Sections", CountText.Of(sections, "record") + " of its section handles and of the views it mapped, unmapped "
+                + "and held at the capture's start and stop, each by its section's number in the capture; none is a byte moved through a view");
+            ConsoleUi.Note(sections == 1 ? "To list it with its source record:" : "To list each of them with its source record:");
+            ConsoleUi.Line($"    icat evidence \"{path}\" --owner-process {process.InstanceId} --mechanism shared-section");
         }
 
         if (item.Peers is not { } peers)

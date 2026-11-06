@@ -2,7 +2,8 @@
 
 - Status: accepted for M6's section discovery work package; FX-SECT-001 measured through the product, topology only on
   10.0.26220.0-x64 (addendum); FX-SECT-002, sections made and ended in generations, each its own (second addendum);
-  FX-SECT-003, sections held across a capture's start, joined to no one section by their handles (third addendum)
+  FX-SECT-003, sections held across a capture's start, joined to no one section by their handles (third addendum); a
+  process's section records drill down exactly (fourth addendum)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-084, ADR-088, ADR-089, ADR-090, plan M6, §14.2, R3, R18, R19, R22, P1, P3, P27, FX-SECT-001, FX-SECT-002, FX-SECT-003
@@ -115,3 +116,19 @@ sections, and ledgers each workload's records of the one session apart.
 - The control made inside the same capture was whole each time: two of two sections discovered with their lifetimes, 28
   of 28 operations seen and bound.
 - No tier is assigned to the fixture: it measures what a capture refuses to join, not how much of the mechanism it observes.
+
+## Fourth addendum: a process's section records drill down exactly (revision 985)
+
+`icat processes --pid` says a process's section records apart - each handle to a section it made, was given or closed,
+and each view it mapped, unmapped or held at the capture's start and stop, by its section's number in the capture - as no
+byte moved through a view, and names the `icat evidence --owner-process <instance> --mechanism shared-section` command that
+lists them. That command lists exactly the records the line counts, each of that process instance and the mechanism, with
+the raw record it was admitted from: its handle's creation and close, raised in it and naming no owner; its view's mapping
+and unmapping, naming it; and its view at the stop, which a rundown raised in another process names it holding - never
+another process's handle or view of the same section, or another process's view a rundown raised in it. A process with no
+such record has no line and no command. Four mutations of the path it reads - the count, the line, the command and
+the session's binding of a record by its payload before its header - are caught.
+
+With it the section discovery package has its two instance and lifetime fixtures (FX-SECT-001, FX-SECT-002), its ambiguity
+case (FX-SECT-003), its schema-failure case (ADR-090's fifth addendum) and exact drill-down; its cost measured through
+the product is what remains of M6's exit tests for it.
