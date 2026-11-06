@@ -1,3 +1,4 @@
+using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Domain;
 using InterCat.Storage;

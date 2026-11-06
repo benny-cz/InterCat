@@ -690,7 +690,7 @@ public sealed class RelationTests
                 .OrderByDescending(entry => entry.Item2)
                 .ThenBy(entry => entry.Id == other ? 0 : 1));
 
-        Assert.Contains("for each process, executable, session or package", (channels with { Grouping = LaneGrouping.Mechanism }).Check()!.Reason, StringComparison.Ordinal);
+        Assert.Contains("for each process, executable, session, package or service container", (channels with { Grouping = LaneGrouping.Mechanism }).Check()!.Reason, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "R21: grouped, a peer or channel count no record identifies one of is unmeasured, as ungrouped, never zero")]

@@ -125,7 +125,8 @@ public static partial class SessionMetrics
             return ungroupable;
         }
 
-        if (request.Grouping is { } grouping && ProcessGrouping.Underived(processes, grouping) is { } underived)
+        ServiceMatch? services = ServicesOf(context, processes);
+        if (request.Grouping is { } grouping && ProcessGrouping.Underived(processes, grouping, services) is { } underived)
         {
             return Unavailable(request, context.Generation, MetricUnavailableReason.GroupingNotDerived, underived);
         }
@@ -164,7 +165,7 @@ public static partial class SessionMetrics
             return CallPeers(context, calls, ends!, cancellationToken);
         }
 
-        var tally = new OperationTally(effective, processes, request.EvidencePolicy, request.Grouping);
+        var tally = new OperationTally(effective, processes, request.EvidencePolicy, request.Grouping, services: services);
         var evidence = new List<RpcCallMark>();
         var disclosed = new Dictionary<ProcessBindingReason, long>();
         var unlinked = new Dictionary<RpcPeerState, long>();
@@ -339,7 +340,8 @@ public static partial class SessionMetrics
         RpcCallSide side = request.DurationInterval == DurationInterval.ClientCall ? RpcCallSide.Client : RpcCallSide.Server;
         bool byStart = request.Cohort == OperationCohort.StartedInRange;
         DurationStatistic statistic = request.Statistic!.Value;
-        var tally = new OperationTally(Metric.Duration, processes, request.EvidencePolicy, request.Grouping, byStart, statistic);
+        var tally = new OperationTally(
+            Metric.Duration, processes, request.EvidencePolicy, request.Grouping, byStart, statistic, ServicesOf(context, processes));
         long otherInterval = 0;
         var evidence = new List<RpcCallMark>();
         var disclosed = new Dictionary<ProcessBindingReason, long>();
@@ -611,8 +613,7 @@ public static partial class SessionMetrics
     private static List<string> OperationGroupingCaveats(MetricRequest request, IReadOnlyList<MetricGroup> unattributed)
     {
         var caveats = new List<string>();
-        if (request.Grouping is not (LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession
-            or LaneGrouping.Package))
+        if (!ProcessGrouping.ByInstanceFact(request.Grouping))
         {
             return caveats;
         }
@@ -624,6 +625,10 @@ public static partial class SessionMetrics
         else if (request.Grouping == LaneGrouping.Package)
         {
             caveats.Add(PackageGroupingCaveat);
+        }
+        else if (request.Grouping == LaneGrouping.ServiceContainer)
+        {
+            caveats.Add(ServiceContainerGroupingCaveat);
         }
 
         caveats.Add(
@@ -667,6 +672,7 @@ public static partial class SessionMetrics
         private readonly ProcessInstanceIndex processes;
         private readonly EvidencePolicy policy;
         private readonly LaneGrouping? grouping;
+        private readonly ServiceMatch? services;
         private readonly Dictionary<RpcCallState, long> inScope = [];
         private readonly Dictionary<string, OperationGroup> groups = new(StringComparer.Ordinal);
         private readonly bool? byStart;
@@ -675,18 +681,21 @@ public static partial class SessionMetrics
 
         /// <param name="byStart">For a duration, whether its cohort is the calls started in scope; a count decides by its metric.</param>
         /// <param name="statistic">For a duration, the statistic its value and its ranking read; null for a count.</param>
+        /// <param name="services">For a grouping by service container, the capture's services bound to its instances.</param>
         public OperationTally(
             Metric metric,
             ProcessInstanceIndex processes,
             EvidencePolicy policy,
             LaneGrouping? grouping,
             bool? byStart = null,
-            DurationStatistic? statistic = null)
+            DurationStatistic? statistic = null,
+            ServiceMatch? services = null)
         {
             this.metric = metric;
             this.processes = processes;
             this.policy = policy;
             this.grouping = grouping;
+            this.services = services;
             this.byStart = byStart;
             this.statistic = statistic;
         }
@@ -863,7 +872,7 @@ public static partial class SessionMetrics
                     () => new OperationGroup(MetricGroupKind.Mechanism) { Mechanism = Mechanism.Rpc }),
                 _ when !binding.IsBound => Unattributed(binding.Reason),
                 _ when !binding.IsAdmittedUnder(policy) => Unattributed(ProcessBindingReason.NotAdmittedByPolicy),
-                _ when ProcessGrouping.Unattributable(processes.Instances[binding.Instance], grouping ?? LaneGrouping.InstanceOnly) is { } ungrouped =>
+                _ when ProcessGrouping.Unattributable(processes.Instances[binding.Instance], grouping ?? LaneGrouping.InstanceOnly, services) is { } ungrouped =>
                     Unattributed(ungrouped),
                 LaneGrouping.UserSession => (
                     ProcessGrouping.KeyOf(processes.Instances[binding.Instance], LaneGrouping.UserSession),
@@ -871,6 +880,14 @@ public static partial class SessionMetrics
                 LaneGrouping.Package => (
                     ProcessGrouping.KeyOf(processes.Instances[binding.Instance], LaneGrouping.Package),
                     () => new OperationGroup(MetricGroupKind.Package) { Package = processes.Instances[binding.Instance].PackageFullName }),
+
+                // A container is its own group, named by its services; any other process is its executable's (ADR-096).
+                LaneGrouping.ServiceContainer when services!.ContainerOf(processes.Instances[binding.Instance].Id) is { } hosted => (
+                    ProcessGrouping.ContainerKey(processes.Instances[binding.Instance].Id),
+                    () => new OperationGroup(MetricGroupKind.ServiceContainer) { Process = processes.Instances[binding.Instance], Services = hosted }),
+                LaneGrouping.ServiceContainer => (
+                    processes.Instances[binding.Instance].ImagePath!.ToUpperInvariant(),
+                    () => new OperationGroup(MetricGroupKind.Executable) { Executable = processes.Instances[binding.Instance].ImagePath }),
                 LaneGrouping.Executable => (
                     processes.Instances[binding.Instance].ImagePath!.ToUpperInvariant(),
                     () => new OperationGroup(MetricGroupKind.Executable) { Executable = processes.Instances[binding.Instance].ImagePath }),
@@ -912,6 +929,8 @@ public static partial class SessionMetrics
 
         public string? Package { get; init; }
 
+        public IReadOnlyList<HostedService>? Services { get; init; }
+
         public Mechanism? Mechanism { get; init; }
 
         public ProcessBindingReason? Reason { get; init; }
@@ -942,7 +961,7 @@ public static partial class SessionMetrics
         private void Bind(ProcessBinding binding)
         {
             if (kind is MetricGroupKind.ProcessInstance or MetricGroupKind.Executable or MetricGroupKind.UserSession
-                or MetricGroupKind.Package)
+                or MetricGroupKind.Package or MetricGroupKind.ServiceContainer)
             {
                 bindings[binding.Strength] = bindings.GetValueOrDefault(binding.Strength) + 1;
             }
@@ -966,6 +985,7 @@ public static partial class SessionMetrics
                     Executable = Executable,
                     TerminalSession = TerminalSession,
                     Package = Package,
+                    Services = Services,
                     Mechanism = Mechanism,
                     Reason = Reason,
                     Value = distribution?.Of(named),
@@ -984,6 +1004,7 @@ public static partial class SessionMetrics
                 Executable = Executable,
                 TerminalSession = TerminalSession,
                 Package = Package,
+                Services = Services,
                 Mechanism = Mechanism,
                 Reason = Reason,
                 Value = measured ? value : null,

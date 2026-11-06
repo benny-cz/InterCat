@@ -110,6 +110,13 @@ public enum ProcessBindingReason
     /// unknown, never taken for a process in no package (R3).
     /// </summary>
     PackageUnknown = 14,
+
+    /// <summary>
+    /// The process binds, but a service its capture listed running may have run in it, and the binding cannot tell: its PID
+    /// is the service's, and the service's host's creation time, or its own, was not read - for grouping by service
+    /// container (ADR-096), never placed in a container by its PID alone nor taken for one hosting none (R3).
+    /// </summary>
+    ServiceHostUnknown = 15,
 }
 
 /// <summary>

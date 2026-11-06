@@ -22,13 +22,20 @@ public static partial class SessionMetrics
         + "the processes whose records named no package are a group of their own, and a process whose records said neither "
         + "is reported by that reason, never placed in a guessed package (ADR-094).";
 
+    /// <summary>What a grouping by service container rests on, said with every answer grouped so (`metrics-v1` §6).</summary>
+    internal const string ServiceContainerGroupingCaveat =
+        "A service container is a process its capture's lists of running services name as hosting one, bound by its PID and "
+        + "creation time (" + ServiceBinding.Rule + "); its group holds that one process's records, never one service's, and "
+        + "every other process stays in its executable's group. A process a listed service may have run in, where neither "
+        + "creation time tells, is reported by that reason, never placed in a container by its PID (ADR-096).";
+
     /// <summary>What a grouping needs that this session may not have. Null when it can be answered.</summary>
     private static MetricResult? WhatGroupingNeeds(MetricRequest request, long generation, SourceClockDescriptor? clock)
     {
         switch (request.Grouping)
         {
             case LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession or LaneGrouping.Package
-                or LaneGrouping.Peer:
+                or LaneGrouping.ServiceContainer or LaneGrouping.Peer:
                 // A cross-side total groups each record under the process at its other end, found through the relation
                 // rule; a record whose other end it does not resolve is unattributed with the reason, never guessed.
                 return clock is null
@@ -69,7 +76,8 @@ public static partial class SessionMetrics
                 cancellationToken)
             : null;
         ProcessInstanceIndex? processes = roles?.Processes;
-        if (processes is not null && ProcessGrouping.Underived(processes, grouping) is { } underived)
+        ServiceMatch? services = processes is null ? null : ServicesOf(context, processes);
+        if (processes is not null && ProcessGrouping.Underived(processes, grouping, services) is { } underived)
         {
             return Unavailable(request, context.Generation, MetricUnavailableReason.GroupingNotDerived, underived);
         }
@@ -80,7 +88,8 @@ public static partial class SessionMetrics
                 roles.Processes,
                 request.EvidencePolicy,
                 grouping == LaneGrouping.Peer ? LaneGrouping.InstanceOnly : grouping,
-                segment => AttributedBindings(context, roles, segment, grouping, effective));
+                segment => AttributedBindings(context, roles, segment, grouping, effective),
+                services);
         IReadOnlyList<AccountingSide> taken = isCount ? [] : MetricCompatibility.RowSidesTakenBy(request.AccountingSide!.Value);
 
         var totals = new SideTotal?[layout.Count, (int)AccountingSide.CanonicalOwner + 1];
@@ -391,6 +400,10 @@ public static partial class SessionMetrics
         {
             caveats.Add(PackageGroupingCaveat);
         }
+        else if (request.Grouping == LaneGrouping.ServiceContainer)
+        {
+            caveats.Add(ServiceContainerGroupingCaveat);
+        }
 
         MetricGroup? notAdmitted = unattributed.FirstOrDefault(group => group.Reason == ProcessBindingReason.NotAdmittedByPolicy);
         if (notAdmitted is not null && request.EvidencePolicy < EvidencePolicy.IncludeCandidates)
@@ -495,7 +508,8 @@ public static partial class SessionMetrics
         ProcessBindingReason? Reason = null,
         string? Executable = null,
         uint? Session = null,
-        string? Package = null);
+        string? Package = null,
+        IReadOnlyList<HostedService>? Services = null);
 
     /// <summary>
     /// Slots by process instance. The first slots hold the reasons a record is unattributed; each instance then has
@@ -505,33 +519,39 @@ public static partial class SessionMetrics
     /// </summary>
     private sealed class ProcessLayout : GroupLayout
     {
-        private const int ReasonSlots = (int)ProcessBindingReason.PackageUnknown + 1;
+        private const int ReasonSlots = (int)ProcessBindingReason.ServiceHostUnknown + 1;
         private static readonly RelationStrength[] Strengths = [RelationStrength.Direct, RelationStrength.Correlated, RelationStrength.Candidate];
         private readonly ProcessInstanceIndex index;
         private readonly EvidencePolicy policy;
-        private readonly LaneGrouping grouping;
         private readonly Func<SegmentReaderV1, ProcessBinding[]> binder;
 
+        // Why each instance belongs to no group under this grouping, or null where it belongs to one, decided once.
+        private readonly ProcessBindingReason?[] ungrouped;
+
         /// <summary>
-        /// Slots for <paramref name="grouping"/>: by instance, by witnessed executable, by terminal session, or by package.
+        /// Slots for <paramref name="grouping"/>: by instance, by witnessed executable, by terminal session, by package, or by
+        /// service container, which reads <paramref name="services"/>.
         /// </summary>
         public ProcessLayout(
             ProcessInstanceIndex index,
             EvidencePolicy policy,
             LaneGrouping grouping,
-            Func<SegmentReaderV1, ProcessBinding[]> binder)
+            Func<SegmentReaderV1, ProcessBinding[]> binder,
+            ServiceMatch? services = null)
         {
             this.index = index;
             this.policy = policy;
-            this.grouping = grouping;
             this.binder = binder;
+            ungrouped = [.. index.Instances.Select(instance => ProcessGrouping.Unattributable(instance, grouping, services))];
             var groups = new List<GroupDefinition>();
             for (int reason = 1; reason < ReasonSlots; reason++)
             {
                 // Only the grouping that needs a fact reports a process without it as unattributed.
-                if ((reason == (int)ProcessBindingReason.ExecutableUnknown && grouping != LaneGrouping.Executable)
+                if ((reason == (int)ProcessBindingReason.ExecutableUnknown
+                        && grouping is not (LaneGrouping.Executable or LaneGrouping.ServiceContainer))
                     || (reason == (int)ProcessBindingReason.SessionUnknown && grouping != LaneGrouping.UserSession)
-                    || (reason == (int)ProcessBindingReason.PackageUnknown && grouping != LaneGrouping.Package))
+                    || (reason == (int)ProcessBindingReason.PackageUnknown && grouping != LaneGrouping.Package)
+                    || (reason == (int)ProcessBindingReason.ServiceHostUnknown && grouping != LaneGrouping.ServiceContainer))
                 {
                     continue;
                 }
@@ -577,13 +597,33 @@ public static partial class SessionMetrics
                         Package: package.Key));
                 }
             }
-            else if (grouping == LaneGrouping.Executable)
+            else if (grouping is LaneGrouping.Executable or LaneGrouping.ServiceContainer)
             {
+                // A service container is a group of its own, its host's records never one service's; every other process
+                // keeps its executable's group, as the executable grouping forms it (ADR-096).
+                if (grouping == LaneGrouping.ServiceContainer)
+                {
+                    for (int instance = 0; instance < index.Instances.Count; instance++)
+                    {
+                        if (ungrouped[instance] is null
+                            && services!.ContainerOf(index.Instances[instance].Id) is { } hosted)
+                        {
+                            groups.Add(new(
+                                MetricGroupKind.ServiceContainer,
+                                [.. Strengths.Select((strength, offset) => (SlotOf(instance, offset), (RelationStrength?)strength))],
+                                ProcessGrouping.ContainerKey(index.Instances[instance].Id),
+                                Process: index.Instances[instance],
+                                Services: hosted));
+                        }
+                    }
+                }
+
                 // A basename alone can denote different binaries. Only the full path witnessed at start/rundown
                 // groups instances; an exit's name alone is retained on the instance but never merged as an identity.
                 foreach (IGrouping<string, (ProcessInstance Item, int Index)> executable in index.Instances
                     .Select((item, at) => (Item: item, Index: at))
-                    .Where(entry => !string.IsNullOrWhiteSpace(entry.Item.ImagePath))
+                    .Where(entry => ungrouped[entry.Index] is null && !string.IsNullOrWhiteSpace(entry.Item.ImagePath)
+                        && (grouping == LaneGrouping.Executable || services!.ContainerOf(entry.Item.Id) is null))
                     .GroupBy(entry => entry.Item.ImagePath!, StringComparer.OrdinalIgnoreCase))
                 {
                     groups.Add(new(
@@ -624,7 +664,7 @@ public static partial class SessionMetrics
                     ? (int)binding.Reason
                     : !binding.IsAdmittedUnder(policy)
                         ? (int)ProcessBindingReason.NotAdmittedByPolicy
-                        : ProcessGrouping.Unattributable(index.Instances[binding.Instance], grouping) is { } reason
+                        : ungrouped[binding.Instance] is { } reason
                             ? (int)reason
                         : SlotOf(binding.Instance, Array.IndexOf(Strengths, binding.Strength));
             }
@@ -730,6 +770,7 @@ public static partial class SessionMetrics
                 Executable = Definition.Executable,
                 TerminalSession = Definition.Session,
                 Package = Definition.Package,
+                Services = Definition.Services,
                 Mechanism = Definition.Mechanism,
                 Reason = Definition.Reason,
                 Value = isMeasured ? value : null,

@@ -921,6 +921,7 @@ Revision 995 has every live capture read the running services and their hosts (A
 Revision 996 has each process say the services it hosted (ADR-095's third addendum): bound by its PID and creation time, never by a PID alone, said by the inspector and `icat processes` as the services, none or not recorded.
 Revision 997 measures FX-SVC-002 through the product (ADR-095's fourth addendum): three runs of icat record, nothing lost, every running service the probe read as each capture began named under the instance hosting it by its PID and creation time, none left unnamed.
 Revision 998 groups metrics by package (ADR-094's fourth addendum): each record under the package its process's lifecycle records name, the processes in none a group of their own, one whose records said neither unattributed, and icat metric --group-by package naming each.
+Revision 999 groups metrics by service container (ADR-096): each host of the services its capture listed a group of its own, named by its services, every other process its executable's, one a listed service may have run in unattributed, and icat metric --group-by service-container naming each.
 
 ## Revisions, a paragraph each, in order
 
@@ -4576,3 +4577,13 @@ no package are a group of their own rather than an unknown, and a process whose 
 a reason of its own, `PackageUnknown`, never taken for one in no package; a generation whose records say no package at
 all is not grouped by one. `icat metric --group-by package` names each group by its package's full name and the
 processes in none "In no package". The window's grouping by package is next.
+
+Revision 999 derives `metrics-v1` §6's grouping by service container, which §6.3 and the group rung ask for (ADR-096).
+A service container is a process instance its capture's lists of running services name as hosting one, bound by its PID
+and creation time: grouped so, its records are a group of their own, named by its host and the services it hosted, never
+a group for one service; every other process keeps its executable's group, so the svchost.exe hosts a grouping by
+executable gathers into one row rank apart, and every other program as before. A process a listed service may have run
+in, where neither creation time tells, is unattributed by a reason of its own, `ServiceHostUnknown`, and a capture that
+listed no services is not grouped so. The binding moves to the analysis layer unchanged, and an answer grouped so names
+the service binding rule beside the process binding rule in its identity. `icat metric --group-by service-container`
+names each container; the window's grouping by service container is next.

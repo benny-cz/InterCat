@@ -192,14 +192,13 @@ public sealed record MetricRequest
         }
 
         // A count of peers is a count of the processes at the other end from one process, so it needs that process:
-        // a focus, answered as one count, or a grouping by process, executable, session or package, which counts each one's peers.
-        if (Metric == Metric.ActivePeers && focuses == 0
-            && Grouping is not (LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession
-                or LaneGrouping.Package))
+        // a focus, answered as one count, or a grouping by a fact of each process - itself, its executable, its session,
+        // its package or its service container - which counts each group's peers.
+        if (Metric == Metric.ActivePeers && focuses == 0 && !ProcessGrouping.ByInstanceFact(Grouping))
         {
             return new(
                 "ActivePeers counts the distinct processes at the other end from a process. Name a process focus, or "
-                + "group by process, executable, session or package to count each one's peers.",
+                + "group by process, executable, session, package or service container to count each one's peers.",
                 []);
         }
 
@@ -207,8 +206,8 @@ public sealed record MetricRequest
         {
             return new(
                 "ActivePeers with a process focus is one count. To rank processes, group by process, executable, "
-                + "session or package without a focus; to see the processes at the other end themselves, count observations grouped "
-                + "by peer.",
+                + "session, package or service container without a focus; to see the processes at the other end themselves, "
+                + "count observations grouped by peer.",
                 []);
         }
 
@@ -216,17 +215,15 @@ public sealed record MetricRequest
         {
             return new(
                 "ActiveChannels with a process focus is one count, or it can rank that focus's channels by peer. "
-                + "To rank all processes, group by process, executable, session or package without a focus.",
+                + "To rank all processes, group by process, executable, session, package or service container without a focus.",
                 []);
         }
 
-        if (Metric == Metric.ActiveChannels && focuses == 0
-            && Grouping is not null and not (LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession
-                or LaneGrouping.Package))
+        if (Metric == Metric.ActiveChannels && focuses == 0 && Grouping is not null && !ProcessGrouping.ByInstanceFact(Grouping))
         {
             return new(
-                "ActiveChannels is counted in total, for one process focus, or for each process, executable, session or package. "
-                + "To rank one process's channels by peer, name that process focus.",
+                "ActiveChannels is counted in total, for one process focus, or for each process, executable, session, package "
+                + "or service container. To rank one process's channels by peer, name that process focus.",
                 []);
         }
 
@@ -434,6 +431,12 @@ public enum MetricGroupKind
 
     /// <summary>All process instances whose lifecycle records name the same package, or all of those naming none (ADR-094).</summary>
     Package = 7,
+
+    /// <summary>
+    /// One service container: the process instance its capture's service lists name as hosting services, its records its own,
+    /// never one service's (ADR-096).
+    /// </summary>
+    ServiceContainer = 8,
 }
 
 /// <summary>
@@ -458,6 +461,12 @@ public sealed record MetricGroup
     /// processes whose records named none, an observed none (R3).
     /// </summary>
     public string? Package { get; init; }
+
+    /// <summary>
+    /// The services a service container hosted as its capture's lists name them, for a container group, whose host is
+    /// <see cref="Process"/> (ADR-096).
+    /// </summary>
+    public IReadOnlyList<HostedService>? Services { get; init; }
 
     /// <summary>The mechanism, for a mechanism group.</summary>
     public Mechanism? Mechanism { get; init; }
@@ -1143,6 +1152,12 @@ public static partial class SessionMetrics
             };
         }
 
+        // A service container is the process the capture's lists of running services name as hosting one (ADR-096).
+        if (materialized.Grouping == LaneGrouping.ServiceContainer)
+        {
+            context = context with { ServiceInventories = ServiceInventoryV1.Read(store.Root, manifest) };
+        }
+
         // Operations are counted from the calls a correlator derives, never from the records beneath them (§5.1, P4).
         if (materialized.Basis == AnalysisBasis.LogicalOperations)
         {
@@ -1350,7 +1365,7 @@ public static partial class SessionMetrics
             return counts;
         }
 
-        const int Reasons = (int)ProcessBindingReason.PackageUnknown + 1;
+        const int Reasons = (int)ProcessBindingReason.ServiceHostUnknown + 1;
         MetricRequest request = context.Request;
         foreach ((string _, SegmentReaderV1 reader) in context.Segments)
         {
@@ -1881,6 +1896,15 @@ public static partial class SessionMetrics
         };
     }
 
+    /// <summary>
+    /// The capture's services bound to <paramref name="processes"/>' instances by `service-binding-v1`, for a grouping by
+    /// service container; null for any other grouping, which reads none.
+    /// </summary>
+    private static ServiceMatch? ServicesOf(Context context, ProcessInstanceIndex processes) =>
+        context.Request.Grouping == LaneGrouping.ServiceContainer
+            ? ServiceBinding.Match(processes.Instances, context.ServiceInventories)
+            : null;
+
     /// <summary>What every answer over one generation shares: the request, the segments and the clock.</summary>
     private sealed record Context(
         MetricRequest Request,
@@ -1894,6 +1918,9 @@ public static partial class SessionMetrics
 
         /// <summary>The caller's derivation of this very generation, when it gave one.</summary>
         public MetricDerivations? Derived { get; init; }
+
+        /// <summary>The services the capture listed running as it started and stopped, read only for a grouping by service container.</summary>
+        public IReadOnlyList<ServiceInventoryV1> ServiceInventories { get; init; } = [];
 
         /// <summary>Which rows of each segment the process filter keeps; empty without a filter.</summary>
         public Dictionary<SegmentReaderV1, bool[]> ProcessMasks { get; init; } = [];

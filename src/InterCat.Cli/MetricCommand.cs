@@ -91,6 +91,9 @@ internal sealed record MetricGroupDocument
 
     /// <summary>A package's group: its full name, or empty for the processes whose records named no package (ADR-094).</summary>
     public required string? Package { get; init; }
+
+    /// <summary>A service container's group: the services its host hosted, by name, as the capture listed them (ADR-096).</summary>
+    public required IReadOnlyList<string>? Services { get; init; }
     public required string? Reason { get; init; }
     public required MetricDistributionDocument? Distribution { get; init; }
     public required int? GroupsMerged { get; init; }
@@ -897,6 +900,7 @@ internal static class MetricCommand
         Executable = group.Executable,
         TerminalSession = group.TerminalSession,
         Package = group.Package,
+        Services = group.Services is { } hosted ? [.. hosted.Select(static service => service.Name)] : null,
         Reason = group.Reason?.ToString(),
         GroupsMerged = group.Kind == MetricGroupKind.Remainder ? group.GroupsMerged : null,
         Distribution = MetricDistributionDocument.From(group.Distribution),
@@ -914,6 +918,7 @@ internal static class MetricCommand
         MetricGroupKind.Executable => group.Executable!,
         MetricGroupKind.UserSession => GroupingText.Session(group.TerminalSession!.Value),
         MetricGroupKind.Package => GroupingText.Package(group.Package!),
+        MetricGroupKind.ServiceContainer => GroupingText.Container(group.Process!.ProcessId, group.Process.ImageName, group.Services!),
         MetricGroupKind.Unattributed => BindingText.Reason(group.Reason!.Value),
         MetricGroupKind.Remainder => CountText.Of(group.GroupsMerged, "more " + result.Request.Grouping switch
         {
@@ -921,6 +926,7 @@ internal static class MetricCommand
             LaneGrouping.Executable => "executable",
             LaneGrouping.UserSession => "terminal session",
             LaneGrouping.Package => "package",
+            LaneGrouping.ServiceContainer => "container or executable",
             _ => "instance",
         }),
         _ => group.Kind.ToString(),
@@ -937,7 +943,9 @@ internal static class MetricCommand
         bool byExecutable = result.Request.Grouping == LaneGrouping.Executable;
         bool bySession = result.Request.Grouping == LaneGrouping.UserSession;
         bool byPackage = result.Request.Grouping == LaneGrouping.Package;
-        string groupHeader = byExecutable ? "Executable path" : bySession ? "Terminal session" : byPackage ? "Package" : "Process instance";
+        bool byContainer = result.Request.Grouping == LaneGrouping.ServiceContainer;
+        string groupHeader = byExecutable ? "Executable path" : bySession ? "Terminal session" : byPackage ? "Package"
+            : byContainer ? "Service container or executable path" : "Process instance";
         string rules = result.RelationRule is { } relationRule
             ? $"{grouping.BindingRule} and {relationRule}"
             : grouping.BindingRule ?? string.Empty;
@@ -948,6 +956,8 @@ internal static class MetricCommand
             LaneGrouping.Executable => $"  By witnessed executable path ({rules}, evidence policy {policy}):",
             LaneGrouping.UserSession => $"  By terminal session ({rules}, evidence policy {policy}):",
             LaneGrouping.Package => $"  By package ({rules}, evidence policy {policy}):",
+            LaneGrouping.ServiceContainer =>
+                $"  By service container, every other process by its executable ({rules} with {ServiceBinding.Rule}, evidence policy {policy}):",
             LaneGrouping.Peer when result.Request.Focus is { } focus =>
                 $"  By the process at the other end from {Role(focus.Role)} {focus.Instance} ({rules}, evidence policy {policy}):",
             LaneGrouping.InstanceOnly => $"  By process instance ({rules}, evidence policy {policy}):",
@@ -996,6 +1006,8 @@ internal static class MetricCommand
                 ? "  Not attributed to a terminal session, by reason (never a peer, never ranked):"
                 : byPackage
                 ? "  Not attributed to a package, by reason (never a peer, never ranked):"
+                : byContainer
+                ? "  Not attributed to a service container or an executable, by reason (never a peer, never ranked):"
                 : result.Request.Grouping == LaneGrouping.Peer
                     ? "  Other end not resolved, by reason (never a peer, never ranked):"
                     : "  Not attributed to an instance, by reason (never a peer, never ranked):");
@@ -1690,7 +1702,8 @@ internal static class MetricCommand
     }
 
     /// <summary>The groupings --group-by takes by the names a person says them with, listed before the rest by their own.</summary>
-    private static readonly string[] SaidGroupings = ["process", "executable", "session", "package", "mechanism", "peer"];
+    private static readonly string[] SaidGroupings =
+        ["process", "executable", "session", "package", "service-container", "mechanism", "peer"];
 
     private static bool TryParse<T>(string? value, T fallback, string name, out T parsed, out string? problem)
         where T : struct, Enum
@@ -2024,7 +2037,8 @@ internal static class MetricCommand
         ConsoleUi.Line("  icat metric <directory> --metric <name> [--basis <name>] [--byte-domain <name>]");
         ConsoleUi.Line("             [--side <name>] [--rate-numerator <name>] [--layer <name>]");
         ConsoleUi.Line("             [--mechanism <name>] [--interval <start>:<end>] [--evidence <n>]");
-        ConsoleUi.Line("             [--group-by process|executable|session|package|mechanism|peer] [--top <n>]");
+        ConsoleUi.Line("             [--group-by process|executable|session|package|service-container|mechanism|peer]");
+        ConsoleUi.Line("             [--top <n>]");
         ConsoleUi.Line("             [--evidence-policy <name>] [--peer <process-instance-id>]");
         ConsoleUi.Line("             [--owner|--participant|--sender|--receiver <process-instance-id>]");
         ConsoleUi.Line("             [--between <ids> --and <ids> [--direction <name>]]");
@@ -2051,8 +2065,9 @@ internal static class MetricCommand
         ConsoleUi.Line("      the other (comma-separated instance ids); it replaces a focus. --direction");
         ConsoleUi.Line("      first-to-second or second-to-first keeps only the data flowing that way.");
         ConsoleUi.Line("      --group-by ranks the total by process instance, executable, terminal session,");
-        ConsoleUi.Line("      package (the one each process's lifecycle records name, or none), mechanism, or");
-        ConsoleUi.Line("      peer (the processes at the other end from a focus), with an exact");
+        ConsoleUi.Line("      package (the one each process's lifecycle records name, or none), service container");
+        ConsoleUi.Line("      (each process hosting services the capture listed, every other by its executable),");
+        ConsoleUi.Line("      mechanism, or peer (the processes at the other end from a focus), with an exact");
         ConsoleUi.Line("      remainder past --top; active-channels by peer counts distinct connections with");
         ConsoleUi.Line("      each peer, keeping unresolved peers separate; unknown channels make the focused");
         ConsoleUi.Line("      count a lower bound;");
@@ -2063,8 +2078,8 @@ internal static class MetricCommand
         ConsoleUi.Line("      whose start is in scope, operations-completed those whose stop is and is paired");
         ConsoleUi.Line("      with its start, errors the completed ones whose stop reports a failure status.");
         ConsoleUi.Line("      Every other call in scope is stated by what its records establish, never counted;");
-        ConsoleUi.Line("      --owner filters the calls, and --group-by ranks them by process, executable, session");
-        ConsoleUi.Line("      or package.");
+        ConsoleUi.Line("      --owner filters the calls, and --group-by ranks them by process, executable, session,");
+        ConsoleUi.Line("      package or service container.");
         ConsoleUi.Line("      When the capture collected ALPC (--profile rpc-peers), a call's other end is the");
         ConsoleUi.Line("      process of the call it was linked to: --participant, --peer, --between either way,");
         ConsoleUi.Line("      --group-by peer and active-peers with a focus read it; unlinked calls are disclosed.");

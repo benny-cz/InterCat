@@ -429,6 +429,125 @@ public sealed class GroupedMetricsTests
         Assert.Contains("a package is never guessed", refused.UnavailableExplanation!, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R3: grouped by service container, each host of the services its capture listed is a group of its own, every other process its executable's, one a listed service may have run in is unattributed by that reason, and the rows partition the total")]
+    public void GroupsByServiceContainer()
+    {
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields, ServiceInventoryV1[] inventories) = ServiceContainers();
+        using var session = new TemporarySession();
+        Publish(session.Store, rows, fields: fields, services: inventories);
+
+        MetricRequest sent = Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide);
+        MetricResult ungrouped = SessionMetrics.Evaluate(session.Store, sent);
+        MetricResult grouped = SessionMetrics.Evaluate(session.Store, sent with { Grouping = LaneGrouping.ServiceContainer });
+
+        // PIDs 1820 and 2400 hosted services, each a container of its own named by them; 2500 is a svchost.exe that hosted
+        // none listed, grouped by its executable as app.exe is.
+        Assert.Equal(
+        [
+            (MetricGroupKind.ServiceContainer, "1820: Dnscache, nsi", 100L, (int?)1),
+            (MetricGroupKind.ServiceContainer, "2400: W32Time", 50L, 2),
+            (MetricGroupKind.Executable, @"C:\Apps\app.exe", 30L, 3),
+            (MetricGroupKind.Executable, @"C:\Windows\System32\svchost.exe", 7L, 4),
+        ],
+            grouped.Groups.Select(group => (
+                group.Kind,
+                group.Kind == MetricGroupKind.ServiceContainer
+                    ? $"{group.Process!.ProcessId}: {string.Join(", ", group.Services!.Select(service => service.Name))}"
+                    : group.Executable!,
+                group.Value!.Value,
+                group.Rank)));
+        Assert.Equal(
+            [(ProcessBindingReason.NoOwner, 5L), (ProcessBindingReason.ExecutableUnknown, 4L), (ProcessBindingReason.ServiceHostUnknown, 9L)],
+            grouped.Unattributed.Select(group => (group.Reason!.Value, group.Value!.Value)).OrderBy(entry => entry.Item1));
+        Assert.True(grouped.GroupsPartitionTotal);
+        Assert.Equal(ungrouped.Value, grouped.Groups.Sum(group => group.Value ?? 0) + grouped.Unattributed.Sum(group => group.Value ?? 0));
+        Assert.Contains(grouped.Caveats, caveat => caveat.Contains("never placed in a container by its PID", StringComparison.Ordinal));
+
+        // The answer reads the service binding rule beside the process binding rule, and its identity names both; an
+        // answer grouped by executable names the process binding rule alone.
+        Assert.Contains($"\"entityRevision\":\"{ProcessInstanceIndex.BindingRule}:{ServiceBinding.Rule}\"",
+            grouped.Identity!.CanonicalSpecification, StringComparison.Ordinal);
+        Assert.DoesNotContain(ServiceBinding.Rule, SessionMetrics.Evaluate(session.Store, sent with { Grouping = LaneGrouping.Executable })
+            .Identity!.CanonicalSpecification, StringComparison.Ordinal);
+
+        // Measured at the receiving end, the bytes are grouped under the container they left, found through the relation.
+        MetricResult received = SessionMetrics.Evaluate(
+            session.Store,
+            Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.ReceiveSide) with { Grouping = LaneGrouping.ServiceContainer });
+        MetricGroup left = Assert.Single(received.Groups);
+        Assert.Equal((MetricGroupKind.ServiceContainer, 1820, 100L), (left.Kind, left.Process!.ProcessId, left.Value!.Value));
+
+        // Each container's peers are its own process's: the two hosts reached each other; the other groups reached hosts no
+        // record holds, so their counts are unmeasured.
+        MetricResult peers = SessionMetrics.Evaluate(session.Store, Request(Metric.ActivePeers) with { Grouping = LaneGrouping.ServiceContainer });
+        Assert.Equal(
+            [(MetricGroupKind.ServiceContainer, 1820, 1L), (MetricGroupKind.ServiceContainer, 2400, 1L)],
+            peers.Groups.Where(group => group.Value is not null)
+                .Select(group => (group.Kind, group.Process!.ProcessId, group.Value!.Value)).OrderBy(entry => entry.ProcessId));
+        Assert.All(peers.Groups.Where(group => group.Kind == MetricGroupKind.ServiceContainer), group => Assert.NotEmpty(group.Services!));
+        Assert.Contains(peers.Groups, group => group.Kind == MetricGroupKind.Executable && group.Value is null);
+
+        // A capture that kept no list of its services names no container, and none is guessed from a process's image.
+        using var unlisted = new TemporarySession();
+        Publish(unlisted.Store, rows, fields: fields);
+        MetricResult refused = SessionMetrics.Evaluate(unlisted.Store, sent with { Grouping = LaneGrouping.ServiceContainer });
+        Assert.Equal(MetricUnavailableReason.GroupingNotDerived, refused.Unavailable);
+        Assert.Contains("kept no list of the services running", refused.UnavailableExplanation!, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Six processes and the services their capture listed running as it started (ADR-096): svchost.exe, PID 1820, hosting
+    /// Dnscache and nsi, sends 100 B to svchost.exe, PID 2400, which hosts W32Time, receives them and sends 50 B to a host no
+    /// record holds; svchost.exe, PID 2500, hosting none listed, sends 7 B; app.exe, PID 3000, 30 B; helper.exe, PID 3100,
+    /// 9 B, a listed service whose host's creation time was not read naming its PID; PID 3200, whose path no record names,
+    /// 4 B; and a send of 5 B names no owner. A service listed in an earlier holder of app.exe's PID, created a day before
+    /// it, is no service of app.exe's.
+    /// </summary>
+    private static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields, ServiceInventoryV1[] Inventories) ServiceContainers()
+    {
+        DateTimeOffset created = new(2026, 11, 6, 8, 0, 0, TimeSpan.Zero);
+        ObservationRowV1[] hosts =
+        [
+            Lifecycle(1, ObservationKind.Inventory, 1820, 1) with { ResourceName = @"C:\Windows\System32\svchost.exe" },
+            Lifecycle(2, ObservationKind.Inventory, 2400, 2) with { ResourceName = @"C:\Windows\System32\svchost.exe" },
+            Lifecycle(3, ObservationKind.Create, 2500, 3) with { ResourceName = @"C:\Windows\System32\svchost.exe" },
+            Lifecycle(4, ObservationKind.Create, 3000, 4) with { ResourceName = @"C:\Apps\app.exe" },
+            Lifecycle(5, ObservationKind.Create, 3100, 5) with { ResourceName = @"C:\Apps\helper.exe" },
+            Lifecycle(6, ObservationKind.Create, 3200, 6),
+        ];
+        return (
+            [
+                .. hosts,
+                Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 100, 1820, 7).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+                Transfer(21, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 2400, 8).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+                Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 50, 2400, 9).Between("127.0.0.1:50001", "10.0.0.5:443"),
+                Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 7, 2500, 10).Between("127.0.0.1:50002", "10.0.0.6:443"),
+                Transfer(41, ObservationKind.Send, AccountingSide.SendSide, 30, 3000, 11).Between("127.0.0.1:50003", "10.0.0.7:443"),
+                Transfer(42, ObservationKind.Send, AccountingSide.SendSide, 9, 3100, 12).Between("127.0.0.1:50004", "10.0.0.8:443"),
+                Transfer(43, ObservationKind.Send, AccountingSide.SendSide, 4, 3200, 13).Between("127.0.0.1:50005", "10.0.0.9:443"),
+                Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 5, null, 14),
+            ],
+            [.. hosts.Select((row, at) => Field(row, SourceField.ProcessCreateTime, created.AddSeconds(at).ToFileTime()))],
+            [
+                new()
+                {
+                    Contract = ServiceInventoryV1.ContractName,
+                    CaptureId = Capture.Value,
+                    Moment = ServiceInventoryMoment.Start,
+                    ReadStartedUtc = created.AddHours(1),
+                    ReadEndedUtc = created.AddHours(1).AddMilliseconds(20),
+                    Services =
+                    [
+                        new() { Name = "Dnscache", ProcessId = 1820, HostCreatedUtc = created },
+                        new() { Name = "nsi", ProcessId = 1820, HostCreatedUtc = created },
+                        new() { Name = "W32Time", ProcessId = 2400, HostCreatedUtc = created.AddSeconds(1) },
+                        new() { Name = "Shielded", ProcessId = 3100 },
+                        new() { Name = "Departed", ProcessId = 3000, HostCreatedUtc = created.AddDays(-1) },
+                    ],
+                },
+            ]);
+    }
+
     private const string Mail = "Contoso.Mail_1.4.0.0_x64__8wekyb3d8bbwe";
 
     /// <summary>

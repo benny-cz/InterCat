@@ -31,6 +31,8 @@ public static class BindingText
         ProcessBindingReason.CallNotLinked => "an RPC call whose other end was not linked through ALPC",
         ProcessBindingReason.SessionUnknown => "the process is known, but no lifecycle record named its terminal session",
         ProcessBindingReason.PackageUnknown => "the process is known, but no lifecycle record named the package it ran in, or none",
+        ProcessBindingReason.ServiceHostUnknown =>
+            "the process is known, but a service listed running may have run in it, and no creation time tells",
         _ => string.Create(CultureInfo.InvariantCulture, $"reason {(int)reason}"),
     };
 }

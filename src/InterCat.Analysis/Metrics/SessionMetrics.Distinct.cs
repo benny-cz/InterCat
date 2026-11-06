@@ -129,12 +129,14 @@ public static partial class SessionMetrics
             withRelations: true,
             cancellationToken);
         ProcessInstanceIndex processes = roles.Processes;
-        if (ProcessGrouping.Underived(processes, grouping) is { } underived)
+        ServiceMatch? services = ServicesOf(context, processes);
+        if (ProcessGrouping.Underived(processes, grouping, services) is { } underived)
         {
             return Unavailable(request, context.Generation, MetricUnavailableReason.GroupingNotDerived, underived);
         }
 
-        // One tally per group key: an instance's identity, an executable's path folded case-insensitively, or a session.
+        // One tally per group key: an instance's identity, an executable's path folded case-insensitively, a session, a
+        // package, or a service container.
         var tallies = new Dictionary<string, DistinctTally>(StringComparer.Ordinal);
         var unattributed = new Dictionary<ProcessBindingReason, long>();
         var unidentified = new Dictionary<ProcessBindingReason, long>();
@@ -333,7 +335,9 @@ public static partial class SessionMetrics
         string? KeyOf(ProcessBinding subject)
         {
             ProcessInstance instance = processes.Instances[subject.Instance];
-            return ProcessGrouping.Unattributable(instance, grouping) is null ? ProcessGrouping.KeyOf(instance, grouping) : null;
+            return ProcessGrouping.Unattributable(instance, grouping, services) is null
+                ? ProcessGrouping.KeyOf(instance, grouping, services)
+                : null;
         }
 
         DistinctTally TallyFor(string key, ProcessBinding subject)
@@ -346,6 +350,11 @@ public static partial class SessionMetrics
                     LaneGrouping.Executable => new(key, MetricGroupKind.Executable) { Executable = instance.ImagePath },
                     LaneGrouping.UserSession => new(key, MetricGroupKind.UserSession) { Session = instance.SessionId },
                     LaneGrouping.Package => new(key, MetricGroupKind.Package) { Package = instance.PackageFullName },
+
+                    // A container is its own group, named by its services; any other process is its executable's (ADR-096).
+                    LaneGrouping.ServiceContainer => services!.ContainerOf(instance.Id) is { } hosted
+                        ? new(key, MetricGroupKind.ServiceContainer) { Process = instance, Services = hosted }
+                        : new(key, MetricGroupKind.Executable) { Executable = instance.ImagePath },
                     _ => new(key, MetricGroupKind.ProcessInstance) { Process = instance },
                 };
                 tallies[key] = tally;
@@ -354,18 +363,18 @@ public static partial class SessionMetrics
             return tally;
         }
 
-        // The group a bound process belongs to: its instance, its witnessed image path, its terminal session or its
-        // package. A process without the fact a grouping needs has no group, and is counted by that reason.
+        // The group a bound process belongs to: its instance, its witnessed image path, its terminal session, its package
+        // or its service container. A process without the fact a grouping needs has no group, and is counted by that reason.
         void Record(ProcessBinding subject, int? element, ProcessBindingReason unknownReason, RelationStrength? strength)
         {
             ProcessInstance instance = processes.Instances[subject.Instance];
-            if (ProcessGrouping.Unattributable(instance, grouping) is { } ungrouped)
+            if (ProcessGrouping.Unattributable(instance, grouping, services) is { } ungrouped)
             {
                 unattributed[ungrouped] = unattributed.GetValueOrDefault(ungrouped) + 1;
                 return;
             }
 
-            DistinctTally tally = TallyFor(ProcessGrouping.KeyOf(instance, grouping), subject);
+            DistinctTally tally = TallyFor(ProcessGrouping.KeyOf(instance, grouping, services), subject);
             if (element is { } counted)
             {
                 tally.Known++;
@@ -565,6 +574,8 @@ public static partial class SessionMetrics
 
         public string? Package { get; init; }
 
+        public IReadOnlyList<HostedService>? Services { get; init; }
+
         public HashSet<int> Elements { get; } = [];
 
         public long Known { get; set; }
@@ -582,6 +593,7 @@ public static partial class SessionMetrics
             Executable = Executable,
             TerminalSession = Session,
             Package = Package,
+            Services = Services,
             Value = Elements.Count > 0 ? Elements.Count : null,
             KnownContributions = Known,
             UnknownContributions = UnknownReasons.Values.Sum(),

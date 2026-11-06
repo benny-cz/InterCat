@@ -235,8 +235,9 @@ partition the total: their values add up to it, and a result says so.
 | `Executable` | the witnessed full image path of the instance it is attributed to; paths compare case-insensitively | yes when at least one path is witnessed |
 | `UserSession` | the terminal session of the instance it is attributed to, as that instance's lifecycle records name it | yes when at least one is named |
 | `Package` | the package the instance it is attributed to ran in, as that instance's lifecycle records name it, or none; names compare case-insensitively | yes when at least one record named a package or none |
+| `ServiceContainer` | the instance it is attributed to when that instance hosted a service its capture's lists name, bound by `service-binding-v1`; any other instance's executable, as under `Executable` | yes when the capture listed its services |
 | `Peer` | the process at its other end from the focused process, under `relations-v1` | yes, with a process focus |
-| `ServiceContainer`, `Host`, `Endpoint` | — | `GroupingNotDerived`, with what it needs |
+| `Host`, `Endpoint` | — | `GroupingNotDerived`, with what it needs |
 
 An executable is a full source-witnessed path, not an exit's basename: equal basenames can denote distinct
 binaries. An instance with no full path contributes to `ExecutableUnknown`, an unattributed reason. If no
@@ -258,6 +259,17 @@ are a group of their own, `Package` with the empty name, which `icat metric --gr
 package". An instance whose records said neither contributes to `PackageUnknown`, an unattributed reason, never taken
 for one in no package (R3), and if no record said either at all, package grouping is unavailable. A package group is
 `Package` in a result and carries the package's full name; its distinct peers and channels are its members' together.
+
+A service container is a process instance its capture's lists of running services name as hosting one (ADR-096): the
+service control manager's list as the capture started and stopped, each service bound to the instance whose PID and
+creation time are its host's (`service-binding-v1`). Grouped by service container, since revision 999, a container's
+records are a group of their own, `ServiceContainer` in a result, carrying its host as its process and the services it
+hosted - never a group for one service, whose share of its host's records no record measures. Every other instance keeps
+its executable's group, `Executable` as under that grouping, and one with no witnessed path is `ExecutableUnknown`. An
+instance a listed service may have run in - a service bound to no instance names its PID, and the service's host's
+creation time, or the instance's own, was not read - is unattributed as `ServiceHostUnknown`, never placed in a container
+by its PID. A capture that kept no list of its services is not grouped by service container. `icat metric --group-by
+service-container` names a container by its host's PID and image and its services.
 
 Under `InstanceOnly` and `Executable`, the metric names the direction relative to the group: a record of a
 `BytesSent` total belongs to the process the data **left**, and one of a `BytesReceived` total to the process it

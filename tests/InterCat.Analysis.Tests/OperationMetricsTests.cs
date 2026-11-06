@@ -252,6 +252,54 @@ public sealed class OperationMetricsTests
         Assert.Equal((ProcessBindingReason.PackageUnknown, (long?)2L), (unnamed.Reason, unnamed.Value));
     }
 
+    [Fact(DisplayName = "R3: grouped by service container, each call counts under the container of the process it binds to, named by its services, and a process hosting none listed under its executable")]
+    public void CallsGroupByTheServiceContainerOfTheirProcess()
+    {
+        DateTimeOffset created = new(2026, 11, 6, 8, 0, 0, TimeSpan.Zero);
+        List<ObservationRowV1> rows = EveryState();
+        int at = rows.FindIndex(row => row.Mechanism == Mechanism.ProcessLifecycle && row.OwnerProcessId == Client);
+        rows[at] = rows[at] with { ResourceName = @"C:\Apps\client.exe" };
+        ObservationRowV1 server = rows.Single(row => row.Mechanism == Mechanism.ProcessLifecycle && row.OwnerProcessId == Server);
+        using var session = new TemporarySession();
+        Publish(session.Store, rows,
+            fields:
+            [
+                Field(rows[at], SourceField.ProcessCreateTime, created.ToFileTime()),
+                Field(server, SourceField.ProcessCreateTime, created.AddSeconds(1).ToFileTime()),
+            ],
+            services:
+            [
+                new()
+                {
+                    Contract = ServiceInventoryV1.ContractName,
+                    CaptureId = Capture.Value,
+                    Moment = ServiceInventoryMoment.Start,
+                    ReadStartedUtc = created.AddHours(1),
+                    ReadEndedUtc = created.AddHours(1).AddMilliseconds(20),
+                    Services = [new() { Name = "SamSs", ProcessId = Server, HostCreatedUtc = created.AddSeconds(1) }],
+                },
+            ]);
+
+        // The client hosted no service listed and is grouped by its executable; the server is a container of its own.
+        MetricResult started = SessionMetrics.Evaluate(session.Store, Request(Metric.OperationsStarted) with { Grouping = LaneGrouping.ServiceContainer });
+        Assert.Equal(
+            [(MetricGroupKind.Executable, @"C:\Apps\client.exe", 4L), (MetricGroupKind.ServiceContainer, "SamSs", 2L)],
+            started.Groups.Select(group => (
+                group.Kind,
+                group.Kind == MetricGroupKind.ServiceContainer ? string.Join(',', group.Services!.Select(service => service.Name)) : group.Executable!,
+                group.Value!.Value)));
+        Assert.Equal(Server, started.Groups.Single(group => group.Kind == MetricGroupKind.ServiceContainer).Process!.ProcessId);
+        Assert.All(started.Groups, group => Assert.NotEmpty(group.Bindings));
+        Assert.Contains(started.Caveats, caveat => caveat.Contains("never placed in a container by its PID", StringComparison.Ordinal));
+        Assert.True(started.GroupsPartitionTotal);
+
+        // A duration grouped so names the container's services beside the calls it was read from.
+        MetricResult durations = SessionMetrics.Evaluate(
+            session.Store, DurationRequest(DurationInterval.ServerExecution) with { Grouping = LaneGrouping.ServiceContainer });
+        Assert.Contains(durations.Groups, group => group.Kind == MetricGroupKind.ServiceContainer
+            && group.Services is [{ Name: "SamSs" }] && group.Distribution is not null);
+    }
+
     [Fact(DisplayName = "R3: an error count over calls none of which says how it ended is unmeasured, never zero")]
     public void ErrorsOverCallsWithNoStatusAreUnmeasured()
     {

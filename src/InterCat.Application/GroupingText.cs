@@ -1,4 +1,5 @@
 using System.Globalization;
+using InterCat.Analysis;
 
 namespace InterCat.Application;
 
@@ -27,5 +28,21 @@ public static class GroupingText
     {
         ArgumentNullException.ThrowIfNull(package);
         return package.Length == 0 ? NoPackage : package;
+    }
+
+    /// <summary>
+    /// A service container's group: its host's PID and image name, and the services it hosted, the first named and the rest
+    /// counted - the host's records, never one service's (ADR-096).
+    /// </summary>
+    public static string Container(int processId, string? imageName, IReadOnlyList<HostedService> services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        string host = imageName is { Length: > 0 } image
+            ? string.Create(CultureInfo.InvariantCulture, $"PID {processId} {image}")
+            : string.Create(CultureInfo.InvariantCulture, $"PID {processId}");
+        string more = services.Count > ServiceText.Named
+            ? string.Create(CultureInfo.CurrentCulture, $" and {services.Count - ServiceText.Named:N0} more")
+            : string.Empty;
+        return $"{host} hosting {string.Join(", ", services.Take(ServiceText.Named).Select(static service => service.Name))}{more}";
     }
 }

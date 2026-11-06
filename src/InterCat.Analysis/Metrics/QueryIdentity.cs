@@ -25,6 +25,12 @@ public sealed record AnalysisAxes(
     string OperationRevision,
     string MetricsContract)
 {
+    /// <summary>
+    /// The service binding rule, which an answer grouped by service container reads beside the process binding rule: its
+    /// `entityRevision` names both (`query-identity-v1` §4, ADR-096).
+    /// </summary>
+    public string ServiceRevision { get; init; } = ServiceBinding.Rule;
+
     /// <summary>The axes this build answers under, over segments derived by the given normalizer contract.</summary>
     public static AnalysisAxes Current(NormalizerContractVersion normalizer) => new(
         normalizer.Value,
@@ -130,7 +136,13 @@ public static class AnalysisSpecification
         json.Number("normalizerContract", axes.NormalizerContract);
         if (ReadsProcesses(request))
         {
-            json.Token("entityRevision", axes.EntityRevision);
+            // A service container is the instance its capture's service lists bind to (ADR-096), so an answer grouped so
+            // reads the service binding rule as well as the process binding rule, and names both.
+            json.Token(
+                "entityRevision",
+                request.Grouping == LaneGrouping.ServiceContainer
+                    ? axes.EntityRevision + ":" + axes.ServiceRevision
+                    : axes.EntityRevision);
         }
 
         if (request.Basis == AnalysisBasis.LogicalOperations)
@@ -343,9 +355,7 @@ public static class AnalysisSpecification
             || request.Peer is not null
             || request.Grouping == LaneGrouping.Peer
             || effective is Metric.ActivePeers or Metric.ActiveChannels
-            || (request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession
-                    or LaneGrouping.Package
-                && effective is Metric.BytesSent or Metric.BytesReceived);
+            || (ProcessGrouping.ByInstanceFact(request.Grouping) && effective is Metric.BytesSent or Metric.BytesReceived);
     }
 
     /// <summary>
