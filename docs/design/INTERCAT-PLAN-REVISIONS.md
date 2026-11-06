@@ -906,6 +906,7 @@ Revision 979 adds the opt-in sections profile (ADR-090's fourth addendum): lifec
 Revision 980 measures a section twice, by its handles and by its views, never joining the two, and topology at most (ADR-092).
 Revision 981 measures sections through the product (ADR-092's addendum): FX-SECT-001 recorded by icat record under the sections profile three times, nothing lost, has each of its two sections found twice and bound to exactly its two processes, so sections are topology only on 10.0.26220.0-x64.
 Revision 982 adds FX-SECT-002 (ADR-092's second addendum): sections made and ended 64 generations one after another, recorded through the product three times, nothing lost, each found twice and a number of its own by its handles and by its views while the kernel gave the views of about a quarter of them a value an earlier generation's had carried - the mechanism's second instance and lifetime fixture.
+Revision 983 adds FX-SECT-003 (ADR-092's third addendum): sections whose handles and creator's views were made before a capture began, recorded through the product three times, nothing lost, have each close numbered alone and none discovered, though the start's rundown holds each one's views to one number in both processes, while the same capture's control is whole - the mechanism's ambiguity case.
 
 ## Revisions, a paragraph each, in order
 
@@ -4411,3 +4412,14 @@ and bound to exactly the two processes, while the kernel gave the views of 30, 3
 generation's had carried and in the first run made 6 at an address an earlier one had held. A test reproduces the
 tier from the first run's ledger and holds the probe's counts to that run; the build's per-build coverage carries the
 tier from FX-SECT-002, the mechanism's latest fixture, and the lead test now names their fixtures rather than one.
+
+Revision 983 measures sections a capture never saw made (ADR-092's third addendum), as revision 948 measured named
+synchronization objects. The workload's `section-share --held-ms` has FX-SECT-001's opener open both sections and hold
+its handles, the creator's views mapped, before its first view of either, saying so;
+`tools/InterCat.SectionProbe --product --held-ms` launches `icat record` only then, runs FX-SECT-001 itself inside the
+capture as the control, and ledgers each workload's records of the one session apart. In three runs, machine-wide and
+loss-free, every held handle and the creator's views were made 1.3, 0.9 and 0.9 seconds before the session's first
+section record: each of the four closes naming a held section was numbered alone and none was discovered, so no two
+processes' handles were joined by a name, while the start's rundown named the creator's view with the value the opener's
+views carried, holding each section's views to one number in both processes. The control was whole each time. A test
+checks the first run's order of events and both ledgers against their truth; the fixture assigns no tier.

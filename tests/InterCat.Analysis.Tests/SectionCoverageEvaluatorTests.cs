@@ -261,6 +261,75 @@ public sealed class SectionCoverageEvaluatorTests
             reported.GetProperty("discoveredWithLifetime").GetInt32(), reported.GetProperty("observed").GetInt32()));
     }
 
+    [Fact(DisplayName = "R22: FX-SECT-003's sections, each process's handle to them and the creator's views made before the capture began, are no one section through the product - each close numbered alone and none discovered, though the start's rundown held each one's views to one number in both processes - while the same capture's control is whole")]
+    public void SectionsHeldAcrossTheCapturesStartAreNoOneSection()
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-SECT-003", "evidence");
+        (SectionCoverageResult Result, SectionObservation[] Records, TruthRecord[] Truth) Evaluate(string part, string fixture)
+        {
+            string at = Path.Combine(evidence, part);
+            TruthRecord[] truth = [.. ReadTruth(Path.Combine(at, "truth-creator.jsonl")), .. ReadTruth(Path.Combine(at, "truth-opener.jsonl"))];
+            Dictionary<string, int> processes = truth.GroupBy(static record => record.Role).ToDictionary(static group => group.Key, static group => group.First().ProcessId);
+            SectionObservation[] records = [.. ReadLedger(Path.Combine(at, "records.csv"), processes)];
+            return (SectionCoverageEvaluator.Evaluate(truth, records, Settings() with { FixtureId = fixture, Reproduced = true }), records, truth);
+        }
+
+        (SectionCoverageResult held, SectionObservation[] heldRecords, TruthRecord[] heldTruth) = Evaluate("held", "FX-SECT-003");
+        (SectionCoverageResult control, _, _) = Evaluate("control", "FX-SECT-001");
+        using System.Text.Json.JsonDocument measurement = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "measurement.json")));
+        int committed = measurement.RootElement.GetProperty("committedRun").GetInt32();
+        System.Text.Json.JsonElement run = measurement.RootElement.GetProperty("throughTheProduct").GetProperty("runs").EnumerateArray()
+            .Single(run => run.GetProperty("run").GetInt32() == committed);
+
+        // Every handle to the held sections and the creator's views of them were made before the session's first section
+        // record; the opener's views of them and every close came after it.
+        DateTimeOffset first = DateTimeOffset.Parse(run.GetProperty("order").GetProperty("firstSectionRecordOfTheSessionUtc").GetString()!,
+            System.Globalization.CultureInfo.InvariantCulture);
+        Assert.True(heldTruth.Where(static record => record.Kind is TruthEventKind.ObjectCreated or TruthEventKind.ObjectOpened
+            || record is { Kind: TruthEventKind.ViewMapped, Role: "creator" }).Max(static record => record.RecordedUtc) < first);
+        Assert.True(heldTruth.Where(static record => record.Kind == TruthEventKind.HandleClosed
+            || record is { Kind: TruthEventKind.ViewMapped, Role: "opener" }).Min(static record => record.RecordedUtc) > first);
+
+        // By its handles each held section was two numbers, each close of it numbered alone - a number no other record
+        // carries, as no creation of its handle was seen - so no two processes' handles to it were joined by its name, and
+        // none was discovered.
+        Assert.All(held.Sections, static section => Assert.Equal(((long?)null, false, false, false, "Its closes named it under 2 numbers, so no one number is the section."),
+            (section.SectionObjectNumber, section.CreationSeen, section.EveryCloseSeen, section.DiscoveredWithLifetime, section.Gap)));
+        SectionObservation[] closes = [.. heldRecords.Where(static record => record is { IsView: false, Kind: ObservationKind.Close, Name: not null })];
+        Assert.Equal(4, closes.Length);
+        Assert.All(closes, close => Assert.Single(heldRecords, record => record.SectionObjectNumber == close.SectionObjectNumber));
+        Assert.Equal([2, 2], closes.GroupBy(static close => close.ProcessId).Select(static group => group.Count()));
+
+        // By its views it was one number in both processes: the session's start rundown named the creator's view, mapped before
+        // the capture began, with the value the opener's views mapped inside it carried, so each joined that view's section -
+        // every view seen but the creator's own mapping and unmapping, and the processes bound to it exactly its two.
+        int creator = heldTruth.First(static record => record.Role == "creator").ProcessId;
+        int[] holders = [.. heldTruth.Select(static record => record.ProcessId).Distinct().Order()];
+        Assert.All(held.Sections, static section => Assert.Equal((true, 10, 8), (section.SectionNumber is not null, section.TruthViews, section.ViewsSeen)));
+        Assert.All(held.Sections, section => Assert.Equal(holders, section.MemberProcesses));
+        Assert.All(held.Sections, section => Assert.Single(heldRecords, record => record is { IsView: true, Kind: ObservationKind.Inventory }
+            && record.SectionNumber == section.SectionNumber && record.ProcessId == creator && record.UtcTicks < heldTruth
+                .Where(static logged => logged is { Kind: TruthEventKind.ViewMapped, Role: "opener" }).Min(static logged => logged.RecordedUtc).UtcTicks));
+        Assert.Equal(2, held.Sections.Select(static section => section.SectionNumber).Distinct().Count());
+        MechanismMeasurement partial = held.Measurement;
+        Assert.Equal((2L, 0L, 28L, 16L, 16L, 4L, 4L, 0L), (partial.TruthResources, partial.DiscoveredResourcesWithLifetime, partial.TruthOperations,
+            partial.TruthOperationsWithAdmittedObservation, partial.TruthOperationsBoundToResourceInstance, partial.ExpectedMemberships,
+            partial.ResolvedMemberships, partial.FalsePeerAttributions));
+        System.Text.Json.JsonElement stated = run.GetProperty("held");
+        Assert.Equal((stated.GetProperty("closesNumberedAlone").GetInt32(), stated.GetProperty("discoveredWithLifetime").GetInt64(),
+                stated.GetProperty("observed").GetInt64(), stated.GetProperty("sectionsOneNumberByTheirViews").GetInt32()),
+            (closes.Length, partial.DiscoveredResourcesWithLifetime, partial.TruthOperationsWithAdmittedObservation, 2));
+
+        // While the control, made and ended inside the same capture, is whole: each of its sections found twice and bound to
+        // exactly its two processes, every operation the truth logged seen and bound.
+        MechanismMeasurement whole = control.Measurement;
+        Assert.Equal((2L, 2L, 4L, 4L, 0L, 28L, 28L, 28L), (whole.TruthResources, whole.DiscoveredResourcesWithLifetime, whole.ExpectedMemberships,
+            whole.ResolvedMemberships, whole.FalsePeerAttributions, whole.TruthOperations, whole.TruthOperationsWithAdmittedObservation,
+            whole.TruthOperationsBoundToResourceInstance));
+        Assert.Equal(CapabilityTier.TopologyOnly, control.Assessment.Tier);
+        Assert.Equal(control.Assessment.Tier.ToString(), run.GetProperty("control").GetProperty("tier").GetString());
+    }
+
     private static IEnumerable<TruthRecord> ReadTruth(string file)
     {
         var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);

@@ -9,7 +9,8 @@ namespace InterCat.TestWorkloads;
 
 /// <summary>
 /// Parameters of one FX-SECT-001 run - the size of each view, and how many times the opener maps each section - or of one
-/// FX-SECT-002 run, the same two sections made and ended that many generations one after another in the same two processes.
+/// FX-SECT-002 run, the same two sections made and ended that many generations one after another in the same two processes,
+/// or of one FX-SECT-003 run, whose opener holds its handles to both before its first view of either.
 /// </summary>
 internal sealed record SectionOptions
 {
@@ -18,8 +19,14 @@ internal sealed record SectionOptions
     /// <summary>How many generations of the two sections the two processes make and end one after another; 1 for FX-SECT-001.</summary>
     public int Generations { get; init; } = 1;
 
-    /// <summary>FX-SECT-002 where the sections are made in generations, FX-SECT-001 otherwise.</summary>
-    public string ScenarioId => Generations > 1 ? "FX-SECT-002" : "FX-SECT-001";
+    /// <summary>
+    /// How long the opener holds its handles to both sections, the creator's views mapped, before its first view of either;
+    /// 0 but for FX-SECT-003.
+    /// </summary>
+    public int HeldMilliseconds { get; init; }
+
+    /// <summary>FX-SECT-002 where the sections are made in generations, FX-SECT-003 where the opener holds them first, FX-SECT-001 otherwise.</summary>
+    public string ScenarioId => Generations > 1 ? "FX-SECT-002" : HeldMilliseconds > 0 ? "FX-SECT-003" : "FX-SECT-001";
 
     /// <summary>The sections' shared name, which the coordinator chooses and gives both processes; null for the coordinator.</summary>
     public string? Name { get; init; }
@@ -43,6 +50,8 @@ internal sealed record SectionOptions
 /// its size, and every handle it closed, by the section's name. Neither reads InterCat state. FX-SECT-002 runs the same in
 /// generations one after another in the same two processes, each generation's two sections under names of its own, made only
 /// once the last generation's were unmapped and closed, so the kernel may make them where the last generation's had been.
+/// FX-SECT-003 has the opener open both sections and hold its handles a while, the creator's views mapped, before its first
+/// view of either, so a capture begun meanwhile sees no handle to them made and no view of them mapped but the opener's.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static partial class SectionScenario
@@ -82,7 +91,22 @@ internal static partial class SectionScenario
             {
                 await opener.StandardInput.WriteLineAsync("go").ConfigureAwait(false);
                 await opener.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
-                failed = await opener.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not "done"
+
+                // FX-SECT-003's opener says once it holds both handles, the creator's views mapped: all a capture begun
+                // from then on never sees made. The coordinator says so in turn, to whoever launches the capture.
+                if (options.HeldMilliseconds > 0)
+                {
+                    failed = await opener.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not "held"
+                        ? "The opener exited before it held the sections."
+                        : null;
+                    if (failed is null)
+                    {
+                        Console.WriteLine("held");
+                        Console.Out.Flush();
+                    }
+                }
+
+                failed ??= await opener.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not "done"
                     ? "The opener exited before it was done with the sections."
                     : null;
             }
@@ -112,6 +136,7 @@ internal static partial class SectionScenario
             options.Bytes,
             options.Rounds,
             options.Generations,
+            options.HeldMilliseconds,
             options.Seed,
             coordinatorProcessId = Environment.ProcessId,
             creatorProcessId = creator.Id,
@@ -230,17 +255,34 @@ internal static partial class SectionScenario
     // One generation's two sections opened by their names, a view of each mapped and unmapped that many times, read through each.
     private static int OpenGeneration(SectionOptions options, string name, int generation, TruthLog truth, ref int differed)
     {
+        // FX-SECT-003's opener opens both sections first, says so, and holds its handles that long, the creator's views mapped,
+        // before its first view of either: a capture begun meanwhile sees neither process's handle made.
+        var held = new Dictionary<string, nint>(StringComparer.Ordinal);
+        if (options.HeldMilliseconds > 0)
+        {
+            foreach (string kind in new[] { MemoryKind, FileKind })
+            {
+                if (Open(options, name, generation, kind, truth) is not { } opened)
+                {
+                    return 1;
+                }
+
+                held[kind] = opened;
+            }
+
+            Console.WriteLine("held");
+            Console.Out.Flush();
+            Thread.Sleep(options.HeldMilliseconds);
+        }
+
         foreach (string kind in new[] { MemoryKind, FileKind })
         {
             string sectionName = SectionName(name, kind, generation, options.Generations);
-            nint section = OpenFileMappingW(FileMapAllAccess, false, sectionName);
-            if (section == 0)
+            if ((held.TryGetValue(kind, out nint heldSection) ? heldSection : Open(options, name, generation, kind, truth)) is not { } section)
             {
-                truth.Write(TruthEventKind.Failure, status: $"The {kind} could not be opened ({Marshal.GetLastPInvokeError()}).", resourceName: sectionName);
                 return 1;
             }
 
-            truth.Write(TruthEventKind.ObjectOpened, status: kind, resourceName: sectionName);
             byte[] expected = Bytes(options, kind);
             byte[] read = new byte[options.Bytes];
             for (int round = 1; round <= options.Rounds; round++)
@@ -267,6 +309,21 @@ internal static partial class SectionScenario
         }
 
         return 0;
+    }
+
+    // A section opened by its name and logged so; null, its failure logged, where it could not be.
+    private static nint? Open(SectionOptions options, string name, int generation, string kind, TruthLog truth)
+    {
+        string sectionName = SectionName(name, kind, generation, options.Generations);
+        nint section = OpenFileMappingW(FileMapAllAccess, false, sectionName);
+        if (section == 0)
+        {
+            truth.Write(TruthEventKind.Failure, status: $"The {kind} could not be opened ({Marshal.GetLastPInvokeError()}).", resourceName: sectionName);
+            return null;
+        }
+
+        truth.Write(TruthEventKind.ObjectOpened, status: kind, resourceName: sectionName);
+        return section;
     }
 
     /// <summary>A section's name: the run's name, its generation's where the run makes several, and the section's kind.</summary>
@@ -296,6 +353,7 @@ internal static partial class SectionScenario
             "--view-bytes", options.Bytes.ToString(CultureInfo.InvariantCulture),
             "--rounds", options.Rounds.ToString(CultureInfo.InvariantCulture),
             "--generations", options.Generations.ToString(CultureInfo.InvariantCulture),
+            "--held-ms", options.HeldMilliseconds.ToString(CultureInfo.InvariantCulture),
             "--seed", options.Seed.ToString(CultureInfo.InvariantCulture),
         })
         {

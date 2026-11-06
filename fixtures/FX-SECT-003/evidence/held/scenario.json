@@ -1,0 +1,18 @@
+{
+  "scenarioId": "FX-SECT-003",
+  "name": "Local\\InterCat-FX-SECT-003-647d200fb8c84da3a74c143b7c96ef73",
+  "sections": [
+    "Local\\InterCat-FX-SECT-003-647d200fb8c84da3a74c143b7c96ef73-memory",
+    "Local\\InterCat-FX-SECT-003-647d200fb8c84da3a74c143b7c96ef73-file"
+  ],
+  "bytes": 65536,
+  "rounds": 4,
+  "generations": 1,
+  "heldMilliseconds": 15000,
+  "seed": 20261106,
+  "coordinatorProcessId": 41848,
+  "creatorProcessId": 62764,
+  "openerProcessId": 45428,
+  "creatorExitCode": 0,
+  "openerExitCode": 0
+}

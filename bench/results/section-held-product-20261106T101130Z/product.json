@@ -1,0 +1,190 @@
+{
+  "question": "Whether a capture through the product - icat record under the opt-in sections profile - joins two processes\u0027 handles to a section it never saw made: FX-SECT-001\u0027s creator makes its two sections and maps a view of each, and its opener opens both and holds its handles while the capture is launched, then maps and unmaps its views and both close inside it; FX-SECT-001 itself, made and ended inside the same capture, is the control.",
+  "scenario": "FX-SECT-003",
+  "truth": {
+    "sections": 2,
+    "openerRounds": 4,
+    "viewBytes": 65536,
+    "heldMilliseconds": 15000
+  },
+  "profile": "sections",
+  "durationSeconds": 30,
+  "runs": [
+    {
+      "run": 1,
+      "health": {
+        "observedRecords": 1108974,
+        "admittedRecords": 193696,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 870025,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "order": {
+        "lastHeldHandleOrViewMadeUtc": "2026-11-06T10:11:30.9987057Z",
+        "firstSectionRecordOfTheSessionUtc": "2026-11-06T10:11:32.2951405Z",
+        "firstOpenerViewUtc": "2026-11-06T10:11:46.0048249Z",
+        "firstHeldCloseUtc": "2026-11-06T10:11:46.0061167Z",
+        "madeBeforeTheCaptureAndUsedAndClosedInIt": true
+      },
+      "held": {
+        "truthSections": 2,
+        "discoveredWithLifetime": 0,
+        "truthOperations": 28,
+        "observed": 16,
+        "boundToTheirSection": 16,
+        "closesNamingASection": 4,
+        "closesNumberedAlone": 4,
+        "numbersOfThoseCloses": 4,
+        "sectionsOneNumberByTheirViews": 2,
+        "ofThemBoundToBothProcesses": 2,
+        "truthViews": 20,
+        "viewsSeen": 16,
+        "startRundownRecordsOnThoseNumbers": 2,
+        "expectedMemberships": 4,
+        "resolvedMemberships": 4,
+        "falseMemberships": 0,
+        "gaps": [
+          "Its closes named it under 2 numbers, so no one number is the section."
+        ],
+        "ledgerRecords": 642,
+        "tier": "ExperimentalEvidence"
+      },
+      "control": {
+        "truthSections": 2,
+        "discoveredWithLifetime": 2,
+        "expectedMemberships": 4,
+        "resolvedMemberships": 4,
+        "falseMemberships": 0,
+        "truthOperations": 28,
+        "observed": 28,
+        "boundToTheirSection": 28,
+        "tier": "TopologyOnly"
+      }
+    },
+    {
+      "run": 2,
+      "health": {
+        "observedRecords": 1531085,
+        "admittedRecords": 226079,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 1248220,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "order": {
+        "lastHeldHandleOrViewMadeUtc": "2026-11-06T10:12:11.2856131Z",
+        "firstSectionRecordOfTheSessionUtc": "2026-11-06T10:12:12.1822741Z",
+        "firstOpenerViewUtc": "2026-11-06T10:12:26.2927085Z",
+        "firstHeldCloseUtc": "2026-11-06T10:12:26.2938241Z",
+        "madeBeforeTheCaptureAndUsedAndClosedInIt": true
+      },
+      "held": {
+        "truthSections": 2,
+        "discoveredWithLifetime": 0,
+        "truthOperations": 28,
+        "observed": 16,
+        "boundToTheirSection": 16,
+        "closesNamingASection": 4,
+        "closesNumberedAlone": 4,
+        "numbersOfThoseCloses": 4,
+        "sectionsOneNumberByTheirViews": 2,
+        "ofThemBoundToBothProcesses": 2,
+        "truthViews": 20,
+        "viewsSeen": 16,
+        "startRundownRecordsOnThoseNumbers": 2,
+        "expectedMemberships": 4,
+        "resolvedMemberships": 4,
+        "falseMemberships": 0,
+        "gaps": [
+          "Its closes named it under 2 numbers, so no one number is the section."
+        ],
+        "ledgerRecords": 642,
+        "tier": "ExperimentalEvidence"
+      },
+      "control": {
+        "truthSections": 2,
+        "discoveredWithLifetime": 2,
+        "expectedMemberships": 4,
+        "resolvedMemberships": 4,
+        "falseMemberships": 0,
+        "truthOperations": 28,
+        "observed": 28,
+        "boundToTheirSection": 28,
+        "tier": "TopologyOnly"
+      }
+    },
+    {
+      "run": 3,
+      "health": {
+        "observedRecords": 1417234,
+        "admittedRecords": 240713,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 1126421,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "order": {
+        "lastHeldHandleOrViewMadeUtc": "2026-11-06T10:12:51.1070915Z",
+        "firstSectionRecordOfTheSessionUtc": "2026-11-06T10:12:52.0515Z",
+        "firstOpenerViewUtc": "2026-11-06T10:13:06.1235899Z",
+        "firstHeldCloseUtc": "2026-11-06T10:13:06.1248804Z",
+        "madeBeforeTheCaptureAndUsedAndClosedInIt": true
+      },
+      "held": {
+        "truthSections": 2,
+        "discoveredWithLifetime": 0,
+        "truthOperations": 28,
+        "observed": 16,
+        "boundToTheirSection": 16,
+        "closesNamingASection": 4,
+        "closesNumberedAlone": 4,
+        "numbersOfThoseCloses": 4,
+        "sectionsOneNumberByTheirViews": 2,
+        "ofThemBoundToBothProcesses": 2,
+        "truthViews": 20,
+        "viewsSeen": 16,
+        "startRundownRecordsOnThoseNumbers": 2,
+        "expectedMemberships": 4,
+        "resolvedMemberships": 4,
+        "falseMemberships": 0,
+        "gaps": [
+          "Its closes named it under 2 numbers, so no one number is the section."
+        ],
+        "ledgerRecords": 642,
+        "tier": "ExperimentalEvidence"
+      },
+      "control": {
+        "truthSections": 2,
+        "discoveredWithLifetime": 2,
+        "expectedMemberships": 4,
+        "resolvedMemberships": 4,
+        "falseMemberships": 0,
+        "truthOperations": 28,
+        "observed": 28,
+        "boundToTheirSection": 28,
+        "tier": "TopologyOnly"
+      }
+    }
+  ],
+  "notes": [
+    "Each capture is the product\u0027s own icat record process, launched once the held workload said it held its sections, recording into a scratch session that is deleted once both workloads\u0027 ledgers are written.",
+    "A run\u0027s health is the capture\u0027s own report: what its sources lost, what its queue dropped, and what a source\u0027s gate did not admit, by reason."
+  ],
+  "schema": "intercat.section-held-product.v1",
+  "measuredUtc": "2026-11-06T10:13:30.1933511+00:00",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

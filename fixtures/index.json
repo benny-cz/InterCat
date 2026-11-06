@@ -1075,6 +1075,49 @@
       ]
     },
     {
+      "id": "FX-SECT-003",
+      "title": "Sections whose handles and first views were made before a capture began: no two processes' handles joined, none discovered",
+      "scenario": "Plan M6's section discovery work package (§4.2, ADR-092): FX-SECT-001's creator makes its two named sections and maps a view of each, and its opener opens both and holds its handles 15 seconds while a capture is launched, then maps and unmaps its views of them four times and both close inside it; FX-SECT-001 itself, made and ended inside the same capture, is the control. Recorded through icat record under the opt-in sections profile: the ambiguity case M6's exit asks for, sections whose handles the capture never saw made, met only at their closes, and whose creator's views it met only in its start's rundown.",
+      "milestone": "M6",
+      "mechanism": "SharedSection",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads section-share --held-ms 15000 --rounds 4 --view-bytes 65536, and section-share --rounds 4 --view-bytes 65536 as its control, under icat record --profile sections, by tools/InterCat.SectionProbe --product --held-ms 15000 --rounds 4",
+        "seed": 20261106,
+        "log": "fixtures/FX-SECT-003/evidence/held/truth-creator.jsonl",
+        "independence": "Each process of each workload logs every section it made or opened, every view it mapped or unmapped, with its size, and every handle it closed, by the section's name, the opener also the bytes it read back; none reads InterCat state, and the capture reads the kernel's records apart from them."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-SECT-003/evidence/measurement.json",
+        "note": "Three runs through icat record, machine-wide and nothing lost: every handle to the held sections and the creator's views of them made before the session's first section record and every close after it, and each of the four closes naming a held section numbered alone, a number no other record carries - so each section two numbers by its handles and none discovered - while its views were one number in both processes, the session's start rundown naming the creator's view with the value the opener's views carried; the control made inside the same capture was whole, two of two sections discovered with their lifetimes. A test checks the first run's order of events and its two ledgers against their truth."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-06",
+          "result": "Recorded by icat record under the opt-in sections profile, three times, machine-wide and nothing lost: of two sections whose handles and creator's views were made before the capture began, each close was numbered alone and none was discovered, though each one's views were one number in both processes by the start's rundown, while FX-SECT-001's sections made inside the same capture were each whole. No tier is assigned: the fixture measures what a capture refuses to join, not how much of the mechanism it observes."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two workloads' truth logs and scenarios of the first run - sections by the run's own names, views by their round and size, of seeded bytes - and the ledgers of their section records through the product and of other processes' on the run's numbers, by role - creator, opener - kind, numbers, size, extra information's high byte and time, and a name only where it names one of the run's sections, never a PID, a handle value or an address; and the three runs' capture health, order of events and evaluations."
+      },
+      "tests": [
+        "R22: FX-SECT-003's sections, each process's handle to them and the creator's views made before the capture began, are no one section through the product - each close numbered alone and none discovered, though the start's rundown held each one's views to one number in both processes - while the same capture's control is whole"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -3434,6 +3477,7 @@
         "R22: FX-SECT-001's committed ledger read through the section gates as it was delivered is its two sections - each section's handles in both processes one number, every view of a section in both processes one section number, and each mapping a view of its own though the opener mapped them all at one base",
         "R22: FX-SECT-001's handle records join each process's handles to a section by its object's address - each creation named by nothing but its close, typed Section - and every view each process mapped and unmapped is a record of that process with its size, each section's views naming one value in both processes, while one base held both sections' views and no record names a byte moved through one",
         "R22: FX-SECT-002's section records through the product keep each of 128 sections made and ended in 64 generations one number of its own by its handles and one by its views, bound to exactly the two processes, while the kernel made some at an object address, and gave the views of more a value, an earlier generation's section had held",
+        "R22: FX-SECT-003's sections, each process's handle to them and the creator's views made before the capture began, are no one section through the product - each close numbered alone and none discovered, though the start's rundown held each one's views to one number in both processes - while the same capture's control is whole",
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
         "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart",
         "R22: FX-SYNC-002's duplications are each raised in the process that asked for it - a push in its source, a pull in its target, one between two others in a third - at version 3, its fourth field naming its source process, with its source's handle and its target, and no creation of the handle made, whose close its target raises naming the object",

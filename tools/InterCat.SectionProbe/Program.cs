@@ -51,12 +51,14 @@ internal static class Program
         bool product = args.Contains("--product", StringComparer.Ordinal);
         if ((inspect ? 1 : 0) + (measure ? 1 : 0) + (product ? 1 : 0) != 1 || output is null)
         {
-            Console.Error.WriteLine("InterCat.SectionProbe --product --output <new directory> [--runs n] [--rounds n] [--view-bytes n] [--generations n] [--duration s]");
+            Console.Error.WriteLine("InterCat.SectionProbe --product --output <new directory> [--runs n] [--rounds n] [--view-bytes n] [--generations n | --held-ms ms] [--duration s]");
             Console.Error.WriteLine("  [--icat <InterCat.Cli.exe>] [--workload <InterCat.TestWorkloads.exe>]: records FX-SECT-001 through the");
             Console.Error.WriteLine("  product's own icat record under the opt-in sections profile, each run's session read into a ledger of");
             Console.Error.WriteLine("  its section records, evaluated against its truth as the product evaluates sections, then deleted.");
             Console.Error.WriteLine("  With --generations above 1 it records FX-SECT-002, each run watched by a private system logger of the");
             Console.Error.WriteLine("  probe's own too, which counts the sections the kernel made where an earlier generation's had been.");
+            Console.Error.WriteLine("  With --held-ms it records FX-SECT-003: icat record launched only once the workload holds its sections,");
+            Console.Error.WriteLine("  FX-SECT-001 run inside the same capture as the control, and each workload's ledger written apart.");
             Console.Error.WriteLine("InterCat.SectionProbe --inspect --output <new directory>");
             Console.Error.WriteLine("  Reads, without enabling any, the layouts this machine registers for the kernel object manager's");
             Console.Error.WriteLine("  and memory manager's classic events, and the schema of every registered provider whose name says");
@@ -89,13 +91,16 @@ internal static class Program
             string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
             string icat = Option(args, "--icat") ?? Path.Combine(root, "src", "InterCat.Cli", "bin", "Release", "net10.0", "InterCat.Cli.exe");
             string workload = Option(args, "--workload") ?? Path.Combine(root, "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe");
-            Dictionary<string, object?> measured = await Product.RunAsync(icat, workload, output,
-                int.Parse(Option(args, "--runs") ?? "3", CultureInfo.InvariantCulture),
-                int.Parse(Option(args, "--rounds") ?? "4", CultureInfo.InvariantCulture),
-                int.Parse(Option(args, "--view-bytes") ?? "65536", CultureInfo.InvariantCulture),
-                int.Parse(Option(args, "--generations") ?? "1", CultureInfo.InvariantCulture),
-                int.Parse(Option(args, "--duration") ?? "30", CultureInfo.InvariantCulture)).ConfigureAwait(false);
-            measured["schema"] = "intercat.section-product.v1";
+            int runs = int.Parse(Option(args, "--runs") ?? "3", CultureInfo.InvariantCulture);
+            int rounds = int.Parse(Option(args, "--rounds") ?? "4", CultureInfo.InvariantCulture);
+            int bytes = int.Parse(Option(args, "--view-bytes") ?? "65536", CultureInfo.InvariantCulture);
+            int duration = int.Parse(Option(args, "--duration") ?? "30", CultureInfo.InvariantCulture);
+            int held = int.Parse(Option(args, "--held-ms") ?? "0", CultureInfo.InvariantCulture);
+            Dictionary<string, object?> measured = held > 0
+                ? await Product.RunHeldAsync(icat, workload, output, runs, rounds, bytes, held, duration).ConfigureAwait(false)
+                : await Product.RunAsync(icat, workload, output, runs, rounds, bytes,
+                    int.Parse(Option(args, "--generations") ?? "1", CultureInfo.InvariantCulture), duration).ConfigureAwait(false);
+            measured["schema"] = held > 0 ? "intercat.section-held-product.v1" : "intercat.section-product.v1";
             measured["measuredUtc"] = DateTimeOffset.UtcNow;
             measured["build"] = CapabilityInventoryProbe.DescribeEnvironment().BuildId;
             measured["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";

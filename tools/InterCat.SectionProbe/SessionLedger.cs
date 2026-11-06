@@ -29,7 +29,14 @@ internal static class SessionLedger
 
     private static readonly string[] TruthFiles = ["truth-creator.jsonl", "truth-opener.jsonl"];
 
-    public static SectionCoverageResult Write(string session, string truth, string output)
+    // A truth log's lines, and the evaluation written beside a ledger, each enum by its name.
+    private static readonly JsonSerializerOptions Lines = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
+    private static readonly JsonSerializerOptions Indented = new(JsonSerializerDefaults.Web) { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
+
+    public static SectionCoverageResult Write(string session, string truth, string output) => Write(session, truth, output, out _);
+
+    /// <summary>As <see cref="Write(string, string, string)"/>, saying when the session's first section record was raised, on its calibrated clock.</summary>
+    public static SectionCoverageResult Write(string session, string truth, string output, out long firstRecordUtcTicks)
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         string[] sections;
@@ -40,17 +47,13 @@ internal static class SessionLedger
             sections = [.. scenario.RootElement.GetProperty("sections").EnumerateArray().Select(static name => name.GetString()!)];
         }
 
-        var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true };
-        json.Converters.Add(new JsonStringEnumConverter());
-        TruthRecord[] truthRecords =
-        [
-            .. TruthFiles.SelectMany(file => File.ReadAllLines(Path.Combine(truth, file))).Where(static line => line.Length > 0)
-                .Select(line => JsonSerializer.Deserialize<TruthRecord>(line, json)!),
-        ];
+        TruthRecord[] truthRecords = Truth(truth);
         Dictionary<int, string> roles = truthRecords.GroupBy(static record => record.ProcessId).ToDictionary(static group => group.Key, static group => group.First().Role);
 
         // Every section record of the session, each by the process the product binds it to, its numbers its source fields.
         List<SectionObservation> observed = Read(session, out long calibratedFrom, out long calibratedTo);
+        firstRecordUtcTicks = observed.Count > 0 ? observed[0].UtcTicks ?? 0 : 0;
+        long firstRecord = firstRecordUtcTicks;
         var settings = new SectionCoverageSettings
         {
             FixtureId = fixture,
@@ -115,9 +118,17 @@ internal static class SessionLedger
             OtherProcessesKept = others.Count,
             CalibratedFromUtcTicks = calibratedFrom,
             CalibratedToUtcTicks = calibratedTo,
-        }, json));
+            FirstSectionRecordUtcTicks = firstRecord,
+        }, Indented));
         return result;
     }
+
+    /// <summary>A run's truth: both processes' logs, every line a truth record.</summary>
+    public static TruthRecord[] Truth(string truth) =>
+    [
+        .. TruthFiles.SelectMany(file => File.ReadAllLines(Path.Combine(truth, file))).Where(static line => line.Length > 0)
+            .Select(static line => JsonSerializer.Deserialize<TruthRecord>(line, Lines)!),
+    ];
 
     /// <summary>The ledger read back as the session's records were, each role the process the truth names by it, others apart.</summary>
     public static List<SectionObservation> ReadLedger(string ledger, IReadOnlyDictionary<string, int> processes)

@@ -1,10 +1,11 @@
 # ADR-092: A section is measured twice, by its handles and by its views, and is topology at most
 
 - Status: accepted for M6's section discovery work package; FX-SECT-001 measured through the product, topology only on
-  10.0.26220.0-x64 (addendum); FX-SECT-002, sections made and ended in generations, each its own (second addendum)
+  10.0.26220.0-x64 (addendum); FX-SECT-002, sections made and ended in generations, each its own (second addendum);
+  FX-SECT-003, sections held across a capture's start, joined to no one section by their handles (third addendum)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
-- Relates to: ADR-084, ADR-088, ADR-089, ADR-090, plan M6, §14.2, R3, R18, R19, R22, P1, P3, P27, FX-SECT-001, FX-SECT-002
+- Relates to: ADR-084, ADR-088, ADR-089, ADR-090, plan M6, §14.2, R3, R18, R19, R22, P1, P3, P27, FX-SECT-001, FX-SECT-002, FX-SECT-003
 
 ## Context
 
@@ -89,3 +90,28 @@ gave a value, an earlier generation's section held - counts alone, never an addr
   generation's view had held in its process, each a view of its own.
 - A test evaluates the first run's committed ledger against its truth and holds it to the probe's counts of the same run;
   the build's per-build coverage takes sections' tier, topology only, from FX-SECT-002, the mechanism's latest fixture.
+
+## Third addendum: FX-SECT-003, sections held across a capture's start (revision 983)
+
+FX-SECT-003 is the mechanism's ambiguity case. FX-SECT-001's creator makes its two sections and maps a view of each, and its
+opener opens both and holds its handles while a capture is launched; inside it the opener maps and unmaps its views of them
+four times, and both processes unmap and close. FX-SECT-001 itself, made and ended inside the same capture, is the control.
+`tools/InterCat.SectionProbe --product --held-ms` launches `icat record` only once the workload says its opener holds both
+sections, and ledgers each workload's records of the one session apart.
+
+- In three runs, machine-wide and loss-free - 193,696, 226,079, 240,713 records admitted, none dropped, none undecodable -
+  every handle to the held sections and the creator's views of them were made 1.3, 0.9 and 0.9 seconds before the
+  session's first section record, and the opener's views and every close came after it.
+- By its handles each held section is two numbers: the handle gate met each close of an address no followed section held
+  and numbered it alone (ADR-090), so each of the four closes naming a held section carries a number no other record of
+  the session does, and decision 1 finds no one number the section. None is discovered, and no two processes' handles
+  to it are joined by its name - a name is never a correlation key by itself.
+- By its views each is one number in both processes: the session's start rundown names the creator's view, mapped before
+  it began, with the value its section's views carry, and the view gate begins that view and numbers its section by the
+  value while it holds it, so the opener's views mapped inside the capture join it. The 16 of the two sections' 20 truth
+  views the capture saw mapped and unmapped - the opener's - are each bound to their section, and both processes to each:
+  memberships its views resolve, though the capture never saw a section made, nor the creator's view mapped but as the
+  rundown's inventory, so no lifetime is.
+- The control made inside the same capture was whole each time: two of two sections discovered with their lifetimes, 28
+  of 28 operations seen and bound.
+- No tier is assigned to the fixture: it measures what a capture refuses to join, not how much of the mechanism it observes.

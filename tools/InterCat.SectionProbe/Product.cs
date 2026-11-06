@@ -12,7 +12,8 @@ namespace InterCat.SectionProbe;
 /// opt-in sections profile, the workload started once its session runs, and the ledger of the run's section records read from
 /// the session it published and evaluated against the run's truth. Each run's session is read and then deleted, as it holds
 /// every process's views and section handles on the machine; what is kept is each run's ledger, evaluation and truth, and the
-/// capture's own counters.
+/// capture's own counters. FX-SECT-002 runs the same in generations, watched by the probe's own session too; FX-SECT-003's
+/// workload holds its sections while the capture is launched (<see cref="RunHeldAsync"/>).
 /// </summary>
 internal static partial class Product
 {
