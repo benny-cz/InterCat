@@ -87,6 +87,40 @@ public sealed class ResourceInstanceTests
         Assert.Equal(@"\", ResourceNames.NamespaceOf(@"\Root"));
     }
 
+    [Fact(DisplayName = "R3: an AF_UNIX socket is a resource with the traffic its records carried, one that carried none is idle, and a synchronization object's traffic is none recorded, never idle")]
+    public void ASocketCarriesItsTraffic()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = UnixSockets();
+        Publish(session.Store, rows, fields: fields);
+        (IReadOnlyList<ResourceInstance> resources, ProcessInstanceIndex processes) = Derive(session.Store);
+        ResourceInstance[] sockets = [.. resources.Where(resource => resource.Mechanism == Mechanism.UnixDomainSocket)];
+
+        // Each socket's records are its own: the TCP send whose connection id is 5 is none of them.
+        Assert.Equal([(5L, 3L), (6L, 5L), (7L, 5L), (8L, 1L)], sockets.Select(socket => (socket.Number, socket.Records)));
+        Assert.Equal(
+            [
+                (5L, new ResourceTraffic(0, 0, 0, 0, 0)), (6L, new ResourceTraffic(1, 1, 96, 120, 0)),
+                (7L, new ResourceTraffic(1, 1, 120, 0, 1)), (8L, new ResourceTraffic(1, 0, 64, 0, 0)),
+            ],
+            sockets.Select(socket => (socket.Number, socket.Traffic!)));
+        Assert.Equal([true, false, false, false], sockets.Select(socket => socket.Traffic!.Idle));
+
+        // A socket created and closed in the capture is seen whole; one made before it, seen only sending, is neither.
+        Assert.Equal([(true, true), (true, true), (true, true), (false, false)],
+            sockets.Select(socket => (socket.FirstHandleMade, socket.LastHandleClosed)));
+
+        // Its holder is the process its records name, its create a handle made and its close one closed; it has no name.
+        ResourceInstance listener = sockets[0];
+        Assert.Equal((100, 1, 0, 1, 0), listener.Holders.Select(holder => (processes.Find(holder.Process)!.ProcessId, holder.HandlesMade,
+            holder.HandlesDuplicated, holder.HandlesClosed, holder.HeldAtStop)).Single());
+        Assert.Equal((null, null), (listener.Name, listener.TypeName));
+
+        // A synchronization object records no transfer, so its traffic is none recorded - null - never an idle zero.
+        Assert.Null(Assert.Single(resources, resource => resource.Mechanism == Mechanism.Synchronization).Traffic);
+        Assert.Equal("resource-instances-v2", ResourceInstanceIndex.Rule);
+    }
+
     [Fact(DisplayName = "R3: a later holder of a reused PID holds a resource only as a candidate, which the default policy counts by that reason and includes when asked")]
     public void ACandidateHolderIsCountedByThePolicy()
     {

@@ -1083,6 +1083,111 @@ internal static class TestSessions
             ]);
     }
 
+    /// <summary>Winsock AFD's provider, whose gate admits the calls of a socket created AF_UNIX (ADR-073).</summary>
+    public static readonly Guid AfdProvider = Guid.Parse("e53c6823-7bb8-44bb-90dc-3f86090d48a6");
+
+    /// <summary>
+    /// An AF_UNIX socket's record as Winsock AFD's gate admits one (ADR-073, ADR-074): no endpoint, its owner the process the
+    /// socket's create named, a send's or a receive's bytes the transport's where measured and unexposed where not. Its
+    /// socket's number is the <see cref="SourceField.ConnectionId"/> source field the gate writes.
+    /// </summary>
+    public static ObservationRowV1 UnixSocket(long ticks, ObservationKind kind, int owner, ulong ordinal, long? bytes = null)
+    {
+        bool transfer = kind is ObservationKind.Send or ObservationKind.Receive;
+        return new()
+        {
+            RawStreamId = 1,
+            RawSourceEpoch = 1,
+            RawRecordOrdinal = ordinal,
+            FactKey = FactKey.Create("unix-socket-operation"),
+            ProviderId = AfdProvider,
+            EventId = kind switch
+            {
+                ObservationKind.Open => (ushort)1000,
+                ObservationKind.Close => (ushort)1001,
+                ObservationKind.Send => (ushort)1003,
+                ObservationKind.Receive => (ushort)1004,
+                ObservationKind.Connect => (ushort)1017,
+                ObservationKind.Accept => (ushort)1023,
+                _ => (ushort)1029,
+            },
+            DescriptorVersion = 0,
+            SchemaFingerprint = "sha256:" + new string('f', 64),
+            Opcode = 0,
+            NativeTicks = ticks,
+            HeaderProcessId = owner,
+            HeaderThreadId = owner + 1,
+            ProcessorNumber = 0,
+            Mechanism = Mechanism.UnixDomainSocket,
+            Layer = ObservationLayer.Transport,
+            Kind = kind,
+            Direction = kind switch
+            {
+                ObservationKind.Send or ObservationKind.Connect => Direction.Outbound,
+                ObservationKind.Receive or ObservationKind.Accept => Direction.Inbound,
+                _ => Direction.DirectionNotApplicable,
+            },
+            OwnerProcessId = owner,
+            ByteValue = transfer ? bytes : null,
+            ByteDomain = transfer ? ByteDomain.TransportObserved : null,
+            AccountingSide = !transfer ? null : kind == ObservationKind.Send ? AccountingSide.SendSide : AccountingSide.ReceiveSide,
+            MeasurementUnit = transfer ? MeasurementUnit.Bytes : null,
+            ByteAvailability = !transfer ? FieldAvailability.NotApplicable
+                : bytes is null ? FieldAvailability.NotExposed : FieldAvailability.Present,
+            StatusAvailability = FieldAvailability.NotApplicable,
+            AttributionQuality = QualityLevel.Proven,
+            CorrelationQuality = QualityLevel.UnknownQuality,
+            MeasurementQuality = bytes is null ? QualityLevel.UnknownQuality : QualityLevel.Proven,
+            TimingQuality = QualityLevel.Proven,
+        };
+    }
+
+    /// <summary>
+    /// server.exe, PID 100, and client.exe, PID 200, and their AF_UNIX sockets: 5, the server's, bound and closed with no
+    /// transfer, idle; 6, the server's, which accepted, received 120 B and sent 96 B; 7, the client's, which connected, sent
+    /// 120 B and received a reply whose size was not measured; and 8, the client's, made before the capture, seen only
+    /// sending 64 B. A send its gate numbered zero is no socket's, nor is a TCP send whose connection id is 5, and object 1
+    /// is a synchronization object.
+    /// </summary>
+    public static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) UnixSockets()
+    {
+        var rows = new List<ObservationRowV1>
+        {
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\server.exe" },
+            Lifecycle(1, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\client.exe" },
+        };
+        var fields = new List<SourceFieldRowV1>();
+        ulong ordinal = 10;
+        void Socket(long number, ObservationRowV1 row)
+        {
+            rows.Add(row);
+            fields.Add(Field(row, SourceField.ConnectionId, number));
+        }
+
+        Socket(5, UnixSocket(10, ObservationKind.Open, 100, ordinal++));
+        Socket(5, UnixSocket(11, ObservationKind.Bind, 100, ordinal++));
+        Socket(6, UnixSocket(12, ObservationKind.Open, 100, ordinal++));
+        Socket(6, UnixSocket(13, ObservationKind.Accept, 100, ordinal++));
+        Socket(7, UnixSocket(14, ObservationKind.Open, 200, ordinal++));
+        Socket(7, UnixSocket(15, ObservationKind.Connect, 200, ordinal++));
+        Socket(7, UnixSocket(19, ObservationKind.Send, 200, ordinal++, 120));
+        Socket(6, UnixSocket(20, ObservationKind.Receive, 100, ordinal++, 120));
+        Socket(6, UnixSocket(21, ObservationKind.Send, 100, ordinal++, 96));
+        Socket(7, UnixSocket(22, ObservationKind.Receive, 200, ordinal++));
+        Socket(8, UnixSocket(30, ObservationKind.Send, 200, ordinal++, 64));
+        Socket(0, UnixSocket(31, ObservationKind.Send, 200, ordinal++, 7));
+        Socket(5, UnixSocket(40, ObservationKind.Close, 100, ordinal++));
+        Socket(6, UnixSocket(41, ObservationKind.Close, 100, ordinal++));
+        Socket(7, UnixSocket(42, ObservationKind.Close, 200, ordinal++));
+        Socket(5, Transfer(16, ObservationKind.Send, AccountingSide.SendSide, 10, 100, ordinal++).Between("127.0.0.1:50000", "127.0.0.1:8080"));
+
+        ObservationRowV1 made = Handle(17, HandleCreated, 100, null, ordinal++);
+        ObservationRowV1 closed = Handle(18, HandleClosed, 100, null, ordinal++) with { ResourceName = ReadyObject };
+        rows.AddRange([made, closed]);
+        fields.AddRange([Field(made, SourceField.SynchronizationObjectNumber, 1), Field(closed, SourceField.SynchronizationObjectNumber, 1)]);
+        return ([.. rows.OrderBy(row => row.NativeTicks).ThenBy(row => row.RawRecordOrdinal)], [.. fields]);
+    }
+
     /// <summary>The name <see cref="NamedObjects"/>' event is closed by: a session's local object, Ready.</summary>
     public const string ReadyObject = @"\Sessions\1\BaseNamedObjects\Ready";
 

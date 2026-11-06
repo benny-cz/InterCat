@@ -925,6 +925,7 @@ Revision 999 groups metrics by service container (ADR-096): each host of the ser
 Revision 1000 groups the machine rung and icat export by service container (ADR-096's addendum): each host of the services listed a row of its own, every other process its executable's row, the processes a listed service may have run in one row apart, with their peers and call times.
 Revision 1001 lets the window group by service container and an investigation keep it (ADR-096's second addendum): Group by offers Service container where the capture listed its services, and workspace-v24 keeps the grouping in a member's layout.
 Revision 1002 derives resource instances (ADR-097, contracts/resources-v1.md): each named synchronization object and each section by its handles, the number its gate gave it from its first record to its last, named as its closes name it, held by the processes its records bind to, and listed by icat resources by namespace.
+Revision 1003 makes AF_UNIX sockets resource instances with the traffic they carried (ADR-097's addendum): icat resources --idle lists the discovered resources that carried none apart from the traffic observed, as M6 asks.
 
 ## Revisions, a paragraph each, in order
 
@@ -4616,3 +4617,10 @@ handle made before the capture is seen only at its close, one held at the stop i
 stop names its number, its name as its closes and the stop's rundown carry it, kept as recorded and split into its
 namespace and leaf, and its holders, the process instances its records bind to as the evidence policy admits. `icat
 resources` lists them by the namespace their names lie in. Their records are handles, never traffic.
+
+Revision 1003 brings M6's discovered-but-idle resources to the command line (ADR-097's addendum). An AF_UNIX socket is
+a resource instance by the number its gate gave it, read on AF_UNIX records alone since TCP's connection ids share the
+field: its lifetime, its holder, and the sends, receives and bytes it carried. One that carried none was idle -
+discovered, no traffic observed - and `icat resources --idle` lists those apart from the resources that carried
+traffic. A synchronization object's or a section's traffic is none recorded, never idle, since their mechanisms record
+no transfer. `resource-instances-v2` derives them; version 1 derived no socket.

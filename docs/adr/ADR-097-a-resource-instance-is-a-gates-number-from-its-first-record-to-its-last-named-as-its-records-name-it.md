@@ -1,7 +1,8 @@
 # ADR-097: A resource instance is a gate's number from its first record to its last, named as its records name it
 
 - Status: accepted for M6's resource lifetimes; named synchronization objects and sections by their handles are derived
-  and listed by `icat resources` (revision 1002)
+  and listed by `icat resources` (revision 1002), and AF_UNIX sockets with their traffic, an idle one listed apart
+  (revision 1003)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-083, ADR-084, ADR-090, ADR-092, plan M6, §7.1, §7.2, `identity-v1`, `entities-v1` §8, R3, P27
@@ -45,3 +46,14 @@ at most (ADR-084, ADR-092). No product derivation read the numbers: `icat proces
   lists them by mechanism and by the namespace their names lie in, and its document keeps each name as recorded.
 - Five tests hold the derivation and the command; 20 mutations of the path are caught.
 - AF_UNIX sockets, sections by their views, and the window's browsing of resources by namespace are the next slices'.
+
+## Addendum: AF_UNIX sockets carry their traffic, and an idle one is listed apart (revision 1003)
+
+An AF_UNIX socket is a resource instance too, by the number the AF_UNIX gate writes over its address (ADR-073), read
+as `ConnectionId` on AF_UNIX records alone, since TCP's connection ids share the field: its lifetime from its first
+record to its last, its start witnessed where its create was seen, its holder the process its records name, and no
+name, since no record names its path. Its sends and receives are its traffic, their bytes the transport's where
+measured (ADR-076); one that carried none was idle - discovered, its traffic none observed - which `icat resources
+--idle` lists apart from the traffic observed. A synchronization object's or a section's traffic is none recorded,
+never idle: their mechanisms record no transfer (R3). `resource-instances-v2` derives them; version 1 derived no
+socket. 16 mutations of the path are caught.

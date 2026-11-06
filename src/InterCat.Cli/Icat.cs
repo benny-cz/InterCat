@@ -276,9 +276,11 @@ internal static class Icat
         ConsoleUi.Line("      The ports its processes accepted TCP connections at, each with the process that accepted");
         ConsoleUi.Line("      them and who connected - its processes, other hosts or unobserved ones - the busiest first.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat resources <directory> [--mechanism synchronization|section] [--namespace <directory>] [--json]");
-        ConsoleUi.Line("      The named synchronization objects and sections its processes held, each from the first handle");
-        ConsoleUi.Line("      seen made to the close of the last, by the object directory its name lies in.");
+        ConsoleUi.Line("  icat resources <directory> [--mechanism synchronization|section|socket] [--namespace <directory>]");
+        ConsoleUi.Line("                 [--idle] [--json]");
+        ConsoleUi.Line("      The named synchronization objects, sections and AF_UNIX sockets its processes held, each from");
+        ConsoleUi.Line("      its first record to its last, by the object directory its name lies in, with the traffic each");
+        ConsoleUi.Line("      carried; --idle those that could carry traffic and carried none.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat patterns <directory> [--limit <n> | --pattern <rank>] [--all] [--evidence-policy <policy>]");
         ConsoleUi.Line("                [--json]");

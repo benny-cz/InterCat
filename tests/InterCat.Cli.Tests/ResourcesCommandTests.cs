@@ -26,19 +26,20 @@ public sealed class ResourcesCommandTests
         Assert.Equal(InterCatExitCode.Success, code);
         string text = output.ReplaceLineEndings("\n");
         Assert.Contains("\nRESOURCES\n", text, StringComparison.Ordinal);
-        Assert.Matches(@"\n  Resources +4 synchronization objects and 1 section, 4 named\n", text);
+        Assert.Matches(@"\n  Resources +4 synchronization objects, 1 section; 4 named\n", text);
+        Assert.Matches(@"\n  Traffic +5 of mechanisms recording none\n", text);
 
         // The namespaces, the busiest first, to browse by.
         Assert.Matches(@"\n\s*\\Sessions\\1\\BaseNamedObjects\s+3\s*\n", text);
         Assert.Matches(@"\n\s*\\BaseNamedObjects\\Global\s+1\s*\n", text);
 
         // Each resource by its number, type, namespace and leaf, whose it was, and which of its ends were seen.
-        Assert.Matches(@"Synchronization object 1\s+Event\s+\\Sessions\\1\\BaseNamedObjects\s+Ready\s+PID 100, PID 200\s+\S+ s\s+\S+ s, closed\s+4", text);
+        Assert.Matches(@"Synchronization object 1\s+Event\s+\\Sessions\\1\\BaseNamedObjects\s+Ready\s+PID 100, PID 200\s+\S+ s\s+\S+ s, closed\s+none recorded\s+4", text);
         Assert.Matches(@"Synchronization object 2\s+Mutant\s+\\BaseNamedObjects\\Global\s+Lock\s+PID 300\s+\S+ s, made before\s+\S+ s, closed", text);
         Assert.Matches(@"Synchronization object 3\s+Event\s+\\Sessions\\1\\BaseNamedObjects\s+Held\s+PID 300\s+\S+ s\s+\S+ s, held at the stop", text);
         Assert.Matches(@"Synchronization object 4\s+Event\s+-\s+unnamed\s+PID 100 · 1 record bound to none\s+\S+ s\s+\S+ s, its close unseen", text);
         Assert.Matches(@"Section 9\s+Section\s+\\Sessions\\1\\BaseNamedObjects\s+SharedMap\s+PID 100", text);
-        Assert.Contains("Its records are handles, not traffic", text, StringComparison.Ordinal);
+        Assert.Contains("A synchronization object's and a section's records are handles, not traffic", text, StringComparison.Ordinal);
 
         // --namespace keeps those named in a directory or beneath it, its case as the object manager ignores it; and
         // --mechanism one mechanism's.
@@ -70,7 +71,40 @@ public sealed class ResourcesCommandTests
         // A mechanism it does not list is refused, by name.
         (code, _, string said) = await Run("resources", session.Path, "--mechanism", "pipe");
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
-        Assert.Contains("--mechanism expects synchronization or section; 'pipe' is not one.", said, StringComparison.Ordinal);
+        Assert.Contains("--mechanism expects synchronization, section or socket; 'pipe' is not one.", said, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R21: icat resources says the traffic each AF_UNIX socket carried, lists the idle ones apart with --idle, and says a synchronization object's traffic is none recorded")]
+    public async Task IdleSocketsAreListedApart()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = UnixSockets();
+        Publish(session.Store, rows, fields: fields);
+        session.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string output, _) = await Run("resources", session.Path);
+        Assert.Equal(InterCatExitCode.Success, code);
+        string text = output.ReplaceLineEndings("\n");
+        Assert.Matches(@"\n  Resources +1 synchronization object, 4 Unix sockets; 1 named\n", text);
+        Assert.Matches(@"\n  Traffic +3 carried traffic, 1 idle, 1 of a mechanism recording none\n", text);
+        Assert.Matches(@"Unix socket 5\s+-\s+-\s+unnamed\s+server\.exe · PID 100\s+\S+ s\s+\S+ s, closed\s+idle\s+3", text);
+        Assert.Matches(@"Unix socket 6\s+-\s+-\s+unnamed\s+server\.exe · PID 100\s+.+\s+96 B sent, 120 B received\s+5", text);
+        Assert.Matches(@"Unix socket 7\s+.+\s+120 B sent, 0 B received · 1 transfer unmeasured\s+5", text);
+        Assert.Matches(@"Unix socket 8\s+-\s+-\s+unnamed\s+client\.exe · PID 200\s+\S+ s, made before\s+\S+ s, its close unseen\s+64 B sent, 0 B received\s+1", text);
+        Assert.Matches(@"Synchronization object 1\s+.+\s+none recorded\s+2", text);
+
+        // --idle keeps the resources that could carry traffic and carried none: the bound socket alone.
+        (code, output, _) = await Run("resources", session.Path, "--idle");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Equal(["Unix socket 5"], Regex.Matches(output, @"(?m)^\s*((?:Unix socket|Section|Synchronization object) \d+)")
+            .Select(match => match.Groups[1].Value));
+        (code, output, _) = await Run("resources", session.Path, "--mechanism", "socket", "--json");
+        using JsonDocument json = JsonDocument.Parse(output);
+        JsonElement unmeasured = json.RootElement.GetProperty("listed").EnumerateArray().Single(item => item.GetProperty("number").GetInt64() == 7)
+            .GetProperty("traffic");
+        Assert.Equal((1L, 1L, 120L, 0L, 1L, false), (unmeasured.GetProperty("sends").GetInt64(), unmeasured.GetProperty("receives").GetInt64(),
+            unmeasured.GetProperty("bytesSent").GetInt64(), unmeasured.GetProperty("bytesReceived").GetInt64(),
+            unmeasured.GetProperty("unmeasuredTransfers").GetInt64(), unmeasured.GetProperty("idle").GetBoolean()));
     }
 
     [Fact(DisplayName = "R21: icat resources says a session whose records number no resource lists none, which is not none on the machine")]

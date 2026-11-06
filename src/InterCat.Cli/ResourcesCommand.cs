@@ -8,9 +8,10 @@ using InterCat.Storage;
 namespace InterCat.Cli;
 
 /// <summary>
-/// A session's resource instances (`contracts/resources-v1.md`, ADR-097): each named synchronization object and each section
-/// by its handles, from its first record to its last, with its type, its name split into its namespace and its leaf, and
-/// the processes holding it - and the namespaces they lie in, to browse by. Their records are handles, never traffic.
+/// A session's resource instances (`contracts/resources-v1.md`, ADR-097): each named synchronization object, each section
+/// by its handles and each AF_UNIX socket, from its first record to its last, with its type, its name split into its
+/// namespace and its leaf, the processes holding it and the traffic it carried - and the namespaces they lie in, to browse
+/// by. A resource whose mechanism records transfers and which carried none was idle, listed apart with --idle.
 /// </summary>
 internal static class ResourcesCommand
 {
@@ -33,6 +34,7 @@ internal static class ResourcesCommand
         string? mechanismText = command.TakeOption("--mechanism");
         string? namespaceText = command.TakeOption("--namespace");
         string? limitText = command.TakeOption("--limit");
+        bool idle = command.TryTakeFlag("--idle");
         bool json = command.TryTakeFlag("--json");
         string? directory = command.TakePositional();
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
@@ -50,11 +52,12 @@ internal static class ResourcesCommand
             null => null,
             "synchronization" => Mechanism.Synchronization,
             "section" => Mechanism.SharedSection,
+            "socket" => Mechanism.UnixDomainSocket,
             _ => Mechanism.UnknownMechanism,
         };
         if (mechanism == Mechanism.UnknownMechanism)
         {
-            ConsoleUi.Failure(CommandLine.Expects("--mechanism", mechanismText, ["synchronization", "section"]));
+            ConsoleUi.Failure(CommandLine.Expects("--mechanism", mechanismText, ["synchronization", "section", "socket"]));
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -97,7 +100,8 @@ internal static class ResourcesCommand
         ResourceInstance[] kept =
         [
             .. resources.Instances.Where(instance => (mechanism is null || instance.Mechanism == mechanism)
-                && (within is null || instance.Name is { } name && In(name, within))),
+                && (within is null || instance.Name is { } name && In(name, within))
+                && (!idle || instance.Traffic is { Idle: true })),
         ];
         (string Namespace, int Resources)[] namespaces =
         [
@@ -118,6 +122,7 @@ internal static class ResourcesCommand
                 resources.Generation,
                 Mechanism = mechanismText,
                 Namespace = within,
+                Idle = idle,
                 Resources = kept.Length,
                 Unnamed = kept.Count(instance => instance.Name is null),
                 Namespaces = namespaces.Select(entry => new { Namespace = entry.Namespace.Length == 0 ? null : entry.Namespace, entry.Resources }),
@@ -146,6 +151,17 @@ internal static class ResourcesCommand
                         holder.HandlesClosed,
                         holder.HeldAtStop,
                     }),
+                    Traffic = instance.Traffic is { } traffic
+                        ? new
+                        {
+                            traffic.Sends,
+                            traffic.Receives,
+                            traffic.BytesSent,
+                            traffic.BytesReceived,
+                            traffic.UnmeasuredTransfers,
+                            traffic.Idle,
+                        }
+                        : null,
                     Unbound = instance.Unbound.ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
                     instance.Records,
                 }),
@@ -161,22 +177,41 @@ internal static class ResourcesCommand
             ConsoleUi.Field("Namespace", within + ", and beneath it");
         }
 
+        if (idle)
+        {
+            ConsoleUi.Field("Kept", "the resources whose mechanism records transfers and which carried none: idle");
+        }
+
         if (kept.Length == 0)
         {
             ConsoleUi.Note(within is not null
                 ? $"No resource of this session is named in {within} or beneath it."
-                : "No record of this session numbers a named synchronization object or a section: a capture collects their "
-                    + "handles only under a profile admitting their sources, so none listed is not none on the machine.");
+                : idle
+                ? "No resource of this session that could carry traffic was idle: each carried a transfer the capture saw, or "
+                    + "none of its mechanisms records one."
+                : "No record of this session numbers a named synchronization object, a section or an AF_UNIX socket: a capture "
+                    + "collects them only under a profile admitting their sources, so none listed is not none on the machine.");
             return InterCatExitCode.Success;
         }
 
         int objects = kept.Count(instance => instance.Mechanism == Mechanism.Synchronization);
-        int sections = kept.Length - objects;
-        ConsoleUi.Field("Resources", string.Join(" and ", new[]
+        int sections = kept.Count(instance => instance.Mechanism == Mechanism.SharedSection);
+        int sockets = kept.Count(instance => instance.Mechanism == Mechanism.UnixDomainSocket);
+        ConsoleUi.Field("Resources", string.Join(", ", new[]
         {
             objects > 0 ? CountText.Of(objects, "synchronization object") : null,
             sections > 0 ? CountText.Of(sections, "section") : null,
-        }.OfType<string>()) + ", " + CountText.Of(kept.Length - kept.Count(instance => instance.Name is null), "named", "named"));
+            sockets > 0 ? CountText.Of(sockets, "Unix socket") : null,
+        }.OfType<string>()) + "; " + CountText.Of(kept.Length - kept.Count(instance => instance.Name is null), "named", "named"));
+        int carried = kept.Count(instance => instance.Traffic is { Idle: false });
+        int idled = kept.Count(instance => instance.Traffic is { Idle: true });
+        int unrecorded = kept.Count(instance => instance.Traffic is null);
+        ConsoleUi.Field("Traffic", string.Join(", ", new[]
+        {
+            carried > 0 ? CountText.Of(carried, "carried traffic", "carried traffic") : null,
+            idled > 0 ? CountText.Of(idled, "idle", "idle") : null,
+            unrecorded > 0 ? CountText.Of(unrecorded, "of a mechanism recording none", "of mechanisms recording none") : null,
+        }.OfType<string>()));
         if (namespaces.Length > 0 && within is null)
         {
             ConsoleUi.Table(
@@ -186,11 +221,11 @@ internal static class ResourcesCommand
         }
 
         ConsoleUi.Table(
-            ["Resource", "Type", "Namespace", "Name", "Held by", "First seen", "Last seen", "Records"],
+            ["Resource", "Type", "Namespace", "Name", "Held by", "First seen", "Last seen", "Traffic", "Records"],
             [.. kept.Take(limit).Select(instance => (IReadOnlyList<string>)
             [
                 Kind(instance.Mechanism) + " " + instance.Number.ToString(CultureInfo.InvariantCulture),
-                instance.TypeName ?? "not named",
+                instance.TypeName ?? (instance.Mechanism == Mechanism.UnixDomainSocket ? "-" : "not named"),
                 instance.Name is { } name ? ResourceNames.NamespaceOf(name) ?? "-" : "-",
                 instance.Name is { } leaf ? ResourceNames.LeafOf(leaf) + (instance.Names.Count > 1
                     ? string.Create(CultureInfo.CurrentCulture, $" (and {instance.Names.Count - 1:N0} more names)")
@@ -199,6 +234,7 @@ internal static class ResourcesCommand
                 Seconds(resources, instance.FirstNativeTicks) + (instance.FirstHandleMade ? string.Empty : ", made before"),
                 Seconds(resources, instance.LastNativeTicks) + (instance.HeldAtStop ? ", held at the stop"
                     : instance.LastHandleClosed ? ", closed" : ", its close unseen"),
+                Traffic(instance.Traffic),
                 ConsoleUi.Count(instance.Records),
             ])]);
         if (kept.Length > limit)
@@ -209,10 +245,21 @@ internal static class ResourcesCommand
 
         ConsoleUi.Note("Each resource is the number the capture gave one object from the first handle it saw made to the close "
             + "of the last, never its kernel address, which a later object reuses; its name is the one its closes and the "
-            + "stop's rundown carry, and a resource no record named is unnamed. Its records are handles, not traffic: no "
-            + "record of these mechanisms carries a signal, a wait or a byte through shared memory.");
+            + "stop's rundown carry, and a resource no record named is unnamed. A synchronization object's and a section's "
+            + "records are handles, not traffic: none carries a signal, a wait or a byte through shared memory. A Unix "
+            + "socket's sends and receives are its traffic, and one that carried none was idle; --idle lists those alone.");
         return InterCatExitCode.Success;
     }
+
+    // A resource's traffic in a cell: its bytes each way and its transfers that measured none; idle where it carried none;
+    // and none recorded where its mechanism records no transfer, never idle (R3).
+    private static string Traffic(ResourceTraffic? traffic) => traffic switch
+    {
+        null => "none recorded",
+        { Idle: true } => "idle",
+        _ => ConsoleUi.Bytes(traffic.BytesSent) + " sent, " + ConsoleUi.Bytes(traffic.BytesReceived) + " received"
+            + (traffic.UnmeasuredTransfers > 0 ? " · " + CountText.Of(traffic.UnmeasuredTransfers, "transfer") + " unmeasured" : string.Empty),
+    };
 
     /// <summary>Whether <paramref name="name"/> lies in the object directory <paramref name="within"/> or beneath it.</summary>
     private static bool In(string name, string within) =>
@@ -220,7 +267,12 @@ internal static class ResourcesCommand
         && (string.Equals(directory, within, StringComparison.OrdinalIgnoreCase)
             || directory.StartsWith(within + "\\", StringComparison.OrdinalIgnoreCase));
 
-    private static string Kind(Mechanism mechanism) => mechanism == Mechanism.SharedSection ? "Section" : "Synchronization object";
+    private static string Kind(Mechanism mechanism) => mechanism switch
+    {
+        Mechanism.SharedSection => "Section",
+        Mechanism.UnixDomainSocket => "Unix socket",
+        _ => "Synchronization object",
+    };
 
     private static ProcessInstance Instance(SessionResources resources, ProcessInstanceId id) => resources.Processes.Instances[resources.Processes.PositionOf(id)];
 
@@ -245,13 +297,14 @@ internal static class ResourcesCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat resources <session-directory> [--mechanism synchronization|section] [--namespace <directory>]");
-        ConsoleUi.Line("               [--limit <n>] [--json]");
-        ConsoleUi.Line("  The session's resources: each named synchronization object, and each section by its handles, from");
-        ConsoleUi.Line("  the first handle the capture saw made to the close of the last, with its type, its name split");
-        ConsoleUi.Line("  into the object directory it lies in and its leaf, and the processes holding it; and how many lie");
-        ConsoleUi.Line("  in each directory. --namespace keeps those named in one directory or beneath it, such as");
-        ConsoleUi.Line("  \\Sessions\\1\\BaseNamedObjects; --mechanism one mechanism's. Their records are handles, not");
-        ConsoleUi.Line("  traffic. --limit lists that many, 50 unless it says so; --json writes them as a document.");
+        ConsoleUi.Line("icat resources <session-directory> [--mechanism synchronization|section|socket]");
+        ConsoleUi.Line("               [--namespace <directory>] [--idle] [--limit <n>] [--json]");
+        ConsoleUi.Line("  The session's resources: each named synchronization object, each section by its handles and each");
+        ConsoleUi.Line("  AF_UNIX socket, from its first record to its last, with its type, its name split into the object");
+        ConsoleUi.Line("  directory it lies in and its leaf, the processes holding it and the traffic it carried; and how");
+        ConsoleUi.Line("  many lie in each directory. --namespace keeps those named in one directory or beneath it, such");
+        ConsoleUi.Line("  as \\Sessions\\1\\BaseNamedObjects; --mechanism one mechanism's; --idle those whose mechanism");
+        ConsoleUi.Line("  records transfers and which carried none. A synchronization object's and a section's records are");
+        ConsoleUi.Line("  handles, not traffic. --limit lists that many, 50 unless it says so; --json writes a document.");
     }
 }
