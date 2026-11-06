@@ -890,6 +890,7 @@ Revision 963 adds the window message coverage evaluator (ADR-088): each truth me
 Revision 964 measures window messages through the product (ADR-088's addendum): FX-WMSG-001 recorded by icat record under the window messages profile three times, nothing lost, has each of its 65 messages observed with every end, so window messages are experimental evidence on 10.0.26220.0-x64.
 Revision 965 measures FX-WMSG-002, messages to 16 windows made and closed one after another, through the product (ADR-088's second addendum): each of its 144 messages is the number of its rank with every end in its own process, each window's close ranked among its posts - window messages' second instance and lifetime fixture.
 Revision 966 holds a window message evaluation to its capture's window (ADR-088's third addendum): FX-WMSG-003, a capture begun and ended while messages were in flight, has the messages it cut said to be cut and matched to no other, and every message it held whole with every end - window messages' ambiguity case.
+Revision 967 drills a process's window message records down exactly (ADR-088's fourth addendum): icat processes counts the ends of the messages it sent, posted and retrieved and names the icat evidence command that lists exactly them, each with its source record.
 
 ## Revisions, a paragraph each, in order
 
@@ -4249,3 +4250,10 @@ FX-WMSG-003, its receiver taking 300 ms over each message, and the probe begins 
 six. In three runs, nothing lost, the copy in flight at the start was a number of its two stops alone, naming no truth
 message; every copy after it and every post the capture held to its retrieval had every end, 20 a run; every post and the
 close its stop cut was ranked lacking its retrieval alone; and no attribution was false.
+
+Revision 967 gives window messages exact source drill-down (ADR-088's fourth addendum), as revision 950 gave named
+synchronization objects theirs. `icat processes --pid` now says a process's window message records apart - each end of a
+message it sent, posted or retrieved, raised in it, by the message's number in the capture - as naming no window, message
+or size, and names the `icat evidence --owner-process <instance> --mechanism window-message` command, which lists exactly
+those records with the raw record each was admitted from, never the other end's. Tests hold the drill-down on a session
+of a sender and a receiver, and a process with no such record has no line and no command; four mutations are caught.

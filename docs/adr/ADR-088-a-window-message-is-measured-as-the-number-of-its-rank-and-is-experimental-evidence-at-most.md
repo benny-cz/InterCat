@@ -2,7 +2,8 @@
 
 - Status: accepted for M6's UI messaging work package; FX-WMSG-001 measured through the product, experimental evidence on
   10.0.26220.0-x64 (addendum); FX-WMSG-002, windows made one after another, its second instance and lifetime fixture (second
-  addendum); FX-WMSG-003, messages a capture cuts, its ambiguity case (third addendum)
+  addendum); FX-WMSG-003, messages a capture cuts, its ambiguity case (third addendum); a process's records drill down
+  exactly (fourth addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-080, ADR-084, ADR-086, ADR-087, §14.2, R3, R22, P1, P27, FX-WMSG-001, FX-WMSG-002, FX-WMSG-003, `CoverageTierCalculator`,
@@ -125,3 +126,21 @@ against the capture's messages of that kind, so one cut message made the counts 
   window's rule, the first run's ledger is committed under `fixtures/FX-WMSG-003/evidence/` with its capture's window, and
   eight mutations of the evaluator and nine alterations of that evidence and the runs' report are caught. FX-WMSG-003 is the
   package's ambiguity case.
+
+## Addendum: a process's window message records drill down exactly (revision 967)
+
+M6's exit tests ask each newly supported mechanism for exact source drill-down. `icat processes --pid` said a process's
+AF_UNIX, COM call and synchronization records apart and named the `icat evidence` command listing each kind, but said
+nothing of its window message records, though they bind to it under `process-binding-v7`.
+
+It now says them apart - each end of a message the process sent, posted or retrieved, raised in it, by the message's
+number in the capture - as naming no window, message or size, and names the
+`icat evidence --owner-process <instance> --mechanism window-message` command that lists them. That command lists exactly
+the records the line counts, each of that process instance and the mechanism, with the raw record it was admitted from: a
+sender's send start and stop and its post's queueing, never the receiver's ends of the same messages or another
+process's; the receiver's line counts its own ends. A process with no window message record has no line and no command.
+
+Of M6's exit tests the UI messaging package now has two instance and lifetime fixtures (FX-WMSG-001, FX-WMSG-002), its
+ambiguity case (FX-WMSG-003), its schema-failure case - a Win32k schema without an end's pointer is refused, and the
+window messages profile does not start (ADR-087's first and third addenda) - and exact drill-down. Its collection's cost
+is measured against no capture in the lab (ADR-086's addendum), not yet through the product.

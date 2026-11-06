@@ -145,6 +145,13 @@ internal sealed record ProcessActivityDocument
     /// </summary>
     public long? SynchronizationRecords { get; init; }
 
+    /// <summary>
+    /// Its own window message records, when one PID was asked about; null otherwise, as <see cref="Peers"/> is: each end of a
+    /// message it sent, posted or retrieved, raised in it, by the message's number in the capture. None names the window, the
+    /// message or a size (ADR-088).
+    /// </summary>
+    public long? WindowMessageRecords { get; init; }
+
     /// <summary>How many instances held its PID in the capture; its <c>lifecycleEpoch</c> says which of them it was.</summary>
     public required int PidHolders { get; init; }
 
@@ -481,6 +488,8 @@ internal static class ProcessesCommand
                                 .Where(count => count.Mechanism == Mechanism.ComCall).Sum(count => count.Records),
                             SynchronizationRecords = nodes[new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))].Activity
                                 .Where(count => count.Mechanism == Mechanism.Synchronization).Sum(count => count.Records),
+                            WindowMessageRecords = nodes[new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))].Activity
+                                .Where(count => count.Mechanism == Mechanism.WindowMessage).Sum(count => count.Records),
                         }),
                 ],
             };
@@ -1010,6 +1019,17 @@ internal static class ProcessesCommand
                 + "each by its object's number in the capture; none is a signal, a wait or a byte");
             ConsoleUi.Note(handles == 1 ? "To list it with its source record:" : "To list each of them with its source record:");
             ConsoleUi.Line($"    icat evidence \"{path}\" --owner-process {process.InstanceId} --mechanism synchronization");
+        }
+
+        // Its window messages' ends, each raised in it, by its message's number in the capture, which name no window, message or
+        // size (ADR-088): the records counted are the ones icat evidence lists by its instance and the mechanism, each with its
+        // source record.
+        if (item.WindowMessageRecords is > 0 and var messages)
+        {
+            ConsoleUi.Field("Window messages", CountText.Of(messages, "record") + " of the window messages it sent, posted and "
+                + "retrieved, each end by its message's number in the capture; none names the window, the message or a size");
+            ConsoleUi.Note(messages == 1 ? "To list it with its source record:" : "To list each of them with its source record:");
+            ConsoleUi.Line($"    icat evidence \"{path}\" --owner-process {process.InstanceId} --mechanism window-message");
         }
 
         if (item.Peers is not { } peers)
