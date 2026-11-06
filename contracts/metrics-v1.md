@@ -234,8 +234,9 @@ partition the total: their values add up to it, and a result says so.
 | `Mechanism` | its mechanism, a fact about the record; `icat metric` names it as the window's lanes do, "TCP", "RPC" or "Process", since revision 801, the result keeping its code | yes |
 | `Executable` | the witnessed full image path of the instance it is attributed to; paths compare case-insensitively | yes when at least one path is witnessed |
 | `UserSession` | the terminal session of the instance it is attributed to, as that instance's lifecycle records name it | yes when at least one is named |
+| `Package` | the package the instance it is attributed to ran in, as that instance's lifecycle records name it, or none; names compare case-insensitively | yes when at least one record named a package or none |
 | `Peer` | the process at its other end from the focused process, under `relations-v1` | yes, with a process focus |
-| `ServiceContainer`, `Host`, `Endpoint`, `Package` | — | `GroupingNotDerived`, with what it needs |
+| `ServiceContainer`, `Host`, `Endpoint` | — | `GroupingNotDerived`, with what it needs |
 
 An executable is a full source-witnessed path, not an exit's basename: equal basenames can denote distinct
 binaries. An instance with no full path contributes to `ExecutableUnknown`, an unattributed reason. If no
@@ -249,6 +250,14 @@ names it "Terminal session N", and the window's machine rung, grouped by session
 in the same words. The window gathers the instances that are `SessionUnknown` here into one row of their own,
 "Terminal session not recorded", as it gathers those with no witnessed path into one beside the executables; a result
 keeps them unattributed. A session row's distinct peers and call times are its members' together, as this grouping's.
+
+A package is the one an instance's own lifecycle records name (`ProcessPackageFullName`, `EN-SourceField` 32,
+ADR-094), compared case-insensitively as Windows compares package names, never one guessed from a path or a name. A
+record that named none is an observed none, not an unknown: since revision 998 the instances whose records named none
+are a group of their own, `Package` with the empty name, which `icat metric --group-by package` names "In no
+package". An instance whose records said neither contributes to `PackageUnknown`, an unattributed reason, never taken
+for one in no package (R3), and if no record said either at all, package grouping is unavailable. A package group is
+`Package` in a result and carries the package's full name; its distinct peers and channels are its members' together.
 
 Under `InstanceOnly` and `Executable`, the metric names the direction relative to the group: a record of a
 `BytesSent` total belongs to the process the data **left**, and one of a `BytesReceived` total to the process it

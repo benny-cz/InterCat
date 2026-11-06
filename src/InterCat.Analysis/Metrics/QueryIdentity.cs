@@ -344,6 +344,7 @@ public static class AnalysisSpecification
             || request.Grouping == LaneGrouping.Peer
             || effective is Metric.ActivePeers or Metric.ActiveChannels
             || (request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession
+                    or LaneGrouping.Package
                 && effective is Metric.BytesSent or Metric.BytesReceived);
     }
 

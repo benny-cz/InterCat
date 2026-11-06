@@ -365,6 +365,83 @@ public sealed class GroupedMetricsTests
         Assert.Contains("terminal session", refused.UnavailableExplanation!, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R3: grouped by package, a package holds its processes' records whatever the case of its name, those in no package are a group of their own, one whose records said neither is unattributed by that reason, and the rows partition the total")]
+    public void GroupsByPackage()
+    {
+        (ObservationRowV1[] rows, _) = SessionsOfProcesses();
+        using var session = new TemporarySession();
+        Publish(session.Store, rows, fields: PackagesOf(rows));
+
+        foreach ((MetricRequest request, long mail, long none, long unrecorded) in new[]
+        {
+            (Request(Metric.Observations), 5L, 2L, 2L),
+            (Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide), 150L, 0L, 9L),
+            (Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.ReceiveSide), 150L, 0L, 0L),
+        })
+        {
+            MetricResult ungrouped = SessionMetrics.Evaluate(session.Store, request);
+            MetricResult grouped = SessionMetrics.Evaluate(session.Store, request with { Grouping = LaneGrouping.Package });
+
+            // Processes 100 and 200 ran in one package, named in two cases; 300's record named none, and 400's said neither.
+            MetricGroup one = grouped.Groups.Single(group => string.Equals(group.Package, Mail, StringComparison.OrdinalIgnoreCase));
+            Assert.Equal((MetricGroupKind.Package, mail, 1), (one.Kind, one.Value!.Value, one.Rank!.Value));
+            Assert.Equal(none, grouped.Groups.SingleOrDefault(group => group.Package == string.Empty)?.Value ?? 0);
+            Assert.All(grouped.Groups, group => Assert.Equal((MetricGroupKind.Package, (ProcessInstance?)null), (group.Kind, group.Process)));
+            Assert.Equal(
+                unrecorded,
+                grouped.Unattributed.SingleOrDefault(group => group.Reason == ProcessBindingReason.PackageUnknown)?.Value ?? 0);
+            Assert.DoesNotContain(grouped.Unattributed, group => group.Reason is ProcessBindingReason.ExecutableUnknown
+                or ProcessBindingReason.SessionUnknown);
+            Assert.Contains(grouped.Caveats, caveat => caveat.Contains("never placed in a guessed package", StringComparison.Ordinal));
+
+            Assert.True(grouped.GroupsPartitionTotal);
+            Assert.Equal(ungrouped.Value, grouped.Groups.Sum(group => group.Value ?? 0) + grouped.Unattributed.Sum(group => group.Value ?? 0));
+
+            // Only a grouping by package reports a process whose records said neither as unattributed.
+            MetricResult byInstance = SessionMetrics.Evaluate(session.Store, request with { Grouping = LaneGrouping.InstanceOnly });
+            Assert.DoesNotContain(byInstance.Unattributed, group => group.Reason == ProcessBindingReason.PackageUnknown);
+        }
+
+        // Peers and channels are counted per package: the package's processes reached the one in none and each other, and
+        // the one in none reached one process of the package.
+        MetricResult peers = SessionMetrics.Evaluate(session.Store, Request(Metric.ActivePeers) with { Grouping = LaneGrouping.Package });
+        Assert.Equal(
+            [(Mail.ToUpperInvariant(), 3L), (string.Empty, 1L)],
+            peers.Groups.Select(group => (group.Package!.ToUpperInvariant(), group.Value!.Value)));
+        Assert.All(peers.Groups, group => Assert.Equal(MetricGroupKind.Package, group.Kind));
+        Assert.Contains(peers.Caveats, caveat => caveat.Contains("never placed in a guessed package", StringComparison.Ordinal));
+        MetricResult channels = SessionMetrics.Evaluate(session.Store, Request(Metric.ActiveChannels) with { Grouping = LaneGrouping.Package });
+        Assert.True(channels.IsAvailable, channels.UnavailableExplanation);
+        Assert.Equal(2, channels.Groups.Count);
+
+        // Where every record named no package, the processes in none are one group: an observed none still groups.
+        using var unpackaged = new TemporarySession();
+        Publish(unpackaged.Store, rows, fields: [.. rows.Take(4).Select(row => Field(row, SourceField.ProcessPackageFullName, 0))]);
+        MetricResult inNone = SessionMetrics.Evaluate(unpackaged.Store, Request(Metric.Observations) with { Grouping = LaneGrouping.Package });
+        Assert.Equal((string.Empty, 9L), (Assert.Single(inNone.Groups).Package, inNone.Groups[0].Value!.Value));
+        Assert.Equal([ProcessBindingReason.NoOwner], inNone.Unattributed.Select(group => group.Reason!.Value));
+
+        // A session whose lifecycle records say no package at all cannot be grouped by one.
+        using var unnamed = new TemporarySession();
+        Publish(unnamed.Store, BusySession());
+        MetricResult refused = SessionMetrics.Evaluate(unnamed.Store, Request(Metric.Observations) with { Grouping = LaneGrouping.Package });
+        Assert.Equal(MetricUnavailableReason.GroupingNotDerived, refused.Unavailable);
+        Assert.Contains("a package is never guessed", refused.UnavailableExplanation!, StringComparison.Ordinal);
+    }
+
+    private const string Mail = "Contoso.Mail_1.4.0.0_x64__8wekyb3d8bbwe";
+
+    /// <summary>
+    /// The packages of <see cref="SessionsOfProcesses"/>'s four processes: 100 and 200 in one package, which 200's record names
+    /// in lower case, 300 in none, and 400 with no record saying.
+    /// </summary>
+    private static SourceFieldRowV1[] PackagesOf(ObservationRowV1[] rows) =>
+    [
+        Field(rows[0], SourceField.ProcessPackageFullName, 0) with { Value = null, Text = Mail },
+        Field(rows[1], SourceField.ProcessPackageFullName, 0) with { Value = null, Text = Mail.ToLowerInvariant() },
+        Field(rows[2], SourceField.ProcessPackageFullName, 0),
+    ];
+
     [Fact(DisplayName = "R3: a grouped rate divides every group by the same whole interval")]
     public void AGroupedRateSharesItsDenominator()
     {

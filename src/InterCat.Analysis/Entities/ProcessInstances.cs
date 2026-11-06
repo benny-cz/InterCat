@@ -104,6 +104,12 @@ public enum ProcessBindingReason
 
     /// <summary>The process binds, but no lifecycle record names the terminal session it ran in, for grouping by session.</summary>
     SessionUnknown = 13,
+
+    /// <summary>
+    /// The process binds, but no lifecycle record named the package it ran in, or none, for grouping by package (ADR-094):
+    /// unknown, never taken for a process in no package (R3).
+    /// </summary>
+    PackageUnknown = 14,
 }
 
 /// <summary>

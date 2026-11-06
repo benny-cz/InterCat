@@ -920,6 +920,7 @@ Revision 994 gives the service inventory its contract and store dependency (ADR-
 Revision 995 has every live capture read the running services and their hosts (ADR-095's second addendum): once its session delivers and again as it stops, each published, a list it cannot read recorded as none; every host was one process instance by PID and creation time.
 Revision 996 has each process say the services it hosted (ADR-095's third addendum): bound by its PID and creation time, never by a PID alone, said by the inspector and `icat processes` as the services, none or not recorded.
 Revision 997 measures FX-SVC-002 through the product (ADR-095's fourth addendum): three runs of icat record, nothing lost, every running service the probe read as each capture began named under the instance hosting it by its PID and creation time, none left unnamed.
+Revision 998 groups metrics by package (ADR-094's fourth addendum): each record under the package its process's lifecycle records name, the processes in none a group of their own, one whose records said neither unattributed, and icat metric --group-by package naming each.
 
 ## Revisions, a paragraph each, in order
 
@@ -4566,3 +4567,12 @@ and `icat processes --json` reads the session back. Nothing was lost, and every 
 every one of the 129, 129 and 129 services the probe read, hosted by 118, 118 and 118 processes, was named as hosted as the capture started
 by the one instance with its host's PID and creation time, none left unnamed or without an instance of its host, and the
 session named no other at the start. The fixture keeps counts, never a PID or a service's name.
+
+Revision 998 derives `metrics-v1` §6's grouping by package, which it had listed as not derived (ADR-094's fourth
+addendum). A grouped answer - a total, a count of peers or channels, a count or duration of RPC calls - places each
+record under the package of the process it is attributed to, as that process's lifecycle records name it, names
+compared case-insensitively as Windows compares them. A record that named none is an observed none, so the processes in
+no package are a group of their own rather than an unknown, and a process whose records said neither is unattributed by
+a reason of its own, `PackageUnknown`, never taken for one in no package; a generation whose records say no package at
+all is not grouped by one. `icat metric --group-by package` names each group by its package's full name and the
+processes in none "In no package". The window's grouping by package is next.

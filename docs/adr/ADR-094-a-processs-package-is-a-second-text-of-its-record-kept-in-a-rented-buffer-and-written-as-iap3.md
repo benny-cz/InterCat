@@ -1,7 +1,8 @@
 # ADR-094: A process's package is a second text of its record, kept in a rented buffer and written as IAP3
 
 - Status: accepted for M6's process enrichment; the package is admitted into a session's source fields and said of each
-  process instance (revision 990), and measured through the product (revision 991)
+  process instance (revision 990), measured through the product (revision 991), said in the window (revision 992), and
+  grouped by in metrics and `icat metric` (revision 998)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-029, ADR-036, ADR-093, plan M6, §18.1, §18.2, R3, R8, R9, R11, I21, FX-PROC-001
@@ -88,3 +89,14 @@ records name: the session's number and the package's full name, a package none w
 observed none - and either not recorded where no lifecycle record said, three answers never given one for another (R3).
 The overview carries a process's package as its instance does, so a session reopened from its checkpoint says it too, and
 each is said again as the selection moves. 6 mutations of the path are caught.
+
+## Fourth addendum: metrics group by package (revision 998)
+
+A grouped answer places each record under the package of the process instance it is attributed to, as that instance's
+lifecycle records name it (`metrics-v1` §6): a total, a count of peers or channels, and a count or duration of RPC
+calls. Names compare case-insensitively, as Windows compares package names. The processes whose records named no
+package - an observed none - are a group of their own, never folded into an unknown, and a process whose records said
+neither is unattributed by a reason of its own, `PackageUnknown`, never taken for one in no package (R3); a generation
+whose records say no package at all is not grouped by one, as no package is guessed from a path or a name.
+`icat metric --group-by package` names each group by its package's full name and the processes in none "In no
+package", its JSON carrying the name and the empty text for none. 25 mutations of the path are caught.

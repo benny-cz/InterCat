@@ -611,7 +611,8 @@ public static partial class SessionMetrics
     private static List<string> OperationGroupingCaveats(MetricRequest request, IReadOnlyList<MetricGroup> unattributed)
     {
         var caveats = new List<string>();
-        if (request.Grouping is not (LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession))
+        if (request.Grouping is not (LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession
+            or LaneGrouping.Package))
         {
             return caveats;
         }
@@ -619,6 +620,10 @@ public static partial class SessionMetrics
         if (request.Grouping == LaneGrouping.UserSession)
         {
             caveats.Add(SessionGroupingCaveat);
+        }
+        else if (request.Grouping == LaneGrouping.Package)
+        {
+            caveats.Add(PackageGroupingCaveat);
         }
 
         caveats.Add(
@@ -863,6 +868,9 @@ public static partial class SessionMetrics
                 LaneGrouping.UserSession => (
                     ProcessGrouping.KeyOf(processes.Instances[binding.Instance], LaneGrouping.UserSession),
                     () => new OperationGroup(MetricGroupKind.UserSession) { TerminalSession = processes.Instances[binding.Instance].SessionId }),
+                LaneGrouping.Package => (
+                    ProcessGrouping.KeyOf(processes.Instances[binding.Instance], LaneGrouping.Package),
+                    () => new OperationGroup(MetricGroupKind.Package) { Package = processes.Instances[binding.Instance].PackageFullName }),
                 LaneGrouping.Executable => (
                     processes.Instances[binding.Instance].ImagePath!.ToUpperInvariant(),
                     () => new OperationGroup(MetricGroupKind.Executable) { Executable = processes.Instances[binding.Instance].ImagePath }),
@@ -902,6 +910,8 @@ public static partial class SessionMetrics
 
         public uint? TerminalSession { get; init; }
 
+        public string? Package { get; init; }
+
         public Mechanism? Mechanism { get; init; }
 
         public ProcessBindingReason? Reason { get; init; }
@@ -931,7 +941,8 @@ public static partial class SessionMetrics
 
         private void Bind(ProcessBinding binding)
         {
-            if (kind is MetricGroupKind.ProcessInstance or MetricGroupKind.Executable or MetricGroupKind.UserSession)
+            if (kind is MetricGroupKind.ProcessInstance or MetricGroupKind.Executable or MetricGroupKind.UserSession
+                or MetricGroupKind.Package)
             {
                 bindings[binding.Strength] = bindings.GetValueOrDefault(binding.Strength) + 1;
             }
@@ -954,6 +965,7 @@ public static partial class SessionMetrics
                     Process = Process,
                     Executable = Executable,
                     TerminalSession = TerminalSession,
+                    Package = Package,
                     Mechanism = Mechanism,
                     Reason = Reason,
                     Value = distribution?.Of(named),
@@ -971,6 +983,7 @@ public static partial class SessionMetrics
                 Process = Process,
                 Executable = Executable,
                 TerminalSession = TerminalSession,
+                Package = Package,
                 Mechanism = Mechanism,
                 Reason = Reason,
                 Value = measured ? value : null,

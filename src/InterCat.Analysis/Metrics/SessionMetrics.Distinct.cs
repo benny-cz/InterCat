@@ -345,6 +345,7 @@ public static partial class SessionMetrics
                 {
                     LaneGrouping.Executable => new(key, MetricGroupKind.Executable) { Executable = instance.ImagePath },
                     LaneGrouping.UserSession => new(key, MetricGroupKind.UserSession) { Session = instance.SessionId },
+                    LaneGrouping.Package => new(key, MetricGroupKind.Package) { Package = instance.PackageFullName },
                     _ => new(key, MetricGroupKind.ProcessInstance) { Process = instance },
                 };
                 tallies[key] = tally;
@@ -353,8 +354,8 @@ public static partial class SessionMetrics
             return tally;
         }
 
-        // The group a bound process belongs to: its instance, its witnessed image path, or its terminal session. A
-        // process without the fact a grouping needs has no group, and is counted by that reason.
+        // The group a bound process belongs to: its instance, its witnessed image path, its terminal session or its
+        // package. A process without the fact a grouping needs has no group, and is counted by that reason.
         void Record(ProcessBinding subject, int? element, ProcessBindingReason unknownReason, RelationStrength? strength)
         {
             ProcessInstance instance = processes.Instances[subject.Instance];
@@ -562,6 +563,8 @@ public static partial class SessionMetrics
 
         public uint? Session { get; init; }
 
+        public string? Package { get; init; }
+
         public HashSet<int> Elements { get; } = [];
 
         public long Known { get; set; }
@@ -578,6 +581,7 @@ public static partial class SessionMetrics
             Process = Process,
             Executable = Executable,
             TerminalSession = Session,
+            Package = Package,
             Value = Elements.Count > 0 ? Elements.Count : null,
             KnownContributions = Known,
             UnknownContributions = UnknownReasons.Values.Sum(),

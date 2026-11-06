@@ -1,4 +1,5 @@
 using System.Text.Json;
+using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -48,6 +49,50 @@ public sealed class ProcessPackageCommandTests
         Assert.Equal(Package, packages[100].GetString());
         Assert.Equal(string.Empty, packages[200].GetString());
         Assert.Equal(JsonValueKind.Null, packages[300].ValueKind);
+    }
+
+    [Fact(DisplayName = "R3: icat metric --group-by package ranks each package's records, names the processes in no package as a group of their own, and states those whose records said neither")]
+    public async Task MetricGroupsByPackage()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1 winget = Lifecycle(10, ObservationKind.Create, 100, 1);
+        ObservationRowV1 child = Lifecycle(12, ObservationKind.Create, 300, 3);
+        ObservationRowV1 older = Lifecycle(13, ObservationKind.Create, 400, 4);
+        Publish(session.Store,
+        [
+            winget, child, older,
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 100, 100, 5).Between("127.0.0.1:50000", "10.0.0.5:443"),
+            Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 9, 400, 9).Between("127.0.0.1:50002", "10.0.0.6:443"),
+        ], fields:
+        [
+            Field(winget, SourceField.ProcessPackageFullName, 0) with { Value = null, Text = Package },
+            Field(child, SourceField.ProcessPackageFullName, 0),
+        ]);
+        session.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string output) = await Run("metric", session.Path, "--metric", "observations", "--group-by", "package");
+        Assert.Equal(InterCatExitCode.Success, code);
+        string text = output.ReplaceLineEndings("\n");
+        Assert.Contains("\nOBSERVATIONS BY PACKAGE\n", text, StringComparison.Ordinal);
+        Assert.Contains("  By package (", text, StringComparison.Ordinal);
+        Assert.Matches(@"\n\s+1\s+Microsoft\.DesktopAppInstaller_1\.29\.250\.0_x64__8wekyb3d8bbwe\s+2\s", text);
+        Assert.Matches(@"\n\s+2\s+In no package\s+1\s", text);
+        Assert.Contains("  Not attributed to a package, by reason (never a peer, never ranked):", text, StringComparison.Ordinal);
+        Assert.Contains("the process is known, but no lifecycle record named the package it ran in, or none", text, StringComparison.Ordinal);
+
+        (code, output) = await Run("metric", session.Path, "--metric", "observations", "--group-by", "package", "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        using JsonDocument json = JsonDocument.Parse(output);
+        JsonElement grouping = json.RootElement.GetProperty("grouping");
+        Assert.Equal("Package", grouping.GetProperty("grouping").GetString());
+        Assert.Equal(
+            [("Package", Package, 2L), ("Package", string.Empty, 1L)],
+            grouping.GetProperty("groups").EnumerateArray().Select(group => (
+                group.GetProperty("kind").GetString(), group.GetProperty("package").GetString(), group.GetProperty("value").GetInt64())));
+        Assert.Equal(
+            [(nameof(ProcessBindingReason.PackageUnknown), 2L)],
+            grouping.GetProperty("unattributed").EnumerateArray().Select(group => (
+                group.GetProperty("reason").GetString(), group.GetProperty("value").GetInt64())));
     }
 
     private static async Task<(InterCatExitCode Code, string Output)> Run(params string[] args)

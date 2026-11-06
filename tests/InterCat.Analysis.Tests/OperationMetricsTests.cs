@@ -215,6 +215,43 @@ public sealed class OperationMetricsTests
         Assert.Equal((ProcessBindingReason.SessionUnknown, (long?)2L), (unnamed.Reason, unnamed.Value));
     }
 
+    [Fact(DisplayName = "R3: grouped by package, each call counts under the package of the process it binds to, a process in none is a group of its own, and one whose records said neither is unattributed")]
+    public void CallsGroupByThePackageOfTheirProcess()
+    {
+        const string Package = "Contoso.Mail_1.4.0.0_x64__8wekyb3d8bbwe";
+        List<ObservationRowV1> rows = EveryState();
+        ObservationRowV1 client = rows.Single(row => row.Mechanism == Mechanism.ProcessLifecycle && row.OwnerProcessId == Client);
+        ObservationRowV1 server = rows.Single(row => row.Mechanism == Mechanism.ProcessLifecycle && row.OwnerProcessId == Server);
+        using var both = new TemporarySession();
+        Publish(both.Store, rows, fields:
+        [
+            Field(client, SourceField.ProcessPackageFullName, 0) with { Value = null, Text = Package },
+            Field(server, SourceField.ProcessPackageFullName, 0),
+        ]);
+        MetricResult started = SessionMetrics.Evaluate(both.Store, Request(Metric.OperationsStarted) with { Grouping = LaneGrouping.Package });
+        Assert.Equal(
+            [(MetricGroupKind.Package, Package, 4L), (MetricGroupKind.Package, string.Empty, 2L)],
+            started.Groups.Select(group => (group.Kind, group.Package!, group.Value!.Value)));
+        Assert.All(started.Groups, group => Assert.NotEmpty(group.Bindings));
+        Assert.Contains(started.Caveats, caveat => caveat.Contains("never placed in a guessed package", StringComparison.Ordinal));
+        Assert.True(started.GroupsPartitionTotal);
+
+        // A duration grouped so names each group's package beside the calls it was read from.
+        MetricResult durations = SessionMetrics.Evaluate(
+            both.Store, DurationRequest(DurationInterval.ClientCall) with { Grouping = LaneGrouping.Package });
+        Assert.NotEmpty(durations.Groups);
+        Assert.All(durations.Groups, group => Assert.Equal(MetricGroupKind.Package, group.Kind));
+        Assert.Contains(durations.Groups, group => group.Package == Package && group.Distribution is not null);
+
+        // The server's lifecycle records say no package, nor none, so its calls are unattributed by that reason.
+        using var one = new TemporarySession();
+        Publish(one.Store, rows, fields: [Field(client, SourceField.ProcessPackageFullName, 0) with { Value = null, Text = Package }]);
+        MetricResult partly = SessionMetrics.Evaluate(one.Store, Request(Metric.OperationsStarted) with { Grouping = LaneGrouping.Package });
+        Assert.Equal((Package, 4L), (Assert.Single(partly.Groups).Package, partly.Groups[0].Value!.Value));
+        MetricGroup unnamed = Assert.Single(partly.Unattributed);
+        Assert.Equal((ProcessBindingReason.PackageUnknown, (long?)2L), (unnamed.Reason, unnamed.Value));
+    }
+
     [Fact(DisplayName = "R3: an error count over calls none of which says how it ended is unmeasured, never zero")]
     public void ErrorsOverCallsWithNoStatusAreUnmeasured()
     {

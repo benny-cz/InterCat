@@ -192,21 +192,22 @@ public sealed record MetricRequest
         }
 
         // A count of peers is a count of the processes at the other end from one process, so it needs that process:
-        // a focus, answered as one count, or a grouping by process, executable or session, which counts each one's peers.
+        // a focus, answered as one count, or a grouping by process, executable, session or package, which counts each one's peers.
         if (Metric == Metric.ActivePeers && focuses == 0
-            && Grouping is not (LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession))
+            && Grouping is not (LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession
+                or LaneGrouping.Package))
         {
             return new(
                 "ActivePeers counts the distinct processes at the other end from a process. Name a process focus, or "
-                + "group by process, executable or session to count each one's peers.",
+                + "group by process, executable, session or package to count each one's peers.",
                 []);
         }
 
         if (Metric == Metric.ActivePeers && focuses > 0 && Grouping is not null)
         {
             return new(
-                "ActivePeers with a process focus is one count. To rank processes, group by process, executable or "
-                + "session without a focus; to see the processes at the other end themselves, count observations grouped "
+                "ActivePeers with a process focus is one count. To rank processes, group by process, executable, "
+                + "session or package without a focus; to see the processes at the other end themselves, count observations grouped "
                 + "by peer.",
                 []);
         }
@@ -215,15 +216,16 @@ public sealed record MetricRequest
         {
             return new(
                 "ActiveChannels with a process focus is one count, or it can rank that focus's channels by peer. "
-                + "To rank all processes, group by process, executable or session without a focus.",
+                + "To rank all processes, group by process, executable, session or package without a focus.",
                 []);
         }
 
         if (Metric == Metric.ActiveChannels && focuses == 0
-            && Grouping is not null and not (LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession))
+            && Grouping is not null and not (LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession
+                or LaneGrouping.Package))
         {
             return new(
-                "ActiveChannels is counted in total, for one process focus, or for each process, executable or session. "
+                "ActiveChannels is counted in total, for one process focus, or for each process, executable, session or package. "
                 + "To rank one process's channels by peer, name that process focus.",
                 []);
         }
@@ -429,6 +431,9 @@ public enum MetricGroupKind
 
     /// <summary>All process instances whose lifecycle records name the same terminal session.</summary>
     UserSession = 6,
+
+    /// <summary>All process instances whose lifecycle records name the same package, or all of those naming none (ADR-094).</summary>
+    Package = 7,
 }
 
 /// <summary>
@@ -447,6 +452,12 @@ public sealed record MetricGroup
 
     /// <summary>The terminal session its processes' lifecycle records name, for a session group.</summary>
     public uint? TerminalSession { get; init; }
+
+    /// <summary>
+    /// The package its processes' lifecycle records name, for a package group: the empty string for the group of the
+    /// processes whose records named none, an observed none (R3).
+    /// </summary>
+    public string? Package { get; init; }
 
     /// <summary>The mechanism, for a mechanism group.</summary>
     public Mechanism? Mechanism { get; init; }
@@ -1339,7 +1350,7 @@ public static partial class SessionMetrics
             return counts;
         }
 
-        const int Reasons = (int)ProcessBindingReason.SessionUnknown + 1;
+        const int Reasons = (int)ProcessBindingReason.PackageUnknown + 1;
         MetricRequest request = context.Request;
         foreach ((string _, SegmentReaderV1 reader) in context.Segments)
         {

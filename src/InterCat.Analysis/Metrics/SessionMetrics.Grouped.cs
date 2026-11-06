@@ -16,12 +16,19 @@ public static partial class SessionMetrics
         "A process's terminal session is the one its lifecycle records name, and a session's group holds every process "
         + "naming it; a process whose records name none is reported by that reason, never placed in a guessed session.";
 
+    /// <summary>What a grouping by package rests on, said with every answer grouped so (`metrics-v1` §6).</summary>
+    internal const string PackageGroupingCaveat =
+        "A process's package is the one its lifecycle records name, and a package's group holds every process naming it; "
+        + "the processes whose records named no package are a group of their own, and a process whose records said neither "
+        + "is reported by that reason, never placed in a guessed package (ADR-094).";
+
     /// <summary>What a grouping needs that this session may not have. Null when it can be answered.</summary>
     private static MetricResult? WhatGroupingNeeds(MetricRequest request, long generation, SourceClockDescriptor? clock)
     {
         switch (request.Grouping)
         {
-            case LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession or LaneGrouping.Peer:
+            case LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession or LaneGrouping.Package
+                or LaneGrouping.Peer:
                 // A cross-side total groups each record under the process at its other end, found through the relation
                 // rule; a record whose other end it does not resolve is unattributed with the reason, never guessed.
                 return clock is null
@@ -380,6 +387,10 @@ public static partial class SessionMetrics
         {
             caveats.Add(SessionGroupingCaveat);
         }
+        else if (request.Grouping == LaneGrouping.Package)
+        {
+            caveats.Add(PackageGroupingCaveat);
+        }
 
         MetricGroup? notAdmitted = unattributed.FirstOrDefault(group => group.Reason == ProcessBindingReason.NotAdmittedByPolicy);
         if (notAdmitted is not null && request.EvidencePolicy < EvidencePolicy.IncludeCandidates)
@@ -483,7 +494,8 @@ public static partial class SessionMetrics
         Mechanism? Mechanism = null,
         ProcessBindingReason? Reason = null,
         string? Executable = null,
-        uint? Session = null);
+        uint? Session = null,
+        string? Package = null);
 
     /// <summary>
     /// Slots by process instance. The first slots hold the reasons a record is unattributed; each instance then has
@@ -493,14 +505,16 @@ public static partial class SessionMetrics
     /// </summary>
     private sealed class ProcessLayout : GroupLayout
     {
-        private const int ReasonSlots = (int)ProcessBindingReason.SessionUnknown + 1;
+        private const int ReasonSlots = (int)ProcessBindingReason.PackageUnknown + 1;
         private static readonly RelationStrength[] Strengths = [RelationStrength.Direct, RelationStrength.Correlated, RelationStrength.Candidate];
         private readonly ProcessInstanceIndex index;
         private readonly EvidencePolicy policy;
         private readonly LaneGrouping grouping;
         private readonly Func<SegmentReaderV1, ProcessBinding[]> binder;
 
-        /// <summary>Slots for <paramref name="grouping"/>: by instance, by witnessed executable, or by terminal session.</summary>
+        /// <summary>
+        /// Slots for <paramref name="grouping"/>: by instance, by witnessed executable, by terminal session, or by package.
+        /// </summary>
         public ProcessLayout(
             ProcessInstanceIndex index,
             EvidencePolicy policy,
@@ -516,7 +530,8 @@ public static partial class SessionMetrics
             {
                 // Only the grouping that needs a fact reports a process without it as unattributed.
                 if ((reason == (int)ProcessBindingReason.ExecutableUnknown && grouping != LaneGrouping.Executable)
-                    || (reason == (int)ProcessBindingReason.SessionUnknown && grouping != LaneGrouping.UserSession))
+                    || (reason == (int)ProcessBindingReason.SessionUnknown && grouping != LaneGrouping.UserSession)
+                    || (reason == (int)ProcessBindingReason.PackageUnknown && grouping != LaneGrouping.Package))
                 {
                     continue;
                 }
@@ -542,6 +557,24 @@ public static partial class SessionMetrics
                             (SlotOf(entry.Index, offset), (RelationStrength?)strength)))],
                         ProcessGrouping.SessionKey(session.Key),
                         Session: session.Key));
+                }
+            }
+            else if (grouping == LaneGrouping.Package)
+            {
+                // A package is the one its processes' lifecycle records name, compared as Windows compares package
+                // names; the processes whose records named none are a group of their own, the empty name, and a process
+                // whose records said neither is unattributed - never taken for one in no package (R3).
+                foreach (IGrouping<string, (ProcessInstance Item, int Index)> package in index.Instances
+                    .Select((item, at) => (Item: item, Index: at))
+                    .Where(entry => entry.Item.PackageFullName is not null)
+                    .GroupBy(entry => entry.Item.PackageFullName!, StringComparer.OrdinalIgnoreCase))
+                {
+                    groups.Add(new(
+                        MetricGroupKind.Package,
+                        [.. package.SelectMany(entry => Strengths.Select((strength, offset) =>
+                            (SlotOf(entry.Index, offset), (RelationStrength?)strength)))],
+                        ProcessGrouping.PackageKey(package.Key),
+                        Package: package.Key));
                 }
             }
             else if (grouping == LaneGrouping.Executable)
@@ -696,6 +729,7 @@ public static partial class SessionMetrics
                 Process = Definition.Process,
                 Executable = Definition.Executable,
                 TerminalSession = Definition.Session,
+                Package = Definition.Package,
                 Mechanism = Definition.Mechanism,
                 Reason = Definition.Reason,
                 Value = isMeasured ? value : null,
