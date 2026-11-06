@@ -161,6 +161,11 @@ public static class AdmissionPlanCompiler
         (int Offset, ProviderSchemaField Field, bool AfterPointer)? leadingSid = null;
         ProviderSchemaField? afterSid = null;
         bool followsSid = false;
+
+        // The text after that name (ADR-094): the first variable-length field past it, a UTF-16 string with only fixed fields
+        // between, which the name's own terminator and their widths place.
+        (ProviderSchemaField Field, int Gap)? afterName = null;
+        int gapAfterName = -1;
         foreach (ProviderSchemaField field in descriptor.Fields)
         {
             if (blockedFrom is null)
@@ -172,6 +177,25 @@ public static class AdmissionPlanCompiler
                 // The field right after the first variable-length field, when that field is a SID. A SID states its
                 // own length in its second byte, so this one field is reachable with a bounded shape read.
                 afterSid = field;
+                gapAfterName = string.Equals(field.InType, "win:UnicodeString", StringComparison.Ordinal) ? 0 : -1;
+                followsSid = false;
+                continue;
+            }
+            else if (gapAfterName >= 0)
+            {
+                if (field.WidthKind == FieldWidthKind.Fixed)
+                {
+                    gapAfterName += field.FixedWidth;
+                    continue;
+                }
+
+                if (string.Equals(field.InType, "win:UnicodeString", StringComparison.Ordinal))
+                {
+                    afterName = (field, gapAfterName);
+                }
+
+                gapAfterName = -1;
+                continue;
             }
 
             followsSid = false;
@@ -206,6 +230,7 @@ public static class AdmissionPlanCompiler
         bool nameSlotTaken = false;
         bool identifierSlotTaken = false;
         bool contentSlotTaken = false;
+        bool textSlotTaken = false;
         int addressSlots = 0;
 
         foreach (AdmittedFieldIntent fieldIntent in intent.Fields)
@@ -244,6 +269,45 @@ public static class AdmissionPlanCompiler
                         fieldIntent.ByteDomain,
                         $"Follows the SID '{sid.Field.Name}', and is reached through that SID's own sub-authority count, "
                         + "bounded by the record's length."));
+                    continue;
+                }
+
+                // The text after that name (ADR-094): a source field the catalog gives a meaning, reached from the SID past the
+                // name's terminator and the fixed fields between, the name itself admitted first.
+                if (afterName is { } following
+                    && leadingSid is { } labelled
+                    && afterSid is { } before
+                    && string.Equals(following.Field.Name, fieldIntent.FieldName, StringComparison.OrdinalIgnoreCase)
+                    && fieldIntent.SourceField is not null
+                    && nameSlotTaken
+                    && !textSlotTaken
+                    && slots.Count < MaximumSlots)
+                {
+                    slots.Add(new(
+                        following.Field.Name,
+                        fieldIntent.Role,
+                        labelled.Offset,
+                        following.Gap,
+                        fieldIntent.Unit,
+                        fieldIntent.ByteDomain,
+                        fieldIntent.Transform,
+                        AdmittedSlotKind.TextAfterResourceName)
+                    {
+                        SourceField = fieldIntent.SourceField,
+                    });
+                    textSlotTaken = true;
+                    widthDependent |= labelled.AfterPointer;
+                    minimumLength = Math.Max(minimumLength, labelled.Offset + MinimumSidLength);
+                    report.Add(new(
+                        following.Field.Name,
+                        FieldAvailability.Present,
+                        fieldIntent.Role,
+                        following.Field.InType,
+                        fieldIntent.Unit,
+                        fieldIntent.ByteDomain,
+                        $"Follows the name '{before.Name}' past the SID '{labelled.Field.Name}' by {following.Gap} bytes of fixed fields, "
+                        + "and is reached through the SID's sub-authority count and the name's terminator, bounded by the record's "
+                        + $"length; kept up to {AdmittedEvent.MaximumTextLength} characters, a longer text left unknown."));
                     continue;
                 }
 

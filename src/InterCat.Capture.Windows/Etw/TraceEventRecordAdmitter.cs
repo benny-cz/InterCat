@@ -171,6 +171,24 @@ internal sealed class TraceEventRecordAdmitter
                 continue;
             }
 
+            if (slot.Kind == AdmittedSlotKind.TextAfterResourceName)
+            {
+                // The text after the name past the SID (ADR-094): the SID's own count places the name, the name's terminator
+                // its end, and the slot's width the fixed fields between. A SID or a name that runs past the record is a
+                // record whose shape does not match its schema; a record that ends before the text carries none, unknown.
+                if (!TryOffsetAfterSid(body, slot.Offset, data.EventDataLength, out int named)
+                    || !TryOffsetAfterText(body, named, data.EventDataLength, out int afterName))
+                {
+                    Release(ref admitted);
+                    sink.OnUndecodable(UndecodableReason.AdmissionReadFailed, in delivered);
+                    ReportRejectedCallback(callbackStarted);
+                    return;
+                }
+
+                ReadBoundedText(body, afterName + slot.Width, data.EventDataLength, ref admitted);
+                continue;
+            }
+
             if (slot.Kind == AdmittedSlotKind.Identifier)
             {
                 ReadIdentifier(body, slot.Offset, ref admitted);
@@ -268,13 +286,82 @@ internal sealed class TraceEventRecordAdmitter
         return true;
     }
 
-    /// <summary>Returns a record's content buffer to the pool when the record goes no further.</summary>
+    /// <summary>Returns a record's content and text buffers to the pool when the record goes no further.</summary>
     private static void Release(ref AdmittedEvent admitted)
     {
         if (admitted.DetachContent() is { } buffer)
         {
             System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
         }
+
+        if (admitted.DetachText() is { } characters)
+        {
+            System.Buffers.ArrayPool<char>.Shared.Return(characters);
+        }
+    }
+
+    /// <summary>
+    /// The offset just past a null-terminated UTF-16 text, found by its terminator and bounded by the record's length; false
+    /// where the record ends before the text does.
+    /// </summary>
+    internal static bool TryOffsetAfterText(IntPtr body, int offset, int bodyLength, out int offsetAfter)
+    {
+        offsetAfter = 0;
+        for (int position = offset; position >= 0 && position + 1 < bodyLength; position += 2)
+        {
+            if (Marshal.ReadInt16(body, position) == 0)
+            {
+                offsetAfter = position + 2;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Copies the record's second text at the offset (ADR-094): none, known, where it is empty; its characters into a
+    /// buffer rented from the shared pool where it has some and ends within the record and the bound; and nothing - the
+    /// text unknown - where the record ends before it or it runs past the bound, as no package's name does.
+    /// </summary>
+    internal static void ReadBoundedText(IntPtr body, int offset, int bodyLength, ref AdmittedEvent admitted)
+    {
+        if (offset < 0 || offset + 1 >= bodyLength)
+        {
+            return;
+        }
+
+        int length = 0;
+        bool ended = false;
+        for (int position = offset; position + 1 < bodyLength && length <= AdmittedEvent.MaximumTextLength; position += 2)
+        {
+            if (Marshal.ReadInt16(body, position) == 0)
+            {
+                ended = true;
+                break;
+            }
+
+            length++;
+        }
+
+        if (!ended || length > AdmittedEvent.MaximumTextLength)
+        {
+            return;
+        }
+
+        if (length == 0)
+        {
+            admitted.SetText(null, 0);
+            return;
+        }
+
+        char[] rented = System.Buffers.ArrayPool<char>.Shared.Rent(length);
+        for (int index = 0; index < length; index++)
+        {
+            rented[index] = (char)(ushort)Marshal.ReadInt16(body, offset + (2 * index));
+        }
+
+        admitted.SetText(rented, length);
     }
 
     /// <summary>

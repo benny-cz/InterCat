@@ -72,6 +72,16 @@ public enum AdmittedSlotKind
     /// scoped content policy admits one; it is never part of the metadata projection.
     /// </summary>
     Content = 7,
+
+    /// <summary>
+    /// A UTF-16 text that follows a resource name past a security identifier by a fixed run of bytes - a process's package
+    /// full name after its image and the image's checksum and time stamp (ADR-094). The slot's offset is the identifier's,
+    /// as a <see cref="ResourceNameAfterSid"/> slot's is, and its width that run's length. The callback finds the name's
+    /// end by its terminator and the identifier's by its own sub-authority count, both bounded by the record's length, and
+    /// copies a text no longer than <see cref="AdmittedEvent.MaximumTextLength"/> into a buffer rented from the shared pool
+    /// that the record owns until the writer detaches it (R9); a longer one is no package's and stays unknown.
+    /// </summary>
+    TextAfterResourceName = 8,
 }
 
 /// <summary>A compiled admission plan for exactly one event descriptor version.</summary>

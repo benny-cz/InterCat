@@ -911,6 +911,7 @@ Revision 984 holds sections' schema-failure case (ADR-090's fifth addendum): a c
 Revision 985 has a process's section records drill down exactly (ADR-092's fourth addendum): icat processes names the icat evidence command that lists them, a view a rundown names the process holding among them; sections' cost through the product is what remains of their M6 exit tests.
 Revision 987 begins M6's process enrichment with its metadata inspection (§4.2): Kernel-Process's start and rundown, which every capture collects, declare each process's package, elevation and mandatory label beside its session, and Microsoft-Windows-Services a service's status change naming the process hosting it.
 Revision 988 measures a process's package and token in its lifecycle records (ADR-093, FX-PROC-001): every Kernel-Process start and rundown carried its process's package full name and application ID - empty where it runs in none, an observed none - and its token's elevation, integrity level and session, read by the registered layout past the mandatory label's SID.
+Revision 989 admits a process's package (ADR-094): a second text of its record, placed past the image by the SID's count and the image's terminator, kept in a buffer rented from the pool and written as the projection's third form, IAP3; its source field row is the package's text, or the value 0 for none.
 
 ## Revisions, a paragraph each, in order
 
@@ -4471,3 +4472,14 @@ record a running process's package as the application model gave it - 505, 505 a
 packaged, none disagreeing - each read by the registered layout past the mandatory label's SID, whose sub-authority count
 places what follows, where TDH's own decoding by name lost every package. An empty package is an observed none (R3); no
 record says which services a process hosts; no field of them but the session is admitted yet.
+
+Revision 989 admits the package FX-PROC-001 measured (ADR-094). A record held one bounded name, its image, inline; the
+package follows that image, its checksum and its time stamp, at an offset only the image's end gives, and a second inline
+buffer would have held room for it in every one of the queue's 262,144 records. A slot kind of its own,
+`TextAfterResourceName`, carries the SID's offset and the run of fixed fields between the name and the text; the callback
+places it by the SID's count and the image's terminator, bounded by the record, and copies at most 128 characters into a
+buffer rented from the shared pool - an empty package known and none, a longer or cut-off one unknown, never cut - which
+the writer returns once the record is projected. The projection's third form, `IAP3`, carries it after the extended-data
+counts, its address mask written always; every record without one keeps its bytes. Its source field row is the package's
+text, or the value 0 for a process in none, as a field's text is never empty (R3); the broker and the retained plan hold
+the kind. Kernel-Process's start and rundown now admit their maximum of eight fields.

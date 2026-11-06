@@ -220,8 +220,9 @@ public sealed class ObservationNormalizerV1
         return [];
     }
 
-    /// <summary>Whether a slot yields a source field row: a numeric one the catalog gives a meaning.</summary>
-    private static bool IsFieldRow(AdmittedSlotPlan slot) => slot is { SourceField: not null, Kind: AdmittedSlotKind.Numeric };
+    /// <summary>Whether a slot yields a source field row: a numeric one or a second text (ADR-094) the catalog gives a meaning.</summary>
+    private static bool IsFieldRow(AdmittedSlotPlan slot) =>
+        slot is { SourceField: not null, Kind: AdmittedSlotKind.Numeric or AdmittedSlotKind.TextAfterResourceName };
 
     private static void AddFieldRows(
         in AdmittedEvent admitted,
@@ -232,6 +233,26 @@ public sealed class ObservationNormalizerV1
         IReadOnlyList<AdmittedSlotPlan> slots = plan.Slots;
         for (int index = 0; index < slots.Count; index++)
         {
+            // A second text is the field's text where it has characters; an empty one, which the source states and is none, is
+            // the value 0 - an observed zero, as a text is never empty (R3); one the record did not carry is unknown.
+            if (slots[index] is { SourceField: { } textField, Kind: AdmittedSlotKind.TextAfterResourceName })
+            {
+                bool named = admitted.HasText && admitted.Text.Length > 0;
+                fields.Add(new()
+                {
+                    RawStreamId = row.RawStreamId,
+                    RawSourceEpoch = row.RawSourceEpoch,
+                    RawRecordOrdinal = row.RawRecordOrdinal,
+                    FactKey = row.FactKey,
+                    NativeTicks = row.NativeTicks,
+                    Field = textField,
+                    Text = named ? new string(admitted.Text) : null,
+                    Value = admitted.HasText && !named ? 0 : null,
+                    Availability = admitted.HasText ? FieldAvailability.Present : FieldAvailability.EventLost,
+                });
+                continue;
+            }
+
             if (slots[index] is not { SourceField: { } field, Kind: AdmittedSlotKind.Numeric })
             {
                 continue;

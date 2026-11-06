@@ -83,6 +83,23 @@ is projected as `IAP1`, byte for byte as before, so a journal of IPv4 records is
 `IAP2` mask that names no address or one a record cannot hold. A build before revision 174 refuses an `IAP2` record
 as a projection with the wrong marker, rather than replaying it without its addresses.
 
+## A second text after a name (revision 989)
+
+A descriptor may admit one second text after a name it reaches past a SID (ADR-094). Such a slot has kind 8,
+`TextAfterResourceName`: its `offset` is the SID's, as the kind 5 name slot's is, and its `width` the run of fixed bytes
+between the name's terminator and the text, at most 64. The callback places the name by the SID's sub-authority count,
+finds its end by its terminator and reads the text after the run, each bounded by the record's length; it keeps a text of
+at most 128 characters and leaves a longer one, or one the record ends before, unknown. A plan with a kind 8 slot but no
+kind 5 slot at its offset, or with two, is refused, here and by the broker.
+
+The approved metadata projection of a record carrying a second text is `IAP3`. It is `IAP2` with its address mask written
+always - naming none where the record holds none - and one addition after the extended-data counts: the text's UTF-8 byte
+length as two bytes, then its bytes, an empty text being known and none. Any other record is projected as `IAP1` or
+`IAP2`, byte for byte as before. A decoder refuses an `IAP3` text longer than a record keeps. A build before revision 989
+refuses an `IAP3` record as a projection with the wrong marker, rather than replaying it without its text. The text
+derives a source field row of the slot's field: its text where it has characters, the value 0 where it is empty - a
+field's text is never empty - and an unknown where the record carried none.
+
 ## Pointer width (revision 180)
 
 A user-mode provider raises a record at the pointer width of the process that raised it, so a 32-bit process's

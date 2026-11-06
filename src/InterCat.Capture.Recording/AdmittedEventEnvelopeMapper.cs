@@ -27,15 +27,23 @@ public sealed class AdmittedEventEnvelopeMapper
     private const uint AddressedProjectionMagic = 0x32504149;
 
     /// <summary>
-    /// The most bytes a projection takes: every field at its widest, and a name of the longest length every one of whose
-    /// characters takes UTF-8's widest encoding of a UTF-16 character, three bytes.
+    /// "IAP3" little-endian: an IAP2 projection whose address mask may name none, that also carries the record's second text
+    /// after its extended-data counts - its UTF-8 byte length, then its bytes, an empty text known and none (ADR-094). A
+    /// record that carries no second text is written as IAP1 or IAP2, so every other record keeps its bytes.
+    /// </summary>
+    private const uint TextProjectionMagic = 0x33504149;
+
+    /// <summary>
+    /// The most bytes a projection takes: every field at its widest, and a name and a second text of the longest lengths
+    /// every one of whose characters takes UTF-8's widest encoding of a UTF-16 character, three bytes.
     /// </summary>
     private const int MaximumProjectionBytes =
         sizeof(uint) + sizeof(long) + sizeof(byte) + (AdmissionPlanCompiler.MaximumSlots * sizeof(long))
         + sizeof(bool) + 16
         + sizeof(byte) + (AdmittedEvent.MaximumAddresses * 16)
         + sizeof(bool) + sizeof(ushort) + (AdmittedEvent.MaximumNameLength * 3)
-        + sizeof(byte) + sizeof(ushort);
+        + sizeof(byte) + sizeof(ushort)
+        + sizeof(ushort) + (AdmittedEvent.MaximumTextLength * 3);
 
     private readonly JournalV1SchemaTable schemas = new();
     private readonly ClockId clockId;
@@ -236,7 +244,7 @@ public sealed class AdmittedEventEnvelopeMapper
 
         var reader = new ProjectionReader(envelope.Body.Bytes.ReadOnlySpan);
         uint magic = reader.ReadUInt32();
-        if (magic is not (ProjectionMagic or AddressedProjectionMagic))
+        if (magic is not (ProjectionMagic or AddressedProjectionMagic or TextProjectionMagic))
         {
             throw new InvalidDataException("A journal-v1 projection body has the wrong marker.");
         }
@@ -273,11 +281,12 @@ public sealed class AdmittedEventEnvelopeMapper
             admitted.SetIdentifier(new Guid(reader.Take(16), bigEndian: true));
         }
 
-        if (magic == AddressedProjectionMagic)
+        if (magic is AddressedProjectionMagic or TextProjectionMagic)
         {
-            // IAP2 is written only for a record that holds an address, and a record holds at most two.
+            // IAP2 is written only for a record that holds an address, and a record holds at most two; IAP3 writes its mask
+            // always, naming none where the record holds none.
             byte addresses = reader.ReadByte();
-            if (addresses == 0 || (addresses >> AdmittedEvent.MaximumAddresses) != 0)
+            if ((addresses == 0 && magic == AddressedProjectionMagic) || (addresses >> AdmittedEvent.MaximumAddresses) != 0)
             {
                 throw new InvalidDataException("A journal-v1 projection declares addresses a record cannot hold.");
             }
@@ -335,6 +344,27 @@ public sealed class AdmittedEventEnvelopeMapper
         for (int index = 0; index < envelope.OmittedExtendedItemCount; index++)
         {
             admitted.RecordOmittedExtendedItem();
+        }
+
+        // IAP3's second text, last (ADR-094): never longer than a record keeps, and never cut.
+        if (magic == TextProjectionMagic)
+        {
+            int textBytes = reader.ReadUInt16();
+            if (textBytes > AdmittedEvent.MaximumTextLength * 3)
+            {
+                throw new InvalidDataException("A journal-v1 projection's second text exceeds its UTF-8 bound.");
+            }
+
+            ReadOnlySpan<byte> encoded = reader.Take(textBytes);
+            int characters = Encoding.UTF8.GetCharCount(encoded);
+            if (characters > AdmittedEvent.MaximumTextLength)
+            {
+                throw new InvalidDataException("A journal-v1 projection's second text is longer than a record keeps.");
+            }
+
+            char[]? decoded = characters == 0 ? null : new char[characters];
+            _ = Encoding.UTF8.GetChars(encoded, decoded);
+            admitted.SetText(decoded, characters);
         }
 
         if (!reader.AtEnd)
@@ -416,7 +446,8 @@ public sealed class AdmittedEventEnvelopeMapper
     {
         var writer = new ProjectionWriter(stackalloc byte[MaximumProjectionBytes]);
         byte addresses = admitted.KnownAddressMask;
-        writer.Write(addresses == 0 ? ProjectionMagic : AddressedProjectionMagic);
+        bool text = admitted.HasText;
+        writer.Write(text ? TextProjectionMagic : addresses == 0 ? ProjectionMagic : AddressedProjectionMagic);
         writer.Write(admitted.TimestampUtcTicks);
         writer.Write(admitted.KnownSlotMask);
         for (int index = 0; index < AdmissionPlanCompiler.MaximumSlots; index++)
@@ -431,7 +462,8 @@ public sealed class AdmittedEventEnvelopeMapper
             _ = admitted.Identifier.TryWriteBytes(writer.Next(16), bigEndian: true, out _);
         }
 
-        if (addresses != 0)
+        // IAP2 writes the mask only for a record holding an address; IAP3 writes it always, naming none where it holds none.
+        if (addresses != 0 || text)
         {
             writer.Write(addresses);
             for (int ordinal = 0; ordinal < AdmittedEvent.MaximumAddresses; ordinal++)
@@ -454,6 +486,16 @@ public sealed class AdmittedEventEnvelopeMapper
         // counts instead of inferring them from what survived the policy (I13).
         writer.Write((byte)admitted.ExtendedData);
         writer.Write(checked((ushort)admitted.ExtendedItemsPresent));
+
+        // The second text, last, so an IAP1 or IAP2 reader's layout is unchanged before it (ADR-094).
+        if (text)
+        {
+            ReadOnlySpan<char> second = admitted.Text;
+            int textBytes = Encoding.UTF8.GetByteCount(second);
+            writer.Write(checked((ushort)textBytes));
+            _ = Encoding.UTF8.GetBytes(second, writer.Next(textBytes));
+        }
+
         return EnvelopeBuffer.CopyOf(writer.Written);
     }
 

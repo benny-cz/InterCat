@@ -253,6 +253,13 @@ public enum SourceField : ushort
     /// section is gone (R22), and never <see cref="SectionNumber"/>, as no record joins a section's handles to its views.
     /// </summary>
     SectionObjectNumber = 31,
+
+    /// <summary>
+    /// The package full name a process runs in, as its start or rundown carries it (ADR-093, ADR-094): its text where the
+    /// process runs in a package, and the value 0 where it runs in none - an observed none, as a field's text is never empty
+    /// (R3) - and no row for a record at a version that declares no package.
+    /// </summary>
+    ProcessPackageFullName = 32,
 }
 
 /// <summary><c>EN-TimeScope</c> (section 23): the interval a result is scoped to.</summary>

@@ -156,6 +156,9 @@ public static class BrokerPrepareCompiler
     private const int MaximumSources = 32;
     private const int MaximumEventsPerSource = 4096;
 
+    // The most bytes of fixed fields a second text may follow its name by (ADR-094): a package name follows its image by eight.
+    private const int MaximumTextGap = 64;
+
     public static BrokerPrepareResult Prepare(
         EffectiveCapturePlan plan,
         BrokerCaptureQuota quota,
@@ -607,13 +610,21 @@ public static class BrokerPrepareCompiler
                     return $"Descriptor {source.ProviderGuid:D}/{item.EventId}/v{item.Version} keeps content its policy does not admit.";
                 }
 
+                // A second text follows the name past the SID (ADR-094): one a descriptor, beside the name slot it follows.
+                if (item.Slots.Count(slot => slot.Kind == AdmittedSlotKind.TextAfterResourceName) is var texts and > 0
+                    && (texts > 1 || item.Slots.SingleOrDefault(slot => slot.Kind == AdmittedSlotKind.TextAfterResourceName) is not { } text
+                        || !item.Slots.Any(slot => slot.Kind == AdmittedSlotKind.ResourceNameAfterSid && slot.Offset == text.Offset)))
+                {
+                    return $"Descriptor {source.ProviderGuid:D}/{item.EventId}/v{item.Version} admits a second text without the name it follows.";
+                }
+
                 foreach (AdmittedSlotPlan slot in item.Slots)
                 {
                     int minimumWidth = slot.Kind switch
                     {
                         AdmittedSlotKind.ResourceName => 2,
                         AdmittedSlotKind.AnsiResourceName => 1,
-                        AdmittedSlotKind.ResourceNameAfterSid => AdmissionPlanCompiler.MinimumSidLength,
+                        AdmittedSlotKind.ResourceNameAfterSid or AdmittedSlotKind.TextAfterResourceName => AdmissionPlanCompiler.MinimumSidLength,
                         AdmittedSlotKind.Identifier or AdmittedSlotKind.Address128 => 16,
                         AdmittedSlotKind.Content => 0,
                         _ => slot.Width,
@@ -624,6 +635,9 @@ public static class BrokerPrepareCompiler
                         AdmittedSlotKind.ResourceName
                             or AdmittedSlotKind.AnsiResourceName
                             or AdmittedSlotKind.ResourceNameAfterSid => slot.Width == 0,
+
+                        // Its width is the run of fixed fields between the name's terminator and the text.
+                        AdmittedSlotKind.TextAfterResourceName => slot.Width is >= 0 and <= MaximumTextGap,
                         AdmittedSlotKind.Identifier or AdmittedSlotKind.Address128 => slot.Width == 16,
                         AdmittedSlotKind.Content => slot.Width == 0
                             && slot.LengthOffset is >= 0 and { } lengthOffset

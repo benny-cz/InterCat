@@ -142,6 +142,63 @@ public sealed class AdmittedEventEnvelopeMapperTests
         }
     }
 
+    [Fact(DisplayName = "IC-011: a record's second text survives journal-v1 mapping as IAP3 - a package's name, and an empty one known as none - while a record without one keeps its bytes")]
+    public void ASecondTextRoundTripsAndARecordWithoutOneKeepsItsBytes()
+    {
+        AdmittedEventPlan plan = BuildEventPlan();
+        var mapper = new AdmittedEventEnvelopeMapper([BuildSource(plan)], ClockId.New());
+        AdmittedEvent plain = BuildAdmitted();
+        plain.SetSlot(0, 123);
+        plain.SetName(@"C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller\winget.exe", truncated: false);
+        const string Package = "Microsoft.DesktopAppInstaller_1.29.250.0_x64__8wekyb3d8bbwe";
+        AdmittedEvent packaged = plain;
+        packaged.SetText(Package.ToCharArray(), Package.Length);
+        AdmittedEvent none = plain;
+        none.SetText(null, 0);
+        AdmittedEvent addressed = packaged;
+        addressed.SetAddress(1, UInt128.One);
+        CaptureId capture = CaptureId.New();
+
+        using RecordEnvelopeV1 withoutText = mapper.ToEnvelope(plain, plan, capture);
+        using RecordEnvelopeV1 withText = mapper.ToEnvelope(packaged, plan, capture);
+        using RecordEnvelopeV1 withNone = mapper.ToEnvelope(none, plan, capture);
+        using RecordEnvelopeV1 withBoth = mapper.ToEnvelope(addressed, plan, capture);
+
+        // A record with no second text is written as every earlier build wrote it; one with a text is IAP3, its address mask
+        // written always, naming none here, and the text last, after the extended-data counts.
+        byte[] plainBytes = withoutText.Body.Bytes.ToArray();
+        byte[] textBytes = withText.Body.Bytes.ToArray();
+        Assert.Equal("IAP1"u8.ToArray(), plainBytes[..4]);
+        Assert.Equal("IAP3"u8.ToArray(), textBytes[..4]);
+        Assert.Equal("IAP3"u8.ToArray(), withNone.Body.Bytes.ToArray()[..4]);
+        Assert.Equal("IAP3"u8.ToArray(), withBoth.Body.Bytes.ToArray()[..4]);
+        int afterIdentifier = 4 + 8 + 1 + (8 * AdmissionPlanCompiler.MaximumSlots) + 1;
+        Assert.Equal(plainBytes[4..afterIdentifier], textBytes[4..afterIdentifier]);
+        Assert.Equal(0, textBytes[afterIdentifier]);
+        Assert.Equal(plainBytes[afterIdentifier..], textBytes[(afterIdentifier + 1)..^(2 + Package.Length)]);
+        Assert.Equal(System.Text.Encoding.UTF8.GetBytes(Package), textBytes[^Package.Length..]);
+
+        Assert.False(AdmittedEventEnvelopeMapper.FromEnvelope(withoutText, plan).HasText);
+        AdmittedEvent replayed = AdmittedEventEnvelopeMapper.FromEnvelope(withText, plan);
+        Assert.Equal((true, Package), (replayed.HasText, new string(replayed.Text)));
+        Assert.Equal(plain.KnownSlotMask, replayed.KnownSlotMask);
+        AdmittedEvent replayedNone = AdmittedEventEnvelopeMapper.FromEnvelope(withNone, plan);
+        Assert.Equal((true, 0), (replayedNone.HasText, replayedNone.Text.Length));
+        AdmittedEvent replayedBoth = AdmittedEventEnvelopeMapper.FromEnvelope(withBoth, plan);
+        Assert.True(replayedBoth.TryGetAddress(1, out UInt128 destination) && destination == UInt128.One && !replayedBoth.TryGetAddress(0, out _));
+        Assert.Equal(Package, new string(replayedBoth.Text));
+
+        // A text longer than a record keeps, or one whose length runs past the body, is refused rather than read.
+        byte[] forged = [.. textBytes];
+        forged[^(2 + Package.Length)] = 0xFF;
+        forged[^(1 + Package.Length)] = 0x7F;
+        RecordEnvelopeV1 refused = withText with
+        {
+            Body = withText.Body with { Bytes = EnvelopeBuffer.CopyOf(forged), OriginalLength = forged.Length },
+        };
+        Assert.Throws<InvalidDataException>(() => AdmittedEventEnvelopeMapper.FromEnvelope(refused, plan));
+    }
+
     [Fact(DisplayName = "R17: an extended item the policy denies keeps its type and loses its bytes")]
     public void DeniedExtendedTypeIsCountedNotPersisted()
     {

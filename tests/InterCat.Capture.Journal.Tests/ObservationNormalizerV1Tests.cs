@@ -554,6 +554,49 @@ public sealed class ObservationNormalizerV1Tests
         Assert.False(named.Markers.HasFlag(SegmentRowMarkers.ResourceNameTruncated));
     }
 
+    [Fact(DisplayName = "R3: a process's package is its source field's text, a process in none the field's value 0 - an observed none, as a field's text is never empty - and a record that carried none says it is unknown, each row writable")]
+    public void APackageIsItsTextAndNoneAnObservedZero()
+    {
+        AdmittedEventPlan plan = LifecyclePlan() with
+        {
+            Slots =
+            [
+                .. LifecyclePlan().Slots,
+                new AdmittedSlotPlan("PackageFullName", FieldRole.Unclassified, 0, 8, null, null, SlotTransform.None, AdmittedSlotKind.TextAfterResourceName)
+                {
+                    SourceField = SourceField.ProcessPackageFullName,
+                },
+            ],
+        };
+        (ObservationNormalizerV1 normalizer, SourceClockDescriptor clock) = Normalizer();
+        var mapper = new AdmittedEventEnvelopeMapper([Source(plan)], clock.Id);
+        const string Package = "Microsoft.DesktopAppInstaller_1.29.250.0_x64__8wekyb3d8bbwe";
+        SourceFieldRowV1 FieldOf(AdmittedEvent admitted)
+        {
+            using RecordEnvelopeV1 envelope = mapper.ToEnvelope(admitted, plan, CaptureId.New());
+            ObservationRowV1 row = normalizer.ToRow(envelope, plan);
+            SourceFieldRowV1 field = Assert.Single(ObservationNormalizerV1.FieldRows(envelope, plan, row));
+            Assert.Null(field.Validate());
+            return field;
+        }
+
+        AdmittedEvent packaged = Admitted(plan);
+        packaged.SetSlot(0, 4_242);
+        packaged.SetText(Package.ToCharArray(), Package.Length);
+        AdmittedEvent none = Admitted(plan);
+        none.SetSlot(0, 4_242);
+        none.SetText(null, 0);
+        AdmittedEvent unknown = Admitted(plan);
+        unknown.SetSlot(0, 4_242);
+
+        Assert.Equal((SourceField.ProcessPackageFullName, Package, (long?)null, FieldAvailability.Present),
+            FieldOf(packaged) is var named ? (named.Field, named.Text, named.Value, named.Availability) : default);
+        Assert.Equal(((string?)null, (long?)0, FieldAvailability.Present),
+            FieldOf(none) is var observedNone ? (observedNone.Text, observedNone.Value, observedNone.Availability) : default);
+        Assert.Equal(((string?)null, (long?)null, FieldAvailability.EventLost),
+            FieldOf(unknown) is var notCarried ? (notCarried.Text, notCarried.Value, notCarried.Availability) : default);
+    }
+
     [Fact(DisplayName = "I2: each mechanism family keys its rows by a discriminator of its own, the same in every version")]
     public void EachMechanismFamilyKeysItsRowsTheSameWay() =>
         Assert.Equal(

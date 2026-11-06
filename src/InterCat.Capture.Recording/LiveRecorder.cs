@@ -725,6 +725,13 @@ public static class LiveRecorder
                 {
                     System.Buffers.ArrayPool<byte>.Shared.Return(contentBuffer);
                 }
+
+                // A record's second text was rented in the callback too, and travels in its projection (ADR-094): it goes
+                // back only once the envelope that copied it was made, or the record went no further.
+                if (admitted.DetachText() is { } textBuffer)
+                {
+                    System.Buffers.ArrayPool<char>.Shared.Return(textBuffer);
+                }
             }
         }
 

@@ -94,6 +94,12 @@ public struct AdmittedEvent
     /// <summary>How many 128-bit addresses one record copies: an IPv6 source and destination.</summary>
     public const int MaximumAddresses = 2;
 
+    /// <summary>
+    /// Longest second text a bounded admission copies (ADR-094): a package full name is at most 127 characters, so one longer
+    /// than this is no package's and is left unknown rather than cut (I21).
+    /// </summary>
+    public const int MaximumTextLength = 128;
+
     private AdmittedSlotBuffer slots;
     private AdmittedAddressBuffer addresses;
     private byte addressMask;
@@ -116,6 +122,13 @@ public struct AdmittedEvent
     private int contentKept;
     private int contentOriginal;
     private bool contentPresent;
+
+    // A second text after the resource name (ADR-094): a buffer rented from the shared pool for a text that has characters,
+    // owned by the record until the writer detaches it, how many of them are the text, and whether the record carried one -
+    // an empty text is known, and is none.
+    private char[]? text;
+    private byte textLength;
+    private bool textKnown;
 
     public int SourceIndex { get; set; }
 
@@ -283,6 +296,46 @@ public struct AdmittedEvent
         contentKept = 0;
         contentOriginal = 0;
         contentPresent = false;
+        text = null;
+        textLength = 0;
+        textKnown = false;
+    }
+
+    /// <summary>Whether the record carried its descriptor's second text (ADR-094), however long; an empty one is known.</summary>
+    public readonly bool HasText => textKnown;
+
+    /// <summary>The second text, while the record still owns its buffer; empty when it is empty or unknown.</summary>
+    public readonly ReadOnlySpan<char> Text => text is null ? [] : text.AsSpan(0, textLength);
+
+    /// <summary>
+    /// Takes the record's second text: a buffer rented from the shared pool whose first <paramref name="length"/> characters
+    /// are it, or none for an empty text, which is known and is none.
+    /// </summary>
+    public void SetText(char[]? rented, int length)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, MaximumTextLength);
+        if (length > 0 && (rented is null || rented.Length < length))
+        {
+            throw new ArgumentException("A text with characters is kept in a buffer that holds them.", nameof(rented));
+        }
+
+        text = length > 0 ? rented : null;
+        textLength = (byte)length;
+        textKnown = true;
+    }
+
+    /// <summary>
+    /// Hands the rented text buffer to its next owner and forgets the text, so exactly one owner returns it to the pool and a
+    /// record read after carries none - an unknown, never an empty text it no longer holds; null when the record owns none.
+    /// </summary>
+    public char[]? DetachText()
+    {
+        char[]? taken = text;
+        text = null;
+        textLength = 0;
+        textKnown = false;
+        return taken;
     }
 
     /// <summary>Whether the record carries a content field's bytes, however many were kept (ADR-036).</summary>

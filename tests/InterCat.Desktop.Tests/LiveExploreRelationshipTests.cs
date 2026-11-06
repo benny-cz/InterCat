@@ -264,6 +264,12 @@ public sealed class LiveExploreRelationshipTests
                 case AdmittedSlotKind.ResourceNameAfterSid:
                     admitted.SetName(Utf16At(body, slot.Offset + 8 + (4 * body[slot.Offset + 1])), truncated: false);
                     break;
+                case AdmittedSlotKind.TextAfterResourceName:
+                    // The second text past the name's terminator and the fixed fields between (ADR-094).
+                    int named = slot.Offset + 8 + (4 * body[slot.Offset + 1]);
+                    string text = Utf16At(body, named + (2 * Utf16At(body, named).Length) + 2 + slot.Width);
+                    admitted.SetText(text.Length == 0 ? null : text.ToCharArray(), text.Length);
+                    break;
                 case AdmittedSlotKind.Address128:
                     admitted.SetAddress(address++, BinaryPrimitives.ReadUInt128BigEndian(body.AsSpan(slot.Offset, 16)));
                     break;
@@ -296,7 +302,7 @@ public sealed class LiveExploreRelationshipTests
         return Encoding.Unicode.GetString(body, offset, end - offset);
     }
 
-    /// <summary>A start or rundown body: the high mandatory label's SID, then the image, as the manifest lays them out.</summary>
+    /// <summary>A start or rundown body: the high mandatory label's SID, then the image, its checksum and time stamp, and an empty package and application ID, as the manifest lays them out.</summary>
     private static byte[] ProcessBody(int pid, ulong sequence, long created, string image)
     {
         var body = new List<byte>();

@@ -3741,6 +3741,7 @@
         "R3: a negative duration is a defect, never a clamped zero",
         "R3: a null measurement always states why, and a present one cannot be null",
         "R3: a process whose relationships measured no bytes reads bytes unknown, never 0 MB",
+        "R3: a process's package is its source field's text, a process in none the field's value 0 - an observed none, as a field's text is never empty - and a record that carried none says it is unknown, each row writable",
         "R3: a published calibration is read back, carried by re-derivation, and never released",
         "R3: a quantile is reported as the interval it fell in, never as an invented value",
         "R3: a rate is said at its scale, a byte rate under a byte a second as such, and sends that recorded no size as unmeasured, never a zero",
@@ -3888,6 +3889,7 @@
         "R8: the queue high-water mark is the deepest depth enqueued, not the last"
       ],
       "R9": [
+        "R9: Kernel-Process's start and rundown admit the package after the image as a second text - its slot at the mandatory label's SID, the image's checksum and time stamp's eight bytes past the image's terminator - their eighth field",
         "R9: a 16-byte IPv6 address compiles to an address slot at a fixed offset, and the fields after it stay reachable",
         "R9: a batch's envelope buffers are rented again from their pool, their arrays never allocated anew",
         "R9: a process image after a bounded SID and an ANSI stop image are admitted without guessing offsets",
@@ -3896,7 +3898,9 @@
         "R9: admitted fields compile to fixed offsets with a minimum body length",
         "R9: an admitted record owns its extended bytes after the source buffer changes",
         "R9: an envelope owns its bytes after the source memory changes",
+        "R9: the broker prepares a process start's package as a second text after its image past the SID, and refuses one without the name it follows, a second one, one at another SID than the name's or one past a run of fixed fields no package follows its image by",
         "R9: the callback allocation budget is measurable, so it can be met",
+        "R9: the callback reads the package after the image bounded by the record - a package's name, an empty one known as none, and as unknown one the record ends before, one unterminated or one longer than any package's name - and finds no end of an image that runs past the record",
         "R9: writing a batch returns every buffer the records held"
       ],
       "R18": [

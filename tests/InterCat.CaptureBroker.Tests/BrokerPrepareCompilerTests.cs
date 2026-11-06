@@ -232,6 +232,40 @@ public sealed class BrokerPrepareCompilerTests
         Assert.Equal(limits, result.PreparedPlan!.Quota);
     }
 
+    [Fact(DisplayName = "R9: the broker prepares a process start's package as a second text after its image past the SID, and refuses one without the name it follows, a second one, one at another SID than the name's or one past a run of fixed fields no package follows its image by")]
+    public void ASecondTextIsPreparedOnlyAfterItsName()
+    {
+        EffectiveCapturePlan focused = BrokerPlanFixture.CompileFocused();
+        var name = new AdmittedSlotPlan("ImageName", FieldRole.ResourceName, 48, 0, null, null, SlotTransform.None, AdmittedSlotKind.ResourceNameAfterSid);
+        var package = new AdmittedSlotPlan("PackageFullName", FieldRole.Unclassified, 48, 8, null, null, SlotTransform.None, AdmittedSlotKind.TextAfterResourceName)
+        {
+            SourceField = SourceField.ProcessPackageFullName,
+        };
+        EffectiveCapturePlan With(params AdmittedSlotPlan[] slots) => focused with
+        {
+            Sources =
+            [
+                .. focused.Sources.Select(source => source.SourceId == WindowsSourceCatalog.KernelProcessSourceId
+                    ? source with { Events = [.. source.Events.Select(item => item with { MinimumBodyLength = 56, Slots = slots })] }
+                    : source),
+            ],
+        };
+        BrokerPrepareResult Prepare(EffectiveCapturePlan plan) =>
+            BrokerPrepareCompiler.Prepare(plan, BrokerPlanFixture.Quota, BrokerRetentionPolicy.StopAtLimit, BrokerPlanFixture.Runtime);
+
+        Assert.Null(Prepare(With(name, package)).Refusal);
+        foreach (EffectiveCapturePlan refused in new[]
+        {
+            With(package),
+            With(name, package, package with { FieldName = "PackageRelativeAppId" }),
+            With(name, package with { Offset = 52 }),
+            With(name, package with { Width = 65 }),
+        })
+        {
+            Assert.Equal(BrokerPrepareRefusalCode.InvalidCapturePlan, Prepare(refused).Refusal!.Code);
+        }
+    }
+
     [Fact(DisplayName = "§9.4: the broker prepares RPC peers as the catalog states it, ALPC enabled as kernel flags rather than a provider request")]
     public void RpcPeersIsPrepared()
     {

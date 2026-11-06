@@ -329,6 +329,9 @@ public static class WindowsSourceCatalog
         new("ParentProcessSequenceNumber", FieldRole.CorrelationKey, SourceField: SourceField.ParentStartSequence),
         new("SessionID", FieldRole.Unclassified, SourceField: SourceField.ProcessSessionId),
         new("ImageName", FieldRole.ResourceName, Notes: "The image path. On the start and rundown descriptors it follows a variable-length SID and is reached through that SID's own sub-authority count."),
+        new("PackageFullName", FieldRole.Unclassified,
+            Notes: "The package the process runs in, empty where it runs in none - an observed none. It follows the image, its checksum and its time stamp, and is reached through the SID's count and the image's terminator (ADR-093, ADR-094).",
+            SourceField: SourceField.ProcessPackageFullName),
     ];
 
     private static readonly IReadOnlyList<AdmittedFieldIntent> ProcessStopFields =
