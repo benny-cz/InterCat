@@ -903,6 +903,7 @@ Revision 976 reads a classic record at a version the machine registers no layout
 Revision 977 inventories sections' handles as a source of their own over the handle group (ADR-090's second addendum), its gate keeping only the Section type's handles and writing each section's number over its address.
 Revision 978 binds a section handle's creation and close to the process that raised them, as `process-binding-v8` (ADR-090's third addendum), as FX-SECT-001 measured them raised.
 Revision 979 adds the opt-in sections profile (ADR-090's fourth addendum): lifecycle, the file view flag and sections' handles, all required, its class its sources' at most, Moderate, with both kernel sources' throughput regressions stated.
+Revision 980 measures a section twice, by its handles and by its views, never joining the two, and topology at most (ADR-092).
 
 ## Revisions, a paragraph each, in order
 
@@ -4377,3 +4378,12 @@ Kernel-Process; its statement names both kernel sources' collection cost, Low in
 target on a workload heavy in views or in handles, which is why it is opt-in and Explore admits neither. `icat capture`
 and `icat record` take it, and both sources' notes now name it as the one profile that requests them. Nothing has
 measured it whole yet.
+
+Revision 980 adds the sections evaluator (ADR-092). A truth section is found by its handles as a named object is, the one
+number its closes name it by, from the creator's creation to every close in its own process; and by its views, matched by
+time, as no view record names anything a truth can recognize and every process maps hundreds of its own: a truth mapping
+is the record of its process mapping a view of its size, no image's, nearest its log line within 5 ms where that line is
+the record's nearest mapping too, so a lost record leaves only its own mapping unmatched; its unmapping is the record of
+that view. The section is discovered where both findings are whole, neither number another truth section's, and both
+numbers' records bind to exactly the truth's processes; the two numbers are never joined. No record says a byte moved,
+so the mechanism reaches topology at most. No capture has been measured through the product yet.
