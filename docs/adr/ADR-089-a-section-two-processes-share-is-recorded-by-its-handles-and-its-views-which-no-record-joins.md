@@ -4,7 +4,9 @@
   flag's collection cost is measured, Low in processor time but a view-heavy workload past the throughput target (addendum);
   since revision 972 the flag is inventoried as sections' lead, requested by no profile and admitting no event (second
   addendum); since revision 973 the Section type's number is measured for the build, 49 (third addendum); since revision
-  974 gates number its sections and views as their records arrive, keeping no address (ADR-090)
+  974 gates number its sections and views as their records arrive, keeping no address (ADR-090); since revision 975 the
+  rundowns at a session's start and stop are measured, each record by its view's process, and images' views are among
+  what the flag records (fourth addendum)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-035, ADR-082, ADR-083, plan M6, §4.2, R22, P2, P3, P6, FX-SECT-001
@@ -118,3 +120,30 @@ the synchronization probe read it for its three types (ADR-082's fourth addendum
 The product never reads the table (P20): a gate admitting sections' handle records carries the number measured for the
 build and holds it to each capture's own type rundown, as the synchronization handle gate carries its three, and a build
 none measured has no gate.
+
+## Addendum: the rundowns, and images' views (revision 975)
+
+The view gate begins a view mapped before the capture at the start's rundown (ADR-090), so a capture admitting the rundowns
+must know their layout and whose view each names; the measurement read only the mappings and unmappings.
+`tools/InterCat.SectionProbe --measure` now also reads both rundowns by their layout. It holds each record's process to the
+processes the session's own process rundowns named alive, and the records naming the probe's own process to the views and
+images in the probe's address space, read just before each rundown and once it was over: a view in both readings with no
+mapping or unmapping of the probe's at its base between them was held across the rundown. Three runs, nothing lost
+(`bench/results/section-rundowns-*`):
+
+- Each rundown named 60,805 to 61,428 views machine-wide, every record raised at version 3, 44 bytes, as a mapping is, with
+  the page-aligned field before the process.
+- Every record names a process the session's process rundown named alive then - 489 to 495 of them - and no record's
+  header names one: a rundown's process is its record's, never its header's.
+- Every view and every image the probe held across a rundown was named - 75 views and 42 images at the start,
+  100 to 102 views and 50 images at the stop - and every base a rundown named for the probe was one it held or mapped
+  meanwhile. The probe's runtime maps and unmaps views at some bases again and again, so a base can be in both readings
+  with no view there as the rundown passed it.
+- The flag records images' views. A rundown names them, and an image's mapping is raised as any view's, each with 0x47 in
+  its extra information's high byte, which no other view carried. The source's statement that the flag leaves images aside
+  was never measured, and was wrong; it is corrected.
+
+So a capture admitting the rundowns reads them by the layout a mapping is read by and binds each to the process its record
+names, never its header's. The views a capture follows are every process's images' and files' as well as its sections',
+told apart by nothing but that byte. Tests hold the three runs and the source's corrected notes; thirteen alterations of
+the evidence and two mutations of the notes are caught.

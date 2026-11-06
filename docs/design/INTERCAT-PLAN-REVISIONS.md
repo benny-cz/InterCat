@@ -898,6 +898,7 @@ Revision 971 measures collecting the kernel's file view flag (ADR-089's addendum
 Revision 972 inventories the kernel's file view flag as sections' lead (ADR-089's second addendum), requested by no profile and admitting no event; Kernel-Memory, whose events name no section, claims none.
 Revision 973 measures the Section type's number for the build (ADR-089's third addendum): the object type table and the session's type rundown both name it 49, which a gate admitting sections' handles carries.
 Revision 974 adds the section gates (ADR-090): a section followed by its handles through the algorithm the synchronization handle gate now shares, and a view by its process and base, its section by the value its views carry while a followed view holds it, keeping no address.
+Revision 975 measures the file view flag's rundowns (ADR-089's fourth addendum): at version 3 as a mapping is, each record naming its view's process and none its header, and images' views among what the flag records, an image's with 0x47 in its extra information's high byte.
 
 ## Revisions, a paragraph each, in order
 
@@ -4330,3 +4331,11 @@ unmapping of the last; a view the gate never saw begin is numbered alone, joinin
 a followed view holds it. Both are bounded and allocate nothing per record once their tables have grown - the view
 gate's, to its bound of 262,144 views, by 57.3 MiB with the arrays they outgrew - and FX-SECT-001's ledger reads through
 them as its two sections. No record admits through them yet.
+
+Revision 975 measures the file view flag's rundowns at a session's start and stop (ADR-089's fourth addendum), which the
+view gate begins and ends views by but the measurement had not read. `tools/InterCat.SectionProbe --measure` reads them by
+their layout and holds them to the session's own process rundowns and to the probe's own views and images, read from its
+address space just before each rundown and once it was over. Three runs, nothing lost: each rundown named 60,805 to 61,428 views,
+every record at version 3, 44 bytes, as a mapping is, naming a process alive then, and no header naming one; every view and
+image the probe held across a rundown was named. The flag records images' views too, an image's carrying 0x47 in its extra
+information's high byte, so the source's statement that it leaves images aside, never measured, is corrected.

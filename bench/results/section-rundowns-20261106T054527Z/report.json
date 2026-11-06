@@ -1,0 +1,277 @@
+{
+  "question": "What the kernel records of two named sections two processes share - one backed by the paging file and one by a file - under the object manager\u0027s handle group and the file view flag: each process\u0027s handles to them, and each view it mapped and unmapped.",
+  "truth": {
+    "sections": 2,
+    "creatorViews": 2,
+    "openerViews": 8,
+    "viewBytes": 65536
+  },
+  "sections": [
+    {
+      "section": "memory",
+      "objects": 1,
+      "typeNames": [
+        "Section"
+      ],
+      "handles": [
+        {
+          "role": "creator",
+          "kind": "Create",
+          "records": 1,
+          "named": 0
+        },
+        {
+          "role": "creator",
+          "kind": "Close",
+          "records": 1,
+          "named": 1
+        },
+        {
+          "role": "opener",
+          "kind": "Create",
+          "records": 1,
+          "named": 0
+        },
+        {
+          "role": "opener",
+          "kind": "Close",
+          "records": 1,
+          "named": 1
+        }
+      ]
+    },
+    {
+      "section": "file",
+      "objects": 1,
+      "typeNames": [
+        "Section"
+      ],
+      "handles": [
+        {
+          "role": "creator",
+          "kind": "Create",
+          "records": 1,
+          "named": 0
+        },
+        {
+          "role": "creator",
+          "kind": "Close",
+          "records": 1,
+          "named": 1
+        },
+        {
+          "role": "opener",
+          "kind": "Create",
+          "records": 1,
+          "named": 0
+        },
+        {
+          "role": "opener",
+          "kind": "Close",
+          "records": 1,
+          "named": 1
+        }
+      ]
+    }
+  ],
+  "views": [
+    {
+      "section": "memory",
+      "truthViews": 10,
+      "recorded": 10,
+      "sizesAsLogged": true,
+      "unmappedAtTheirBase": true,
+      "viewValues": 1,
+      "viewValueInBothProcesses": true,
+      "viewValueIsASectionObject": false,
+      "otherRecordsNamingIt": 0,
+      "miscInfoHighBytes": [
+        "0xC4"
+      ],
+      "maxLagMicroseconds": 27.3
+    },
+    {
+      "section": "file",
+      "truthViews": 10,
+      "recorded": 10,
+      "sizesAsLogged": true,
+      "unmappedAtTheirBase": true,
+      "viewValues": 1,
+      "viewValueInBothProcesses": true,
+      "viewValueIsASectionObject": false,
+      "otherRecordsNamingIt": 0,
+      "miscInfoHighBytes": [
+        "0x04"
+      ],
+      "maxLagMicroseconds": 8.6
+    }
+  ],
+  "viewLayout": {
+    "records": 5650,
+    "versions": [
+      3
+    ],
+    "payloadBytes": [
+      44
+    ],
+    "betweenSizeAndProcessBytes": [
+      8
+    ],
+    "betweenPageAligned": true,
+    "processIsTheRaiser": true
+  },
+  "workloadOtherViews": 734,
+  "truthBytesReadThroughViews": 524288,
+  "counts": {
+    "handleEvents": 376288,
+    "viewEvents": 127380,
+    "viewEventsByOpcode": {
+      "37": 2765,
+      "38": 2885,
+      "39": 60925,
+      "40": 60805
+    },
+    "typeNames": 74
+  },
+  "rundowns": {
+    "start": {
+      "opcode": 39,
+      "records": 60925,
+      "versions": [
+        3
+      ],
+      "payloadBytes": [
+        44
+      ],
+      "betweenSizeAndProcessBytes": [
+        8
+      ],
+      "betweenPageAligned": true,
+      "processes": 491,
+      "processesNamedAlive": 491,
+      "recordsOfProcessesNamedAlive": 60925,
+      "header": {
+        "none": 60925
+      },
+      "probe": {
+        "viewsBefore": 78,
+        "imagesBefore": 42,
+        "viewsAfter": 100,
+        "imagesAfter": 48,
+        "viewsThroughout": 75,
+        "imagesThroughout": 42,
+        "records": 126,
+        "bases": 126,
+        "viewsThroughoutNamed": 75,
+        "imagesThroughoutNamed": 42,
+        "basesMappedAndUnmappedMeanwhile": 2,
+        "ofThemNamed": 2,
+        "basesNeitherBeforeNorAfter": 0,
+        "ofThemMappedMeanwhile": 0,
+        "miscInfoHighBytesOfViews": [
+          "0x01",
+          "0xC1",
+          "0xC4",
+          "0xC6",
+          "0xD8"
+        ],
+        "miscInfoHighBytesOfImages": [
+          "0x47"
+        ]
+      }
+    },
+    "stop": {
+      "opcode": 40,
+      "records": 60805,
+      "versions": [
+        3
+      ],
+      "payloadBytes": [
+        44
+      ],
+      "betweenSizeAndProcessBytes": [
+        8
+      ],
+      "betweenPageAligned": true,
+      "processes": 489,
+      "processesNamedAlive": 489,
+      "recordsOfProcessesNamedAlive": 60805,
+      "header": {
+        "none": 60805
+      },
+      "probe": {
+        "viewsBefore": 104,
+        "imagesBefore": 50,
+        "viewsAfter": 105,
+        "imagesAfter": 60,
+        "viewsThroughout": 100,
+        "imagesThroughout": 50,
+        "records": 165,
+        "bases": 165,
+        "viewsThroughoutNamed": 100,
+        "imagesThroughoutNamed": 50,
+        "basesMappedAndUnmappedMeanwhile": 0,
+        "ofThemNamed": 0,
+        "basesNeitherBeforeNorAfter": 0,
+        "ofThemMappedMeanwhile": 0,
+        "miscInfoHighBytesOfViews": [
+          "0x01",
+          "0xC1",
+          "0xC4",
+          "0xC6",
+          "0xD8"
+        ],
+        "miscInfoHighBytesOfImages": [
+          "0x47"
+        ]
+      }
+    }
+  },
+  "probeMappedDuringTheSession": {
+    "views": {
+      "mapped": 6,
+      "named": 6,
+      "miscInfoHighBytes": [
+        "0xC4",
+        "0xC6"
+      ]
+    },
+    "images": {
+      "mapped": 2,
+      "named": 2,
+      "miscInfoHighBytes": [
+        "0x47"
+      ]
+    }
+  },
+  "schema": "intercat.section-measurement.v1",
+  "measuredUtc": "2026-11-06T05:45:31.8810248+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "session": {
+    "mode": "private system logger, uniquely named, owned and stopped by the probe",
+    "kernelFlags": [
+      "Process",
+      "VAMap"
+    ],
+    "groupMasks": [
+      "PERF_OB_HANDLE"
+    ],
+    "masksRead": [
+      "0x00008003",
+      "0x00000000",
+      "0x00000000",
+      "0x00000000",
+      "0x00000040",
+      "0x00000000",
+      "0x00000000",
+      "0x00000000"
+    ],
+    "eventsLost": 0
+  },
+  "workload": {
+    "scenario": "FX-SECT-001",
+    "viewBytes": 65536,
+    "rounds": 4,
+    "seconds": 0.6
+  }
+}

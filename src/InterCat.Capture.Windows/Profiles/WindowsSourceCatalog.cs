@@ -152,7 +152,7 @@ public static class WindowsSourceCatalog
     /// <summary>The classic event class of the kernel's file I/O events, among them a view's mapping and unmapping (ADR-089).</summary>
     public static readonly Guid FileIoEventClass = Guid.Parse("90cbdc39-4a3e-11d1-84f4-0000f80464e3");
 
-    /// <summary><c>EVENT_TRACE_FLAG_VAMAP</c>: each view of a section or a file, images aside, mapped and unmapped (ADR-089).</summary>
+    /// <summary><c>EVENT_TRACE_FLAG_VAMAP</c>: each view of a section, a file or an image, mapped and unmapped (ADR-089).</summary>
     public const ulong FileViewsKernelFlag = 0x0000_8000;
 
     /// <summary>
@@ -913,10 +913,11 @@ public static class WindowsSourceCatalog
             FilteringNotes =
                 "No profile requests it. A kernel flag, not a manifest provider: only a private system logger receives it, and a "
                 + "capture whose profile needed it would make its one session one, the kernel flags first (ADR-035). It has no "
-                + "process filter: it records every process's views of sections and files, images aside.",
+                + "process filter: it records every process's views of sections, files and images alike.",
             StartupBehaviour =
-                "At the session's start and stop a rundown names every view then mapped, with its process; a view mapped before the "
-                + "capture began is seen at its unmapping or in that rundown.",
+                "At the session's start and stop a rundown names every view then mapped, images' among them, each by the process "
+                + "its record names, as no rundown record's header names one; a view mapped before the capture began is seen in the "
+                + "start's rundown, or at its unmapping where the rundown passed it by.",
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Experimental,
             Overhead = OverheadClass.Low,
@@ -935,9 +936,13 @@ public static class WindowsSourceCatalog
                 + "process with its size, each unmapping at its mapping's base; every view of one section, in any process, carries "
                 + "one value in its file object field, a kernel address no handle carries, so one section's views are joined to "
                 + "each other but neither to its handles nor to its name (ADR-089).",
-                "This build raises a view's mapping and unmapping at version 3, 44 bytes with a page-aligned offset before the "
-                + "process, which no layout the machine registers describes: version 2's five fields are all it registers. A "
-                + "capture admitting them reads them by the measured layout, stated, or refuses them.",
+                "This build raises a view's mapping and unmapping, and the rundowns at a session's start and stop, at version 3, 44 "
+                + "bytes with a page-aligned offset before the process, which no layout the machine registers describes: version 2's "
+                + "five fields are all it registers. A capture admitting them reads them by the measured layout, stated, or refuses "
+                + "them.",
+                "Measured on the probe's own views: the start's and the stop's rundowns named every view and every image it held "
+                + "across them, each record by the process it names - one the session's process rundown named alive - and none by "
+                + "its header. An image's view, named in a rundown or mapped, carries 0x47 in its extra information's high byte.",
                 "No record says a byte moved through a view: a section's views are membership, never traffic, and neither a view's "
                 + "size nor its section's is transfer volume (P3).",
                 "Registration is not evidence of traffic; only a measured fixture assigns a tier.",

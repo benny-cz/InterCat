@@ -13,7 +13,7 @@ namespace InterCat.SectionProbe;
 /// consumer only counting the mappings and unmappings by when each was raised, in alternating order, as the window message,
 /// synchronization, COM and AFD probes measured theirs. Machine processor time is §12's measure; the consumer does no more than
 /// count, so this is the collection's own cost, a lower bound on any capture that admits and stores the records. Every process
-/// maps views of files - images aside - so this is what any capture collecting the flag pays, whatever its workload. Beside the
+/// maps views of files and images, so this is what any capture collecting the flag pays, whatever its workload. Beside the
 /// machine's busy share, which whatever else the machine runs moves, each trial accounts the processor time of the workload's
 /// own processes, through a job holding them, and of this probe's, which is the consumer's.
 /// </summary>

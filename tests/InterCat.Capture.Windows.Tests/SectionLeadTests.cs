@@ -193,6 +193,8 @@ public sealed class SectionLeadTests
         Assert.Contains(views.Notes, note => note.Contains("FX-SECT-001", StringComparison.Ordinal) && note.Contains("no handle carries", StringComparison.Ordinal));
         Assert.Contains(views.Notes, note => note.Contains("at version 3", StringComparison.Ordinal) && note.Contains("no layout the machine registers", StringComparison.Ordinal));
         Assert.Contains(views.Notes, note => note.Contains("membership, never traffic", StringComparison.Ordinal));
+        Assert.Contains(views.Notes, note => note.Contains("every view and every image", StringComparison.Ordinal) && note.Contains("0x47", StringComparison.Ordinal));
+        Assert.Contains("images alike", views.FilteringNotes, StringComparison.Ordinal);
 
         // No profile requests it, no other source claims sections - the early memory candidate, whose events name no section,
         // claims none - and no build carries a tier for them.
@@ -224,6 +226,57 @@ public sealed class SectionLeadTests
         double share = (double)root.GetProperty("createsOfSections").GetInt64() / root.GetProperty("creates").GetInt64();
         Assert.InRange(share, 0.01, 0.1);
         Assert.True(root.GetProperty("namedClosesOfSections").GetInt64() > 0 && root.GetProperty("duplicatesOfSections").GetInt64() > 0);
+    }
+
+    [Fact(DisplayName = "§4.2: the file view flag's rundowns at a session's start and stop are raised at version 3, 44 bytes, as a mapping is - no header naming a process, each record the process whose view it names, one the process rundown named alive - and in three runs, nothing lost, they named every view and every image the probe held across them, an image's view carrying 0x47 in its extra information's high byte as its mapping does")]
+    public void TheRundownsNameEveryViewAndImageByItsProcess()
+    {
+        string[] runs = [.. Directory.GetDirectories(Path.Combine(RepositoryRoot(), "bench", "results"), "section-rundowns-*")
+            .Select(static directory => Path.Combine(directory, "report.json")).Order(StringComparer.Ordinal)];
+        Assert.Equal(3, runs.Length);
+        foreach (string file in runs)
+        {
+            using JsonDocument report = JsonDocument.Parse(File.ReadAllText(file));
+            JsonElement root = report.RootElement;
+            Assert.Equal(0, root.GetProperty("session").GetProperty("eventsLost").GetInt32());
+            foreach ((string name, int opcode) in new[] { ("start", 39), ("stop", 40) })
+            {
+                // The mappings' layout: version 3, 44 bytes, a page-aligned field before the process at their end.
+                JsonElement rundown = root.GetProperty("rundowns").GetProperty(name);
+                int[] Values(string property) => [.. rundown.GetProperty(property).EnumerateArray().Select(static value => value.GetInt32())];
+                Assert.Equal((opcode, true), (rundown.GetProperty("opcode").GetInt32(), rundown.GetProperty("betweenPageAligned").GetBoolean()));
+                Assert.Equal([3], Values("versions"));
+                Assert.Equal([44], Values("payloadBytes"));
+                Assert.Equal([8], Values("betweenSizeAndProcessBytes"));
+
+                // Every record names a process the session's process rundown named alive, and no header names one.
+                int records = rundown.GetProperty("records").GetInt32();
+                Assert.InRange(records, 50_000, 70_000);
+                Assert.Equal((records, rundown.GetProperty("processes").GetInt32()),
+                    (rundown.GetProperty("recordsOfProcessesNamedAlive").GetInt32(), rundown.GetProperty("processesNamedAlive").GetInt32()));
+                Assert.Equal(("none", records), Assert.Single(rundown.GetProperty("header").EnumerateObject().Select(static entry => (entry.Name, entry.Value.GetInt32()))));
+
+                // Every view and image the probe held across the rundown named, and every base named in neither of its
+                // snapshots one it mapped meanwhile; an image's view 0x47, no other view's.
+                JsonElement probe = rundown.GetProperty("probe");
+                int Count(string property) => probe.GetProperty(property).GetInt32();
+                Assert.True(Count("viewsThroughout") > 0 && Count("imagesThroughout") > 0, file);
+                Assert.Equal((Count("viewsThroughout"), Count("imagesThroughout"), Count("basesNeitherBeforeNorAfter")),
+                    (Count("viewsThroughoutNamed"), Count("imagesThroughoutNamed"), Count("ofThemMappedMeanwhile")));
+                Assert.Equal(["0x47"], probe.GetProperty("miscInfoHighBytesOfImages").EnumerateArray().Select(static value => value.GetString()));
+                Assert.DoesNotContain("0x47", probe.GetProperty("miscInfoHighBytesOfViews").EnumerateArray().Select(static value => value.GetString()));
+            }
+
+            // The views and images the probe mapped while the session ran, each named by a mapping record, an image's 0x47.
+            JsonElement during = root.GetProperty("probeMappedDuringTheSession");
+            foreach (string kind in new[] { "views", "images" })
+            {
+                JsonElement mapped = during.GetProperty(kind);
+                Assert.True(mapped.GetProperty("mapped").GetInt32() > 0, file);
+                Assert.Equal(mapped.GetProperty("mapped").GetInt32(), mapped.GetProperty("named").GetInt32());
+                Assert.Equal(kind == "images", mapped.GetProperty("miscInfoHighBytes").EnumerateArray().Any(static value => value.GetString() == "0x47"));
+            }
+        }
     }
 
     private sealed record Row(string Kind, string Role, string Section, string Object, string Type, string Named, string View, long Bytes, long Offset,

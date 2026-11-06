@@ -15,7 +15,8 @@ namespace InterCat.SectionProbe;
 /// process's handles to them, with each section's name, address and type, and each view it mapped and unmapped, with its base,
 /// size and file object - set against each process's truth. It keeps the records of the run's sections and of the workload's
 /// processes' views, and counts the rest; the ledger it writes names each by role and ordinal, never a PID, a handle value or
-/// an address.
+/// an address. The views the session's start and stop rundowns name, which no truth process maps then, it reads by their
+/// layout and holds to the processes the session's process rundowns named alive and to the probe's own views (<see cref="OwnViews"/>).
 /// </summary>
 internal static class Measure
 {
@@ -47,6 +48,14 @@ internal static class Measure
         string[]? masks;
         string sessionName = "InterCat-section-probe-" + Guid.NewGuid().ToString("N");
 
+        // The probe's own views, taken before and after each rundown: the session's start raises the views mapped then, and its
+        // stop those mapped then, each record naming a process the probe's own views hold it to.
+        Dictionary<ulong, bool> startBefore = OwnViews.Bases();
+        capture.StartBeforeUtc = DateTime.UtcNow;
+        Dictionary<ulong, bool> startAfter;
+        Dictionary<ulong, bool> stopBefore;
+        Dictionary<ulong, bool> stopAfter;
+
         // A session of its own name: a kernel provider in a session not named NT Kernel Logger is a private system logger, which
         // this probe owns and stops, and which touches no other session. The kernel flags start it in that mode; the object
         // manager's handle group, which no flag names, is then added to its masks.
@@ -63,6 +72,8 @@ internal static class Measure
             capture.Subscribe(session.Source);
             Task processing = Task.Run(() => session.Source.Process());
             await Task.Delay(1_500).ConfigureAwait(false);
+            capture.StartAfterUtc = DateTime.UtcNow;
+            startAfter = OwnViews.Bases();
             capture.WorkloadStartedUtc = DateTime.UtcNow;
             using (Process coordinator = Process.Start(new ProcessStartInfo(workload,
                 ["section-share", "--truth", truth, "--rounds", rounds.ToString(CultureInfo.InvariantCulture),
@@ -84,8 +95,12 @@ internal static class Measure
             capture.WorkloadEndedUtc = DateTime.UtcNow;
             await Task.Delay(1_500).ConfigureAwait(false);
             lost = session.EventsLost;
+            stopBefore = OwnViews.Bases();
+            capture.StopBeforeUtc = DateTime.UtcNow;
             session.Stop();
             await processing.ConfigureAwait(false);
+            capture.StopAfterUtc = DateTime.UtcNow;
+            stopAfter = OwnViews.Bases();
         }
 
         using JsonDocument scenario = JsonDocument.Parse(File.ReadAllText(Path.Combine(truth, "scenario.json")));
@@ -97,6 +112,12 @@ internal static class Measure
             root.GetProperty("openerProcessId").GetInt32(),
             [.. TruthViews(Path.Combine(truth, "truth-creator.jsonl")), .. TruthViews(Path.Combine(truth, "truth-opener.jsonl"))]);
         Dictionary<string, object?> report = Analyze(capture, run, bytes, rounds);
+        report["rundowns"] = new Dictionary<string, object?>
+        {
+            ["start"] = Rundown(capture, 39, startBefore, startAfter, (capture.StartBeforeUtc, capture.StartAfterUtc), capture.AliveAtStart),
+            ["stop"] = Rundown(capture, 40, stopBefore, stopAfter, (capture.StopBeforeUtc, capture.StopAfterUtc), capture.AliveAtStop),
+        };
+        report["probeMappedDuringTheSession"] = MappedDuring(capture, startAfter, stopBefore);
         report["schema"] = Schema;
         report["measuredUtc"] = DateTimeOffset.UtcNow;
         report["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
@@ -132,6 +153,7 @@ internal static class Measure
                     .Select(view => $"workload op{view.Opcode} {view.Utc:HH:mm:ss.ffffff} header {view.HeaderProcessId} payload-pid {view.ProcessId} base 0x{view.Base:X} file 0x{view.FileObject:X} misc 0x{view.MiscInfo:X} size {view.Size} raw {view.Payload}"),
                 .. capture.Views.Where(view => view.Opcode is 37 or 38).Take(10)
                     .Select(view => $"any op{view.Opcode} {view.Utc:HH:mm:ss.ffffff} header {view.HeaderProcessId} payload-pid {view.ProcessId} base 0x{view.Base:X} file 0x{view.FileObject:X} misc 0x{view.MiscInfo:X} size {view.Size} raw {view.Payload}"),
+                .. StopDiagnosis(capture, stopBefore, stopAfter),
             ]).ConfigureAwait(false);
         }
 
@@ -231,6 +253,119 @@ internal static class Measure
                 ["typeNames"] = capture.TypeNames.Count,
             },
         };
+    }
+
+    // A rundown's records - each view mapped at the session's start or at its stop - by the layout they were raised at: their
+    // versions and lengths and what they carry between the size and the process; whether the process each carries is one the
+    // session's process rundown named alive then; which process each header names beside it; and those naming the probe's own
+    // process held to the probe's views and images, taken just before the rundown and once it was over. A view in both is held
+    // across the rundown only where no record of the probe's mapped or unmapped one at its base between them: the probe's
+    // runtime maps and unmaps views at some bases again and again, so a base can be in both with no view there as the rundown
+    // passed, and a view can be mapped and named between them, in neither. Counts only, never a PID.
+    private static Dictionary<string, object?> Rundown(Capture capture, int opcode, Dictionary<ulong, bool> before, Dictionary<ulong, bool> after,
+        (DateTime From, DateTime To) taken, HashSet<int> alive)
+    {
+        int probe = Environment.ProcessId;
+        ViewRecord[] records = [.. capture.Views.Where(view => view.Opcode == opcode)];
+        ViewRecord[] probes = [.. records.Where(view => view.ProcessId == probe)];
+        HashSet<ulong> named = [.. probes.Select(static view => view.Base)];
+        HashSet<ulong> touched = [.. capture.Views.Where(view => view.Opcode is 37 or 38 && view.ProcessId == probe && view.Utc >= taken.From && view.Utc <= taken.To)
+            .Select(static view => view.Base)];
+        HashSet<ulong> mappedMeanwhile = [.. capture.Views.Where(view => view.Opcode == 37 && view.ProcessId == probe && view.Utc >= taken.From && view.Utc <= taken.To)
+            .Select(static view => view.Base)];
+        ulong[] throughout = [.. before.Keys.Where(viewBase => after.ContainsKey(viewBase) && !touched.Contains(viewBase))];
+        ulong[] churned = [.. before.Keys.Where(viewBase => after.ContainsKey(viewBase) && touched.Contains(viewBase))];
+        ulong[] neither = [.. named.Where(viewBase => !before.ContainsKey(viewBase) && !after.ContainsKey(viewBase))];
+        bool IsImage(ulong viewBase) => before.TryGetValue(viewBase, out bool image) ? image : after.GetValueOrDefault(viewBase);
+        string[] HighBytes(bool images) => [.. probes.Where(view => (before.ContainsKey(view.Base) || after.ContainsKey(view.Base)) && IsImage(view.Base) == images)
+            .Select(static view => "0x" + (view.MiscInfo >> 48).ToString("X2", CultureInfo.InvariantCulture)).Distinct().Order(StringComparer.Ordinal)];
+        string HeaderOf(ViewRecord view) =>
+            view.HeaderProcessId == view.ProcessId ? "theRecordsProcess"
+            : view.HeaderProcessId == 4 ? "theSystemProcess"
+            : view.HeaderProcessId is 0 or -1 ? "none"
+            : view.HeaderProcessId == probe ? "theProbe"
+            : "another";
+        return new()
+        {
+            ["opcode"] = opcode,
+            ["records"] = records.Length,
+            ["versions"] = records.Select(static view => view.Version).Distinct().Order().ToArray(),
+            ["payloadBytes"] = records.Select(static view => view.PayloadBytes).Distinct().Order().ToArray(),
+            ["betweenSizeAndProcessBytes"] = records.Select(static view => view.Between.Length / 2).Distinct().Order().ToArray(),
+            ["betweenPageAligned"] = records.All(static view => view.Between.Length != 16
+                || BitConverter.ToUInt64(Convert.FromHexString(view.Between)) % 4096 == 0),
+            ["processes"] = records.Select(static view => view.ProcessId).Distinct().Count(),
+            ["processesNamedAlive"] = records.Select(static view => view.ProcessId).Distinct().Count(alive.Contains),
+            ["recordsOfProcessesNamedAlive"] = records.Count(view => alive.Contains(view.ProcessId)),
+            ["header"] = records.GroupBy(HeaderOf).OrderBy(static group => group.Key, StringComparer.Ordinal)
+                .ToDictionary(static group => group.Key, static group => group.Count()),
+            ["probe"] = new Dictionary<string, object>
+            {
+                ["viewsBefore"] = before.Count(static entry => !entry.Value),
+                ["imagesBefore"] = before.Count(static entry => entry.Value),
+                ["viewsAfter"] = after.Count(static entry => !entry.Value),
+                ["imagesAfter"] = after.Count(static entry => entry.Value),
+                ["viewsThroughout"] = throughout.Count(viewBase => !IsImage(viewBase)),
+                ["imagesThroughout"] = throughout.Count(IsImage),
+                ["records"] = probes.Length,
+                ["bases"] = named.Count,
+                ["viewsThroughoutNamed"] = throughout.Count(viewBase => !IsImage(viewBase) && named.Contains(viewBase)),
+                ["imagesThroughoutNamed"] = throughout.Count(viewBase => IsImage(viewBase) && named.Contains(viewBase)),
+                ["basesMappedAndUnmappedMeanwhile"] = churned.Length,
+                ["ofThemNamed"] = churned.Count(named.Contains),
+                ["basesNeitherBeforeNorAfter"] = neither.Length,
+                ["ofThemMappedMeanwhile"] = neither.Count(mappedMeanwhile.Contains),
+                ["miscInfoHighBytesOfViews"] = HighBytes(images: false),
+                ["miscInfoHighBytesOfImages"] = HighBytes(images: true),
+            },
+        };
+    }
+
+    // The probe's own diagnosis of the stop's rundown, never committed: each view the probe held across it that it did not name,
+    // and each base it named in neither of the probe's snapshots, with every record of the probe's at that base and when, beside
+    // when the snapshots were taken and the rundown's records span.
+    private static IEnumerable<string> StopDiagnosis(Capture capture, Dictionary<ulong, bool> before, Dictionary<ulong, bool> after)
+    {
+        int probe = Environment.ProcessId;
+        ViewRecord[] rundown = [.. capture.Views.Where(static view => view.Opcode == 40)];
+        HashSet<ulong> named = [.. rundown.Where(view => view.ProcessId == probe).Select(static view => view.Base)];
+        yield return $"stop snapshots {capture.StopBeforeUtc:HH:mm:ss.ffffff} and {capture.StopAfterUtc:HH:mm:ss.ffffff}; "
+            + $"stop rundown {rundown.Min(static view => view.Utc):HH:mm:ss.ffffff} to {rundown.Max(static view => view.Utc):HH:mm:ss.ffffff}";
+        IEnumerable<(string What, ulong Base)> odd =
+        [
+            .. before.Keys.Where(viewBase => after.ContainsKey(viewBase) && !named.Contains(viewBase)).Select(static viewBase => ("held across it, not named", viewBase)),
+            .. named.Where(viewBase => !before.ContainsKey(viewBase) && !after.ContainsKey(viewBase)).Select(static viewBase => ("named, in neither snapshot", viewBase)),
+        ];
+        foreach ((string what, ulong viewBase) in odd)
+        {
+            yield return $"stop {what}: base 0x{viewBase:X} image {before.GetValueOrDefault(viewBase) || after.GetValueOrDefault(viewBase)}; records: "
+                + string.Join("; ", capture.Views.Where(view => view.Base == viewBase && view.ProcessId == probe)
+                    .Select(static view => $"op{view.Opcode} {view.Utc:HH:mm:ss.ffffff} size {view.Size} misc 0x{view.MiscInfo:X} file 0x{view.FileObject:X}"));
+        }
+    }
+
+    // The views and images the probe mapped while the session ran - in its own at the stop's rundown but not once the start's was
+    // over - and how many of each a mapping record named, in the probe's process at its base, and with which extra information.
+    private static Dictionary<string, object> MappedDuring(Capture capture, Dictionary<ulong, bool> started, Dictionary<ulong, bool> stopping)
+    {
+        int probe = Environment.ProcessId;
+        // The last mapping at each base: an image's loader may map the file as data at that base before it maps the image.
+        Dictionary<ulong, ViewRecord> mapped = capture.Views.Where(view => view.Opcode == 37 && view.ProcessId == probe)
+            .GroupBy(static view => view.Base).ToDictionary(static group => group.Key, static group => group.MaxBy(static view => view.Utc)!);
+        Dictionary<string, object> Of(bool images)
+        {
+            ulong[] bases = [.. stopping.Where(entry => entry.Value == images && !started.ContainsKey(entry.Key)).Select(static entry => entry.Key)];
+            return new()
+            {
+                ["mapped"] = bases.Length,
+                ["named"] = bases.Count(mapped.ContainsKey),
+                ["miscInfoHighBytes"] = bases.Where(mapped.ContainsKey)
+                    .Select(viewBase => "0x" + (mapped[viewBase].MiscInfo >> 48).ToString("X2", CultureInfo.InvariantCulture))
+                    .Distinct().Order(StringComparer.Ordinal).ToArray(),
+            };
+        }
+
+        return new() { ["views"] = Of(images: false), ["images"] = Of(images: true) };
     }
 
     // The mappings and unmappings the workload's two processes raised, by the process each record's header names.
@@ -392,6 +527,11 @@ internal static class Measure
 
         public Dictionary<int, long> ViewsByOpcode { get; } = [];
 
+        /// <summary>The processes the session's process rundowns named alive at its start and at its stop, never written out.</summary>
+        public HashSet<int> AliveAtStart { get; } = [];
+
+        public HashSet<int> AliveAtStop { get; } = [];
+
         public long HandleEvents { get; private set; }
 
         public long ViewEvents { get; private set; }
@@ -399,6 +539,16 @@ internal static class Measure
         public DateTime WorkloadStartedUtc { get; set; }
 
         public DateTime WorkloadEndedUtc { get; set; }
+
+        /// <summary>When the probe's own views were taken just before the session started, and once its start's rundown was over.</summary>
+        public DateTime StartBeforeUtc { get; set; }
+
+        public DateTime StartAfterUtc { get; set; }
+
+        /// <summary>When the probe's own views were taken just before the session stopped, and once its processing was over.</summary>
+        public DateTime StopBeforeUtc { get; set; }
+
+        public DateTime StopAfterUtc { get; set; }
 
         public string? TypeName(int type) => TypeNames.GetValueOrDefault(type);
 
@@ -455,6 +605,8 @@ internal static class Measure
                 }
             };
             source.Kernel.ObjectTypeDCEnd += data => TypeNames[data.ObjectType] = data.ObjectTypeName;
+            source.Kernel.ProcessDCStart += data => AliveAtStart.Add(data.ProcessID);
+            source.Kernel.ProcessDCStop += data => AliveAtStop.Add(data.ProcessID);
             source.AllEvents += data =>
             {
                 // A view's mapping and unmapping and their rundowns, which TraceEvent does not parse, read by the layout the
