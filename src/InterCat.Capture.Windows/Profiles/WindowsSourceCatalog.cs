@@ -146,6 +146,15 @@ public static class WindowsSourceCatalog
     /// <summary>Win32k's message pump: window messages' lead (ADR-086).</summary>
     public const string Win32kSourceId = "etw/manifest/Microsoft-Windows-Win32k";
 
+    /// <summary>The kernel's file view flag: sections' lead, each view's mapping and unmapping (ADR-089).</summary>
+    public const string KernelFileViewsSourceId = "etw/kernel-flag/VAMap";
+
+    /// <summary>The classic event class of the kernel's file I/O events, among them a view's mapping and unmapping (ADR-089).</summary>
+    public static readonly Guid FileIoEventClass = Guid.Parse("90cbdc39-4a3e-11d1-84f4-0000f80464e3");
+
+    /// <summary><c>EVENT_TRACE_FLAG_VAMAP</c>: each view of a section or a file, images aside, mapped and unmapped (ADR-089).</summary>
+    public const ulong FileViewsKernelFlag = 0x0000_8000;
+
     /// <summary>
     /// Win32k's <c>MessagePump</c> keyword: a sent message's start and stop at both ends and a posted message's queueing and
     /// retrieval, the six events a message between windows raises, each declared at the informational level (ADR-086).
@@ -861,13 +870,14 @@ public static class WindowsSourceCatalog
             ],
         };
 
+        // An early candidate for sections, inspected and found to name none: kept so the inventory says so, claiming no mechanism.
         var kernelMemory = new WindowsSourceDefinition
         {
             SourceId = KernelMemorySourceId,
-            DisplayName = "Kernel memory (shared section lead)",
+            DisplayName = "Kernel memory (inspected: names no section)",
             Kind = SourceKind.ManifestProvider,
             ProviderName = "Microsoft-Windows-Kernel-Memory",
-            Mechanisms = [Mechanism.SharedSection],
+            Mechanisms = [],
             RequiredPrivilege = PrivilegeRequirement.Administrator,
             Level = "win:Informational",
             MatchAnyKeyword = 0,
@@ -879,8 +889,58 @@ public static class WindowsSourceCatalog
             ContractStatus = SourceContractStatus.Experimental,
             Notes =
             [
+                "Its registered events name no section, view or mapping: the kernel's file view flag is sections' lead (ADR-089).",
                 "Mapping size and committed pages are capacity, not transfer volume (section 5, P3).",
                 "Ordinary loads and stores through a mapped pointer produce no event stream (section 4.1).",
+            ],
+        };
+
+        // Sections' lead (ADR-089): inventoried, requested by no profile and admitting no event. A view's records are raised at a
+        // version no registered layout describes and name no section; a gate numbering sections and views comes first. Its
+        // measured notes are what icat capabilities states of it.
+        var fileViews = new WindowsSourceDefinition
+        {
+            SourceId = KernelFileViewsSourceId,
+            DisplayName = "Kernel file view flag (section lead)",
+            Kind = SourceKind.KernelFlagGroup,
+            ProviderName = "Kernel file views (EVENT_TRACE_FLAG_VAMAP)",
+            Mechanisms = [Mechanism.SharedSection],
+            RequiredPrivilege = PrivilegeRequirement.Administrator,
+            Level = "win:Informational",
+            MatchAnyKeyword = 0,
+            RequestedKeywords = [],
+            SupportsCaptureSideProcessFilter = false,
+            FilteringNotes =
+                "No profile requests it. A kernel flag, not a manifest provider: only a private system logger receives it, and a "
+                + "capture whose profile needed it would make its one session one, the kernel flags first (ADR-035). It has no "
+                + "process filter: it records every process's views of sections and files, images aside.",
+            StartupBehaviour =
+                "At the session's start and stop a rundown names every view then mapped, with its process; a view mapped before the "
+                + "capture began is seen at its unmapping or in that rundown.",
+            SupportsCaptureState = false,
+            ContractStatus = SourceContractStatus.Experimental,
+            Overhead = OverheadClass.Low,
+            OverheadEvidence = "bench/results/section-view-impact-20261106T033759Z/impact.json",
+            ClassicEventClass = FileIoEventClass,
+            KernelFlags = FileViewsKernelFlag,
+            AdmittedEvents = [],
+            Notes =
+            [
+                "Collection alone, four series of nine pairs over a view-heavy workload, loss-free: a median of 0.49 and 0.55 CPU "
+                + "pp over trials of four seconds, Low; but the workload spent more processor time of its own and ran 9.5, 5.2, 5.3 "
+                + "and 0.2% lower in throughput, past the 5% target in three series of four, as a view's records are raised in "
+                + "the thread that maps and unmaps it. No profile requests this source, and only an opt-in one stating its cost "
+                + "ever may, never Explore.",
+                "Measured on FX-SECT-001: every view a process mapped or unmapped of a section two processes share, raised in that "
+                + "process with its size, each unmapping at its mapping's base; every view of one section, in any process, carries "
+                + "one value in its file object field, a kernel address no handle carries, so one section's views are joined to "
+                + "each other but neither to its handles nor to its name (ADR-089).",
+                "This build raises a view's mapping and unmapping at version 3, 44 bytes with a page-aligned offset before the "
+                + "process, which no layout the machine registers describes: version 2's five fields are all it registers. A "
+                + "capture admitting them reads them by the measured layout, stated, or refuses them.",
+                "No record says a byte moved through a view: a section's views are membership, never traffic, and neither a view's "
+                + "size nor its section's is transfer volume (P3).",
+                "Registration is not evidence of traffic; only a measured fixture assigns a tier.",
             ],
         };
 
@@ -1279,6 +1339,6 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc, winInetCapture, winsockAfd, comPerf, objectHandles, win32k];
+        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc, winInetCapture, winsockAfd, comPerf, objectHandles, win32k, fileViews];
     }
 }

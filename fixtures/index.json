@@ -995,7 +995,9 @@
           "R22"
         ],
         "invariants": [],
-        "prohibitions": []
+        "prohibitions": [
+          "P27"
+        ]
       },
       "truth": {
         "generator": "src/InterCat.TestWorkloads section-share --view-bytes 65536 --rounds 4, under tools/InterCat.SectionProbe --measure; two further runs of 4096 bytes sixteen times and 1048576 twice",
@@ -1021,7 +1023,8 @@
         "contents": "The two processes' truth logs and scenario of the first run - sections by the run's own names, views by their round and size, of seeded bytes - and the ledger of its sections' handle records and its views' records, by role - creator, opener - each by its section's kind and its object's, base's and value's ordinals, size, offset and extra information's high byte, never a PID, a handle value or an address; and the measurement's counters of the three runs."
       },
       "tests": [
-        "R22: FX-SECT-001's handle records join each process's handles to a section by its object's address - each creation named by nothing but its close, typed Section - and every view each process mapped and unmapped is a record of that process with its size, each section's views naming one value in both processes, while one base held both sections' views and no record names a byte moved through one"
+        "R22: FX-SECT-001's handle records join each process's handles to a section by its object's address - each creation named by nothing but its close, typed Section - and every view each process mapped and unmapped is a record of that process with its size, each section's views naming one value in both processes, while one base held both sections' views and no record names a byte moved through one",
+        "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections"
       ]
     },
     {
@@ -2764,6 +2767,7 @@
         "P27: icat capabilities reports a mechanism no source covers where a fixture measured it on the build - mailslots unsupported, by FX-MAIL-001 - and leaves it out on a build none measured it on",
         "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build their fixtures measured them on through the product",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",
+        "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections",
         "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build",
         "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by the opt-in window messages profile alone, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and are experimental evidence on the one build their fixture measured them on through the product"
       ],

@@ -1,7 +1,9 @@
 # ADR-089: A section two processes share is recorded by its handles and its views, which no record joins
 
 - Status: accepted for M6's section discovery work package; no source is inventoried yet; since revision 971 the file view
-  flag's collection cost is measured, Low in processor time but a view-heavy workload past the throughput target (addendum)
+  flag's collection cost is measured, Low in processor time but a view-heavy workload past the throughput target (addendum);
+  since revision 972 the flag is inventoried as sections' lead, requested by no profile and admitting no event (second
+  addendum)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-035, ADR-082, ADR-083, plan M6, §4.2, R22, P2, P3, P6, FX-SECT-001
@@ -83,3 +85,19 @@ in alternating order. Four series, nothing lost:
 
 So the flag's collection is Low in the processor time it adds, but a view-heavy workload slows past the throughput target:
 only an opt-in profile that states it may admit the flag, never Explore.
+
+## Addendum: the file view flag inventoried as sections' lead (revision 972)
+
+The source catalog's early candidate for sections was Microsoft-Windows-Kernel-Memory, never measured; the package's
+inspection found that its registered events name no section, view or mapping. It stays inventoried, a registered
+provider, and claims no mechanism, its notes saying why. The kernel's file view flag, `etw/kernel-flag/VAMap`, is
+inventoried as sections' lead:
+
+- a kernel flag of the classic file I/O class, received only by a private system logger, with no process filter;
+- its cost Low in the processor time it adds, the first addendum's longer series its evidence, its notes stating the
+  throughput regression beside the class;
+- its notes saying what FX-SECT-001 measured: each view in its process with its size, one section's views joined by a
+  value no handle carries, raised at a version no registered layout describes, and no byte moved through a view.
+
+No profile requests it and it admits no event: a gate that numbers sections and views, and reads the records by their
+measured layout, comes first. No build carries a tier for sections.

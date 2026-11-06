@@ -166,6 +166,46 @@ public sealed class SectionLeadTests
         Assert.Equal(3, regressions.Count(static regressed => regressed));
     }
 
+    [Fact(DisplayName = "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections")]
+    public void SectionsHaveAnInventoriedLeadAndNoTier()
+    {
+        // A kernel flag of the file I/O class, the one FX-SECT-001 was measured under, with no process filter and no event
+        // admitted yet.
+        WindowsSourceDefinition views = WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelFileViewsSourceId)!;
+        Assert.Equal((SourceKind.KernelFlagGroup, 0x8000UL, Guid.Parse("90cbdc39-4a3e-11d1-84f4-0000f80464e3")),
+            (views.Kind, views.KernelFlags, views.ClassicEventClass));
+        Assert.Equal([Mechanism.SharedSection], views.Mechanisms);
+        Assert.Equal((SourceContractStatus.Experimental, false), (views.ContractStatus, views.SupportsCaptureSideProcessFilter));
+        Assert.Empty(views.AdmittedEvents);
+
+        // Its cost is measured, Low in the processor time it adds over trials of four seconds, with the throughput regression
+        // its notes state beside the class.
+        Assert.Equal(OverheadClass.Low, views.Overhead);
+        Assert.Matches(@"^bench/results/section-view-impact-\d{8}T\d{6}Z/impact\.json$", views.OverheadEvidence);
+        using (JsonDocument impact = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepositoryRoot(), views.OverheadEvidence!))))
+        {
+            Assert.Equal((views.Overhead.ToString(), false), (impact.RootElement.GetProperty("attributedOverhead").GetString(),
+                impact.RootElement.GetProperty("throughputTargetMet").GetBoolean()));
+            Assert.Contains("--rounds 100000", impact.RootElement.GetProperty("workload").GetString(), StringComparison.Ordinal);
+        }
+
+        Assert.Contains(views.Notes, note => note.Contains("past the 5% target", StringComparison.Ordinal) && note.Contains("never Explore", StringComparison.Ordinal));
+        Assert.Contains(views.Notes, note => note.Contains("FX-SECT-001", StringComparison.Ordinal) && note.Contains("no handle carries", StringComparison.Ordinal));
+        Assert.Contains(views.Notes, note => note.Contains("at version 3", StringComparison.Ordinal) && note.Contains("no layout the machine registers", StringComparison.Ordinal));
+        Assert.Contains(views.Notes, note => note.Contains("membership, never traffic", StringComparison.Ordinal));
+
+        // No profile requests it, no other source claims sections - the early memory candidate, whose events name no section,
+        // claims none - and no build carries a tier for them.
+        Assert.DoesNotContain(CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures),
+            profile => profile.Sources.Any(source => source.SourceId == views.SourceId));
+        Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != views.SourceId),
+            source => Assert.DoesNotContain(Mechanism.SharedSection, source.Mechanisms));
+        WindowsSourceDefinition memory = WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelMemorySourceId)!;
+        Assert.Empty(memory.Mechanisms);
+        Assert.Contains(memory.Notes, note => note.Contains("name no section", StringComparison.Ordinal));
+        Assert.DoesNotContain(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.SharedSection);
+    }
+
     private sealed record Row(string Kind, string Role, string Section, string Object, string Type, string Named, string View, long Bytes, long Offset,
         string ViewValue, string MiscHigh);
 

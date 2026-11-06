@@ -895,6 +895,7 @@ Revision 968 measures the window messages profile's cost through the product (AD
 Revision 969 begins the section discovery package with its metadata inspection: a section's handles are the object manager's, as every object's, and the file I/O class declares a view's mapping and unmapping with its base, size, file object and process, but nothing names the section a view maps.
 Revision 970 measures sections two processes share (ADR-089, FX-SECT-001): each section's handles are joined at its object's address and named at their close, and every view is recorded in its process with its size, each section's views naming one value no handle carries, and no byte moved.
 Revision 971 measures collecting the kernel's file view flag (ADR-089's addendum): Low in the processor time it adds, but a view-heavy workload past the throughput target in three series of four, so only an opt-in profile stating it may admit it.
+Revision 972 inventories the kernel's file view flag as sections' lead (ADR-089's second addendum), requested by no profile and admitting no event; Kernel-Memory, whose events name no section, claims none.
 
 ## Revisions, a paragraph each, in order
 
@@ -4302,3 +4303,11 @@ added was a median 0.49 and 0.55 CPU pp over trials of four seconds, Low, and 1.
 the consumer's settling weighs on a second's work; the workload's own processor time grew, its records raised in its own
 threads, and its throughput fell 9.5, 5.2, 5.3 and 0.2%, past §12's 5% target in three series of four. Only an opt-in
 profile stating it may admit the flag.
+
+Revision 972 inventories the section discovery package's lead (ADR-089's second addendum), as revision 956 inventoried
+window messages'. The kernel's file view flag, `etw/kernel-flag/VAMap`, enters the source catalog as a kernel flag of the
+classic file I/O class, received only by a private system logger and with no process filter, its cost Low in the processor
+time it adds with its throughput regression stated, and its notes what FX-SECT-001 measured. No profile requests it and it
+admits no event. Microsoft-Windows-Kernel-Memory, the catalog's early candidate for sections, stays inventoried but claims no
+mechanism, as the package's inspection found its events name no section, view or mapping. No build carries a tier for
+sections; a test holds the lead, and eight mutations of the catalog are caught.
