@@ -909,6 +909,7 @@ Revision 982 adds FX-SECT-002 (ADR-092's second addendum): sections made and end
 Revision 983 adds FX-SECT-003 (ADR-092's third addendum): sections whose handles and creator's views were made before a capture began, recorded through the product three times, nothing lost, have each close numbered alone and none discovered, though the start's rundown holds each one's views to one number in both processes, while the same capture's control is whole - the mechanism's ambiguity case.
 Revision 984 holds sections' schema-failure case (ADR-090's fifth addendum): a capture refuses either kernel source where its records could not be read and decided, so the sections profile does not start, and `icat capabilities` says a classic group's schema is unknown where no layout is registered or measured for the build, as a capture refuses it.
 Revision 985 has a process's section records drill down exactly (ADR-092's fourth addendum): icat processes names the icat evidence command that lists them, a view a rundown names the process holding among them; sections' cost through the product is what remains of their M6 exit tests.
+Revision 987 begins M6's process enrichment with its metadata inspection (§4.2): Kernel-Process's start and rundown, which every capture collects, declare each process's package, elevation and mandatory label beside its session, and Microsoft-Windows-Services a service's status change naming the process hosting it.
 
 ## Revisions, a paragraph each, in order
 
@@ -4446,3 +4447,15 @@ at the stop, which a rundown raised in another process names it holding - never 
 same section, or another's view a rundown raised in it. With two instance and lifetime fixtures, an ambiguity case, a
 schema-failure case and exact drill-down, sections' cost measured through the product is what remains of their M6 exit
 tests.
+
+Revision 987 begins M6's process enrichment - "enrich process nodes with package, service and user-session information
+as accessible" - as every package begins, with what the machine declares. `tools/InterCat.ProcessProbe --inspect` reads,
+without enabling any, Kernel-Process's every event at every version and the registered schemas of the providers whose
+names say services, packages, the application model, sessions or logons (`bench/results/process-provider-inspection-20261106T120609Z`). Kernel-Process's
+process start and rundown, which every capture already collects, declare at the versions this build raises them each
+process's package full name and package-relative application ID, its token's elevation type and whether it is elevated,
+and its mandatory label, beside the session the product already admits. Of the named providers whose schemas could be
+read, Microsoft-Windows-Services declares a service's status change naming the process hosting it and a service's start,
+control and configuration change naming the client that asked, and AppModel-Runtime a packaged application's process;
+none declares which services a process hosts at a moment. The plan's §4.2 records this as evidence of schemas on one
+machine, not of emission: a truth fixture is measured before any field is admitted.
