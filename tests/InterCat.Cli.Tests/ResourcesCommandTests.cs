@@ -9,8 +9,9 @@ using static InterCat.Analysis.Tests.TestSessions;
 namespace InterCat.Cli.Tests;
 
 /// <summary>
-/// icat resources (ADR-097): a session's named synchronization objects and sections by their handles, each from its first
-/// record to its last, by the object directory its name lies in, with whose it was and which of its ends the capture saw.
+/// icat resources (ADR-097): a session's named synchronization objects, sections by their handles and by their views, and
+/// AF_UNIX sockets, each from its first record to its last, by the object directory its name lies in, with whose it was and
+/// which of its ends the capture saw.
 /// </summary>
 public sealed class ResourcesCommandTests
 {
@@ -105,6 +106,71 @@ public sealed class ResourcesCommandTests
         Assert.Equal((1L, 1L, 120L, 0L, 1L, false), (unmeasured.GetProperty("sends").GetInt64(), unmeasured.GetProperty("receives").GetInt64(),
             unmeasured.GetProperty("bytesSent").GetInt64(), unmeasured.GetProperty("bytesReceived").GetInt64(),
             unmeasured.GetProperty("unmeasuredTransfers").GetInt64(), unmeasured.GetProperty("idle").GetBoolean()));
+    }
+
+    [Fact(DisplayName = "R3: icat resources lists a section by its views apart from its handles, with its views and their largest extent, and an image's sections only when --images asks")]
+    public async Task MappedSectionsAreListedByTheirViews()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        Publish(session.Store, rows, fields: fields);
+        session.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string output, _) = await Run("resources", session.Path);
+        Assert.Equal(InterCatExitCode.Success, code);
+        string text = output.ReplaceLineEndings("\n");
+        Assert.Matches(@"\n  Resources +1 section, 3 mapped sections; 1 named\n", text);
+        Assert.Matches(@"\n  Images +1 image section not listed: a module's views, not memory a process shared; --images lists them\n", text);
+        Assert.Matches(@"Section 4\s+not named\s+\\BaseNamedObjects\s+Shared4\s+writer\.exe · PID 100", text);
+        Assert.Matches(@"Mapped section 4\s+-\s+-\s+unnamed · 2 views up to 64 KiB\s+writer\.exe · PID 100, reader\.exe · PID 200\s+\S+ s\s+\S+ s, unmapped\s+none recorded\s+4", text);
+        Assert.Matches(@"Mapped section 6\s+-\s+-\s+unnamed · 1 view up to 8 KiB\s+reader\.exe · PID 200\s+\S+ s, made before\s+\S+ s, unmapped", text);
+        Assert.Matches(@"Mapped section 7\s+-\s+-\s+unnamed · 1 view up to 16 KiB\s+reader\.exe · PID 200\s+\S+ s, made before\s+\S+ s, its unmapping unseen", text);
+        Assert.DoesNotContain("Image section 5", text, StringComparison.Ordinal);
+        Assert.Contains("never joined to the number its handles carry", text, StringComparison.Ordinal);
+
+        // No view names its section, so a namespace holds no image's section, and none is said to be left out of it.
+        (code, output, _) = await Run("resources", session.Path, "--namespace", @"\BaseNamedObjects");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"Section 4\s+not named\s+\\BaseNamedObjects\s+Shared4", output);
+        Assert.DoesNotMatch(@"\n  Images ", output.ReplaceLineEndings("\n"));
+
+        // --images lists the image's section too, held at the stop.
+        (code, output, _) = await Run("resources", session.Path, "--images");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"Image section 5\s+-\s+-\s+unnamed · 1 view up to 4 KiB\s+writer\.exe · PID 100\s+\S+ s\s+\S+ s, held at the stop", output);
+
+        // The document says which instances are by their views and which an image's, with each holder's views.
+        (code, output, _) = await Run("resources", session.Path, "--json");
+        using JsonDocument json = JsonDocument.Parse(output);
+        Assert.Equal(1, json.RootElement.GetProperty("imagesNotListed").GetInt32());
+        JsonElement mapped = json.RootElement.GetProperty("listed").EnumerateArray()
+            .Single(item => item.GetProperty("byViews").GetBoolean() && item.GetProperty("number").GetInt64() == 6);
+        Assert.Equal((1, 8192L, false), (mapped.GetProperty("views").GetInt32(), mapped.GetProperty("largestView").GetInt64(),
+            mapped.GetProperty("image").GetBoolean()));
+        Assert.Equal((0, 1, 1), mapped.GetProperty("holders").EnumerateArray().Select(holder => (holder.GetProperty("viewsMapped").GetInt32(),
+            holder.GetProperty("viewsUnmapped").GetInt32(), holder.GetProperty("viewsListed").GetInt32())).Single());
+    }
+
+    [Fact(DisplayName = "R21: icat resources says a session whose only resources are an image's sections lists them only with --images, never that its records number none")]
+    public async Task ImageSectionsAloneAreNotNone()
+    {
+        // Section 5's records alone: an image's view, held at the stop.
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        HashSet<ulong> image = [.. fields.Where(field => field is { Field: SourceField.SectionNumber, Value: 5 }).Select(field => field.RawRecordOrdinal)];
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. rows.Where(row => row.Mechanism != Mechanism.SharedSection || image.Contains(row.RawRecordOrdinal))],
+            fields: [.. fields.Where(field => image.Contains(field.RawRecordOrdinal))]);
+        session.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string output, _) = await Run("resources", session.Path);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Contains("Every resource of this session is an image's section, a module's views rather than memory a process "
+            + "shared, and is listed only with --images: 1 image section.", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("none listed is not none on the machine", output, StringComparison.Ordinal);
+
+        (code, output, _) = await Run("resources", session.Path, "--images");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"Image section 5\s+-\s+-\s+unnamed · 1 view up to 4 KiB", output);
     }
 
     [Fact(DisplayName = "R21: icat resources says a session whose records number no resource lists none, which is not none on the machine")]

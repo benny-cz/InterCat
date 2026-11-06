@@ -926,6 +926,7 @@ Revision 1000 groups the machine rung and icat export by service container (ADR-
 Revision 1001 lets the window group by service container and an investigation keep it (ADR-096's second addendum): Group by offers Service container where the capture listed its services, and workspace-v24 keeps the grouping in a member's layout.
 Revision 1002 derives resource instances (ADR-097, contracts/resources-v1.md): each named synchronization object and each section by its handles, the number its gate gave it from its first record to its last, named as its closes name it, held by the processes its records bind to, and listed by icat resources by namespace.
 Revision 1003 makes AF_UNIX sockets resource instances with the traffic they carried (ADR-097's addendum): icat resources --idle lists the discovered resources that carried none apart from the traffic observed, as M6 asks.
+Revision 1004 makes a section by its views a resource instance of its own (ADR-097's second addendum), never joined to its handles' number, with its views and their largest extent; an image's sections are listed only with icat resources --images.
 
 ## Revisions, a paragraph each, in order
 
@@ -4624,3 +4625,11 @@ field: its lifetime, its holder, and the sends, receives and bytes it carried. O
 discovered, no traffic observed - and `icat resources --idle` lists those apart from the resources that carried
 traffic. A synchronization object's or a section's traffic is none recorded, never idle, since their mechanisms record
 no transfer. `resource-instances-v2` derives them; version 1 derived no socket.
+
+Revision 1004 derives sections by their views (ADR-097's second addendum). The view gate gives the value a section's
+views carry a number of its own, which ADR-092 measured apart from the number its handles carry and never joined: such
+a number is now a resource instance of its own, held by the processes whose views it maps - each with the views it
+mapped, unmapped and held by a rundown - with how many views were seen and the largest extent one mapped, never bytes
+through it. A section whose views are an image's is a module loaded rather than memory shared, and `icat resources`
+lists it only with `--images`. A resource's last record now decides its end for every mechanism: a close or an
+unmapping, or the stop's rundown, which a view's opcode tells from the start's. `resource-instances-v3` derives them.

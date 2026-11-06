@@ -1,8 +1,8 @@
 # ADR-097: A resource instance is a gate's number from its first record to its last, named as its records name it
 
 - Status: accepted for M6's resource lifetimes; named synchronization objects and sections by their handles are derived
-  and listed by `icat resources` (revision 1002), and AF_UNIX sockets with their traffic, an idle one listed apart
-  (revision 1003)
+  and listed by `icat resources` (revision 1002), AF_UNIX sockets with their traffic, an idle one listed apart
+  (revision 1003), and sections by their views (revision 1004)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-083, ADR-084, ADR-090, ADR-092, plan M6, §7.1, §7.2, `identity-v1`, `entities-v1` §8, R3, P27
@@ -57,3 +57,18 @@ measured (ADR-076); one that carried none was idle - discovered, its traffic non
 --idle` lists apart from the traffic observed. A synchronization object's or a section's traffic is none recorded,
 never idle: their mechanisms record no transfer (R3). `resource-instances-v2` derives them; version 1 derived no
 socket. 16 mutations of the path are caught.
+
+## Second addendum: a section by its views is a resource of its own (revision 1004)
+
+A section found by its views - the number the view gate gives the value its views carry (ADR-090) - is a resource
+instance of its own, never joined to the number its handles carry, so one section can be two instances, as ADR-092
+measured it twice. Its holders are the processes whose views its records name, each with the views it mapped, unmapped
+and was listed holding by a rundown at the capture's start or stop; its start is witnessed where a view was mapped in the
+capture, and a view the start's rundown lists was mapped before it. It carries how many views were seen and the largest
+extent one mapped, never bytes moved through it, and no name, since no view record carries one. A section whose views
+are an image's - their extra information's high byte 0x47 - is a module loaded rather than memory a process shared:
+`icat resources` lists it only with `--images`, and says how many it left out. A resource's last record decides its end
+for every mechanism: a close or an unmapping seen, or the stop's rundown holding it. A view's two rundowns are both
+inventories, and only their opcodes tell the start's from the stop's: a view whose last record is the start's was
+neither seen unmapped nor listed at the stop, so its end is unseen, never said to be held. `resource-instances-v3`
+derives them. 31 mutations of the path are caught.

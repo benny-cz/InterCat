@@ -1188,6 +1188,56 @@ internal static class TestSessions
         return ([.. rows.OrderBy(row => row.NativeTicks).ThenBy(row => row.RawRecordOrdinal)], [.. fields]);
     }
 
+    /// <summary>
+    /// writer.exe, PID 100, and reader.exe, PID 200, and the sections their views map (ADR-089, ADR-090): section 4, which
+    /// 100 maps a 64 KiB view of and 200 a 32 KiB one, each unmapping it; section 5, an image's, whose view 100 held at the
+    /// stop; section 6, whose view 200 held as the capture started, as its start's rundown lists it, and unmapped; section 7,
+    /// whose view only the start's rundown lists, in 200, neither unmapped nor listed at the stop; a view of 100's whose
+    /// record names no section, numbered zero, which is no section's; and section 4 by its handles, 100's, a number of
+    /// another gate, never joined to the views' 4.
+    /// </summary>
+    public static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) MappedSections()
+    {
+        var rows = new List<ObservationRowV1>
+        {
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\writer.exe" },
+            Lifecycle(1, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\reader.exe" },
+        };
+        var fields = new List<SourceFieldRowV1>();
+        ulong ordinal = 10;
+        const long Image = 0x47L << 48;
+        void View(long section, long view, long size, long? information, ObservationRowV1 row)
+        {
+            rows.Add(row);
+            fields.Add(Field(row, SourceField.SectionNumber, section));
+            fields.Add(Field(row, SourceField.SectionViewNumber, view));
+            fields.Add(Field(row, SourceField.ViewSize, size));
+            if (information is { } extra) fields.Add(Field(row, SourceField.ViewInformation, extra));
+        }
+
+        View(6, 61, 8192, 0, SectionRecord(2, 39, 4, 200, ordinal++, view: true));
+        View(7, 71, 16384, 0, SectionRecord(3, 39, 4, 200, ordinal++, view: true));
+        View(4, 41, 65536, 0, SectionRecord(10, 37, 100, 100, ordinal++, view: true));
+        View(4, 42, 32768, 0, SectionRecord(11, 37, 200, 200, ordinal++, view: true));
+        View(5, 51, 4096, Image, SectionRecord(12, 37, 100, 100, ordinal++, view: true));
+        View(0, 81, 4096, 0, SectionRecord(13, 37, 100, 100, ordinal++, view: true));
+        View(4, 42, 32768, 0, SectionRecord(30, 38, 200, 200, ordinal++, view: true));
+        View(4, 41, 65536, 0, SectionRecord(31, 38, 100, 100, ordinal++, view: true));
+        View(6, 61, 8192, 0, SectionRecord(50, 38, 200, 200, ordinal++, view: true));
+        View(5, 51, 4096, Image, SectionRecord(90, 40, 4, 100, ordinal++, view: true));
+        foreach (ObservationRowV1 handle in new[]
+        {
+            SectionRecord(15, HandleCreated, 100, null, ordinal++),
+            SectionRecord(45, HandleClosed, 100, null, ordinal++) with { ResourceName = @"\BaseNamedObjects\Shared4" },
+        })
+        {
+            rows.Add(handle);
+            fields.Add(Field(handle, SourceField.SectionObjectNumber, 4));
+        }
+
+        return ([.. rows.OrderBy(row => row.NativeTicks).ThenBy(row => row.RawRecordOrdinal)], [.. fields]);
+    }
+
     /// <summary>The name <see cref="NamedObjects"/>' event is closed by: a session's local object, Ready.</summary>
     public const string ReadyObject = @"\Sessions\1\BaseNamedObjects\Ready";
 

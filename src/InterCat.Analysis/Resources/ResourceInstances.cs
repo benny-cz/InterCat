@@ -5,9 +5,18 @@ namespace InterCat.Analysis;
 
 /// <summary>
 /// How one process instance held a resource instance, by the records of it bound to it (`contracts/resources-v1.md` §3):
-/// the handles it made, those duplicated into it, those it closed, and those it held at the stop.
+/// the handles it made, those duplicated into it, those it closed, and those it held at the stop; and for a section by its
+/// views, the views it mapped, those it unmapped, and those a rundown listed it holding at the capture's start or stop.
 /// </summary>
-public sealed record ResourceHolder(ProcessInstanceId Process, int HandlesMade, int HandlesDuplicated, int HandlesClosed, int HeldAtStop);
+public sealed record ResourceHolder(
+    ProcessInstanceId Process,
+    int HandlesMade,
+    int HandlesDuplicated,
+    int HandlesClosed,
+    int HeldAtStop,
+    int ViewsMapped = 0,
+    int ViewsUnmapped = 0,
+    int ViewsListed = 0);
 
 /// <summary>
 /// The transfers a resource's records carried (`contracts/resources-v1.md` §1): its sends and receives, the bytes of those
@@ -22,10 +31,11 @@ public sealed record ResourceTraffic(long Sends, long Receives, long BytesSent, 
 
 /// <summary>
 /// One resource instance (`contracts/resources-v1.md` §1, ADR-097): one gate number of one capture's mechanism - a named
-/// synchronization object by its object number, a section by its handles', an AF_UNIX socket by its socket's - from its
-/// first record to its last, named as its closes and the stop's rundown name it, held by the process instances its records
-/// bind to. A synchronization object's and a section's records are handles, never traffic: none carries a signal, a wait or
-/// a byte through shared memory (P27); a socket's sends and receives are its traffic, and one with none was idle.
+/// synchronization object by its object number, a section by its handles' or by its views', never joined, an AF_UNIX socket
+/// by its socket's - from its first record to its last, named as its closes and the stop's rundown name it, held by the
+/// process instances its records bind to. A synchronization object's and a section's records are handles and views, never
+/// traffic: none carries a signal, a wait or a byte through shared memory (P27); a socket's sends and receives are its
+/// traffic, and one with none was idle.
 /// </summary>
 public sealed record ResourceInstance
 {
@@ -33,6 +43,21 @@ public sealed record ResourceInstance
 
     /// <summary>The number the capture's gate gave this incarnation, never a kernel address; never zero.</summary>
     public required long Number { get; init; }
+
+    /// <summary>
+    /// Whether it is a section found by its views - the number the view gate gives the value its views carry - rather than by
+    /// its handles; the two numbers are never joined, so one section can be two instances (ADR-092).
+    /// </summary>
+    public bool ByViews { get; init; }
+
+    /// <summary>For a section by its views, whether they are an image's - their extra information's high byte 0x47 - a module loaded, not memory a process shared.</summary>
+    public bool Image { get; init; }
+
+    /// <summary>For a section by its views, how many views of it the capture saw; zero for any other.</summary>
+    public int Views { get; init; }
+
+    /// <summary>For a section by its views, the largest extent one of its views mapped, in bytes; null where no view's size was recorded.</summary>
+    public long? LargestView { get; init; }
 
     /// <summary>Its object type's name, as the stop's rundown names the type's number; null where no rundown named it.</summary>
     public string? TypeName { get; init; }
@@ -44,13 +69,16 @@ public sealed record ResourceInstance
 
     public required long LastNativeTicks { get; init; }
 
-    /// <summary>Whether its first record is a handle made in the capture, rather than a close or the rundown of one made before it.</summary>
+    /// <summary>
+    /// Whether its first record is a handle made, a socket created or a view mapped in the capture, rather than a close, a
+    /// transfer, an unmapping or the rundown of one made before it.
+    /// </summary>
     public required bool FirstHandleMade { get; init; }
 
-    /// <summary>Whether its last record is a close and no handle of it was held at the stop: its end was seen.</summary>
+    /// <summary>Whether its last record is a close or an unmapping: its end was seen.</summary>
     public required bool LastHandleClosed { get; init; }
 
-    /// <summary>Whether a handle of it was held at the stop, as the stop's rundown lists it.</summary>
+    /// <summary>Whether its last record is the stop's rundown: a handle or a view of it was held at the stop.</summary>
     public required bool HeldAtStop { get; init; }
 
     /// <summary>The process instances its records bind to, by PID and then by which of the PID's holders each was.</summary>
@@ -94,14 +122,18 @@ public static class ResourceNames
 }
 
 /// <summary>
-/// `resource-instances-v2` (`contracts/resources-v1.md`, ADR-097): a generation's resource instances, derived from the
+/// `resource-instances-v3` (`contracts/resources-v1.md`, ADR-097): a generation's resource instances, derived from the
 /// numbers its gates wrote over objects' addresses - each named synchronization object's, each section's by its handles and
-/// each AF_UNIX socket's - with each one's lifetime, names, type, traffic and the process instances its records bind to.
-/// Version 1 derived no socket.
+/// by its views, never joined, and each AF_UNIX socket's - with each one's lifetime, names, type, traffic and the process
+/// instances its records bind to. Version 1 derived no socket, and version 2 no section by its views.
 /// </summary>
 public sealed class ResourceInstanceIndex
 {
-    public const string Rule = "resource-instances-v2";
+    public const string Rule = "resource-instances-v3";
+
+    // The opcode of the kernel's rundown of the views mapped at a session's start (ADR-090): a view it lists was mapped
+    // before the capture. The stop's, 40, lists a view held at the stop; a handle's rundown, at the stop alone, is 39 too.
+    private const ulong ViewStartRundown = 39;
 
     private ResourceInstanceIndex(IReadOnlyList<ResourceInstance> instances) => Instances = instances;
 
@@ -124,7 +156,7 @@ public sealed class ResourceInstanceIndex
         ArgumentNullException.ThrowIfNull(fieldSegments);
         ArgumentNullException.ThrowIfNull(processes);
         Dictionary<RecordAddress, Carried> fields = ReadFields(fieldSegments, cancellationToken);
-        var drafts = new Dictionary<(Mechanism Mechanism, long Number), Draft>();
+        var drafts = new Dictionary<(Mechanism Mechanism, bool ByViews, long Number), Draft>();
         var typeNames = new Dictionary<long, string>();
         var sockets = new List<SocketRow>();
         var socketAt = new Dictionary<RecordAddress, int>();
@@ -144,17 +176,18 @@ public sealed class ResourceInstanceIndex
                 continue;
             }
 
-            Draft draft = drafts.TryGetValue((Mechanism.UnixDomainSocket, number), out Draft? held)
+            Draft draft = drafts.TryGetValue((Mechanism.UnixDomainSocket, false, number), out Draft? held)
                 ? held
-                : drafts[(Mechanism.UnixDomainSocket, number)] = new() { CarriesTraffic = true };
+                : drafts[(Mechanism.UnixDomainSocket, false, number)] = new() { CarriesTraffic = true };
             draft.Add(socket.Mark, null, null, socket.Owner);
             draft.Transfer(socket.Mark.Kind, socket.Bytes);
         }
 
         return new([.. drafts
             .OrderBy(entry => entry.Key.Mechanism)
+            .ThenBy(entry => entry.Key.ByViews)
             .ThenBy(entry => entry.Key.Number)
-            .Select(entry => entry.Value.ToInstance(entry.Key.Mechanism, entry.Key.Number, processes, typeNames))]);
+            .Select(entry => entry.Value.ToInstance(entry.Key.Mechanism, entry.Key.ByViews, entry.Key.Number, processes, typeNames))]);
     }
 
     // The numbers and types the source-field segments carry, by the record they belong to.
@@ -176,7 +209,8 @@ public sealed class ResourceInstanceIndex
             for (int row = 0; row < segment.RowCount; row++)
             {
                 var code = (SourceField)(ushort)codes.UnsignedAt(row)!.Value;
-                if (code is not (SourceField.SynchronizationObjectNumber or SourceField.SectionObjectNumber or SourceField.ObjectTypeNumber))
+                if (code is not (SourceField.SynchronizationObjectNumber or SourceField.SectionObjectNumber or SourceField.ObjectTypeNumber
+                    or SourceField.SectionNumber or SourceField.SectionViewNumber or SourceField.ViewSize or SourceField.ViewInformation))
                 {
                     continue;
                 }
@@ -196,7 +230,15 @@ public sealed class ResourceInstanceIndex
 
                 RecordAddress address = locator.At(row);
                 Carried carried = fields.GetValueOrDefault(address);
-                fields[address] = code == SourceField.ObjectTypeNumber ? carried with { Type = value } : carried with { Number = value };
+                fields[address] = code switch
+                {
+                    SourceField.ObjectTypeNumber => carried with { Type = value },
+                    SourceField.SectionNumber => carried with { ViewSection = value },
+                    SourceField.SectionViewNumber => carried with { View = value },
+                    SourceField.ViewSize => carried with { Size = value },
+                    SourceField.ViewInformation => carried with { Information = value },
+                    _ => carried with { Number = value },
+                };
             }
         }
 
@@ -210,7 +252,7 @@ public sealed class ResourceInstanceIndex
         Dictionary<RecordAddress, Carried> fields,
         ProcessInstanceIndex processes,
         EvidencePolicy policy,
-        Dictionary<(Mechanism, long), Draft> drafts,
+        Dictionary<(Mechanism, bool, long), Draft> drafts,
         Dictionary<long, string> typeNames,
         List<SocketRow> sockets,
         Dictionary<RecordAddress, int> socketAt)
@@ -223,6 +265,7 @@ public sealed class ResourceInstanceIndex
         SegmentColumnSlice ticks = default;
         SegmentColumnSlice bytes = default;
         SegmentColumnSlice availability = default;
+        SegmentColumnSlice opcodes = default;
         ProcessBinding[]? owners = null;
         for (int row = 0; row < segment.RowCount; row++)
         {
@@ -241,6 +284,7 @@ public sealed class ResourceInstanceIndex
                 ticks = segment.Slice(SegmentColumnId.NativeTicks);
                 bytes = segment.Slice(SegmentColumnId.ByteValue);
                 availability = segment.Slice(SegmentColumnId.ByteAvailability);
+                opcodes = segment.Slice(SegmentColumnId.Opcode);
                 owners = processes.OwnersOf(segment);
                 opened = true;
             }
@@ -267,6 +311,29 @@ public sealed class ResourceInstanceIndex
             }
 
             var kind = (ObservationKind)kinds.UnsignedAt(row)!.Value;
+
+            // A view's record carries the number its gate gave the value its section's views carry: that section by its views,
+            // never joined to the number its handles carry (ADR-092). Both its rundowns are inventories, and only its opcode
+            // tells the start's, which lists a view mapped before the capture, from the stop's, which lists one held at it.
+            if (mechanism == Mechanism.SharedSection && carried.ViewSection is { } viewSection)
+            {
+                if (viewSection != 0)
+                {
+                    Draft views = drafts.TryGetValue((mechanism, true, viewSection), out Draft? seen)
+                        ? seen
+                        : drafts[(mechanism, true, viewSection)] = new() { ByViews = true };
+                    views.Add(
+                        new Mark(ticks.SignedAt(row)!.Value, address, kind, (Direction)directions.UnsignedAt(row)!.Value,
+                            StartRundown: kind == ObservationKind.Inventory && opcodes.UnsignedAt(row) == ViewStartRundown),
+                        null,
+                        null,
+                        owner);
+                    views.View(carried.View, carried.Size, carried.Information);
+                }
+
+                continue;
+            }
+
             string? name = segment.TextValue(SegmentColumnId.ResourceName, row);
 
             // An object type at the stop carries a type's number and its name, and no object.
@@ -286,7 +353,7 @@ public sealed class ResourceInstanceIndex
                 continue;
             }
 
-            Draft draft = drafts.TryGetValue((mechanism, number), out Draft? held) ? held : drafts[(mechanism, number)] = new();
+            Draft draft = drafts.TryGetValue((mechanism, false, number), out Draft? held) ? held : drafts[(mechanism, false, number)] = new();
             draft.Add(
                 new Mark(ticks.SignedAt(row)!.Value, address, kind, (Direction)directions.UnsignedAt(row)!.Value),
                 kind is ObservationKind.Close or ObservationKind.Inventory ? name : null,
@@ -348,13 +415,18 @@ public sealed class ResourceInstanceIndex
         public long? Number { get; set; }
     }
 
-    // A record's place and what it says of its instance's handles.
-    private readonly record struct Mark(long Ticks, RecordAddress Address, ObservationKind Kind, Direction Direction) : IComparable<Mark>
+    // A record's place and what it says of its instance's handles or views: a view's rundown at the session's start is an
+    // inventory as the stop's is, and says nothing of the stop.
+    private readonly record struct Mark(long Ticks, RecordAddress Address, ObservationKind Kind, Direction Direction, bool StartRundown = false)
+        : IComparable<Mark>
     {
         public int CompareTo(Mark other) => Ticks != other.Ticks ? Ticks.CompareTo(other.Ticks) : Address.CompareTo(other.Address);
 
-        // A handle's creation, or one duplicated into its process: a handle made in the capture.
-        public bool Made => Kind == ObservationKind.Open;
+        // A handle's creation, one duplicated into its process, a socket's create or a view's mapping: made in the capture.
+        public bool Made => Kind is ObservationKind.Open or ObservationKind.Map;
+
+        // The stop's rundown of a handle or a view: held at the stop.
+        public bool AtStop => Kind == ObservationKind.Inventory && !StartRundown;
     }
 
     // One instance while its records are read.
@@ -367,15 +439,20 @@ public sealed class ResourceInstanceIndex
         private Mark last;
         private long records;
         private long? type;
-        private bool heldAtStop;
         private long sends;
         private long receives;
         private long bytesSent;
         private long bytesReceived;
         private long unmeasured;
+        private readonly HashSet<long> views = [];
+        private long? largestView;
+        private bool image;
 
         /// <summary>Whether its mechanism's records carry transfers: an AF_UNIX socket's.</summary>
         public bool CarriesTraffic { get; init; }
+
+        /// <summary>Whether its records are views': a section by its views.</summary>
+        public bool ByViews { get; init; }
 
         // A send or a receive, its bytes where its record measured them.
         public void Transfer(ObservationKind kind, long? bytes)
@@ -399,6 +476,22 @@ public sealed class ResourceInstanceIndex
             unmeasured += bytes is null ? 1 : 0;
         }
 
+        // A view's record: the view's number, its extent and whether it is an image's.
+        public void View(long? view, long? size, long? information)
+        {
+            if (view is { } number)
+            {
+                views.Add(number);
+            }
+
+            if (size is { } extent && (largestView is null || extent > largestView))
+            {
+                largestView = extent;
+            }
+
+            image |= information is { } extra && (ulong)extra >> 48 == 0x47;
+        }
+
         public void Add(Mark mark, string? name, long? markType, ProcessBinding owner)
         {
             if (records == 0 || mark.CompareTo(first) < 0)
@@ -413,7 +506,6 @@ public sealed class ResourceInstanceIndex
 
             records++;
             type ??= markType;
-            heldAtStop |= mark.Kind == ObservationKind.Inventory;
             if (!string.IsNullOrEmpty(name) && !names.Contains(name, StringComparer.Ordinal))
             {
                 names.Add(name);
@@ -425,14 +517,18 @@ public sealed class ResourceInstanceIndex
                 return;
             }
 
-            // A handle made, duplicated, closed or held at the stop is counted; a socket's call or transfer names its holder.
-            int[] counts = holders.TryGetValue(owner.Instance, out int[]? known) ? known : holders[owner.Instance] = new int[4];
+            // A handle made, duplicated, closed or held at the stop, and a view mapped, unmapped or listed by a rundown, is
+            // counted; a socket's call or transfer names its holder.
+            int[] counts = holders.TryGetValue(owner.Instance, out int[]? known) ? known : holders[owner.Instance] = new int[7];
             int? slot = mark.Kind switch
             {
                 ObservationKind.Open when mark.Direction == Direction.Inbound => 1,
                 ObservationKind.Open => 0,
                 ObservationKind.Close => 2,
+                ObservationKind.Inventory when ByViews => 6,
                 ObservationKind.Inventory => 3,
+                ObservationKind.Map => 4,
+                ObservationKind.Unmap => 5,
                 _ => null,
             };
             if (slot is { } counted)
@@ -441,23 +537,28 @@ public sealed class ResourceInstanceIndex
             }
         }
 
-        public ResourceInstance ToInstance(Mechanism mechanism, long number, ProcessInstanceIndex processes, Dictionary<long, string> typeNames) => new()
+        public ResourceInstance ToInstance(Mechanism mechanism, bool byViews, long number, ProcessInstanceIndex processes, Dictionary<long, string> typeNames) => new()
         {
             Mechanism = mechanism,
             Number = number,
+            ByViews = byViews,
+            Image = image,
+            Views = views.Count,
+            LargestView = largestView,
             TypeName = type is { } known && typeNames.TryGetValue(known, out string? named) ? named : null,
             Names = names.AsReadOnly(),
             FirstNativeTicks = first.Ticks,
             LastNativeTicks = last.Ticks,
             FirstHandleMade = first.Made,
-            LastHandleClosed = last.Kind == ObservationKind.Close && !heldAtStop,
-            HeldAtStop = heldAtStop,
+            LastHandleClosed = last.Kind is ObservationKind.Close or ObservationKind.Unmap,
+            HeldAtStop = last.AtStop,
             Holders =
             [
                 .. holders
                     .OrderBy(entry => processes.Instances[entry.Key].ProcessId)
                     .ThenBy(entry => processes.Instances[entry.Key].LifecycleEpoch)
-                    .Select(entry => new ResourceHolder(processes.Instances[entry.Key].Id, entry.Value[0], entry.Value[1], entry.Value[2], entry.Value[3])),
+                    .Select(entry => new ResourceHolder(processes.Instances[entry.Key].Id, entry.Value[0], entry.Value[1], entry.Value[2],
+                        entry.Value[3], entry.Value[4], entry.Value[5], entry.Value[6])),
             ],
             Traffic = CarriesTraffic ? new(sends, receives, bytesSent, bytesReceived, unmeasured) : null,
             Unbound = unbound,
@@ -500,6 +601,7 @@ public sealed class ResourceInstanceIndex
             : FactKey.Low.CompareTo(other.FactKey.Low);
     }
 
-    // The object's number and its type's number a record carries; either is null where it carries none.
-    private readonly record struct Carried(long? Number, long? Type);
+    // What a record's source fields carry: its object's number and its type's, or a view's number, its section's by its
+    // views, its extent and its extra information; each null where it carries none.
+    private readonly record struct Carried(long? Number, long? Type, long? ViewSection = null, long? View = null, long? Size = null, long? Information = null);
 }

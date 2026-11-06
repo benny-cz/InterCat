@@ -118,7 +118,47 @@ public sealed class ResourceInstanceTests
 
         // A synchronization object records no transfer, so its traffic is none recorded - null - never an idle zero.
         Assert.Null(Assert.Single(resources, resource => resource.Mechanism == Mechanism.Synchronization).Traffic);
-        Assert.Equal("resource-instances-v2", ResourceInstanceIndex.Rule);
+        Assert.Equal("resource-instances-v3", ResourceInstanceIndex.Rule);
+    }
+
+    [Fact(DisplayName = "R3: a section by its views is a resource of its own, never joined to its handles' number, with the views its processes mapped, the largest extent one mapped, and an image's said to be one")]
+    public void ASectionByItsViewsIsItsOwn()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        Publish(session.Store, rows, fields: fields);
+        (IReadOnlyList<ResourceInstance> resources, ProcessInstanceIndex processes) = Derive(session.Store);
+        (int, int, int, int) Views(ResourceHolder holder) =>
+            (processes.Find(holder.Process)!.ProcessId, holder.ViewsMapped, holder.ViewsUnmapped, holder.ViewsListed);
+
+        // Section 4 by its handles and by its views are two instances, the handles' first; the views' have no name.
+        Assert.Equal([(false, 4L), (true, 4L), (true, 5L), (true, 6L), (true, 7L)], resources.Select(resource => (resource.ByViews, resource.Number)));
+        ResourceInstance handles = resources[0];
+        Assert.Equal((@"\BaseNamedObjects\Shared4", 0, (long?)null), (handles.Name, handles.Views, handles.LargestView));
+
+        // Each process mapped and unmapped a view of section 4, 64 KiB the largest: its whole lifetime seen, held by both.
+        // A view whose record names no section is no section's.
+        ResourceInstance shared = resources[1];
+        Assert.Equal((false, 2, (long?)65536, true, true, false, (string?)null), (shared.Image, shared.Views, shared.LargestView,
+            shared.FirstHandleMade, shared.LastHandleClosed, shared.HeldAtStop, shared.Name));
+        Assert.Equal([(100, 1, 1, 0), (200, 1, 1, 0)], shared.Holders.Select(Views));
+        Assert.Null(shared.Traffic);
+
+        // An image's view, held at the stop, is said to be an image's.
+        ResourceInstance image = resources[2];
+        Assert.Equal((true, true, false), (image.Image, image.HeldAtStop, image.LastHandleClosed));
+        Assert.Equal([(100, 1, 0, 1)], image.Holders.Select(Views));
+
+        // A view the start's rundown lists was mapped before the capture: its start is not witnessed, and it is listed.
+        ResourceInstance before = resources[3];
+        Assert.Equal((false, true, false), (before.FirstHandleMade, before.LastHandleClosed, before.HeldAtStop));
+        Assert.Equal([(200, 0, 1, 1)], before.Holders.Select(Views));
+
+        // A rundown is an inventory at the start as at the stop: a view only the start's lists was not seen held at the stop.
+        ResourceInstance unseen = resources[4];
+        Assert.Equal((false, false, false, (long?)16384), (unseen.FirstHandleMade, unseen.LastHandleClosed, unseen.HeldAtStop, unseen.LargestView));
+        Assert.Equal([(200, 0, 0, 1)], unseen.Holders.Select(Views));
+        Assert.Equal("resource-instances-v3", ResourceInstanceIndex.Rule);
     }
 
     [Fact(DisplayName = "R3: a later holder of a reused PID holds a resource only as a candidate, which the default policy counts by that reason and includes when asked")]
