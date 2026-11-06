@@ -1194,6 +1194,53 @@ public sealed class DerivationCheckpointOverviewTests
         }
     }
 
+    [Fact(DisplayName = "I14: a session whose checkpoint keeps no process's package, as checkpoints before revision 990 kept none, is viewed with the packages the source-field segments it covers hold, as a derivation of every record names them, and is published again with a checkpoint that keeps each")]
+    public void ACheckpointWithoutPackagesIsPublishedAgain()
+    {
+        const string Package = "Microsoft.DesktopAppInstaller_1.29.250.0_x64__8wekyb3d8bbwe";
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        ObservationRowV1 winget = Lifecycle(10, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Program Files\WindowsApps\winget.exe" };
+        ObservationRowV1 child = Lifecycle(20, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\child.exe" };
+        Publish(session.Store,
+        [
+            winget,
+            child,
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 3).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(31, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 4).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+        ], fields:
+        [
+            Field(winget, SourceField.ProcessPackageFullName, 0) with { Value = null, Text = Package },
+            Field(child, SourceField.ProcessPackageFullName, 0),
+        ]);
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        Assert.Equal<(int, bool, string?, string?)>((6, true, Package, string.Empty), Packages(session.Path));
+
+        // Beside a checkpoint as builds before revision 990 wrote it, format 1.5, a viewer's instances read the packages of
+        // the source-field segments it covers, and name them; the checkpoint is not current, and is published again.
+        Republish(session, EarlierCheckpoints.WithoutPackages);
+        Assert.Equal<(int, bool, string?, string?)>((5, true, Package, string.Empty), Packages(session.Path));
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        Assert.Equal(CheckpointOutcome.AlreadyCurrent, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        Assert.Equal<(int, bool, string?, string?)>((6, true, Package, string.Empty), Packages(session.Path));
+
+        // The format of the current generation's checkpoint, and whether a fresh viewer's instances, taken from it, keep
+        // packages, and winget's and its child's.
+        static (int Minor, bool Kept, string? Winget, string? Child) Packages(string path)
+        {
+            SessionDerivationCache.Clear();
+            SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(path));
+            (ProcessInstanceIndex processes, TransportRelationIndex _, ProcessActivityIndex? _) = SessionDerivationCache
+                .For(viewer.Current!).FromCheckpoint(viewer.Root, SessionSegments.SourceClock(viewer.Root, viewer.Current!)!.Value)
+                ?? throw new Xunit.Sdk.XunitException("The checkpoint covers every segment the generation names.");
+            viewer.ReleaseSegmentReaders();
+            byte[] bytes = File.ReadAllBytes(Path.Combine(path, DerivationCheckpoint.NamedBy(viewer.Current!)!.Name));
+            return (BitConverter.ToUInt16(bytes, 10), processes.PackagesKept,
+                processes.Instances.Single(static instance => instance.ProcessId == 100).PackageFullName,
+                processes.Instances.Single(static instance => instance.ProcessId == 200).PackageFullName);
+        }
+    }
+
     /// <summary>
     /// Publishes the current generation's indexes again as the next generation, each as it is, but the checkpoint, which
     /// <paramref name="checkpoint"/> writes as an earlier build kept it when it is given.

@@ -181,6 +181,14 @@ public sealed record ProcessInstance
     /// <summary>The terminal session the process ran in, when its lifecycle records said.</summary>
     public uint? SessionId { get; init; }
 
+    /// <summary>
+    /// The package the process ran in, as its creation or rundown record named it (ADR-094): its full name, or the empty
+    /// string where the record named none - an observed none (R3). Null where no lifecycle record said: a provider version
+    /// declaring no package, a package the record could not hold whole, or instances read back from a checkpoint that kept
+    /// none (<see cref="ProcessInstanceIndex.PackagesKept"/>).
+    /// </summary>
+    public string? PackageFullName { get; init; }
+
     /// <summary>The creation time the source reported, a FILETIME. A wall-clock claim of the source, never our clock.</summary>
     public long? CreateFileTime { get; init; }
 
@@ -320,6 +328,14 @@ public sealed partial class ProcessInstanceIndex
     /// before `source-fields-v1` existed has none, and its instances are keyed by observed creation instead.
     /// </summary>
     public bool StartKeysAvailable { get; }
+
+    /// <summary>
+    /// Whether the derivation read the package of every lifecycle record it covers. False for instances read back from a
+    /// checkpoint of a format before 1.6 (revision 990), which kept no record's package, and once extended from one: an
+    /// instance's <see cref="ProcessInstance.PackageFullName"/> is then null where its records' packages were not read, and
+    /// a checkpoint's publishers derive them again (`contracts/derivation-checkpoint-v1.md` §4).
+    /// </summary>
+    public bool PackagesKept => evidence.PackagesKept;
 
     /// <summary>How many instances the PID had in the capture. Two or more means it was reused.</summary>
     public int InstancesOf(int processId) =>
@@ -471,7 +487,7 @@ public sealed partial class ProcessInstanceIndex
     /// <summary>
     /// Derives the instances one capture's published segments support. Every segment must be of one capture on the
     /// clock given, because a PID is only meaningful inside one host's boot and one capture's timeline. The capture's
-    /// `source-fields-v1` segments, when it has them, give instances their start keys, parents and sessions.
+    /// `source-fields-v1` segments, when it has them, give instances their start keys, parents, sessions and packages.
     /// </summary>
     public static ProcessInstanceIndex Derive(
         IReadOnlyList<SegmentReaderV1> segments,
@@ -491,7 +507,8 @@ public sealed partial class ProcessInstanceIndex
     /// <see cref="Derive"/>'s over the same segments, because instances are built from what the records say taken
     /// together - lifecycle records in canonical order, the fields keyed by the record they describe, the earliest
     /// record of each PID - never from the order they were read in. Null when a segment it read is missing, as after a
-    /// compaction or a retention, which a full derivation answers.
+    /// compaction or a retention, which a full derivation answers. Instances read back from a checkpoint that kept no
+    /// record's package keep none of the records it covered once extended either (<see cref="PackagesKept"/>).
     /// </summary>
     public ProcessInstanceIndex? Extend(
         IReadOnlyList<SegmentReaderV1> segments,
@@ -794,7 +811,8 @@ public sealed partial class ProcessInstanceIndex
     private static void ReadProcessFields(
         IReadOnlyList<SegmentReaderV1> fieldSegments,
         Evidence evidence,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool packagesOnly = false)
     {
         Dictionary<RecordAddress, ProcessFields> fields = evidence.Fields;
         HashSet<(RecordAddress Address, SourceField Field)> seen = evidence.SeenFields;
@@ -813,9 +831,7 @@ public sealed partial class ProcessInstanceIndex
             for (int row = 0; row < segment.RowCount; row++)
             {
                 var code = (SourceField)(ushort)codes.UnsignedAt(row)!.Value;
-                if (code is not (SourceField.ProcessStartSequence or SourceField.ProcessCreateTime
-                    or SourceField.ParentProcessId or SourceField.ParentStartSequence
-                    or SourceField.ProcessSessionId or SourceField.ProcessExitTime))
+                if (!IsProcessField(code) || (packagesOnly && code != SourceField.ProcessPackageFullName))
                 {
                     if (!Enum.IsDefined(code))
                     {
@@ -842,12 +858,32 @@ public sealed partial class ProcessInstanceIndex
                         + "a duplicated field could change its process identity.");
                 }
 
+                ProcessFields current = fields.TryGetValue(address, out ProcessFields existing) ? existing : default;
+                if (field == SourceField.ProcessPackageFullName)
+                {
+                    // A package is its text, and a process in none the value 0, as a field's text is never empty: kept as the
+                    // empty string, an observed none (R3). A package the record could not hold whole states neither (ADR-094).
+                    string? package = source.Text ?? source.Value switch
+                    {
+                        null => null,
+                        0 => string.Empty,
+                        _ => throw new InvalidDataException(
+                            $"Observation {address} names its process's package by the value {source.Value}; a package is a "
+                            + "text, or the value 0 for a process in none (ADR-094)."),
+                    };
+                    if (package is not null)
+                    {
+                        fields[address] = current with { Package = package };
+                    }
+
+                    continue;
+                }
+
                 if (source.Value is not { } value)
                 {
                     continue;
                 }
 
-                ProcessFields current = fields.TryGetValue(address, out ProcessFields existing) ? existing : default;
                 fields[address] = field switch
                 {
                     SourceField.ProcessStartSequence => current with { Sequence = unchecked((ulong)value) },
@@ -860,6 +896,13 @@ public sealed partial class ProcessInstanceIndex
             }
         }
     }
+
+    /// <summary>Whether a source field describes a lifecycle record's process: its start key, parent, session, exit time or package.</summary>
+    private static bool IsProcessField(SourceField field) =>
+        field is SourceField.ProcessStartSequence or SourceField.ProcessCreateTime
+            or SourceField.ParentProcessId or SourceField.ParentStartSequence
+            or SourceField.ProcessSessionId or SourceField.ProcessExitTime
+            or SourceField.ProcessPackageFullName;
 
     /// <summary>
     /// Reads one segment's lifecycle records and the first record that names each PID into <paramref name="evidence"/>.
@@ -957,6 +1000,12 @@ public sealed partial class ProcessInstanceIndex
 
         public long WithoutOwner { get; private set; }
 
+        /// <summary>
+        /// Whether every record's package was read: always from segments, and from a checkpoint only of format 1.6 or later,
+        /// so evidence extended from an earlier one is not whole in its packages either.
+        /// </summary>
+        public bool PackagesKept { get; private set; } = true;
+
         public bool HasRead(StoreDependency? published) => published is not null && read.Contains(published);
 
         /// <summary>
@@ -977,6 +1026,7 @@ public sealed partial class ProcessInstanceIndex
                 SeenFields = new(SeenFields),
                 FirstActivity = new(FirstActivity),
                 WithoutOwner = WithoutOwner,
+                PackagesKept = PackagesKept,
             };
             copy.read.UnionWith(read);
             copy.anonymous = anonymous;
@@ -1042,6 +1092,34 @@ public sealed partial class ProcessInstanceIndex
                     anonymous = true;
                 }
             }
+        }
+
+        /// <summary>
+        /// Reads the packages of the records this evidence holds from the source-field segments it was read from - their
+        /// package rows alone - into evidence a checkpoint kept no package of, so it holds what reading those segments
+        /// holds (`contracts/derivation-checkpoint-v1.md` §4). Each segment must be one it read, of its capture,
+        /// derivation and clock; the caller gives every one, as the checkpoint names them.
+        /// </summary>
+        public void ReadPackages(IReadOnlyList<SegmentReaderV1> fieldSegments)
+        {
+            ArgumentNullException.ThrowIfNull(fieldSegments);
+            if (PackagesKept)
+            {
+                throw new InvalidOperationException("This evidence keeps every record's package already.");
+            }
+
+            foreach (SegmentReaderV1 segment in fieldSegments)
+            {
+                if (segment.Published is not { } published || !read.Contains(published) || segment.ClockId != clock
+                    || !captures.Contains(segment.CaptureId) || !derivations.Contains(segment.Derivation))
+                {
+                    throw new ArgumentException(
+                        "Only a source-field segment the instances were read from gives their records' packages.", nameof(fieldSegments));
+                }
+            }
+
+            ReadProcessFields(fieldSegments, this, CancellationToken.None, packagesOnly: true);
+            PackagesKept = true;
         }
     }
 
@@ -1161,6 +1239,7 @@ public sealed partial class ProcessInstanceIndex
                 ImagePath = draft.ImagePath,
                 ImageName = draft.ImagePath is { } path ? FileNameOf(path) : draft.ExitName,
                 SessionId = draft.SessionId,
+                PackageFullName = draft.PackageFullName,
                 CreateFileTime = draft.CreateFileTime,
                 ExitFileTime = draft.ExitFileTime,
                 ParentProcessId = draft.ParentProcessId,
@@ -1219,14 +1298,18 @@ public sealed partial class ProcessInstanceIndex
         }
     }
 
-    /// <summary>The process source fields one lifecycle record carried, each null when it carried none.</summary>
+    /// <summary>
+    /// The process source fields one lifecycle record carried, each null when it carried none; the package is the empty
+    /// string where the record named none.
+    /// </summary>
     private readonly record struct ProcessFields(
         ulong? Sequence,
         long? CreateFileTime,
         int? ParentProcessId,
         ulong? ParentSequence,
         uint? SessionId,
-        long? ExitFileTime);
+        long? ExitFileTime,
+        string? Package);
 
     private readonly record struct LifecycleFact(
         int ProcessId,
@@ -1270,6 +1353,8 @@ public sealed partial class ProcessInstanceIndex
 
         public uint? SessionId { get; private set; }
 
+        public string? PackageFullName { get; private set; }
+
         public string? ImagePath { get; private set; }
 
         public string? ExitName { get; private set; }
@@ -1289,6 +1374,7 @@ public sealed partial class ProcessInstanceIndex
             ParentProcessId ??= fact.Fields.ParentProcessId;
             ParentSequence ??= fact.Fields.ParentSequence;
             SessionId ??= fact.Fields.SessionId;
+            PackageFullName ??= fact.Fields.Package;
             if (fact.Kind == ObservationKind.Exit)
             {
                 ExitName ??= fact.Name;

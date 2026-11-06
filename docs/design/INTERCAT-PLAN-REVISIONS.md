@@ -912,6 +912,7 @@ Revision 985 has a process's section records drill down exactly (ADR-092's fourt
 Revision 987 begins M6's process enrichment with its metadata inspection (§4.2): Kernel-Process's start and rundown, which every capture collects, declare each process's package, elevation and mandatory label beside its session, and Microsoft-Windows-Services a service's status change naming the process hosting it.
 Revision 988 measures a process's package and token in its lifecycle records (ADR-093, FX-PROC-001): every Kernel-Process start and rundown carried its process's package full name and application ID - empty where it runs in none, an observed none - and its token's elevation, integrity level and session, read by the registered layout past the mandatory label's SID.
 Revision 989 admits a process's package (ADR-094): a second text of its record, placed past the image by the SID's count and the image's terminator, kept in a buffer rented from the pool and written as the projection's third form, IAP3; its source field row is the package's text, or the value 0 for none.
+Revision 990 gives each process instance its package (ADR-094's addendum): the one its earliest lifecycle record naming one names, empty where it named none; `icat processes` says it, and the derivation checkpoint keeps it from format 1.6, a reader of an earlier one reading the packages from the source-field segments it covers.
 
 ## Revisions, a paragraph each, in order
 
@@ -4483,3 +4484,14 @@ the writer returns once the record is projected. The projection's third form, `I
 counts, its address mask written always; every record without one keeps its bytes. Its source field row is the package's
 text, or the value 0 for a process in none, as a field's text is never empty (R3); the broker and the retained plan hold
 the kind. Kernel-Process's start and rundown now admit their maximum of eight fields.
+
+Revision 990 says a process's package of the process (ADR-094's addendum). An instance retains the package the earliest
+of its lifecycle records naming one names, as it retains its image and session: its full name, the empty string where
+the record named none - an observed none - and unknown where no record said (R3); a package's row valued other than 0
+refuses the derivation. `icat processes --pid` says it, or that the record named none, and the JSON of every command
+naming a process carries `packageFullName`. The derivation checkpoint keeps each record's package among its process
+fields from format 1.6. Every checkpoint before it keeps none, and a reader using one would have named no package where
+a derivation of every record names one, which a checkpoint never does: the session's derivations read the package rows
+of the source-field segments it covers before building the instances, a first view opening those segments where it
+opened none. Read without them, its instances say they keep none, nor once extended, and a writer derives them again;
+`icat checkpoint` and the other publishers replace such a checkpoint. FX-PROC-001 through the product is next.

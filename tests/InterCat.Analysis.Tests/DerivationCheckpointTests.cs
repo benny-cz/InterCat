@@ -369,8 +369,8 @@ public sealed class DerivationCheckpointTests
         Assert.InRange(refused, 1, bytes.Length);
 
         byte[] newer = [.. bytes];
-        newer[10] = 6;
-        Assert.Contains("format 1.6", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(newer, Session, TestClock)).Message,
+        newer[10] = 7;
+        Assert.Contains("format 1.7", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(newer, Session, TestClock)).Message,
             StringComparison.Ordinal);
         byte[] rule = [.. bytes];
         int at = bytes.AsSpan().IndexOf(Encoding.ASCII.GetBytes(ProcessInstanceIndex.BindingRule));

@@ -21,7 +21,10 @@ earlier format is read without them, its connections' summaries reading their ro
 replaces it (§4). Format 1.5 (plan revision 738) keeps, after the transfers, every record by the owner it binds to -
 each incarnation's and each instance's (relations-v1 §5, entities-v1 §4a) - so a generation opened from the
 checkpoint ranks by bytes and by peers without reading its rows. An earlier format is read without them, and replaced
-the same way.
+the same way. Format 1.6 (plan revision 990) keeps each lifecycle record's package among its process fields, so the
+instances read back from it name their packages (entities-v1 §3). An earlier format keeps none: a reader that uses one
+reads the packages of the records it covers from the source-field segments it covers before it builds the instances,
+and a writer that finds one replaces it (§4).
 
 Since plan revision 710 a live follow names a checkpoint in every generation it publishes after its first: the state of
 the generation that one extends, which a reader of the new generation extends over the chunk it adds (§2, §4's prefix).
@@ -35,10 +38,10 @@ the segments it covers (R20). A missing, stale or unreadable checkpoint costs ti
 A checkpoint is the complete state both derivations kept after reading a set of published segments, the **covered
 set**. That state is what they need to answer any query and to extend to further segments:
 
-- **Instances.** The lifecycle records read, the process source fields keyed by the record they describe, which fields
-  each record carried, the earliest record naming each PID, and how many lifecycle records named no owner. The
-  instances are a function of these alone (entities-v1 §3), so a reader rebuilds them rather than trusting a stored
-  list.
+- **Instances.** The lifecycle records read, the process source fields keyed by the record they describe - each one's
+  package among them since format 1.6 - which fields each record carried, the earliest record naming each PID, and how
+  many lifecycle records named no owner. The instances are a function of these alone (entities-v1 §3), so a reader
+  rebuilds them rather than trusting a stored list.
 - **Relations.** Per connection or datagram-flow end:
   - the end's key;
   - the lifecycle cuts dividing it;
@@ -142,7 +145,7 @@ checkpoint  = header covered instances relations activity transfers owners
                                                     ; activity from minor 1: a minor-0 one ends at relations;
                                                     ; transfers from minor 4: an earlier one ends at activity;
                                                     ; owners from minor 5: an earlier one ends at transfers
-header      = "ICATDCKP" (8 ASCII bytes), major u16 = 1, minor u16 = 5,
+header      = "ICATDCKP" (8 ASCII bytes), major u16 = 1, minor u16 = 6,
               bindingRule str8, relationRule str8,
               session guid, derivedGeneration i64 (>= 1),
               clock guid, host guid,
@@ -159,9 +162,9 @@ address     = stream u32, epoch u32, ordinal u64, factHigh u64, factLow u64
 lifecycle   = pid i32, kind u8 (15 Create, 16 Exit, 17 Inventory), record,
               flags u8 (1 exit code, 2 name), [exitCode i64], [name str32]
 fields      = address, present u8 (1 start sequence, 2 create time, 4 parent PID, 8 parent start sequence,
-              16 session, 32 exit time; at least one), each present value in that order:
-              u64, i64, i32, u64, u32, i64
-seen        = address, field u16 (1..6, EN-SourceField)
+              16 session, 32 exit time, 64 package from minor 6; at least one), each present value in that order:
+              u64, i64, i32, u64, u32, i64, str32
+seen        = address, field u16 (1..6, and 32 from minor 6, EN-SourceField)
 first       = pid i32, record
 relations   = count u32, (mechanism u16 (3 TCP, 4 UDP), records i64 (> 0))*   ; strictly ascending by mechanism
               count u32, end*                                               ; strictly ascending by key
@@ -219,6 +222,10 @@ checkpoint, writes minor 4. The records are all but a process's or a thread's li
 record's, as a byte view measures them. Everything is written in canonical order - PIDs and owners ascending - so a
 derivation made at once and one extended write the same bytes (§1).
 
+A record's package is a `str32`, the empty string where the record named none, an observed none (R3). A writer whose
+instances keep no package, because they were read from an earlier checkpoint without the segments it covers, writes
+minor 5, which is minor 6 with no package marked or carried.
+
 An instance is named by its position in the rebuilt instances, which are ordered by PID and lifecycle epoch
 (entities-v1 §3), so the counts are as canonical as the instances.
 
@@ -232,7 +239,7 @@ A reader refuses a checkpoint whose bytes do not hash to the digest its generati
 `Index` before a viewer's first view, because this reader checks what it interprets (store-v1 §6). It then refuses the
 checkpoint when:
 
-- the magic is wrong, the major version is not 1, or the minor is above 5: a checkpoint is rebuildable, so there is no
+- the magic is wrong, the major version is not 1, or the minor is above 6: a checkpoint is rebuildable, so there is no
   partial read of a newer one. A minor-0 checkpoint of this build's rules would be read without counts: a reader
   counts them from every segment, and a writer that finds one replaces it (§2's publishers, `icat checkpoint`), since a
   reopen would otherwise read every segment. Every one revisions 162 to 165 wrote is under `process-binding-v2`,
@@ -256,6 +263,8 @@ checkpoint when:
 - a checkpoint before format 1.3 holds a cut that opened an incarnation: it cannot say whether a connect or an accept
   opened that connection, which the relations say, so it is derived again, and `icat checkpoint` writes one that says
   it. One whose cuts all closed incarnations holds what 1.3 would, and is read;
+- a checkpoint before format 1.6 marks a record's package among its fields, or names it among the fields a record
+  carried, which it cannot hold;
 - its session, clock or host is not the generation's;
 - a count exceeds what the remaining bytes can hold, a string is not valid UTF-8, a code is outside its set, an order
   above is broken, or bytes remain after the last end;
@@ -307,6 +316,15 @@ read back from it, and extended, rank their generation by bytes and by peers fro
 an earlier format keep none, nor once extended, and a whole-session byte or peer ranking of their generation reads
 its rows; §2's publishers and `icat checkpoint` replace such a checkpoint. Since revision 737 whether a segment was
 read is told by the identity its generation records for it, so an extension opens only the segments it adds.
+
+Since format 1.6 the checkpoint keeps each lifecycle record's package (entities-v1 §3), and instances read back from it
+name theirs. A checkpoint of an earlier format keeps none. A reader that uses it - the session's derivations, when the
+generation names every source-field segment it covers as it records them - reads those segments' package rows alone
+before it builds the instances, so they name what a derivation of every record names and the answer is the same: a
+first view then opens those segments where it would have opened none. Read without them, as `icat checkpoint` reads one
+to tell whether it is current, its instances keep no package and say so, nor once extended, and are derived again
+before a checkpoint of them is published; §2's publishers and `icat checkpoint` replace such a checkpoint with one that
+keeps them.
 
 ## 5. What is not defined at this version
 

@@ -978,6 +978,13 @@ internal static class ProcessesCommand
             ConsoleUi.Field("Session", session.ToString(CultureInfo.InvariantCulture));
         }
 
+        // The package it ran in, as its start or rundown named it, and none where the record named none; where no lifecycle
+        // record said, as for its session, nothing is written rather than a package guessed (R3).
+        if (process.PackageFullName is { } package)
+        {
+            ConsoleUi.Field("Package", package.Length > 0 ? package : "none: its lifecycle record names no package it ran in");
+        }
+
         if (process.Gaps.Count > 0)
         {
             ConsoleUi.Field("Evidence gaps", string.Join(", ", process.Gaps.Select(Words)));

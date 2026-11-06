@@ -879,7 +879,8 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
                 checkpoint = DerivationCheckpoint.Read(
                     SessionSegments.ReadVerified(directory, named, DerivationCheckpoint.MaximumBytes),
                     Manifest.SessionId,
-                    clock);
+                    clock,
+                    covered => CoveredFields(directory, covered));
             }
         }
         catch (InvalidDataException exception)
@@ -897,5 +898,19 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
 
         checkpointRead = true;
         return checkpoint;
+    }
+
+    /// <summary>
+    /// The source-field segments a checkpoint written before format 1.6 covers, which keeps no record's package, opened once
+    /// to read their package rows - uncached, as nothing reads them again through these readers - so its instances name
+    /// what a derivation of every record names (derivation-checkpoint-v1 §4). Null where this generation does not name each
+    /// as the checkpoint records it: the checkpoint describes other evidence, and is not used.
+    /// </summary>
+    private SegmentReaderV1[]? CoveredFields(IOwnedDirectory directory, IReadOnlyList<StoreDependency> covered)
+    {
+        StoreDependency[] named = SessionOverviewIndex.FieldSegments(Manifest);
+        return covered.All(named.Contains)
+            ? [.. covered.Select(file => SessionSegments.Open(directory, Manifest, file.Name))]
+            : null;
     }
 }

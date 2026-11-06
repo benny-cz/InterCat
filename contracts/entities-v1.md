@@ -82,6 +82,12 @@ without converting them into facts from another clock. A parent key identifies a
 that instance is in the capture; without a key, PID and the child's creation reading can make a correlated
 parent link. A named but unobserved parent remains named and unlinked, never invented.
 
+Since revision 990 an instance retains its package too: the one the earliest of its lifecycle records naming one names
+(ADR-094), its full name or the empty string where that record named none - an observed none (R3) - and none where no
+record said, as a provider version declaring no package or a package its record could not hold whole. A package's row
+valued other than 0 refuses the derivation, as no row of a package carries one. A package changes no instance's key,
+lifetime, binding or place among the instances.
+
 An instance's lifetime is half-open. It starts at its creation, or at the end of the PID's previous instance, or is
 unbounded below. It ends one tick after its exit — an exit record is its instance's last reading — or at the next
 instance's creation, or is unbounded above.

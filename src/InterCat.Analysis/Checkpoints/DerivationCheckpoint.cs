@@ -29,9 +29,14 @@ public sealed class DerivationCheckpoint
     /// no such counts, and relations that keep none are written as minor 3, which is minor 4 without them. Minor 5 keeps
     /// every record by the owner it binds to, each incarnation's and each instance's (revision 737), after the transfers
     /// and ending with its length; derivations read from an earlier checkpoint keep no such counts, and ones that keep
-    /// none are written as minor 4, which is minor 5 without them.
+    /// none are written as minor 4, which is minor 5 without them. Minor 6 keeps each lifecycle record's package among its
+    /// process fields (revision 990); instances read from an earlier checkpoint keep none, nor once extended, and ones
+    /// that keep none are written as minor 5, which is minor 6 with no package.
     /// </summary>
-    private const ushort Minor = 5;
+    private const ushort Minor = 6;
+
+    /// <summary>The minor instances that keep no record's package are written at.</summary>
+    private const ushort MinorWithoutPackages = 5;
 
     /// <summary>The minor derivations that keep no records by owner are written at.</summary>
     private const ushort MinorWithoutOwners = 4;
@@ -209,6 +214,7 @@ public sealed class DerivationCheckpoint
         writer.U16(Major);
         ushort minor = !relations.TransfersKept ? MinorWithoutTransfers
             : !(relations.OwnersKept && activity.OwnersKept) ? MinorWithoutOwners
+            : !processes.PackagesKept ? MinorWithoutPackages
             : Minor;
         writer.U16(minor);
         writer.Str8(ProcessInstanceIndex.BindingRule);
@@ -228,7 +234,7 @@ public sealed class DerivationCheckpoint
             writer.Str8(file.Digest);
         }
 
-        processes.WriteState(writer);
+        processes.WriteState(writer, packages: minor >= Minor);
         relations.WriteState(writer);
         activity.WriteState(writer);
         if (minor >= MinorWithoutOwners)
@@ -237,7 +243,7 @@ public sealed class DerivationCheckpoint
         }
 
         // The records by owner end with how many bytes they take, so a checkpoint of minor 4 is these bytes without them.
-        if (minor >= Minor)
+        if (minor >= MinorWithoutPackages)
         {
             long start = writer.Written;
             relations.WriteOwners(writer);
@@ -254,7 +260,17 @@ public sealed class DerivationCheckpoint
     /// hold, or hold in contradiction, is refused with <see cref="InvalidDataException"/> and the reason (§4); a
     /// checkpoint is rebuildable, so nothing is guessed from one.
     /// </summary>
-    public static DerivationCheckpoint Read(ReadOnlyMemory<byte> bytes, Guid sessionId, SourceClockDescriptor clock)
+    /// <param name="coveredFields">
+    /// Opens the source-field segments a checkpoint of a format before 1.6 covers, given as it records them, so its
+    /// instances read the packages it keeps none of from their package rows; null, or answering null where the generation
+    /// does not name each as recorded, leaves the instances keeping none (<see cref="ProcessInstanceIndex.PackagesKept"/>).
+    /// It is not asked of a checkpoint that keeps packages.
+    /// </param>
+    public static DerivationCheckpoint Read(
+        ReadOnlyMemory<byte> bytes,
+        Guid sessionId,
+        SourceClockDescriptor clock,
+        Func<IReadOnlyList<StoreDependency>, IReadOnlyList<SegmentReaderV1>?>? coveredFields = null)
     {
         if (bytes.Length > MaximumBytes)
         {
@@ -265,7 +281,7 @@ public sealed class DerivationCheckpoint
         // exceptions a derivation raises; here they say only that the checkpoint is unreadable.
         try
         {
-            return ReadCore(new IndexFileReader(bytes, What), sessionId, clock);
+            return ReadCore(new IndexFileReader(bytes, What), sessionId, clock, coveredFields);
         }
         catch (ArgumentException exception)
         {
@@ -281,7 +297,11 @@ public sealed class DerivationCheckpoint
         }
     }
 
-    private static DerivationCheckpoint ReadCore(IndexFileReader reader, Guid sessionId, SourceClockDescriptor clock)
+    private static DerivationCheckpoint ReadCore(
+        IndexFileReader reader,
+        Guid sessionId,
+        SourceClockDescriptor clock,
+        Func<IReadOnlyList<StoreDependency>, IReadOnlyList<SegmentReaderV1>?>? coveredFields)
     {
         if (!reader.Matches(Magic))
         {
@@ -373,7 +393,19 @@ public sealed class DerivationCheckpoint
             throw reader.Invalid("it covers segments without the capture they belong to, or names a capture and covers none.");
         }
 
-        ProcessInstanceIndex processes = ProcessInstanceIndex.ReadState(reader, clock, capture, derivation, [.. segments, .. fields]);
+        // A format before 1.6 keeps no record's package: the instances read those of the source-field segments it covers,
+        // each and no other, when the caller gives them, so they are the instances a derivation of every record gives.
+        IReadOnlyList<SegmentReaderV1>? packagesFrom = minor < Minor ? coveredFields?.Invoke(fields.AsReadOnly()) : null;
+        if (packagesFrom is not null
+            && (packagesFrom.Count != fields.Count
+                || !RpcCallIndex.IdentitiesOf(packagesFrom).ToHashSet().SetEquals(fields)))
+        {
+            throw new ArgumentException(
+                "The source-field segments given for its packages are not the ones it covers.", nameof(coveredFields));
+        }
+
+        ProcessInstanceIndex processes = ProcessInstanceIndex.ReadState(
+            reader, clock, capture, derivation, [.. segments, .. fields], packages: minor >= Minor, packagesFrom);
         TransportRelationIndex relations = TransportRelationIndex.ReadState(
             reader, processes, [.. segments], ipv6Ends: minor >= 2, earlierRule: earlierRule, cutKinds: minor >= 3);
         ProcessActivityIndex? activity = minor >= 1

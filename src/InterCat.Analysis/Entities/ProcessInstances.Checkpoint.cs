@@ -16,21 +16,34 @@ public sealed partial class ProcessInstanceIndex
 
     /// <summary>
     /// Writes what this derivation read, which is everything its instances are built from, in canonical order
-    /// (`contracts/derivation-checkpoint-v1.md` §3, <c>instances</c>).
+    /// (`contracts/derivation-checkpoint-v1.md` §3, <c>instances</c>): each record's package with its other process fields
+    /// when <paramref name="packages"/> asks, as format 1.6 keeps them, and none of them otherwise.
     /// </summary>
-    internal void WriteState(IndexFileWriter writer) => evidence.Write(writer);
+    internal void WriteState(IndexFileWriter writer, bool packages) => evidence.Write(writer, packages);
 
     /// <summary>
     /// Rebuilds a derivation from what a checkpoint says it read. The instances are built from that evidence exactly as
-    /// they are from the segments themselves, so they are the instances a derivation of the covered segments gives.
+    /// they are from the segments themselves, so they are the instances a derivation of the covered segments gives - but
+    /// for their packages where <paramref name="packages"/> says the checkpoint's format keeps none (<see cref="PackagesKept"/>),
+    /// unless <paramref name="packagesFrom"/> gives the source-field segments it covers, whose package rows are read then.
     /// </summary>
     internal static ProcessInstanceIndex ReadState(
         IndexFileReader reader,
         SourceClockDescriptor clock,
         CaptureId? capture,
         NormalizerContractVersion? derivation,
-        IReadOnlyCollection<StoreDependency> files) =>
-        Build(Evidence.Read(reader, clock.Id, capture, derivation, files), clock);
+        IReadOnlyCollection<StoreDependency> files,
+        bool packages,
+        IReadOnlyList<SegmentReaderV1>? packagesFrom = null)
+    {
+        Evidence evidence = Evidence.Read(reader, clock.Id, capture, derivation, files, packages);
+        if (!packages && packagesFrom is not null)
+        {
+            evidence.ReadPackages(packagesFrom);
+        }
+
+        return Build(evidence, clock);
+    }
 
     private static int CompareAddresses(RecordAddress left, RecordAddress right)
     {
@@ -70,13 +83,19 @@ public sealed partial class ProcessInstanceIndex
         private const byte HasExitCode = 1;
         private const byte HasName = 2;
 
+        /// <summary>The process fields' present bits before format 1.6: start sequence to exit time.</summary>
+        private const byte FieldsWithoutPackage = 63;
+
+        /// <summary>The present bit of a record's package, from format 1.6.</summary>
+        private const byte HasPackage = 64;
+
         public IReadOnlyCollection<StoreDependency>? Files => anonymous ? null : read;
 
         public CaptureId? Capture => captures.Count == 1 ? captures.Single() : null;
 
         public NormalizerContractVersion? Derivation => derivations.Count == 1 ? derivations.Single() : null;
 
-        public void Write(IndexFileWriter writer)
+        public void Write(IndexFileWriter writer, bool packages)
         {
             writer.I64(WithoutOwner);
             LifecycleRow[] lifecycle = [.. Lifecycle];
@@ -99,7 +118,11 @@ public sealed partial class ProcessInstanceIndex
                 }
             }
 
-            KeyValuePair<RecordAddress, ProcessFields>[] fields = [.. Fields];
+            // A format before 1.6 keeps no package: written in one, a record's package is left out, and so is a record that
+            // carried nothing else, as no field of it was kept.
+            KeyValuePair<RecordAddress, ProcessFields>[] fields = [.. Fields
+                .Select(entry => packages ? entry : new(entry.Key, entry.Value with { Package = null }))
+                .Where(static entry => entry.Value != default)];
             Array.Sort(fields, static (left, right) => CompareAddresses(left.Key, right.Key));
             writer.Count(fields.Length);
             foreach ((RecordAddress address, ProcessFields values) in fields)
@@ -110,7 +133,8 @@ public sealed partial class ProcessInstanceIndex
                     | (values.ParentProcessId is null ? 0 : 4)
                     | (values.ParentSequence is null ? 0 : 8)
                     | (values.SessionId is null ? 0 : 16)
-                    | (values.ExitFileTime is null ? 0 : 32)));
+                    | (values.ExitFileTime is null ? 0 : 32)
+                    | (values.Package is null ? 0 : HasPackage)));
                 if (values.Sequence is { } sequence)
                 {
                     writer.U64(sequence);
@@ -140,9 +164,16 @@ public sealed partial class ProcessInstanceIndex
                 {
                     writer.I64(exited);
                 }
+
+                // The empty string is a record that named no package, an observed none.
+                if (values.Package is { } package)
+                {
+                    writer.Str32(package);
+                }
             }
 
-            (RecordAddress Address, SourceField Field)[] seen = [.. SeenFields];
+            (RecordAddress Address, SourceField Field)[] seen = [.. SeenFields
+                .Where(entry => packages || entry.Field != SourceField.ProcessPackageFullName)];
             Array.Sort(seen, CompareSeen);
             writer.Count(seen.Length);
             foreach ((RecordAddress address, SourceField field) in seen)
@@ -166,7 +197,8 @@ public sealed partial class ProcessInstanceIndex
             ClockId clock,
             CaptureId? capture,
             NormalizerContractVersion? derivation,
-            IReadOnlyCollection<StoreDependency> files)
+            IReadOnlyCollection<StoreDependency> files,
+            bool packages)
         {
             long withoutOwner = reader.I64();
             if (withoutOwner < 0)
@@ -214,8 +246,9 @@ public sealed partial class ProcessInstanceIndex
                     throw reader.Invalid("its process fields are not in canonical order.");
                 }
 
+                // A record's package is among its fields from format 1.6; an earlier format marks none.
                 byte present = reader.U8();
-                if (present is 0 or > 63)
+                if (present == 0 || present > (packages ? FieldsWithoutPackage | HasPackage : FieldsWithoutPackage))
                 {
                     throw reader.Invalid($"a record's process fields are marked {present}.");
                 }
@@ -226,7 +259,8 @@ public sealed partial class ProcessInstanceIndex
                     (present & 4) != 0 ? reader.I32() : null,
                     (present & 8) != 0 ? reader.U64() : null,
                     (present & 16) != 0 ? reader.U32() : null,
-                    (present & 32) != 0 ? reader.I64() : null));
+                    (present & 32) != 0 ? reader.I64() : null,
+                    (present & HasPackage) != 0 ? reader.Str32() : null));
                 previous = address;
             }
 
@@ -236,11 +270,14 @@ public sealed partial class ProcessInstanceIndex
             for (int index = 0; index < count; index++)
             {
                 (RecordAddress Address, SourceField Field) entry = (ReadAddress(reader), (SourceField)reader.U16());
-                if (entry.Field is not (SourceField.ProcessStartSequence or SourceField.ProcessCreateTime
-                    or SourceField.ParentProcessId or SourceField.ParentStartSequence
-                    or SourceField.ProcessSessionId or SourceField.ProcessExitTime))
+                if (!IsProcessField(entry.Field))
                 {
                     throw reader.Invalid($"a record carried source field {(int)entry.Field}, which is not a process field.");
+                }
+
+                if (entry.Field == SourceField.ProcessPackageFullName && !packages)
+                {
+                    throw reader.Invalid("a record carried its process's package, which a format before 1.6 keeps none of.");
                 }
 
                 if (last is { } before && CompareSeen(before, entry) >= 0)
@@ -274,6 +311,7 @@ public sealed partial class ProcessInstanceIndex
                 SeenFields = seen,
                 FirstActivity = first,
                 WithoutOwner = withoutOwner,
+                PackagesKept = packages,
             };
             evidence.read.UnionWith(files);
             if (capture is { } captured)

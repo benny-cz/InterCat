@@ -119,6 +119,12 @@ internal sealed record ProcessInstanceDocument
     public required string? ParentInstanceId { get; init; }
     public required string? ParentBinding { get; init; }
     public required uint? SessionId { get; init; }
+
+    /// <summary>
+    /// The package the process ran in, as its start or rundown named it: empty where it named none, an observed none, and
+    /// null where no lifecycle record said (R3, ADR-094).
+    /// </summary>
+    public required string? PackageFullName { get; init; }
     public required long? CreateFileTime { get; init; }
     public required long? ExitFileTime { get; init; }
 
@@ -148,6 +154,7 @@ internal sealed record ProcessInstanceDocument
         ParentInstanceId = instance.Parent?.ToString(),
         ParentBinding = instance.ParentBinding?.ToString(),
         SessionId = instance.SessionId,
+        PackageFullName = instance.PackageFullName,
         CreateFileTime = instance.CreateFileTime,
         ExitFileTime = instance.ExitFileTime,
     };

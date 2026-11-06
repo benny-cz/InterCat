@@ -10,6 +10,105 @@ internal static class EarlierCheckpoints
     private const int TransferBytes = 1 + (6 * 8);
 
     /// <summary>
+    /// A checkpoint as revisions 738 to 989 wrote it: format 1.5, which keeps no record's package. Format 1.6 keeps each
+    /// among its record's process fields, marked by their present bit 64 and written after the others, and among the fields
+    /// each record carried; 1.5 is those bytes with neither, and without a record whose package was all it carried. A
+    /// checkpoint of an earlier format is returned as it is.
+    /// </summary>
+    public static byte[] WithoutPackages(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        if (BitConverter.ToUInt16(bytes, 10) < 6)
+        {
+            return [.. bytes];
+        }
+
+        // The header and the covered files: the magic, the version, the two rules, the session, the generation, the clock, the
+        // host, the capture and the normalizer, then each file's role, name, length and digest.
+        int at = 12;
+        at += 1 + bytes[at];
+        at += 1 + bytes[at];
+        at += 16 + 8 + 16 + 16 + 16 + 4;
+        uint files = BitConverter.ToUInt32(bytes, at);
+        at += 4;
+        for (uint file = 0; file < files; file++)
+        {
+            at += 1;
+            at += 1 + bytes[at];
+            at += 8;
+            at += 1 + bytes[at];
+        }
+
+        // The instances: lifecycle records without an owner, then each lifecycle record - its PID, kind, position, flags, exit
+        // code and name - all of which every format keeps.
+        at += 8;
+        uint lifecycle = BitConverter.ToUInt32(bytes, at);
+        at += 4;
+        for (uint row = 0; row < lifecycle; row++)
+        {
+            at += 4 + 1 + 40;
+            byte flags = bytes[at];
+            at += 1 + ((flags & 1) != 0 ? 8 : 0);
+            if ((flags & 2) != 0)
+            {
+                at += 4 + checked((int)BitConverter.ToUInt32(bytes, at));
+            }
+        }
+
+        var earlier = new List<byte>(bytes.AsSpan(0, at).ToArray());
+        uint fields = BitConverter.ToUInt32(bytes, at);
+        at += 4;
+        var kept = new List<byte>();
+        uint keptFields = 0;
+        for (uint entry = 0; entry < fields; entry++)
+        {
+            int address = at;
+            byte present = bytes[at + 32];
+            at += 32 + 1;
+            int values = ((present & 1) != 0 ? 8 : 0) + ((present & 2) != 0 ? 8 : 0) + ((present & 4) != 0 ? 4 : 0)
+                + ((present & 8) != 0 ? 8 : 0) + ((present & 16) != 0 ? 4 : 0) + ((present & 32) != 0 ? 8 : 0);
+            int valuesAt = at;
+            at += values;
+            if ((present & 64) != 0)
+            {
+                at += 4 + checked((int)BitConverter.ToUInt32(bytes, at));
+            }
+
+            if ((present & 63) == 0)
+            {
+                continue;
+            }
+
+            kept.AddRange(bytes.AsSpan(address, 32).ToArray());
+            kept.Add((byte)(present & 63));
+            kept.AddRange(bytes.AsSpan(valuesAt, values).ToArray());
+            keptFields++;
+        }
+
+        earlier.AddRange(BitConverter.GetBytes(keptFields));
+        earlier.AddRange(kept);
+        uint seen = BitConverter.ToUInt32(bytes, at);
+        at += 4;
+        var carried = new List<byte>();
+        uint carriedFields = 0;
+        for (uint entry = 0; entry < seen; entry++, at += 32 + 2)
+        {
+            if (BitConverter.ToUInt16(bytes, at + 32) != (ushort)SourceField.ProcessPackageFullName)
+            {
+                carried.AddRange(bytes.AsSpan(at, 32 + 2).ToArray());
+                carriedFields++;
+            }
+        }
+
+        earlier.AddRange(BitConverter.GetBytes(carriedFields));
+        earlier.AddRange(carried);
+        earlier.AddRange(bytes.AsSpan(at).ToArray());
+        byte[] result = [.. earlier];
+        result[10] = 5;
+        return result;
+    }
+
+    /// <summary>
     /// A checkpoint as revisions 736 and 737 wrote it: format 1.4, which keeps no records by owner. Format 1.5 keeps them
     /// last, ending with how many bytes they take, so 1.4 is those bytes without them; a checkpoint of an earlier format is
     /// returned as it is.
@@ -17,6 +116,7 @@ internal static class EarlierCheckpoints
     public static byte[] WithoutOwners(byte[] bytes)
     {
         ArgumentNullException.ThrowIfNull(bytes);
+        bytes = WithoutPackages(bytes);
         if (BitConverter.ToUInt16(bytes, 10) < 5)
         {
             return [.. bytes];

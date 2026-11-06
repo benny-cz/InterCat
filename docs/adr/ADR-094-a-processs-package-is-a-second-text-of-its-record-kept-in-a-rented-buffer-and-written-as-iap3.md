@@ -1,7 +1,7 @@
 # ADR-094: A process's package is a second text of its record, kept in a rented buffer and written as IAP3
 
-- Status: accepted for M6's process enrichment; the package is admitted into a session's source fields, not yet said of a
-  process or measured through the product
+- Status: accepted for M6's process enrichment; the package is admitted into a session's source fields and said of each
+  process instance (revision 990), not yet measured through the product
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-029, ADR-036, ADR-093, plan M6, §18.1, §18.2, R3, R8, R9, R11, I21, FX-PROC-001
@@ -49,3 +49,22 @@ package not copied in the callback cannot be read later.
   elevation or integrity level - needs a wider record first.
 - Tests hold the compiled slot, the callback's bounded read of a package, an empty one and each unknown one, the IAP3
   round trip beside IAP1's unchanged bytes, the field row's text, value 0 and unknown, and the broker's refusals.
+
+## Addendum: a process's package is its instance's (revision 990)
+
+Each process instance retains the package the earliest of its lifecycle records naming one names, as it retains its
+image and its session (entities-v1 §3): its full name, the empty string where the record named none - an observed none -
+and none where no record said, as a start version declaring no package or a package its record could not hold whole
+(R3). A package's row valued other than 0 refuses the derivation, as no row of a package carries one, and a package
+changes no instance's key, lifetime or binding. `icat processes --pid` says a process's package, or that its record
+named none, and writes nothing where no record said; every command's JSON naming a process carries `packageFullName`,
+a text, the empty text or null.
+
+The derivation checkpoint keeps each record's package among its process fields from format 1.6. One of an earlier
+format, which every build before this one wrote, keeps none: the session's derivations, using one, read the package
+rows of the source-field segments it covers before building its instances, so a checkpoint never changes an answer,
+only slows a first view; read without them, its instances say they keep none, nor once extended, and a writer derives
+them again and publishes a checkpoint that keeps them. 19 mutations of the path are caught.
+
+Whether each instance's package is the one the application model gave its process is FX-PROC-001's to measure through
+the product next.
