@@ -918,6 +918,7 @@ Revision 992 has the window's inspector state a process's terminal session and p
 Revision 993 measures which services a process hosts (ADR-095, FX-SVC-001): Microsoft-Windows-Services, asked for its state, names none of the services the service control manager lists running, and a service started during a run only by its status change, so the manager's list, read as a capture starts and stops, is the source.
 Revision 994 gives the service inventory its contract and store dependency (ADR-095's addendum): `service-inventory-v1`, code 12, the running services at a capture's start or stop by name and host PID and creation time, carried by every later generation, never released or redacted; no capture writes one yet.
 Revision 995 has every live capture read the running services and their hosts (ADR-095's second addendum): once its session delivers and again as it stops, each published, a list it cannot read recorded as none; every host was one process instance by PID and creation time.
+Revision 996 has each process say the services it hosted (ADR-095's third addendum): bound by its PID and creation time, never by a PID alone, said by the inspector and `icat processes` as the services, none or not recorded.
 
 ## Revisions, a paragraph each, in order
 
@@ -4548,3 +4549,11 @@ would say no service ran (R3) - and the capture goes on. On this machine a 10-se
 130 services in 119 hosts at its start and at its stop, in 29 and 16 ms, and every host was exactly one of the session's
 process instances by its PID and the creation time its process start or rundown carried: the binding the next revision
 makes.
+
+Revision 996 says of each process the services it hosted (ADR-095's third addendum). `service-binding-v1` binds each
+service a capture's inventories list to the process instance whose PID is the service's and whose creation time, from its
+lifecycle records, is the host's, so a later holder of a host's PID is never taken for it; a service whose host's creation
+time was not read, or that no instance held, is kept unbound. The window's inspector, under the process's package, and
+`icat processes --pid` say the services it hosted - each said to be at one end alone where the capture read both and listed
+it at one - none where it hosted none, or not recorded where the capture read none, and `--json` keeps the three apart as
+a list, an empty list and null beside the moments the capture read them at. A service list stays metadata of its host.

@@ -864,7 +864,7 @@ public sealed partial class RedactedSessionPackageTests
         ];
         Publish(store, rows, rowsPerSegment: 5, clock: SourceClock, fields: fields, coverage: coverage ?? Ledger(), calibration: Calibration(),
             collectors: collectors ? Collectors() : null,
-            services: services ? Services() : null,
+            services: services ? [Services()] : null,
             bodyForRow: _ => new BodyV1
             {
                 Classification = BodyClassificationV1.ApprovedMetadata,

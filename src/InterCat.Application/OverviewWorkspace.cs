@@ -72,6 +72,7 @@ public static class OverviewWorkspace
             RetainedFromNanoseconds = overview.RetainedFromNanoseconds,
             Demo = overview.Demo,
             Collectors = overview.Collectors,
+            Services = overview.Services,
         };
     }
 

@@ -115,6 +115,14 @@ public sealed partial class WorkspaceViewModel
             { } package => package,
         };
 
+    /// <summary>
+    /// The services the selected process hosted as its capture started and stopped, as the capture's service inventories list
+    /// them by its PID and creation time (`service-binding-v1`); none where it hosted none of those read, and not recorded
+    /// where the capture kept no list (R3).
+    /// </summary>
+    public string ServicesText => selectedProcess is not { } process ? string.Empty
+        : ServiceText.Of(process.Services, wholeSnapshot.Services.Moments);
+
     /// <summary>Whether the parent can be selected: the capture holds it.</summary>
     public bool CanSelectParent => ShowsLineage && ParentOfSelected is not null;
 
@@ -176,6 +184,7 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(ChildrenText));
         OnPropertyChanged(nameof(TerminalSessionText));
         OnPropertyChanged(nameof(PackageText));
+        OnPropertyChanged(nameof(ServicesText));
         OnPropertyChanged(nameof(CanSelectParent));
         OnPropertyChanged(nameof(CanSelectChildren));
         OnPropertyChanged(nameof(ParentTip));

@@ -108,6 +108,32 @@ public sealed class LineageWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R3: the inspector states the services a process hosted as its capture started and stopped beside its package")]
+    public async Task TheInspectorStatesAProcesssServices()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields, ServiceInventoryV1[] inventories) = ServiceHosts();
+        Publish(session.Store, rows, fields: fields, services: inventories);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        window.ApplyCaptureUpdate(new CaptureUiUpdate(CaptureUiPhase.Recording, "Recording", "A published generation.",
+            SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store)));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+
+        workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.ProcessId == 2400).Id);
+        Dispatch();
+        TextBlock services = window.GetControl<TextBlock>("ServicesText");
+        Assert.True(services.IsEffectivelyVisible);
+        Assert.Equal("W32Time, BITS (at the stop alone) · as the capture started and stopped", services.Text);
+
+        // The row is below the card's fold at this height: the inspector is scrolled to it for the render a person reads.
+        services.BringIntoView();
+        Save(window, "process-services-1456x939.png");
+        window.Close();
+    }
+
     /// <summary>Keeps what the window drew beside the tests' other renders, for a person to look at.</summary>
     private static void Save(Window window, string name)
     {

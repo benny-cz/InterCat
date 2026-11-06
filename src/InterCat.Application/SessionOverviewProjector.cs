@@ -97,6 +97,12 @@ public sealed record SessionOverviewBundle(
     public CollectorMatch Collectors { get; init; } = CollectorMatch.NotRecorded;
 
     /// <summary>
+    /// The services the capture's process instances hosted as it started and stopped (`service-binding-v1`), the moments it
+    /// read them at, and those no instance hosted; none recorded for a capture that read none.
+    /// </summary>
+    public ServiceMatch Services { get; init; } = ServiceMatch.NotRecorded;
+
+    /// <summary>
     /// When the capture began by the wall clock it recorded: session time 0, in UTC (<see cref="SessionRecording.Began"/>);
     /// null when it recorded none.
     /// </summary>
@@ -233,6 +239,9 @@ public static class SessionOverviewProjector
 
         // The instances that collected the capture, by the PID and creation time it names them by (collector-binding-v1).
         CollectorMatch collectors = CollectorBinding.Match(processes.Instances, CollectorIdentitiesV1.Read(store.Root, manifest));
+
+        // The services each instance hosted as the capture started and stopped, by its PID and creation time (service-binding-v1).
+        ServiceMatch services = ServiceBinding.Match(processes.Instances, ServiceInventoryV1.Read(store.Root, manifest));
         CoverageState tcpCoverage = SessionCoverage.Of(coverage, Mechanism.Tcp).State;
         CoverageState udpCoverage = SessionCoverage.Of(coverage, Mechanism.Udp).State;
 
@@ -258,6 +267,7 @@ public static class SessionOverviewProjector
             ParentProcessId = instance.ParentProcessId,
             TerminalSession = instance.SessionId,
             Package = instance.PackageFullName,
+            Services = services.Of(instance.Id),
             Parent = instance.Parent,
             ParentBinding = instance.ParentBinding,
             Collector = collectors.RoleOf(instance.Id),
@@ -502,6 +512,7 @@ public static class SessionOverviewProjector
             HostLinks = hostLinks,
             Listeners = ConnectionOpens.Listeners(relations, policy),
             Collectors = collectors,
+            Services = services,
             IntervalCoverage = coverage is { HoldsRecordsOutsideItsEpochs: true }
                 ? Array.AsReadOnly([.. SessionCoverage.ByMechanism(coverage with { HoldsRecordsOutsideItsEpochs = false })])
                 : null,

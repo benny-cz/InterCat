@@ -65,8 +65,14 @@ empty file or one over 1 MiB are refused.
 ## 3. What a reader may say
 
 A process instance hosted a service at an inventory's moment when its PID is the service's and its creation time, from its
-lifecycle records, is the host's: the start key a lifecycle record carries is the identity, and a PID alone, or an image
+lifecycle records, is the host's (`service-binding-v1`, revision 996): the start key a lifecycle record carries is the identity, and a PID alone, or an image
 name, is never taken for one. A service whose host's creation time was not read, or whose PID no instance with that
 creation time held, binds to no instance, and a reader keeps it as unbound rather than guess an instance for it. A service
 list is metadata of its host (§6.3): no record of the host is attributed to one of its services without evidence naming
 the service (ADR-095).
+
+Since revision 996 the window's inspector and `icat processes --pid` say, of a process, one of three answers in one set of
+words: the services it hosted, each said to be at one end alone where the capture read both and listed it at one, with the
+moments the capture read them at; none, where it hosted none of those read; or not recorded, where the capture read none.
+`icat processes --json` gives each instance's `services`, a list of each one's name and whether it was listed at the start
+and at the stop, an empty list or null, and the moments the capture read them at as `servicesRead`.

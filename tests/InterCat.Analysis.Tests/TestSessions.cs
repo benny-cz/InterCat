@@ -1030,6 +1030,56 @@ internal static class TestSessions
             });
     }
 
+    /// <summary>When <see cref="ServiceHosts"/>'s first host was created.</summary>
+    public static readonly DateTimeOffset ServiceHostCreated = new DateTimeOffset(2026, 11, 6, 8, 0, 0, TimeSpan.Zero).AddTicks(7);
+
+    /// <summary>
+    /// Two service hosts and a reuse of one's PID (ADR-095): svchost.exe, PID 1820, running as the capture starts and hosting
+    /// Dnscache and nsi then, until it exits; tool.exe taking PID 1820 later, hosting nothing; svchost.exe, PID 2400, created in
+    /// the capture and hosting W32Time at both ends and BITS at the stop alone; and Protected, whose host could not be opened,
+    /// so no instance is its host. The two service inventories are its start's and its stop's.
+    /// </summary>
+    public static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields, ServiceInventoryV1[] Inventories) ServiceHosts()
+    {
+        DateTimeOffset secondCreated = ServiceHostCreated.AddSeconds(5);
+        ObservationRowV1 first = Lifecycle(1, ObservationKind.Inventory, 1820, 1) with { ResourceName = @"C:\Windows\System32\svchost.exe", SessionRelativeTicks = 100 };
+        ObservationRowV1 firstExit = Lifecycle(50, ObservationKind.Exit, 1820, 2) with { SessionRelativeTicks = 5_000 };
+        ObservationRowV1 later = Lifecycle(60, ObservationKind.Create, 1820, 3) with { ResourceName = @"C:\Tools\tool.exe", SessionRelativeTicks = 6_000 };
+        ObservationRowV1 second = Lifecycle(20, ObservationKind.Create, 2400, 4) with { ResourceName = @"C:\Windows\System32\svchost.exe", SessionRelativeTicks = 2_000 };
+        InventoriedServiceV1 w32Time = new() { Name = "W32Time", ProcessId = 2400, HostCreatedUtc = secondCreated };
+        return (
+            [first, second, firstExit, later],
+            [
+                Field(first, SourceField.ProcessStartSequence, 901),
+                Field(first, SourceField.ProcessCreateTime, ServiceHostCreated.ToFileTime()),
+                Field(firstExit, SourceField.ProcessStartSequence, 901),
+                Field(later, SourceField.ProcessStartSequence, 903),
+                Field(later, SourceField.ProcessCreateTime, ServiceHostCreated.AddHours(1).ToFileTime()),
+                Field(second, SourceField.ProcessStartSequence, 902),
+                Field(second, SourceField.ProcessCreateTime, secondCreated.ToFileTime()),
+            ],
+            [
+                Inventory(ServiceInventoryMoment.Start,
+                [
+                    new() { Name = "Dnscache", ProcessId = 1820, HostCreatedUtc = ServiceHostCreated },
+                    new() { Name = "nsi", ProcessId = 1820, HostCreatedUtc = ServiceHostCreated },
+                    w32Time,
+                    new() { Name = "Protected", ProcessId = 3004 },
+                ]),
+                Inventory(ServiceInventoryMoment.Stop, [w32Time, new() { Name = "BITS", ProcessId = 2400, HostCreatedUtc = secondCreated }]),
+            ]);
+
+        static ServiceInventoryV1 Inventory(ServiceInventoryMoment moment, IReadOnlyList<InventoriedServiceV1> services) => new()
+        {
+            Contract = ServiceInventoryV1.ContractName,
+            CaptureId = Capture.Value,
+            Moment = moment,
+            ReadStartedUtc = ServiceHostCreated.AddMinutes(moment == ServiceInventoryMoment.Start ? 1 : 2),
+            ReadEndedUtc = ServiceHostCreated.AddMinutes(moment == ServiceInventoryMoment.Start ? 1 : 2).AddMilliseconds(20),
+            Services = services,
+        };
+    }
+
     /// <summary>A source field of an observation, as a provider supplied it beside the row.</summary>
     public static SourceFieldRowV1 Field(ObservationRowV1 observation, SourceField code, long value) => new()
     {
@@ -1060,7 +1110,7 @@ internal static class TestSessions
         ClockCalibrationV1? calibration = null,
         bool finished = false,
         CollectorIdentitiesV1? collectors = null,
-        ServiceInventoryV1? services = null,
+        IReadOnlyList<ServiceInventoryV1>? services = null,
         byte[]? plan = null,
         ILiveIndexer? indexer = null)
     {
@@ -1128,9 +1178,9 @@ internal static class TestSessions
             builder.StageCollectorIdentities(collectors);
         }
 
-        if (services is not null)
+        foreach (ServiceInventoryV1 inventory in services ?? [])
         {
-            builder.StageServiceInventory(services);
+            builder.StageServiceInventory(inventory);
         }
 
         // The normalizer plan the capture admitted its records under, as a recorder retains it beside its journal.

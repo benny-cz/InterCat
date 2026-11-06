@@ -73,3 +73,14 @@ capture goes on, never with an empty list in its place (R3). On this machine a 1
 read 130 services in 119 hosts at its start and at its stop, in 29 and 16 ms, every host with its creation time, and each
 host was exactly one of the session's process instances by its PID and the creation time its process start or rundown
 carried. Seven mutations of the path are caught.
+
+## Third addendum: a process says the services it hosted (revision 996)
+
+`service-binding-v1` binds each service a capture's inventories list to the process instance whose PID is the service's
+and whose creation time, from its lifecycle records, is the host's: never to a later holder of the PID, and never by a PID
+or an image alone. A service whose host's creation time was not read, or that no instance held, is kept unbound. The window's
+inspector and `icat processes --pid` say of a process the services it hosted, each said to be at one end alone where the
+capture read both and listed it at one; none, where it hosted none of those read; or not recorded, where the capture read
+none - three answers never given one for another (R3). `icat processes --json` keeps them apart as a list, an empty list
+and null, beside the moments the capture read them at. The services stay metadata of their host: no record is attributed
+to one. Ten mutations of the path are caught.

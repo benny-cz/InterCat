@@ -1177,6 +1177,13 @@
                   <TextBlock x:Name="PackageText" Text="{Binding PackageText}" TextWrapping="Wrap"
                              AutomationProperties.Name="{Binding PackageText, StringFormat='Package: {0}'}" />
                 </StackPanel>
+                <!-- The services it hosted as the capture started and stopped (ADR-095): metadata of the process, never
+                     the owner of any of its records. -->
+                <StackPanel Spacing="3" IsVisible="{Binding ShowsLineage}">
+                  <TextBlock Text="Services" Classes="muted" />
+                  <TextBlock x:Name="ServicesText" Text="{Binding ServicesText}" TextWrapping="Wrap"
+                             AutomationProperties.Name="{Binding ServicesText, StringFormat='Services: {0}'}" />
+                </StackPanel>
                 <StackPanel Spacing="3">
                   <TextBlock Text="{Binding LevelBadge}" Classes="muted" TextWrapping="Wrap" />
                   <TextBlock Text="{Binding LevelSummary}" TextWrapping="Wrap"

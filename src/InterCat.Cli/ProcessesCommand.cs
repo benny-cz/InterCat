@@ -46,6 +46,12 @@ internal sealed record ProcessesDocument
     public required IReadOnlyList<ProcessActivityDocument> Instances { get; init; }
     public required IReadOnlyList<ProcessUnattributedDocument> Unattributed { get; init; }
     public required IReadOnlyList<string> Caveats { get; init; }
+
+    /// <summary>
+    /// The moments the capture read its running services at - its start, its stop, or both - for the instances' services;
+    /// none where it read none, so no instance's services are recorded (`contracts/service-inventory-v1.md`).
+    /// </summary>
+    public IReadOnlyList<ServiceInventoryMoment> ServicesRead { get; init; } = [];
 }
 
 /// <summary>The program `icat processes --program` lists the instances of: its name as icat programs lists it, and its path.</summary>
@@ -183,6 +189,12 @@ internal sealed record ProcessActivityDocument
     /// name it (`collector-binding-v1`); null for every other process.
     /// </summary>
     public CollectorRole? Collector { get; init; }
+
+    /// <summary>
+    /// The services the instance hosted as the capture started and stopped, each with the moments its inventories listed it
+    /// at (`service-binding-v1`): none where it hosted none of those read, and null where the capture read none (R3).
+    /// </summary>
+    public IReadOnlyList<HostedService>? Services { get; init; }
 }
 
 /// <summary>An instance's transport records of one side: how many measured a size, and how many recorded none.</summary>
@@ -444,7 +456,7 @@ internal static class ProcessesCommand
 
         Dictionary<ProcessInstanceId, ProcessNode> nodes = projected.Nodes.ToDictionary(node => node.Id);
         ProcessesDocument document = Describe(full, records, sent, received, policy, nodes, projected.Collectors.Unfound,
-            projected.ConnectionOpensRecorded, rankBy.Value);
+            projected.ConnectionOpensRecorded, rankBy.Value, projected.Services.Moments);
         if (port is { } listened)
         {
             // Those whose accepted connections arrived at the port, whoever connected: the ports each process's card names.
@@ -560,7 +572,8 @@ internal static class ProcessesCommand
         Dictionary<ProcessInstanceId, ProcessNode> nodes,
         IReadOnlyList<CollectorProcessV1> unfound,
         bool opensRecorded,
-        RankingMetric rankBy)
+        RankingMetric rankBy,
+        IReadOnlyList<ServiceInventoryMoment> servicesRead)
     {
         Dictionary<ProcessInstanceId, MetricGroup> sentBy = ByInstance(sent);
         Dictionary<ProcessInstanceId, MetricGroup> receivedBy = ByInstance(received);
@@ -586,6 +599,7 @@ internal static class ProcessesCommand
                     WithheldRecords = nodes[group.Process!.Id].WithheldRecords,
                     Binding = ProcessBindingText.Explain(nodes[group.Process!.Id], unfound),
                     Collector = nodes[group.Process!.Id].Collector,
+                    Services = nodes[group.Process!.Id].Services,
                 })
                 .OrderByDescending(first)
                 .ThenByDescending(then)
@@ -619,6 +633,7 @@ internal static class ProcessesCommand
         {
             Contract = "entities-v1",
             Path = path,
+            ServicesRead = servicesRead,
             Generation = records.Generation,
             BindingRule = records.BindingRule ?? ProcessInstanceIndex.BindingRule,
             EvidencePolicy = policy.ToString(),
@@ -908,7 +923,7 @@ internal static class ProcessesCommand
 
         foreach (ProcessActivityDocument item in pid is null ? [] : shown)
         {
-            RenderDetail(item, path);
+            RenderDetail(item, path, document.ServicesRead);
         }
 
         if (pid is null && top != 0 && document.Instances.Count > shown.Count)
@@ -944,7 +959,7 @@ internal static class ProcessesCommand
     /// One instance in full: the identity to use in a process filter, the evidence it rests on, and who it exchanged
     /// data with, with the command that answers more.
     /// </summary>
-    private static void RenderDetail(ProcessActivityDocument item, string path)
+    private static void RenderDetail(ProcessActivityDocument item, string path, IReadOnlyList<ServiceInventoryMoment> servicesRead)
     {
         ProcessInstanceDocument process = item.Process;
         string epoch = process.LifecycleEpoch > 1
@@ -984,6 +999,9 @@ internal static class ProcessesCommand
         {
             ConsoleUi.Field("Package", package.Length > 0 ? package : "none: its lifecycle record names no package it ran in");
         }
+
+        // The services it hosted as the capture started and stopped, by its PID and creation time; never the owner of a record.
+        ConsoleUi.Field("Services", ServiceText.Of(item.Services, servicesRead));
 
         if (process.Gaps.Count > 0)
         {

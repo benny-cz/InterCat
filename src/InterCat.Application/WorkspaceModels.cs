@@ -156,6 +156,12 @@ public sealed record ProcessNode(
     /// </summary>
     public string? Package { get; init; }
 
+    /// <summary>
+    /// The services the process hosted as its capture started and stopped, as the capture's service inventories list them
+    /// (`service-binding-v1`): none where it hosted none of those read, and null where the capture read none (R3).
+    /// </summary>
+    public IReadOnlyList<HostedService>? Services { get; init; }
+
     /// <summary>The records <see cref="Activity"/> counts.</summary>
     public long Records => Activity.Sum(entry => entry.Records);
 
@@ -755,6 +761,12 @@ public sealed record WorkspaceSnapshot(
     /// one; <see cref="CollectorMatch.NotRecorded"/> for a capture that names none, and a snapshot not projected from one.
     /// </summary>
     public CollectorMatch Collectors { get; init; } = CollectorMatch.NotRecorded;
+
+    /// <summary>
+    /// The services the capture's processes hosted as it started and stopped (`service-binding-v1`) and the moments it read
+    /// them at; <see cref="ServiceMatch.NotRecorded"/> for a capture that read none, and a snapshot not projected from one.
+    /// </summary>
+    public ServiceMatch Services { get; init; } = ServiceMatch.NotRecorded;
 
     /// <summary>
     /// When the session's capture began by the wall clock it recorded: session time 0, which the timeline's axis counts
