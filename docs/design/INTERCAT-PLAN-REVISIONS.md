@@ -896,6 +896,7 @@ Revision 969 begins the section discovery package with its metadata inspection: 
 Revision 970 measures sections two processes share (ADR-089, FX-SECT-001): each section's handles are joined at its object's address and named at their close, and every view is recorded in its process with its size, each section's views naming one value no handle carries, and no byte moved.
 Revision 971 measures collecting the kernel's file view flag (ADR-089's addendum): Low in the processor time it adds, but a view-heavy workload past the throughput target in three series of four, so only an opt-in profile stating it may admit it.
 Revision 972 inventories the kernel's file view flag as sections' lead (ADR-089's second addendum), requested by no profile and admitting no event; Kernel-Memory, whose events name no section, claims none.
+Revision 973 measures the Section type's number for the build (ADR-089's third addendum): the object type table and the session's type rundown both name it 49, which a gate admitting sections' handles carries.
 
 ## Revisions, a paragraph each, in order
 
@@ -4311,3 +4312,10 @@ time it adds with its throughput regression stated, and its notes what FX-SECT-0
 admits no event. Microsoft-Windows-Kernel-Memory, the catalog's early candidate for sections, stays inventoried but claims no
 mechanism, as the package's inspection found its events name no section, view or mapping. No build carries a tier for
 sections; a test holds the lead, and eight mutations of the catalog are caught.
+
+Revision 973 measures the number the object manager's records give the Section type on this build (ADR-089's third
+addendum), as revision 934 measured the synchronization types'. `tools/InterCat.SectionProbe --measure --types` reads the
+object type table from user mode before and after FX-SECT-001 runs under the handle group, beside the session's own type
+rundown: all three name Section 49 and agree on every type but the type of types, and of the machine's handle records
+meanwhile about one in thirty was a section's, nothing lost. The product never reads the table (P20); a gate admitting
+sections' handles carries the measured number and holds it to each capture's type rundown.

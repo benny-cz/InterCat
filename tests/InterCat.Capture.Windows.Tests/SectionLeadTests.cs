@@ -206,6 +206,26 @@ public sealed class SectionLeadTests
         Assert.DoesNotContain(MeasuredCoverage.Entries, entry => entry.Mechanism == Mechanism.SharedSection);
     }
 
+    [Fact(DisplayName = "§4.2: on this build the object type table read before a capture starts, the session's type rundown at its stop and the table after all name the Section type 49, as they name every type but the type of types alike - and during FX-SECT-001 about one of the machine's handle records in thirty was a section's, nothing lost")]
+    public void TheSectionTypesNumberIsMeasured()
+    {
+        using JsonDocument types = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            Assert.Single(Directory.GetDirectories(Path.Combine(RepositoryRoot(), "bench", "results"), "section-types-*")), "report.json")));
+        JsonElement root = types.RootElement;
+        Assert.Equal(("10.0.26220.0-x64", 0), (root.GetProperty("build").GetString(), root.GetProperty("eventsLost").GetInt32()));
+
+        // The three readings name Section alike, and every type but the type of types, which no rundown names.
+        JsonElement section = root.GetProperty("sectionType");
+        Assert.Equal((49, 49, 49), (section.GetProperty("before").GetInt32(), section.GetProperty("rundown").GetInt32(), section.GetProperty("after").GetInt32()));
+        Assert.Equal(["2: before Type, rundown none, after Type"], root.GetProperty("disagreements").EnumerateArray().Select(static item => item.GetString()));
+        Assert.Equal(root.GetProperty("typesBefore").GetInt32(), root.GetProperty("typesInRundown").GetInt32() + 1);
+
+        // A section's handle records are a small share of the machine's: a gate admitting sections alone keeps about one in thirty.
+        double share = (double)root.GetProperty("createsOfSections").GetInt64() / root.GetProperty("creates").GetInt64();
+        Assert.InRange(share, 0.01, 0.1);
+        Assert.True(root.GetProperty("namedClosesOfSections").GetInt64() > 0 && root.GetProperty("duplicatesOfSections").GetInt64() > 0);
+    }
+
     private sealed record Row(string Kind, string Role, string Section, string Object, string Type, string Named, string View, long Bytes, long Offset,
         string ViewValue, string MiscHigh);
 

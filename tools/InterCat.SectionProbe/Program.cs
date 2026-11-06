@@ -58,6 +58,8 @@ internal static class Program
             Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]: runs FX-SECT-001 under a private system logger of its own,");
             Console.Error.WriteLine("  machine-wide, collecting the object manager's handle group and the kernel's file view flag, and");
             Console.Error.WriteLine("  writes what it recorded of the two processes' handles to the sections and views of them.");
+            Console.Error.WriteLine("  --types: which number the object type table and the session's type rundown name the Section type by,");
+            Console.Error.WriteLine("  and how the machine's handle records divide among the types, over FX-SECT-001 under the handle group.");
             Console.Error.WriteLine("  --impact [--pairs n] [--rounds n]: machine CPU and workload time with and without a session collecting");
             Console.Error.WriteLine("  the kernel's file view flag machine-wide, in pairs, over FX-SECT-001's opener mapping and unmapping");
             Console.Error.WriteLine("  each section's 4 KiB view that many times, and the processor time of the workload's processes and of the");
@@ -90,6 +92,24 @@ internal static class Program
             impact["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
             File.WriteAllText(Path.Combine(output, "impact.json"), JsonSerializer.Serialize(impact, Json));
             Console.WriteLine(JsonSerializer.Serialize(impact, Json));
+            return 0;
+        }
+
+        // Which number a handle record names the Section type by on this build: the object type table before and after a session,
+        // beside the session's own type rundown, over FX-SECT-001 under the handle group.
+        if (measure && args.Contains("--types", StringComparer.Ordinal))
+        {
+            string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+            string truth = Path.Combine(output, "truth");
+            Dictionary<string, object?> types = await Types.RunAsync(workload, truth).ConfigureAwait(false);
+            Directory.Delete(truth, recursive: true);
+            types["schema"] = "intercat.section-types.v1";
+            types["measuredUtc"] = DateTimeOffset.UtcNow;
+            types["build"] = CapabilityInventoryProbe.DescribeEnvironment().BuildId;
+            types["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+            File.WriteAllText(Path.Combine(output, "report.json"), JsonSerializer.Serialize(types, Json));
+            Console.WriteLine(JsonSerializer.Serialize(types, Json));
             return 0;
         }
 

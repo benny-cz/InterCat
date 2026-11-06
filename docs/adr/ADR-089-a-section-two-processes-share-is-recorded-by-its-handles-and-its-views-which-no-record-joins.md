@@ -3,7 +3,7 @@
 - Status: accepted for M6's section discovery work package; no source is inventoried yet; since revision 971 the file view
   flag's collection cost is measured, Low in processor time but a view-heavy workload past the throughput target (addendum);
   since revision 972 the flag is inventoried as sections' lead, requested by no profile and admitting no event (second
-  addendum)
+  addendum); since revision 973 the Section type's number is measured for the build, 49 (third addendum)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-035, ADR-082, ADR-083, plan M6, §4.2, R22, P2, P3, P6, FX-SECT-001
@@ -101,3 +101,19 @@ inventoried as sections' lead:
 
 No profile requests it and it admits no event: a gate that numbers sections and views, and reads the records by their
 measured layout, comes first. No build carries a tier for sections.
+
+## Addendum: the Section type's number (revision 973)
+
+The object manager's records name a handle's object type by a number, which the session names only in its type rundown at
+the stop, and a gate admitting sections' handles must know the number as records arrive. `tools/InterCat.SectionProbe
+--measure --types` reads the object type table from user mode before and after FX-SECT-001 runs under the handle group, as
+the synchronization probe read it for its three types (ADR-082's fourth addendum):
+
+- the table before, the session's type rundown at its stop and the table after all name the Section type 49 on
+  10.0.26220.0-x64, and agree on every type but the type of types, which no rundown names;
+- of the machine's handle records meanwhile - 23,232 creations, 23,345 closes and 416 duplications, nothing
+  lost - 739, 815 and 77 were a section's, about one in thirty.
+
+The product never reads the table (P20): a gate admitting sections' handle records carries the number measured for the
+build and holds it to each capture's own type rundown, as the synchronization handle gate carries its three, and a build
+none measured has no gate.
