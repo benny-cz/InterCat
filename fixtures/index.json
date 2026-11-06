@@ -1024,7 +1024,7 @@
       },
       "tests": [
         "R22: FX-SECT-001's handle records join each process's handles to a section by its object's address - each creation named by nothing but its close, typed Section - and every view each process mapped and unmapped is a record of that process with its size, each section's views naming one value in both processes, while one base held both sections' views and no record names a byte moved through one",
-        "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections",
+        "P27: sections have an inventoried lead - the kernel's file view flag, requested by the opt-in sections profile alone, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections",
         "R22: FX-SECT-001's committed ledger read through the section gates as it was delivered is its two sections - each section's handles in both processes one number, every view of a section in both processes one section number, and each mapping a view of its own though the opener mapped them all at one base"
       ]
     },
@@ -2768,7 +2768,7 @@
         "P27: icat capabilities reports a mechanism no source covers where a fixture measured it on the build - mailslots unsupported, by FX-MAIL-001 - and leaves it out on a build none measured it on",
         "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build their fixtures measured them on through the product",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",
-        "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections",
+        "P27: sections have an inventoried lead - the kernel's file view flag, requested by the opt-in sections profile alone, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections",
         "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build",
         "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by the opt-in window messages profile alone, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and are experimental evidence on the one build their fixture measured them on through the product"
       ],
@@ -3825,6 +3825,7 @@
         "R18: icat capture records COM calls through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture records RPC peers through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture records Unix sockets through the broker as it records Explore, live, and refuses a focus or content it does not take",
+        "R18: icat capture records sections through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture records synchronization objects through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture records window messages through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture takes a content request in icat record's words, and refuses what a content capture does not take",
@@ -3888,6 +3889,7 @@
         "R18: icat processes gives a process with no window message record no Window messages line and no command to list any",
         "R18: icat processes, operations, exchanges and metric name the evidence policy as it is typed, and their JSON as the format stores it",
         "R18: icat profiles com-calls states the cost measured through the product - the throughput regression unpaced, within the target in bursts, nothing dropped - and the evidence it rests on",
+        "R18: icat profiles sections states its sources' cost - Moderate at most, both kernel sources' throughput regressions beside it, nothing yet measured whole - the evidence it rests on, and that the file view flag is read by the layout measured for the build, a partial result though it can start exactly",
         "R18: icat profiles sync-objects states the cost measured through the product - High on a handle-heavy workload, past both targets, nothing dropped - and the evidence it rests on",
         "R18: icat profiles unix-sockets states the cost measured through the product and the evidence it rests on",
         "R18: icat profiles window-messages states the cost measured through the product - Moderate on a message-bound workload, past the throughput target, nothing dropped - and the evidence it rests on",
@@ -3899,6 +3901,7 @@
         "R18: icat raw says a record's facts as the window does, in words - its provider named, its lengths counted - and its bytes only when asked",
         "R18: icat record and icat capture say what COM calls records and that collecting COM-Perf slows a COM-heavy workload",
         "R18: icat record and icat capture say what Unix sockets records and that AFD collects every socket call of the machine",
+        "R18: icat record and icat capture say what sections records and that collecting it slows a workload heavy in views or handles",
         "R18: icat record and icat capture say what synchronization objects records and that collecting it slows a handle-heavy workload",
         "R18: icat record and icat capture say what window messages records and that collecting it slows a message-bound workload",
         "R18: icat record takes every profile its help names, each by the catalog's id, and refuses any other by the same list",

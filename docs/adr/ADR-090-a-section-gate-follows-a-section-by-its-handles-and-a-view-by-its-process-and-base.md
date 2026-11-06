@@ -4,7 +4,8 @@
   the view gate, read by the layout measured for the build (its addendum); since revision 977 sections' handles are a
   source of their own over the handle group, admitted through the section handle gate (its second addendum); since
   revision 978 a section handle's creation and close bind to the process that raised them, as `process-binding-v8` (its
-  third addendum)
+  third addendum); since revision 979 the opt-in sections profile collects both sources beside lifecycle, stating its
+  cost (its fourth addendum)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-083, ADR-087, ADR-089, plan M6, §4.2, R22, P12, P20, FX-SECT-001
@@ -120,3 +121,20 @@ identity, HTTP exchange and COM call contracts name the new rule; the entities c
 mechanisms a header binds, bind a session's section records each way, bind an admitted section handle's row and view's
 row to their processes, and read a version 7 checkpoint; Seven mutations are caught. No profile requests the
 sources yet.
+
+## Addendum: the opt-in sections profile (revision 979)
+
+With the view records read by their measured layout and admitted through the view gate, sections' handles admitted
+through a gate of their own, and both bound to their processes, the `sections` profile collects them beside lifecycle:
+Kernel-Process, the file view flag and sections' handles, all three required, so where either kernel source is refused -
+a build none measured - the profile does not start rather than record lifecycle and half of each section. Its one
+private system logger takes the file view flag, the handle group's mask and lifecycle (ADR-035). It takes no focus, as
+Explore takes none, and `icat capture` and `icat record` take it as they take the other opt-in profiles.
+
+Its class is its sources' at most, Moderate for Kernel-Process. Its statement names what their collection measured
+alone: the file view flag added a median 0.49 and 0.55 CPU points, Low, but a view-heavy workload ran past the 5%
+throughput target in three series of four (ADR-089's addendum), and the handle group added 0.4 and 0.0 points, but a
+handle-heavy workload ran 5.3 and 8.3% lower (ADR-082's addendum). That is why the profile is opt-in and Explore admits
+neither source. Nothing has measured the profile whole yet, and no build carries a tier for sections. Tests compile it
+with all three sources and without either kernel source, hold the leads' one profile, and check both commands'
+profile lists, help and preview; the catalog counts eleven profiles. Seven mutations are caught.

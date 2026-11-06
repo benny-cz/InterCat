@@ -1023,7 +1023,7 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        // Sections' lead (ADR-089): inventoried and requested by no profile. A view's records are raised at a version no
+        // Sections' lead (ADR-089): inventoried and requested by the opt-in sections profile alone. A view's records are raised at a version no
         // registered layout describes, so they compile by the layout measured for the build, stated (ADR-091), and admit through
         // the section view gate, which writes each view's number over its base and its section's over the value its views carry
         // (ADR-090). Its measured notes are what icat capabilities states of it.
@@ -1040,9 +1040,9 @@ public static class WindowsSourceCatalog
             RequestedKeywords = [],
             SupportsCaptureSideProcessFilter = false,
             FilteringNotes =
-                "No profile requests it. A kernel flag, not a manifest provider: only a private system logger receives it, and a "
-                + "capture whose profile needed it would make its one session one, the kernel flags first (ADR-035). It has no "
-                + "process filter: it records every process's views of sections, files and images alike.",
+                "Only the opt-in sections profile requests it. A kernel flag, not a manifest provider: only a private system "
+                + "logger receives it, so a capture that asks for it makes its one session one, the kernel flags first (ADR-035). "
+                + "It has no process filter: it records every process's views of sections, files and images alike.",
             StartupBehaviour =
                 "At the session's start and stop a rundown names every view then mapped, images' among them, each by the process "
                 + "its record names, as no rundown record's header names one; a view mapped before the capture began is seen in the "
@@ -1069,8 +1069,8 @@ public static class WindowsSourceCatalog
                 "Collection alone, four series of nine pairs over a view-heavy workload, loss-free: a median of 0.49 and 0.55 CPU "
                 + "pp over trials of four seconds, Low; but the workload spent more processor time of its own and ran 9.5, 5.2, 5.3 "
                 + "and 0.2% lower in throughput, past the 5% target in three series of four, as a view's records are raised in "
-                + "the thread that maps and unmaps it. No profile requests this source, and only an opt-in one stating its cost "
-                + "ever may, never Explore.",
+                + "the thread that maps and unmaps it. Only the opt-in sections profile, which states it, requests this source, "
+                + "never Explore.",
                 "Measured on FX-SECT-001: every view a process mapped or unmapped of a section two processes share, raised in that "
                 + "process with its size, each unmapping at its mapping's base; every view of one section, in any process, carries "
                 + "one value in its file object field, a kernel address no handle carries, so one section's views are joined to "
@@ -1422,8 +1422,8 @@ public static class WindowsSourceCatalog
 
         // Sections' handles (ADR-090): the object manager's handle group the synchronization objects' lead reads, through a gate of
         // its own that keeps only the Section type's handles and writes each section's number over its address. A capture
-        // collects one of the two, never both, as they compile the same descriptors. Requested by no profile yet; its measured
-        // notes are what icat capabilities states of it.
+        // collects one of the two, never both, as they compile the same descriptors. Requested by the opt-in sections profile
+        // alone; its measured notes are what icat capabilities states of it.
         var sectionHandles = new WindowsSourceDefinition
         {
             SourceId = KernelSectionHandlesSourceId,
@@ -1437,7 +1437,8 @@ public static class WindowsSourceCatalog
             RequestedKeywords = [],
             SupportsCaptureSideProcessFilter = false,
             FilteringNotes =
-                "No profile requests it. The object manager's handle group, which the synchronization objects' lead reads too, "
+                "Only the opt-in sections profile requests it. The object manager's handle group, which the synchronization "
+                + "objects' lead reads too, "
                 + "enabled by the group mask PERF_OB_HANDLE and by no kernel flag: only a private system logger receives it, its "
                 + "mask set on the capture's own logger (ADR-035, ADR-082). It has no process filter: it records every process's "
                 + "handles, of which its gate keeps a section's alone. A capture collects it or the synchronization objects' lead, "
@@ -1475,8 +1476,8 @@ public static class WindowsSourceCatalog
                 + "counted undecodable.",
                 "Collection alone, measured over a handle-heavy workload with the synchronization objects' lead, loss-free: a "
                 + "median of 0.4 and 0.0 CPU pp, Low; but the workload ran 5.3 and 8.3% lower in throughput, past the 5% target, as "
-                + "a handle's creation and close each raise a record in the thread that makes the call. No profile requests this "
-                + "source, and only an opt-in one stating its cost ever may, never Explore.",
+                + "a handle's creation and close each raise a record in the thread that makes the call. Only the opt-in sections "
+                + "profile, which states it, requests this source, never Explore.",
                 "Registration is not evidence of traffic; only a measured fixture assigns a tier.",
             ],
         };

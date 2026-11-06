@@ -473,6 +473,14 @@ public enum CaptureProfileKind
     /// the message pump, Low in the processor time it adds, lowered a message-bound workload's throughput 8.3 and 5.2%.
     /// </summary>
     WindowMessages = 11,
+
+    /// <summary>
+    /// Lifecycle and sections - every view a process maps or unmaps, and each section handle made, duplicated and closed, each
+    /// view and section numbered in the capture - from the kernel's file view flag and the object manager's handle group
+    /// (ADR-090). Opt-in: collecting either, Low in the processor time it adds, lowered a workload heavy in it past the
+    /// throughput target.
+    /// </summary>
+    Sections = 12,
 }
 
 public enum CaptureLifecycle { Idle = 1, Probing = 2, Starting = 3, Recording = 4, Stopping = 5, Finalizing = 6, Closed = 7 }

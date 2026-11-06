@@ -261,6 +261,45 @@ public static class CaptureProfileCatalog
                 + "pp, though a message-bound workload ran 8.3 and 5.2% lower in throughput.",
             OverheadEvidence = "bench/results/window-messages-impact-20261106T015503Z/product-impact.json",
         },
+        new()
+        {
+            Kind = CaptureProfileKind.Sections,
+            Id = "sections",
+            DisplayName = "Sections",
+            Summary = "Lifecycle and the sections processes share - every view each maps and unmaps, from the kernel's file view "
+                + "flag, and each section's handles, created, duplicated and closed in each process, from the object manager - "
+                + "each view and section numbered in the capture. Opt-in: collecting views and handles slows a workload heavy "
+                + "in either.",
+            Admission = AdmissionMode.MetadataOnly,
+            CompilationAvailable = true,
+            RequestPreviewAvailable = true,
+            Sources =
+            [
+                new(WindowsSourceCatalog.KernelProcessSourceId, true, true, "Process identity and PID-reuse-safe lifecycle context."),
+                new(WindowsSourceCatalog.KernelFileViewsSourceId, true, true,
+                    "Each view a process maps or unmaps, and the views mapped at the start and stop, owned by the process each "
+                    + "names and numbered by its view and its section in the capture, never by its base or its value (ADR-090)."),
+                new(WindowsSourceCatalog.KernelSectionHandlesSourceId, true, true,
+                    "Each section's handles, owned by the process that holds each and numbered by its section in the capture, "
+                    + "never by its address (ADR-090)."),
+            ],
+            PreserveExtendedData = true,
+            RequestCallStacks = false,
+            CollectionStatement =
+                "Collects process lifecycle; every view any process on the machine maps or unmaps - of a section, a file or an "
+                + "image - and the views mapped at the capture's start and stop, each with its view's and its section's numbers "
+                + "in the capture, its size and its extra information; and, of every handle the machine makes, each section's: "
+                + "its creation, duplication and close in the process that holds it, its section's number in the capture, and "
+                + "the name a close and the stop's rundown carry. It keeps no view's base, no section's value or address, retains "
+                + "no payload bytes and requests no call stacks.",
+            Overhead = OverheadClass.Moderate,
+            OverheadStatement =
+                "its sources measured Moderate at most (Kernel-Process 1.75 CPU pp). The file view flag's collection alone "
+                + "added a median 0.49 and 0.55 CPU pp, Low, but a view-heavy workload ran 9.5, 5.2, 5.3 and 0.2% lower in "
+                + "throughput, past the 5% target in three series of four; the object manager's handle group's added 0.4 and "
+                + "0.0 pp, Low, but a handle-heavy workload ran 5.3 and 8.3% lower. Nothing has measured the profile whole yet.",
+            OverheadEvidence = "bench/results/section-view-impact-20261106T033759Z/impact.json",
+        },
         Unavailable(
             CaptureProfileKind.Timing,
             "timing",

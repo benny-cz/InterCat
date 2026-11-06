@@ -9,8 +9,8 @@ public sealed class CaptureProfileCompilerTests
     [Fact(DisplayName = "IC-012: the profile catalog exposes every intent without pretending unfinished modes are available")]
     public void CatalogExposesUnavailableProfiles()
     {
-        Assert.Equal(10, CaptureProfileCatalog.All.Count);
-        Assert.Equal(10, CaptureProfileCatalog.All.Select(profile => profile.Id).Distinct().Count());
+        Assert.Equal(11, CaptureProfileCatalog.All.Count);
+        Assert.Equal(11, CaptureProfileCatalog.All.Select(profile => profile.Id).Distinct().Count());
 
         CaptureProfileDescriptor focused = CaptureProfileCatalog.Find("focused-transport")!;
         Assert.True(focused.CompilationAvailable);
@@ -522,6 +522,62 @@ public sealed class CaptureProfileCompilerTests
         Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.Win32kSourceId
             && decision.State == ProfileSourceDecisionState.Blocking
             && decision.Reason.Contains("admits no pqmsg", StringComparison.Ordinal));
+    }
+
+    [Fact(DisplayName = "§9.4: sections admits the kernel's file view flag and sections' handles beside lifecycle, all three required and neither kernel source a manifest request, its cost its sources' class with the regressions their collection measured, and neither is Explore's")]
+    public void SectionsAdmitsViewsAndHandlesBesideLifecycle()
+    {
+        SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
+        SourceAdmissionPlan views = BuildPlan(WindowsSourceCatalog.KernelFileViewsSourceId, 1, 0);
+        SourceAdmissionPlan handles = BuildPlan(WindowsSourceCatalog.KernelSectionHandlesSourceId, 2, 0);
+
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.Sections),
+            new SourcePlanCompilation([process, views, handles], []));
+
+        // The file view flag and the handle group are sources of the plan, enabled on the capture's private system logger by
+        // the flag and the group's mask, never a manifest provider's request; each required.
+        Assert.True(plan.CanStart);
+        Assert.Equal("sections", plan.EffectiveProfileId);
+        Assert.Equal(3, plan.Sources.Count);
+        Assert.Equal([WindowsSourceCatalog.KernelProcessSourceId], plan.Providers.Select(provider => provider.SourceId));
+        foreach (string sourceId in new[] { WindowsSourceCatalog.KernelFileViewsSourceId, WindowsSourceCatalog.KernelSectionHandlesSourceId })
+        {
+            Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == sourceId
+                && decision is { State: ProfileSourceDecisionState.Included, Required: true, Overhead: OverheadClass.Low });
+        }
+
+        // The profile states its sources' class, Moderate at most, and beside it both kernel sources' measured regressions,
+        // which is why it is opt-in and Explore never admits either; nothing has measured it whole yet.
+        CaptureProfileDescriptor profile = CaptureProfileCatalog.Find("sections")!;
+        Assert.Equal((CaptureProfileKind.Sections, OverheadClass.Moderate, AdmissionMode.MetadataOnly), (profile.Kind, profile.Overhead, profile.Admission));
+        Assert.Contains("9.5, 5.2, 5.3 and 0.2% lower in throughput, past the 5% target in three series of four", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.Contains("5.3 and 8.3% lower", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.Contains("Nothing has measured the profile whole yet.", profile.OverheadStatement, StringComparison.Ordinal);
+        Assert.Contains("slows a workload heavy in either", profile.Summary, StringComparison.Ordinal);
+        Assert.Contains("no view's base, no section's value or address", profile.CollectionStatement, StringComparison.Ordinal);
+        Assert.Equal(WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelFileViewsSourceId)!.OverheadEvidence, profile.OverheadEvidence);
+        Assert.All(new[] { WindowsSourceCatalog.KernelFileViewsSourceId, WindowsSourceCatalog.KernelSectionHandlesSourceId },
+            sourceId => Assert.DoesNotContain(CaptureProfileCatalog.Find("explore")!.Sources, source => source.SourceId == sourceId));
+    }
+
+    [Theory(DisplayName = "§9.4: sections without the file view flag or sections' handles does not start - a build none measured refuses either - rather than record lifecycle and half of each section")]
+    [InlineData(WindowsSourceCatalog.KernelFileViewsSourceId,
+        "The machine registers no layout for this classic event class at the version it is planned for, and none is measured for this build.")]
+    [InlineData(WindowsSourceCatalog.KernelSectionHandlesSourceId, "No Section type number is measured for build 10.0.19045.0-x64.")]
+    public void SectionsWithoutEitherKernelSourceIsBlocked(string refusedSource, string reason)
+    {
+        SourceAdmissionPlan process = BuildPlan(WindowsSourceCatalog.KernelProcessSourceId, 0, 1);
+        string other = refusedSource == WindowsSourceCatalog.KernelFileViewsSourceId
+            ? WindowsSourceCatalog.KernelSectionHandlesSourceId
+            : WindowsSourceCatalog.KernelFileViewsSourceId;
+        EffectiveCapturePlan plan = CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.Sections),
+            new SourcePlanCompilation([process, BuildPlan(other, 1, 0)], [new(refusedSource, SourcePlanIssueSeverity.Refusal, reason)]));
+
+        Assert.False(plan.CanStart);
+        Assert.Contains(plan.SourceDecisions, decision => decision.SourceId == refusedSource
+            && decision.State == ProfileSourceDecisionState.Blocking && decision.Reason == reason);
     }
 
     [Fact(DisplayName = "§9.4: RPC peers without ALPC does not start, rather than record calls it cannot resolve")]

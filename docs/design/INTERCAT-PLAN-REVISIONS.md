@@ -902,6 +902,7 @@ Revision 975 measures the file view flag's rundowns (ADR-089's fourth addendum):
 Revision 976 reads a classic record at a version the machine registers no layout for by the layout measured for its build (ADR-091), and admits the file view flag's four events at version 3 through the view gate (ADR-090's addendum).
 Revision 977 inventories sections' handles as a source of their own over the handle group (ADR-090's second addendum), its gate keeping only the Section type's handles and writing each section's number over its address.
 Revision 978 binds a section handle's creation and close to the process that raised them, as `process-binding-v8` (ADR-090's third addendum), as FX-SECT-001 measured them raised.
+Revision 979 adds the opt-in sections profile (ADR-090's fourth addendum): lifecycle, the file view flag and sections' handles, all required, its class its sources' at most, Moderate, with both kernel sources' throughput regressions stated.
 
 ## Revisions, a paragraph each, in order
 
@@ -4368,3 +4369,11 @@ all three runs, so ADR-030's header binding reaches the `SharedSection` mechanis
 `process-binding-v8`. A view's records bind to the process each names, as they did, and an object type at the stop to
 none. A version 2 to 7 checkpoint is read as version 8's wherever every record named its owner; the contracts that name
 the rule move to version 8, and the entities contract's table gains its `SharedSection` row.
+
+Revision 979 adds the opt-in `sections` profile (ADR-090's fourth addendum). It collects Kernel-Process, the kernel's file
+view flag and sections' handles, all three required, so a build that refuses either kernel source - none measured - does
+not start it rather than record lifecycle and half of each section. Its class is its sources' at most, Moderate for
+Kernel-Process; its statement names both kernel sources' collection cost, Low in processor time but past the throughput
+target on a workload heavy in views or in handles, which is why it is opt-in and Explore admits neither. `icat capture`
+and `icat record` take it, and both sources' notes now name it as the one profile that requests them. Nothing has
+measured it whole yet.

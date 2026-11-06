@@ -166,7 +166,7 @@ public sealed class SectionLeadTests
         Assert.Equal(3, regressions.Count(static regressed => regressed));
     }
 
-    [Fact(DisplayName = "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections")]
+    [Fact(DisplayName = "P27: sections have an inventoried lead - the kernel's file view flag, requested by the opt-in sections profile alone, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections")]
     public void SectionsHaveAnInventoriedLeadAndNoTier()
     {
         // A kernel flag of the file I/O class, the one FX-SECT-001 was measured under, with no process filter; its view's
@@ -198,10 +198,11 @@ public sealed class SectionLeadTests
         Assert.Contains(views.Notes, note => note.Contains("every view and every image", StringComparison.Ordinal) && note.Contains("0x47", StringComparison.Ordinal));
         Assert.Contains("images alike", views.FilteringNotes, StringComparison.Ordinal);
 
-        // No profile requests it or sections' handles, no other source claims sections - the early memory candidate, whose
-        // events name no section, claims none - and no build carries a tier for them.
-        Assert.DoesNotContain(CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures),
-            profile => profile.Sources.Any(source => source.SourceId is WindowsSourceCatalog.KernelFileViewsSourceId or WindowsSourceCatalog.KernelSectionHandlesSourceId));
+        // Only the opt-in sections profile requests it or sections' handles, no other source claims sections - the early
+        // memory candidate, whose events name no section, claims none - and no build carries a tier for them.
+        Assert.Equal(["sections"], CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures).Where(static profile => profile.Sources.Any(
+            static source => source.SourceId is WindowsSourceCatalog.KernelFileViewsSourceId or WindowsSourceCatalog.KernelSectionHandlesSourceId))
+            .Select(static profile => profile.Id));
         Assert.Equal([WindowsSourceCatalog.KernelFileViewsSourceId, WindowsSourceCatalog.KernelSectionHandlesSourceId],
             WindowsSourceCatalog.All.Where(static source => source.Mechanisms.Contains(Mechanism.SharedSection)).Select(static source => source.SourceId));
         WindowsSourceDefinition memory = WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelMemorySourceId)!;
