@@ -924,6 +924,7 @@ Revision 998 groups metrics by package (ADR-094's fourth addendum): each record 
 Revision 999 groups metrics by service container (ADR-096): each host of the services its capture listed a group of its own, named by its services, every other process its executable's, one a listed service may have run in unattributed, and icat metric --group-by service-container naming each.
 Revision 1000 groups the machine rung and icat export by service container (ADR-096's addendum): each host of the services listed a row of its own, every other process its executable's row, the processes a listed service may have run in one row apart, with their peers and call times.
 Revision 1001 lets the window group by service container and an investigation keep it (ADR-096's second addendum): Group by offers Service container where the capture listed its services, and workspace-v24 keeps the grouping in a member's layout.
+Revision 1002 derives resource instances (ADR-097, contracts/resources-v1.md): each named synchronization object and each section by its handles, the number its gate gave it from its first record to its last, named as its closes name it, held by the processes its records bind to, and listed by icat resources by namespace.
 
 ## Revisions, a paragraph each, in order
 
@@ -4606,3 +4607,12 @@ the processes a listed service may have run in as placed in no guessed container
 name a container as one. `workspace-v24` keeps the grouping in a member's layout, so the session opens grouped so from
 the investigation again; a file of version 23 or before that holds it is refused, and every earlier file reads as it
 was, written as the current version.
+
+Revision 1002 begins M6's resource lifetimes (ADR-097, `contracts/resources-v1.md`). The capture's gates already gave
+each incarnation of a named synchronization object and of a section a number over its reusable address, from the first
+handle seen made to the close of the last, which only the measurements read. `resource-instances-v1` now derives each
+number as a resource instance: its lifetime from its first record to its last, each end said witnessed or not - a
+handle made before the capture is seen only at its close, one held at the stop is not seen closed - its type as the
+stop names its number, its name as its closes and the stop's rundown carry it, kept as recorded and split into its
+namespace and leaf, and its holders, the process instances its records bind to as the evidence policy admits. `icat
+resources` lists them by the namespace their names lie in. Their records are handles, never traffic.

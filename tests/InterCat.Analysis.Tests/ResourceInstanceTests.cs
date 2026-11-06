@@ -1,0 +1,121 @@
+using InterCat.Domain;
+using InterCat.Storage;
+using Xunit;
+using static InterCat.Analysis.Tests.TestSessions;
+
+namespace InterCat.Analysis.Tests;
+
+/// <summary>
+/// `resource-instances-v1` (ADR-097): a generation's named synchronization objects and sections by their handles, each the
+/// number a capture's gate gave one object, from its first record to its last, named as its closes and the stop's rundown
+/// name it, typed as the stop's rundown names its type, and held by the process instances its records bind to.
+/// </summary>
+public sealed class ResourceInstanceTests
+{
+    private const string Ready = ReadyObject;
+
+    [Fact(DisplayName = "R3: a resource is its gate's number from its first record to its last, named only as a close or the stop names it, its ends witnessed or said not to be, and held by the processes its records bind to")]
+    public void AResourceIsItsNumbersLifetime()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = NamedObjects();
+        Publish(session.Store, rows, fields: fields);
+        (IReadOnlyList<ResourceInstance> resources, ProcessInstanceIndex processes) = Derive(session.Store);
+        int Pid(ProcessInstanceId id) => processes.Find(id)!.ProcessId;
+
+        // By mechanism, then by number: the section, then the four synchronization objects; a zero number is none.
+        Assert.Equal(
+            [(Mechanism.SharedSection, 9L), (Mechanism.Synchronization, 1L), (Mechanism.Synchronization, 2L),
+                (Mechanism.Synchronization, 3L), (Mechanism.Synchronization, 4L)],
+            resources.Select(resource => (resource.Mechanism, resource.Number)));
+
+        // Made by 100, duplicated into 200, closed in each: its whole lifetime seen, named only by its closes.
+        ResourceInstance ready = resources.Single(resource => resource.Number == 1);
+        Assert.Equal((10L, 40L, true, true, false), (ready.FirstNativeTicks, ready.LastNativeTicks, ready.FirstHandleMade,
+            ready.LastHandleClosed, ready.HeldAtStop));
+        Assert.Equal([Ready], ready.Names);
+        Assert.Equal(("Event", 4L), (ready.TypeName, ready.Records));
+        Assert.Equal(@"\Sessions\1\BaseNamedObjects", ResourceNames.NamespaceOf(ready.Name!));
+        Assert.Equal("Ready", ResourceNames.LeafOf(ready.Name!));
+        Assert.Equal(
+            [(100, 1, 0, 1, 0), (200, 0, 1, 1, 0)],
+            ready.Holders.Select(holder => (Pid(holder.Process), holder.HandlesMade, holder.HandlesDuplicated,
+                holder.HandlesClosed, holder.HeldAtStop)).OrderBy(holder => holder.Item1));
+        Assert.Empty(ready.Unbound);
+
+        // A handle made before the capture is seen only at its close: its start is not witnessed.
+        ResourceInstance before = resources.Single(resource => resource.Number == 2);
+        Assert.Equal((false, true, "Mutant", @"\BaseNamedObjects\Global\Lock"),
+            (before.FirstHandleMade, before.LastHandleClosed, before.TypeName, before.Name));
+
+        // One held at the stop is named by the stop's rundown and its end is not witnessed.
+        ResourceInstance held = resources.Single(resource => resource.Number == 3);
+        Assert.Equal((true, false, true, @"\Sessions\1\BaseNamedObjects\Held"),
+            (held.FirstHandleMade, held.LastHandleClosed, held.HeldAtStop, held.Name));
+        Assert.Equal((300, 1, 0, 0, 1), held.Holders.Select(holder => (Pid(holder.Process), holder.HandlesMade,
+            holder.HandlesDuplicated, holder.HandlesClosed, holder.HeldAtStop)).Single());
+
+        // One made and never closed nor held at the stop is unnamed - never named the empty text - its end unseen; and the
+        // duplication into a process before its first lifecycle record names it no holder, counted by why.
+        ResourceInstance cut = resources.Single(resource => resource.Number == 4);
+        Assert.Equal((null, 0, false, false), (cut.Name, cut.Names.Count, cut.LastHandleClosed, cut.HeldAtStop));
+        Assert.Equal([100], cut.Holders.Select(holder => Pid(holder.Process)));
+        Assert.Equal(1L, cut.Unbound[ProcessBindingReason.BeforeFirstEvidence]);
+
+        // A section by its handles, typed as the stop names its type.
+        ResourceInstance section = resources.Single(resource => resource.Mechanism == Mechanism.SharedSection);
+        Assert.Equal(("Section", @"\Sessions\1\BaseNamedObjects\SharedMap", true, true),
+            (section.TypeName, section.Name, section.FirstHandleMade, section.LastHandleClosed));
+    }
+
+    [Fact(DisplayName = "R3: a name two records give differently is each kept, and a resource whose type no rundown named is typed by none")]
+    public void NamesAreKeptAsRecorded()
+    {
+        ObservationRowV1 made = Handle(10, HandleCreated, 100, null, 2);
+        ObservationRowV1 first = Handle(20, HandleClosed, 100, null, 3) with { ResourceName = Ready };
+        ObservationRowV1 second = Handle(30, HandleAtStop, 100, 100, 4) with { ResourceName = Ready.ToUpperInvariant() };
+        using var session = new TemporarySession();
+        Publish(session.Store, [Lifecycle(1, ObservationKind.Create, 100, 1), made, first, second],
+            fields: [.. new[] { made, first, second }.SelectMany(row => new[]
+            {
+                Field(row, SourceField.SynchronizationObjectNumber, 7), Field(row, SourceField.ObjectTypeNumber, 16),
+            })]);
+        ResourceInstance resource = Assert.Single(Derive(session.Store).Resources);
+        Assert.Equal([Ready, Ready.ToUpperInvariant()], resource.Names);
+        Assert.Null(resource.TypeName);
+        Assert.Null(ResourceNames.NamespaceOf("NoDirectory"));
+        Assert.Equal(@"\", ResourceNames.NamespaceOf(@"\Root"));
+    }
+
+    [Fact(DisplayName = "R3: a later holder of a reused PID holds a resource only as a candidate, which the default policy counts by that reason and includes when asked")]
+    public void ACandidateHolderIsCountedByThePolicy()
+    {
+        ObservationRowV1 made = Handle(10, HandleCreated, 100, null, 4);
+        ObservationRowV1 closed = Handle(20, HandleClosed, 100, null, 5) with { ResourceName = Ready };
+        using var session = new TemporarySession();
+        Publish(session.Store,
+            [Lifecycle(1, ObservationKind.Create, 100, 1), Lifecycle(5, ObservationKind.Exit, 100, 2), Lifecycle(6, ObservationKind.Create, 100, 3), made, closed],
+            fields: [Field(made, SourceField.SynchronizationObjectNumber, 7), Field(closed, SourceField.SynchronizationObjectNumber, 7)]);
+        (IReadOnlyList<ResourceInstance> resources, ProcessInstanceIndex processes) = Derive(session.Store);
+        ResourceInstance resource = Assert.Single(resources);
+        Assert.Empty(resource.Holders);
+        Assert.Equal(2L, resource.Unbound[ProcessBindingReason.NotAdmittedByPolicy]);
+
+        SessionManifestV1 manifest = session.Store.Current!;
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(session.Store, manifest, name))];
+        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(session.Store, manifest, name))];
+        ResourceInstance counted = Assert.Single(ResourceInstanceIndex.Derive(segments, fields, processes, EvidencePolicy.IncludeCandidates).Instances);
+        Assert.Equal((100, 2u), (processes.Find(Assert.Single(counted.Holders).Process)!.ProcessId,
+            processes.Find(counted.Holders[0].Process)!.LifecycleEpoch));
+        Assert.Empty(counted.Unbound);
+    }
+
+    private static (IReadOnlyList<ResourceInstance> Resources, ProcessInstanceIndex Processes) Derive(SessionStore store)
+    {
+        SessionManifestV1 manifest = store.Current!;
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, TestClock, fields);
+        return (ResourceInstanceIndex.Derive(segments, fields, processes).Instances, processes);
+    }
+}

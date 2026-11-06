@@ -169,6 +169,6 @@ derivation checkpoint's counts can show that (`contracts/derivation-checkpoint-v
 ## 8. Not defined at this version
 
 - Persisted entity bindings and alias revisions reconciling a provisional instance with later evidence of its start.
-- Thread, endpoint, resource and channel instances, and alias revisions reconciling a provisional instance with later
-  evidence of its start.
+- Thread, endpoint and channel instances, resource instances beyond `resources-v1`'s named synchronization objects and
+  sections by their handles, and alias revisions reconciling a provisional instance with later evidence of its start.
 - Persisting a derivation as a published table. It is computed from the segments on demand; IC-017 owns caching it.

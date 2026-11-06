@@ -1083,6 +1083,65 @@ internal static class TestSessions
             ]);
     }
 
+    /// <summary>The name <see cref="NamedObjects"/>' event is closed by: a session's local object, Ready.</summary>
+    public const string ReadyObject = @"\Sessions\1\BaseNamedObjects\Ready";
+
+    /// <summary>
+    /// Processes 100, 200 and 300 running from the start and 400 created at 80; object 1, an event named Ready, made by
+    /// 100, duplicated into 200 and closed in both; object 2, a mutant whose handle 300 made before the capture, seen only
+    /// at its close; object 3 made by 300 and held at the stop; object 4 made by 100, duplicated into 400 before 400's
+    /// creation and never closed nor held; a section 9 made and closed by 100; the stop's types; and a record numbered 0.
+    /// </summary>
+    public static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) NamedObjects()
+    {
+        var rows = new List<ObservationRowV1>
+        {
+            Lifecycle(1, ObservationKind.Inventory, 100, 1), Lifecycle(1, ObservationKind.Inventory, 200, 2),
+            Lifecycle(1, ObservationKind.Inventory, 300, 3), Lifecycle(80, ObservationKind.Create, 400, 4),
+        };
+        var fields = new List<SourceFieldRowV1>();
+        ulong ordinal = 10;
+        void Sync(ObservationRowV1 row, long number, long? type)
+        {
+            rows.Add(row);
+            fields.Add(Field(row, SourceField.SynchronizationObjectNumber, number));
+            if (type is { } known) fields.Add(Field(row, SourceField.ObjectTypeNumber, known));
+        }
+
+        Sync(Handle(10, HandleCreated, 100, null, ordinal++), 1, 16);
+        Sync(Handle(20, HandleDuplicated, 100, 200, ordinal++), 1, 16);
+        Sync(Handle(30, HandleClosed, 200, null, ordinal++) with { ResourceName = ReadyObject }, 1, null);
+        Sync(Handle(40, HandleClosed, 100, null, ordinal++) with { ResourceName = ReadyObject }, 1, null);
+        Sync(Handle(50, HandleClosed, 300, null, ordinal++) with { ResourceName = @"\BaseNamedObjects\Global\Lock" }, 2, 17);
+        Sync(Handle(60, HandleCreated, 300, null, ordinal++), 3, 16);
+        Sync(Handle(90, HandleAtStop, 300, 300, ordinal++) with { ResourceName = @"\Sessions\1\BaseNamedObjects\Held" }, 3, 16);
+        Sync(Handle(70, HandleCreated, 100, null, ordinal++), 4, 16);
+        Sync(Handle(75, HandleDuplicated, 100, 400, ordinal++), 4, 16);
+        Sync(Handle(65, HandleCreated, 100, null, ordinal++), 0, 16);
+
+        // The stop's object types, by number and name, which no object number carries.
+        foreach ((long type, string name) in new[] { (16L, "Event"), (17L, "Mutant"), (49L, "Section") })
+        {
+            ObservationRowV1 typed = Handle(95, TypeAtStop, 4, null, ordinal++) with { ResourceName = name };
+            rows.Add(typed);
+            fields.Add(Field(typed, SourceField.ObjectTypeNumber, type));
+        }
+
+        // A section's handles arrive in the object manager's handle events, one shape with the synchronization objects'.
+        foreach (ObservationRowV1 section in new[]
+        {
+            SectionRecord(15, HandleCreated, 100, null, ordinal++),
+            SectionRecord(45, HandleClosed, 100, null, ordinal++) with { ResourceName = @"\Sessions\1\BaseNamedObjects\SharedMap" },
+        })
+        {
+            rows.Add(section with { SchemaFingerprint = "sha256:" + new string('e', 64) });
+            fields.Add(Field(section, SourceField.SectionObjectNumber, 9));
+            fields.Add(Field(section, SourceField.ObjectTypeNumber, 49));
+        }
+
+        return ([.. rows.OrderBy(row => row.NativeTicks).ThenBy(row => row.RawRecordOrdinal)], [.. fields]);
+    }
+
     /// <summary>When <see cref="ServiceHosts"/>'s first host was created.</summary>
     public static readonly DateTimeOffset ServiceHostCreated = new DateTimeOffset(2026, 11, 6, 8, 0, 0, TimeSpan.Zero).AddTicks(7);
 

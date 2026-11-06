@@ -26,7 +26,7 @@ public sealed class CommandLineTests : IDisposable
     private static readonly string[] Commands =
     [
         "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
-        "hosts", "programs", "ports", "patterns", "links", "waits", "outliers", "evidence", "timeline", "compare", "export", "package", "raw", "content", "recover", "staging",
+        "hosts", "programs", "ports", "resources", "patterns", "links", "waits", "outliers", "evidence", "timeline", "compare", "export", "package", "raw", "content", "recover", "staging",
         "retain", "pin", "compact", "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench",
         "support", "demo",
     ];

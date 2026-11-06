@@ -50,7 +50,7 @@ internal static class Icat
     internal static IReadOnlyList<string> Commands { get; } =
     [
         "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
-        "hosts", "programs", "ports", "patterns", "links", "waits", "outliers", "evidence", "timeline", "compare", "export",
+        "hosts", "programs", "ports", "resources", "patterns", "links", "waits", "outliers", "evidence", "timeline", "compare", "export",
         "package", "raw", "content", "recover", "staging", "retain", "pin", "compact", "checkpoint", "follow", "metric",
         "processes", "operations", "exchanges", "workspace", "verify", "support", "demo", "bench",
     ];
@@ -94,6 +94,7 @@ internal static class Icat
                 "hosts" => await HostsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "programs" => await ProgramsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "ports" => await PortsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "resources" => await ResourcesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "patterns" => await PatternsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "links" => await LinksCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "waits" => await WaitsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -274,6 +275,10 @@ internal static class Icat
         ConsoleUi.Line("  icat ports <directory> [--limit <n>] [--investigation <file>] [--json]");
         ConsoleUi.Line("      The ports its processes accepted TCP connections at, each with the process that accepted");
         ConsoleUi.Line("      them and who connected - its processes, other hosts or unobserved ones - the busiest first.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat resources <directory> [--mechanism synchronization|section] [--namespace <directory>] [--json]");
+        ConsoleUi.Line("      The named synchronization objects and sections its processes held, each from the first handle");
+        ConsoleUi.Line("      seen made to the close of the last, by the object directory its name lies in.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat patterns <directory> [--limit <n> | --pattern <rank>] [--all] [--evidence-policy <policy>]");
         ConsoleUi.Line("                [--json]");
