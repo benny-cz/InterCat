@@ -40,7 +40,8 @@ internal static class Program
         bool inspect = args.Contains("--inspect", StringComparer.Ordinal);
         bool measure = args.Contains("--measure", StringComparer.Ordinal);
         bool product = args.Contains("--product", StringComparer.Ordinal);
-        if ((inspect ? 1 : 0) + (measure ? 1 : 0) + (product ? 1 : 0) != 1 || output is null)
+        bool services = args.Contains("--services", StringComparer.Ordinal);
+        if ((inspect ? 1 : 0) + (measure ? 1 : 0) + (product ? 1 : 0) + (services ? 1 : 0) != 1 || output is null)
         {
             Console.Error.WriteLine("InterCat.ProcessProbe --inspect --output <new directory>");
             Console.Error.WriteLine("  Reads, without enabling any, the schema this machine registers for Microsoft-Windows-Kernel-Process -");
@@ -57,6 +58,10 @@ internal static class Program
             Console.Error.WriteLine("  then icat processes --json reads the session's instances back; each child's instance is set against the");
             Console.Error.WriteLine("  package and session the workload read of it, and every process the probe read as the capture began");
             Console.Error.WriteLine("  against the instance the session holds of it. Each run's session is deleted once it is read; counts are kept.");
+            Console.Error.WriteLine("InterCat.ProcessProbe --services --output <new directory> [--runs <n, default 3>] [--seconds <n, default 10>]");
+            Console.Error.WriteLine("  Enables Microsoft-Windows-Services at every level and keyword under a real-time session of its own, asks for");
+            Console.Error.WriteLine("  its state, and sets each service status change against the service control manager's own list of the");
+            Console.Error.WriteLine("  running services and the process hosting each. It starts, stops and configures no service; counts are kept.");
             return 2;
         }
 
@@ -74,6 +79,22 @@ internal static class Program
         if (measure)
         {
             return await Measure.RunAsync(output, workloadPath).ConfigureAwait(false);
+        }
+
+        if (services)
+        {
+            if (!int.TryParse(Option(args, "--seconds") ?? "10", NumberStyles.None, CultureInfo.InvariantCulture, out int seconds) || seconds is < 1 or > 600
+                || !int.TryParse(Option(args, "--runs") ?? "3", NumberStyles.None, CultureInfo.InvariantCulture, out int serviceRuns) || serviceRuns is < 1 or > 10)
+            {
+                Console.Error.WriteLine("--seconds expects 1 to 600 seconds, and --runs 1 to 10 runs.");
+                return 2;
+            }
+
+            Dictionary<string, object?> measured = await Services.RunAsync(seconds, serviceRuns).ConfigureAwait(false);
+            string report = JsonSerializer.Serialize(measured, Json);
+            await File.WriteAllTextAsync(Path.Combine(output, "report.json"), report).ConfigureAwait(false);
+            Console.WriteLine(report);
+            return 0;
         }
 
         if (product)

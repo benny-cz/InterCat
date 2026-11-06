@@ -1162,6 +1162,49 @@
       ]
     },
     {
+      "id": "FX-SVC-001",
+      "title": "The services running as a capture starts, as the service control manager lists them, and Microsoft-Windows-Services, which names none of them",
+      "scenario": "Plan M6's process enrichment (§4.2, ADR-095): the service control manager lists the running services and the process hosting each; a real-time session of tools/InterCat.ProcessProbe enables Microsoft-Windows-Services at Verbose with every keyword and asks for its state, as a capture asks a provider, runs 60 seconds and stops; and the manager lists them again. The probe starts, stops and configures no service, so a status change it records is one the machine made of itself.",
+      "milestone": "M6",
+      "mechanism": "ProcessLifecycle",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [],
+        "invariants": [],
+        "prohibitions": [
+          "P27"
+        ]
+      },
+      "truth": {
+        "generator": "tools/InterCat.ProcessProbe --services --runs 3 --seconds 60",
+        "seed": 0,
+        "log": "fixtures/FX-SVC-001/evidence/scenario.json",
+        "independence": "The service control manager's own query, read by the probe as each session began and once it stopped, lists the running services and the process hosting each; it reads no InterCat state and no event, and the probe's session reads the provider's records apart from it."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-SVC-001/evidence/measurement.json",
+        "note": "Three runs, nothing lost: nothing on the provider's enabling or its state asked for, and none of the 127, 127 and 128 services the manager listed running throughout, hosted by 116, 116 and 117 processes, named by any event; in the second run a service started by itself and its status changes named it with the process hosting it, as the manager then listed it, and no status change named a service and host the manager never listed (bench/results/service-provider-measurement-20261106T155713Z). A test holds the three runs to their truth and their bench report."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-06",
+          "result": "Measured by tools/InterCat.ProcessProbe, three runs, nothing lost: Microsoft-Windows-Services, enabled at every level and keyword and asked for its state, named none of the services the service control manager listed running, and named a service started during a run, with its host, only by its status change. No tier is assigned: which services a process hosts is the service control manager's to say as a capture starts, which no capture reads yet (ADR-095)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The three runs' protocol and the service control manager's lists as counts - the services running as each session began, once it stopped and throughout, and the processes hosting them - and the provider's events by identity and count, set against them, never a PID or a service's name."
+      },
+      "tests": [
+        "P27: FX-SVC-001's Microsoft-Windows-Services names no running service as a capture starts - enabled at every level and keyword and asked for its state it delivered nothing, in three runs, of the services the service control manager listed running throughout - while a service that changed during a run was named with the process hosting it, so it is no lead for which services a process hosts"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -2879,6 +2922,7 @@
         "P27: FX-COM-001's calls through the product reproduce its measured tier - every truth call its client's call linked to the server call of its own, carried by one RPC call served through it, and no byte",
         "P27: FX-MAIL-001's mailslot is unsupported on its build - in three runs neither the kernel's classic file I/O class nor Microsoft-Windows-Kernel-File recorded its creation, an open or a message, while both recorded the two processes' own files",
         "P27: FX-SECT-001's section records through the product reproduce its measured tier - each section found twice, by its handles from the creator's creation to both processes' closes and by every view both processes mapped and unmapped, among their own views and images, bound to exactly the two processes - and topology only",
+        "P27: FX-SVC-001's Microsoft-Windows-Services names no running service as a capture starts - enabled at every level and keyword and asked for its state it delivered nothing, in three runs, of the services the service control manager listed running throughout - while a service that changed during a run was named with the process hosting it, so it is no lead for which services a process hosts",
         "P27: FX-SYNC-001's handle records through the product reproduce its measured tier - each named object the one number its closes name, from the creator's creation to both processes' closes, bound to exactly the two processes, and topology only",
         "P27: FX-UNIX-001's rows through the product reproduce its measured tier - every truth send and receive its owner's row, bound to its socket with its bytes, and no peer named",
         "P27: FX-WMSG-001's committed ledger through the product reproduces its tier - each of its 32 sends and 33 posts the number of its rank, with every end in its own process and its other end the receiver - experimental evidence, in three runs with nothing lost",

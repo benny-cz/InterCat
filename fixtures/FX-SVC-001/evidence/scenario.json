@@ -1,0 +1,34 @@
+{
+  "scenarioId": "FX-SVC-001",
+  "protocol": "Each run: the service control manager lists the running services and the process hosting each; a real-time session of tools/InterCat.ProcessProbe enables Microsoft-Windows-Services at Verbose with every keyword and asks for its state, runs 60 seconds, and stops; the manager lists them again. The probe starts, stops and configures no service.",
+  "truth": "The service control manager's own lists, by EnumServicesStatusEx, read as each session began and once it stopped, counted; never a PID or a service's name.",
+  "runs": [
+    {
+      "run": 1,
+      "serviceControlManager": {
+        "runningAsTheSessionBegan": 127,
+        "runningOnceItStopped": 127,
+        "runningThroughout": 127,
+        "hostingProcesses": 116
+      }
+    },
+    {
+      "run": 2,
+      "serviceControlManager": {
+        "runningAsTheSessionBegan": 127,
+        "runningOnceItStopped": 128,
+        "runningThroughout": 127,
+        "hostingProcesses": 116
+      }
+    },
+    {
+      "run": 3,
+      "serviceControlManager": {
+        "runningAsTheSessionBegan": 128,
+        "runningOnceItStopped": 128,
+        "runningThroughout": 128,
+        "hostingProcesses": 117
+      }
+    }
+  ]
+}

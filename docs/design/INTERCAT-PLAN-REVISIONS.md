@@ -915,6 +915,7 @@ Revision 989 admits a process's package (ADR-094): a second text of its record, 
 Revision 990 gives each process instance its package (ADR-094's addendum): the one its earliest lifecycle record naming one names, empty where it named none; `icat processes` says it, and the derivation checkpoint keeps it from format 1.6, a reader of an earlier one reading the packages from the source-field segments it covers.
 Revision 991 measures FX-PROC-001 through the product (ADR-094's second addendum): three runs of icat record under the explore profile, nothing lost, each child's instance naming the package and session the application model and its token gave it, and every process the probe read as each capture began the package it read, none disagreeing or unknown.
 Revision 992 has the window's inspector state a process's terminal session and package beside its lineage (ADR-094's third addendum), each named, a package none where its record named none, and either not recorded where no record said.
+Revision 993 measures which services a process hosts (ADR-095, FX-SVC-001): Microsoft-Windows-Services, asked for its state, names none of the services the service control manager lists running, and a service started during a run only by its status change, so the manager's list, read as a capture starts and stops, is the source.
 
 ## Revisions, a paragraph each, in order
 
@@ -4513,3 +4514,14 @@ lifecycle records name: the session's number and the package's full name, a pack
 and either not recorded where no record said, three answers never given one for another (R3). The overview carries a
 process's package as its instance does, so a session reopened from its checkpoint says it too; each is said again as
 the selection moves.
+
+Revision 993 measures which services a process hosts (ADR-095). The plan asks process nodes for their services and §6.3
+groups processes by service container; revision 987 found Microsoft-Windows-Services declaring a status change naming a
+service and its host, and no provider declaring which services a process hosts at a moment. FX-SVC-001,
+`tools/InterCat.ProcessProbe --services`, enables the provider at every level and keyword under a session of its own,
+asks for its state as a capture asks a provider, runs 60 seconds and lists the running services by the service control
+manager before and after, three times, starting and stopping no service. Nothing was lost: nothing of the 127, 127 and 128
+services running throughout, hosted by 116, 116 and 117 processes, was named, and a service that started by itself during the second
+run was named with its host only by its status change. So the manager's own list, read from user mode as a capture starts
+and stops, says which services a process hosts - the catalog's first API inventory, which no capture reads yet - and a
+service list stays metadata of its host.

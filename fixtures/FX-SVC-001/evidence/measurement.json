@@ -1,0 +1,116 @@
+{
+  "schema": "intercat.service-provider-measurement.v1",
+  "question": "Whether Microsoft-Windows-Services, enabled at every level and keyword and asked for its state as a capture asks a provider, names each running service with the process hosting it, as the service control manager lists them, and whether a service\u0027s status change names the service and the process hosting it.",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "secondsAsked": 60,
+  "runs": [
+    {
+      "measuredUtc": "2026-11-06T15:58:15.2682721+00:00",
+      "session": {
+        "mode": "real-time session of the probe\u0027s own, Microsoft-Windows-Services at Verbose with every keyword, then its state asked for",
+        "seconds": 61.6,
+        "eventsLost": 0
+      },
+      "eventsOnEnableAlone": 0,
+      "events": [],
+      "serviceControlManager": {
+        "runningAsTheSessionBegan": 127,
+        "runningOnceItStopped": 127,
+        "runningThroughout": 127,
+        "hostingProcesses": 116
+      },
+      "statusChanges": {
+        "pairsNamed": 0,
+        "ofTheServicesRunningThroughout": 0,
+        "servicesTheManagerListedChanged": 0,
+        "ofThemNamed": 0,
+        "namingAPairTheManagerNeverListed": 0
+      },
+      "run": 1
+    },
+    {
+      "measuredUtc": "2026-11-06T15:59:16.7947282+00:00",
+      "session": {
+        "mode": "real-time session of the probe\u0027s own, Microsoft-Windows-Services at Verbose with every keyword, then its state asked for",
+        "seconds": 61.5,
+        "eventsLost": 0
+      },
+      "eventsOnEnableAlone": 0,
+      "events": [
+        {
+          "id": 103,
+          "version": 0,
+          "count": 1,
+          "namingAProcessAndAService": 0
+        },
+        {
+          "id": 104,
+          "version": 0,
+          "count": 1,
+          "namingAProcessAndAService": 0
+        },
+        {
+          "id": 105,
+          "version": 0,
+          "count": 4,
+          "namingAProcessAndAService": 3
+        },
+        {
+          "id": 204,
+          "version": 0,
+          "count": 1,
+          "namingAProcessAndAService": 0
+        },
+        {
+          "id": 205,
+          "version": 0,
+          "count": 1,
+          "namingAProcessAndAService": 0
+        }
+      ],
+      "serviceControlManager": {
+        "runningAsTheSessionBegan": 127,
+        "runningOnceItStopped": 128,
+        "runningThroughout": 127,
+        "hostingProcesses": 116
+      },
+      "statusChanges": {
+        "pairsNamed": 1,
+        "ofTheServicesRunningThroughout": 0,
+        "servicesTheManagerListedChanged": 1,
+        "ofThemNamed": 1,
+        "namingAPairTheManagerNeverListed": 0
+      },
+      "run": 2
+    },
+    {
+      "measuredUtc": "2026-11-06T16:00:18.3432205+00:00",
+      "session": {
+        "mode": "real-time session of the probe\u0027s own, Microsoft-Windows-Services at Verbose with every keyword, then its state asked for",
+        "seconds": 61.5,
+        "eventsLost": 0
+      },
+      "eventsOnEnableAlone": 0,
+      "events": [],
+      "serviceControlManager": {
+        "runningAsTheSessionBegan": 128,
+        "runningOnceItStopped": 128,
+        "runningThroughout": 128,
+        "hostingProcesses": 117
+      },
+      "statusChanges": {
+        "pairsNamed": 0,
+        "ofTheServicesRunningThroughout": 0,
+        "servicesTheManagerListedChanged": 0,
+        "ofThemNamed": 0,
+        "namingAPairTheManagerNeverListed": 0
+      },
+      "run": 3
+    }
+  ],
+  "notes": [
+    "The probe starts, stops and configures no service: a status change a run records is one the machine made of itself.",
+    "Services are compared by their name, case ignored, and the process the service control manager says hosts each; the report keeps counts, never a PID or a service\u0027s name."
+  ]
+}
