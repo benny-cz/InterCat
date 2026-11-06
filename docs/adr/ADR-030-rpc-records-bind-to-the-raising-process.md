@@ -2,8 +2,9 @@
 
 - Status: accepted for M1; revision 238 adds HTTP to its list as `process-binding-v4` (ADR-037), revision 914 COM
   calls as `process-binding-v5` (ADR-077's fifth addendum), revision 939 named synchronization objects' handles as
-  `process-binding-v6`, a header binding no inventory (ADR-083's third addendum), and revision 960 window messages as
-  `process-binding-v7` (ADR-087's second addendum)
+  `process-binding-v6`, a header binding no inventory (ADR-083's third addendum), revision 960 window messages as
+  `process-binding-v7` (ADR-087's second addendum), and revision 978 sections' handles and views as `process-binding-v8`
+  (ADR-090's third addendum)
 - Date: 2026-09-27
 - Decision owners: InterCat maintainers
 - Relates to: §4.1 (header and payload), §7.1 (process instances), §7.3 (`EntityBindingRevision`), §24

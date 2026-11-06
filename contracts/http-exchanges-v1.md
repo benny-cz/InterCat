@@ -18,7 +18,7 @@ what they say (§5f).
 A record is a buffer when its mechanism is `Http`, its event is 2001 to 2004 - request head, request body, response head,
 response body - and its source fields name its exchange (`HttpExchangeId`, 16), its place (`ContentBufferSequence`, 17)
 and its ends (`ContentBufferFlags`, 18: 1 first, 2 last). Its process is the one that raised it, by
-`process-binding-v7` (`contracts/entities-v1.md` §7), as since `process-binding-v4`. Its thread is whichever of that process's threads WinINet finished
+`process-binding-v8` (`contracts/entities-v1.md` §7), as since `process-binding-v4`. Its thread is whichever of that process's threads WinINet finished
 the buffer's step on, for a synchronous client as for an asynchronous one, and not the thread that made the request
 (FX-HTTP-005, revision 886): nothing here reads it. An HTTP record whose fields name no exchange belongs to none and is
 counted as such.

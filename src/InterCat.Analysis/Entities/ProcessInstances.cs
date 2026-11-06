@@ -251,18 +251,20 @@ public sealed partial class ProcessInstanceIndex
     /// whose payload names no owner to the process that raised it, for a mechanism whose records are raised in the
     /// process they describe (ADR-030): RPC. Version 4 adds HTTP to those mechanisms (ADR-037), version 5 COM calls
     /// (ADR-077's fifth addendum), version 6 named synchronization objects' handles, while a header binds no inventory
-    /// (ADR-083's third addendum), and version 7 window messages (ADR-087's second addendum).
+    /// (ADR-083's third addendum), version 7 window messages (ADR-087's second addendum), and version 8 sections' handles and
+    /// views (ADR-090's third addendum).
     /// </summary>
-    public const string BindingRule = "process-binding-v7";
+    public const string BindingRule = "process-binding-v8";
 
     /// <summary>
     /// The rules before this one. Each bound fewer records whose payload names no owner - version 2 none, version 3 an
     /// RPC record's, version 4 an RPC or HTTP record's, version 5 an RPC, HTTP or COM call record's, version 6 an RPC,
-    /// HTTP, COM call or synchronization handle record's - and bound every record that names one as this rule does, so its
-    /// derivation is this rule's wherever every record named its owner (`contracts/derivation-checkpoint-v1.md` §4).
+    /// HTTP, COM call or synchronization handle record's, version 7 an RPC, HTTP, COM call, synchronization handle or window
+    /// message record's - and bound every record that names one as this rule does, so its derivation is this rule's wherever
+    /// every record named its owner (`contracts/derivation-checkpoint-v1.md` §4).
     /// </summary>
     internal static readonly IReadOnlyList<string> EarlierBindingRules =
-        ["process-binding-v2", "process-binding-v3", "process-binding-v4", "process-binding-v5", "process-binding-v6"];
+        ["process-binding-v2", "process-binding-v3", "process-binding-v4", "process-binding-v5", "process-binding-v6", "process-binding-v7"];
 
     private readonly Dictionary<int, int[]> instancesByPid;
     private readonly Dictionary<ObservationId, int> lifecycleBindings;

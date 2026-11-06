@@ -1,7 +1,7 @@
 # InterCat derivation checkpoint v1
 
 Status: **implemented** in plan revision 162. A generation can name one checkpoint: the state of its
-`process-binding-v7` instances (`contracts/entities-v1.md`) and its `transport-endpoint-relation-v4` relations
+`process-binding-v8` instances (`contracts/entities-v1.md`) and its `transport-endpoint-relation-v4` relations
 (`contracts/relations-v1.md`), as derived from named segments. A reader that finds a checkpoint builds both
 derivations from it, reads only the segments it does not cover, and gets exactly what a derivation from every segment
 gives. Without one, opening a session reads every record's owner, endpoints and canonical position before the first
@@ -243,10 +243,11 @@ checkpoint when:
   from `v3` only in giving an IPv6 record the end `v3` left it without, so where no record went without one the two
   derivations are one state. One that counts any is refused and derived again. No checkpoint of format 1.2 was written
   under `v3`. A checkpoint of format 1.1 or later derived under `process-binding-v2`, `process-binding-v3`,
-  `process-binding-v4`, `process-binding-v5` or `process-binding-v6` is read as `v7`'s when its counts name no record
-  without an owner. Each differs from `v7` only in binding fewer records whose payload names no owner to the process that
-  raised them - `v2` none, `v3` an RPC record, `v4` an RPC or HTTP record, `v5` an RPC, HTTP or COM call record, `v6`
-  those and a synchronization handle's creation or close, `v7` those and a window message's ends (entities-v1 §2a) - so
+  `process-binding-v4`, `process-binding-v5`, `process-binding-v6` or `process-binding-v7` is read as `v8`'s when its
+  counts name no record without an owner. Each differs from `v8` only in binding fewer records whose payload names no
+  owner to the process that raised them - `v2` none, `v3` an RPC record, `v4` an RPC or HTTP record, `v5` an RPC, HTTP
+  or COM call record, `v6` those and a synchronization handle's creation or close, `v7` those and a window message's
+  ends, `v8` those and a section handle's creation or close (entities-v1 §2a) - so
   where every record named its owner the derivations
   are one state. One that counts any
   record without an owner is refused and derived again, because the count does not say whether one was such a

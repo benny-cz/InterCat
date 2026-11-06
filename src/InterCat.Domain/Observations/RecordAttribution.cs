@@ -25,10 +25,14 @@ public static class RecordAttribution
     /// messages on FX-WMSG-001 (ADR-086): in three runs every message one process sent another's window had its start and
     /// stop raised in the sender and its retrieval's start and stop in the receiver, and every message it posted, the close
     /// among them, its queueing raised in the poster and its retrieval in the receiver; a send's start names the receiving
-    /// process only as its other end, never its owner (ADR-087's second addendum).
+    /// process only as its other end, never its owner (ADR-087's second addendum). Measured for sections on FX-SECT-001
+    /// (ADR-089): in three runs each process's handle to each section had its creation and close raised in that process, and
+    /// every view either process mapped or unmapped its record raised in it. A view's record names its process too, and a
+    /// handle's duplication and the stop's rundown theirs, so those bind by their payload (ADR-090's third addendum).
     /// </summary>
     public static bool RaisedByTheirProcess(Mechanism mechanism) =>
-        mechanism is Mechanism.Rpc or Mechanism.Http or Mechanism.ComCall or Mechanism.Synchronization or Mechanism.WindowMessage;
+        mechanism is Mechanism.Rpc or Mechanism.Http or Mechanism.ComCall or Mechanism.Synchronization or Mechanism.WindowMessage
+            or Mechanism.SharedSection;
 
     /// <summary>
     /// Whether a record whose payload names no owner binds to the process that raised it: its mechanism's records are

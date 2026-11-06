@@ -2,7 +2,9 @@
 
 - Status: accepted for M6's section discovery work package; since revision 976 the file view flag's records admit through
   the view gate, read by the layout measured for the build (its addendum); since revision 977 sections' handles are a
-  source of their own over the handle group, admitted through the section handle gate (its second addendum)
+  source of their own over the handle group, admitted through the section handle gate (its second addendum); since
+  revision 978 a section handle's creation and close bind to the process that raised them, as `process-binding-v8` (its
+  third addendum)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-083, ADR-087, ADR-089, plan M6, §4.2, R22, P12, P20, FX-SECT-001
@@ -98,3 +100,23 @@ the other, and no profile asks for both; none asks for sections' handles yet. Th
 Low, with the throughput regression stated beside it. Tests hold its descriptors' slots, its gate's numbers for both
 processes' handles, its omissions and its type rundown, its refusals, and that no capture collects both sources;
 Ten mutations are caught.
+
+## Addendum: a section's records bound to their process (revision 978)
+
+A section handle's creation and close name no owner, as a synchronization handle's do, and FX-SECT-001 had each
+process's handle to each section created and closed in that process in all three runs (ADR-089). So ADR-030's header
+binding now reaches the `SharedSection` mechanism, never an inventory, as `process-binding-v8`:
+
+- a section handle's creation and close bind to the process that raised them;
+- a view's mapping, unmapping and rundown bind to the process their record names, as they did, a rundown's though its
+  header names none; a duplication binds to the target it names, and a handle open at the stop to its holder;
+- an object type at the stop, an inventory naming no process, binds to none.
+
+What binds changes, so the rule is a new one (`contracts/entities-v1.md` §7). A checkpoint derived under version 2 to 7
+is read as version 8's wherever every record named its owner, and one counting a record without an owner is derived
+again, its refusal naming sections. The entities, checkpoint, operations, operation index, metrics, relations, query
+identity, HTTP exchange and COM call contracts name the new rule; the entities contract's table gains its
+`SharedSection` row, and the grouped answer's caveat names sections among the records a header binds. Tests pin the
+mechanisms a header binds, bind a session's section records each way, bind an admitted section handle's row and view's
+row to their processes, and read a version 7 checkpoint; Seven mutations are caught. No profile requests the
+sources yet.

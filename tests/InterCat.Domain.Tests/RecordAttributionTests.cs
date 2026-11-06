@@ -10,14 +10,14 @@ namespace InterCat.Domain.Tests;
 /// </summary>
 public sealed class RecordAttributionTests
 {
-    [Fact(DisplayName = "ADR-030: only RPC, HTTP, COM calls, synchronization handles and window messages, each measured on its fixture, bind a record by the process that raised it")]
+    [Fact(DisplayName = "ADR-030: only RPC, HTTP, COM calls, synchronization handles, window messages and sections, each measured on its fixture, bind a record by the process that raised it")]
     public void OnlyMeasuredMechanismsBindByTheirHeader()
     {
         // A mechanism added here needs its own measurement - HTTP's is FX-HTTP-001's (ADR-037), COM calls' FX-COM-001's
         // (ADR-077), synchronization handles' FX-SYNC-001's and FX-SYNC-002's (ADR-082), window messages' FX-WMSG-001's
-        // (ADR-086) - a new binding rule identity, and the texts that name these mechanisms (the grouped-answer caveat and
-        // the checkpoint refusal).
-        Assert.Equal([Mechanism.Rpc, Mechanism.Synchronization, Mechanism.WindowMessage, Mechanism.Http, Mechanism.ComCall],
+        // (ADR-086), sections' FX-SECT-001's (ADR-089) - a new binding rule identity, and the texts that name these
+        // mechanisms (the grouped-answer caveat and the checkpoint refusal).
+        Assert.Equal([Mechanism.Rpc, Mechanism.SharedSection, Mechanism.Synchronization, Mechanism.WindowMessage, Mechanism.Http, Mechanism.ComCall],
             Enum.GetValues<Mechanism>().Where(RecordAttribution.RaisedByTheirProcess));
 
         // A COM activation is not a call and carries no field: none binds by its header.
@@ -50,5 +50,12 @@ public sealed class RecordAttributionTests
         Assert.Equal(7_100, RecordAttribution.OwnerOf(null, Mechanism.WindowMessage, ObservationKind.RequestStart, 7_100));
         Assert.Equal(7_200, RecordAttribution.OwnerOf(null, Mechanism.WindowMessage, ObservationKind.Receive, 7_200));
         Assert.Null(RecordAttribution.OwnerOf(null, Mechanism.Clipboard, ObservationKind.Send, 7_100));
+
+        // A section's handle binds where it was made and closed; a view names its process, a rundown's though its header
+        // names none; an inventory a section's record carries no owner of belongs to no process.
+        Assert.Equal(8_100, RecordAttribution.OwnerOf(null, Mechanism.SharedSection, ObservationKind.Open, 8_100));
+        Assert.Equal(8_100, RecordAttribution.OwnerOf(null, Mechanism.SharedSection, ObservationKind.Close, 8_100));
+        Assert.Equal(8_200, RecordAttribution.OwnerOf(8_200, Mechanism.SharedSection, ObservationKind.Inventory, 0));
+        Assert.Null(RecordAttribution.OwnerOf(null, Mechanism.SharedSection, ObservationKind.Inventory, 900));
     }
 }

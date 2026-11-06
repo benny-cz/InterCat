@@ -71,18 +71,18 @@ internal static class EarlierCheckpoints
     /// <summary>
     /// A checkpoint as an earlier binding rule wrote it: `process-binding-v2`, as revisions 166 to 176 did,
     /// `process-binding-v3`, as revisions 177 to 237 did, `process-binding-v4`, as revisions 238 to 913 did,
-    /// `process-binding-v5`, as revisions 914 to 938 did, or `process-binding-v6`, as revisions 939 to 959 did. Each
-    /// differs from one under v7 only in that word when every record names its owner: each bound fewer records that named
-    /// none, and v7 binds more of only such records.
+    /// `process-binding-v5`, as revisions 914 to 938 did, `process-binding-v6`, as revisions 939 to 959 did, or
+    /// `process-binding-v7`, as revisions 960 to 977 did. Each differs from one under v8 only in that word when every record
+    /// names its owner: each bound fewer records that named none, and v8 binds more of only such records.
     /// </summary>
     public static byte[] UnderEarlierBindingRule(byte[] bytes, int version = 2)
     {
         ArgumentNullException.ThrowIfNull(bytes);
         ArgumentOutOfRangeException.ThrowIfLessThan(version, 2);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(version, 6);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(version, 7);
         byte[] rule = System.Text.Encoding.ASCII.GetBytes(ProcessInstanceIndex.BindingRule);
         int at = bytes.AsSpan().IndexOf(rule);
-        if (at < 0 || !ProcessInstanceIndex.BindingRule.EndsWith("-v7", StringComparison.Ordinal))
+        if (at < 0 || !ProcessInstanceIndex.BindingRule.EndsWith("-v8", StringComparison.Ordinal))
         {
             throw new InvalidOperationException("The checkpoint does not name the binding rule this helper rewrites.");
         }

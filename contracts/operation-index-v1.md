@@ -34,7 +34,7 @@ For the covered observation and source-field segments, what the two derivations 
   ended its response, those it has, what was recorded of each of its four parts - buffers, bytes, and whether whole -
   and where each of its buffers is, by segment position and row, in the order the grouping took them.
 - **Identity.** The session, the generation the calls were derived at, the clock and host, the covered files, and the
-  rule identities: the pairing rule, the peer rule, and the `process-binding-v7` rule whose record owners give each
+  rule identities: the pairing rule, the peer rule, and the `process-binding-v8` rule whose record owners give each
   call's PID (entities-v1 §2a).
 
 Neither a call's nor an exchange's process binding is held. A reader binds each as the derivation does, by its PID and
@@ -94,7 +94,7 @@ Little-endian throughout. `str8` is an unsigned byte count followed by that many
 index       = header covered held [calls peers] http       ; http from minor 1: a minor-0 index ends at its peers
 header      = "ICATOPIX" (8 ASCII bytes), major u16 = 1, minor u16 = 2,
               operationRule str8 ("rpc-call-operation-v1"), peerRule str8 ("rpc-call-peer-v2"),
-              bindingRule str8 ("process-binding-v7"),
+              bindingRule str8 ("process-binding-v8"),
               session guid, derivedGeneration i64 (>= 1),
               clock guid, host guid
 covered     = count u32, file*                      ; observation segments first, in the generation's order; then

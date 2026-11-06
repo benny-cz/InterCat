@@ -1,5 +1,8 @@
 using System.Text.Json;
+using InterCat.Capture.Journal;
+using InterCat.Capture.Recording;
 using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
 
 namespace InterCat.Capture.Windows.Tests;
@@ -140,6 +143,51 @@ public sealed class SectionViewAdmissionTests
         Assert.Null(full.Read(ref first, Plan(plan, Map)));
         AdmittedEvent second = Record(plan, Map, 400, ("ViewBase", 0x2_0000), ("FileObject", 0x1000), ("ProcessId", 400));
         Assert.Equal(GateOmission.BeyondBound, full.Read(ref second, Plan(plan, Map)));
+    }
+
+    [Fact(DisplayName = "R22: an admitted view record is a shared section row of the section mapping family - its view's and section's numbers, its size and extra information source fields, never bytes moved - and the process its record names its owner, a rundown's though no header names one")]
+    public void AnAdmittedViewRecordIsASectionRow()
+    {
+        SourceAdmissionPlan plan = Compiled();
+        SourceClockDescriptor clock = new(
+            ClockId.Derive("section-view-admission-tests"),
+            HostId.Derive("section-view-admission-tests"),
+            SourceClockKind.Monotonic,
+            TimestampEncoding.Qpc,
+            10_000_000,
+            0,
+            TimestampRounding.NearestEven,
+            SourceClockMath.SessionTicksPerSecond * 3_600);
+        var mapper = new AdmittedEventEnvelopeMapper([plan], clock.Id);
+        var normalizer = new ObservationNormalizerV1(clock);
+        var gate = new SectionViewRecordGate();
+
+        // A mapping raised in process 500: the view's row, its base and value written over by the gate, its size a source
+        // field and no byte measurement.
+        AdmittedEvent mapped = Record(plan, Map, 500, ("ViewBase", 0x1_0000), ("FileObject", unchecked((long)0xFFFF_A000_0000_1000)),
+            ("MiscInfo", 0x00C4_0000_0000_0000), ("ViewSize", 65_536), ("ProcessId", 500));
+        Assert.Null(gate.Read(ref mapped, Plan(plan, Map)));
+        mapped.RecordOrdinal = 1;
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(mapped, Plan(plan, Map), CaptureId.New());
+        ObservationRowV1 row = normalizer.ToRow(envelope, Plan(plan, Map));
+        Assert.Equal((Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Map), (row.Mechanism, row.Layer, row.Kind));
+        Assert.Equal(((int?)500, 500), (row.OwnerProcessId, RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.Kind, row.HeaderProcessId)));
+        Assert.NotEqual(FieldAvailability.Present, row.ByteAvailability);
+        Assert.Equal(
+            [(SourceField.SectionViewNumber, 1L), (SourceField.SectionNumber, 1L), (SourceField.ViewSize, 65_536L), (SourceField.ViewInformation, 0x00C4_0000_0000_0000L)],
+            ObservationNormalizerV1.FieldRows(envelope, Plan(plan, Map), row).Select(static field => (field.Field, field.Value!.Value)).OrderBy(static field => field.Field));
+        Assert.Null(row.Validate());
+
+        // The stop's rundown of it, whose header names no process: the process its record names owns it.
+        AdmittedEvent stopped = Record(plan, StopRundown, 0, ("ViewBase", 0x1_0000), ("FileObject", unchecked((long)0xFFFF_A000_0000_1000)),
+            ("MiscInfo", 0x00C4_0000_0000_0000), ("ViewSize", 65_536), ("ProcessId", 500));
+        Assert.Null(gate.Read(ref stopped, Plan(plan, StopRundown)));
+        stopped.RecordOrdinal = 2;
+        using RecordEnvelopeV1 rundown = mapper.ToEnvelope(stopped, Plan(plan, StopRundown), CaptureId.New());
+        ObservationRowV1 inventory = normalizer.ToRow(rundown, Plan(plan, StopRundown));
+        Assert.Equal((ObservationKind.Inventory, (int?)500, 0), (inventory.Kind, inventory.OwnerProcessId, inventory.HeaderProcessId));
+        Assert.Equal(500, RecordAttribution.OwnerOf(inventory.OwnerProcessId, inventory.Mechanism, inventory.Kind, inventory.HeaderProcessId));
+        Assert.Null(inventory.Validate());
     }
 
     [Fact(DisplayName = "§4.2: the layout measured for the file view flag is the one its committed reports measured on its build - version 3, 44 bytes, eight page-aligned bytes between the size and the process at the record's end - for a view's mapping and unmapping and both rundowns")]

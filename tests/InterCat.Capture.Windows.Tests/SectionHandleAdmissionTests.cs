@@ -1,4 +1,7 @@
+using InterCat.Capture.Journal;
+using InterCat.Capture.Recording;
 using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
 
 namespace InterCat.Capture.Windows.Tests;
@@ -102,6 +105,40 @@ public sealed class SectionHandleAdmissionTests
         Assert.Null(full.Read(ref first, Plan(plan, Create)));
         AdmittedEvent second = Record(plan, Create, 400, ("Object", unchecked((long)OtherAddress)), ("Handle", 0x14), ("ObjectType", Section));
         Assert.Equal(GateOmission.BeyondBound, full.Read(ref second, Plan(plan, Create)));
+    }
+
+    [Fact(DisplayName = "R22: an admitted section handle record is a shared section row of the section mapping family, its section's number, type and handle source fields, and the process that raised a creation its owner, as its payload names none")]
+    public void AnAdmittedSectionHandleRecordIsASectionRow()
+    {
+        SourceAdmissionPlan plan = Compiled();
+        SourceClockDescriptor clock = new(
+            ClockId.Derive("section-handle-admission-tests"),
+            HostId.Derive("section-handle-admission-tests"),
+            SourceClockKind.Monotonic,
+            TimestampEncoding.Qpc,
+            10_000_000,
+            0,
+            TimestampRounding.NearestEven,
+            SourceClockMath.SessionTicksPerSecond * 3_600);
+        var mapper = new AdmittedEventEnvelopeMapper([plan], clock.Id);
+        var normalizer = new ObservationNormalizerV1(clock);
+        var gate = new ObjectHandleRecordGate([Section]);
+
+        // A creation raised in process 400, its address written over by the gate: the section's row, its raiser's since
+        // `process-binding-v8`.
+        AdmittedEvent created = Record(plan, Create, 400, ("Object", unchecked((long)Address)), ("Handle", 0x10), ("ObjectType", Section));
+        Assert.Null(gate.Read(ref created, Plan(plan, Create)));
+        created.RecordOrdinal = 1;
+        using RecordEnvelopeV1 envelope = mapper.ToEnvelope(created, Plan(plan, Create), CaptureId.New());
+        ObservationRowV1 row = normalizer.ToRow(envelope, Plan(plan, Create));
+        Assert.Equal((Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Open), (row.Mechanism, row.Layer, row.Kind));
+        Assert.Equal(((int?)null, 400), (row.OwnerProcessId, row.HeaderProcessId));
+        Assert.Equal(400, RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.Kind, row.HeaderProcessId));
+        Assert.Equal(
+            [(SourceField.ObjectTypeNumber, 49L), (SourceField.HandleValue, 0x10L), (SourceField.SectionObjectNumber, 1L)],
+            ObservationNormalizerV1.FieldRows(envelope, Plan(plan, Create), row).Select(static field => (field.Field, field.Value!.Value)).OrderBy(static field => field.Field));
+        Assert.Equal("section-mapping", ObservationNormalizerV1.DiscriminatorFor(Mechanism.SharedSection));
+        Assert.Null(row.Validate());
     }
 
     [Fact(DisplayName = "R3: a build with no measured Section number refuses sections' handle source, as does a layout without a field its gate decides by")]

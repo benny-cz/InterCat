@@ -901,6 +901,7 @@ Revision 974 adds the section gates (ADR-090): a section followed by its handles
 Revision 975 measures the file view flag's rundowns (ADR-089's fourth addendum): at version 3 as a mapping is, each record naming its view's process and none its header, and images' views among what the flag records, an image's with 0x47 in its extra information's high byte.
 Revision 976 reads a classic record at a version the machine registers no layout for by the layout measured for its build (ADR-091), and admits the file view flag's four events at version 3 through the view gate (ADR-090's addendum).
 Revision 977 inventories sections' handles as a source of their own over the handle group (ADR-090's second addendum), its gate keeping only the Section type's handles and writing each section's number over its address.
+Revision 978 binds a section handle's creation and close to the process that raised them, as `process-binding-v8` (ADR-090's third addendum), as FX-SECT-001 measured them raised.
 
 ## Revisions, a paragraph each, in order
 
@@ -4360,3 +4361,10 @@ gate of its own that keeps only the Section type's handles by the number measure
 number over its address as `SectionObjectNumber`. A build none measured refuses it. The handle record gate now follows
 whichever types its source gives it. The two sources compile the same descriptors, which one capture refuses, so no
 profile asks for both, and none asks for sections' handles yet.
+
+Revision 978 binds a section's records to their processes (ADR-090's third addendum). A section handle's creation and
+close name no owner, and FX-SECT-001 had each process's handle to each section created and closed in that process in
+all three runs, so ADR-030's header binding reaches the `SharedSection` mechanism, never an inventory, as
+`process-binding-v8`. A view's records bind to the process each names, as they did, and an object type at the stop to
+none. A version 2 to 7 checkpoint is read as version 8's wherever every record named its owner; the contracts that name
+the rule move to version 8, and the entities contract's table gains its `SharedSection` row.

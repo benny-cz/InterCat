@@ -19,6 +19,7 @@ internal static class TestSessions
     public static readonly Guid ComPerfProvider = Guid.Parse("b8d6861b-d20f-4eec-bbae-87e0dd80602b");
     public static readonly Guid ObjectManagerClass = Guid.Parse("89497f50-effe-4440-8cf2-ce6b1cdcaca7");
     public static readonly Guid Win32kProvider = Guid.Parse("8c416c79-d49b-4f01-a467-e56d3aa8234c");
+    public static readonly Guid FileIoClass = Guid.Parse("90cbdc39-4a3e-11d1-84f4-0000f80464e3");
     public static readonly DateTimeOffset Committed = new(2026, 9, 22, 16, 0, 0, TimeSpan.Zero);
 
     // The object manager's handle records by opcode: a handle's creation, close and duplication, an object type at the
@@ -252,6 +253,47 @@ internal static class TestSessions
             _ => ObservationKind.Inventory,
         },
         Direction = opcode == HandleDuplicated ? Direction.Inbound : Direction.DirectionNotApplicable,
+        ByteAvailability = FieldAvailability.NotApplicable,
+        StatusAvailability = FieldAvailability.NotApplicable,
+        AttributionQuality = QualityLevel.UnknownQuality,
+        CorrelationQuality = QualityLevel.UnknownQuality,
+        MeasurementQuality = QualityLevel.UnknownQuality,
+        TimingQuality = QualityLevel.Proven,
+    };
+
+    /// <summary>
+    /// A section's record raised in <paramref name="raisedBy"/>, as the section sources admit one through their gates
+    /// (ADR-090): a handle's creation or close naming no owner, or a handle at the stop naming its holder, from the object
+    /// manager's handle group; or a view's mapping (37), unmapping (38) or rundown (39, 40) naming the process whose view it
+    /// is, from the file view flag. Only its header says whose a handle's creation or close is.
+    /// </summary>
+    public static ObservationRowV1 SectionRecord(long ticks, byte opcode, int raisedBy, int? owner, ulong ordinal, bool view = false) => new()
+    {
+        RawStreamId = 1,
+        RawSourceEpoch = 1,
+        RawRecordOrdinal = ordinal,
+        FactKey = FactKey.Create(view ? "section-view" : "section-handle"),
+        ProviderId = view ? FileIoClass : ObjectManagerClass,
+        EventId = 0,
+        DescriptorVersion = (byte)(view ? 3 : 2),
+        SchemaFingerprint = "sha256:" + new string(view ? 'c' : 'd', 64),
+        Opcode = opcode,
+        NativeTicks = ticks,
+        HeaderProcessId = raisedBy,
+        HeaderThreadId = raisedBy + 1,
+        ProcessorNumber = 0,
+        OwnerProcessId = owner,
+        Mechanism = Mechanism.SharedSection,
+        Layer = ObservationLayer.Resource,
+        Kind = (view, opcode) switch
+        {
+            (true, 37) => ObservationKind.Map,
+            (true, 38) => ObservationKind.Unmap,
+            (false, HandleCreated or HandleDuplicated) => ObservationKind.Open,
+            (false, HandleClosed) => ObservationKind.Close,
+            _ => ObservationKind.Inventory,
+        },
+        Direction = !view && opcode == HandleDuplicated ? Direction.Inbound : Direction.DirectionNotApplicable,
         ByteAvailability = FieldAvailability.NotApplicable,
         StatusAvailability = FieldAvailability.NotApplicable,
         AttributionQuality = QualityLevel.UnknownQuality,

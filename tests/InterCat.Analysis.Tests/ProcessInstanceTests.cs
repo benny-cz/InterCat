@@ -297,7 +297,50 @@ public sealed class ProcessInstanceTests
         });
         Assert.Equal(5, grouped.Value);
         Assert.Contains(grouped.Caveats, caveat => caveat.Contains(
-            "used only for an RPC, HTTP, COM call, synchronization handle or window message record, which names none", StringComparison.Ordinal));
+            "used only for an RPC, HTTP, COM call, synchronization handle, window message or section record, which names none", StringComparison.Ordinal));
+    }
+
+    [Fact(DisplayName = "R22: a section's records bind where they were raised or to what they name - a handle's creation and close to the process that raised them, the stop's rundown to the holder it names, a view's mapping, unmapping and rundown to the process each names, though a rundown's header names none - and an object type's inventory to none")]
+    public void ASectionsRecordsBindWhereTheyWereRaisedOrToWhatTheyName()
+    {
+        using var session = new TemporarySession();
+        Publish(
+            session.Store,
+            [
+                Lifecycle(100, ObservationKind.Create, 400, 1),
+                Lifecycle(110, ObservationKind.Create, 700, 2),
+                SectionRecord(150, HandleCreated, raisedBy: 400, owner: null, 3),
+                SectionRecord(155, 37, raisedBy: 400, owner: 400, 4, view: true),
+                SectionRecord(160, HandleCreated, raisedBy: 700, owner: null, 5),
+                SectionRecord(165, 37, raisedBy: 700, owner: 700, 6, view: true),
+                SectionRecord(170, 38, raisedBy: 700, owner: 700, 7, view: true),
+                SectionRecord(175, HandleClosed, raisedBy: 700, owner: null, 8),
+                SectionRecord(180, 40, raisedBy: 0, owner: 400, 9, view: true),
+                SectionRecord(185, HandleAtStop, raisedBy: 900, owner: 400, 10),
+                SectionRecord(190, TypeAtStop, raisedBy: 900, owner: null, 11),
+            ]);
+
+        ProcessInstanceIndex index = Derive(session.Store);
+
+        // The rundowns' raisers own none of their records: no instance of them.
+        Assert.Equal([400, 700], index.Instances.Select(instance => instance.ProcessId).Order());
+        int creator = index.Instances.ToList().FindIndex(instance => instance.ProcessId == 400);
+        int opener = index.Instances.ToList().FindIndex(instance => instance.ProcessId == 700);
+        ProcessBinding[] owners = index.OwnersOf(Assert.Single(TestSessions.Segments(session.Store)));
+
+        // A handle's creation and close are their raiser's, a view's records the process each names, the stop's handle
+        // rundown the holder's it names; the object type's inventory is no process's.
+        Assert.Equal([creator, creator, opener, opener, opener, opener, creator, creator], owners[2..10].Select(owner => owner.Instance));
+        Assert.All(owners[2..10], owner => Assert.Equal(ProcessBindingReason.Bound, owner.Reason));
+        Assert.Equal(ProcessBindingReason.NoOwner, owners[10].Reason);
+        ProcessActivityIndex activity = ProcessActivityIndex.Derive(TestSessions.Segments(session.Store), index);
+        Assert.Equal(
+            [(Mechanism.ProcessLifecycle, 1L), (Mechanism.SharedSection, 4L)],
+            activity.MechanismsOf(creator, EvidencePolicy.IncludeCorrelated).OrderBy(count => count.Mechanism));
+        Assert.Equal(
+            [(Mechanism.ProcessLifecycle, 1L), (Mechanism.SharedSection, 4L)],
+            activity.MechanismsOf(opener, EvidencePolicy.IncludeCorrelated).OrderBy(count => count.Mechanism));
+        Assert.Equal((1L, 0L), (activity.RecordsWithoutOwner, activity.RecordsNotBound));
     }
 
     [Fact(DisplayName = "R22: a window message record binds to the process that raised it - a send's start and stop to the sender, never the receiver its start names, the receiver's retrieval to the receiver, a post's queueing to the poster and its retrieval to the receiver")]
