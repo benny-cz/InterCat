@@ -1,7 +1,7 @@
 # ADR-094: A process's package is a second text of its record, kept in a rented buffer and written as IAP3
 
 - Status: accepted for M6's process enrichment; the package is admitted into a session's source fields and said of each
-  process instance (revision 990), not yet measured through the product
+  process instance (revision 990), and measured through the product (revision 991)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-029, ADR-036, ADR-093, plan M6, §18.1, §18.2, R3, R8, R9, R11, I21, FX-PROC-001
@@ -68,3 +68,15 @@ them again and publishes a checkpoint that keeps them. 19 mutations of the path 
 
 Whether each instance's package is the one the application model gave its process is FX-PROC-001's to measure through
 the product next.
+
+## Second addendum: FX-PROC-001 through the product (revision 991)
+
+`tools/InterCat.ProcessProbe --product` records the fixture by `icat record` under the explore profile, which collects
+Kernel-Process as every capture does, three times, and reads each session back by `icat processes --json`. Nothing was
+lost, dropped or undecodable. Each child's instance - found by the PID and creation time the workload read - was created in
+the capture and named the package and terminal session the application model and its token gave it: winget's its package,
+the workload's own child none. Every process the probe read by the application model once each capture's session ran,
+530, 531 and 535, was one instance of the session naming the package it read, 141, 142 and 142 of them packaged, none disagreeing, and
+none of the sessions' 578, 554 and 588 instances left its package unknown. The first run's truth and its children's instances
+are kept by the fixture, and the three runs' comparisons as counts, never a PID or another package the machine has
+installed; a test holds them to the truth, and ten alterations of them are caught.

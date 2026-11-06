@@ -1134,30 +1134,31 @@
         "prohibitions": []
       },
       "truth": {
-        "generator": "src/InterCat.TestWorkloads process-package, under tools/InterCat.ProcessProbe --measure",
+        "generator": "src/InterCat.TestWorkloads process-package, under tools/InterCat.ProcessProbe --measure and, through the product, --product",
         "seed": 0,
         "log": "fixtures/FX-PROC-001/evidence/scenario.json",
         "independence": "The workload reads each child's package by the application model and its token by the token's own information before the child runs, and the probe every running process's package by the application model as the rundown runs; neither reads InterCat state, and the probe's session reads the kernel's records apart from both."
       },
       "expected": {
         "artifact": "fixtures/FX-PROC-001/evidence/measurement.json",
-        "note": "Three runs, nothing lost: each child's process start, at version 4, carrying every field as the workload read it - winget's package and application ID, the workload's own child's empty, an observed none, and both their token's elevation, integrity level and session - and every rundown record, at version 2, a running process's package as the application model gave it, 505, 505 and 510 processes a run, 141, 141 and 142 of them packaged, none disagreeing; each read by the registered layout past the mandatory label's SID, which TDH's own decoding by name loses. A test holds the three runs to the committed truth and their bench reports."
+        "note": "Three runs, nothing lost: each child's process start, at version 4, carrying every field as the workload read it - winget's package and application ID, the workload's own child's empty, an observed none, and both their token's elevation, integrity level and session - and every rundown record, at version 2, a running process's package as the application model gave it, 505, 505 and 510 processes a run, 141, 141 and 142 of them packaged, none disagreeing; each read by the registered layout past the mandatory label's SID, which TDH's own decoding by name loses. A test holds the three runs to the committed truth and their bench reports. Through the product - icat record under the explore profile, three runs, nothing lost - each child's instance named the package and session its truth read, winget's its package and the workload's own child none, and every process the probe read as each capture began, 530, 531 and 535, the package it read, 141, 142 and 142 of them packaged, none disagreeing and none of 578, 554 and 588 instances unknown (fixtures/FX-PROC-001/evidence/product, bench/results/process-package-product-20261106T145314Z). A second test holds them to the run's truth."
       },
       "environment": [
         {
           "build": "10.0.26220.0-x64",
           "supportTier": "Primary",
           "date": "2026-11-06",
-          "result": "Measured by tools/InterCat.ProcessProbe, three runs, nothing lost: every process start and rundown record carried its process's package full name and application ID - empty where it runs in no package - and its token's elevation, integrity level and session, as the application model and the token gave them, read by the registered layout past the mandatory label's SID. No tier is assigned: the fields are measured, not yet admitted."
+          "result": "Measured by tools/InterCat.ProcessProbe, three runs, nothing lost: every process start and rundown record carried its process's package full name and application ID - empty where it runs in no package - and its token's elevation, integrity level and session, as the application model and the token gave them, read by the registered layout past the mandatory label's SID. Recorded through the product by icat record under the explore profile, three runs, nothing lost: each process instance named its package, or none, as the application model gave it, and the children their session as their token gave it - none unknown. No tier is assigned: a package is said of a process, not of a mechanism's traffic."
         }
       ],
       "provenance": {
         "adapter": "windows-etw-inventory-0.8.0",
         "shareable": true,
-        "contents": "The first run's scenario - each child's package, application ID, elevation, integrity level and session as the workload read them, by its PID, its creation time and its image's file name alone - and the three runs' comparisons of each child's process start with them and of each rundown with the application model, as counts, never a PID."
+        "contents": "The first run's scenario - each child's package, application ID, elevation, integrity level and session as the workload read them, by its PID, its creation time and its image's file name alone - and the three runs' comparisons of each child's process start with them and of each rundown with the application model, as counts, never a PID. And the first run through the product's scenario and its two children's instances as icat processes gave them, by role - their creation time, session and package, the packaged child's App Installer's own - and the three runs' comparisons, as counts, never a PID or another package the machine has installed."
       },
       "tests": [
-        "R3: FX-PROC-001's process starts carry each child's package full name and application ID - a packaged child's as the application model gives them, an unpackaged child's empty, an observed none - beside its token's elevation, integrity level and session, read by the registered layout past the mandatory label's SID, which TDH's own decoding loses; and every rundown record a running process's package"
+        "R3: FX-PROC-001's process starts carry each child's package full name and application ID - a packaged child's as the application model gives them, an unpackaged child's empty, an observed none - beside its token's elevation, integrity level and session, read by the registered layout past the mandatory label's SID, which TDH's own decoding loses; and every rundown record a running process's package",
+        "R3: FX-PROC-001 through the product - icat record under the explore profile, three runs, nothing lost - names each child's package as the application model gave it, the packaged child's its package and the unpackaged child's none, and its session, and every process the probe read as each capture began the package it read, none unknown or disagreeing"
       ]
     },
     {
@@ -3711,6 +3712,7 @@
       "R3": [
         "R3: 21.1 scenario 8 - a window with a gap has an observed rate over the whole window",
         "R3: CRC-32C matches its published vectors",
+        "R3: FX-PROC-001 through the product - icat record under the explore profile, three runs, nothing lost - names each child's package as the application model gave it, the packaged child's its package and the unpackaged child's none, and its session, and every process the probe read as each capture began the package it read, none unknown or disagreeing",
         "R3: FX-PROC-001's process starts carry each child's package full name and application ID - a packaged child's as the application model gives them, an unpackaged child's empty, an observed none - beside its token's elevation, integrity level and session, read by the registered layout past the mandatory label's SID, which TDH's own decoding loses; and every rundown record a running process's package",
         "R3: a COM-Perf whose schema does not admit a field com-call-link-v1 pairs, carries or links its calls by is refused, never admitted to state calls from a value never observed - the COM calls profile does not start, and icat capabilities says its schema is unknown",
         "R3: a COM-Perf whose schema lacks a call's HRESULT, which no rule decides by, is admitted, the call's answer then unknown",

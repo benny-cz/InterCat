@@ -39,7 +39,8 @@ internal static class Program
         string? output = Option(args, "--output");
         bool inspect = args.Contains("--inspect", StringComparer.Ordinal);
         bool measure = args.Contains("--measure", StringComparer.Ordinal);
-        if (inspect == measure || output is null)
+        bool product = args.Contains("--product", StringComparer.Ordinal);
+        if ((inspect ? 1 : 0) + (measure ? 1 : 0) + (product ? 1 : 0) != 1 || output is null)
         {
             Console.Error.WriteLine("InterCat.ProcessProbe --inspect --output <new directory>");
             Console.Error.WriteLine("  Reads, without enabling any, the schema this machine registers for Microsoft-Windows-Kernel-Process -");
@@ -50,6 +51,12 @@ internal static class Program
             Console.Error.WriteLine("  Runs FX-PROC-001 under a real-time session of its own collecting Kernel-Process's process keyword, and");
             Console.Error.WriteLine("  writes each child's process start against what the workload read of it before it ran, and the");
             Console.Error.WriteLine("  session's process rundown against the package the application model gives each process it names.");
+            Console.Error.WriteLine("InterCat.ProcessProbe --product --output <new directory> [--runs <n, default 3>] [--duration <seconds, default 20>]");
+            Console.Error.WriteLine("                      [--icat <InterCat.Cli.exe>] [--workload <InterCat.TestWorkloads.exe>]");
+            Console.Error.WriteLine("  Records FX-PROC-001 through the product: icat record under the explore profile while the workload runs,");
+            Console.Error.WriteLine("  then icat processes --json reads the session's instances back; each child's instance is set against the");
+            Console.Error.WriteLine("  package and session the workload read of it, and every process the probe read as the capture began");
+            Console.Error.WriteLine("  against the instance the session holds of it. Each run's session is deleted once it is read; counts are kept.");
             return 2;
         }
 
@@ -61,11 +68,30 @@ internal static class Program
         }
 
         Directory.CreateDirectory(output);
+        string built = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        string workloadPath = Option(args, "--workload")
+            ?? Path.Combine(built, "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe");
         if (measure)
         {
-            string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
-            return await Measure.RunAsync(output, workload).ConfigureAwait(false);
+            return await Measure.RunAsync(output, workloadPath).ConfigureAwait(false);
+        }
+
+        if (product)
+        {
+            string icat = Option(args, "--icat") ?? Path.Combine(built, "src", "InterCat.Cli", "bin", "Release", "net10.0", "InterCat.Cli.exe");
+            if (!int.TryParse(Option(args, "--runs") ?? "3", NumberStyles.None, CultureInfo.InvariantCulture, out int runs) || runs is < 1 or > 10
+                || !int.TryParse(Option(args, "--duration") ?? "20", NumberStyles.None, CultureInfo.InvariantCulture, out int duration)
+                || duration is < 5 or > 600)
+            {
+                Console.Error.WriteLine("--runs expects 1 to 10 runs, and --duration 5 to 600 seconds.");
+                return 2;
+            }
+
+            Dictionary<string, object?> report = await Product.RunAsync(icat, workloadPath, output, runs, duration).ConfigureAwait(false);
+            string written = JsonSerializer.Serialize(report, Json);
+            await File.WriteAllTextAsync(Path.Combine(output, "report.json"), written).ConfigureAwait(false);
+            Console.WriteLine(written);
+            return 0;
         }
         var metadata = new TdhEtwMetadataSource();
         object kernelProcess = Manifest(metadata, KernelProcess, every: true);

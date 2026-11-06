@@ -1,0 +1,36 @@
+{
+  "scenarioId": "FX-PROC-001",
+  "workloadProcessId": 34300,
+  "children": [
+    {
+      "role": "packaged",
+      "processId": 71244,
+      "creationFileTime": 134384503953176290,
+      "image": "winget.exe",
+      "packageFullName": "Microsoft.DesktopAppInstaller_1.29.250.0_x64__8wekyb3d8bbwe",
+      "packageStatus": 0,
+      "applicationUserModelId": "Microsoft.DesktopAppInstaller_8wekyb3d8bbwe!winget",
+      "packageRelativeApplicationId": "winget",
+      "tokenElevationType": 2,
+      "tokenIsElevated": true,
+      "integrityLevelSid": "S-1-16-12288",
+      "sessionId": 1,
+      "exitCode": 0
+    },
+    {
+      "role": "unpackaged",
+      "processId": 3364,
+      "creationFileTime": 134384503954925806,
+      "image": "InterCat.TestWorkloads.exe",
+      "packageFullName": null,
+      "packageStatus": 15700,
+      "applicationUserModelId": null,
+      "packageRelativeApplicationId": null,
+      "tokenElevationType": 2,
+      "tokenIsElevated": true,
+      "integrityLevelSid": "S-1-16-12288",
+      "sessionId": 1,
+      "exitCode": 0
+    }
+  ]
+}

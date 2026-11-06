@@ -913,6 +913,7 @@ Revision 987 begins M6's process enrichment with its metadata inspection (§4.2)
 Revision 988 measures a process's package and token in its lifecycle records (ADR-093, FX-PROC-001): every Kernel-Process start and rundown carried its process's package full name and application ID - empty where it runs in none, an observed none - and its token's elevation, integrity level and session, read by the registered layout past the mandatory label's SID.
 Revision 989 admits a process's package (ADR-094): a second text of its record, placed past the image by the SID's count and the image's terminator, kept in a buffer rented from the pool and written as the projection's third form, IAP3; its source field row is the package's text, or the value 0 for none.
 Revision 990 gives each process instance its package (ADR-094's addendum): the one its earliest lifecycle record naming one names, empty where it named none; `icat processes` says it, and the derivation checkpoint keeps it from format 1.6, a reader of an earlier one reading the packages from the source-field segments it covers.
+Revision 991 measures FX-PROC-001 through the product (ADR-094's second addendum): three runs of icat record under the explore profile, nothing lost, each child's instance naming the package and session the application model and its token gave it, and every process the probe read as each capture began the package it read, none disagreeing or unknown.
 
 ## Revisions, a paragraph each, in order
 
@@ -4495,3 +4496,12 @@ a derivation of every record names one, which a checkpoint never does: the sessi
 of the source-field segments it covers before building the instances, a first view opening those segments where it
 opened none. Read without them, its instances say they keep none, nor once extended, and a writer derives them again;
 `icat checkpoint` and the other publishers replace such a checkpoint. FX-PROC-001 through the product is next.
+
+Revision 991 measures FX-PROC-001 through the product (ADR-094's second addendum). `tools/InterCat.ProcessProbe --product`
+records the fixture by `icat record` under the explore profile three times and reads each session back by `icat processes
+--json`: nothing was lost, dropped or undecodable; each child's instance, found by the PID and creation time the workload
+read, named the package and terminal session the application model and its token gave it, winget's its package and the
+workload's own child none; and every process the probe read by the application model once each capture's session ran,
+530, 531 and 535, named the package it read, 141, 142 and 142 of them packaged, none disagreeing, none of the sessions' instances
+unknown. The fixture keeps the first run's truth and its children's instances, the bench report the three runs' counts,
+never a PID or another package the machine has installed; a test holds them to the truth.

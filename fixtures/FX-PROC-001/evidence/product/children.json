@@ -1,0 +1,18 @@
+[
+  {
+    "role": "packaged",
+    "witness": "Created",
+    "lifecycleEpoch": 1,
+    "createFileTime": 134384503953176290,
+    "sessionId": 1,
+    "packageFullName": "Microsoft.DesktopAppInstaller_1.29.250.0_x64__8wekyb3d8bbwe"
+  },
+  {
+    "role": "unpackaged",
+    "witness": "Created",
+    "lifecycleEpoch": 1,
+    "createFileTime": 134384503954925806,
+    "sessionId": 1,
+    "packageFullName": ""
+  }
+]

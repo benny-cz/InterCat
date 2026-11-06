@@ -1,0 +1,156 @@
+{
+  "schema": "intercat.process-package-product.v1",
+  "scenario": "FX-PROC-001",
+  "question": "Whether each process instance a session recorded through the product by icat record under the explore profile names the package the application model gave its process - FX-PROC-001\u0027s packaged child its package, its unpackaged child none - and the terminal session its token gave it, and every process the probe read by the application model as the capture began the package it read, as icat processes reads the session back (ADR-094).",
+  "measuredUtc": "2026-11-06T14:54:25.6141366+00:00",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "profile": "explore",
+  "durationSeconds": 20,
+  "runs": [
+    {
+      "run": 1,
+      "health": {
+        "observedRecords": 25103,
+        "admittedRecords": 25103,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      },
+      "children": [
+        {
+          "role": "packaged",
+          "instancesFound": 1,
+          "witness": "Created",
+          "truthPackaged": true,
+          "packageSame": true,
+          "sessionSame": true
+        },
+        {
+          "role": "unpackaged",
+          "instancesFound": 1,
+          "witness": "Created",
+          "truthPackaged": false,
+          "packageSame": true,
+          "sessionSame": true
+        }
+      ],
+      "processesAsTheCaptureBegan": {
+        "read": 530,
+        "found": 530,
+        "packagedAgreeing": 141,
+        "unpackagedAgreeing": 389,
+        "disagreeing": 0,
+        "unknownInTheSession": 0,
+        "notInTheSession": 0,
+        "moreThanOneInstance": 0
+      },
+      "instances": {
+        "all": 578,
+        "packaged": 144,
+        "inNone": 434,
+        "unknown": 0,
+        "unknownWitnessedAtTheirExitOrActivityAlone": 0
+      }
+    },
+    {
+      "run": 2,
+      "health": {
+        "observedRecords": 13941,
+        "admittedRecords": 13941,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      },
+      "children": [
+        {
+          "role": "packaged",
+          "instancesFound": 1,
+          "witness": "Created",
+          "truthPackaged": true,
+          "packageSame": true,
+          "sessionSame": true
+        },
+        {
+          "role": "unpackaged",
+          "instancesFound": 1,
+          "witness": "Created",
+          "truthPackaged": false,
+          "packageSame": true,
+          "sessionSame": true
+        }
+      ],
+      "processesAsTheCaptureBegan": {
+        "read": 531,
+        "found": 531,
+        "packagedAgreeing": 142,
+        "unpackagedAgreeing": 389,
+        "disagreeing": 0,
+        "unknownInTheSession": 0,
+        "notInTheSession": 0,
+        "moreThanOneInstance": 0
+      },
+      "instances": {
+        "all": 554,
+        "packaged": 145,
+        "inNone": 409,
+        "unknown": 0,
+        "unknownWitnessedAtTheirExitOrActivityAlone": 0
+      }
+    },
+    {
+      "run": 3,
+      "health": {
+        "observedRecords": 14647,
+        "admittedRecords": 14647,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      },
+      "children": [
+        {
+          "role": "packaged",
+          "instancesFound": 1,
+          "witness": "Created",
+          "truthPackaged": true,
+          "packageSame": true,
+          "sessionSame": true
+        },
+        {
+          "role": "unpackaged",
+          "instancesFound": 1,
+          "witness": "Created",
+          "truthPackaged": false,
+          "packageSame": true,
+          "sessionSame": true
+        }
+      ],
+      "processesAsTheCaptureBegan": {
+        "read": 535,
+        "found": 535,
+        "packagedAgreeing": 142,
+        "unpackagedAgreeing": 393,
+        "disagreeing": 0,
+        "unknownInTheSession": 0,
+        "notInTheSession": 0,
+        "moreThanOneInstance": 0
+      },
+      "instances": {
+        "all": 588,
+        "packaged": 147,
+        "inNone": 441,
+        "unknown": 0,
+        "unknownWitnessedAtTheirExitOrActivityAlone": 0
+      }
+    }
+  ],
+  "notes": [
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once icat processes has read it back.",
+    "A run\u0027s health is the capture\u0027s own report: what its sources lost, what its queue dropped and what it could not decode.",
+    "A process the probe read is found in the session by its PID and creation time; one whose instance the session holds names its package or none, and one the session does not hold - begun and ended before the capture\u0027s process records ran, or the probe unable to read it - is counted apart, never guessed.",
+    "An instance witnessed only by its exit or its activity carries no start or rundown record, so its package is unknown, as R3 asks."
+  ]
+}

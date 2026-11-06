@@ -244,7 +244,7 @@ internal static partial class Measure
     }
 
     // Every running process's creation time and package, as the application model gives it; unreadable ones are left out.
-    private static unsafe Dictionary<int, (long Creation, string? Package)> Packages()
+    internal static unsafe Dictionary<int, (long Creation, string? Package)> Packages()
     {
         var packages = new Dictionary<int, (long, string?)>();
         foreach (Process process in Process.GetProcesses())
