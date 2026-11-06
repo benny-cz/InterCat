@@ -916,6 +916,7 @@ Revision 990 gives each process instance its package (ADR-094's addendum): the o
 Revision 991 measures FX-PROC-001 through the product (ADR-094's second addendum): three runs of icat record under the explore profile, nothing lost, each child's instance naming the package and session the application model and its token gave it, and every process the probe read as each capture began the package it read, none disagreeing or unknown.
 Revision 992 has the window's inspector state a process's terminal session and package beside its lineage (ADR-094's third addendum), each named, a package none where its record named none, and either not recorded where no record said.
 Revision 993 measures which services a process hosts (ADR-095, FX-SVC-001): Microsoft-Windows-Services, asked for its state, names none of the services the service control manager lists running, and a service started during a run only by its status change, so the manager's list, read as a capture starts and stops, is the source.
+Revision 994 gives the service inventory its contract and store dependency (ADR-095's addendum): `service-inventory-v1`, code 12, the running services at a capture's start or stop by name and host PID and creation time, carried by every later generation, never released or redacted; no capture writes one yet.
 
 ## Revisions, a paragraph each, in order
 
@@ -4525,3 +4526,13 @@ services running throughout, hosted by 116, 116 and 117 processes, was named, an
 run was named with its host only by its status change. So the manager's own list, read from user mode as a capture starts
 and stops, says which services a process hosts - the catalog's first API inventory, which no capture reads yet - and a
 service list stays metadata of its host.
+
+Revision 994 gives the service inventory ADR-095 chose its contract (its addendum). `contracts/service-inventory-v1.md` is
+the running services the service control manager lists at one moment of a capture - its start or its stop - each by its
+name and its host's PID and creation time, which a lifecycle record of the same instance carries, so a reader binds it to
+that instance alone and never by a PID; the read's start and end bound when each was running, as §18.5 asks of an inventory
+that is no atomic view of the machine. It is a store dependency of its own, `ServiceInventory` (code 12): a capture
+publishes its start's with its first generation and its stop's with its last, both with the one of a capture published
+once, every later generation and re-derivation carries both, retention never releases one, and a redacted package never
+carries one, its leak scan looking for their digests. A build before this one refuses a manifest naming one, as it
+refuses any kind it does not know. No capture writes one yet.

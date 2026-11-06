@@ -919,7 +919,8 @@ public static class RedactedSessionPackage
         // can be byte-identical to its source and so share its digest without disclosing anything, so it is not a needle.
         foreach (StoreDependency dependency in manifest.Dependencies.Where(dependency => dependency.Kind
             is StoreDependencyKind.Journal or StoreDependencyKind.DerivationPlan or StoreDependencyKind.CaptureFinalization
-                or StoreDependencyKind.ClockCalibration or StoreDependencyKind.CollectorIdentities))
+                or StoreDependencyKind.ClockCalibration or StoreDependencyKind.CollectorIdentities
+                or StoreDependencyKind.ServiceInventory))
         {
             identities.AddDigest(dependency.Digest, $"the digest of source file {dependency.Name}");
         }

@@ -128,13 +128,13 @@ public sealed partial class RedactedSessionPackageTests
         using var package = new PackageDirectory();
         RedactedSessionPackageResult created = RedactedSessionPackage.Create(source.Store, package.Path, Committed);
 
-        // The collectors' file's digest is a needle the package's leak scan looks for, in either case, beyond those a source
-        // naming none gives it.
+        // The collectors' file's digest and the service inventory's are needles the package's leak scan looks for, each in
+        // either case, beyond those a source naming neither gives it.
         using (var unnamed = new TemporarySession())
         using (var unnamedPackage = new PackageDirectory())
         {
-            PublishRichSource(unnamed.Store, collectors: false);
-            Assert.Equal(RedactedSessionPackage.Create(unnamed.Store, unnamedPackage.Path, Committed).IdentityNeedles + 2,
+            PublishRichSource(unnamed.Store, collectors: false, services: false);
+            Assert.Equal(RedactedSessionPackage.Create(unnamed.Store, unnamedPackage.Path, Committed).IdentityNeedles + 4,
                 created.IdentityNeedles);
         }
 
@@ -143,7 +143,7 @@ public sealed partial class RedactedSessionPackageTests
         StoreDependency[] evidence = [.. original.Dependencies.Where(dependency => dependency.Kind is StoreDependencyKind.Journal
             or StoreDependencyKind.Segment or StoreDependencyKind.Dictionary or StoreDependencyKind.Index
             or StoreDependencyKind.DerivationPlan or StoreDependencyKind.ClockCalibration
-            or StoreDependencyKind.CollectorIdentities)];
+            or StoreDependencyKind.CollectorIdentities or StoreDependencyKind.ServiceInventory)];
         Assert.NotEmpty(evidence);
 
         // The source's clock calibration - its wall-clock readings and its boot - is not the package's, nor are the PIDs
@@ -152,6 +152,10 @@ public sealed partial class RedactedSessionPackageTests
         Assert.DoesNotContain(manifest.Dependencies, dependency => dependency.Kind == StoreDependencyKind.ClockCalibration);
         Assert.Contains(evidence, dependency => dependency.Kind == StoreDependencyKind.CollectorIdentities);
         Assert.DoesNotContain(manifest.Dependencies, dependency => dependency.Kind == StoreDependencyKind.CollectorIdentities);
+
+        // Nor are the services that ran on its machine and their hosts' PIDs and creation times.
+        Assert.Contains(evidence, dependency => dependency.Kind == StoreDependencyKind.ServiceInventory);
+        Assert.DoesNotContain(manifest.Dependencies, dependency => dependency.Kind == StoreDependencyKind.ServiceInventory);
 
         // Not one of them is a dependency of the package, and no package file holds one's bytes - a package file may share
         // a conventional name, such as its own synthetic journal's, but never the content: the package is built from
@@ -745,7 +749,18 @@ public sealed partial class RedactedSessionPackageTests
         Processes = [new() { Role = CollectorRole.Recorder, ProcessId = 1200, CreatedUtc = Committed.AddTicks(-7) }],
     };
 
-    private static void PublishRichSource(SessionStore store, CoverageLedgerV1? coverage = null, bool collectors = true)
+    /// <summary>The rich source's services as its capture began: their names and hosts would describe its machine.</summary>
+    private static ServiceInventoryV1 Services() => new()
+    {
+        Contract = ServiceInventoryV1.ContractName,
+        CaptureId = Capture.Value,
+        Moment = ServiceInventoryMoment.Start,
+        ReadStartedUtc = Committed.AddSeconds(-30),
+        ReadEndedUtc = Committed.AddSeconds(-30).AddMilliseconds(3),
+        Services = [new() { Name = "ContosoAgent", ProcessId = 1200, HostCreatedUtc = Committed.AddTicks(-7) }],
+    };
+
+    private static void PublishRichSource(SessionStore store, CoverageLedgerV1? coverage = null, bool collectors = true, bool services = true)
     {
         ObservationRowV1 system = At(Lifecycle(0, ObservationKind.Inventory, 4, 1) with { ResourceName = "System" }, 0);
         ObservationRowV1 agent = At(Lifecycle(0, ObservationKind.Create, 1200, 2) with { ResourceName = SecretPath }, 10);
@@ -849,6 +864,7 @@ public sealed partial class RedactedSessionPackageTests
         ];
         Publish(store, rows, rowsPerSegment: 5, clock: SourceClock, fields: fields, coverage: coverage ?? Ledger(), calibration: Calibration(),
             collectors: collectors ? Collectors() : null,
+            services: services ? Services() : null,
             bodyForRow: _ => new BodyV1
             {
                 Classification = BodyClassificationV1.ApprovedMetadata,

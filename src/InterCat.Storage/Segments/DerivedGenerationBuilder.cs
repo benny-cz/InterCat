@@ -104,6 +104,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private bool finalizationStaged;
     private bool calibrationStaged;
     private bool collectorsStaged;
+    private readonly HashSet<ServiceInventoryMoment> serviceInventoriesStaged = [];
     private bool redactionPolicyStaged;
     private bool contentStaged;
     private bool indexesStaged;
@@ -366,6 +367,35 @@ public sealed class DerivedGenerationBuilder : IDisposable
 
     /// <summary>The published name of a generation's collector identities.</summary>
     public static string CollectorIdentitiesFileName(long generation) => $"collector-identities-{generation:D10}.json";
+
+    /// <summary>
+    /// Stages the services running at one moment of the capture, as the service control manager listed them
+    /// (`contracts/service-inventory-v1.md`): evidence about it, which the generations after this one carry unchanged. A
+    /// generation stages at most one of each moment: its start's goes with its first generation and its stop's with its
+    /// last, both with the one where the capture published once.
+    /// </summary>
+    public void StageServiceInventory(ServiceInventoryV1 inventory)
+    {
+        ArgumentNullException.ThrowIfNull(inventory);
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (completed || serviceInventoriesStaged.Contains(inventory.Moment))
+        {
+            throw new InvalidOperationException("A generation stages one service inventory of each moment at most, before publication.");
+        }
+
+        if (inventory.CaptureId != identity.CaptureId.Value)
+        {
+            throw new ArgumentException(
+                "A service inventory must name the capture this generation belongs to.", nameof(inventory));
+        }
+
+        Stage(ServiceInventoryV1.FileNameFor(inventory.Moment, generation), StoreDependencyKind.ServiceInventory, inventory.Encode());
+        _ = serviceInventoriesStaged.Add(inventory.Moment);
+    }
+
+    /// <summary>Retains an already-published service inventory while mirroring evidence; it is decoded and checked first.</summary>
+    public void StageServiceInventory(ReadOnlySpan<byte> bytes) =>
+        StageServiceInventory(ServiceInventoryV1.Decode(bytes));
 
     /// <summary>
     /// Stages the content a capture kept of this generation's journal records (`contracts/content-v1.md`, ADR-036):

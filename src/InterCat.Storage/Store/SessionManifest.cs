@@ -62,6 +62,13 @@ public enum StoreDependencyKind
     /// redacted package.
     /// </summary>
     CollectorIdentities = 11,
+
+    /// <summary>
+    /// The services running as a capture started, or as it stopped, as the service control manager lists them, each with
+    /// its host's PID and creation time (`contracts/service-inventory-v1.md`, ADR-095): evidence about the capture that no
+    /// journal holds, carried unchanged and never released. Never in a redacted package.
+    /// </summary>
+    ServiceInventory = 12,
 }
 
 /// <summary>

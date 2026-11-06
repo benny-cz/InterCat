@@ -1060,6 +1060,7 @@ internal static class TestSessions
         ClockCalibrationV1? calibration = null,
         bool finished = false,
         CollectorIdentitiesV1? collectors = null,
+        ServiceInventoryV1? services = null,
         byte[]? plan = null,
         ILiveIndexer? indexer = null)
     {
@@ -1125,6 +1126,11 @@ internal static class TestSessions
         if (collectors is not null)
         {
             builder.StageCollectorIdentities(collectors);
+        }
+
+        if (services is not null)
+        {
+            builder.StageServiceInventory(services);
         }
 
         // The normalizer plan the capture admitted its records under, as a recorder retains it beside its journal.

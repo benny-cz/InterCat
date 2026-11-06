@@ -49,3 +49,15 @@ Nothing was lost:
 
 - No service is said of a process yet, and no capability is claimed for one (P27).
 - A test holds FX-SVC-001's three runs to their truth and their bench report; eight alterations of them are caught.
+
+## Addendum: the service inventory's contract (revision 994)
+
+`contracts/service-inventory-v1.md` is the inventory a capture will keep: the running services the manager lists at one
+moment - its start or its stop - each by its name and its host's PID and creation time, the read's start and end bounding
+when each was running, as §18.5 asks of an inventory that is no atomic view of the machine. It is a store dependency of its
+own, `ServiceInventory` (code 12), named for its moment and the generation publishing it: a capture publishes its start's
+with its first generation and its stop's with its last - both with the one of a capture published once, at its stop - and
+every later generation and re-derivation carries both, a generation carrying at most one of each moment, the stop's no
+earlier than the start's. Retention never releases one, and a redacted package never carries one, its leak scan looking
+for their digests. A reader binds a service to the instance whose PID is the service's and whose creation time is the
+host's, never by a PID alone. No capture writes one yet; twelve mutations of the path are caught.
