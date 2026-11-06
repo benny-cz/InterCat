@@ -87,6 +87,10 @@ public sealed class LiveSessionFollower
 
     // Whether the capture's collectors are mirrored: they are published once, with its first generation.
     private bool mirroredCollectors;
+
+    // The moments whose service inventory is mirrored: its start's, published with its first generation, and its stop's, with
+    // its last.
+    private readonly HashSet<ServiceInventoryMoment> mirroredServices = [];
     private ulong journalIndex;
     private int smallUnits;
 
@@ -249,6 +253,11 @@ public sealed class LiveSessionFollower
         mirroredCalibration = lease.Manifest.Dependencies
             .SingleOrDefault(dependency => dependency.Kind == StoreDependencyKind.ClockCalibration)?.Digest;
         mirroredCollectors = lease.Manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.CollectorIdentities);
+        mirroredServices.Clear();
+        mirroredServices.UnionWith(lease.Manifest.Dependencies
+            .Where(static dependency => dependency.Kind == StoreDependencyKind.ServiceInventory)
+            .Select(static dependency => ServiceInventoryV1.MomentNamedBy(dependency.Name))
+            .OfType<ServiceInventoryMoment>());
         StoreDependency[] mirrored = Chunks(lease.Manifest);
 
         // The chunks a release of the derived session gave up are read from the evidence where it still holds them, checked
@@ -449,6 +458,14 @@ public sealed class LiveSessionFollower
             builder.StageCollectorIdentities(Read(evidence, collectors));
         }
 
+        // The services running as the capture started and as it stopped are each mirrored with the first chunk that has them.
+        StoreDependency[] services = [.. source.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.ServiceInventory
+            && ServiceInventoryV1.MomentNamedBy(dependency.Name) is { } moment && !mirroredServices.Contains(moment))];
+        foreach (StoreDependency inventory in services)
+        {
+            builder.StageServiceInventory(Read(evidence, inventory));
+        }
+
         // The content the capture kept of this chunk's records was published beside it, under its generation's number; it
         // is copied byte for byte beside the mirrored chunk, under this generation's, so the two stay paired (content-v1 §2).
         string pairedContent = ContentChunkV1.FileName(SegmentFormatV1.GenerationOfJournal(chunk.Name)
@@ -471,6 +488,7 @@ public sealed class LiveSessionFollower
         DerivedGenerationResult published = builder.CompleteMirror(records, DateTimeOffset.UtcNow, cancellationToken);
         mirroredCalibration = calibration?.Digest ?? mirroredCalibration;
         mirroredCollectors |= collectors is not null;
+        mirroredServices.UnionWith(services.Select(static inventory => ServiceInventoryV1.MomentNamedBy(inventory.Name)!.Value));
 
         // Only a published chunk moves the follow on: a refused one leaves it where it was.
         foreach (KeyValuePair<(uint Stream, uint Epoch), ulong> pair in reached)

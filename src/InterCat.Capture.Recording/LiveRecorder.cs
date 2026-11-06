@@ -78,6 +78,13 @@ public sealed record LiveCaptureResult
     /// <summary>The processes that collected the capture, published with its first generation; null when none were named.</summary>
     public CollectorIdentitiesV1? Collectors { get; init; }
 
+    /// <summary>
+    /// The services running as the capture started and as it stopped, the start's published with its first generation and
+    /// the stop's with its last (`contracts/service-inventory-v1.md`); none of a moment whose list was not asked for or
+    /// could not be read.
+    /// </summary>
+    public IReadOnlyList<ServiceInventoryV1> Services { get; init; } = [];
+
     /// <summary>How many of its oldest chunks the recording released once its follow had given them up (ADR-048).</summary>
     public int ReleasedChunks { get; init; }
 
@@ -155,6 +162,11 @@ public static class LiveRecorder
     /// with its first generation (`contracts/collector-identities-v1.md`), so a reader can label their own activity in it.
     /// Null records none.
     /// </param>
+    /// <param name="services">
+    /// Where to read the running services and their hosts once the capture's session runs and again as it stops
+    /// (`contracts/service-inventory-v1.md`, §18.5): the start's is published with its first generation and the stop's with
+    /// its last. A list that cannot be read is recorded as none, and the capture goes on. Null records none.
+    /// </param>
     public static async Task<LiveCaptureResult> RecordAsync(
         OwnedSessionPlan plan,
         IEtwSessionHost host,
@@ -173,6 +185,7 @@ public static class LiveRecorder
         IReadOnlyList<CollectorProcessV1>? collectors = null,
         Func<long>? releasableChunks = null,
         int? heldChunkLimit = null,
+        ServiceInventorySource? services = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -269,6 +282,10 @@ public static class LiveRecorder
         // The clock against the wall clock when the capture starts, and the boot it runs in; again when it stops.
         ClockCalibrationSampleV1? startSample = calibration?.Sample();
         (Guid? Token, long? Count) boot = calibration?.Boot() ?? default;
+
+        // The services running and their hosts, read once the session delivers, so a host started meanwhile is not missed
+        // (§18.5); again when it stops.
+        ServiceInventoryV1? startServices = services?.Take(ServiceInventoryMoment.Start, plan.Identity.CaptureId.Value);
         // A preview is kept only where a status request can read it, and on the capture's own clock.
         LivePreviewTally? preview = healthProbe is null ? null : new LivePreviewTally(clock.Descriptor.TicksPerSecond);
         using var quotaStop = new CancellationTokenSource();
@@ -299,6 +316,7 @@ public static class LiveRecorder
                     Samples = [startSample],
                 },
             collected,
+            startServices,
             releasableChunks,
             heldChunkLimit ?? MaximumHeldChunks);
 
@@ -326,6 +344,7 @@ public static class LiveRecorder
         CaptureStopResult stop;
         long journaled;
         ClockCalibrationSampleV1? stopSample = null;
+        ServiceInventoryV1? stopServices = null;
         long? stoppedAt = null;
         try
         {
@@ -350,6 +369,10 @@ public static class LiveRecorder
 
             // The same moment on the source clock, this machine's performance counter (EtwSourceClock), for the ledger.
             stoppedAt = stopSample?.NativeTicks ?? Stopwatch.GetTimestamp();
+
+            // The services running as it stops, read while its session still delivers, so a host that ended before is
+            // recorded ending (§18.5).
+            stopServices = services?.Take(ServiceInventoryMoment.Stop, plan.Identity.CaptureId.Value);
         }
         finally
         {
@@ -397,7 +420,7 @@ public static class LiveRecorder
                 WallClock = calibration.WallClock,
                 Samples = [startSample, stopSample],
             };
-        DerivedGenerationResult published = chunks.PublishLast(ledger, stop.ProvidersStopped, stop.CallbacksDrained, calibrated);
+        DerivedGenerationResult published = chunks.PublishLast(ledger, stop.ProvidersStopped, stop.CallbacksDrained, calibrated, stopServices);
         return new()
         {
             Start = start,
@@ -414,6 +437,7 @@ public static class LiveRecorder
             ContentLimitReached = chunks.ContentLimitReached,
             Calibration = calibrated,
             Collectors = collected,
+            Services = [.. new[] { startServices, stopServices }.OfType<ServiceInventoryV1>()],
             ReleasedChunks = chunks.ReleasedChunks,
             ReleaseProblem = chunks.ReleaseProblem,
             FollowStalled = chunks.FollowStalled,
@@ -467,6 +491,10 @@ public static class LiveRecorder
         // The processes collecting the capture, published with its first generation, whichever chunk that is
         // (collector-identities-v1 §1).
         private CollectorIdentitiesV1? collectors;
+
+        // The services running as the capture started, published with its first generation, whichever chunk that is
+        // (service-inventory-v1 §1).
+        private ServiceInventoryV1? startServices;
         private readonly Stopwatch sincePublished = Stopwatch.StartNew();
         private DerivedGenerationBuilder builder;
         private readonly long emptyChunkBytes;
@@ -504,6 +532,7 @@ public static class LiveRecorder
             LivePreviewTally? preview,
             ClockCalibrationV1? started,
             CollectorIdentitiesV1? collectors,
+            ServiceInventoryV1? startServices,
             Func<long>? releasableChunks,
             int heldChunkLimit)
         {
@@ -512,6 +541,7 @@ public static class LiveRecorder
             this.heldChunkLimit = heldChunkLimit;
             this.started = started;
             this.collectors = collectors;
+            this.startServices = startServices;
             this.preview = preview;
             this.plan = plan;
             this.store = store;
@@ -594,7 +624,8 @@ public static class LiveRecorder
             CoverageLedgerV1? ledger,
             bool providersStopped,
             bool callbacksDrained,
-            ClockCalibrationV1? calibration)
+            ClockCalibrationV1? calibration,
+            ServiceInventoryV1? stopServices)
         {
             if (ledger is not null)
             {
@@ -607,6 +638,14 @@ public static class LiveRecorder
             }
 
             StageCollectors();
+
+            // The stop's services go with the last generation, beside the start's where this is also the first.
+            StageStartServices();
+            if (stopServices is not null)
+            {
+                builder.StageServiceInventory(stopServices);
+            }
+
             StageContent();
             DateTimeOffset finalizedUtc = DateTimeOffset.UtcNow;
             builder.StageCaptureFinalization(new CaptureFinalizationV1
@@ -632,6 +671,16 @@ public static class LiveRecorder
             {
                 builder.StageCollectorIdentities(named);
                 collectors = null;
+            }
+        }
+
+        /// <summary>Stages the services running as the capture started in the first generation published, which every later one carries.</summary>
+        private void StageStartServices()
+        {
+            if (startServices is { } listed)
+            {
+                builder.StageServiceInventory(listed);
+                startServices = null;
             }
         }
 
@@ -908,6 +957,7 @@ public static class LiveRecorder
             }
 
             StageCollectors();
+            StageStartServices();
             DerivedGenerationResult published = builder.Complete(DateTimeOffset.UtcNow, CancellationToken.None);
             builder.Dispose();
             publishedJournalBytes = checked(publishedJournalBytes + published.JournalBytes);

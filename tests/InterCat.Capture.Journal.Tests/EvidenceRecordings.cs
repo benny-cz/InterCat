@@ -50,7 +50,8 @@ internal static class EvidenceRecordings
         ClockCalibrationSource? calibration = null,
         IReadOnlyList<CollectorProcessV1>? collectors = null,
         IReadOnlyList<int>? bursts = null,
-        long qpcStep = 1)
+        long qpcStep = 1,
+        ServiceInventorySource? services = null)
     {
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "live-tests");
         var host = new ScriptedHost { FailLossRead = failLossRead };
@@ -90,7 +91,8 @@ internal static class EvidenceRecordings
             publishEvery: TimeSpan.FromMilliseconds(100),
             output: LiveRecordingOutput.EvidenceOnly,
             calibration: calibration,
-            collectors: collectors);
+            collectors: collectors,
+            services: services);
     }
 
     /// <summary>

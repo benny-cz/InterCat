@@ -61,3 +61,15 @@ every later generation and re-derivation carries both, a generation carrying at 
 earlier than the start's. Retention never releases one, and a redacted package never carries one, its leak scan looking
 for their digests. A reader binds a service to the instance whose PID is the service's and whose creation time is the
 host's, never by a PID alone. No capture writes one yet; twelve mutations of the path are caught.
+
+## Second addendum: a capture reads its services (revision 995)
+
+Every live capture - `icat record`'s and the broker's - reads the service control manager's list of the running services
+and the process hosting each once its session delivers, so a host started meanwhile is not missed, and again as it stops,
+while its session still delivers (§18.5). The start's is published with its first generation and the stop's with its last,
+both with the one of a capture published once, and a follower mirrors each once. Each host's creation time is read once, as
+the operating system keeps it; a list the manager will not give, or no inventory could hold, is recorded as none and the
+capture goes on, never with an empty list in its place (R3). On this machine a 10-second capture under the explore profile
+read 130 services in 119 hosts at its start and at its stop, in 29 and 16 ms, every host with its creation time, and each
+host was exactly one of the session's process instances by its PID and the creation time its process start or rundown
+carried. Seven mutations of the path are caught.

@@ -1,7 +1,8 @@
 # service-inventory-v1
 
-Status: revision 994 (ADR-095); no capture writes one yet
-Owner: `InterCat.Storage` (`ServiceInventoryV1`)
+Status: revision 994 (ADR-095); every live capture writes them since revision 995
+Owner: `InterCat.Storage` (`ServiceInventoryV1`); written by `InterCat.Capture.Recording` (`LiveRecorder`), read from the
+service control manager by `InterCat.Capture.Windows` (`RunningServices`)
 
 The services running as a capture started, or as it stopped, as the service control manager lists them, each with the
 process hosting it (ADR-095). Microsoft-Windows-Services names no running service as a capture starts (FX-SVC-001), so

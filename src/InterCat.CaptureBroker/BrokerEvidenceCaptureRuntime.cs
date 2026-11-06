@@ -249,6 +249,7 @@ public sealed class BrokerEvidenceCaptureRuntime
                     healthProbe: probe,
                     calibration: ClockCalibrationSource.Local,
                     collectors: CollectorProcesses.ForBroker(clientProcessId),
+                    services: ServiceInventorySource.Local,
                     releasableChunks: capture.ReleasesFollowed
                         ? () => followReleased.GetValueOrDefault(ownership.CaptureId)
                         : null,

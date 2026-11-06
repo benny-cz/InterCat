@@ -67,6 +67,9 @@ public sealed record LiveRecordingResult
 
     /// <summary>The processes that collected the capture, published with its first generation; null when none were named.</summary>
     public CollectorIdentitiesV1? Collectors { get; init; }
+
+    /// <summary>The services running as the capture started and as it stopped, each published; none of a moment not read.</summary>
+    public IReadOnlyList<ServiceInventoryV1> Services { get; init; } = [];
 }
 
 /// <summary>
@@ -99,6 +102,10 @@ public static class LiveSessionRecorder
     /// The processes collecting the capture, published with its first generation (`contracts/collector-identities-v1.md`);
     /// null records none.
     /// </param>
+    /// <param name="services">
+    /// Where to read the running services and their hosts as the capture starts and stops, the start's published with its
+    /// first generation and the stop's with its last (`contracts/service-inventory-v1.md`); null records none.
+    /// </param>
     public static async Task<LiveRecordingResult> RecordAsync(
         OwnedSessionPlan plan,
         IEtwSessionHost host,
@@ -111,6 +118,7 @@ public static class LiveSessionRecorder
         LiveRecordingOutput output = LiveRecordingOutput.Session,
         ClockCalibrationSource? calibration = null,
         IReadOnlyList<CollectorProcessV1>? collectors = null,
+        ServiceInventorySource? services = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -139,6 +147,7 @@ public static class LiveSessionRecorder
                 : null,
             calibration: calibration,
             collectors: collectors,
+            services: services,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return new()
         {
@@ -155,6 +164,7 @@ public static class LiveSessionRecorder
             ContentLimitReached = captured.ContentLimitReached,
             Calibration = captured.Calibration,
             Collectors = captured.Collectors,
+            Services = captured.Services,
         };
     }
 

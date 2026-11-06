@@ -78,6 +78,17 @@ public sealed record ServiceInventoryV1
             : throw new ArgumentOutOfRangeException(nameof(moment), moment, "An inventory is of a capture's start or its stop.");
     }
 
+    /// <summary>The moment an inventory's published name says it is of; null for a name of another form.</summary>
+    public static ServiceInventoryMoment? MomentNamedBy(string fileName)
+    {
+        ArgumentNullException.ThrowIfNull(fileName);
+        return fileName.StartsWith(FilePrefix + MomentName(ServiceInventoryMoment.Start) + "-", StringComparison.Ordinal)
+                ? ServiceInventoryMoment.Start
+            : fileName.StartsWith(FilePrefix + MomentName(ServiceInventoryMoment.Stop) + "-", StringComparison.Ordinal)
+                ? ServiceInventoryMoment.Stop
+            : null;
+    }
+
     public byte[] Encode()
     {
         Validate();

@@ -262,6 +262,7 @@ internal static class RecordCommand
             output: evidenceOnly ? LiveRecordingOutput.EvidenceOnly : LiveRecordingOutput.Session,
             calibration: ClockCalibrationSource.Local,
             collectors: [CollectorProcesses.Current(CollectorRole.Recorder)],
+            services: ServiceInventorySource.Local,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!result.Start.Started)
         {

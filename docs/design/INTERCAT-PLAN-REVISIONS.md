@@ -917,6 +917,7 @@ Revision 991 measures FX-PROC-001 through the product (ADR-094's second addendum
 Revision 992 has the window's inspector state a process's terminal session and package beside its lineage (ADR-094's third addendum), each named, a package none where its record named none, and either not recorded where no record said.
 Revision 993 measures which services a process hosts (ADR-095, FX-SVC-001): Microsoft-Windows-Services, asked for its state, names none of the services the service control manager lists running, and a service started during a run only by its status change, so the manager's list, read as a capture starts and stops, is the source.
 Revision 994 gives the service inventory its contract and store dependency (ADR-095's addendum): `service-inventory-v1`, code 12, the running services at a capture's start or stop by name and host PID and creation time, carried by every later generation, never released or redacted; no capture writes one yet.
+Revision 995 has every live capture read the running services and their hosts (ADR-095's second addendum): once its session delivers and again as it stops, each published, a list it cannot read recorded as none; every host was one process instance by PID and creation time.
 
 ## Revisions, a paragraph each, in order
 
@@ -4536,3 +4537,14 @@ publishes its start's with its first generation and its stop's with its last, bo
 once, every later generation and re-derivation carries both, retention never releases one, and a redacted package never
 carries one, its leak scan looking for their digests. A build before this one refuses a manifest naming one, as it
 refuses any kind it does not know. No capture writes one yet.
+
+Revision 995 has every live capture keep the service inventory revision 994 defined (ADR-095's second addendum).
+`InterCat.Capture.Windows` reads the service control manager's own list of the running Win32 services and the process
+hosting each, and each host's creation time once, as the operating system keeps it; `icat record` and the broker read it
+once the capture's session delivers and again as it stops, while it still delivers (§18.5), the start's published with
+the first generation and the stop's with the last, both with the one of a capture published once, and a follower mirrors
+each once. A list the manager will not give, or no inventory could hold, is recorded as none - never an empty list, which
+would say no service ran (R3) - and the capture goes on. On this machine a 10-second capture under the explore profile read
+130 services in 119 hosts at its start and at its stop, in 29 and 16 ms, and every host was exactly one of the session's
+process instances by its PID and the creation time its process start or rundown carried: the binding the next revision
+makes.
