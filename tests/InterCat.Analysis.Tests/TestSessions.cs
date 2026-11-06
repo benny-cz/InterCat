@@ -1030,6 +1030,59 @@ internal static class TestSessions
             });
     }
 
+    /// <summary>
+    /// Six processes and the services their capture listed running as it started (ADR-096): svchost.exe, PID 1820, hosting
+    /// Dnscache and nsi, sends 100 B to svchost.exe, PID 2400, which hosts W32Time, receives them and sends 50 B to a host no
+    /// record holds; svchost.exe, PID 2500, hosting none listed, sends 7 B; app.exe, PID 3000, 30 B; helper.exe, PID 3100,
+    /// 9 B, a listed service whose host's creation time was not read naming its PID; PID 3200, whose path no record names,
+    /// 4 B; and a send of 5 B names no owner. A service listed in an earlier holder of app.exe's PID, created a day before
+    /// it, is no service of app.exe's.
+    /// </summary>
+    public static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields, ServiceInventoryV1[] Inventories) ServiceContainers()
+    {
+        DateTimeOffset created = new(2026, 11, 6, 8, 0, 0, TimeSpan.Zero);
+        ObservationRowV1[] hosts =
+        [
+            Lifecycle(1, ObservationKind.Inventory, 1820, 1) with { ResourceName = @"C:\Windows\System32\svchost.exe" },
+            Lifecycle(2, ObservationKind.Inventory, 2400, 2) with { ResourceName = @"C:\Windows\System32\svchost.exe" },
+            Lifecycle(3, ObservationKind.Create, 2500, 3) with { ResourceName = @"C:\Windows\System32\svchost.exe" },
+            Lifecycle(4, ObservationKind.Create, 3000, 4) with { ResourceName = @"C:\Apps\app.exe" },
+            Lifecycle(5, ObservationKind.Create, 3100, 5) with { ResourceName = @"C:\Apps\helper.exe" },
+            Lifecycle(6, ObservationKind.Create, 3200, 6),
+        ];
+        return (
+            [
+                .. hosts,
+                Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 100, 1820, 7).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+                Transfer(21, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 2400, 8).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+                Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 50, 2400, 9).Between("127.0.0.1:50001", "10.0.0.5:443"),
+                Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 7, 2500, 10).Between("127.0.0.1:50002", "10.0.0.6:443"),
+                Transfer(41, ObservationKind.Send, AccountingSide.SendSide, 30, 3000, 11).Between("127.0.0.1:50003", "10.0.0.7:443"),
+                Transfer(42, ObservationKind.Send, AccountingSide.SendSide, 9, 3100, 12).Between("127.0.0.1:50004", "10.0.0.8:443"),
+                Transfer(43, ObservationKind.Send, AccountingSide.SendSide, 4, 3200, 13).Between("127.0.0.1:50005", "10.0.0.9:443"),
+                Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 5, null, 14),
+            ],
+            [.. hosts.Select((row, at) => Field(row, SourceField.ProcessCreateTime, created.AddSeconds(at).ToFileTime()))],
+            [
+                new()
+                {
+                    Contract = ServiceInventoryV1.ContractName,
+                    CaptureId = Capture.Value,
+                    Moment = ServiceInventoryMoment.Start,
+                    ReadStartedUtc = created.AddHours(1),
+                    ReadEndedUtc = created.AddHours(1).AddMilliseconds(20),
+                    Services =
+                    [
+                        new() { Name = "Dnscache", ProcessId = 1820, HostCreatedUtc = created },
+                        new() { Name = "nsi", ProcessId = 1820, HostCreatedUtc = created },
+                        new() { Name = "W32Time", ProcessId = 2400, HostCreatedUtc = created.AddSeconds(1) },
+                        new() { Name = "Shielded", ProcessId = 3100 },
+                        new() { Name = "Departed", ProcessId = 3000, HostCreatedUtc = created.AddDays(-1) },
+                    ],
+                },
+            ]);
+    }
+
     /// <summary>When <see cref="ServiceHosts"/>'s first host was created.</summary>
     public static readonly DateTimeOffset ServiceHostCreated = new DateTimeOffset(2026, 11, 6, 8, 0, 0, TimeSpan.Zero).AddTicks(7);
 

@@ -30,8 +30,8 @@ public sealed class RankingQueryTests
     public void AnUnreadableSessionNamesNoQuery()
     {
         using var session = new TemporarySession();
-        (List<ObservationRowV1> rows, List<SourceFieldRowV1> fields) = RandomMachine(new Random(7));
-        Publish(session.Store, rows, rowsPerSegment: 20, fields: fields);
+        (List<ObservationRowV1> rows, List<SourceFieldRowV1> fields, ServiceInventoryV1[] services) = RandomMachine(new Random(7));
+        Publish(session.Store, rows, rowsPerSegment: 20, fields: fields, services: services);
         SessionExportResult export = SessionExport.Build(session.Store,
             new([], null, false, ExportFormat.Json, RankBy: RankingMetric.BytesSent), Exported);
         Assert.NotNull(export.Context.Query!.Identity);
@@ -51,9 +51,9 @@ public sealed class RankingQueryTests
         for (int seed = 0; seed < 12; seed++)
         {
             var random = new Random(seed);
-            (List<ObservationRowV1> rows, List<SourceFieldRowV1> fields) = RandomMachine(random);
+            (List<ObservationRowV1> rows, List<SourceFieldRowV1> fields, ServiceInventoryV1[] services) = RandomMachine(random);
             using var session = new TemporarySession();
-            Publish(session.Store, rows, rowsPerSegment: random.Next(5, 60), fields: fields);
+            Publish(session.Store, rows, rowsPerSegment: random.Next(5, 60), fields: fields, services: services);
             long end = rows.Max(row => row.NativeTicks) + 1;
             long from = random.Next(0, (int)end);
             var presentation = new TimeRange(from, from + random.Next(1, (int)end + 1));
@@ -82,8 +82,9 @@ public sealed class RankingQueryTests
                         {
                             string key = row.GetProperty("key").GetString()!;
                             keys.Add(key);
-                            // A process with no witnessed executable, or naming no session, is one row; the answer counts
-                            // its records apart from its groups, as unattributed for that reason.
+                            // A process with no witnessed executable, naming no session, or a listed service may have run
+                            // in, is one row; the answer counts its records apart from its groups, as unattributed for that
+                            // reason.
                             MetricGroup? group = answer.Groups.Concat(answer.Unattributed).SingleOrDefault(candidate => Names(candidate, key));
                             (long?, long, long) metric = group is null
                                 ? (null, 0, 0)
@@ -103,8 +104,9 @@ public sealed class RankingQueryTests
                         // And every group the answer counts anything in is a row: none of them is left out of the export.
                         foreach (MetricGroup group in answer.Groups.Concat(answer.Unattributed).Where(group =>
                             group.KnownContributions + group.UnknownContributions > 0
-                            && (group.Kind is MetricGroupKind.Executable or MetricGroupKind.UserSession
-                                || group.Reason is ProcessBindingReason.ExecutableUnknown or ProcessBindingReason.SessionUnknown)))
+                            && (group.Kind is MetricGroupKind.Executable or MetricGroupKind.UserSession or MetricGroupKind.ServiceContainer
+                                || group.Reason is ProcessBindingReason.ExecutableUnknown or ProcessBindingReason.SessionUnknown
+                                    or ProcessBindingReason.ServiceHostUnknown)))
                         {
                             Assert.Contains(keys, key => Names(group, key));
                         }
@@ -118,8 +120,8 @@ public sealed class RankingQueryTests
     public void ARankedExportNamesItsManifestAndQuery()
     {
         using var session = new TemporarySession();
-        (List<ObservationRowV1> rows, List<SourceFieldRowV1> fields) = RandomMachine(new Random(3));
-        Publish(session.Store, rows, fields: fields);
+        (List<ObservationRowV1> rows, List<SourceFieldRowV1> fields, ServiceInventoryV1[] services) = RandomMachine(new Random(3));
+        Publish(session.Store, rows, fields: fields, services: services);
         SessionManifestV1 manifest = session.Store.Current!;
         var interval = new TimeRange(20, 400);
 
@@ -175,8 +177,8 @@ public sealed class RankingQueryTests
     public void RowsNoRequestAnswersSayWhy()
     {
         using var session = new TemporarySession();
-        (List<ObservationRowV1> rows, List<SourceFieldRowV1> fields) = RandomMachine(new Random(5));
-        Publish(session.Store, rows, fields: fields);
+        (List<ObservationRowV1> rows, List<SourceFieldRowV1> fields, ServiceInventoryV1[] services) = RandomMachine(new Random(5));
+        Publish(session.Store, rows, fields: fields, services: services);
         string digest = session.Store.Current!.Digest;
 
         foreach ((RankingMetric ranking, string says) in new[]
@@ -243,8 +245,8 @@ public sealed class RankingQueryTests
     public void RowsWhoseSessionCannotBeReadNameNoQuery()
     {
         using var session = new TemporarySession();
-        (List<ObservationRowV1> rows, List<SourceFieldRowV1> fields) = RandomMachine(new Random(11));
-        Publish(session.Store, rows, fields: fields);
+        (List<ObservationRowV1> rows, List<SourceFieldRowV1> fields, ServiceInventoryV1[] services) = RandomMachine(new Random(11));
+        Publish(session.Store, rows, fields: fields, services: services);
         ExportContext machine = SessionExport.Build(session.Store,
             new([], null, false, ExportFormat.Json, RankBy: RankingMetric.BytesSent), Exported).Context;
         Assert.NotNull(machine.Query!.Identity);
@@ -296,6 +298,9 @@ public sealed class RankingQueryTests
             RankingQuery.Command(peers));
         Assert.Equal("icat metric <directory> --metric endpoint-activity-bytes --byte-domain transport-observed --group-by executable",
             RankingQuery.Command(RankingQuery.Request(RankingMetric.EndpointBytes, LaneGrouping.Executable, null, EvidencePolicy.IncludeCorrelated)!));
+        MetricRequest containers = RankingQuery.Request(RankingMetric.ActivePeers, LaneGrouping.ServiceContainer, null, EvidencePolicy.IncludeCorrelated)!;
+        Assert.Null(containers.Check());
+        Assert.Equal("icat metric <directory> --metric active-peers --group-by service-container", RankingQuery.Command(containers));
         Assert.Equal("icat metric <directory> --basis logical-operations --metric errors --group-by executable --evidence-policy direct-only",
             RankingQuery.Command(RankingQuery.Request(RankingMetric.RpcErrors, LaneGrouping.Executable, null, EvidencePolicy.DirectOnly)!));
         Assert.Equal("icat metric <directory> --metric observations --group-by process",
@@ -319,10 +324,15 @@ public sealed class RankingQueryTests
     /// <summary>Whether a group of an answer is the one a machine rung's row of this key shows.</summary>
     private static bool Names(MetricGroup group, string key) => group.Kind switch
     {
-        MetricGroupKind.Executable => key == "executable:" + group.Executable!.ToUpperInvariant(),
+        MetricGroupKind.Executable => key == "executable:" + group.Executable!.ToUpperInvariant()
+            || key == WorkspaceGrouping.ContainerExecutableKey("executable:" + group.Executable!.ToUpperInvariant()),
         MetricGroupKind.UserSession => key == WorkspaceGrouping.SessionKey(group.TerminalSession),
+        MetricGroupKind.ServiceContainer => key == WorkspaceGrouping.ContainerKey(group.Process!.Id),
         MetricGroupKind.Unattributed => (group.Reason, key) is (ProcessBindingReason.ExecutableUnknown, ProcessGroup.UnwitnessedExecutableKey)
-            or (ProcessBindingReason.SessionUnknown, WorkspaceGrouping.UnrecordedSessionKey),
+            or (ProcessBindingReason.SessionUnknown, WorkspaceGrouping.UnrecordedSessionKey)
+            or (ProcessBindingReason.ServiceHostUnknown, WorkspaceGrouping.ServiceHostUnknownKey)
+            || (group.Reason == ProcessBindingReason.ExecutableUnknown
+                && key == WorkspaceGrouping.ContainerExecutableKey(ProcessGroup.UnwitnessedExecutableKey)),
         _ => false,
     };
 
@@ -345,10 +355,13 @@ public sealed class RankingQueryTests
     /// <summary>
     /// A random machine: two instances of one program in different terminal sessions, a service in session 0, a process
     /// whose executable was never witnessed and one naming no session, a PID that is sometimes reused; TCP exchanges among
-    /// them, some seen at one end, some unmeasured or owned by no process; and RPC calls between them, some unpaired.
+    /// them, some seen at one end, some unmeasured or owned by no process; RPC calls between them, some unpaired; and the
+    /// services its capture listed as it started - svc.exe hosting two, server.exe and the first client.exe one each at
+    /// times, and at times one whose host's creation time was not read, naming tool.exe's PID (ADR-096).
     /// </summary>
-    private static (List<ObservationRowV1> Rows, List<SourceFieldRowV1> Fields) RandomMachine(Random random)
+    private static (List<ObservationRowV1> Rows, List<SourceFieldRowV1> Fields, ServiceInventoryV1[] Services) RandomMachine(Random random)
     {
+        DateTimeOffset created = new(2026, 11, 6, 8, 0, 0, TimeSpan.Zero);
         (int Pid, string? Image, long? Session)[] processes =
         [
             (100, @"C:\Apps\client.exe", 1), (101, @"C:\Apps\client.exe", 2), (200, @"C:\Apps\server.exe", 1),
@@ -362,6 +375,7 @@ public sealed class RankingQueryTests
             ObservationRowV1 create = Lifecycle(0, ObservationKind.Create, pid, ordinal++);
             create = image is null ? create : create with { ResourceName = image };
             rows.Add(create);
+            fields.Add(Field(create, SourceField.ProcessCreateTime, created.AddSeconds(pid).ToFileTime()));
             if (terminal is { } named) fields.Add(Field(create, SourceField.ProcessSessionId, named));
         }
 
@@ -410,9 +424,30 @@ public sealed class RankingQueryTests
                 ordinal++, served, status: status));
         }
 
+        var listed = new List<InventoriedServiceV1>
+        {
+            new() { Name = "SvcA", ProcessId = 300, HostCreatedUtc = created.AddSeconds(300) },
+            new() { Name = "SvcB", ProcessId = 300, HostCreatedUtc = created.AddSeconds(300) },
+        };
+        if (random.Next(2) == 0) listed.Add(new() { Name = "Serving", ProcessId = 200, HostCreatedUtc = created.AddSeconds(200) });
+        if (random.Next(2) == 0) listed.Add(new() { Name = "Client", ProcessId = 100, HostCreatedUtc = created.AddSeconds(100) });
+        if (random.Next(2) == 0) listed.Add(new() { Name = "Shielded", ProcessId = 500 });
+        ServiceInventoryV1[] services =
+        [
+            new()
+            {
+                Contract = ServiceInventoryV1.ContractName,
+                CaptureId = Capture.Value,
+                Moment = ServiceInventoryMoment.Start,
+                ReadStartedUtc = created.AddHours(1),
+                ReadEndedUtc = created.AddHours(1).AddMilliseconds(20),
+                Services = listed,
+            },
+        ];
+
         return ([.. rows
             .OrderBy(row => row.NativeTicks)
             .ThenBy(row => row.RawRecordOrdinal)
-            .Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })], fields);
+            .Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })], fields, services);
     }
 }

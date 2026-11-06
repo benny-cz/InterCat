@@ -157,6 +157,7 @@ public static class SessionCallRanking
         // calls are paired over every segment once per generation, since a call's request and response can lie apart.
         var generation = new GenerationSegments(store, manifest, clock);
         ProcessInstanceIndex processes = generation.Processes(cancellationToken);
+        ServiceMatch services = ServiceBinding.Match(processes.Instances, ServiceInventoryV1.Read(store.Root, manifest));
         TimeRange? native = interval is { } presentation ? RankingScope.NativeInterval(clock, presentation) : null;
         MechanismCoverage coverage = interval is not null && native is null
             ? new(Mechanism.Rpc, CoverageState.UnknownCoverage, "no source reading falls in this interval")
@@ -232,7 +233,7 @@ public static class SessionCallRanking
 
             foreach (LaneGrouping grouping in WorkspaceGrouping.All)
             {
-                string group = WorkspaceGrouping.KeyOf(processes.Instances[instance], grouping);
+                string group = WorkspaceGrouping.KeyOf(processes.Instances[instance], grouping, services);
                 AddTo(groupMade, group, ownMade);
                 AddTo(groupServed, group, ownServed);
             }

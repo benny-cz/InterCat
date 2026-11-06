@@ -32,6 +32,12 @@ public sealed record ProcessGroup(
 
     /// <summary>The group's distinct peers over the ranked scope, its members' together, when a peer ranking read them.</summary>
     public PeerCount? Peers { get; init; }
+
+    /// <summary>
+    /// For a service container's group, the services its one process hosted as its capture's lists name them (ADR-096); null
+    /// for every other group, an executable's processes hosting none among them.
+    /// </summary>
+    public IReadOnlyList<HostedService>? Services { get; init; }
 }
 
 public sealed record ProcessNode(
@@ -161,6 +167,13 @@ public sealed record ProcessNode(
     /// (`service-binding-v1`): none where it hosted none of those read, and null where the capture read none (R3).
     /// </summary>
     public IReadOnlyList<HostedService>? Services { get; init; }
+
+    /// <summary>
+    /// Whether a service its capture listed may have run in it, though no creation time tells - a service bound to no
+    /// instance names its PID, and the service's host's creation time, or its own, was not read - so a grouping by service
+    /// container places it in no container and in no executable's group (ADR-096). False for a host of services.
+    /// </summary>
+    public bool MayHaveHostedService { get; init; }
 
     /// <summary>The records <see cref="Activity"/> counts.</summary>
     public long Records => Activity.Sum(entry => entry.Records);

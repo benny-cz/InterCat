@@ -268,6 +268,7 @@ public static class SessionOverviewProjector
             TerminalSession = instance.SessionId,
             Package = instance.PackageFullName,
             Services = services.Of(instance.Id),
+            MayHaveHostedService = services.ContainerOf(instance.Id) is null && services.MayHaveHosted(instance),
             Parent = instance.Parent,
             ParentBinding = instance.ParentBinding,
             Collector = collectors.RoleOf(instance.Id),

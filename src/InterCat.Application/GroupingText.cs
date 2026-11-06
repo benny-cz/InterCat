@@ -17,6 +17,12 @@ public static class GroupingText
     /// </summary>
     public const string NoPackage = "In no package";
 
+    /// <summary>
+    /// Grouped by service container, the processes a service the capture listed may have run in, where no creation time
+    /// tells - together, never in a container guessed by PID (ADR-096).
+    /// </summary>
+    public const string ServiceHostNotKnown = "Services hosted not known";
+
     /// <summary>A terminal session's group: the processes whose lifecycle records name it.</summary>
     public static string Session(uint session) => string.Create(CultureInfo.InvariantCulture, $"Terminal session {session}");
 

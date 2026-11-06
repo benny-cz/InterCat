@@ -84,4 +84,67 @@ public sealed class WorkspaceGroupingTests
         Assert.Equal([LaneGrouping.Executable], WorkspaceGrouping.Offered(projected));
         Assert.Equal([LaneGrouping.Executable], WorkspaceGrouping.Offered(SyntheticWorkspace.Create()));
     }
+
+    [Fact(DisplayName = "§6.3: regrouped by service container, each host of the services listed is a row of its own named by its services, every other process its executable's row, those a listed service may have run in one row apart, under keys the rankings read, with the same total")]
+    public void RegroupsByServiceContainer()
+    {
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields, ServiceInventoryV1[] inventories) = ServiceContainers();
+        using var session = new TemporarySession();
+        Publish(session.Store, rows, fields: fields, services: inventories);
+        WorkspaceSnapshot projected = OverviewWorkspace.From(SessionOverviewProjector.Project(session.Store));
+        Assert.Equal([LaneGrouping.Executable, LaneGrouping.ServiceContainer], WorkspaceGrouping.Offered(projected));
+
+        // The two hosts of services, named as icat metric names them; then the executables of the processes hosting none,
+        // svchost.exe's other process among them; then helper.exe, which a listed service may have run in.
+        WorkspaceSnapshot regrouped = WorkspaceGrouping.Regroup(projected, LaneGrouping.ServiceContainer);
+        Assert.Equal(LaneGrouping.ServiceContainer, WorkspaceGrouping.Of(regrouped));
+        ProcessNode Process(int pid) => regrouped.Processes.Single(process => process.ProcessId == pid);
+        Assert.Equal(
+            [
+                (WorkspaceGrouping.ContainerKey(Process(1820).Id), "PID 1820 svchost.exe hosting Dnscache, nsi", "Dnscache,nsi"),
+                (WorkspaceGrouping.ContainerKey(Process(2400).Id), "PID 2400 svchost.exe hosting W32Time", "W32Time"),
+            ],
+            regrouped.Groups.Where(group => group.Services is not null)
+                .Select(group => (group.Key, group.Name, string.Join(',', group.Services!.Select(service => service.Name)))));
+        Assert.All(regrouped.Groups, group => Assert.Equal(LaneGrouping.ServiceContainer, group.Kind));
+        Assert.Equal(
+            [
+                (1820, WorkspaceGrouping.ContainerKey(Process(1820).Id)),
+                (2400, WorkspaceGrouping.ContainerKey(Process(2400).Id)),
+                (2500, WorkspaceGrouping.ContainerExecutableKey(projected.Processes.Single(process => process.ProcessId == 2500).GroupKey)),
+                (3000, WorkspaceGrouping.ContainerExecutableKey(projected.Processes.Single(process => process.ProcessId == 3000).GroupKey)),
+                (3100, WorkspaceGrouping.ServiceHostUnknownKey),
+                (3200, WorkspaceGrouping.ContainerExecutableKey(ProcessGroup.UnwitnessedExecutableKey)),
+            ],
+            regrouped.Processes.OrderBy(process => process.ProcessId).Select(process => (process.ProcessId, process.GroupKey)));
+        Assert.Equal(GroupingText.ServiceHostNotKnown, regrouped.Groups.Single(group => group.Key == WorkspaceGrouping.ServiceHostUnknownKey).Name);
+        Assert.Equal(
+            projected.Groups.Single(group => group.Key == Process(2500).GroupKey.Replace("container|", string.Empty, StringComparison.Ordinal)).Name,
+            regrouped.Groups.Single(group => group.Key == Process(2500).GroupKey).Name);
+        Assert.Equal(projected.Edges, regrouped.Edges);
+
+        // The machine rung's rows are the groups, and they total what the executables total.
+        LadderView byExecutable = LadderProjection.Project(projected, SyntheticWorkspace.Root(projected));
+        LadderView byContainer = LadderProjection.Project(regrouped, SyntheticWorkspace.Root(regrouped));
+        Assert.Equal(byExecutable.ObservationCount, byContainer.ObservationCount);
+        Assert.Equal(regrouped.Groups.Count, byContainer.Rows.Count);
+        Assert.Equal("1 process instance", byContainer.Rows.Single(row => row.Key == WorkspaceGrouping.ContainerKey(Process(1820).Id)).Detail);
+
+        // The peer ranking keys its groups as the regrouped rows are keyed: each host's peer is the other host, and the
+        // processes of svchost.exe that host none are not its hosts' group.
+        SessionPeerMeasures peers = SessionPeerRanking.Measure(session.Store, null);
+        Assert.Equal(1L, peers.ByGroup[WorkspaceGrouping.ContainerKey(Process(1820).Id)].Peers);
+        Assert.Equal(1L, peers.ByGroup[WorkspaceGrouping.ContainerKey(Process(2400).Id)].Peers);
+        WorkspaceSnapshot measured = OverviewWorkspace.WithPeers(regrouped, peers);
+        Assert.Equal(1L, measured.Groups.Single(group => group.Key == WorkspaceGrouping.ContainerKey(Process(1820).Id)).Peers!.Peers);
+        Assert.Equal(2L, peers.ByGroup[projected.Processes.Single(process => process.ProcessId == 2500).GroupKey].Peers);
+        Assert.True(peers.ByGroup.GetValueOrDefault(Process(2500).GroupKey)?.Peers is null or 0);
+        Assert.Equal(1L, peers.ByGroup[WorkspaceGrouping.ServiceHostUnknownKey].Unknown);
+
+        // The graph's identity names the grouping, and a capture that listed no services does not offer it.
+        Assert.NotEqual(WorkspaceGrouping.Identity("session:a", LaneGrouping.UserSession), WorkspaceGrouping.Identity("session:a", LaneGrouping.ServiceContainer));
+        using var unlisted = new TemporarySession();
+        Publish(unlisted.Store, rows, fields: fields);
+        Assert.Equal([LaneGrouping.Executable], WorkspaceGrouping.Offered(OverviewWorkspace.From(SessionOverviewProjector.Project(unlisted.Store))));
+    }
 }

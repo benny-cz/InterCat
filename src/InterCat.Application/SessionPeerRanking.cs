@@ -76,10 +76,14 @@ public static class SessionPeerRanking
         var generation = new GenerationSegments(store, manifest, clock);
         ProcessInstanceIndex processes = generation.Processes(cancellationToken);
         TransportRelationIndex relations = generation.Relations(cancellationToken);
+
+        // The services each instance hosted, by its PID and creation time, which a grouping by service container keys by (ADR-096).
+        ServiceMatch services = ServiceBinding.Match(processes.Instances, ServiceInventoryV1.Read(store.Root, manifest));
         TimeRange? native = interval is { } presentation ? RankingScope.NativeInterval(clock, presentation) : null;
 
-        // Each instance's group as the ladder keys it under every grouping the window offers - by executable and by terminal
-        // session - as a dense index into one list of keys, which never collide, so a change of grouping reads nothing again.
+        // Each instance's group as the ladder keys it under every grouping the window offers - by executable, by terminal
+        // session and by service container - as a dense index into one list of keys, which never collide, so a change of
+        // grouping reads nothing again.
         // An instance the view sets aside (§19.5) is no group's member, though it is still a peer of those it shared records
         // with: its own records count toward no group, and it is not among the processes with a peer the rows shown hold.
         int instances = processes.Instances.Count;
@@ -95,7 +99,7 @@ public static class SessionPeerRanking
             {
                 string key = aside[instance]
                     ? SetAsideKey
-                    : WorkspaceGrouping.KeyOf(processes.Instances[instance], groupings[grouping]);
+                    : WorkspaceGrouping.KeyOf(processes.Instances[instance], groupings[grouping], services);
                 if (!groupIndex.TryGetValue(key, out int index))
                 {
                     groupIndex[key] = index = groupKeys.Count;

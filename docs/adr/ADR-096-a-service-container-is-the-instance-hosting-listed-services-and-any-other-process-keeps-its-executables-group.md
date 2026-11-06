@@ -1,6 +1,7 @@
 # ADR-096: A service container is the instance hosting listed services, and any other process keeps its executable's group
 
-- Status: accepted for M6's process enrichment; metrics and `icat metric` group by service container (revision 999)
+- Status: accepted for M6's process enrichment; metrics and `icat metric` group by service container (revision 999), and
+  the machine rung's rows and `icat export` (revision 1000)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-095, plan M6, §3.2, §6.3, `metrics-v1` §6, `query-identity-v1` §4, R3, P6
@@ -47,3 +48,15 @@ without evidence naming it (ADR-095, decision 4).
   caught.
 - The group rung's lanes and the window's grouping by service container, and a saved layout keeping it, are the next
   slices'.
+
+## Addendum: the machine rung and icat export group by service container (revision 1000)
+
+The window's grouping and `icat export --group-by service-container` regroup the overview as projected, reading no
+record: each host of the services listed is a row of its own, named as `icat metric` names it; every other process stays
+in its executable's row, as projected, under a key of this grouping's own, since its members are not the executable
+grouping's; and the processes a listed service may have run in, where no creation time tells, are one row, "Services
+hosted not known", as the processes naming no terminal session are one row grouped by session - a metric keeps them
+unattributed. A row's distinct peers and call times are read for every grouping at once under those keys, so a change
+of grouping reads nothing again, and the ranking query names `--group-by service-container`. A capture that listed no
+services is not offered the grouping, and an export of it is refused. The window's selector and a saved layout keeping
+the grouping are the next slices'. 22 mutations of the path are caught.

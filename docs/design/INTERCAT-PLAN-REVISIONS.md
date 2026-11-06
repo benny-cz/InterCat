@@ -922,6 +922,7 @@ Revision 996 has each process say the services it hosted (ADR-095's third addend
 Revision 997 measures FX-SVC-002 through the product (ADR-095's fourth addendum): three runs of icat record, nothing lost, every running service the probe read as each capture began named under the instance hosting it by its PID and creation time, none left unnamed.
 Revision 998 groups metrics by package (ADR-094's fourth addendum): each record under the package its process's lifecycle records name, the processes in none a group of their own, one whose records said neither unattributed, and icat metric --group-by package naming each.
 Revision 999 groups metrics by service container (ADR-096): each host of the services its capture listed a group of its own, named by its services, every other process its executable's, one a listed service may have run in unattributed, and icat metric --group-by service-container naming each.
+Revision 1000 groups the machine rung and icat export by service container (ADR-096's addendum): each host of the services listed a row of its own, every other process its executable's row, the processes a listed service may have run in one row apart, with their peers and call times.
 
 ## Revisions, a paragraph each, in order
 
@@ -4587,3 +4588,12 @@ in, where neither creation time tells, is unattributed by a reason of its own, `
 listed no services is not grouped so. The binding moves to the analysis layer unchanged, and an answer grouped so names
 the service binding rule beside the process binding rule in its identity. `icat metric --group-by service-container`
 names each container; the window's grouping by service container is next.
+
+Revision 1000 brings the grouping by service container to the window's machine rung and to `icat export` (ADR-096's
+addendum). The overview, projected by executable, is regrouped without reading a record: each host of the services the
+capture listed is a row of its own, named by its services as `icat metric` names it; every other process stays in its
+executable's row under a key of this grouping's own, since svchost.exe's row here no longer holds its hosts; and the
+processes a listed service may have run in, where no creation time tells, are one row apart. Each row's distinct peers
+and call times are read for every grouping at once under those keys, and the ranking query names `--group-by
+service-container`. A capture that listed no services is not offered the grouping. The window's selector and a saved
+layout keeping it come next.

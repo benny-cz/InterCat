@@ -76,9 +76,10 @@ public static class SessionExport
             throw new ArgumentException("A ranking applies to ranked rows; an evidence export lists its records in reading order.");
         }
 
-        if (request.Grouping is not (LaneGrouping.Executable or LaneGrouping.UserSession))
+        if (request.Grouping is not (LaneGrouping.Executable or LaneGrouping.UserSession or LaneGrouping.ServiceContainer))
         {
-            throw new ArgumentException("An export groups processes by executable or by terminal session, as the window does.");
+            throw new ArgumentException(
+                "An export groups processes by executable, by terminal session or by service container, as the window does.");
         }
 
         // The processes are grouped as the window groups them before a row key is read, so a session's rows are reached
@@ -87,8 +88,11 @@ public static class SessionExport
         WorkspaceSnapshot snapshot = OverviewWorkspace.From(overview);
         if (!WorkspaceGrouping.Offered(snapshot).Contains(request.Grouping))
         {
-            throw new ArgumentException("No process lifecycle record in this session names the terminal session its process ran "
-                + "in, so its processes cannot be grouped by session; a session is never guessed.");
+            throw new ArgumentException(request.Grouping == LaneGrouping.ServiceContainer
+                ? "This capture kept no list of the services running as it started or stopped, so its processes cannot be "
+                    + "grouped by service container; a service's host is never guessed from a process's name or its image."
+                : "No process lifecycle record in this session names the terminal session its process ran in, so its "
+                    + "processes cannot be grouped by session; a session is never guessed.");
         }
 
         // InterCat's own processes are set aside after grouping, as the window sets them aside, so a group left with none

@@ -269,7 +269,10 @@ its executable's group, `Executable` as under that grouping, and one with no wit
 instance a listed service may have run in - a service bound to no instance names its PID, and the service's host's
 creation time, or the instance's own, was not read - is unattributed as `ServiceHostUnknown`, never placed in a container
 by its PID. A capture that kept no list of its services is not grouped by service container. `icat metric --group-by
-service-container` names a container by its host's PID and image and its services.
+service-container` names a container by its host's PID and image and its services. The window's machine rung, grouped
+by service container (plan revision 1000), names its rows in the same words, and gathers the instances that are
+`ServiceHostUnknown` here into one row of their own, "Services hosted not known", as it gathers those with no witnessed
+path into one beside the executables; a result keeps them unattributed.
 
 Under `InstanceOnly` and `Executable`, the metric names the direction relative to the group: a record of a
 `BytesSent` total belongs to the process the data **left**, and one of a `BytesReceived` total to the process it

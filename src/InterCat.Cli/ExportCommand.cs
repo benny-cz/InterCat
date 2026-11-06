@@ -65,6 +65,7 @@ internal static class ExportCommand
         {
             null or "executable" => LaneGrouping.Executable,
             "session" => LaneGrouping.UserSession,
+            "service-container" => LaneGrouping.ServiceContainer,
             _ => null,
         };
         int limit = SessionExport.DefaultEvidenceLimit;
@@ -89,7 +90,7 @@ internal static class ExportCommand
                 ])
             : evidence && rankBy != RankingMetric.Records
                 ? "--rank-by ranks rows; an --evidence export lists its records in reading order."
-            : groupBy is null ? CommandLine.Expects("--group-by", groupText, ["executable", "session"])
+            : groupBy is null ? CommandLine.Expects("--group-by", groupText, ["executable", "session", "service-container"])
             : null;
         if (problem is not null)
         {
@@ -145,7 +146,12 @@ internal static class ExportCommand
         if (!evidence)
         {
             ConsoleUi.Field("Ranked by", WorkspaceExport.RankingName(result.Context.RankedBy));
-            ConsoleUi.Field("Grouped by", result.Context.GroupedBy == LaneGrouping.UserSession ? "terminal session" : "executable");
+            ConsoleUi.Field("Grouped by", result.Context.GroupedBy switch
+            {
+                LaneGrouping.UserSession => "terminal session",
+                LaneGrouping.ServiceContainer => "service container",
+                _ => "executable",
+            });
         }
 
         ConsoleUi.Field(evidence ? "Records" : "Rows", ConsoleUi.Count(result.Rows));
@@ -192,7 +198,7 @@ internal static class ExportCommand
         ConsoleUi.Line("            [--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received|rpc-calls-made|");
         ConsoleUi.Line("                       rpc-calls-served|rpc-errors|rpc-call-time-median|rpc-serve-time-median|");
         ConsoleUi.Line("                       active-peers|connections-made|connections-accepted]");
-        ConsoleUi.Line("            [--group-by executable|session] [--set-aside-collectors]");
+        ConsoleUi.Line("            [--group-by executable|session|service-container] [--set-aside-collectors]");
         ConsoleUi.Line("            [--evidence] [--limit <1-1000000>] [--format json|csv] [--share-redacted] [--overwrite]");
         ConsoleUi.Line("  By default, exports one rung in the detailed intercat-export-v1 contract. Each --at descends");
         ConsoleUi.Line("  into the row with that key (group, process-instance, then channel keys from icat overview).");
@@ -213,6 +219,9 @@ internal static class ExportCommand
         ConsoleUi.Line("  --group-by session groups the machine rung's rows by the terminal session each process's");
         ConsoleUi.Line("  lifecycle records name, as the window's Group by does, so --at reaches a session by its key");
         ConsoleUi.Line("  (session:1, or session:unknown for the processes naming none); executable is the default.");
+        ConsoleUi.Line("  --group-by service-container makes each process the capture's service lists name as hosting a");
+        ConsoleUi.Line("  service a row of its own, named by its services, and keeps every other process in its");
+        ConsoleUi.Line("  executable's row; it needs a capture that listed its services as it started or stopped.");
         ConsoleUi.Line("  --set-aside-collectors sets InterCat's own processes - the broker, the window or icat that asked");
         ConsoleUi.Line("  it to record, or icat record, as the capture names them by PID and creation time - aside from");
         ConsoleUi.Line("  the ranked rows, as the window's view filter does; the export counts what it set aside, and");

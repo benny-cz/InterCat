@@ -569,11 +569,63 @@ public sealed class CommandLineTests : IDisposable
             (InterCatExitCode unknown, _, string notOffered) = await Run("export", named.Path, "--output", output, "--overwrite",
                 "--group-by", "host");
             Assert.Equal(InterCatExitCode.InvalidInvocation, unknown);
-            Assert.Contains("--group-by expects executable or session; 'host' is not one.", notOffered, StringComparison.Ordinal);
+            Assert.Contains("--group-by expects executable, session or service-container; 'host' is not one.", notOffered, StringComparison.Ordinal);
             (InterCatExitCode never, _, string guessed) = await Run("export", unnamed.Path, "--output", output, "--overwrite",
                 "--group-by", "session");
             Assert.Equal(InterCatExitCode.InvalidInvocation, never);
             Assert.Contains("a session is never guessed", guessed, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(output);
+        }
+    }
+
+    [Fact(DisplayName = "R18: icat export --group-by service-container makes each host of the services listed a row of its own, named by its services and reached by its key, as the window groups it, and never guesses a host")]
+    public async Task AnExportGroupsByServiceContainer()
+    {
+        using var listed = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields, ServiceInventoryV1[] inventories) = ServiceContainers();
+        Publish(listed.Store, rows, fields: fields, services: inventories);
+        using var unlisted = new TemporarySession();
+        Publish(unlisted.Store, rows, fields: fields);
+        string output = Path.Combine(Path.GetDirectoryName(listed.Path)!, Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            // Each host of the services listed is a row named by them; the processes hosting none keep their executables'
+            // rows, and helper.exe, which a listed service may have run in, is a row apart. The report and the file say how.
+            (InterCatExitCode exported, string report, string said) =
+                await Run("export", listed.Path, "--output", output, "--group-by", "service-container");
+            Assert.True(exported == InterCatExitCode.Success, said);
+            Assert.Matches(new Regex(@"\n  Grouped by +service container\r?\n"), report);
+            string container;
+            using (JsonDocument document = JsonDocument.Parse(File.ReadAllText(output)))
+            {
+                Assert.Equal("service-container", document.RootElement.GetProperty("groupedBy").GetString());
+                Dictionary<string, string> keys = document.RootElement.GetProperty("rows").EnumerateArray()
+                    .ToDictionary(row => row.GetProperty("label").GetString()!, row => row.GetProperty("key").GetString()!);
+                Assert.Contains("PID 2400 svchost.exe hosting W32Time", keys.Keys);
+                Assert.Contains(GroupingText.ServiceHostNotKnown, keys.Keys);
+                Assert.Contains(document.RootElement.GetProperty("context").GetProperty("caveats").EnumerateArray(),
+                    caveat => caveat.GetString()!.StartsWith("Grouped by service container", StringComparison.Ordinal));
+                container = keys["PID 1820 svchost.exe hosting Dnscache, nsi"];
+            }
+
+            // A container's rung is reached by its key, as the window keys it, and lists its one process.
+            (InterCatExitCode opened, _, string openedSaid) = await Run("export", listed.Path, "--output", output, "--overwrite",
+                "--group-by", "service-container", "--at", container);
+            Assert.True(opened == InterCatExitCode.Success, openedSaid);
+            using (JsonDocument document = JsonDocument.Parse(File.ReadAllText(output)))
+            {
+                Assert.Equal(["svchost.exe"], document.RootElement.GetProperty("rows").EnumerateArray()
+                    .Select(row => row.GetProperty("label").GetString()));
+            }
+
+            // A capture that listed no services is never grouped by a guessed host.
+            (InterCatExitCode never, _, string guessed) = await Run("export", unlisted.Path, "--output", output, "--overwrite",
+                "--group-by", "service-container");
+            Assert.Equal(InterCatExitCode.InvalidInvocation, never);
+            Assert.Contains("a service's host is never guessed", guessed, StringComparison.Ordinal);
         }
         finally
         {

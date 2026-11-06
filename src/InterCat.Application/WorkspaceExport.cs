@@ -110,16 +110,23 @@ public static class WorkspaceExport
         ArgumentException.ThrowIfNullOrWhiteSpace(disclosure);
         ArgumentNullException.ThrowIfNull(coverage);
         if (!Enum.IsDefined(rankedBy)) throw new ArgumentOutOfRangeException(nameof(rankedBy));
-        if (groupedBy is not (LaneGrouping.Executable or LaneGrouping.UserSession))
+        if (groupedBy is not (LaneGrouping.Executable or LaneGrouping.UserSession or LaneGrouping.ServiceContainer))
         {
-            throw new ArgumentOutOfRangeException(nameof(groupedBy), groupedBy, "A view groups by executable or terminal session.");
+            throw new ArgumentOutOfRangeException(
+                nameof(groupedBy), groupedBy, "A view groups by executable, terminal session or service container.");
         }
 
-        // Where its rows are groups or a group's processes, a grouping by terminal session says how the groups were formed.
+        // Where its rows are groups or a group's processes, a grouping by terminal session or by service container says how
+        // the groups were formed.
         string[] caveats = rankedBy == RankingMetric.Records ? [disclosure] : [disclosure, RankingCaveat(rankedBy, ladder.Current.Level)];
-        if (groupedBy == LaneGrouping.UserSession && ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group)
+        if (ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group)
         {
-            caveats = [.. caveats, SessionGroupingCaveat];
+            caveats = groupedBy switch
+            {
+                LaneGrouping.UserSession => [.. caveats, SessionGroupingCaveat],
+                LaneGrouping.ServiceContainer => [.. caveats, ServiceContainerGroupingCaveat],
+                _ => caveats,
+            };
         }
 
         int asideProcesses = setAside?.Count ?? 0;
@@ -150,6 +157,13 @@ public static class WorkspaceExport
             SetAsideRecords = asideRecords,
         };
     }
+
+    /// <summary>How an export's groups were formed when its processes are grouped by service container (§6.3, ADR-096).</summary>
+    public const string ServiceContainerGroupingCaveat =
+        "Grouped by service container: each process the capture's lists of running services name as hosting one is a group of "
+        + "its own, named by its services, as icat metric --group-by service-container groups them - its records, never one "
+        + "service's; every other process is in its executable's group, and the processes a listed service may have run in, "
+        + "where no creation time tells, are one group, Services hosted not known, never placed in a container by PID.";
 
     /// <summary>How an export's groups were formed when its processes are grouped by terminal session (§6.3).</summary>
     public const string SessionGroupingCaveat =
@@ -229,12 +243,14 @@ public static class WorkspaceExport
         + "do not partition a total. A stop paired with no start is never timed, and a row with only such stops ranks after "
         + "every row that timed a call.";
 
-    /// <summary>A grouping's name as the command line and an export spell it: `executable` or `session`.</summary>
+    /// <summary>A grouping's name as the command line and an export spell it: `executable`, `session` or `service-container`.</summary>
     public static string GroupingName(LaneGrouping grouping) => grouping switch
     {
         LaneGrouping.Executable => "executable",
         LaneGrouping.UserSession => "session",
-        _ => throw new ArgumentOutOfRangeException(nameof(grouping), grouping, "A view groups by executable or terminal session."),
+        LaneGrouping.ServiceContainer => "service-container",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(grouping), grouping, "A view groups by executable, terminal session or service container."),
     };
 
     /// <summary>A ranking's name as the command line and an export spell it.</summary>

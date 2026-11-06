@@ -4097,6 +4097,7 @@
         "R18: icat evidence --from lists the rows from a moment on, placed as the window's search places it, on the wall clock or in session time",
         "R18: icat evidence and icat timeline take --host: the records of every connection to an address, whichever process held it",
         "R18: icat export --at an RPC channel's key exports its calls, up to --limit, and says when the limit left some out",
+        "R18: icat export --group-by service-container makes each host of the services listed a row of its own, named by its services and reached by its key, as the window groups it, and never guesses a host",
         "R18: icat export --group-by session reaches a session's rung by its key, as the window groups it, and never guesses a session",
         "R18: icat export --rank-by connections-made and connections-accepted rank the rows by each process's connections, and name the ranking",
         "R18: icat export ranks by every name --rank-by takes, and where the capture collected no RPC call says so and ranks by records",

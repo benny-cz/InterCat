@@ -35,9 +35,10 @@ public static class RankingQuery
     public static MetricRequest? Request(
         RankingMetric ranking, LaneGrouping grouping, TimeRange? nativeInterval, EvidencePolicy policy)
     {
-        if (grouping is not (LaneGrouping.Executable or LaneGrouping.UserSession))
+        if (grouping is not (LaneGrouping.Executable or LaneGrouping.UserSession or LaneGrouping.ServiceContainer))
         {
-            throw new ArgumentOutOfRangeException(nameof(grouping), grouping, "A view groups by executable or terminal session.");
+            throw new ArgumentOutOfRangeException(
+                nameof(grouping), grouping, "A view groups by executable, terminal session or service container.");
         }
 
         MetricRequest? request = ranking switch
@@ -98,6 +99,7 @@ public static class RankingQuery
             {
                 LaneGrouping.Executable => "executable",
                 LaneGrouping.UserSession => "session",
+                LaneGrouping.ServiceContainer => "service-container",
                 LaneGrouping.InstanceOnly => "process",
                 _ => throw new ArgumentOutOfRangeException(nameof(request), grouping, "A grouping no command names."),
             });

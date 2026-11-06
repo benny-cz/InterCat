@@ -153,13 +153,32 @@ public sealed class SessionCallRankingTests
         // and together the five calls' median is 5 - neither medians' sum nor their mean.
         ObservationRowV1 first = Lifecycle(1, ObservationKind.Create, Client, 1) with { ResourceName = @"C:\Tools\caller.exe" };
         ObservationRowV1 second = Lifecycle(2, ObservationKind.Create, 101, 2) with { ResourceName = @"C:\Tools\caller.exe" };
+        DateTimeOffset created = new(2026, 11, 6, 8, 0, 0, TimeSpan.Zero);
         using var session = new TemporarySession();
         Publish(session.Store,
         [
             first, second,
             .. Call(Client, 10, 11, 1), .. Call(Client, 20, 21, 2), .. Call(Client, 30, 39, 3),
             .. Call(101, 40, 45, 4), .. Call(101, 50, 57, 5),
-        ], fields: [Field(first, SourceField.ProcessSessionId, 1), Field(second, SourceField.ProcessSessionId, 2)]);
+        ],
+        fields:
+        [
+            Field(first, SourceField.ProcessSessionId, 1), Field(second, SourceField.ProcessSessionId, 2),
+            Field(first, SourceField.ProcessCreateTime, created.ToFileTime()),
+            Field(second, SourceField.ProcessCreateTime, created.AddSeconds(1).ToFileTime()),
+        ],
+        services:
+        [
+            new()
+            {
+                Contract = ServiceInventoryV1.ContractName,
+                CaptureId = Capture.Value,
+                Moment = ServiceInventoryMoment.Start,
+                ReadStartedUtc = created.AddHours(1),
+                ReadEndedUtc = created.AddHours(1).AddMilliseconds(20),
+                Services = [new() { Name = "CallerSvc", ProcessId = 101, HostCreatedUtc = created.AddSeconds(1) }],
+            },
+        ]);
         SessionCallMeasures measured = SessionCallRanking.Measure(session.Store, null);
         MetricResult grouped = SessionMetrics.Evaluate(session.Store, Duration(DurationInterval.ClientCall, LaneGrouping.Executable, null));
         MetricGroup caller = Assert.Single(grouped.Groups, group => group.Executable is not null);
@@ -178,6 +197,19 @@ public sealed class SessionCallRankingTests
         }
 
         Assert.Equal((3L, 100L), (measured.TimesByGroup["session:1"].MadeTimed, measured.TimesByGroup["session:1"].MadeMedian!.Value));
+
+        // The second instance hosted a service the capture listed: grouped by service container it is a group of its own,
+        // and the first keeps caller.exe's; each group's time is its own calls', under the key the window's rows have, as
+        // the metric grouped so answers (ADR-096).
+        MetricResult byContainer = SessionMetrics.Evaluate(session.Store, Duration(DurationInterval.ClientCall, LaneGrouping.ServiceContainer, null));
+        MetricGroup host = Assert.Single(byContainer.Groups, group => group.Kind == MetricGroupKind.ServiceContainer);
+        Assert.Equal(101, host.Process!.ProcessId);
+        CallTimes hosted = measured.TimesByGroup[WorkspaceGrouping.ContainerKey(host.Process.Id)];
+        Assert.Equal((host.Value, host.KnownContributions), (hosted.MadeMedian, hosted.MadeTimed));
+        MetricGroup rest = Assert.Single(byContainer.Groups, group => group.Kind == MetricGroupKind.Executable);
+        CallTimes others = measured.TimesByGroup[WorkspaceGrouping.ContainerExecutableKey(@"executable:C:\TOOLS\CALLER.EXE")];
+        Assert.Equal((rest.Value, rest.KnownContributions), (others.MadeMedian, others.MadeTimed));
+        Assert.Equal(3L, others.MadeTimed);
 
         // The ladder's group row reads that median, not one made from its members'.
         WorkspaceSnapshot counted = OverviewWorkspace.WithCalls(
