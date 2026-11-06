@@ -919,6 +919,7 @@ Revision 993 measures which services a process hosts (ADR-095, FX-SVC-001): Micr
 Revision 994 gives the service inventory its contract and store dependency (ADR-095's addendum): `service-inventory-v1`, code 12, the running services at a capture's start or stop by name and host PID and creation time, carried by every later generation, never released or redacted; no capture writes one yet.
 Revision 995 has every live capture read the running services and their hosts (ADR-095's second addendum): once its session delivers and again as it stops, each published, a list it cannot read recorded as none; every host was one process instance by PID and creation time.
 Revision 996 has each process say the services it hosted (ADR-095's third addendum): bound by its PID and creation time, never by a PID alone, said by the inspector and `icat processes` as the services, none or not recorded.
+Revision 997 measures FX-SVC-002 through the product (ADR-095's fourth addendum): three runs of icat record, nothing lost, every running service the probe read as each capture began named under the instance hosting it by its PID and creation time, none left unnamed.
 
 ## Revisions, a paragraph each, in order
 
@@ -4557,3 +4558,11 @@ time was not read, or that no instance held, is kept unbound. The window's inspe
 `icat processes --pid` say the services it hosted - each said to be at one end alone where the capture read both and listed
 it at one - none where it hosted none, or not recorded where the capture read none, and `--json` keeps the three apart as
 a list, an empty list and null beside the moments the capture read them at. A service list stays metadata of its host.
+
+Revision 997 measures the services a capture keeps through the product (ADR-095's fourth addendum). FX-SVC-002,
+`tools/InterCat.ProcessProbe --services-product`, records the explore profile by `icat record` three times; once each
+capture's session runs, the probe reads the service control manager's running services and their hosts by its own call,
+and `icat processes --json` reads the session back. Nothing was lost, and every capture read its services at both ends:
+every one of the 129, 129 and 129 services the probe read, hosted by 118, 118 and 118 processes, was named as hosted as the capture started
+by the one instance with its host's PID and creation time, none left unnamed or without an instance of its host, and the
+session named no other at the start. The fixture keeps counts, never a PID or a service's name.

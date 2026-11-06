@@ -41,7 +41,8 @@ internal static class Program
         bool measure = args.Contains("--measure", StringComparer.Ordinal);
         bool product = args.Contains("--product", StringComparer.Ordinal);
         bool services = args.Contains("--services", StringComparer.Ordinal);
-        if ((inspect ? 1 : 0) + (measure ? 1 : 0) + (product ? 1 : 0) + (services ? 1 : 0) != 1 || output is null)
+        bool servicesProduct = args.Contains("--services-product", StringComparer.Ordinal);
+        if ((inspect ? 1 : 0) + (measure ? 1 : 0) + (product ? 1 : 0) + (services ? 1 : 0) + (servicesProduct ? 1 : 0) != 1 || output is null)
         {
             Console.Error.WriteLine("InterCat.ProcessProbe --inspect --output <new directory>");
             Console.Error.WriteLine("  Reads, without enabling any, the schema this machine registers for Microsoft-Windows-Kernel-Process -");
@@ -62,6 +63,11 @@ internal static class Program
             Console.Error.WriteLine("  Enables Microsoft-Windows-Services at every level and keyword under a real-time session of its own, asks for");
             Console.Error.WriteLine("  its state, and sets each service status change against the service control manager's own list of the");
             Console.Error.WriteLine("  running services and the process hosting each. It starts, stops and configures no service; counts are kept.");
+            Console.Error.WriteLine("InterCat.ProcessProbe --services-product --output <new directory> [--runs <n, default 3>]");
+            Console.Error.WriteLine("                      [--duration <seconds, default 20>] [--icat <InterCat.Cli.exe>]");
+            Console.Error.WriteLine("  Records FX-SVC-002 through the product: icat record under the explore profile while the probe reads the");
+            Console.Error.WriteLine("  service control manager's running services by its own call, then sets each against the services icat");
+            Console.Error.WriteLine("  processes --json names its host's instance hosting as the capture started. Counts are kept.");
             return 2;
         }
 
@@ -97,7 +103,7 @@ internal static class Program
             return 0;
         }
 
-        if (product)
+        if (product || servicesProduct)
         {
             string icat = Option(args, "--icat") ?? Path.Combine(built, "src", "InterCat.Cli", "bin", "Release", "net10.0", "InterCat.Cli.exe");
             if (!int.TryParse(Option(args, "--runs") ?? "3", NumberStyles.None, CultureInfo.InvariantCulture, out int runs) || runs is < 1 or > 10
@@ -108,7 +114,9 @@ internal static class Program
                 return 2;
             }
 
-            Dictionary<string, object?> report = await Product.RunAsync(icat, workloadPath, output, runs, duration).ConfigureAwait(false);
+            Dictionary<string, object?> report = servicesProduct
+                ? await ServicesProduct.RunAsync(icat, output, runs, duration).ConfigureAwait(false)
+                : await Product.RunAsync(icat, workloadPath, output, runs, duration).ConfigureAwait(false);
             string written = JsonSerializer.Serialize(report, Json);
             await File.WriteAllTextAsync(Path.Combine(output, "report.json"), written).ConfigureAwait(false);
             Console.WriteLine(written);

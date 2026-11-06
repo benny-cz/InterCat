@@ -1205,6 +1205,49 @@
       ]
     },
     {
+      "id": "FX-SVC-002",
+      "title": "The services running as a capture starts, recorded through the product and said of the process instance hosting each",
+      "scenario": "Plan M6's process enrichment (ADR-095): icat record records the explore profile, whose captures read the service control manager's running services and their hosts as they start and stop; once its session runs, the probe reads the same list by its own call; once the capture has published, icat processes --json reads the session back, and each service the probe read is looked for under the process instance whose PID and creation time are its host's. The probe starts, stops and configures no service.",
+      "milestone": "M6",
+      "mechanism": "ProcessLifecycle",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "tools/InterCat.ProcessProbe --services-product --runs 3 --duration 20",
+        "seed": 0,
+        "log": "fixtures/FX-SVC-002/evidence/scenario.json",
+        "independence": "The probe reads the service control manager by its own call, apart from the capture's, and reads no InterCat state; the capture's session and icat processes are the product's own."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-SVC-002/evidence/measurement.json",
+        "note": "Three runs through the product, nothing lost: every one of the 129, 129 and 129 services the probe read as each capture began, hosted by 118, 118 and 118 processes, each with its host's creation time, was named by icat processes as hosted, as the capture started, by the one instance with its host's PID and creation time; none was named under no instance or left unnamed, and the session named no other at the start (bench/results/service-product-20261106T180159Z). A test holds the three runs to their truth and their bench report."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-06",
+          "result": "Recorded through the product by icat record under the explore profile, three runs, nothing lost: every running service the service control manager listed as each capture began was said of the process instance hosting it, bound by its PID and creation time. No tier is assigned: a service list is metadata of its host, not a mechanism's traffic (ADR-095)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The three runs' protocol, the probe's reads of the service control manager as counts, and the services the session named under each host's instance as counts, beside each capture's health - never a PID or a service's name."
+      },
+      "tests": [
+        "R22: FX-SVC-002 through the product - icat record under the explore profile, three runs, nothing lost - names every running service the service control manager listed as each capture began under the instance whose PID and creation time are its host's, none left unnamed and none named that it did not list"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -3571,6 +3614,7 @@
         "R22: FX-SECT-001's handle records join each process's handles to a section by its object's address - each creation named by nothing but its close, typed Section - and every view each process mapped and unmapped is a record of that process with its size, each section's views naming one value in both processes, while one base held both sections' views and no record names a byte moved through one",
         "R22: FX-SECT-002's section records through the product keep each of 128 sections made and ended in 64 generations one number of its own by its handles and one by its views, bound to exactly the two processes, while the kernel made some at an object address, and gave the views of more a value, an earlier generation's section had held",
         "R22: FX-SECT-003's sections, each process's handle to them and the creator's views made before the capture began, are no one section through the product - each close numbered alone and none discovered, though the start's rundown held each one's views to one number in both processes - while the same capture's control is whole",
+        "R22: FX-SVC-002 through the product - icat record under the explore profile, three runs, nothing lost - names every running service the service control manager listed as each capture began under the instance whose PID and creation time are its host's, none left unnamed and none named that it did not list",
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
         "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart",
         "R22: FX-SYNC-002's duplications are each raised in the process that asked for it - a push in its source, a pull in its target, one between two others in a third - at version 3, its fourth field naming its source process, with its source's handle and its target, and no creation of the handle made, whose close its target raises naming the object",

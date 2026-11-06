@@ -245,7 +245,7 @@ internal static partial class Product
     private static partial Regex SessionName();
 
     /// <summary>One product capture: an <c>icat record</c> process and what it wrote.</summary>
-    private sealed class Recording : IDisposable
+    internal sealed class Recording : IDisposable
     {
         private readonly Process process;
         private readonly Task<string> output;

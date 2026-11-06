@@ -1,6 +1,7 @@
 # ADR-095: Which services a process hosts is the service control manager's to say, as a capture starts
 
-- Status: accepted for M6's process enrichment; no service is said of a process yet
+- Status: accepted for M6's process enrichment; every capture reads its services (revision 995), each process says those it
+  hosted (revision 996), measured through the product by FX-SVC-002 (revision 997)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-093, plan M6, §4.2, §6.3, §18.2, P27, FX-SVC-001
@@ -84,3 +85,14 @@ capture read both and listed it at one; none, where it hosted none of those read
 none - three answers never given one for another (R3). `icat processes --json` keeps them apart as a list, an empty list
 and null, beside the moments the capture read them at. The services stay metadata of their host: no record is attributed
 to one. Ten mutations of the path are caught.
+
+## Fourth addendum: FX-SVC-002 through the product (revision 997)
+
+`tools/InterCat.ProcessProbe --services-product` records the explore profile by `icat record` three times; once each
+capture's session runs, the probe reads the service control manager's running services and their hosts by its own call,
+and once the capture has published, `icat processes --json` reads the session back. Nothing was lost, dropped or
+undecodable, and every capture read its services at both ends. Every one of the 129, 129 and 129 services the probe read, hosted
+by 118, 118 and 118 processes, each with its host's creation time, was named as hosted as the capture started by the one instance
+with its host's PID and creation time; none was left unnamed or without an instance of its host, and the session named no
+other at the start. The fixture keeps the reads and the comparison as counts, never a PID or a service's name; a test
+holds them to their truth and their bench report, and eight alterations of them are caught.

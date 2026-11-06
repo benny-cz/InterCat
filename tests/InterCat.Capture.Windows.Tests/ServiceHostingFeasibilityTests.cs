@@ -53,6 +53,48 @@ public sealed class ServiceHostingFeasibilityTests
         Assert.Contains(runs, static run => Count(run.GetProperty("statusChanges"), "ofThemNamed") > 0);
     }
 
+    /// <summary>FX-SVC-002's three runs through the product, by tools/InterCat.ProcessProbe --services-product.</summary>
+    private const string ProductBench = "bench/results/service-product-20261106T180159Z/report.json";
+
+    [Fact(DisplayName = "R22: FX-SVC-002 through the product - icat record under the explore profile, three runs, nothing lost - names every running service the service control manager listed as each capture began under the instance whose PID and creation time are its host's, none left unnamed and none named that it did not list")]
+    public void TheProductNamesEachServiceUnderItsHost()
+    {
+        string root = RepositoryRoot();
+        string evidence = Path.Combine(root, "fixtures", "FX-SVC-002", "evidence");
+        using JsonDocument measurement = JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "measurement.json")));
+        using JsonDocument scenario = JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "scenario.json")));
+        using JsonDocument report = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, ProductBench)));
+
+        // The fixture's measurement is its bench report's, and its truth the probe's own reads of the service control manager.
+        Assert.Equal(JsonSerializer.Serialize(report.RootElement), JsonSerializer.Serialize(measurement.RootElement));
+        JsonElement[] runs = [.. measurement.RootElement.GetProperty("runs").EnumerateArray()];
+        Assert.Equal<(string?, string?, int)>(("FX-SVC-002", "explore", 3),
+            (measurement.RootElement.GetProperty("scenario").GetString(), measurement.RootElement.GetProperty("profile").GetString(), runs.Length));
+        Assert.Equal(runs.Select(static run => JsonSerializer.Serialize(run.GetProperty("readByTheProbe"))),
+            scenario.RootElement.GetProperty("runs").EnumerateArray().Select(static run => JsonSerializer.Serialize(run.GetProperty("readByTheProbe"))));
+
+        foreach (JsonElement run in runs)
+        {
+            // Nothing lost, dropped or undecodable, and the capture read its services at both ends.
+            JsonElement health = run.GetProperty("health");
+            Assert.Equal(health.GetProperty("observedRecords").GetInt64(), health.GetProperty("admittedRecords").GetInt64());
+            Assert.All(["providerReportedEventLoss", "consumerReportedBufferLoss", "applicationDrops", "undecodableRecords"],
+                name => Assert.Equal(0L, health.GetProperty(name).GetInt64()));
+            Assert.Equal(["Start", "Stop"], run.GetProperty("servicesRead").EnumerateArray().Select(static moment => moment.GetString()));
+
+            // Every service the probe read with its host's creation time is named as hosted, as the capture started, by the one
+            // instance with its host's PID and creation time; and the session names no other at the start.
+            JsonElement read = run.GetProperty("readByTheProbe");
+            JsonElement named = run.GetProperty("namedByTheSession");
+            Assert.InRange(Count(read, "withTheirHostsCreationTime"), 1, int.MaxValue);
+            Assert.InRange(Count(read, "hosts"), 1, Count(read, "services") - 1);
+            Assert.Equal(Count(read, "services"), Count(read, "withTheirHostsCreationTime") + Count(read, "hostNotOpened"));
+            Assert.Equal((Count(read, "withTheirHostsCreationTime"), 0, 0),
+                (Count(named, "hostedAsTheCaptureStarted"), Count(named, "hostsInstanceNamingItNot"), Count(named, "noInstanceOfItsHost")));
+            Assert.Equal(Count(read, "services"), Count(run, "servicesTheSessionNamesAtTheStart"));
+        }
+    }
+
     private static int Count(JsonElement element, string name) => element.GetProperty(name).GetInt32();
 
     private static string RepositoryRoot()

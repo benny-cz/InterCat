@@ -1,0 +1,98 @@
+{
+  "schema": "intercat.service-product.v1",
+  "scenario": "FX-SVC-002",
+  "question": "Whether each running service the service control manager lists as a capture starts, recorded through the product by icat record under the explore profile, is named by icat processes as hosted by the process instance whose PID and creation time are its host\u0027s, as the capture started (ADR-095).",
+  "measuredUtc": "2026-11-06T18:03:09.66368+00:00",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "profile": "explore",
+  "durationSeconds": 20,
+  "runs": [
+    {
+      "run": 1,
+      "health": {
+        "observedRecords": 61649,
+        "admittedRecords": 61649,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      },
+      "servicesRead": [
+        "Start",
+        "Stop"
+      ],
+      "readByTheProbe": {
+        "services": 129,
+        "hosts": 118,
+        "withTheirHostsCreationTime": 129,
+        "hostNotOpened": 0
+      },
+      "namedByTheSession": {
+        "hostedAsTheCaptureStarted": 129,
+        "hostsInstanceNamingItNot": 0,
+        "noInstanceOfItsHost": 0
+      },
+      "servicesTheSessionNamesAtTheStart": 129
+    },
+    {
+      "run": 2,
+      "health": {
+        "observedRecords": 29379,
+        "admittedRecords": 29379,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      },
+      "servicesRead": [
+        "Start",
+        "Stop"
+      ],
+      "readByTheProbe": {
+        "services": 129,
+        "hosts": 118,
+        "withTheirHostsCreationTime": 129,
+        "hostNotOpened": 0
+      },
+      "namedByTheSession": {
+        "hostedAsTheCaptureStarted": 129,
+        "hostsInstanceNamingItNot": 0,
+        "noInstanceOfItsHost": 0
+      },
+      "servicesTheSessionNamesAtTheStart": 129
+    },
+    {
+      "run": 3,
+      "health": {
+        "observedRecords": 20290,
+        "admittedRecords": 20290,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      },
+      "servicesRead": [
+        "Start",
+        "Stop"
+      ],
+      "readByTheProbe": {
+        "services": 129,
+        "hosts": 118,
+        "withTheirHostsCreationTime": 129,
+        "hostNotOpened": 0
+      },
+      "namedByTheSession": {
+        "hostedAsTheCaptureStarted": 129,
+        "hostsInstanceNamingItNot": 0,
+        "noInstanceOfItsHost": 0
+      },
+      "servicesTheSessionNamesAtTheStart": 129
+    }
+  ],
+  "notes": [
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once icat processes has read it back.",
+    "The probe reads the service control manager by its own call once the capture\u0027s session runs; it reads no InterCat state.",
+    "A service whose host the probe could not open has no creation time to find its instance by, and is counted apart."
+  ]
+}
