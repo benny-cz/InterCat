@@ -1,6 +1,7 @@
 # ADR-090: A section gate follows a section by its handles, and a view by its process and base
 
-- Status: accepted for M6's section discovery work package; no record admits through the gates yet
+- Status: accepted for M6's section discovery work package; since revision 976 the file view flag's records admit through
+  the view gate, read by the layout measured for the build (its addendum); no section's handle admits through its gate yet
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-083, ADR-087, ADR-089, plan M6, §4.2, R22, P12, P20, FX-SECT-001
@@ -55,3 +56,24 @@ allocating nothing per record (P12), as the synchronization handle gate (ADR-083
 - Tests hold the gates on synthetic records and on the ledger. Twenty-one mutations of the gates are caught: twelve of the
   view gate's, three of the section handle gate's, five of the algorithm the handle gates share and one of the
   synchronization handle gate's.
+
+## Addendum: what the file view flag admits through the view gate (revision 976)
+
+The sixth decision left the view records' admission to come. The file view flag now admits its four events at version 3,
+the version this build raises them at, compiled by the layout measured for the build (ADR-091). Each is a shared
+section's resource record: a view's mapping and unmapping, of kinds Map and Unmap, and the rundowns at the session's
+start and stop, of kind Inventory. Each admits five fields:
+
+- the view's base, which the gate writes over with the view's number, `SectionViewNumber`;
+- the value its file object field carries, written over with its section's number, `SectionNumber`;
+- its extra information, `ViewInformation`, whose high byte is 0x47 for an image's view;
+- its size, `ViewSize`, the extent mapped and never bytes moved (P3);
+- the process whose view it is, which every record names: a mapping's and an unmapping's always the process that
+  raised it (ADR-089), a rundown's where no header names one (its fourth addendum).
+
+The gate reads every view by the process its record names, and each record binds to that process as any record naming
+its owner does. A view that would begin beyond the gate's bound is omitted as such, and counted. A plan without the base,
+the value or the process is refused before a capture starts, as the gate decides by each. No profile requests the flag
+yet, and the handle group's gate still follows only the synchronization types, so no section's handle admits yet. Tests
+hold the descriptors' slots and kinds, both numbers written over both addresses for a rundown's view and a mapping's, a
+view beyond the bound, and the capture's callback walk reaching the gate.

@@ -25,6 +25,7 @@ internal static class RecordGates
             WindowsSourceCatalog.WinsockAfdSourceId => new AfdRecordGate(),
             WindowsSourceCatalog.KernelObjectHandlesSourceId => new ObjectHandleRecordGate(SynchronizationHandleGate.MeasuredTypes(ThisBuild) ?? []),
             WindowsSourceCatalog.Win32kSourceId => new WindowMessageRecordGate(),
+            WindowsSourceCatalog.KernelFileViewsSourceId => new SectionViewRecordGate(),
             _ => (IRecordGate?)null,
         })];
     }
@@ -258,6 +259,62 @@ internal sealed class WindowMessageRecordGate(int capacity = WindowMessageGate.D
         }
 
         return -1;
+    }
+}
+
+/// <summary>
+/// The file view flag's gate: reads a view's mapping and unmapping and the rundowns at the session's start and stop through
+/// <see cref="SectionViewGate"/>, and writes into an admitted record, in place of the view's base, the view's number in the
+/// capture, and in place of the value its file object field carries, its section's number, so no record keeps an address
+/// (ADR-090). A view is the process's its record names: a mapping's and an unmapping's always the process that raised it
+/// (ADR-089), and a rundown's where no rundown record's header names one (ADR-089's fourth addendum). A view that would begin
+/// beyond the gate's bound is omitted as such, counted.
+/// </summary>
+internal sealed class SectionViewRecordGate(int capacity = SectionViewGate.DefaultCapacity) : IRecordGate
+{
+    private readonly SectionViewGate gate = new(capacity);
+    private readonly Dictionary<AdmittedEventPlan, Slots> slots = new(ReferenceEqualityComparer.Instance);
+
+    public GateOmission? Read(ref AdmittedEvent admitted, AdmittedEventPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (!slots.TryGetValue(plan, out Slots at))
+        {
+            slots[plan] = at = Slots.Of(plan);
+        }
+
+        var record = new SectionViewRecord(
+            admitted.Opcode,
+            unchecked((ulong)Value(in admitted, at.ViewBase)),
+            unchecked((ulong)Value(in admitted, at.Section)),
+            (int)Value(in admitted, at.ProcessId));
+        (ViewGateOutcome outcome, ViewIncarnation? view) = gate.Read(in record);
+        if (outcome != ViewGateOutcome.Admitted)
+        {
+            return GateOmission.BeyondBound;
+        }
+
+        if (at.ViewBase >= 0) admitted.SetSlot(at.ViewBase, view!.Value.View);
+        if (at.Section >= 0) admitted.SetSlot(at.Section, view!.Value.Section);
+        return null;
+    }
+
+    private static long Value(in AdmittedEvent admitted, int slot) => slot >= 0 && admitted.TryGetSlot(slot, out long value) ? value : 0;
+
+    /// <summary>Where a descriptor's admitted fields the gate reads and writes are, by name; -1 for one it does not admit.</summary>
+    private readonly record struct Slots(int ViewBase, int Section, int ProcessId)
+    {
+        public static Slots Of(AdmittedEventPlan plan) => new(Find(plan, "ViewBase"), Find(plan, "FileObject"), Find(plan, "ProcessId"));
+
+        private static int Find(AdmittedEventPlan plan, string field)
+        {
+            for (int index = 0; index < plan.Slots.Count; index++)
+            {
+                if (string.Equals(plan.Slots[index].FieldName, field, StringComparison.Ordinal)) return index;
+            }
+
+            return -1;
+        }
     }
 }
 

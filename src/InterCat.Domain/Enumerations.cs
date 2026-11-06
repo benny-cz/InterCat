@@ -224,6 +224,28 @@ public enum SourceField : ushort
     /// message is retrieved (R22).
     /// </summary>
     WindowMessageNumber = 26,
+
+    /// <summary>
+    /// A mapped view's number in its capture, as the section view gate numbers it from its mapping, or the start's rundown,
+    /// to its unmapping (ADR-090): never its base, which its process maps another view at once it is unmapped (R22).
+    /// </summary>
+    SectionViewNumber = 27,
+
+    /// <summary>
+    /// A section's number in its capture, as the section view gate numbers it by the value its views carry, from the first
+    /// followed view carrying it to the unmapping of the last (ADR-090): never that value, a kernel address reused once the
+    /// section is gone (R22), and never the number its handles are followed by, as no record joins a view to a handle.
+    /// </summary>
+    SectionNumber = 28,
+
+    /// <summary>A view's size in bytes as its mapping gives it: the extent mapped, never bytes moved through it (P3, ADR-089).</summary>
+    ViewSize = 29,
+
+    /// <summary>
+    /// A view's extra information as the kernel gives it, whose high byte alone is measured: 0x47 for an image's view, which
+    /// no other view carries (ADR-089's fourth addendum).
+    /// </summary>
+    ViewInformation = 30,
 }
 
 /// <summary><c>EN-TimeScope</c> (section 23): the interval a result is scoped to.</summary>

@@ -6,7 +6,8 @@
   addendum); since revision 973 the Section type's number is measured for the build, 49 (third addendum); since revision
   974 gates number its sections and views as their records arrive, keeping no address (ADR-090); since revision 975 the
   rundowns at a session's start and stop are measured, each record by its view's process, and images' views are among
-  what the flag records (fourth addendum)
+  what the flag records (fourth addendum); since revision 976 its view records admit through the view gate, read by the
+  layout measured for the build (ADR-091)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-035, ADR-082, ADR-083, plan M6, §4.2, R22, P2, P3, P6, FX-SECT-001

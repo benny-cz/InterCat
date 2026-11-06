@@ -1,6 +1,8 @@
 # ADR-035: A private system logger for an opt-in capture that needs the kernel's flag groups
 
-- Status: accepted; the capture that uses it is the next slice
+- Status: accepted; the capture that uses it is the next slice; since revision 976 its sixth decision is amended: a classic
+  record at a version the machine registers no layout for is read by the layout measured for its build, stated, or refused
+  (ADR-091)
 - Date: 2026-09-28
 - Amends: ADR-002 (its first decision, and its consequence that the strategy creates no system logger)
 - Relates to: §4 (ALPC), §7.4, §9.2, §12, §20.6, P14, P19, ADR-004, ADR-034, `tools/InterCat.AlpcProbe`,

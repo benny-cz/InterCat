@@ -470,6 +470,53 @@ public static class WindowsSourceCatalog
         new("TypeName", FieldRole.ResourceName, Notes: "The type's name, which the session names its number by only at its stop."),
     ];
 
+    // What the section view gate decides a view's record by (ADR-090).
+    private const string ViewBaseDecides = "the section view gate follows a view by its process and base, which it writes over with the view's number";
+    private const string ViewSectionDecides = "the section view gate follows a section by the value its views carry, which it writes over with the section's number";
+
+    private static readonly AdmittedFieldIntent ViewBase =
+        new("ViewBase", FieldRole.CorrelationKey, SourceField: SourceField.SectionViewNumber,
+            Notes: "Written by the gate: the view's number in the capture, never its base, which its process maps another view at once "
+                + "it is unmapped (R22).")
+        {
+            Decides = ViewBaseDecides,
+        };
+
+    private static readonly AdmittedFieldIntent ViewSection =
+        new("FileObject", FieldRole.CorrelationKey, SourceField: SourceField.SectionNumber,
+            Notes: "Written by the gate: the section's number in the capture, never the value every view of the section carries, a "
+                + "kernel address no handle carries and the kernel reuses once the section is gone (R22, ADR-089).")
+        {
+            Decides = ViewSectionDecides,
+        };
+
+    private static readonly AdmittedFieldIntent ViewInformation =
+        new("MiscInfo", FieldRole.Unclassified, SourceField: SourceField.ViewInformation,
+            Notes: "The view's extra information, whose high byte alone is measured: 0x47 for an image's view, which no other view carries.");
+
+    private static readonly AdmittedFieldIntent ViewSize =
+        new("ViewSize", FieldRole.Unclassified, SourceField: SourceField.ViewSize,
+            Notes: "The view's size in bytes as its mapping gives it: the extent mapped, never bytes moved through it (P3).");
+
+    /// <summary>
+    /// A view's mapping, unmapping or rundown: the view, its section, its information and size, and the process whose view it
+    /// is, which every record names - a mapping's and an unmapping's always the process that raised it, a rundown's where no
+    /// header names one (ADR-089, its fourth addendum).
+    /// </summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> ViewFields =
+    [
+        ViewBase,
+        ViewSection,
+        ViewInformation,
+        ViewSize,
+        new("ProcessId", FieldRole.ProcessAttribution,
+            Notes: "The process whose view the record names: the one that raised a mapping or an unmapping, and the one a rundown "
+                + "names, as no rundown record's header names one.")
+        {
+            Decides = "the section view gate follows a view by its process and base",
+        },
+    ];
+
     // What the window message gate decides a message's end by (ADR-087).
     private const string QueueMessageDecides =
         "the window message gate follows a message by its queue message pointer, which it writes over with the message's number";
@@ -895,9 +942,10 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        // Sections' lead (ADR-089): inventoried, requested by no profile and admitting no event. A view's records are raised at a
-        // version no registered layout describes and name no section; a gate numbering sections and views comes first. Its
-        // measured notes are what icat capabilities states of it.
+        // Sections' lead (ADR-089): inventoried and requested by no profile. A view's records are raised at a version no
+        // registered layout describes, so they compile by the layout measured for the build, stated (ADR-091), and admit through
+        // the section view gate, which writes each view's number over its base and its section's over the value its views carry
+        // (ADR-090). Its measured notes are what icat capabilities states of it.
         var fileViews = new WindowsSourceDefinition
         {
             SourceId = KernelFileViewsSourceId,
@@ -924,7 +972,17 @@ public static class WindowsSourceCatalog
             OverheadEvidence = "bench/results/section-view-impact-20261106T033759Z/impact.json",
             ClassicEventClass = FileIoEventClass,
             KernelFlags = FileViewsKernelFlag,
-            AdmittedEvents = [],
+
+            // A view's mapping and unmapping and the rundowns at the session's start and stop, at the version this build raises
+            // them at, each by the view's number and its section's, which the gate writes over the view's base and the value its
+            // views carry, and by the process whose view it is, which every record names.
+            AdmittedEvents =
+            [
+                new(0, 3, "View mapped", Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Map, Direction.DirectionNotApplicable, ViewFields) { Opcode = SectionViewGate.Map },
+                new(0, 3, "View unmapped", Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Unmap, Direction.DirectionNotApplicable, ViewFields) { Opcode = SectionViewGate.Unmap },
+                new(0, 3, "View mapped at the start", Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Inventory, Direction.DirectionNotApplicable, ViewFields) { Opcode = SectionViewGate.StartRundown },
+                new(0, 3, "View mapped at the stop", Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Inventory, Direction.DirectionNotApplicable, ViewFields) { Opcode = SectionViewGate.StopRundown },
+            ],
             Notes =
             [
                 "Collection alone, four series of nine pairs over a view-heavy workload, loss-free: a median of 0.49 and 0.55 CPU "
@@ -938,8 +996,12 @@ public static class WindowsSourceCatalog
                 + "each other but neither to its handles nor to its name (ADR-089).",
                 "This build raises a view's mapping and unmapping, and the rundowns at a session's start and stop, at version 3, 44 "
                 + "bytes with a page-aligned offset before the process, which no layout the machine registers describes: version 2's "
-                + "five fields are all it registers. A capture admitting them reads them by the measured layout, stated, or refuses "
-                + "them.",
+                + "five fields are all it registers. A capture reads them by the layout measured for this build and says so in its "
+                + "plan; on a build none measured it refuses them (ADR-091).",
+                "Its records admit through the section view gate (ADR-090): each view numbered in the capture from its mapping, or "
+                + "the start's rundown, to its unmapping, never by its base, and each section by the value its views carry while a "
+                + "followed view holds it, never by that value; a view the gate never saw begin is numbered alone, joining a section "
+                + "only while a followed view holds its value.",
                 "Measured on the probe's own views: the start's and the stop's rundowns named every view and every image it held "
                 + "across them, each record by the process it names - one the session's process rundown named alive - and none by "
                 + "its header. An image's view, named in a rundown or mapped, carries 0x47 in its extra information's high byte.",

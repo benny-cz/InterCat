@@ -1024,7 +1024,7 @@
       },
       "tests": [
         "R22: FX-SECT-001's handle records join each process's handles to a section by its object's address - each creation named by nothing but its close, typed Section - and every view each process mapped and unmapped is a record of that process with its size, each section's views naming one value in both processes, while one base held both sections' views and no record names a byte moved through one",
-        "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections",
+        "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections",
         "R22: FX-SECT-001's committed ledger read through the section gates as it was delivered is its two sections - each section's handles in both processes one number, every view of a section in both processes one section number, and each mapping a view of its own though the opener mapped them all at one base"
       ]
     },
@@ -2768,7 +2768,7 @@
         "P27: icat capabilities reports a mechanism no source covers where a fixture measured it on the build - mailslots unsupported, by FX-MAIL-001 - and leaves it out on a build none measured it on",
         "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build their fixtures measured them on through the product",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",
-        "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections",
+        "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections",
         "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build",
         "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by the opt-in window messages profile alone, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and are experimental evidence on the one build their fixture measured them on through the product"
       ],
@@ -3511,6 +3511,7 @@
         "R22: in the saved views Enter in the name saves the view shown, and Enter on a view shows it as a double click does",
         "R22: loopback joins two identities' captures only while a person confirms they are one host, and says so",
         "R22: messages to windows made one after another are each the number of its rank, every window's close ranked among the posts where the sender posted it, and each window's two ends resolved by its own messages though no window is discovered",
+        "R22: on its measured build the file view flag's four events compile by the layout measured for it - the view, its section, its extra information and size at their measured offsets, and the process whose view it is at the record's end - its plan saying so, and its fingerprint of the measured scheme, never a registered layout's",
         "R22: owner filters use the instance binding, not a reused PID or a nearby lifetime",
         "R22: owner(P) keeps the calls P made or served, and a grouping by process partitions the count",
         "R22: participant(P) takes P's records and those whose other end is P, and discloses what it cannot decide",
@@ -3544,6 +3545,7 @@
         "R22: the window's live view of an Explore capture shaped as Windows delivers it relates its loopback connections over IPv4 and IPv6",
         "R22: through its gate Win32k admits each of a message's ends with the message's number written over its pointer - a send's four ends one number, a post's two another, the pointer's next message a third - and omits a record delivered out of the order raised",
         "R22: through its gate an AFD record is admitted with its socket's number and owner in place of the kernel's addresses, and any other is omitted with its reason",
+        "R22: through its gate the file view flag admits each view's records with the view's number over its base and its section's over the value its views carry, each view the process's its record names, a rundown's though no header names one, and omits a view beyond the gate's bound",
         "R22: through its gate the handle group admits a synchronization type's handle records with the object's number written over its address, a duplication's for its target, and omits another type's, a kernel handle's and those beyond its bound",
         "R22: two boots of one host that overlap in the investigation's time say an alignment is wrong",
         "R22: two captures of one boot align exactly through their epochs, and captures of two boots never do",
@@ -3624,6 +3626,7 @@
         "R3: icat waits says what no time is said for, and refuses what it cannot list",
         "R3: impact summaries use the median without hiding signed observations",
         "R3: no time is said for a call whose span is not validated, or whose caller the evidence policy does not admit, and each is counted by why",
+        "R3: on a build none measured the file view flag is refused - the machine registers no layout at the version the build raises, and none is measured for it - and where the machine registers that version its registration is read, nothing said to be measured",
         "R3: paired impact preserves observed noise but never classifies a negative cost",
         "R3: paired throughput regression refuses no baseline and clamps only improvement",
         "R3: the graph draws an unmeasured relationship with the unmeasured key only while a byte ranking sizes it",

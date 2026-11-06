@@ -899,6 +899,7 @@ Revision 972 inventories the kernel's file view flag as sections' lead (ADR-089'
 Revision 973 measures the Section type's number for the build (ADR-089's third addendum): the object type table and the session's type rundown both name it 49, which a gate admitting sections' handles carries.
 Revision 974 adds the section gates (ADR-090): a section followed by its handles through the algorithm the synchronization handle gate now shares, and a view by its process and base, its section by the value its views carry while a followed view holds it, keeping no address.
 Revision 975 measures the file view flag's rundowns (ADR-089's fourth addendum): at version 3 as a mapping is, each record naming its view's process and none its header, and images' views among what the flag records, an image's with 0x47 in its extra information's high byte.
+Revision 976 reads a classic record at a version the machine registers no layout for by the layout measured for its build (ADR-091), and admits the file view flag's four events at version 3 through the view gate (ADR-090's addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4339,3 +4340,13 @@ address space just before each rundown and once it was over. Three runs, nothing
 every record at version 3, 44 bytes, as a mapping is, naming a process alive then, and no header naming one; every view and
 image the probe held across a rundown was named. The flag records images' views too, an image's carrying 0x47 in its extra
 information's high byte, so the source's statement that it leaves images aside, never measured, is corrected.
+
+Revision 976 lets a capture read the file view flag's records, which this build raises at version 3 and registers only
+version 2's layout for (ADR-091, amending ADR-035). A layout measured for a build - a class's opcodes at one version,
+every field by name and type in order, the build and the reports that measured it - reads a class's records where TDH
+describes none of its opcodes at the version planned. The machine's registration always wins, the plan's warnings say a
+measured layout is read, its fingerprint is of a scheme no registered layout's is, and a build none measured is refused.
+The flag's four events at version 3 - a view's mapping and unmapping and both rundowns - now admit through the view
+gate (ADR-090's addendum): each view's number written over its base, its section's over the value its views carry, its
+extra information and size kept, and the process each record names, so a rundown's view binds though no header names
+one. No profile requests the flag yet.

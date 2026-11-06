@@ -166,17 +166,19 @@ public sealed class SectionLeadTests
         Assert.Equal(3, regressions.Count(static regressed => regressed));
     }
 
-    [Fact(DisplayName = "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile and admitting no event, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections")]
+    [Fact(DisplayName = "P27: sections have an inventoried lead - the kernel's file view flag, requested by no profile, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and no build carries a tier for sections")]
     public void SectionsHaveAnInventoriedLeadAndNoTier()
     {
-        // A kernel flag of the file I/O class, the one FX-SECT-001 was measured under, with no process filter and no event
-        // admitted yet.
+        // A kernel flag of the file I/O class, the one FX-SECT-001 was measured under, with no process filter; its view's
+        // mapping and unmapping and both rundowns admitted at version 3, through the section view gate.
         WindowsSourceDefinition views = WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelFileViewsSourceId)!;
         Assert.Equal((SourceKind.KernelFlagGroup, 0x8000UL, Guid.Parse("90cbdc39-4a3e-11d1-84f4-0000f80464e3")),
             (views.Kind, views.KernelFlags, views.ClassicEventClass));
         Assert.Equal([Mechanism.SharedSection], views.Mechanisms);
         Assert.Equal((SourceContractStatus.Experimental, false), (views.ContractStatus, views.SupportsCaptureSideProcessFilter));
-        Assert.Empty(views.AdmittedEvents);
+        Assert.Equal([(37, 3), (38, 3), (39, 3), (40, 3)], views.AdmittedEvents.Select(static intent => (intent.Opcode!.Value, intent.Version)).Order());
+        Assert.Contains(views.Notes, note => note.Contains("section view gate (ADR-090)", StringComparison.Ordinal) && note.Contains("never by its base", StringComparison.Ordinal));
+        Assert.Contains(views.Notes, note => note.Contains("layout measured for this build", StringComparison.Ordinal) && note.Contains("ADR-091", StringComparison.Ordinal));
 
         // Its cost is measured, Low in the processor time it adds over trials of four seconds, with the throughput regression
         // its notes state beside the class.

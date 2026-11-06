@@ -173,18 +173,18 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
 
             if (definition.Kind == SourceKind.KernelFlagGroup && definition.ClassicEventClass is { } classGuid)
             {
-                // A classic class has no manifest; its layout is its registration, read from TDH (ADR-035).
+                // A classic class has no manifest; its layout is its registration, read from TDH (ADR-035), or where the
+                // machine registers none at the version planned, the layout measured for this build, stated (ADR-091).
                 int[] opcodes = [.. definition.AdmittedEvents.Select(intent => intent.Opcode).OfType<int>().Distinct()];
                 int[] versions = [.. definition.AdmittedEvents.Select(intent => intent.Version).Distinct()];
-                ProviderSchema? classic = versions.Length == 1
-                    ? metadata.TryReadClassic(classGuid, definition.DisplayName, versions[0], opcodes)
-                    : null;
+                (ProviderSchema? classic, bool measured) = ClassicLayout(definition, classGuid, versions, opcodes, buildId);
                 if (classic is null)
                 {
                     issues.Add(new(
                         sourceId,
                         SourcePlanIssueSeverity.Refusal,
-                        "The machine registers no layout for this classic event class at the version it is planned for."));
+                        "The machine registers no layout for this classic event class at the version it is planned for, and none is "
+                        + "measured for this build."));
                     continue;
                 }
 
@@ -200,6 +200,11 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
 
                 index++;
                 plans.Add(classicPlan);
+                if (measured)
+                {
+                    issues.Add(new(sourceId, SourcePlanIssueSeverity.Warning, MeasuredClassicLayouts.Statement(buildId, versions[0])));
+                }
+
                 foreach (string diagnostic in classicPlan.Diagnostics)
                 {
                     issues.Add(new(sourceId, SourcePlanIssueSeverity.Warning, diagnostic));
@@ -306,8 +311,30 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
 
         int[] opcodes = [.. definition.AdmittedEvents.Select(intent => intent.Opcode).OfType<int>().Distinct()];
         int[] versions = [.. definition.AdmittedEvents.Select(intent => intent.Version).Distinct()];
-        ProviderSchema? classic = versions.Length == 1 ? metadata.TryReadClassic(classGuid, definition.DisplayName, versions[0], opcodes) : null;
+        (ProviderSchema? classic, _) = ClassicLayout(definition, classGuid, versions, opcodes, buildId);
         return classic is null ? null : RecordGates.Undecidable(AdmissionPlanCompiler.Compile(definition, classic, sourceIndex), buildId);
+    }
+
+    /// <summary>
+    /// A classic class's layout at the one version its source is planned for: the machine's registration, which TDH resolves
+    /// from a header alone (ADR-035), and only where TDH describes none of its opcodes there, the layout measured for
+    /// <paramref name="buildId"/>, if any (ADR-091), said to be measured. Null where neither describes it.
+    /// </summary>
+    private (ProviderSchema? Layout, bool Measured) ClassicLayout(
+        WindowsSourceDefinition definition, Guid classGuid, int[] versions, int[] opcodes, string buildId)
+    {
+        if (versions.Length != 1)
+        {
+            return (null, false);
+        }
+
+        if (metadata.TryReadClassic(classGuid, definition.DisplayName, versions[0], opcodes) is { } registered)
+        {
+            return (registered, false);
+        }
+
+        ProviderSchema? measured = MeasuredClassicLayouts.Find(buildId, classGuid, definition.DisplayName, versions[0], opcodes);
+        return (measured, measured is not null);
     }
 
     private SourceCapability ProbeSource(

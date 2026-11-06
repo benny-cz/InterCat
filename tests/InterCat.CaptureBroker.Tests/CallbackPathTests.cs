@@ -137,6 +137,10 @@ public sealed class CallbackPathTests
         // And Win32k's, whose messages are held to its bound, both its tables sized once (ADR-087).
         Assert.Contains("InterCat.Capture.Windows.WindowMessageRecordGate.Read", walk.Reached);
         Assert.Contains("InterCat.Capture.Windows.WindowMessageGate.Read", walk.Reached);
+
+        // And the file view flag's, whose views and sections are held to its bound (ADR-090).
+        Assert.Contains("InterCat.Capture.Windows.SectionViewRecordGate.Read", walk.Reached);
+        Assert.Contains("InterCat.Capture.Windows.SectionViewGate.Read", walk.Reached);
         return walk;
     }
 
