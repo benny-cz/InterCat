@@ -180,11 +180,7 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
                 (ProviderSchema? classic, bool measured) = ClassicLayout(definition, classGuid, versions, opcodes, buildId);
                 if (classic is null)
                 {
-                    issues.Add(new(
-                        sourceId,
-                        SourcePlanIssueSeverity.Refusal,
-                        "The machine registers no layout for this classic event class at the version it is planned for, and none is "
-                        + "measured for this build."));
+                    issues.Add(new(sourceId, SourcePlanIssueSeverity.Refusal, NoClassicLayout));
                     continue;
                 }
 
@@ -298,9 +294,10 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
     }
 
     /// <summary>
-    /// Why a kernel group of a classic class could not have its records decided on <paramref name="buildId"/>, read from the
-    /// layout the machine registers as a capture compiles it; null where they can, where it has no class, or where the machine
-    /// registers no layout, which a capture refuses for that reason instead.
+    /// Why a kernel group of a classic class could not have its records read and decided on <paramref name="buildId"/>, as a
+    /// capture compiles it: no layout the machine registers at the version it is planned for and none measured for the build,
+    /// or a gate that could not decide its records by that layout; null where they can, where it has no class, or where the
+    /// machine cannot be asked for layouts at all.
     /// </summary>
     private string? UndecidableClass(WindowsSourceDefinition definition, int sourceIndex, string buildId)
     {
@@ -312,8 +309,12 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
         int[] opcodes = [.. definition.AdmittedEvents.Select(intent => intent.Opcode).OfType<int>().Distinct()];
         int[] versions = [.. definition.AdmittedEvents.Select(intent => intent.Version).Distinct()];
         (ProviderSchema? classic, _) = ClassicLayout(definition, classGuid, versions, opcodes, buildId);
-        return classic is null ? null : RecordGates.Undecidable(AdmissionPlanCompiler.Compile(definition, classic, sourceIndex), buildId);
+        return classic is null ? NoClassicLayout : RecordGates.Undecidable(AdmissionPlanCompiler.Compile(definition, classic, sourceIndex), buildId);
     }
+
+    /// <summary>Why a capture refuses a classic kernel group neither registered nor measured at the version it is planned for.</summary>
+    private const string NoClassicLayout =
+        "The machine registers no layout for this classic event class at the version it is planned for, and none is measured for this build.";
 
     /// <summary>
     /// A classic class's layout at the one version its source is planned for: the machine's registration, which TDH resolves
@@ -353,8 +354,9 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
 
         if (definition.Kind != SourceKind.ManifestProvider && UndecidableClass(definition, sourceIndex, buildId) is { } undecidableClass)
         {
-            // A gated kernel group whose gate could not decide its records on this build - its numbers never measured here, or
-            // its layout without a field the gate decides by - leaves its schema unknown to it, as a capture refuses it (R3).
+            // A kernel group of a classic class whose records could not be read and decided on this build - no layout registered
+            // at the version planned and none measured for the build, its gate's numbers never measured here, or its layout
+            // without a field the gate decides by - leaves its schema unknown to it, as a capture refuses it (R3).
             unavailableReason = undecidableClass;
             checks.Add(new(
                 CapabilityCheckKind.Registration,

@@ -907,6 +907,7 @@ Revision 980 measures a section twice, by its handles and by its views, never jo
 Revision 981 measures sections through the product (ADR-092's addendum): FX-SECT-001 recorded by icat record under the sections profile three times, nothing lost, has each of its two sections found twice and bound to exactly its two processes, so sections are topology only on 10.0.26220.0-x64.
 Revision 982 adds FX-SECT-002 (ADR-092's second addendum): sections made and ended 64 generations one after another, recorded through the product three times, nothing lost, each found twice and a number of its own by its handles and by its views while the kernel gave the views of about a quarter of them a value an earlier generation's had carried - the mechanism's second instance and lifetime fixture.
 Revision 983 adds FX-SECT-003 (ADR-092's third addendum): sections whose handles and creator's views were made before a capture began, recorded through the product three times, nothing lost, have each close numbered alone and none discovered, though the start's rundown holds each one's views to one number in both processes, while the same capture's control is whole - the mechanism's ambiguity case.
+Revision 984 holds sections' schema-failure case (ADR-090's fifth addendum): a capture refuses either kernel source where its records could not be read and decided, so the sections profile does not start, and `icat capabilities` says a classic group's schema is unknown where no layout is registered or measured for the build, as a capture refuses it.
 
 ## Revisions, a paragraph each, in order
 
@@ -4423,3 +4424,13 @@ section record: each of the four closes naming a held section was numbered alone
 processes' handles were joined by a name, while the start's rundown named the creator's view with the value the opener's
 views carried, holding each section's views to one number in both processes. The control was whole each time. A test
 checks the first run's order of events and both ledgers against their truth; the fixture assigns no tier.
+
+Revision 984 holds sections' schema-failure case (ADR-090's fifth addendum), as revision 949 held named synchronization
+objects'. A capture's compilation already refused the file view flag on a build none measured and sections' handles on a
+build with no measured Section number or by a layout without a field a gate decides by; but `icat capabilities` said a
+source's schema was unknown only where a gate could not decide records by a layout it read, and kept a classic group the
+machine registers no layout for, and none is measured for, a kernel group the provider registry cannot confirm, though a
+capture refused it. `CapabilityInventoryProbe` now says that group's schema is unknown, for the capture's own reason. A
+test compiles both kernel sources on the measured build, where the profile starts, and refuses each four ways - each on a
+build none measured, a view layout without the process, a handle layout whose creation carries no handle - each blocking
+the profile with its reason and the report saying its schema is unknown for it; five mutations are caught.

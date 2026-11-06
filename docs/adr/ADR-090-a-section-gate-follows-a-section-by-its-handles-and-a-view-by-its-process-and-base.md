@@ -5,10 +5,11 @@
   source of their own over the handle group, admitted through the section handle gate (its second addendum); since
   revision 978 a section handle's creation and close bind to the process that raised them, as `process-binding-v8` (its
   third addendum); since revision 979 the opt-in sections profile collects both sources beside lifecycle, stating its
-  cost (its fourth addendum)
+  cost (its fourth addendum); since revision 984 a capture refuses either kernel source where its records could not be
+  read and decided, so the profile does not start and `icat capabilities` says why (its fifth addendum)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
-- Relates to: ADR-083, ADR-087, ADR-089, plan M6, §4.2, R22, P12, P20, FX-SECT-001
+- Relates to: ADR-083, ADR-087, ADR-089, ADR-091, plan M6, §4.2, R3, R22, P12, P20, FX-SECT-001
 
 ## Context
 
@@ -138,3 +139,22 @@ handle-heavy workload ran 5.3 and 8.3% lower (ADR-082's addendum). That is why t
 neither source. Nothing has measured the profile whole yet, and no build carries a tier for sections. Tests compile it
 with all three sources and without either kernel source, hold the leads' one profile, and check both commands'
 profile lists, help and preview; the catalog counts eleven profiles. Seven mutations are caught.
+
+## Fifth addendum: a capture refuses a section source it could not read and decide (revision 984)
+
+A capture's compilation refuses either kernel source of the sections profile where its records could not be read and
+decided: the file view flag on a build none measured, as the machine registers no layout at version 3 and none is
+measured for the build (ADR-091), or by a registered layout without the process a view is followed by; sections'
+handles on a build with no measured Section type number, or by a layout whose creation carries no handle, as
+`RecordGates.Undecidable` says (ADR-083's addendum). So the profile does not start, the source blocking with that reason,
+rather than record lifecycle and half of each section.
+
+- `icat capabilities` said so only where a gate could not decide records by a layout it read. For a classic class the
+  machine registers no layout for at the version planned, and none is measured for the build, it kept the group a kernel
+  group the provider registry cannot confirm, though a capture refused it. It now says that group's schema is unknown,
+  for the capture's own reason, as it does for a group its gate could not decide; one statement serves both.
+- A test holds it on the measured build with the whole layouts, which compile, the views by their measured layout, and
+  start, and on the four refusals - each kernel source on a build none measured, a view layout without the process and
+  a handle layout whose creation carries no handle - each refused with its reason, the profile blocked by it and the
+  report saying the source's schema is unknown for it; and on the profile compiled for a build none measured, both
+  kernel sources blocking. Five mutations are caught. It is the section discovery package's schema-failure case.
