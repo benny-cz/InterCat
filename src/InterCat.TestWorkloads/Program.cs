@@ -104,6 +104,15 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         HandleMilliseconds = Integer(args, "--handle-ms") ?? 0,
     };
 
+    var sectionOptions = new SectionOptions
+    {
+        TruthDirectory = truth,
+        Name = Option(args, "--name"),
+        Bytes = Integer(args, "--view-bytes") ?? 65_536,
+        Rounds = Integer(args, "--rounds") ?? 4,
+        Seed = Integer(args, "--seed") ?? 20_261_106,
+    };
+
     var udpOptions = new UdpLoopbackOptions
     {
         TruthDirectory = truth,
@@ -240,6 +249,14 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             "window-message-sender" when OperatingSystem.IsWindows() =>
                 await WindowMessageScenario.RunSenderAsync(windowMessageOptions, cancellationToken).ConfigureAwait(false),
             "window-message" or "window-message-receiver" or "window-message-sender" =>
+                await UnsupportedPlatformAsync().ConfigureAwait(false),
+            "section-share" when OperatingSystem.IsWindows() =>
+                await SectionScenario.RunCoordinatorAsync(sectionOptions, cancellationToken).ConfigureAwait(false),
+            "section-share-creator" when OperatingSystem.IsWindows() =>
+                await SectionScenario.RunCreatorAsync(sectionOptions, cancellationToken).ConfigureAwait(false),
+            "section-share-opener" when OperatingSystem.IsWindows() =>
+                await SectionScenario.RunOpenerAsync(sectionOptions, cancellationToken).ConfigureAwait(false),
+            "section-share" or "section-share-creator" or "section-share-opener" =>
                 await UnsupportedPlatformAsync().ConfigureAwait(false),
             "com-loopback" when OperatingSystem.IsWindows() =>
                 await ComLoopbackScenario.RunCoordinatorAsync(comOptions, cancellationToken).ConfigureAwait(false),
@@ -401,6 +418,13 @@ static void PrintHelp()
     Console.WriteLine("      --handle-ms runs it as FX-WMSG-003: the receiver takes that many milliseconds over each copy and");
     Console.WriteLine("      each posted message, so a copy is in flight that long and a posted message waits its turn in the");
     Console.WriteLine("      queue, long enough for a capture's start and stop to cut them. Windows only.");
+    Console.WriteLine();
+    Console.WriteLine("  section-share --truth <dir> [--view-bytes n] [--rounds n] [--seed n]");
+    Console.WriteLine("      FX-SECT-001: a creator makes two named sections of the session's namespace under a name of the");
+    Console.WriteLine("      run's own, one backed by the paging file and one by a file of its own, maps a view of each and");
+    Console.WriteLine("      writes seeded bytes into it; an opener opens each by its name and maps and unmaps a view of it that");
+    Console.WriteLine("      many times, reading the creator's bytes through each. Each process logs every section it made or");
+    Console.WriteLine("      opened, every view it mapped or unmapped, with its size, and every handle it closed. Windows only.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

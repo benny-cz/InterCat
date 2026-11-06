@@ -982,6 +982,49 @@
       ]
     },
     {
+      "id": "FX-SECT-001",
+      "title": "Sections two processes share, as the object manager's handles and the kernel's view mappings record them",
+      "scenario": "Plan M6's section discovery work package (§4.2, ADR-089): a creator makes two named sections of the session's namespace under a name of the run's own, one backed by the paging file and one by a file of its own, maps a view of each and writes seeded bytes into it; an opener opens each by its name and maps and unmaps a view of it several times, reading the creator's bytes through each. Read by a private system logger of tools/InterCat.SectionProbe collecting process lifecycle and the kernel's file view flag, with the object manager's handle group added to its masks, machine-wide.",
+      "milestone": "M6",
+      "mechanism": "SharedSection",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads section-share --view-bytes 65536 --rounds 4, under tools/InterCat.SectionProbe --measure; two further runs of 4096 bytes sixteen times and 1048576 twice",
+        "seed": 20261106,
+        "log": "fixtures/FX-SECT-001/evidence/truth-creator.jsonl",
+        "independence": "Each process logs every section it made or opened, every view it mapped or unmapped, with its size, and every handle it closed, by the section's name, the opener also the bytes it read back; neither reads InterCat state, and the probe's session reads the kernel's records apart from both."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-SECT-001/evidence/measurement.json",
+        "note": "Three runs, nothing lost: each process's handle to each section created and closed once, both at one address, typed Section and named at its close alone; every view either process mapped or unmapped recorded in that process with its size, each section's views naming one value in both processes that no handle names, raised at version 3, a layout no registered schema describes; no record of a byte moved through a view. The first run's ledger is held to its truth by a test."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-06",
+          "result": "Measured by tools/InterCat.SectionProbe, three runs, nothing lost: a section's handles joined at its object's address and named at their close, and every view of it each process mapped and unmapped recorded in that process with its size, the views of one section naming one value no handle names and no byte moved. No tier is assigned: no source is inventoried for sections (ADR-089)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two processes' truth logs and scenario of the first run - sections by the run's own names, views by their round and size, of seeded bytes - and the ledger of its sections' handle records and its views' records, by role - creator, opener - each by its section's kind and its object's, base's and value's ordinals, size, offset and extra information's high byte, never a PID, a handle value or an address; and the measurement's counters of the three runs."
+      },
+      "tests": [
+        "R22: FX-SECT-001's handle records join each process's handles to a section by its object's address - each creation named by nothing but its close, typed Section - and every view each process mapped and unmapped is a record of that process with its size, each section's views naming one value in both processes, while one base held both sections' views and no record names a byte moved through one"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -3335,6 +3378,7 @@
         "R22: FX-HTTP-010's requests through a proxy, eight clients at once, are each one exchange and over TLS each CONNECT one more, every part whole and each said to have gone to a proxy",
         "R22: FX-HTTP-011's requests challenged for credentials, eight clients at once, are an exchange to each leg, each part whole, each challenge answered by its own request and each request carrying credentials said to",
         "R22: FX-HTTP-012's requests through a proxy that challenges, eight clients at once, are an exchange to each leg and each CONNECT, each part whole, and each challenge answered by the proxy's credentials",
+        "R22: FX-SECT-001's handle records join each process's handles to a section by its object's address - each creation named by nothing but its close, typed Section - and every view each process mapped and unmapped is a record of that process with its size, each section's views naming one value in both processes, while one base held both sections' views and no record names a byte moved through one",
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
         "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart",
         "R22: FX-SYNC-002's duplications are each raised in the process that asked for it - a push in its source, a pull in its target, one between two others in a third - at version 3, its fourth field naming its source process, with its source's handle and its target, and no creation of the handle made, whose close its target raises naming the object",

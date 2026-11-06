@@ -1,0 +1,131 @@
+{
+  "fixture": "FX-SECT-001",
+  "question": "What the kernel records of two named sections two processes share - one backed by the paging file and one by a file - under the object manager's handle group and the kernel's file view flag: each process's handles to them, and each view it mapped and unmapped.",
+  "answer": "In 3 runs, nothing lost - 64 KiB views four times, 4 KiB sixteen times and 1 MiB twice - each process's handle to each section was created and closed once, both processes' at one address, typed Section, named at its close alone; every view either process mapped or unmapped had its record raised in that process, at most 98.3 microseconds before its call returned, with the size the truth logged, each unmapping at its mapping's base. Every view of one section carried one value in its file object field in both processes, never the section object's address and in no other record of the two processes; a paging-file section's views 0xC4 in their extra information's high byte and a file section's 0x04. The records were raised at version 3, 44 bytes, a layout no registered schema describes, and none says a byte moved through a view.",
+  "method": "Each run: tools/InterCat.SectionProbe --measure started a private system logger of its own collecting process lifecycle and the file view flag, added the object manager's handle group to its masks, ran the workload section-share and read every handle record of the run's sections and every view record of its two processes, each truth view set beside the nearest record of its process and kind within 5 ms. The probe writes counts, roles and ordinals alone.",
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-11-06",
+  "committedRun": 1,
+  "runs": [
+    {
+      "bench": "bench/results/section-measurement-20261106T030404Z",
+      "viewBytes": 65536,
+      "rounds": 4,
+      "eventsLost": 0,
+      "sections": [
+        {
+          "section": "memory",
+          "objects": 1,
+          "type": "Section"
+        },
+        {
+          "section": "file",
+          "objects": 1,
+          "type": "Section"
+        }
+      ],
+      "views": [
+        {
+          "section": "memory",
+          "truthViews": 10,
+          "recorded": 10,
+          "viewValues": 1,
+          "inBothProcesses": true,
+          "aSectionObject": false,
+          "miscInfoHighByte": "0xC4"
+        },
+        {
+          "section": "file",
+          "truthViews": 10,
+          "recorded": 10,
+          "viewValues": 1,
+          "inBothProcesses": true,
+          "aSectionObject": false,
+          "miscInfoHighByte": "0x04"
+        }
+      ],
+      "viewRecordsAtVersion3": 3598,
+      "workloadOtherViews": 734
+    },
+    {
+      "bench": "bench/results/section-measurement-20261106T030410Z",
+      "viewBytes": 4096,
+      "rounds": 16,
+      "eventsLost": 0,
+      "sections": [
+        {
+          "section": "memory",
+          "objects": 1,
+          "type": "Section"
+        },
+        {
+          "section": "file",
+          "objects": 1,
+          "type": "Section"
+        }
+      ],
+      "views": [
+        {
+          "section": "memory",
+          "truthViews": 34,
+          "recorded": 34,
+          "viewValues": 1,
+          "inBothProcesses": true,
+          "aSectionObject": false,
+          "miscInfoHighByte": "0xC4"
+        },
+        {
+          "section": "file",
+          "truthViews": 34,
+          "recorded": 34,
+          "viewValues": 1,
+          "inBothProcesses": true,
+          "aSectionObject": false,
+          "miscInfoHighByte": "0x04"
+        }
+      ],
+      "viewRecordsAtVersion3": 7314,
+      "workloadOtherViews": 718
+    },
+    {
+      "bench": "bench/results/section-measurement-20261106T030417Z",
+      "viewBytes": 1048576,
+      "rounds": 2,
+      "eventsLost": 0,
+      "sections": [
+        {
+          "section": "memory",
+          "objects": 1,
+          "type": "Section"
+        },
+        {
+          "section": "file",
+          "objects": 1,
+          "type": "Section"
+        }
+      ],
+      "views": [
+        {
+          "section": "memory",
+          "truthViews": 6,
+          "recorded": 6,
+          "viewValues": 1,
+          "inBothProcesses": true,
+          "aSectionObject": false,
+          "miscInfoHighByte": "0xC4"
+        },
+        {
+          "section": "file",
+          "truthViews": 6,
+          "recorded": 6,
+          "viewValues": 1,
+          "inBothProcesses": true,
+          "aSectionObject": false,
+          "miscInfoHighByte": "0x04"
+        }
+      ],
+      "viewRecordsAtVersion3": 5437,
+      "workloadOtherViews": 736
+    }
+  ]
+}

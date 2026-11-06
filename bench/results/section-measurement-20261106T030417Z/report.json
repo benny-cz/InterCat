@@ -1,0 +1,166 @@
+{
+  "question": "What the kernel records of two named sections two processes share - one backed by the paging file and one by a file - under the object manager\u0027s handle group and the file view flag: each process\u0027s handles to them, and each view it mapped and unmapped.",
+  "truth": {
+    "sections": 2,
+    "creatorViews": 2,
+    "openerViews": 4,
+    "viewBytes": 1048576
+  },
+  "sections": [
+    {
+      "section": "memory",
+      "objects": 1,
+      "typeNames": [
+        "Section"
+      ],
+      "handles": [
+        {
+          "role": "creator",
+          "kind": "Create",
+          "records": 1,
+          "named": 0
+        },
+        {
+          "role": "creator",
+          "kind": "Close",
+          "records": 1,
+          "named": 1
+        },
+        {
+          "role": "opener",
+          "kind": "Create",
+          "records": 1,
+          "named": 0
+        },
+        {
+          "role": "opener",
+          "kind": "Close",
+          "records": 1,
+          "named": 1
+        }
+      ]
+    },
+    {
+      "section": "file",
+      "objects": 1,
+      "typeNames": [
+        "Section"
+      ],
+      "handles": [
+        {
+          "role": "creator",
+          "kind": "Create",
+          "records": 1,
+          "named": 0
+        },
+        {
+          "role": "creator",
+          "kind": "Close",
+          "records": 1,
+          "named": 1
+        },
+        {
+          "role": "opener",
+          "kind": "Create",
+          "records": 1,
+          "named": 0
+        },
+        {
+          "role": "opener",
+          "kind": "Close",
+          "records": 1,
+          "named": 1
+        }
+      ]
+    }
+  ],
+  "views": [
+    {
+      "section": "memory",
+      "truthViews": 6,
+      "recorded": 6,
+      "sizesAsLogged": true,
+      "unmappedAtTheirBase": true,
+      "viewValues": 1,
+      "viewValueInBothProcesses": true,
+      "viewValueIsASectionObject": false,
+      "otherRecordsNamingIt": 0,
+      "miscInfoHighBytes": [
+        "0xC4"
+      ],
+      "maxLagMicroseconds": 98.3
+    },
+    {
+      "section": "file",
+      "truthViews": 6,
+      "recorded": 6,
+      "sizesAsLogged": true,
+      "unmappedAtTheirBase": true,
+      "viewValues": 1,
+      "viewValueInBothProcesses": true,
+      "viewValueIsASectionObject": false,
+      "otherRecordsNamingIt": 0,
+      "miscInfoHighBytes": [
+        "0x04"
+      ],
+      "maxLagMicroseconds": 47.9
+    }
+  ],
+  "viewLayout": {
+    "records": 5437,
+    "versions": [
+      3
+    ],
+    "payloadBytes": [
+      44
+    ],
+    "betweenSizeAndProcessBytes": [
+      8
+    ],
+    "betweenPageAligned": true,
+    "processIsTheRaiser": true
+  },
+  "workloadOtherViews": 736,
+  "truthBytesReadThroughViews": 4194304,
+  "counts": {
+    "handleEvents": 390118,
+    "viewEvents": 127612,
+    "viewEventsByOpcode": {
+      "37": 2637,
+      "38": 2800,
+      "39": 61146,
+      "40": 61029
+    },
+    "typeNames": 74
+  },
+  "schema": "intercat.section-measurement.v1",
+  "measuredUtc": "2026-11-06T03:04:22.2711943+00:00",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "session": {
+    "mode": "private system logger, uniquely named, owned and stopped by the probe",
+    "kernelFlags": [
+      "Process",
+      "VAMap"
+    ],
+    "groupMasks": [
+      "PERF_OB_HANDLE"
+    ],
+    "masksRead": [
+      "0x00008003",
+      "0x00000000",
+      "0x00000000",
+      "0x00000000",
+      "0x00000040",
+      "0x00000000",
+      "0x00000000",
+      "0x00000000"
+    ],
+    "eventsLost": 0
+  },
+  "workload": {
+    "scenario": "FX-SECT-001",
+    "viewBytes": 1048576,
+    "rounds": 2,
+    "seconds": 0.6
+  }
+}

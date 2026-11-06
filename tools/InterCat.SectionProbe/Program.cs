@@ -43,15 +43,21 @@ internal static class Program
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    private static int Main(string[] args)
+    private static async Task<int> Main(string[] args)
     {
         string? output = Option(args, "--output");
-        if (!args.Contains("--inspect", StringComparer.Ordinal) || output is null)
+        bool inspect = args.Contains("--inspect", StringComparer.Ordinal);
+        bool measure = args.Contains("--measure", StringComparer.Ordinal);
+        if (inspect == measure || output is null)
         {
             Console.Error.WriteLine("InterCat.SectionProbe --inspect --output <new directory>");
             Console.Error.WriteLine("  Reads, without enabling any, the layouts this machine registers for the kernel object manager's");
             Console.Error.WriteLine("  and memory manager's classic events, and the schema of every registered provider whose name says");
             Console.Error.WriteLine("  memory, sections or mappings, and writes each event that could name a section or a mapped view.");
+            Console.Error.WriteLine("InterCat.SectionProbe --measure --output <new directory> [--rounds n] [--view-bytes n]");
+            Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]: runs FX-SECT-001 under a private system logger of its own,");
+            Console.Error.WriteLine("  machine-wide, collecting the object manager's handle group and the kernel's file view flag, and");
+            Console.Error.WriteLine("  writes what it recorded of the two processes' handles to the sections and views of them.");
             return 2;
         }
 
@@ -63,6 +69,11 @@ internal static class Program
         }
 
         Directory.CreateDirectory(output);
+        if (measure)
+        {
+            return await Measure.RunAsync(output, args).ConfigureAwait(false);
+        }
+
         var metadata = new TdhEtwMetadataSource();
         var classes = new List<object>();
         foreach ((string name, Guid classGuid) in Classes)

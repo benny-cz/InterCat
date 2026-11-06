@@ -893,6 +893,7 @@ Revision 966 holds a window message evaluation to its capture's window (ADR-088'
 Revision 967 drills a process's window message records down exactly (ADR-088's fourth addendum): icat processes counts the ends of the messages it sent, posted and retrieved and names the icat evidence command that lists exactly them, each with its source record.
 Revision 968 measures the window messages profile's cost through the product (ADR-087's fourth addendum): Moderate, a message-bound workload 8.2 and 10.8% slower, past the throughput target, nothing dropped - so the UI messaging package meets M6's exit tests.
 Revision 969 begins the section discovery package with its metadata inspection: a section's handles are the object manager's, as every object's, and the file I/O class declares a view's mapping and unmapping with its base, size, file object and process, but nothing names the section a view maps.
+Revision 970 measures sections two processes share (ADR-089, FX-SECT-001): each section's handles are joined at its object's address and named at their close, and every view is recorded in its process with its size, each section's views naming one value no handle carries, and no byte moved.
 
 ## Revisions, a paragraph each, in order
 
@@ -4280,3 +4281,14 @@ and their rundowns (39, 40), each with the view's base and size, a file object, 
 nothing naming the section a view maps. The page fault class declares virtual allocations, heap ranges and faults, none a
 section, and no provider declares an event naming a section, a view or a mapping. It is evidence of layouts on one machine,
 not of emission: a truth fixture of a section two processes share is measured before any field is implemented.
+
+Revision 970 gives the section discovery package its capability result (ADR-089, FX-SECT-001). The test workload's
+`section-share` has a creator make two named sections under a name of the run's own, one backed by the paging file and one
+by a file, map a view of each and write seeded bytes, and an opener open each by its name and map and unmap a view of it
+several times, reading the bytes back; a truth gains two event kinds for views. `tools/InterCat.SectionProbe --measure`
+reads a run under a private system logger of its own collecting process lifecycle and the file view flag, with the object
+manager's handle group added to its masks. In three runs, nothing lost, each process's handle to each section was created
+and closed once, both at one address, typed Section and named at its close alone, and every view either process mapped
+or unmapped was recorded in that process with its size, raised at version 3, a layout no registered schema describes. Each
+section's views carried one value in both processes, a kernel address no handle carries, so views join each other but
+neither their section's handles nor its name, and no record said a byte moved through a view. No source is inventoried.

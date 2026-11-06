@@ -44,6 +44,12 @@ public enum TruthEventKind
     /// asked for it with both ends (<see cref="TruthRecord.Duplication"/>); the status names the object's kind.
     /// </summary>
     HandleDuplicated = 18,
+
+    /// <summary>A view of a section the workload mapped into its own address space, by the section's name; its declared bytes are the view's size.</summary>
+    ViewMapped = 19,
+
+    /// <summary>A view of a section the workload unmapped from its own address space, by the section's name.</summary>
+    ViewUnmapped = 20,
 }
 
 /// <summary>
