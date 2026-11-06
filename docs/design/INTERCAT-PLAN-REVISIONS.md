@@ -894,6 +894,7 @@ Revision 967 drills a process's window message records down exactly (ADR-088's f
 Revision 968 measures the window messages profile's cost through the product (ADR-087's fourth addendum): Moderate, a message-bound workload 8.2 and 10.8% slower, past the throughput target, nothing dropped - so the UI messaging package meets M6's exit tests.
 Revision 969 begins the section discovery package with its metadata inspection: a section's handles are the object manager's, as every object's, and the file I/O class declares a view's mapping and unmapping with its base, size, file object and process, but nothing names the section a view maps.
 Revision 970 measures sections two processes share (ADR-089, FX-SECT-001): each section's handles are joined at its object's address and named at their close, and every view is recorded in its process with its size, each section's views naming one value no handle carries, and no byte moved.
+Revision 971 measures collecting the kernel's file view flag (ADR-089's addendum): Low in the processor time it adds, but a view-heavy workload past the throughput target in three series of four, so only an opt-in profile stating it may admit it.
 
 ## Revisions, a paragraph each, in order
 
@@ -4292,3 +4293,12 @@ and closed once, both at one address, typed Section and named at its close alone
 or unmapped was recorded in that process with its size, raised at version 3, a layout no registered schema describes. Each
 section's views carried one value in both processes, a kernel address no handle carries, so views join each other but
 neither their section's handles nor its name, and no record said a byte moved through a view. No source is inventoried.
+
+Revision 971 measures the section discovery package's new source's cost (ADR-089's addendum), as revision 955 measured the
+message pump's. `tools/InterCat.SectionProbe --measure --impact` runs FX-SECT-001's opener mapping and unmapping each
+section's 4 KiB view many times, in nine pairs with and without a private system logger collecting the kernel's file view
+flag machine-wide, its consumer only counting the records. Over four series, nothing lost, the processor time the session
+added was a median 0.49 and 0.55 CPU pp over trials of four seconds, Low, and 1.3 and 1.1 over trials of a second, where
+the consumer's settling weighs on a second's work; the workload's own processor time grew, its records raised in its own
+threads, and its throughput fell 9.5, 5.2, 5.3 and 0.2%, past §12's 5% target in three series of four. Only an opt-in
+profile stating it may admit the flag.

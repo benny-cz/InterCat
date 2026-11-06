@@ -58,6 +58,10 @@ internal static class Program
             Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]: runs FX-SECT-001 under a private system logger of its own,");
             Console.Error.WriteLine("  machine-wide, collecting the object manager's handle group and the kernel's file view flag, and");
             Console.Error.WriteLine("  writes what it recorded of the two processes' handles to the sections and views of them.");
+            Console.Error.WriteLine("  --impact [--pairs n] [--rounds n]: machine CPU and workload time with and without a session collecting");
+            Console.Error.WriteLine("  the kernel's file view flag machine-wide, in pairs, over FX-SECT-001's opener mapping and unmapping");
+            Console.Error.WriteLine("  each section's 4 KiB view that many times, and the processor time of the workload's processes and of the");
+            Console.Error.WriteLine("  probe's own consumer.");
             return 2;
         }
 
@@ -69,6 +73,26 @@ internal static class Program
         }
 
         Directory.CreateDirectory(output);
+
+        // What collecting the kernel's file view flag costs, in pairs with and without a session collecting it machine-wide, over
+        // FX-SECT-001's opener mapping and unmapping each section's view thousands of times.
+        if (measure && args.Contains("--impact", StringComparer.Ordinal))
+        {
+            string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+            int pairs = int.Parse(Option(args, "--pairs") ?? "9", CultureInfo.InvariantCulture);
+            string rounds = Option(args, "--rounds") ?? "20000";
+            Dictionary<string, object?> impact = await Impact.MeasureAsync(workload,
+                ["section-share", "--truth", "{truth}", "--rounds", rounds, "--view-bytes", "4096"], pairs).ConfigureAwait(false);
+            impact["schema"] = "intercat.section-view-impact.v1";
+            impact["measuredUtc"] = DateTimeOffset.UtcNow;
+            impact["build"] = CapabilityInventoryProbe.DescribeEnvironment().BuildId;
+            impact["machine"] = $"{Environment.ProcessorCount} logical processors · {Environment.OSVersion}";
+            File.WriteAllText(Path.Combine(output, "impact.json"), JsonSerializer.Serialize(impact, Json));
+            Console.WriteLine(JsonSerializer.Serialize(impact, Json));
+            return 0;
+        }
+
         if (measure)
         {
             return await Measure.RunAsync(output, args).ConfigureAwait(false);

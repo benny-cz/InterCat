@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using InterCat.Domain;
 using Xunit;
 
 namespace InterCat.Capture.Windows.Tests;
@@ -119,6 +120,50 @@ public sealed class SectionLeadTests
         }
 
         Assert.Equal([4_096, 65_536, 1_048_576], sizes.Order());
+    }
+
+    [Fact(DisplayName = "§12: collecting the kernel's file view flag is measured in four series of pairs over a view-heavy workload - Low in the processor time it adds over trials of four seconds, the workload's own time more and its throughput past §12's target in three series of four, nothing lost - and the machine's other processes map views whatever the workload")]
+    public void TheFileViewFlagsCollectionCostIsMeasured()
+    {
+        string results = Path.Combine(RepositoryRoot(), "bench", "results");
+        string[] series = [.. Directory.EnumerateDirectories(results, "section-view-impact-*")
+            .Select(directory => Path.Combine(directory, "impact.json")).Where(File.Exists).Order(StringComparer.Ordinal)];
+        Assert.Equal(4, series.Length);
+        var regressions = new List<bool>();
+        foreach ((string file, int rounds) in series.Zip([20_000, 20_000, 100_000, 100_000]))
+        {
+            // Nine pairs of FX-SECT-001's opener mapping and unmapping each section's 4 KiB view that many times, nothing lost.
+            using JsonDocument impact = JsonDocument.Parse(File.ReadAllText(file));
+            JsonElement root = impact.RootElement;
+            Assert.Equal((9, 0L), (root.GetProperty("pairs").GetArrayLength(), root.GetProperty("eventsLost").GetInt64()));
+            Assert.Equal(($"section-share --truth {{truth}} --rounds {rounds.ToString(CultureInfo.InvariantCulture)} --view-bytes 4096", "VAMap (0x8000)"),
+                (root.GetProperty("workload").GetString(), root.GetProperty("flag").GetString()));
+
+            // The machine's busy share is within the processor target in every series; the workload's own processor time grew, as
+            // a view's records are raised in the thread that maps and unmaps it.
+            Assert.True(root.GetProperty("cpuTargetMet").GetBoolean(), file);
+            Assert.True(root.GetProperty("medianWorkloadCpuIncreasePercent").GetDouble() > 0, file);
+            regressions.Add(!root.GetProperty("throughputTargetMet").GetBoolean());
+
+            // The workload raised tens of thousands of view records a second, the machine's other processes a few in the second
+            // before it.
+            double rate = root.GetProperty("medianViewEventsPerSecond").GetDouble();
+            Assert.InRange(rate, 50_000, 200_000);
+            Assert.InRange(root.GetProperty("medianViewEventsInTheSecondBefore").GetDouble(), 0, rate / 10);
+
+            // Over trials of about four seconds the processor time the session added, the workload's and the consumer's, is
+            // Low in the median; over trials of a second the consumer's settling weighs on a second's work.
+            if (rounds == 100_000)
+            {
+                double attributed = root.GetProperty("medianAttributedImpactPercentagePoints").GetDouble();
+                Assert.Equal(OverheadClass.Low, OverheadClassCalculator.Classify(attributed));
+                Assert.Equal(nameof(OverheadClass.Low), root.GetProperty("attributedOverhead").GetString());
+                Assert.InRange(root.GetProperty("medianConsumerMicrosecondsPerEvent").GetDouble(), 0, 2);
+            }
+        }
+
+        // The workload's throughput fell past §12's 5% target in three series of four.
+        Assert.Equal(3, regressions.Count(static regressed => regressed));
     }
 
     private sealed record Row(string Kind, string Role, string Section, string Object, string Type, string Named, string View, long Bytes, long Offset,

@@ -1,6 +1,7 @@
 # ADR-089: A section two processes share is recorded by its handles and its views, which no record joins
 
-- Status: accepted for M6's section discovery work package; no source is inventoried yet
+- Status: accepted for M6's section discovery work package; no source is inventoried yet; since revision 971 the file view
+  flag's collection cost is measured, Low in processor time but a view-heavy workload past the throughput target (addendum)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-035, ADR-082, ADR-083, plan M6, §4.2, R22, P2, P3, P6, FX-SECT-001
@@ -62,3 +63,23 @@ session's masks (ADR-082). Three runs - 64 KiB views four times, 4 KiB sixteen t
   ledger and truth are committed under `fixtures/FX-SECT-001/evidence/`.
 - Tests hold the ledger to its truth and the three runs to the layout the inspection read; fifteen alterations of that
   evidence are caught.
+
+## Addendum: the file view flag's collection cost (revision 971)
+
+`tools/InterCat.SectionProbe --measure --impact` measures what collecting the kernel's file view flag costs before any
+product path exists for it, as the window message and synchronization probes measured theirs: FX-SECT-001's opener
+mapping and unmapping each section's 4 KiB view many times, in nine pairs - once with no session and once while a private
+system logger of the probe's own collects the flag machine-wide, its consumer only counting the mappings and unmappings -
+in alternating order. Four series, nothing lost:
+
+- Over trials of about four seconds, 100,000 rounds, the processor time the session added, the workload's and its
+  consumer's, was a median 0.49 and 0.55 CPU pp, Low; over trials of about a second, 20,000 rounds,
+  1.3 and 1.1, the consumer's settling weighing on a second's work. The machine's busy share stayed within the
+  processor target in every series.
+- The workload spent 1.9 to 9.2% more processor time of its own, as a view's records are raised in the thread that
+  maps and unmaps it, and its throughput fell 9.5, 5.2, 5.3 and 0.2%, past §12's 5% target in three series of four.
+- The workload raised 78,496 to 126,535 view records a second; the machine's other processes, which map views
+  whatever runs, raised 63 to 1,408 in the second before a trial.
+
+So the flag's collection is Low in the processor time it adds, but a view-heavy workload slows past the throughput target:
+only an opt-in profile that states it may admit the flag, never Explore.
