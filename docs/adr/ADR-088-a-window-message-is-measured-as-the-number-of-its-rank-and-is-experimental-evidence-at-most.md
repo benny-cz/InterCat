@@ -2,10 +2,10 @@
 
 - Status: accepted for M6's UI messaging work package; FX-WMSG-001 measured through the product, experimental evidence on
   10.0.26220.0-x64 (addendum); FX-WMSG-002, windows made one after another, its second instance and lifetime fixture (second
-  addendum)
+  addendum); FX-WMSG-003, messages a capture cuts, its ambiguity case (third addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
-- Relates to: ADR-080, ADR-084, ADR-086, ADR-087, §14.2, R3, R22, P1, P27, FX-WMSG-001, FX-WMSG-002, `CoverageTierCalculator`,
+- Relates to: ADR-080, ADR-084, ADR-086, ADR-087, §14.2, R3, R22, P1, P27, FX-WMSG-001, FX-WMSG-002, FX-WMSG-003, `CoverageTierCalculator`,
   `WindowMessageCoverageEvaluator`, `ComCallCoverageEvaluator`, `SyncObjectCoverageEvaluator`
 
 ## Context
@@ -93,3 +93,35 @@ the last window's. The receiver's one queue carries every window's messages in t
   experimental evidence on 10.0.26220.0-x64, the build's per-build coverage carrying the tier from FX-WMSG-002, its latest
   fixture. A test reproduces it from the first run's committed ledger, and eleven alterations of that evidence and the runs'
   report are caught. FX-WMSG-002 is the package's second instance and lifetime fixture.
+
+## Addendum: messages a capture cuts (revision 966)
+
+M6's exit asks each mechanism for an ambiguity case: evidence that cannot decide, stated so rather than resolved by a
+guess. A capture begun or ended while window messages are in flight holds only part of them. A message begun before it is
+in the capture by its ends after the start, which the gate numbers from the first it sees (ADR-087) and which name no truth
+message; one begun inside but ended after it holds its start alone. Decision 1 ranked every truth message of a kind
+against the capture's messages of that kind, so one cut message made the counts differ and matched none of its kind.
+
+- `WindowMessageCoverageEvaluator` now holds the truth to the capture's window: its first window message record to its last,
+  on the wall clock its calibration reads - every window on the machine raises records, so they run from the capture's
+  start to its stop. A truth message begins at its first truth record, the receiver's receipt of a sent one or the
+  sender's queueing of a posted one, and one begun outside the window is said so and ranked with none. A number of the
+  truth's processes with ends but neither a send's start nor a post's queueing was begun before the capture, counted so,
+  and names no truth message. A message begun inside and ended after it is ranked as before, its gap naming each end it
+  lacks.
+- FX-WMSG-003 is FX-WMSG-001 with a receiver that takes 300 ms over each of 20 copies and 20 posted messages:
+  `InterCat.UiMessageProbe --measure --product --handle-ms 300` starts `icat record` two seconds into the run for six
+  seconds, so its start falls while a copy is in flight and its stop while posted messages wait their turn. Three runs,
+  loss-free - 18,546, 18,311, 16,899 records admitted, none dropped and none a gate omitted, windows of
+  6,217, 6,231, 6,223 ms:
+  - the copy in flight at the start was one number with its retrieval's stop in the receiver and its stop in the sender
+    alone, begun before the capture and naming no truth message, and it and the copies before it, 8, 7 and 7 a run, were
+    begun before the capture's first record and matched to none;
+  - every copy after it was the number of its rank with every end, and so was every post the capture held to its
+    retrieval, 20 a run; every post and the close its stop cut, 13, 14 and 14, was the number of its rank lacking its
+    retrieval alone;
+  - no attribution was false.
+- It measures what a cut message is said to be; window messages' tier is FX-WMSG-002's. A synthetic test holds the
+  window's rule, the first run's ledger is committed under `fixtures/FX-WMSG-003/evidence/` with its capture's window, and
+  eight mutations of the evaluator and nine alterations of that evidence and the runs' report are caught. FX-WMSG-003 is the
+  package's ambiguity case.

@@ -10,17 +10,28 @@ namespace InterCat.TestWorkloads;
 
 /// <summary>
 /// Parameters of one FX-WMSG-001 run - the messages a sender sends and posts to a receiver's window - or of an FX-WMSG-002
-/// run, the same messages to each of the receiver's windows made one after another.
+/// run, the same messages to each of the receiver's windows made one after another, or of an FX-WMSG-003 run, the same
+/// messages each taking the receiver a while.
 /// </summary>
 internal sealed record WindowMessageOptions
 {
-    /// <summary>The fixture a run is: FX-WMSG-002 where the receiver makes its windows in generations.</summary>
-    public string ScenarioId => Generations > 1 ? "FX-WMSG-002" : "FX-WMSG-001";
+    /// <summary>
+    /// The fixture a run is: FX-WMSG-002 where the receiver makes its windows in generations, FX-WMSG-003 where it takes its
+    /// time over each message.
+    /// </summary>
+    public string ScenarioId => HandleMilliseconds > 0 ? "FX-WMSG-003" : Generations > 1 ? "FX-WMSG-002" : "FX-WMSG-001";
 
     public required string TruthDirectory { get; init; }
 
     /// <summary>How many windows the receiver makes one after another, each closed by the sender before the next is made.</summary>
     public int Generations { get; init; } = 1;
+
+    /// <summary>
+    /// How long the receiver's window procedure takes over each copy and each posted message, in milliseconds, so a sent
+    /// message is in flight that long and posted ones wait their turn in its queue: long enough for a capture's start and
+    /// stop to cut them.
+    /// </summary>
+    public int HandleMilliseconds { get; init; }
 
     /// <summary>The seed of the copied data's sizes and bytes.</summary>
     public int Seed { get; init; } = 20_261_105;
@@ -45,7 +56,9 @@ internal sealed record WindowMessageOptions
 /// logs every message it sent or posted and every one its window received, by number and with a copy's size, and the window
 /// it made or found, by its class. FX-WMSG-002 is the same over windows made one after another: the receiver makes each
 /// generation's window under a name of its own once the last is destroyed, and the sender finds each by its class and name and
-/// sends and posts it the messages, numbered on from the last window's, before its close. Neither reads InterCat state.
+/// sends and posts it the messages, numbered on from the last window's, before its close. FX-WMSG-003 is FX-WMSG-001 with a
+/// receiver that takes its time over each copy and each posted message, so each sent message is in flight that long and the
+/// posted ones wait in its queue: a capture begun or ended meanwhile cuts them. Neither reads InterCat state.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static partial class WindowMessageScenario
@@ -62,10 +75,11 @@ internal static partial class WindowMessageScenario
 
     private static readonly JsonSerializerOptions SummaryOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    // The receiver's truth log and counts, and the name of the window it pumps, which its window procedure, called by the
-    // system on its pump, reaches.
+    // The receiver's truth log and counts, the name of the window it pumps and how long it takes over a message, which its
+    // window procedure, called by the system on its pump, reaches.
     private static TruthLog? receiverTruth;
     private static string receiverWindow = string.Empty;
+    private static int receiverHandling;
     private static int copiesReceived;
     private static int postsReceived;
 
@@ -93,6 +107,7 @@ internal static partial class WindowMessageScenario
             scenarioId = options.ScenarioId,
             options.Seed,
             options.Generations,
+            handleMilliseconds = options.HandleMilliseconds,
             options.CopyData,
             options.Posted,
             options.MaximumBytes,
@@ -120,6 +135,7 @@ internal static partial class WindowMessageScenario
         await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-receiver.jsonl"), options.ScenarioId, "receiver");
         truth.Write(TruthEventKind.ProcessStarted, resourceName: className);
         receiverTruth = truth;
+        receiverHandling = options.HandleMilliseconds;
         if (Pump(truth, className, options.Generations, cancellationToken) is { } failure)
         {
             truth.Write(TruthEventKind.Failure, status: failure, resourceName: className);
@@ -287,12 +303,14 @@ internal static partial class WindowMessageScenario
                 copiesReceived++;
                 receiverTruth?.Write(TruthEventKind.MessageReceived, callId: (long)copied->Data, completedBytes: copied->Bytes,
                     status: "WM_COPYDATA", resourceName: receiverWindow);
+                Handle();
                 return 1;
             }
 
             case ApplicationMessage:
                 postsReceived++;
                 receiverTruth?.Write(TruthEventKind.MessageReceived, callId: wParam, status: "posted", resourceName: receiverWindow);
+                Handle();
                 return 0;
 
             case Close:
@@ -310,6 +328,16 @@ internal static partial class WindowMessageScenario
         }
     }
 
+    // The receiver's time over a message it has logged: a copy's sender waits that long for its answer, and the next posted
+    // message that long in the queue.
+    private static void Handle()
+    {
+        if (receiverHandling > 0)
+        {
+            Thread.Sleep(receiverHandling);
+        }
+    }
+
     private static Process StartChild(string executable, string verb, WindowMessageOptions options)
     {
         var start = new ProcessStartInfo(executable)
@@ -323,6 +351,7 @@ internal static partial class WindowMessageScenario
             verb, "--truth", options.TruthDirectory, "--class", options.ClassName!,
             "--seed", options.Seed.ToString(CultureInfo.InvariantCulture),
             "--generations", options.Generations.ToString(CultureInfo.InvariantCulture),
+            "--handle-ms", options.HandleMilliseconds.ToString(CultureInfo.InvariantCulture),
             "--copies", options.CopyData.ToString(CultureInfo.InvariantCulture),
             "--posts", options.Posted.ToString(CultureInfo.InvariantCulture),
             "--bytes", options.MaximumBytes.ToString(CultureInfo.InvariantCulture),

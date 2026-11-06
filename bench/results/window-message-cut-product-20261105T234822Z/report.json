@@ -1,0 +1,107 @@
+{
+  "question": "Whether FX-WMSG-003\u0027s messages, each taking the receiver a while, recorded through the product by icat record under the opt-in window messages profile begun into the run and ended before it, are ranked within the capture\u0027s window alone - one begun before it or after it matched to none and ends without their start naming none, one begun inside but ended after it ranked with its missing ends said - as ADR-088 measures them.",
+  "scenario": "FX-WMSG-003",
+  "truth": {
+    "copiesSent": 20,
+    "messagesPosted": 20,
+    "bytes": 2048,
+    "handleMilliseconds": 300
+  },
+  "profile": "window-messages",
+  "captureAfterSeconds": 2,
+  "durationSeconds": 6,
+  "runs": [
+    {
+      "run": 1,
+      "health": {
+        "observedRecords": 18546,
+        "admittedRecords": 18546,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 0,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "tier": "ExperimentalEvidence",
+      "truthMessages": 41,
+      "truthWindows": 1,
+      "resolvedMemberships": 2,
+      "observed": 33,
+      "withEveryEnd": 20,
+      "peerAttributions": 20,
+      "falsePeerAttributions": 0,
+      "beyondTruth": 0,
+      "outsideScope": 0,
+      "outsideCapture": 8,
+      "begunBeforeCapture": 1,
+      "captureFromUtcTicks": 639295193059214232,
+      "captureToUtcTicks": 639295193121392576
+    },
+    {
+      "run": 2,
+      "health": {
+        "observedRecords": 18311,
+        "admittedRecords": 18311,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 0,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "tier": "ExperimentalEvidence",
+      "truthMessages": 41,
+      "truthWindows": 1,
+      "resolvedMemberships": 2,
+      "observed": 34,
+      "withEveryEnd": 20,
+      "peerAttributions": 20,
+      "falsePeerAttributions": 0,
+      "beyondTruth": 0,
+      "outsideScope": 0,
+      "outsideCapture": 7,
+      "begunBeforeCapture": 1,
+      "captureFromUtcTicks": 639295193192041788,
+      "captureToUtcTicks": 639295193254356419
+    },
+    {
+      "run": 3,
+      "health": {
+        "observedRecords": 16899,
+        "admittedRecords": 16899,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 0,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "tier": "ExperimentalEvidence",
+      "truthMessages": 41,
+      "truthWindows": 1,
+      "resolvedMemberships": 2,
+      "observed": 34,
+      "withEveryEnd": 20,
+      "peerAttributions": 20,
+      "falsePeerAttributions": 0,
+      "beyondTruth": 0,
+      "outsideScope": 0,
+      "outsideCapture": 7,
+      "begunBeforeCapture": 1,
+      "captureFromUtcTicks": 639295193326360951,
+      "captureToUtcTicks": 639295193388595231
+    }
+  ],
+  "notes": [
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once its ledger is written.",
+    "A run\u0027s health is the capture\u0027s own report: what its sources lost, what its queue dropped, and what a source\u0027s gate did not admit, by reason."
+  ],
+  "schema": "intercat.window-message-product.v1",
+  "measuredUtc": "2026-11-05T23:49:03.0367377+00:00",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

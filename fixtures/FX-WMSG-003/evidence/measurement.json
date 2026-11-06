@@ -1,0 +1,65 @@
+{
+  "fixture": "FX-WMSG-003",
+  "question": "Whether a capture through the product - icat record under the opt-in window messages profile, begun into a run whose receiver takes its time over each message and ended before it - holds the truth to its window: a message begun before it matched to none and its ends there naming none, one begun inside and ended after it ranked with the ends it lacks said, and every message it held whole the number of its rank with every end.",
+  "answer": "In 3 runs through the product, loss-free - 20 copies and 20 posts each, each taking the receiver 300 ms, the capture begun two seconds in for six - the copy in flight at the start was one number with its retrieval's stop in the receiver and its stop in the sender alone, begun before the capture and naming no truth message; it and the copies before it, 8, 7 and 7 a run, were begun before the capture's first record and matched to none. Every copy after it, and every post the capture held to its retrieval, was the number of its rank with every end, 20 a run; every post and the close its stop cut, 13, 14 and 14, was the number of its rank lacking its retrieval alone. No attribution was false. A message carries no size, so the tier the runs measure is ExperimentalEvidence; window messages' tier is FX-WMSG-002's.",
+  "method": "Each run: tools/InterCat.UiMessageProbe --measure --product --handle-ms 300 started the workload window-message --handle-ms 300 --copies 20 --posts 20, two seconds later icat record --profile window-messages --duration 6, and waited for both. The session the capture published was read as the product holds it into the role-only ledger, and evaluated by WindowMessageCoverageEvaluator against the run's truth within the capture's window - its first window message record to its last on the wall clock its calibration reads - and deleted. The probe writes counts, roles and the window alone.",
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-11-05",
+  "committedRun": 1,
+  "committedRunWindow": {
+    "fromUtcTicks": 639295193059214232,
+    "toUtcTicks": 639295193121392576,
+    "milliseconds": 6217
+  },
+  "bench": "bench/results/window-message-cut-product-20261105T234822Z",
+  "runs": [
+    {
+      "run": 1,
+      "tier": "ExperimentalEvidence",
+      "truthMessages": 41,
+      "observed": 33,
+      "withEveryEnd": 20,
+      "outsideCapture": 8,
+      "begunBeforeCapture": 1,
+      "falsePeerAttributions": 0,
+      "captureMilliseconds": 6217,
+      "admittedRecords": 18546,
+      "providerReportedEventLoss": 0,
+      "consumerReportedBufferLoss": 0,
+      "applicationDrops": 0,
+      "gateOmissionsOutOfOrder": 0
+    },
+    {
+      "run": 2,
+      "tier": "ExperimentalEvidence",
+      "truthMessages": 41,
+      "observed": 34,
+      "withEveryEnd": 20,
+      "outsideCapture": 7,
+      "begunBeforeCapture": 1,
+      "falsePeerAttributions": 0,
+      "captureMilliseconds": 6231,
+      "admittedRecords": 18311,
+      "providerReportedEventLoss": 0,
+      "consumerReportedBufferLoss": 0,
+      "applicationDrops": 0,
+      "gateOmissionsOutOfOrder": 0
+    },
+    {
+      "run": 3,
+      "tier": "ExperimentalEvidence",
+      "truthMessages": 41,
+      "observed": 34,
+      "withEveryEnd": 20,
+      "outsideCapture": 7,
+      "begunBeforeCapture": 1,
+      "falsePeerAttributions": 0,
+      "captureMilliseconds": 6223,
+      "admittedRecords": 16899,
+      "providerReportedEventLoss": 0,
+      "consumerReportedBufferLoss": 0,
+      "applicationDrops": 0,
+      "gateOmissionsOutOfOrder": 0
+    }
+  ]
+}

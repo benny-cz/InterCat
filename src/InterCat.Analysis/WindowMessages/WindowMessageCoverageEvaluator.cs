@@ -2,13 +2,22 @@ using InterCat.Domain;
 
 namespace InterCat.Analysis;
 
-/// <summary>The fixture and build a window message evaluation is for.</summary>
+/// <summary>The fixture and build a window message evaluation is for, and the window its capture held.</summary>
 public sealed record WindowMessageCoverageSettings
 {
     public required string FixtureId { get; init; }
     public required string BuildId { get; init; }
     public required bool BuildIsSupported { get; init; }
     public bool Reproduced { get; init; }
+
+    /// <summary>
+    /// The capture's first window message record, in UTC ticks on the wall clock its calibration reads; null where the
+    /// capture held every truth message from its start.
+    /// </summary>
+    public long? CaptureFromUtcTicks { get; init; }
+
+    /// <summary>The capture's last window message record, in UTC ticks on the same clock; null where it held every truth message to its end.</summary>
+    public long? CaptureToUtcTicks { get; init; }
 }
 
 /// <summary>
@@ -92,6 +101,15 @@ public sealed record WindowMessageCoverageResult
     /// <summary>The window message records of processes the truth does not name: a machine-wide capture sees them; they are scope.</summary>
     public required int ObservationsOutsideScope { get; init; }
 
+    /// <summary>The truth messages begun before the capture's first record or after its last: no rank names them, so none is matched.</summary>
+    public required int MessagesOutsideCapture { get; init; }
+
+    /// <summary>
+    /// The capture's messages with an end in the truth's sender or receiver but neither a send's start nor a post's queueing:
+    /// begun before the capture, so no truth message is named by them.
+    /// </summary>
+    public required int MessagesBegunBeforeCapture { get; init; }
+
     public required IReadOnlyList<string> Notes { get; init; }
 }
 
@@ -107,10 +125,14 @@ public sealed record WindowMessageCoverageResult
 /// none of that kind is matched. A message is observed with every end where its number has a send's start and stop raised in
 /// the sender and its retrieval's start and stop in the receiver, or a post's queueing in the sender and its retrieval in the
 /// receiver. Its peer is the process at its other end - the receiver a send's start names, and the process its retrieval
-/// binds to - false unless it is the receiver the truth logged. No record names the window or carries a size, so no message
-/// is bound to a resource instance, no window is discovered and the byte criterion is not measured; the mechanism claims
-/// operations, so it reaches experimental evidence at most (P27). It is pure and portable: the same evaluation runs in a test
-/// on committed evidence (R19, R18).
+/// binds to - false unless it is the receiver the truth logged. A capture begun or ended while messages were in flight holds
+/// a window of them: a truth message whose first truth record - the sender's or the receiver's, whichever came first - lies
+/// outside the capture's first and last records is begun outside it and ranked with none, and a number of the truth's
+/// processes with ends but neither a send's start nor a post's queueing was begun before the capture, so it names no truth
+/// message; one begun inside but ended after is ranked, its missing ends said. No record names the window or carries a size,
+/// so no message is bound to a resource instance, no window is discovered and the byte criterion is not measured; the
+/// mechanism claims operations, so it reaches experimental evidence at most (P27). It is pure and portable: the same
+/// evaluation runs in a test on committed evidence (R19, R18).
 /// </summary>
 public static class WindowMessageCoverageEvaluator
 {
@@ -159,6 +181,35 @@ public static class WindowMessageCoverageEvaluator
         // The windows the sender's messages went to, by the truth's name for each, in the order it first messaged them.
         string?[] windows = [.. sent.Concat(posted).OrderBy(static record => record.Sequence).Select(static record => record.ResourceName).Distinct()];
 
+        // Each truth message begins at its first truth record, the sender's or the receiver's: a sent message's receipt is
+        // logged as the receiver's procedure takes it, before the send returns, and a post as it is queued, before its
+        // receipt. Where it began against the capture's window: before its first record, inside it, or after its last.
+        var receipts = new Dictionary<(string Kind, string? Window, long? CallId), long>();
+        foreach (TruthRecord record in truth.Where(record => receiver is not null && record.ProcessId == receiver))
+        {
+            (string Kind, string? Window, long? CallId)? key = record.Kind switch
+            {
+                TruthEventKind.MessageReceived => (string.Equals(record.Status, PostedStatus, StringComparison.Ordinal) ? PostedStatus : "sent", null, record.CallId),
+                TruthEventKind.HandleClosed when string.Equals(record.Status, WindowStatus, StringComparison.Ordinal) => ("close", record.ResourceName, null),
+                _ => null,
+            };
+            if (key is { } receipt)
+            {
+                receipts[receipt] = receipts.TryGetValue(receipt, out long earlier) ? Math.Min(earlier, record.RecordedUtc.UtcTicks) : record.RecordedUtc.UtcTicks;
+            }
+        }
+
+        int Placement(TruthRecord record, string kind)
+        {
+            long start = receipts.TryGetValue(kind == "close" ? (kind, record.ResourceName, null) : (kind, null, record.CallId), out long receipt)
+                ? Math.Min(receipt, record.RecordedUtc.UtcTicks) : record.RecordedUtc.UtcTicks;
+            return settings.CaptureFromUtcTicks is { } from && start < from ? -1 : settings.CaptureToUtcTicks is { } to && start > to ? 1 : 0;
+        }
+
+        static string KindOf(TruthRecord record, bool isSent) => isSent ? "sent" : record.Kind == TruthEventKind.HandleClosed ? "close" : PostedStatus;
+        int[] sentPlacements = [.. sent.Select(record => Placement(record, KindOf(record, isSent: true)))];
+        int[] postedPlacements = [.. posted.Select(record => Placement(record, KindOf(record, isSent: false)))];
+
         // Every number's records in the capture's order, whichever process each binds to: a message the sender made to another
         // process's window shows there. Records of processes the truth does not name are scope.
         int outsideScope = observations.Count(observation => observation.ProcessId is not { } process || (process != sender && process != receiver));
@@ -177,26 +228,46 @@ public static class WindowMessageCoverageEvaluator
                     || !pair.Value.Any(record => EndOf(record.Kind, record.Direction) == WindowMessageEnd.RetrievePost && record.ProcessId != receiver)))
             .OrderBy(static pair => pair.Value[0].Ordinal).Select(static pair => pair.Key)];
 
+        // A number with an end in the sender or the receiver but neither a send's start nor a post's queueing began before the
+        // capture: the gate numbers it from the first end it saw (ADR-087), and no rank says which truth message it was.
+        int begunBefore = byNumber.Values.Count(ends => ends.Any(end => end.ProcessId is { } process && (process == sender || process == receiver))
+            && !ends.Any(static end => EndOf(end.Kind, end.Direction) is WindowMessageEnd.SendStart or WindowMessageEnd.QueuePost));
+
         var messages = new List<WindowMessageTruthCoverage>(sent.Length + posted.Length);
         int attributed = 0;
         int falsePeers = 0;
-        foreach ((TruthRecord[] records, long[] numbers, bool isSent) in new[] { (sent, sends, true), (posted, posts, false) })
+        foreach ((TruthRecord[] records, int[] placements, long[] numbers, bool isSent) in new[]
         {
-            bool ranked = sender is not null && receiver is not null && records.Length == numbers.Length;
-            for (int rank = 0; rank < records.Length; rank++)
+            (sent, sentPlacements, sends, true),
+            (posted, postedPlacements, posts, false),
+        })
+        {
+            // Only the truth messages begun inside the capture's window are ranked, against the capture's messages of their kind.
+            int inside = placements.Count(static placement => placement == 0);
+            bool ranked = sender is not null && receiver is not null && inside == numbers.Length;
+            int rank = 0;
+            for (int index = 0; index < records.Length; index++)
             {
-                TruthRecord record = records[rank];
-                string kind = isSent ? "sent" : record.Kind == TruthEventKind.HandleClosed ? "close" : PostedStatus;
+                TruthRecord record = records[index];
+                string kind = KindOf(record, isSent);
+                if (placements[index] != 0)
+                {
+                    messages.Add(new(kind, record.ResourceName, record.CallId, null, false, null, placements[index] < 0
+                        ? "Begun before the capture's first record: the capture holds at most its ends after its start, which name no truth message, so it is matched to none."
+                        : "Begun after the capture's last record: the capture holds none of it."));
+                    continue;
+                }
+
                 if (!ranked)
                 {
                     messages.Add(new(kind, record.ResourceName, record.CallId, null, false, null, sender is null || receiver is null
                         ? "The truth names no one sender and one receiver."
                         : $"The capture holds {numbers.Length} {(isSent ? "sent" : "posted")} messages from the sender to the receiver "
-                            + $"where the truth logged {records.Length}, so no rank says which is which."));
+                            + $"where the truth logged {inside}{(inside < records.Length ? " begun inside its window" : string.Empty)}, so no rank says which is which."));
                     continue;
                 }
 
-                long number = numbers[rank];
+                long number = numbers[rank++];
                 WindowMessageObservation[] ends = byNumber[number];
 
                 // Its other end: the receiver a send's start names, and every process its retrieval binds to - a send's or a
@@ -219,14 +290,16 @@ public static class WindowMessageCoverageEvaluator
                     : Has(ends, WindowMessageEnd.QueuePost, sender) && Has(ends, WindowMessageEnd.RetrievePost, receiver);
                 messages.Add(new(kind, record.ResourceName, record.CallId, number, every && !falsely, otherEnd, every && !falsely ? null
                     : falsely ? "Its ends name a process at its other end the truth says did not receive it."
-                    : isSent ? "Its number lacks a send's start or stop in the sender, or its retrieval's start or stop in the receiver."
-                    : "Its number lacks its queueing in the sender or its retrieval in the receiver."));
+                    : Lacking(ends, isSent, sender, receiver)));
             }
         }
 
         int observed = messages.Count(static message => message.MessageNumber is not null);
         int withEveryEnd = messages.Count(static message => message.EveryEnd);
-        int beyond = Math.Max(0, sends.Length - sent.Length) + Math.Max(0, posts.Length - posted.Length);
+        int before = sentPlacements.Count(static placement => placement < 0) + postedPlacements.Count(static placement => placement < 0);
+        int after = sentPlacements.Count(static placement => placement > 0) + postedPlacements.Count(static placement => placement > 0);
+        int beyond = Math.Max(0, sends.Length - sentPlacements.Count(static placement => placement == 0))
+            + Math.Max(0, posts.Length - postedPlacements.Count(static placement => placement == 0));
         var measurement = new MechanismMeasurement
         {
             FixtureId = settings.FixtureId,
@@ -272,6 +345,13 @@ public static class WindowMessageCoverageEvaluator
             notes.Add($"{beyond} of the capture's messages from the sender to the receiver were beyond as many as the truth logged of their kind.");
         }
 
+        if (settings.CaptureFromUtcTicks is not null || settings.CaptureToUtcTicks is not null)
+        {
+            notes.Add($"{before + after} truth messages began outside the capture's window - {before} before its first record, {after} after "
+                + $"its last - and are matched to none; {begunBefore} of the capture's messages of the truth's processes had ends but "
+                + "neither a send's start nor a post's queueing, begun before it, and name no truth message.");
+        }
+
         return new()
         {
             Measurement = measurement,
@@ -280,8 +360,30 @@ public static class WindowMessageCoverageEvaluator
             MessagesWithEveryEnd = withEveryEnd,
             MessagesBeyondTruth = beyond,
             ObservationsOutsideScope = outsideScope,
+            MessagesOutsideCapture = before + after,
+            MessagesBegunBeforeCapture = begunBefore,
             Notes = notes,
         };
+    }
+
+    // Which of its message's ends a number lacks, each in the process that should have raised it: a message the capture's
+    // stop cut lacks the ends raised after it.
+    private static string Lacking(WindowMessageObservation[] ends, bool isSent, int? sender, int? receiver)
+    {
+        (WindowMessageEnd End, int? Process, string Name)[] expected = isSent
+            ?
+            [
+                (WindowMessageEnd.SendStart, sender, "a send's start in the sender"),
+                (WindowMessageEnd.SendStop, sender, "its stop in the sender"),
+                (WindowMessageEnd.RetrieveSendStart, receiver, "its retrieval's start in the receiver"),
+                (WindowMessageEnd.RetrieveSendStop, receiver, "its retrieval's stop in the receiver"),
+            ]
+            :
+            [
+                (WindowMessageEnd.QueuePost, sender, "its queueing in the sender"),
+                (WindowMessageEnd.RetrievePost, receiver, "its retrieval in the receiver"),
+            ];
+        return "Its number lacks " + string.Join(" and ", expected.Where(item => !Has(ends, item.End, item.Process)).Select(static item => item.Name)) + ".";
     }
 
     // Whether one of a number's records is the end given, raised in the process given.

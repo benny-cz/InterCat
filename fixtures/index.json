@@ -939,6 +939,49 @@
       ]
     },
     {
+      "id": "FX-WMSG-003",
+      "title": "Window messages a capture cuts: a capture begun and ended while a receiver takes its time over each message",
+      "scenario": "Plan M6's UI messaging work package (§4.2, ADR-088): FX-WMSG-001's sender and receiver, the receiver taking 300 ms over each of 20 WM_COPYDATA messages and 20 posted messages, so a copy is in flight that long and the posted messages wait their turn in its queue; icat record under the opt-in window messages profile begins two seconds into the run and ends six seconds later, so its start falls while a copy is in flight and its stop while posted messages wait.",
+      "milestone": "M6",
+      "mechanism": "WindowMessage",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads window-message --handle-ms 300 --copies 20 --posts 20 --bytes 2048, under tools/InterCat.UiMessageProbe --measure --product --handle-ms 300, with icat record --profile window-messages --duration 6 started two seconds into it",
+        "seed": 20261105,
+        "log": "fixtures/FX-WMSG-003/evidence/truth-sender.jsonl",
+        "independence": "The sender logs every message it sent or posted, by number and with a copy's size, as each returned or was queued, and the receiver every one its window received as its procedure took it, by the window's class; neither reads InterCat state, and the capture reads Win32k's records apart from both."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-WMSG-003/evidence/measurement.json",
+        "note": "Three runs through icat record, loss-free: the copy in flight at the start one number with its two stops alone, begun before the capture and naming no truth message, and it and the copies before it - 8, 7 and 7 a run - begun before the capture's first record and matched to none; every copy after it and every post the capture held to its retrieval the number of its rank with every end, 20 a run; every post and the close its stop cut the number of its rank lacking its retrieval alone; no attribution false. The first run's ledger is evaluated by a test against its truth and the capture's window."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-05",
+          "result": "Recorded by icat record under the opt-in window messages profile, three times, nothing lost: the copy in flight at the capture's start a number of its stops alone, naming no truth message, the messages begun before the capture matched to none, every message it held whole the number of its rank with every end, and every one its stop cut ranked lacking its retrieval, none falsely attributed. It measures what a cut message is said to be; window messages' tier is FX-WMSG-002's."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two processes' truth logs and scenario of the first run - the window by the run's own class, messages by their number, copies by their size, of seeded bytes - and the ledger of its window message records, by role - sender, receiver, other-01 onward - kind, direction, message number and a send's peer by its role, never a PID, a window, a pointer or a message; and the measurement's counters of the three runs with the committed run's window."
+      },
+      "tests": [
+        "R22: FX-WMSG-003's committed ledger through the product, a capture begun and ended while messages were in flight, ranks the truth's messages begun inside its window alone - the send in flight at its start a number naming none, the messages begun before it matched to none, those it held whole with every end and those its stop cut lacking only their retrieval - with no false attribution, in three runs with nothing lost"
+      ]
+    },
+    {
       "id": "FX-PIPE-001",
       "title": "Seeded two-process named-pipe exchange in message mode",
       "scenario": "Section 13.1 scenario 3: named pipe in message mode with a deliberately short read, so requested and completed sizes differ.",
@@ -3303,6 +3346,7 @@
         "R22: FX-UNIX-003's connections, open before the capture began, bind to no socket - not one of their calls is a row of any process - while the same capture follows its own connections whole",
         "R22: FX-WMSG-001's message ends, read through the gate as delivered, are its 32 sends and 33 posts - each send's start and stop at the sender and its retrieval at the receiver one message, each post's queueing and retrieval another - numbered apart, though the run reused its pointers",
         "R22: FX-WMSG-002's committed ledger through the product keeps each of its 144 messages to 16 windows made one after another the number of its rank - every window's messages numbers of their own before the next window's, its close the last of them - with every end in its own process and its other end the receiver, experimental evidence in three runs with nothing lost",
+        "R22: FX-WMSG-003's committed ledger through the product, a capture begun and ended while messages were in flight, ranks the truth's messages begun inside its window alone - the send in flight at its start a number naming none, the messages begun before it matched to none, those it held whole with every end and those its stop cut lacking only their retrieval - with no false attribution, in three runs with nothing lost",
         "R22: Win32k's message events compile from its registered layout to fixed slots - each end's queue message pointer, which the gate writes the message's number over, and a send's receiving process - never a window, a thread, a message number or a parameter",
         "R22: Winsock AFD's admitted calls compile from its registered layout to fixed slots, none an address the kernel reuses or a buffer's",
         "R22: a COM call record binds to the process that raised it - a client call's to the caller, a served call's to the server - as an RPC record does",
@@ -3313,6 +3357,7 @@
         "R22: a call binds to its process by its first record's reading, and outside every lifetime says why",
         "R22: a call to another interface is scope, not a match",
         "R22: a candidate with another for either connection is ambiguous, and loopback joins only one host's captures",
+        "R22: a capture begun and ended while messages were in flight ranks only the truth's messages begun inside its window - one begun before it matched to none, its ends there naming none, one begun inside but ended after it ranked with its missing end said, and one begun after it held by none",
         "R22: a capture is one member however many copies of it there are, and a store's source name makes none the same",
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",
         "R22: a close or the stop's rundown of a handle made before the capture is numbered alone, never joined to another record at its address",

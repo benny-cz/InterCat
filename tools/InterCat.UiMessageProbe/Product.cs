@@ -8,18 +8,20 @@ using Microsoft.Diagnostics.Tracing.Session;
 namespace InterCat.UiMessageProbe;
 
 /// <summary>
-/// FX-WMSG-001 recorded through the product (ADR-088's addendum), or FX-WMSG-002, its messages to windows made one after
-/// another (its second addendum): each run is the product's own <c>icat record</c> under the opt-in window messages profile,
-/// the workload started once its session runs, and the ledger of the workload's window message records read from the session
-/// it published and evaluated against the run's truth. Each run's session is read and then deleted, as it holds every
-/// window's messages on the machine; what is kept is each run's ledger, evaluation and truth, and the capture's own counters.
+/// FX-WMSG-001 recorded through the product (ADR-088's addendum), FX-WMSG-002, its messages to windows made one after another
+/// (its second addendum), or FX-WMSG-003, messages a capture's start and stop cut (its third): each run is the product's own
+/// <c>icat record</c> under the opt-in window messages profile - the workload started once its session runs, or for
+/// FX-WMSG-003 the session begun into the workload's run and ended before it - and the ledger of the workload's window message
+/// records read from the session it published and evaluated against the run's truth within the capture's window. Each run's
+/// session is read and then deleted, as it holds every window's messages on the machine; what is kept is each run's ledger,
+/// evaluation and truth, and the capture's own counters.
 /// </summary>
 internal static partial class Product
 {
     public static async Task<Dictionary<string, object?>> RunAsync(string icat, string workload, string output, int runs, int copies,
-        int posts, int bytes, int generations, int duration)
+        int posts, int bytes, int generations, int handleMilliseconds, int captureAfter, int duration)
     {
-        string fixture = generations > 1 ? "FX-WMSG-002" : "FX-WMSG-001";
+        string fixture = handleMilliseconds > 0 ? "FX-WMSG-003" : generations > 1 ? "FX-WMSG-002" : "FX-WMSG-001";
         var results = new List<Dictionary<string, object?>>();
         for (int run = 1; run <= runs; run++)
         {
@@ -27,31 +29,41 @@ internal static partial class Product
             string session = Path.Combine(Path.GetTempPath(), "wmsg-product-" + Guid.NewGuid().ToString("N")[..8]);
             string truth = Path.Combine(folder, "truth");
             Directory.CreateDirectory(folder);
+            string[] arguments =
+            [
+                "window-message", "--truth", truth, "--copies", copies.ToString(CultureInfo.InvariantCulture),
+                "--posts", posts.ToString(CultureInfo.InvariantCulture), "--bytes", bytes.ToString(CultureInfo.InvariantCulture),
+                "--generations", generations.ToString(CultureInfo.InvariantCulture),
+                "--handle-ms", handleMilliseconds.ToString(CultureInfo.InvariantCulture),
+            ];
             try
             {
                 Dictionary<string, object?> health;
-                using (Recording recording = await Recording.StartAsync(icat, session, duration).ConfigureAwait(false))
+                if (handleMilliseconds > 0)
                 {
-                    using (Process started = Process.Start(new ProcessStartInfo(workload,
-                        ["window-message", "--truth", truth, "--copies", copies.ToString(CultureInfo.InvariantCulture),
-                            "--posts", posts.ToString(CultureInfo.InvariantCulture), "--bytes", bytes.ToString(CultureInfo.InvariantCulture),
-                            "--generations", generations.ToString(CultureInfo.InvariantCulture)])
+                    // FX-WMSG-003: the workload first, then the capture begun into it and ended before it, so each of its
+                    // edges falls while messages are in flight.
+                    using Process started = StartWorkload(workload, arguments);
+                    await Task.Delay(TimeSpan.FromSeconds(captureAfter)).ConfigureAwait(false);
+                    using (Recording recording = await Recording.StartAsync(icat, session, duration).ConfigureAwait(false))
                     {
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                    })!)
+                        health = await recording.FinishAsync().ConfigureAwait(false);
+                    }
+
+                    await FinishedAsync(started).ConfigureAwait(false);
+                }
+                else
+                {
+                    using Recording recording = await Recording.StartAsync(icat, session, duration).ConfigureAwait(false);
+                    using (Process started = StartWorkload(workload, arguments))
                     {
-                        await started.WaitForExitAsync().ConfigureAwait(false);
-                        if (started.ExitCode != 0)
-                        {
-                            throw new InvalidOperationException($"The truth workload exited with {started.ExitCode}.");
-                        }
+                        await FinishedAsync(started).ConfigureAwait(false);
                     }
 
                     health = await recording.FinishAsync().ConfigureAwait(false);
                 }
 
-                WindowMessageCoverageResult result = SessionLedger.Write(session, truth, Path.Combine(folder, "ledger.csv"));
+                (WindowMessageCoverageResult result, long captureFrom, long captureTo) = SessionLedger.Write(session, truth, Path.Combine(folder, "ledger.csv"));
                 results.Add(new()
                 {
                     ["run"] = run,
@@ -66,6 +78,10 @@ internal static partial class Product
                     ["falsePeerAttributions"] = result.Measurement.FalsePeerAttributions,
                     ["beyondTruth"] = result.MessagesBeyondTruth,
                     ["outsideScope"] = result.ObservationsOutsideScope,
+                    ["outsideCapture"] = result.MessagesOutsideCapture,
+                    ["begunBeforeCapture"] = result.MessagesBegunBeforeCapture,
+                    ["captureFromUtcTicks"] = captureFrom,
+                    ["captureToUtcTicks"] = captureTo,
                 });
             }
             finally
@@ -79,17 +95,33 @@ internal static partial class Product
 
         return new()
         {
-            ["question"] = generations > 1
-                ? "Whether FX-WMSG-002's messages to windows made one after another, recorded through the product by icat record under "
+            ["question"] = fixture switch
+            {
+                "FX-WMSG-003" => "Whether FX-WMSG-003's messages, each taking the receiver a while, recorded through the product by icat record "
+                    + "under the opt-in window messages profile begun into the run and ended before it, are ranked within the capture's "
+                    + "window alone - one begun before it or after it matched to none and ends without their start naming none, one begun "
+                    + "inside but ended after it ranked with its missing ends said - as ADR-088 measures them.",
+                "FX-WMSG-002" => "Whether FX-WMSG-002's messages to windows made one after another, recorded through the product by icat record under "
                     + "the opt-in window messages profile, are each one number with every end in its own process, its other end the "
-                    + "receiver, every window's close among the posts where the sender posted it, as ADR-088 measures them."
-                : "Whether FX-WMSG-001's messages, recorded through the product by icat record under the opt-in window messages "
+                    + "receiver, every window's close among the posts where the sender posted it, as ADR-088 measures them.",
+                _ => "Whether FX-WMSG-001's messages, recorded through the product by icat record under the opt-in window messages "
                     + "profile, are each one number with every end in its own process, its other end the receiver, as ADR-088 measures them.",
+            },
             ["scenario"] = fixture,
-            ["truth"] = generations > 1
-                ? new Dictionary<string, object?> { ["windows"] = generations, ["copiesSentEach"] = copies, ["messagesPostedEach"] = posts, ["bytes"] = bytes }
-                : new Dictionary<string, object?> { ["copiesSent"] = copies, ["messagesPosted"] = posts, ["bytes"] = bytes },
+            ["truth"] = fixture switch
+            {
+                "FX-WMSG-003" => new Dictionary<string, object?>
+                {
+                    ["copiesSent"] = copies, ["messagesPosted"] = posts, ["bytes"] = bytes, ["handleMilliseconds"] = handleMilliseconds,
+                },
+                "FX-WMSG-002" => new Dictionary<string, object?>
+                {
+                    ["windows"] = generations, ["copiesSentEach"] = copies, ["messagesPostedEach"] = posts, ["bytes"] = bytes,
+                },
+                _ => new Dictionary<string, object?> { ["copiesSent"] = copies, ["messagesPosted"] = posts, ["bytes"] = bytes },
+            },
             ["profile"] = "window-messages",
+            ["captureAfterSeconds"] = handleMilliseconds > 0 ? captureAfter : 0,
             ["durationSeconds"] = duration,
             ["runs"] = results,
             ["notes"] = new[]
@@ -98,6 +130,19 @@ internal static partial class Product
                 "A run's health is the capture's own report: what its sources lost, what its queue dropped, and what a source's gate did not admit, by reason.",
             },
         };
+    }
+
+    private static Process StartWorkload(string workload, string[] arguments) =>
+        Process.Start(new ProcessStartInfo(workload, arguments) { UseShellExecute = false, CreateNoWindow = true })
+            ?? throw new InvalidOperationException("The truth workload could not be started.");
+
+    private static async Task FinishedAsync(Process started)
+    {
+        await started.WaitForExitAsync().ConfigureAwait(false);
+        if (started.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"The truth workload exited with {started.ExitCode}.");
+        }
     }
 
     [GeneratedRegex(@"under owned session (InterCat-[A-Za-z0-9-]+)\.")]

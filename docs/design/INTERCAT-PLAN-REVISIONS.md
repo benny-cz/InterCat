@@ -889,6 +889,7 @@ Revision 962 adds the opt-in window messages profile, `window-messages` (ADR-087
 Revision 963 adds the window message coverage evaluator (ADR-088): each truth message is the number of its rank among the capture's messages of its kind from the sender to the receiver, observed with every end in its own process, and window messages are experimental evidence at most.
 Revision 964 measures window messages through the product (ADR-088's addendum): FX-WMSG-001 recorded by icat record under the window messages profile three times, nothing lost, has each of its 65 messages observed with every end, so window messages are experimental evidence on 10.0.26220.0-x64.
 Revision 965 measures FX-WMSG-002, messages to 16 windows made and closed one after another, through the product (ADR-088's second addendum): each of its 144 messages is the number of its rank with every end in its own process, each window's close ranked among its posts - window messages' second instance and lifetime fixture.
+Revision 966 holds a window message evaluation to its capture's window (ADR-088's third addendum): FX-WMSG-003, a capture begun and ended while messages were in flight, has the messages it cut said to be cut and matched to no other, and every message it held whole with every end - window messages' ambiguity case.
 
 ## Revisions, a paragraph each, in order
 
@@ -4237,3 +4238,14 @@ each of the run's 144 messages was the number of its rank with every end in its 
 receiver, every window's messages numbers of their own before the next window's, and each window's two ends were resolved,
 32 of 32. A test reproduces the tier from the first run's ledger, and the build's per-build coverage carries WindowMessage
 from FX-WMSG-002.
+
+Revision 966 gives window messages their ambiguity case (ADR-088's third addendum), as revision 927 gave COM calls theirs.
+A capture begun or ended while messages are in flight holds only part of them, and ranking every truth message of a kind
+against the capture's made one cut message unmatch its whole kind. `WindowMessageCoverageEvaluator` now holds the truth to
+the capture's window, its first window message record to its last: a truth message begun outside it is matched to none, a
+number of the truth's processes with ends but no start was begun before the capture and names none, and a message begun
+inside but ended after is ranked, its gap naming the ends it lacks. The window message workload's `--handle-ms` runs
+FX-WMSG-003, its receiver taking 300 ms over each message, and the probe begins `icat record` two seconds into the run for
+six. In three runs, nothing lost, the copy in flight at the start was a number of its two stops alone, naming no truth
+message; every copy after it and every post the capture held to its retrieval had every end, 20 a run; every post and the
+close its stop cut was ranked lacking its retrieval alone; and no attribution was false.

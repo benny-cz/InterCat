@@ -101,6 +101,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         MaximumBytes = Integer(args, "--bytes") ?? 2_048,
         ClassName = Option(args, "--class"),
         Generations = Integer(args, "--generations") ?? 1,
+        HandleMilliseconds = Integer(args, "--handle-ms") ?? 0,
     };
 
     var udpOptions = new UdpLoopbackOptions
@@ -194,9 +195,12 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         return 2;
     }
 
-    if (args[0].StartsWith("window-message", StringComparison.Ordinal) && windowMessageOptions.Generations < 1)
+    // --generations and --handle-ms are two fixtures, FX-WMSG-002 and FX-WMSG-003: a run is one of them.
+    if (args[0].StartsWith("window-message", StringComparison.Ordinal) && (windowMessageOptions.Generations < 1
+        || windowMessageOptions.HandleMilliseconds < 0 || (windowMessageOptions.Generations > 1 && windowMessageOptions.HandleMilliseconds > 0)))
     {
-        await Console.Error.WriteLineAsync("--generations is at least one: the windows the receiver makes one after another.").ConfigureAwait(false);
+        await Console.Error.WriteLineAsync("--generations is at least one and --handle-ms not negative, and --generations and --handle-ms are two fixtures, FX-WMSG-002 and FX-WMSG-003: a run is one of them.")
+            .ConfigureAwait(false);
         return 2;
     }
 
@@ -386,7 +390,7 @@ static void PrintHelp()
     Console.WriteLine("      time, each read asking for more than any message holds. Each process logs the mailslot it made");
     Console.WriteLine("      or opened, every message with the bytes asked for and moved, and its close. Windows only.");
     Console.WriteLine();
-    Console.WriteLine("  window-message --truth <dir> [--seed n] [--copies n] [--posts n] [--bytes n] [--generations n]");
+    Console.WriteLine("  window-message --truth <dir> [--seed n] [--copies n] [--posts n] [--bytes n] [--generations n | --handle-ms ms]");
     Console.WriteLine("      FX-WMSG-001: a receiver makes a message-only window of a class of the run's own and pumps its");
     Console.WriteLine("      messages; a sender finds it by its class, sends it that many WM_COPYDATA messages of seeded");
     Console.WriteLine("      payloads of up to that many bytes, posts it that many numbered messages, and last posts it a");
@@ -394,7 +398,9 @@ static void PrintHelp()
     Console.WriteLine("      --generations runs it as FX-WMSG-002: the receiver makes that many windows one after another,");
     Console.WriteLine("      each under a name of its own once the last is destroyed, and the sender finds each by its class");
     Console.WriteLine("      and name and sends and posts it the messages, numbered on from the last window's, then its close.");
-    Console.WriteLine("      Windows only.");
+    Console.WriteLine("      --handle-ms runs it as FX-WMSG-003: the receiver takes that many milliseconds over each copy and");
+    Console.WriteLine("      each posted message, so a copy is in flight that long and a posted message waits its turn in the");
+    Console.WriteLine("      queue, long enough for a capture's start and stop to cut them. Windows only.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

@@ -54,10 +54,12 @@ internal static class Program
             Console.Error.WriteLine("  size delivers each of FX-WMSG-001's messages' ends in the order they were raised, and what a gate");
             Console.Error.WriteLine("  following a message by its pointer as records arrive would number wrongly; the ledger is the run's ends");
             Console.Error.WriteLine("  as delivered, each pointer by the order it first appeared in.");
-            Console.Error.WriteLine("  --product [--runs n] [--copies n] [--posts n] [--bytes n] [--generations n] [--duration s] [--icat <InterCat.Cli.exe>]:");
-            Console.Error.WriteLine("  FX-WMSG-001, or with --generations FX-WMSG-002's windows made one after another, recorded through the");
-            Console.Error.WriteLine("  product by icat record under the window messages profile, each run's session read into a ledger of the");
-            Console.Error.WriteLine("  workload's records by role and evaluated against its truth, then deleted.");
+            Console.Error.WriteLine("  --product [--runs n] [--copies n] [--posts n] [--bytes n] [--generations n | --handle-ms ms [--capture-after s]]");
+            Console.Error.WriteLine("  [--duration s] [--icat <InterCat.Cli.exe>]: FX-WMSG-001, or with --generations FX-WMSG-002's windows made one");
+            Console.Error.WriteLine("  after another, recorded through the product by icat record under the window messages profile, each run's");
+            Console.Error.WriteLine("  session read into a ledger of the workload's records by role and evaluated against its truth within the");
+            Console.Error.WriteLine("  capture's window, then deleted; with --handle-ms FX-WMSG-003, the receiver taking that long over each");
+            Console.Error.WriteLine("  message and the capture begun that many seconds into the run, so its start and stop cut messages.");
             return 2;
         }
 
@@ -106,6 +108,8 @@ internal static class Program
                     int.Parse(Option(args, "--posts") ?? "32", CultureInfo.InvariantCulture),
                     int.Parse(Option(args, "--bytes") ?? "2048", CultureInfo.InvariantCulture),
                     int.Parse(Option(args, "--generations") ?? "1", CultureInfo.InvariantCulture),
+                    int.Parse(Option(args, "--handle-ms") ?? "0", CultureInfo.InvariantCulture),
+                    int.Parse(Option(args, "--capture-after") ?? "2", CultureInfo.InvariantCulture),
                     int.Parse(Option(args, "--duration") ?? "15", CultureInfo.InvariantCulture)).ConfigureAwait(false);
                 product["schema"] = "intercat.window-message-product.v1";
                 product["measuredUtc"] = DateTimeOffset.UtcNow;

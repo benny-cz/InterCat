@@ -55,7 +55,7 @@ public sealed class WindowMessageCoverageEvaluatorTests
 
         WindowMessageTruthCoverage incomplete = result.Messages[1];
         Assert.Equal((2L, false, (int?)Receiver), (incomplete.MessageNumber, incomplete.EveryEnd, incomplete.OtherEndProcessId));
-        Assert.Contains("lacks a send's start or stop", incomplete.Gap, StringComparison.Ordinal);
+        Assert.Equal("Its number lacks its retrieval's stop in the receiver.", incomplete.Gap);
         WindowMessageTruthCoverage shared = result.Messages[2];
         Assert.Equal((3L, false, (int?)null), (shared.MessageNumber, shared.EveryEnd, shared.OtherEndProcessId));
         Assert.Contains("the truth says did not receive it", shared.Gap, StringComparison.Ordinal);
@@ -133,6 +133,45 @@ public sealed class WindowMessageCoverageEvaluatorTests
         WindowMessageCoverageResult shared = WindowMessageCoverageEvaluator.Evaluate(Truth(sends: 1, posts: 2, windows: 3), joined, Settings());
         Assert.Equal((5L, 4L), (shared.Measurement.ResolvedMemberships, shared.Measurement.FalsePeerAttributions));
         Assert.All(shared.Messages.Where(static message => message.Window == Window(2)), message => Assert.Null(message.OtherEndProcessId));
+    }
+
+    [Fact(DisplayName = "R22: a capture begun and ended while messages were in flight ranks only the truth's messages begun inside its window - one begun before it matched to none, its ends there naming none, one begun inside but ended after it ranked with its missing end said, and one begun after it held by none")]
+    public void ACutCaptureRanksItsWindowAlone()
+    {
+        // Four sends, two posts and the close, a truth record a tick: the first send's receipt at tick 1 and its return at 2,
+        // the second post queued at 11 and received at 12, the close posted at 13. The capture's first record came at tick 2,
+        // as the first send was in flight, and its last at 12, before the close.
+        long origin = Truth(sends: 4, posts: 2)[0].RecordedUtc.UtcTicks - 1;
+        List<WindowMessageObservation> capture = Capture(sends: 4, posts: 2);
+        capture.RemoveAll(static record => record is { MessageNumber: 1, Kind: ObservationKind.RequestStart }
+            or { MessageNumber: 6, Kind: ObservationKind.Receive } or { MessageNumber: 7 });
+        WindowMessageCoverageSettings window = Settings(from: origin + 2, to: origin + 12);
+        WindowMessageCoverageResult result = WindowMessageCoverageEvaluator.Evaluate(Truth(sends: 4, posts: 2), capture, window);
+
+        Assert.Equal(CapabilityTier.ExperimentalEvidence, result.Assessment.Tier);
+        Assert.Equal(["sent", "sent", "sent", "sent", "posted", "posted", "close"], result.Messages.Select(static message => message.Kind));
+        Assert.Equal([null, 2L, 3L, 4L, 5L, 6L, null], result.Messages.Select(static message => message.MessageNumber));
+        Assert.Equal([false, true, true, true, true, false, false], result.Messages.Select(static message => message.EveryEnd));
+        Assert.Contains("Begun before the capture's first record", result.Messages[0].Gap, StringComparison.Ordinal);
+        Assert.Equal("Its number lacks its retrieval in the receiver.", result.Messages[5].Gap);
+        Assert.Contains("Begun after the capture's last record", result.Messages[6].Gap, StringComparison.Ordinal);
+
+        // The first send's ends after its start are a number of the truth's processes begun before the capture, naming none;
+        // the two messages begun outside the window are truth operations the capture did not observe.
+        Assert.Equal((2, 1, 0, 0), (result.MessagesOutsideCapture, result.MessagesBegunBeforeCapture, result.MessagesBeyondTruth, result.ObservationsOutsideScope));
+        Assert.Equal((7L, 5L, 0L), (result.Measurement.TruthOperations, result.Measurement.TruthOperationsWithAdmittedObservation,
+            result.Measurement.FalsePeerAttributions));
+        Assert.Equal(4, result.MessagesWithEveryEnd);
+
+        // Held to no window, the same capture holds fewer messages of each kind than the truth logged, so no rank holds and
+        // none is matched; a whole run held to a window wider than it ranks as it does without one.
+        WindowMessageCoverageResult unwindowed = WindowMessageCoverageEvaluator.Evaluate(Truth(sends: 4, posts: 2), capture, Settings());
+        Assert.All(unwindowed.Messages, message => Assert.Null(message.MessageNumber));
+        Assert.Equal((0, 0L, CapabilityTier.Unsupported), (unwindowed.MessagesOutsideCapture, unwindowed.Measurement.TruthOperationsWithAdmittedObservation,
+            unwindowed.Assessment.Tier));
+        WindowMessageCoverageResult whole = WindowMessageCoverageEvaluator.Evaluate(Truth(sends: 4, posts: 2), Capture(sends: 4, posts: 2),
+            Settings(from: origin, to: origin + 100));
+        Assert.Equal((7, 0, 0), (whole.MessagesWithEveryEnd, whole.MessagesOutsideCapture, whole.MessagesBegunBeforeCapture));
     }
 
     [Fact(DisplayName = "R3: a capture of none of the truth's messages observes none and reaches no tier, its memberships unresolved")]
@@ -224,6 +263,60 @@ public sealed class WindowMessageCoverageEvaluatorTests
         });
     }
 
+    [Fact(DisplayName = "R22: FX-WMSG-003's committed ledger through the product, a capture begun and ended while messages were in flight, ranks the truth's messages begun inside its window alone - the send in flight at its start a number naming none, the messages begun before it matched to none, those it held whole with every end and those its stop cut lacking only their retrieval - with no false attribution, in three runs with nothing lost")]
+    public void ACutCaptureThroughTheProductRanksItsWindowAlone()
+    {
+        (TruthRecord[] truth, WindowMessageObservation[] ledger, Dictionary<string, int> processes) = Committed("FX-WMSG-003", "evidence");
+        using var measurement = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(RepositoryRoot(), "fixtures", "FX-WMSG-003", "evidence", "measurement.json")));
+        System.Text.Json.JsonElement window = measurement.RootElement.GetProperty("committedRunWindow");
+        (long from, long to) = (window.GetProperty("fromUtcTicks").GetInt64(), window.GetProperty("toUtcTicks").GetInt64());
+        WindowMessageCoverageResult result = WindowMessageCoverageEvaluator.Evaluate(truth, ledger, Settings(fixture: "FX-WMSG-003", from: from, to: to));
+
+        // The first run: 20 sends, 20 posts and the close, the capture begun as the eighth send was in flight and ended as the
+        // posts waited their turn. Its 79 records hold 33 of the 41 messages, each the number of its rank, 20 with every end.
+        Assert.Equal(CapabilityTier.ExperimentalEvidence, result.Assessment.Tier);
+        Assert.Equal(79, ledger.Length);
+        Assert.Equal((41L, 33L, 20, 0L), (result.Measurement.TruthOperations, result.Measurement.TruthOperationsWithAdmittedObservation,
+            result.MessagesWithEveryEnd, result.Measurement.FalsePeerAttributions));
+        Assert.Equal((8, 1, 0, 0), (result.MessagesOutsideCapture, result.MessagesBegunBeforeCapture, result.MessagesBeyondTruth, result.ObservationsOutsideScope));
+
+        // The messages begun before the capture are its first eight sends, matched to none; the twelve sends after them are
+        // whole; the posts and the close it held to their end are whole, and every one its stop cut lacks its retrieval alone,
+        // so names no process at its other end. Each message with every end has the receiver there.
+        WindowMessageTruthCoverage[] sends = [.. result.Messages.Where(static message => message.Kind == "sent")];
+        Assert.All(sends.Take(8), message => Assert.StartsWith("Begun before the capture's first record", message.Gap, StringComparison.Ordinal));
+        Assert.All(sends.Skip(8), message => Assert.True(message.EveryEnd));
+        WindowMessageTruthCoverage[] posts = [.. result.Messages.Where(static message => message.Kind != "sent")];
+        Assert.Equal(21, posts.Length);
+        int whole = posts.TakeWhile(static message => message.EveryEnd).Count();
+        Assert.Equal(8, whole);
+        Assert.All(posts.Skip(whole), message => Assert.Equal((false, "Its number lacks its retrieval in the receiver.", (int?)null),
+            (message.EveryEnd, message.Gap, message.OtherEndProcessId)));
+        Assert.All(result.Messages.Where(static message => message.EveryEnd), message => Assert.Equal(processes["receiver"], message.OtherEndProcessId));
+
+        // The one number of the truth's processes with no start is the send in flight as the capture began: its retrieval's
+        // stop in the receiver and its stop in the sender, before any send the capture held whole.
+        WindowMessageObservation[] unstarted = [.. ledger.GroupBy(static record => record.MessageNumber)
+            .Single(group => !group.Any(record => WindowMessageCoverageEvaluator.EndOf(record.Kind, record.Direction)
+                is WindowMessageEnd.SendStart or WindowMessageEnd.QueuePost))];
+        Assert.Equal([(WindowMessageEnd.RetrieveSendStop, processes["receiver"]), (WindowMessageEnd.SendStop, processes["sender"])],
+            unstarted.Select(record => (WindowMessageCoverageEvaluator.EndOf(record.Kind, record.Direction), record.ProcessId!.Value)));
+        Assert.True(unstarted.Max(static record => record.Ordinal) < ledger.Where(record => record.MessageNumber == sends[8].MessageNumber).Min(static record => record.Ordinal));
+
+        // The three runs' report: each experimental evidence, one send cut at the start and the rest of its kind ranked, no
+        // false attribution, nothing lost; the committed run's window is the one its report states.
+        System.Text.Json.JsonElement[] runs = Runs("window-message-cut-product-*");
+        Assert.Equal(3, runs.Length);
+        Assert.Equal((from, to), (runs[0].GetProperty("captureFromUtcTicks").GetInt64(), runs[0].GetProperty("captureToUtcTicks").GetInt64()));
+        Assert.All(runs, run =>
+        {
+            Assert.Equal(("ExperimentalEvidence", 1, 0, 20), (run.GetProperty("tier").GetString(), run.GetProperty("begunBeforeCapture").GetInt32(),
+                run.GetProperty("falsePeerAttributions").GetInt32(), run.GetProperty("withEveryEnd").GetInt32()));
+            Assert.Equal(41, run.GetProperty("observed").GetInt32() + run.GetProperty("outsideCapture").GetInt32());
+            AssertNothingLost(run);
+        });
+    }
+
     // A run's capture lost nothing at its source or consumer, dropped nothing and omitted no record delivered out of order.
     private static void AssertNothingLost(System.Text.Json.JsonElement run)
     {
@@ -286,8 +379,10 @@ public sealed class WindowMessageCoverageEvaluatorTests
         return current?.FullName ?? throw new DirectoryNotFoundException("Could not locate the InterCat repository root.");
     }
 
-    private static WindowMessageCoverageSettings Settings(bool reproduced = true, string fixture = "FX-WMSG-001") => new()
+    private static WindowMessageCoverageSettings Settings(bool reproduced = true, string fixture = "FX-WMSG-001", long? from = null, long? to = null) => new()
     {
+        CaptureFromUtcTicks = from,
+        CaptureToUtcTicks = to,
         FixtureId = fixture,
         BuildId = "10.0.26220.0-x64",
         BuildIsSupported = true,

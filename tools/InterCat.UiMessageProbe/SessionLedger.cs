@@ -28,7 +28,11 @@ internal static class SessionLedger
 
     private static readonly string[] TruthFiles = ["truth-sender.jsonl", "truth-receiver.jsonl"];
 
-    public static WindowMessageCoverageResult Write(string session, string truth, string output)
+    /// <summary>
+    /// Writes the ledger and its evaluation, and returns the evaluation with the capture's window: its first window message
+    /// record to its last, on the wall clock its calibration reads.
+    /// </summary>
+    public static (WindowMessageCoverageResult Result, long CaptureFromUtcTicks, long CaptureToUtcTicks) Write(string session, string truth, string output)
     {
         Dictionary<int, string> roles;
         string fixture;
@@ -113,6 +117,16 @@ internal static class SessionLedger
         store.ReleaseSegmentReaders();
         records.Sort(static (left, right) => left.CompareTo(right));
 
+        // The capture's window: its first window message record to its last, whichever process raised them - every window on
+        // the machine pumps messages, so the capture's records run from its start to its stop. A truth message begun outside
+        // it is no message of the capture's (ADR-088's third addendum).
+        if (records.Count == 0)
+        {
+            throw new InvalidDataException("The session holds no window message record, so it has no window to hold a truth to.");
+        }
+
+        (long captureFrom, long captureTo) = (records[0].Utc, records[^1].Utc);
+
         // The messages the workload's processes raised an end of, by number: the records of any other process are kept on
         // these alone.
         HashSet<long> theirs = [.. records.Where(record => record.Owner is { } owner && roles.ContainsKey(owner) && record.Number is not null)
@@ -170,6 +184,8 @@ internal static class SessionLedger
             BuildId = CapabilityInventoryProbe.DescribeEnvironment().BuildId,
             BuildIsSupported = true,
             Reproduced = true,
+            CaptureFromUtcTicks = captureFrom,
+            CaptureToUtcTicks = captureTo,
         });
         File.WriteAllText(Path.ChangeExtension(output, ".evaluation.json"), JsonSerializer.Serialize(new
         {
@@ -180,7 +196,11 @@ internal static class SessionLedger
             result.MessagesWithEveryEnd,
             result.MessagesBeyondTruth,
             result.ObservationsOutsideScope,
+            result.MessagesOutsideCapture,
+            result.MessagesBegunBeforeCapture,
             result.Notes,
+            CaptureFromUtcTicks = captureFrom,
+            CaptureToUtcTicks = captureTo,
             SessionWindowMessageRecords = records.Count,
             WorkloadRecords = ofTheWorkload,
             OtherProcessesRecords = ofOthers,
@@ -196,8 +216,9 @@ internal static class SessionLedger
             $"{ofTheWorkload} window message records of the workload's two processes and {ofOthersKept} of {others.Count} other processes on its "
             + $"messages written to {output}; {result.Measurement.TruthOperationsWithAdmittedObservation} of {result.Measurement.TruthOperations} "
             + $"truth messages observed, {result.MessagesWithEveryEnd} with every end ({result.Measurement.FalsePeerAttributions} false peers); "
+            + $"{result.MessagesOutsideCapture} begun outside the capture and {result.MessagesBegunBeforeCapture} of its messages begun before it; "
             + $"tier {result.Assessment.Tier}."));
-        return result;
+        return (result, captureFrom, captureTo);
     }
 
     /// <summary>
