@@ -26,11 +26,12 @@ internal static class RecordGates
             WindowsSourceCatalog.KernelObjectHandlesSourceId => new ObjectHandleRecordGate(SynchronizationHandleGate.MeasuredTypes(ThisBuild) ?? []),
             WindowsSourceCatalog.Win32kSourceId => new WindowMessageRecordGate(),
             WindowsSourceCatalog.KernelFileViewsSourceId => new SectionViewRecordGate(),
+            WindowsSourceCatalog.KernelSectionHandlesSourceId => new ObjectHandleRecordGate(SectionHandleGate.MeasuredTypes(ThisBuild) ?? []),
             _ => (IRecordGate?)null,
         })];
     }
 
-    // This machine's build, by which the handle group's type numbers were measured (ADR-082's fourth addendum).
+    // This machine's build, by which the handle group's type numbers were measured (ADR-082's fourth addendum, ADR-089's third).
     private static string ThisBuild => CapabilityInventoryProbe.DescribeEnvironment().BuildId;
 
     /// <summary>
@@ -52,6 +53,7 @@ internal static class RecordGates
         {
             WindowsSourceCatalog.WinsockAfdSourceId => AfdRecordGate.Undecidable(plan),
             WindowsSourceCatalog.KernelObjectHandlesSourceId => ObjectHandleRecordGate.Undecidable(buildId) ?? WithoutDecidingField(plan),
+            WindowsSourceCatalog.KernelSectionHandlesSourceId => ObjectHandleRecordGate.SectionsUndecidable(buildId) ?? WithoutDecidingField(plan),
             _ => WithoutDecidingField(plan),
         };
     }
@@ -319,17 +321,18 @@ internal sealed class SectionViewRecordGate(int capacity = SectionViewGate.Defau
 }
 
 /// <summary>
-/// The object manager handle group's gate: reads its handle records through <see cref="SynchronizationHandleGate"/> and writes
-/// into an admitted record, in place of the object's kernel address, the object's number in the capture, so no record keeps
-/// an address (ADR-083). A handle is the record's own process's - the header's - but at the stop's rundown, which names it in
-/// its record, and a duplication's is made in its target process, which its record names. A kernel handle's records, raised
-/// wherever the kernel ran, are omitted as of no object it follows. The type rundown at the stop admits the synchronization
-/// types' own entries, by which a capture holds the build's measured numbers to its session.
+/// The object manager handle group's gate: reads its handle records through <see cref="ObjectHandleGate"/>, following the types
+/// its source gives it - the synchronization types for the synchronization objects' lead (ADR-083), the Section type for
+/// sections' handles (ADR-090) - and writes into an admitted record, in place of the object's kernel address, the object's
+/// number in the capture, so no record keeps an address. A handle is the record's own process's - the header's - but at the
+/// stop's rundown, which names it in its record, and a duplication's is made in its target process, which its record names. A
+/// kernel handle's records, raised wherever the kernel ran, are omitted as of no object it follows. The type rundown at the
+/// stop admits the followed types' own entries, by which a capture holds the build's measured numbers to its session.
 /// </summary>
-internal sealed class ObjectHandleRecordGate(IReadOnlyList<int> types, int capacity = SynchronizationHandleGate.DefaultCapacity) : IRecordGate
+internal sealed class ObjectHandleRecordGate(IReadOnlyList<int> types, int capacity = ObjectHandleGate.DefaultCapacity) : IRecordGate
 {
-    private readonly SynchronizationHandleGate gate = new(types, capacity);
-    private readonly HashSet<int> synchronization = [.. types];
+    private readonly ObjectHandleGate gate = new(types, capacity);
+    private readonly HashSet<int> followed = [.. types];
     private readonly Dictionary<AdmittedEventPlan, Slots> slots = new(ReferenceEqualityComparer.Instance);
 
     public GateOmission? Read(ref AdmittedEvent admitted, AdmittedEventPlan plan)
@@ -341,18 +344,18 @@ internal sealed class ObjectHandleRecordGate(IReadOnlyList<int> types, int capac
         }
 
         int type = (int)Value(in admitted, at.ObjectType);
-        if (admitted.Opcode == SynchronizationHandleGate.TypeRundown)
+        if (admitted.Opcode == ObjectHandleGate.TypeRundown)
         {
-            return synchronization.Contains(type) ? null : GateOmission.NoFollowedResource;
+            return followed.Contains(type) ? null : GateOmission.NoFollowedResource;
         }
 
-        bool duplicate = admitted.Opcode == SynchronizationHandleGate.Duplicate;
+        bool duplicate = admitted.Opcode == ObjectHandleGate.Duplicate;
         var record = new ObjectHandleRecord(
             admitted.Opcode,
             (ulong)Value(in admitted, at.Object),
             (uint)Value(in admitted, duplicate ? at.SourceHandle : at.Handle),
             type,
-            admitted.Opcode == SynchronizationHandleGate.Rundown ? (int)Value(in admitted, at.ProcessId) : admitted.HeaderProcessId,
+            admitted.Opcode == ObjectHandleGate.Rundown ? (int)Value(in admitted, at.ProcessId) : admitted.HeaderProcessId,
             duplicate ? (int)Value(in admitted, at.TargetProcessId) : 0,
             duplicate ? (uint)Value(in admitted, at.TargetHandle) : 0);
         (HandleGateOutcome outcome, ObjectIncarnation? incarnation) = gate.Read(in record);
@@ -378,6 +381,17 @@ internal sealed class ObjectHandleRecordGate(IReadOnlyList<int> types, int capac
             ? $"No synchronization type numbers are measured for build {buildId}, by which the source's gate tells an event's, a "
                 + "mutant's or a semaphore's handle from another type's. Decided by numbers never measured, it would admit another "
                 + "type's handles as theirs, so the source is refused rather than admitted (R3)."
+            : null;
+
+    /// <summary>
+    /// Why the section handle gate could not decide its records on <paramref name="buildId"/>: no Section type number measured
+    /// for it; null when the build's is measured (ADR-089's third addendum).
+    /// </summary>
+    internal static string? SectionsUndecidable(string buildId) =>
+        SectionHandleGate.MeasuredTypes(buildId) is null
+            ? $"No Section type number is measured for build {buildId}, by which the source's gate tells a section's handle from "
+                + "another type's. Decided by a number never measured, it would admit another type's handles as a section's, so the "
+                + "source is refused rather than admitted (R3)."
             : null;
 
     private static long Value(in AdmittedEvent admitted, int slot) => slot >= 0 && admitted.TryGetSlot(slot, out long value) ? value : 0;

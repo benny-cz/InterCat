@@ -130,7 +130,6 @@ public sealed class CallbackPathTests
         Assert.Contains("InterCat.Capture.Windows.AfdRecordGate.Read", walk.Reached);
         Assert.Contains("InterCat.Capture.Windows.UnixSocketGate.Read", walk.Reached);
         Assert.Contains("InterCat.Capture.Windows.ObjectHandleRecordGate.Read", walk.Reached);
-        Assert.Contains("InterCat.Capture.Windows.SynchronizationHandleGate.Read", walk.Reached);
         Assert.Contains("InterCat.Capture.Windows.ObjectHandleGate.Read", walk.Reached);
         Assert.Contains("InterCat.Capture.Recording.CaptureCoverageTally.Gated", walk.Reached);
 

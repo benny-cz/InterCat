@@ -1,7 +1,8 @@
 # ADR-090: A section gate follows a section by its handles, and a view by its process and base
 
 - Status: accepted for M6's section discovery work package; since revision 976 the file view flag's records admit through
-  the view gate, read by the layout measured for the build (its addendum); no section's handle admits through its gate yet
+  the view gate, read by the layout measured for the build (its addendum); since revision 977 sections' handles are a
+  source of their own over the handle group, admitted through the section handle gate (its second addendum)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-083, ADR-087, ADR-089, plan M6, §4.2, R22, P12, P20, FX-SECT-001
@@ -77,3 +78,23 @@ the value or the process is refused before a capture starts, as the gate decides
 yet, and the handle group's gate still follows only the synchronization types, so no section's handle admits yet. Tests
 hold the descriptors' slots and kinds, both numbers written over both addresses for a rundown's view and a mapping's, a
 view beyond the bound, and the capture's callback walk reaching the gate.
+
+## Addendum: sections' handles, a source of their own (revision 977)
+
+The first decision gave the handle gates one algorithm, but the object manager's handle group is one source, which the
+synchronization objects profile reads through a gate that keeps only the synchronization types (ADR-083). Following the
+Section type there too would change what that profile records and was measured with. So sections' handles are
+inventoried as a source of their own, `etw/kernel-group/ObjectHandles-Section`, over the same group and its mask:
+
+- Its five events at version 2, each a shared section's resource record, admit through a gate of its own that keeps
+  only the Section type's handles, by the number measured for the build.
+- The gate writes each section's number over its address as `SectionObjectNumber`, never the number its views are
+  followed by, as no record joins a view to a handle.
+- A build none measured refuses the source, as does a layout without a field its gate decides by.
+- The handle record gate follows whichever types its source gives it, through the shared algorithm.
+
+The two sources compile the same descriptors, which one capture's admission table refuses, so a capture collects one or
+the other, and no profile asks for both; none asks for sections' handles yet. The source's cost is the group's collection,
+Low, with the throughput regression stated beside it. Tests hold its descriptors' slots, its gate's numbers for both
+processes' handles, its omissions and its type rundown, its refusals, and that no capture collects both sources;
+Ten mutations are caught.

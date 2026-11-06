@@ -900,6 +900,7 @@ Revision 973 measures the Section type's number for the build (ADR-089's third a
 Revision 974 adds the section gates (ADR-090): a section followed by its handles through the algorithm the synchronization handle gate now shares, and a view by its process and base, its section by the value its views carry while a followed view holds it, keeping no address.
 Revision 975 measures the file view flag's rundowns (ADR-089's fourth addendum): at version 3 as a mapping is, each record naming its view's process and none its header, and images' views among what the flag records, an image's with 0x47 in its extra information's high byte.
 Revision 976 reads a classic record at a version the machine registers no layout for by the layout measured for its build (ADR-091), and admits the file view flag's four events at version 3 through the view gate (ADR-090's addendum).
+Revision 977 inventories sections' handles as a source of their own over the handle group (ADR-090's second addendum), its gate keeping only the Section type's handles and writing each section's number over its address.
 
 ## Revisions, a paragraph each, in order
 
@@ -4350,3 +4351,12 @@ The flag's four events at version 3 - a view's mapping and unmapping and both ru
 gate (ADR-090's addendum): each view's number written over its base, its section's over the value its views carry, its
 extra information and size kept, and the process each record names, so a rundown's view binds though no header names
 one. No profile requests the flag yet.
+
+Revision 977 gives sections' handles a source of their own (ADR-090's second addendum). The object manager's handle group
+is read by the synchronization objects profile through a gate that keeps only the synchronization types, and following
+the Section type there too would change what that profile records and was measured with. So
+`etw/kernel-group/ObjectHandles-Section` reads the same group, its five events each a shared section's record, through a
+gate of its own that keeps only the Section type's handles by the number measured for the build and writes each section's
+number over its address as `SectionObjectNumber`. A build none measured refuses it. The handle record gate now follows
+whichever types its source gives it. The two sources compile the same descriptors, which one capture refuses, so no
+profile asks for both, and none asks for sections' handles yet.

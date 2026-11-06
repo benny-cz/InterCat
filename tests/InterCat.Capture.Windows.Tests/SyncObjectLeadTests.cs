@@ -183,7 +183,10 @@ public sealed class SyncObjectLeadTests
         Assert.Equal((SourceKind.KernelFlagGroup, 0UL, WindowsSourceCatalog.ObjectManagerEventClass),
             (handles.Kind, handles.KernelFlags, handles.ClassicEventClass));
         Assert.Equal([WindowsSourceCatalog.ObjectHandlesGroupMask], handles.KernelGroupMasks);
-        Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != handles.SourceId), source => Assert.Empty(source.KernelGroupMasks));
+
+        // Sections' handles are read from the same group, through a gate of their own (ADR-090); no other source sets a mask.
+        Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId is not (WindowsSourceCatalog.KernelObjectHandlesSourceId
+            or WindowsSourceCatalog.KernelSectionHandlesSourceId)), source => Assert.Empty(source.KernelGroupMasks));
         Assert.Equal([Mechanism.Synchronization], handles.Mechanisms);
         Assert.Equal((SourceContractStatus.Experimental, false), (handles.ContractStatus, handles.SupportsCaptureSideProcessFilter));
         Assert.Equal([SynchronizationHandleGate.Create, SynchronizationHandleGate.Close, SynchronizationHandleGate.Duplicate,

@@ -149,6 +149,12 @@ public static class WindowsSourceCatalog
     /// <summary>The kernel's file view flag: sections' lead, each view's mapping and unmapping (ADR-089).</summary>
     public const string KernelFileViewsSourceId = "etw/kernel-flag/VAMap";
 
+    /// <summary>
+    /// The object manager's handle group read for sections' handles alone: the group the synchronization objects' lead reads,
+    /// through a gate of its own that keeps only the Section type's handles (ADR-090). A capture collects one of the two.
+    /// </summary>
+    public const string KernelSectionHandlesSourceId = "etw/kernel-group/ObjectHandles-Section";
+
     /// <summary>The classic event class of the kernel's file I/O events, among them a view's mapping and unmapping (ADR-089).</summary>
     public static readonly Guid FileIoEventClass = Guid.Parse("90cbdc39-4a3e-11d1-84f4-0000f80464e3");
 
@@ -467,6 +473,81 @@ public static class WindowsSourceCatalog
     private static readonly IReadOnlyList<AdmittedFieldIntent> TypeRundownFields =
     [
         HandleType,
+        new("TypeName", FieldRole.ResourceName, Notes: "The type's name, which the session names its number by only at its stop."),
+    ];
+
+    // What the section handle gate decides a handle record by (ADR-090).
+    private const string SectionObjectDecides = "the section handle gate follows a section by its address, which it writes over with the section's number";
+    private const string SectionTypeDecides = "the section handle gate admits only the Section type's handles";
+    private const string SectionHandleDecides = "the section handle gate holds a handle by its process and value until its close";
+
+    private static readonly AdmittedFieldIntent SectionHandleObject =
+        new("Object", FieldRole.CorrelationKey, SourceField: SourceField.SectionObjectNumber,
+            Notes: "Written by the gate: the section's number in the capture, never its kernel address, which the kernel reuses (R22), "
+                + "and never the number its views are followed by, as no record joins a view to a handle (ADR-090).")
+        {
+            Decides = SectionObjectDecides,
+        };
+
+    private static readonly AdmittedFieldIntent SectionHandleType =
+        new("ObjectType", FieldRole.Unclassified, SourceField: SourceField.ObjectTypeNumber,
+            Notes: "The object's type by its number on this build, the Section type's as measured for it (ADR-089).")
+        {
+            Decides = SectionTypeDecides,
+        };
+
+    private static readonly AdmittedFieldIntent SectionHandleValue =
+        new("Handle", FieldRole.ResourceHandle, SourceField: SourceField.HandleValue,
+            Notes: "The handle's value in the process that holds it, reused once it closes (R22).")
+        {
+            Decides = SectionHandleDecides,
+        };
+
+    /// <summary>A section handle's creation: the section, the handle and the type; no name, which only its close carries.</summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> SectionHandleCreateFields = [SectionHandleObject, SectionHandleValue, SectionHandleType];
+
+    /// <summary>A section handle's close: its creation's fields and the section's name.</summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> SectionHandleCloseFields = [.. SectionHandleCreateFields, HandleName];
+
+    /// <summary>
+    /// A section handle's duplication at version 2, the layout the machine registers: an open in the process it made its handle
+    /// in, which its record names. This build raises every duplication at version 3, so such a record is counted undecodable.
+    /// </summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> SectionHandleDuplicateFields =
+    [
+        SectionHandleObject,
+        new("SourceHandle", FieldRole.ResourceHandle, SourceField: SourceField.PeerHandleValue,
+            Notes: "The handle it was duplicated from, by its value in the process it was duplicated from."),
+        new("TargetHandle", FieldRole.ResourceHandle, SourceField: SourceField.HandleValue,
+            Notes: "The handle the duplication made, by its value in the record's owner, which closes it.")
+        {
+            Decides = "the section handle gate holds the handle a duplication made in its target process",
+        },
+        new("TargetProcessId", FieldRole.ProcessAttribution,
+            Notes: "Payload owner: the process the duplication made its handle in.")
+        {
+            Decides = "the section handle gate holds a duplication's handle in the process it was made in",
+        },
+        SectionHandleType,
+    ];
+
+    /// <summary>A section handle still open at the stop: its process, from the record, then the handle's fields and the name.</summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> SectionHandleRundownFields =
+    [
+        SectionHandleObject,
+        new("ProcessId", FieldRole.ProcessAttribution, Notes: "The process holding the handle, which the rundown names in its record.")
+        {
+            Decides = "the section handle gate tells whose handle the stop's rundown names",
+        },
+        SectionHandleValue,
+        SectionHandleType,
+        HandleName,
+    ];
+
+    /// <summary>An object type at the stop, by its number and name: what a capture holds the build's measured Section number to.</summary>
+    private static readonly IReadOnlyList<AdmittedFieldIntent> SectionTypeRundownFields =
+    [
+        SectionHandleType,
         new("TypeName", FieldRole.ResourceName, Notes: "The type's name, which the session names its number by only at its stop."),
     ];
 
@@ -1339,6 +1420,67 @@ public static class WindowsSourceCatalog
             ],
         };
 
+        // Sections' handles (ADR-090): the object manager's handle group the synchronization objects' lead reads, through a gate of
+        // its own that keeps only the Section type's handles and writes each section's number over its address. A capture
+        // collects one of the two, never both, as they compile the same descriptors. Requested by no profile yet; its measured
+        // notes are what icat capabilities states of it.
+        var sectionHandles = new WindowsSourceDefinition
+        {
+            SourceId = KernelSectionHandlesSourceId,
+            DisplayName = "Object manager handle group (section lead)",
+            Kind = SourceKind.KernelFlagGroup,
+            ProviderName = "Kernel object manager handles (PERF_OB_HANDLE)",
+            Mechanisms = [Mechanism.SharedSection],
+            RequiredPrivilege = PrivilegeRequirement.Administrator,
+            Level = "win:Informational",
+            MatchAnyKeyword = 0,
+            RequestedKeywords = [],
+            SupportsCaptureSideProcessFilter = false,
+            FilteringNotes =
+                "No profile requests it. The object manager's handle group, which the synchronization objects' lead reads too, "
+                + "enabled by the group mask PERF_OB_HANDLE and by no kernel flag: only a private system logger receives it, its "
+                + "mask set on the capture's own logger (ADR-035, ADR-082). It has no process filter: it records every process's "
+                + "handles, of which its gate keeps a section's alone. A capture collects it or the synchronization objects' lead, "
+                + "never both, as the two compile the same descriptors.",
+            StartupBehaviour =
+                "At the session's stop a rundown names every handle still open, with its process and its object's name, and every "
+                + "object type's name; a handle opened before the capture began is seen only at its close or in that rundown.",
+            SupportsCaptureState = false,
+            ContractStatus = SourceContractStatus.Experimental,
+            Overhead = OverheadClass.Low,
+            OverheadEvidence = "bench/results/sync-objects-impact-handles-20261105T035540Z/impact.json",
+            ClassicEventClass = ObjectManagerEventClass,
+            KernelGroupMasks = [ObjectHandlesGroupMask],
+            AdmittedEvents =
+            [
+                new(0, 2, "Section handle created", Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Open, Direction.DirectionNotApplicable, SectionHandleCreateFields) { Opcode = ObjectHandleGate.Create },
+                new(0, 2, "Section handle closed", Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Close, Direction.DirectionNotApplicable, SectionHandleCloseFields) { Opcode = ObjectHandleGate.Close },
+                new(0, 2, "Section handle duplicated", Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Open, Direction.Inbound, SectionHandleDuplicateFields) { Opcode = ObjectHandleGate.Duplicate },
+                new(0, 2, "Object type at the stop", Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Inventory, Direction.DirectionNotApplicable, SectionTypeRundownFields) { Opcode = ObjectHandleGate.TypeRundown },
+                new(0, 2, "Section handle open at the stop", Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Inventory, Direction.DirectionNotApplicable, SectionHandleRundownFields) { Opcode = ObjectHandleGate.Rundown },
+            ],
+            Notes =
+            [
+                "There is no registered object manager manifest provider to inventory, so its absence from the registry is expected.",
+                "Its records admit through the section handle gate (ADR-090): only the Section type's, by the number measured for "
+                + "the build, each section numbered in the capture from the first handle it saw made at its address to the close of "
+                + "the last, never by its address; a handle made before the capture, met at its close or the stop's rundown, is "
+                + "numbered alone. It follows no kernel handle. A build without a measured number refuses it.",
+                "Measured on FX-SECT-001: each process's handle to a section two processes share, its creation and its close, both "
+                + "processes' at the section object's one address, typed Section, 49 on this build; a creation names nothing and "
+                + "the close names the section. About one of the machine's handle records in thirty is a section's (ADR-089).",
+                "A section's number here is never the number its views are followed by: no record joins a view to a handle, and "
+                + "every view of a section carries a value no handle carries (ADR-089).",
+                "This build raises every duplication at version 3, which no layout the machine registers describes, so each is "
+                + "counted undecodable.",
+                "Collection alone, measured over a handle-heavy workload with the synchronization objects' lead, loss-free: a "
+                + "median of 0.4 and 0.0 CPU pp, Low; but the workload ran 5.3 and 8.3% lower in throughput, past the 5% target, as "
+                + "a handle's creation and close each raise a record in the thread that makes the call. No profile requests this "
+                + "source, and only an opt-in one stating its cost ever may, never Explore.",
+                "Registration is not evidence of traffic; only a measured fixture assigns a tier.",
+            ],
+        };
+
         // Window messages' lead (ADR-086): inventoried and requested by the opt-in window messages profile alone. Its six
         // message events admit through the window message gate (ADR-087), which writes each message's number over its pointer;
         // its measured notes are what icat capabilities states of it.
@@ -1406,6 +1548,6 @@ public static class WindowsSourceCatalog
             ],
         };
 
-        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc, winInetCapture, winsockAfd, comPerf, objectHandles, win32k, fileViews];
+        return [kernelNetwork, kernelProcess, rpc, tcpip, kernelFile, kernelMemory, alpc, winInetCapture, winsockAfd, comPerf, objectHandles, win32k, fileViews, sectionHandles];
     }
 }

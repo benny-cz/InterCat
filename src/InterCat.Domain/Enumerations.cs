@@ -246,6 +246,13 @@ public enum SourceField : ushort
     /// no other view carries (ADR-089's fourth addendum).
     /// </summary>
     ViewInformation = 30,
+
+    /// <summary>
+    /// A section object's number in its capture, as the section handle gate numbers it from the first handle the capture saw
+    /// made at its address to the close of the last (ADR-090): never its kernel address, which the kernel reuses once the
+    /// section is gone (R22), and never <see cref="SectionNumber"/>, as no record joins a section's handles to its views.
+    /// </summary>
+    SectionObjectNumber = 31,
 }
 
 /// <summary><c>EN-TimeScope</c> (section 23): the interval a result is scoped to.</summary>

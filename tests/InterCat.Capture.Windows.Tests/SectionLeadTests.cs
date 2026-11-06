@@ -198,12 +198,12 @@ public sealed class SectionLeadTests
         Assert.Contains(views.Notes, note => note.Contains("every view and every image", StringComparison.Ordinal) && note.Contains("0x47", StringComparison.Ordinal));
         Assert.Contains("images alike", views.FilteringNotes, StringComparison.Ordinal);
 
-        // No profile requests it, no other source claims sections - the early memory candidate, whose events name no section,
-        // claims none - and no build carries a tier for them.
+        // No profile requests it or sections' handles, no other source claims sections - the early memory candidate, whose
+        // events name no section, claims none - and no build carries a tier for them.
         Assert.DoesNotContain(CaptureProfileCatalog.All.Concat(CaptureProfileCatalog.Fixtures),
-            profile => profile.Sources.Any(source => source.SourceId == views.SourceId));
-        Assert.All(WindowsSourceCatalog.All.Where(source => source.SourceId != views.SourceId),
-            source => Assert.DoesNotContain(Mechanism.SharedSection, source.Mechanisms));
+            profile => profile.Sources.Any(source => source.SourceId is WindowsSourceCatalog.KernelFileViewsSourceId or WindowsSourceCatalog.KernelSectionHandlesSourceId));
+        Assert.Equal([WindowsSourceCatalog.KernelFileViewsSourceId, WindowsSourceCatalog.KernelSectionHandlesSourceId],
+            WindowsSourceCatalog.All.Where(static source => source.Mechanisms.Contains(Mechanism.SharedSection)).Select(static source => source.SourceId));
         WindowsSourceDefinition memory = WindowsSourceCatalog.Find(WindowsSourceCatalog.KernelMemorySourceId)!;
         Assert.Empty(memory.Mechanisms);
         Assert.Contains(memory.Notes, note => note.Contains("name no section", StringComparison.Ordinal));

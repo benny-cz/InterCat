@@ -8,7 +8,9 @@
   admits no record on this build, which raises every duplication at version 3 (ADR-082's sixth addendum); since revision
   943 the profile's cost is measured through the product, High on a handle-heavy workload (its fifth addendum); since
   revision 949 a capture's compilation refuses the group where its gate could not decide its records (its sixth addendum);
-  since revision 974 its algorithm is `ObjectHandleGate`, which the section handle gate shares (ADR-090)
+  since revision 974 its algorithm is `ObjectHandleGate`, which the section handle gate shares (ADR-090); since revision 977
+  the handle group is read for sections' handles by a source of their own, which no capture collects beside this one
+  (ADR-090's second addendum)
 - Date: 2026-11-05
 - Decision owners: InterCat maintainers
 - Relates to: ADR-073, ADR-082, plan M6, §4.2, R22, P7, FX-SYNC-001, `bench/results/sync-objects-types-20261105T053215Z`
