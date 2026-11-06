@@ -892,6 +892,7 @@ Revision 965 measures FX-WMSG-002, messages to 16 windows made and closed one af
 Revision 966 holds a window message evaluation to its capture's window (ADR-088's third addendum): FX-WMSG-003, a capture begun and ended while messages were in flight, has the messages it cut said to be cut and matched to no other, and every message it held whole with every end - window messages' ambiguity case.
 Revision 967 drills a process's window message records down exactly (ADR-088's fourth addendum): icat processes counts the ends of the messages it sent, posted and retrieved and names the icat evidence command that lists exactly them, each with its source record.
 Revision 968 measures the window messages profile's cost through the product (ADR-087's fourth addendum): Moderate, a message-bound workload 8.2 and 10.8% slower, past the throughput target, nothing dropped - so the UI messaging package meets M6's exit tests.
+Revision 969 begins the section discovery package with its metadata inspection: a section's handles are the object manager's, as every object's, and the file I/O class declares a view's mapping and unmapping with its base, size, file object and process, but nothing names the section a view maps.
 
 ## Revisions, a paragraph each, in order
 
@@ -4268,3 +4269,14 @@ the second its evidence. Measuring it found the workload's sender could outrun a
 and leave a run hanging; it now waits for room and closes its window on any failure, and the probe stops a workload that
 has not finished in five minutes. With two instance and lifetime fixtures, an ambiguity case, a schema-failure case, exact
 drill-down and this comparison, the UI messaging package meets M6's exit tests.
+
+Revision 969 begins M6's section discovery package, the last of its work packages, as every package begins: with what the
+machine declares. `tools/InterCat.SectionProbe --inspect` reads from TDH, without enabling any, the layouts this build
+registers for three classic kernel classes, each at every opcode, and the registered schemas of the ten providers whose
+names say memory, sections or mappings. The object manager's eleven events declare a section's handles as every object's -
+made, duplicated and closed with the object's address, a numeric type the type rundown names and the name at the close -
+and its creation and deletion by address. The file I/O class declares at version 2 a view's mapping and unmapping (37, 38)
+and their rundowns (39, 40), each with the view's base and size, a file object, extra information and the process, but
+nothing naming the section a view maps. The page fault class declares virtual allocations, heap ranges and faults, none a
+section, and no provider declares an event naming a section, a view or a mapping. It is evidence of layouts on one machine,
+not of emission: a truth fixture of a section two processes share is measured before any field is implemented.
