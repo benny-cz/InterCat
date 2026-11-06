@@ -1,0 +1,227 @@
+{
+  "fixture": "FX-SECT-002",
+  "question": "Whether a capture through the product - icat record under the opt-in sections profile - keeps each section of a run that makes and ends two sections a generation, one generation after another in the same two processes, one number of its own by its handles from the creator's creation to both processes' closes and one by its views every mapping and unmapping, bound to exactly the two processes, while the kernel makes some of them at an object address, or gives the views of some a value, an earlier generation's section held; and which tier that measures.",
+  "answer": "In 3 runs through the product, machine-wide and loss-free - 64 generations of two sections each, the opener mapping and unmapping each section's 64 KiB view twice - every section was found twice, one number by its handles and one by its views, neither another section's, bound to exactly the creator and the opener: 384 of 384 sections discovered with their lifetimes, 3840 of 3840 handle opens and closes and view mappings and unmappings seen and bound to their section. The lab probe's own session watched each run: the kernel gave the views of 30, 30 and 31 sections a value an earlier generation's section's views had carried - 88 of the 91 backed by the paging file - and in the run whose ledger is committed made 6 sections at an object address an earlier generation's section had held, each still a section of its own. No record carries a byte moved through a view, so the tier is TopologyOnly.",
+  "method": "Each run: tools/InterCat.SectionProbe --product --generations 64 --rounds 2 started icat record --profile sections and, once its session ran, a private system logger of the probe's own collecting process lifecycle, the kernel's file view flag and the object manager's handle group machine-wide, then the workload section-share --generations 64 --rounds 2 --view-bytes 65536 under both. The probe read each section's object address from the creator's close that names it and the value its views carry from the records of the views the truth mapped, and wrote counts alone, never an address. The product session's records were read as the product holds them into the role-only ledger and evaluated by SectionCoverageEvaluator, which leaves undiscovered any section whose number another truth section carries; the session was then deleted.",
+  "build": "10.0.26220.0-x64",
+  "measuredDate": "2026-11-06",
+  "committedRun": 1,
+  "throughTheProduct": {
+    "evidence": "bench/results/section-generations-product-20261106T093353Z/product.json",
+    "runs": [
+      {
+        "run": 1,
+        "workload": {
+          "generations": 64,
+          "roundsPerGeneration": 2,
+          "viewBytes": 65536
+        },
+        "capture": {
+          "profile": "sections",
+          "lossFree": true,
+          "observedRecords": 1601683,
+          "admittedRecords": 440285,
+          "applicationDrops": 0,
+          "sourceLoss": 0,
+          "undecodableRecords": 0,
+          "gateOmissionsBeyondBound": 0
+        },
+        "observedByTheProbe": {
+          "generations": 64,
+          "sections": 128,
+          "sectionsWithOneAddress": 128,
+          "creationsSeenAtTheirAddress": 128,
+          "openerClosesAtTheirAddress": 128,
+          "closesOfTheSectionType": 128,
+          "distinctAddresses": 122,
+          "sectionsAtAnAddressAnEarlierGenerationsSectionHeld": 6,
+          "sectionsAtTheAddressOfTheirKindInThePreviousGeneration": 0,
+          "truthMappings": 384,
+          "mappingsSeen": 384,
+          "sectionsWithOneViewValue": 128,
+          "distinctViewValues": 98,
+          "sectionsWhoseViewsCarriedAValueAnEarlierGenerationsSectionsViewsCarried": 30,
+          "sectionsWhoseViewsCarriedTheValueOfTheirKindInThePreviousGeneration": 10,
+          "viewValuesThatAreASectionsAddress": 0,
+          "mappingsAtABaseAnEarlierGenerationsViewHeldInItsProcess": 373,
+          "byKind": {
+            "memory": {
+              "sections": 64,
+              "atAnAddressAnEarlierGenerationsSectionHeld": 4,
+              "withAViewValueAnEarlierGenerationsSectionsViewsCarried": 30
+            },
+            "file": {
+              "sections": 64,
+              "atAnAddressAnEarlierGenerationsSectionHeld": 2,
+              "withAViewValueAnEarlierGenerationsSectionsViewsCarried": 0
+            }
+          },
+          "sectionType": 49,
+          "sectionClosesKept": 256,
+          "mappingRecords": 6638,
+          "eventsLost": 0
+        },
+        "evaluation": {
+          "tier": "TopologyOnly",
+          "truthSections": 128,
+          "discoveredWithLifetime": 128,
+          "handleNumbers": 128,
+          "viewSectionNumbers": 128,
+          "expectedMemberships": 256,
+          "resolvedMemberships": 256,
+          "falseMemberships": 0,
+          "truthOperations": 1280,
+          "observed": 1280,
+          "boundToTheirSection": 1280,
+          "claimsBytesOrOperations": false,
+          "recordsOfOtherProcessesOnItsSections": 0,
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      },
+      {
+        "run": 2,
+        "workload": {
+          "generations": 64,
+          "roundsPerGeneration": 2,
+          "viewBytes": 65536
+        },
+        "capture": {
+          "profile": "sections",
+          "lossFree": true,
+          "observedRecords": 1556763,
+          "admittedRecords": 355301,
+          "applicationDrops": 0,
+          "sourceLoss": 0,
+          "undecodableRecords": 0,
+          "gateOmissionsBeyondBound": 0
+        },
+        "observedByTheProbe": {
+          "generations": 64,
+          "sections": 128,
+          "sectionsWithOneAddress": 128,
+          "creationsSeenAtTheirAddress": 128,
+          "openerClosesAtTheirAddress": 128,
+          "closesOfTheSectionType": 128,
+          "distinctAddresses": 128,
+          "sectionsAtAnAddressAnEarlierGenerationsSectionHeld": 0,
+          "sectionsAtTheAddressOfTheirKindInThePreviousGeneration": 0,
+          "truthMappings": 384,
+          "mappingsSeen": 384,
+          "sectionsWithOneViewValue": 128,
+          "distinctViewValues": 98,
+          "sectionsWhoseViewsCarriedAValueAnEarlierGenerationsSectionsViewsCarried": 30,
+          "sectionsWhoseViewsCarriedTheValueOfTheirKindInThePreviousGeneration": 7,
+          "viewValuesThatAreASectionsAddress": 0,
+          "mappingsAtABaseAnEarlierGenerationsViewHeldInItsProcess": 373,
+          "byKind": {
+            "memory": {
+              "sections": 64,
+              "atAnAddressAnEarlierGenerationsSectionHeld": 0,
+              "withAViewValueAnEarlierGenerationsSectionsViewsCarried": 30
+            },
+            "file": {
+              "sections": 64,
+              "atAnAddressAnEarlierGenerationsSectionHeld": 0,
+              "withAViewValueAnEarlierGenerationsSectionsViewsCarried": 0
+            }
+          },
+          "sectionType": 49,
+          "sectionClosesKept": 256,
+          "mappingRecords": 5046,
+          "eventsLost": 0
+        },
+        "evaluation": {
+          "tier": "TopologyOnly",
+          "truthSections": 128,
+          "discoveredWithLifetime": 128,
+          "handleNumbers": 128,
+          "viewSectionNumbers": 128,
+          "expectedMemberships": 256,
+          "resolvedMemberships": 256,
+          "falseMemberships": 0,
+          "truthOperations": 1280,
+          "observed": 1280,
+          "boundToTheirSection": 1280,
+          "claimsBytesOrOperations": false,
+          "recordsOfOtherProcessesOnItsSections": 0,
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      },
+      {
+        "run": 3,
+        "workload": {
+          "generations": 64,
+          "roundsPerGeneration": 2,
+          "viewBytes": 65536
+        },
+        "capture": {
+          "profile": "sections",
+          "lossFree": true,
+          "observedRecords": 1384262,
+          "admittedRecords": 259938,
+          "applicationDrops": 0,
+          "sourceLoss": 0,
+          "undecodableRecords": 0,
+          "gateOmissionsBeyondBound": 0
+        },
+        "observedByTheProbe": {
+          "generations": 64,
+          "sections": 128,
+          "sectionsWithOneAddress": 128,
+          "creationsSeenAtTheirAddress": 128,
+          "openerClosesAtTheirAddress": 128,
+          "closesOfTheSectionType": 128,
+          "distinctAddresses": 128,
+          "sectionsAtAnAddressAnEarlierGenerationsSectionHeld": 0,
+          "sectionsAtTheAddressOfTheirKindInThePreviousGeneration": 0,
+          "truthMappings": 384,
+          "mappingsSeen": 384,
+          "sectionsWithOneViewValue": 128,
+          "distinctViewValues": 97,
+          "sectionsWhoseViewsCarriedAValueAnEarlierGenerationsSectionsViewsCarried": 31,
+          "sectionsWhoseViewsCarriedTheValueOfTheirKindInThePreviousGeneration": 8,
+          "viewValuesThatAreASectionsAddress": 0,
+          "mappingsAtABaseAnEarlierGenerationsViewHeldInItsProcess": 373,
+          "byKind": {
+            "memory": {
+              "sections": 64,
+              "atAnAddressAnEarlierGenerationsSectionHeld": 0,
+              "withAViewValueAnEarlierGenerationsSectionsViewsCarried": 28
+            },
+            "file": {
+              "sections": 64,
+              "atAnAddressAnEarlierGenerationsSectionHeld": 0,
+              "withAViewValueAnEarlierGenerationsSectionsViewsCarried": 3
+            }
+          },
+          "sectionType": 49,
+          "sectionClosesKept": 256,
+          "mappingRecords": 5942,
+          "eventsLost": 0
+        },
+        "evaluation": {
+          "tier": "TopologyOnly",
+          "truthSections": 128,
+          "discoveredWithLifetime": 128,
+          "handleNumbers": 128,
+          "viewSectionNumbers": 128,
+          "expectedMemberships": 256,
+          "resolvedMemberships": 256,
+          "falseMemberships": 0,
+          "truthOperations": 1280,
+          "observed": 1280,
+          "boundToTheirSection": 1280,
+          "claimsBytesOrOperations": false,
+          "recordsOfOtherProcessesOnItsSections": 0,
+          "gaps": [
+            "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+          ]
+        }
+      }
+    ]
+  }
+}

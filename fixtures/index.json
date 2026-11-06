@@ -1025,9 +1025,53 @@
       },
       "tests": [
         "R22: FX-SECT-001's handle records join each process's handles to a section by its object's address - each creation named by nothing but its close, typed Section - and every view each process mapped and unmapped is a record of that process with its size, each section's views naming one value in both processes, while one base held both sections' views and no record names a byte moved through one",
-        "P27: sections have an inventoried lead - the kernel's file view flag, requested by the opt-in sections profile alone, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and sections are topology only on the one build their fixture measured them on through the product",
+        "P27: sections have an inventoried lead - the kernel's file view flag, requested by the opt-in sections profile alone, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and sections are topology only on the one build their fixtures measured them on through the product",
         "R22: FX-SECT-001's committed ledger read through the section gates as it was delivered is its two sections - each section's handles in both processes one number, every view of a section in both processes one section number, and each mapping a view of its own though the opener mapped them all at one base",
         "P27: FX-SECT-001's section records through the product reproduce its measured tier - each section found twice, by its handles from the creator's creation to both processes' closes and by every view both processes mapped and unmapped, among their own views and images, bound to exactly the two processes - and topology only"
+      ]
+    },
+    {
+      "id": "FX-SECT-002",
+      "title": "Sections two processes share made and ended one generation after another, each a section of its own",
+      "scenario": "Plan M6's section discovery work package (§4.2, ADR-092): FX-SECT-001's two processes and two named sections - one backed by the paging file and one by a file of its own - made and ended 64 times one after another, each generation under names of its own, made only once the last generation's were unmapped and closed by both processes, the opener mapping and unmapping each section's view twice, so the kernel makes later sections where earlier ones were. Recorded through the product by icat record under the opt-in sections profile, and watched by a private system logger of tools/InterCat.SectionProbe collecting process lifecycle, the kernel's file view flag and the object manager's handle group, machine-wide, which alone reads where the kernel made each section.",
+      "milestone": "M6",
+      "mechanism": "SharedSection",
+      "backlog": [
+        "IC-002"
+      ],
+      "covers": {
+        "rules": [
+          "R22"
+        ],
+        "invariants": [],
+        "prohibitions": []
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads section-share --generations 64 --rounds 2 --view-bytes 65536, under icat record --profile sections and the private system logger of tools/InterCat.SectionProbe --product --generations 64 --rounds 2",
+        "seed": 20261106,
+        "log": "fixtures/FX-SECT-002/evidence/truth-creator.jsonl",
+        "independence": "Each process logs every section it made or opened, every view it mapped or unmapped, with its size, and every handle it closed, by the section's name, the opener also the bytes it read back; neither reads InterCat state, and the probe's session reads the kernel's records apart from both and from the product's capture."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-SECT-002/evidence/measurement.json",
+        "note": "Three runs through icat record, machine-wide and nothing lost: every section of 64 generations found twice - one number by its handles from the creator's creation to both processes' closes, and one by every view both processes mapped and unmapped - neither another section's, bound to exactly the two processes, 1,280 of 1,280 truth operations a run seen and bound to its section, while the probe's own session counted 30, 30 and 31 sections whose views the kernel gave a value an earlier generation's section's views had carried, and in the first run 6 made at an object address an earlier generation's section had held. The first run's ledger is evaluated by a test against its truth and held to the probe's counts."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-06",
+          "tier": "TopologyOnly",
+          "result": "Recorded by icat record under the opt-in sections profile, three times, nothing lost: each of 128 sections made and ended in 64 generations one number of its own by its handles from the creator's creation to every close and one by its views every mapping and unmapping, bound to exactly its two processes, 128 of 128 discovered with their lifetimes a run, while the kernel gave the views of 30, 30 and 31 of them a value an earlier generation's section's views had carried. Tier TopologyOnly: no record carries a byte moved through a view (ADR-092)."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The two processes' truth logs and scenario of the first run - sections by the run's own names, a generation at a time, views by their round and size, of seeded bytes - and the ledger of the workload's section records through the product, by role - creator, opener - kind, numbers, size, extra information's high byte and time, and a name only where it names one of the run's sections, never a PID, a handle value or an address; and the three runs' capture health, evaluations and the probe's counts, never an address, a base or a value."
+      },
+      "tests": [
+        "R22: FX-SECT-002's section records through the product keep each of 128 sections made and ended in 64 generations one number of its own by its handles and one by its views, bound to exactly the two processes, while the kernel made some at an object address, and gave the views of more a value, an earlier generation's section had held"
       ]
     },
     {
@@ -2772,7 +2816,7 @@
         "P27: icat capabilities reports a mechanism no source covers where a fixture measured it on the build - mailslots unsupported, by FX-MAIL-001 - and leaves it out on a build none measured it on",
         "P27: named synchronization objects have an inventoried lead - the object manager's handle group, enabled by a group mask and no kernel flag, requested by the opt-in synchronization objects profile alone, its records admitted through its gate, its measured notes and Low cost stated beside its throughput regression - and are topology only on the one build their fixtures measured them on through the product",
         "P27: observed calls without a byte domain or a lifetime stay at experimental evidence",
-        "P27: sections have an inventoried lead - the kernel's file view flag, requested by the opt-in sections profile alone, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and sections are topology only on the one build their fixture measured them on through the product",
+        "P27: sections have an inventoried lead - the kernel's file view flag, requested by the opt-in sections profile alone, its four view events at the version this build raises them at, admitted through the section view gate, its measured notes and Low cost stated beside its throughput regression - the early memory candidate claims none, and sections are topology only on the one build their fixtures measured them on through the product",
         "P27: the coverage a build carries, and the page that publishes it, are the index's latest evidence of each mechanism on each build",
         "P27: window messages have an inventoried lead - Win32k's message pump keyword at the informational level, requested by the opt-in window messages profile alone, its six message events admitted through the window message gate, its measured notes and Low cost stated beside its throughput regression - and are experimental evidence on the one build their fixture measured them on through the product"
       ],
@@ -3389,6 +3433,7 @@
         "R22: FX-HTTP-012's requests through a proxy that challenges, eight clients at once, are an exchange to each leg and each CONNECT, each part whole, and each challenge answered by the proxy's credentials",
         "R22: FX-SECT-001's committed ledger read through the section gates as it was delivered is its two sections - each section's handles in both processes one number, every view of a section in both processes one section number, and each mapping a view of its own though the opener mapped them all at one base",
         "R22: FX-SECT-001's handle records join each process's handles to a section by its object's address - each creation named by nothing but its close, typed Section - and every view each process mapped and unmapped is a record of that process with its size, each section's views naming one value in both processes, while one base held both sections' views and no record names a byte moved through one",
+        "R22: FX-SECT-002's section records through the product keep each of 128 sections made and ended in 64 generations one number of its own by its handles and one by its views, bound to exactly the two processes, while the kernel made some at an object address, and gave the views of more a value, an earlier generation's section had held",
         "R22: FX-SYNC-001's handle records join each process's handles to a named object by its address - each creation named by nothing but its close, one object to an address, the object's type, and no handle of it elsewhere",
         "R22: FX-SYNC-001's handle records, read through the gate as delivered, are three objects - each created by the creator, opened by the opener and closed by both - numbered apart",
         "R22: FX-SYNC-002's duplications are each raised in the process that asked for it - a push in its source, a pull in its target, one between two others in a third - at version 3, its fourth field naming its source process, with its source's handle and its target, and no creation of the handle made, whose close its target raises naming the object",

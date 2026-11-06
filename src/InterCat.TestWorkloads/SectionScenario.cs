@@ -7,12 +7,19 @@ using InterCat.Domain;
 
 namespace InterCat.TestWorkloads;
 
-/// <summary>Parameters of one FX-SECT-001 run: the size of each view, and how many times the opener maps each section.</summary>
+/// <summary>
+/// Parameters of one FX-SECT-001 run - the size of each view, and how many times the opener maps each section - or of one
+/// FX-SECT-002 run, the same two sections made and ended that many generations one after another in the same two processes.
+/// </summary>
 internal sealed record SectionOptions
 {
-    public const string ScenarioId = "FX-SECT-001";
-
     public required string TruthDirectory { get; init; }
+
+    /// <summary>How many generations of the two sections the two processes make and end one after another; 1 for FX-SECT-001.</summary>
+    public int Generations { get; init; } = 1;
+
+    /// <summary>FX-SECT-002 where the sections are made in generations, FX-SECT-001 otherwise.</summary>
+    public string ScenarioId => Generations > 1 ? "FX-SECT-002" : "FX-SECT-001";
 
     /// <summary>The sections' shared name, which the coordinator chooses and gives both processes; null for the coordinator.</summary>
     public string? Name { get; init; }
@@ -33,7 +40,9 @@ internal sealed record SectionOptions
 /// and writes seeded bytes into it; an opener opens each by its name and maps and unmaps a view of it that many times,
 /// reading the creator's bytes through each. Then the opener closes its handles, and the creator unmaps its views, closes its
 /// handles and deletes the file. Each process logs every section it made or opened, every view it mapped or unmapped, with
-/// its size, and every handle it closed, by the section's name. Neither reads InterCat state.
+/// its size, and every handle it closed, by the section's name. Neither reads InterCat state. FX-SECT-002 runs the same in
+/// generations one after another in the same two processes, each generation's two sections under names of its own, made only
+/// once the last generation's were unmapped and closed, so the kernel may make them where the last generation's had been.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static partial class SectionScenario
@@ -50,7 +59,10 @@ internal static partial class SectionScenario
 
     private static readonly JsonSerializerOptions SummaryOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    /// <summary>Starts the creator, then the opener once the creator's views hold their bytes, and ends the creator once the opener is done.</summary>
+    /// <summary>
+    /// Starts the creator and the opener, and paces each generation: the opener goes once the creator's views hold their
+    /// bytes, and the creator unmaps and closes once the opener is done, before it makes the next generation's sections.
+    /// </summary>
     public static async Task<int> RunCoordinatorAsync(SectionOptions options, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(options.TruthDirectory);
@@ -58,29 +70,48 @@ internal static partial class SectionScenario
             ?? throw new InvalidOperationException("The workload executable path could not be resolved.");
 
         // A name of its own each run, in the session's namespace, so no other run's sections or any other program's share it.
-        string name = $@"Local\InterCat-{SectionOptions.ScenarioId}-{Guid.NewGuid():N}";
+        string name = $@"Local\InterCat-{options.ScenarioId}-{Guid.NewGuid():N}";
         using Process creator = StartChild(executable, "section-share-creator", options with { Name = name });
-        if (await creator.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not "ready")
+        using Process opener = StartChild(executable, "section-share-opener", options with { Name = name });
+        for (int generation = 1; generation <= options.Generations; generation++)
         {
-            await creator.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            await Console.Error.WriteLineAsync("The creator exited before its sections held their bytes.").ConfigureAwait(false);
-            return 1;
+            string? failed = await creator.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not "ready"
+                ? "The creator exited before its sections held their bytes."
+                : null;
+            if (failed is null)
+            {
+                await opener.StandardInput.WriteLineAsync("go").ConfigureAwait(false);
+                await opener.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+                failed = await opener.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not "done"
+                    ? "The opener exited before it was done with the sections."
+                    : null;
+            }
+
+            if (failed is not null)
+            {
+                creator.Kill(entireProcessTree: true);
+                opener.Kill(entireProcessTree: true);
+                await Console.Error.WriteLineAsync(failed).ConfigureAwait(false);
+                return 1;
+            }
+
+            // The creator unmaps, closes and deletes only once the opener is done with the generation's sections.
+            await creator.StandardInput.WriteLineAsync("done").ConfigureAwait(false);
+            await creator.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        using Process opener = StartChild(executable, "section-share-opener", options with { Name = name });
         await opener.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-
-        // The creator unmaps, closes and deletes only once the opener is done with the sections.
-        await creator.StandardInput.WriteLineAsync("done").ConfigureAwait(false);
-        await creator.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
         await creator.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
         var summary = new
         {
-            scenarioId = SectionOptions.ScenarioId,
+            scenarioId = options.ScenarioId,
             name,
-            sections = new[] { SectionName(name, MemoryKind), SectionName(name, FileKind) },
+            sections = Enumerable.Range(1, options.Generations)
+                .SelectMany(generation => new[] { SectionName(name, MemoryKind, generation, options.Generations), SectionName(name, FileKind, generation, options.Generations) })
+                .ToArray(),
             options.Bytes,
             options.Rounds,
+            options.Generations,
             options.Seed,
             coordinatorProcessId = Environment.ProcessId,
             creatorProcessId = creator.Id,
@@ -100,9 +131,26 @@ internal static partial class SectionScenario
     public static async Task<int> RunCreatorAsync(SectionOptions options, CancellationToken cancellationToken)
     {
         string name = options.Name ?? throw new InvalidOperationException("The creator takes the sections' name from --name.");
-        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-creator.jsonl"), SectionOptions.ScenarioId, "creator");
+        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-creator.jsonl"), options.ScenarioId, "creator");
         truth.Write(TruthEventKind.ProcessStarted, resourceName: name);
-        string backing = Path.Combine(options.TruthDirectory, name[(name.IndexOf('\\', StringComparison.Ordinal) + 1)..] + ".section");
+        for (int generation = 1; generation <= options.Generations; generation++)
+        {
+            int made = await CreateGenerationAsync(options, name, generation, truth, cancellationToken).ConfigureAwait(false);
+            if (made != 0)
+            {
+                return made;
+            }
+        }
+
+        truth.Write(TruthEventKind.ProcessExiting);
+        return 0;
+    }
+
+    // One generation's two sections: made, each a view mapped and written, said ready; once told, unmapped and closed, its file deleted.
+    private static async Task<int> CreateGenerationAsync(SectionOptions options, string name, int generation, TruthLog truth, CancellationToken cancellationToken)
+    {
+        string backing = Path.Combine(options.TruthDirectory,
+            SectionName(name, FileKind, generation, options.Generations)[(name.IndexOf('\\', StringComparison.Ordinal) + 1)..] + ".section");
         var sections = new List<(string Kind, string Name, nint Section, nint View)>();
         using (var file = new FileStream(backing, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
         {
@@ -110,7 +158,7 @@ internal static partial class SectionScenario
             nint fileHandle = file.SafeFileHandle.DangerousGetHandle();
             foreach ((string kind, nint backedBy) in new[] { (MemoryKind, InvalidHandle), (FileKind, fileHandle) })
             {
-                string sectionName = SectionName(name, kind);
+                string sectionName = SectionName(name, kind, generation, options.Generations);
                 nint section = CreateFileMappingW(backedBy, 0, PageReadWrite, 0, (uint)options.Bytes, sectionName);
                 if (section == 0)
                 {
@@ -144,7 +192,6 @@ internal static partial class SectionScenario
         }
 
         File.Delete(backing);
-        truth.Write(TruthEventKind.ProcessExiting);
         return 0;
     }
 
@@ -155,13 +202,37 @@ internal static partial class SectionScenario
     public static async Task<int> RunOpenerAsync(SectionOptions options, CancellationToken cancellationToken)
     {
         string name = options.Name ?? throw new InvalidOperationException("The opener takes the sections' name from --name.");
-        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-opener.jsonl"), SectionOptions.ScenarioId, "opener");
+        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-opener.jsonl"), options.ScenarioId, "opener");
         truth.Write(TruthEventKind.ProcessStarted, resourceName: name);
         int differed = 0;
+        for (int generation = 1; generation <= options.Generations; generation++)
+        {
+            // Each generation's sections are opened once the coordinator says the creator's views hold their bytes.
+            if (await Console.In.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not "go")
+            {
+                return 1;
+            }
+
+            int opened = OpenGeneration(options, name, generation, truth, ref differed);
+            if (opened != 0)
+            {
+                return opened;
+            }
+
+            Console.WriteLine("done");
+            Console.Out.Flush();
+        }
+
+        truth.Write(TruthEventKind.ProcessExiting);
+        return differed == 0 ? 0 : 1;
+    }
+
+    // One generation's two sections opened by their names, a view of each mapped and unmapped that many times, read through each.
+    private static int OpenGeneration(SectionOptions options, string name, int generation, TruthLog truth, ref int differed)
+    {
         foreach (string kind in new[] { MemoryKind, FileKind })
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            string sectionName = SectionName(name, kind);
+            string sectionName = SectionName(name, kind, generation, options.Generations);
             nint section = OpenFileMappingW(FileMapAllAccess, false, sectionName);
             if (section == 0)
             {
@@ -195,12 +266,12 @@ internal static partial class SectionScenario
             truth.Write(TruthEventKind.HandleClosed, status: kind, resourceName: sectionName);
         }
 
-        truth.Write(TruthEventKind.ProcessExiting);
-        return differed == 0 ? 0 : 1;
+        return 0;
     }
 
-    /// <summary>A section's name: the run's name and the section's kind.</summary>
-    private static string SectionName(string name, string kind) => name + (kind == MemoryKind ? "-memory" : "-file");
+    /// <summary>A section's name: the run's name, its generation's where the run makes several, and the section's kind.</summary>
+    private static string SectionName(string name, string kind, int generation, int generations) =>
+        name + (generations > 1 ? string.Create(CultureInfo.InvariantCulture, $"-g{generation:D3}") : string.Empty) + (kind == MemoryKind ? "-memory" : "-file");
 
     // The seeded bytes the creator writes into a section, and the opener expects to read back: each kind's of its own.
     private static byte[] Bytes(SectionOptions options, string kind)
@@ -224,6 +295,7 @@ internal static partial class SectionScenario
             verb, "--truth", options.TruthDirectory, "--name", options.Name!,
             "--view-bytes", options.Bytes.ToString(CultureInfo.InvariantCulture),
             "--rounds", options.Rounds.ToString(CultureInfo.InvariantCulture),
+            "--generations", options.Generations.ToString(CultureInfo.InvariantCulture),
             "--seed", options.Seed.ToString(CultureInfo.InvariantCulture),
         })
         {

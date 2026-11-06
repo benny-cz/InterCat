@@ -16,8 +16,9 @@ namespace InterCat.SectionProbe;
 /// </summary>
 internal static partial class Product
 {
-    public static async Task<Dictionary<string, object?>> RunAsync(string icat, string workload, string output, int runs, int rounds, int bytes, int duration)
+    public static async Task<Dictionary<string, object?>> RunAsync(string icat, string workload, string output, int runs, int rounds, int bytes, int generations, int duration)
     {
+        string fixture = generations > 1 ? "FX-SECT-002" : "FX-SECT-001";
         var results = new List<Dictionary<string, object?>>();
         for (int run = 1; run <= runs; run++)
         {
@@ -28,19 +29,36 @@ internal static partial class Product
             try
             {
                 Dictionary<string, object?> health;
+                Dictionary<string, object?>? watched = null;
                 using (Recording recording = await Recording.StartAsync(icat, session, duration).ConfigureAwait(false))
                 {
-                    using (Process started = Process.Start(new ProcessStartInfo(workload,
-                        ["section-share", "--truth", truth, "--rounds", rounds.ToString(CultureInfo.InvariantCulture), "--view-bytes", bytes.ToString(CultureInfo.InvariantCulture)])
-                        { UseShellExecute = false, CreateNoWindow = true }) ?? throw new InvalidOperationException("The truth workload could not be started."))
+                    // FX-SECT-002's generations are watched by the probe's own session too, the only one that reads where the
+                    // kernel made each section; it starts once the product's runs, and stops once the workload is done.
+                    using (Generations? watch = generations > 1 ? await Generations.StartAsync().ConfigureAwait(false) : null)
                     {
-                        await FinishedAsync(started).ConfigureAwait(false);
+                        using (Process started = Process.Start(new ProcessStartInfo(workload,
+                            ["section-share", "--truth", truth, "--rounds", rounds.ToString(CultureInfo.InvariantCulture), "--view-bytes", bytes.ToString(CultureInfo.InvariantCulture),
+                                "--generations", generations.ToString(CultureInfo.InvariantCulture)])
+                            { UseShellExecute = false, CreateNoWindow = true }) ?? throw new InvalidOperationException("The truth workload could not be started."))
+                        {
+                            await FinishedAsync(started).ConfigureAwait(false);
+                        }
+
+                        if (watch is not null)
+                        {
+                            watched = await watch.FinishAsync(truth).ConfigureAwait(false);
+                        }
                     }
 
                     health = await recording.FinishAsync().ConfigureAwait(false);
                 }
 
                 SectionCoverageResult result = SessionLedger.Write(session, truth, Path.Combine(folder, "records.csv"));
+                if (watched is not null)
+                {
+                    File.WriteAllText(Path.Combine(folder, "observed-by-the-probe.json"), JsonSerializer.Serialize(watched, Indented));
+                }
+
                 results.Add(new()
                 {
                     ["run"] = run,
@@ -55,6 +73,9 @@ internal static partial class Product
                     ["observed"] = result.Measurement.TruthOperationsWithAdmittedObservation,
                     ["recordsOfOtherProcessesOnItsSections"] = result.ObservationsOutsideScope,
                     ["gaps"] = result.Assessment.Gaps,
+                    ["handleNumbers"] = result.Sections.Select(static section => section.SectionObjectNumber).OfType<long>().Distinct().Count(),
+                    ["viewSectionNumbers"] = result.Sections.Select(static section => section.SectionNumber).OfType<long>().Distinct().Count(),
+                    ["observedByTheProbe"] = watched,
                 });
             }
             finally
@@ -68,11 +89,17 @@ internal static partial class Product
 
         return new()
         {
-            ["question"] = "Whether FX-SECT-001's two sections, recorded through the product by icat record under the opt-in sections profile, are "
-                + "each found twice - by its handles' one number from its creation to every close, and by its views' one number every "
-                + "mapping and unmapping - bound to exactly the two processes, as ADR-092 measures them.",
-            ["scenario"] = "FX-SECT-001",
-            ["truth"] = new Dictionary<string, object?> { ["sections"] = 2, ["openerRounds"] = rounds, ["viewBytes"] = bytes },
+            ["question"] = generations > 1
+                ? $"Whether FX-SECT-002's sections, two a generation made and ended {generations} generations one after another in the same two "
+                    + "processes, recorded through the product by icat record under the opt-in sections profile, are each found twice - by "
+                    + "its handles' one number and by its views' one number - each a number of its own, bound to exactly the two processes, "
+                    + "as ADR-092 measures them, where the probe's own session watching the same run counts the sections the kernel made "
+                    + "at an address, or whose views it gave a value, an earlier generation's section held."
+                : "Whether FX-SECT-001's two sections, recorded through the product by icat record under the opt-in sections profile, are "
+                    + "each found twice - by its handles' one number from its creation to every close, and by its views' one number every "
+                    + "mapping and unmapping - bound to exactly the two processes, as ADR-092 measures them.",
+            ["scenario"] = fixture,
+            ["truth"] = new Dictionary<string, object?> { ["sections"] = 2 * generations, ["generations"] = generations, ["openerRounds"] = rounds, ["viewBytes"] = bytes },
             ["profile"] = "sections",
             ["durationSeconds"] = duration,
             ["runs"] = results,
@@ -80,9 +107,16 @@ internal static partial class Product
             {
                 "Each capture is the product's own icat record process, recording into a scratch session that is deleted once its ledger is written.",
                 "A run's health is the capture's own report: what its sources lost, what its queue dropped, and what a source's gate did not admit, by reason.",
+                generations > 1
+                    ? "Each run's generations were watched by the probe's own private system logger too, started once the capture's session "
+                        + "ran: it alone reads where the kernel made each section - its object's address and its views' value - and writes "
+                        + "counts, never an address."
+                    : "Nothing but the product's capture recorded the run.",
             },
         };
     }
+
+    private static readonly JsonSerializerOptions Indented = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     private static async Task FinishedAsync(Process started)
     {

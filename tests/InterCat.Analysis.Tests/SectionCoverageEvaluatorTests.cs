@@ -198,6 +198,69 @@ public sealed class SectionCoverageEvaluatorTests
         Assert.Equal(CapabilityTier.TopologyOnly, result.Assessment.Tier);
     }
 
+    [Fact(DisplayName = "R22: FX-SECT-002's section records through the product keep each of 128 sections made and ended in 64 generations one number of its own by its handles and one by its views, bound to exactly the two processes, while the kernel made some at an object address, and gave the views of more a value, an earlier generation's section had held")]
+    public void SectionsMadeInGenerationsAreEachTheirOwn()
+    {
+        string evidence = Path.Combine(RepositoryRoot(), "fixtures", "FX-SECT-002", "evidence");
+        TruthRecord[] truth = [.. ReadTruth(Path.Combine(evidence, "truth-creator.jsonl")), .. ReadTruth(Path.Combine(evidence, "truth-opener.jsonl"))];
+        Dictionary<string, int> processes = truth.GroupBy(static record => record.Role).ToDictionary(static group => group.Key, static group => group.First().ProcessId);
+        SectionObservation[] records = [.. ReadLedger(Path.Combine(evidence, "records.csv"), processes)];
+        SectionCoverageResult result = SectionCoverageEvaluator.Evaluate(truth, records, Settings() with { FixtureId = "FX-SECT-002", Reproduced = true });
+
+        using System.Text.Json.JsonDocument measurement = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "measurement.json")));
+        System.Text.Json.JsonElement product = measurement.RootElement.GetProperty("throughTheProduct");
+        int committed = measurement.RootElement.GetProperty("committedRun").GetInt32();
+        System.Text.Json.JsonElement run = product.GetProperty("runs").EnumerateArray().Single(run => run.GetProperty("run").GetInt32() == committed);
+        System.Text.Json.JsonElement stated = run.GetProperty("evaluation");
+        MechanismMeasurement measured = result.Measurement;
+        Assert.Equal(
+            (stated.GetProperty("truthSections").GetInt64(), stated.GetProperty("discoveredWithLifetime").GetInt64(),
+                stated.GetProperty("expectedMemberships").GetInt64(), stated.GetProperty("resolvedMemberships").GetInt64(),
+                stated.GetProperty("falseMemberships").GetInt64(), stated.GetProperty("truthOperations").GetInt64(), stated.GetProperty("observed").GetInt64(),
+                stated.GetProperty("boundToTheirSection").GetInt64()),
+            (measured.TruthResources, measured.DiscoveredResourcesWithLifetime, measured.ExpectedMemberships, measured.ResolvedMemberships,
+                measured.FalsePeerAttributions, measured.TruthOperations, measured.TruthOperationsWithAdmittedObservation,
+                measured.TruthOperationsBoundToResourceInstance));
+        Assert.Equal(stated.GetProperty("recordsOfOtherProcessesOnItsSections").GetInt32(), result.ObservationsOutsideScope);
+        Assert.Equal(Enum.Parse<CapabilityTier>(stated.GetProperty("tier").GetString()!), result.Assessment.Tier);
+
+        // Every one of them: each generation's two sections found twice, by its handles from the creator's creation to both
+        // processes' closes and by every view both processes mapped and unmapped, each of its two numbers its own and no
+        // other section's, bound to exactly the two processes, and every operation the truth logged seen and bound to it.
+        Assert.Equal((128L, 128L, 256L, 256L, 0L), (measured.TruthResources, measured.DiscoveredResourcesWithLifetime, measured.ExpectedMemberships,
+            measured.ResolvedMemberships, measured.FalsePeerAttributions));
+        Assert.Equal((1280L, 1280L, 1280L, false), (measured.TruthOperations, measured.TruthOperationsWithAdmittedObservation,
+            measured.TruthOperationsBoundToResourceInstance, measured.ClaimsBytesOrOperations));
+        Assert.Equal((128, 128), (result.Sections.Select(static section => section.SectionObjectNumber).OfType<long>().Distinct().Count(),
+            result.Sections.Select(static section => section.SectionNumber).OfType<long>().Distinct().Count()));
+        Assert.Equal((stated.GetProperty("handleNumbers").GetInt32(), stated.GetProperty("viewSectionNumbers").GetInt32()), (128, 128));
+        int[] holders = [.. processes.Values.Order()];
+        Assert.All(result.Sections, section => Assert.Equal(holders, section.MemberProcesses));
+        Assert.Equal(CapabilityTier.TopologyOnly, result.Assessment.Tier);
+
+        // While the lab probe's own session, watching the same run, counted sections the kernel made at an object address an
+        // earlier generation's section held, and sections whose views it gave a value an earlier generation's section's views
+        // carried: a capture's records alone would have joined each to that earlier section.
+        System.Text.Json.JsonElement watched = run.GetProperty("observedByTheProbe");
+        using System.Text.Json.JsonDocument scenario = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(evidence, "scenario.json")));
+        Assert.Equal((64, 64, 128, 0), (scenario.RootElement.GetProperty("generations").GetInt32(), watched.GetProperty("generations").GetInt32(),
+            watched.GetProperty("sections").GetInt32(), watched.GetProperty("eventsLost").GetInt32()));
+        Assert.Equal((128, 128, 384, 384), (watched.GetProperty("sectionsWithOneAddress").GetInt32(), watched.GetProperty("sectionsWithOneViewValue").GetInt32(),
+            watched.GetProperty("truthMappings").GetInt32(), watched.GetProperty("mappingsSeen").GetInt32()));
+        int atAnAddress = watched.GetProperty("sectionsAtAnAddressAnEarlierGenerationsSectionHeld").GetInt32();
+        int withAValue = watched.GetProperty("sectionsWhoseViewsCarriedAValueAnEarlierGenerationsSectionsViewsCarried").GetInt32();
+        Assert.InRange(atAnAddress, 1, 127);
+        Assert.InRange(withAValue, 1, 127);
+
+        // The same run, as the probe reported it beside the product's evaluation, is the bench's.
+        using System.Text.Json.JsonDocument bench = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(RepositoryRoot(), product.GetProperty("evidence").GetString()!)));
+        System.Text.Json.JsonElement reported = bench.RootElement.GetProperty("runs").EnumerateArray().Single(entry => entry.GetProperty("run").GetInt32() == committed);
+        Assert.Equal((atAnAddress, withAValue, 128, 1280), (
+            reported.GetProperty("observedByTheProbe").GetProperty("sectionsAtAnAddressAnEarlierGenerationsSectionHeld").GetInt32(),
+            reported.GetProperty("observedByTheProbe").GetProperty("sectionsWhoseViewsCarriedAValueAnEarlierGenerationsSectionsViewsCarried").GetInt32(),
+            reported.GetProperty("discoveredWithLifetime").GetInt32(), reported.GetProperty("observed").GetInt32()));
+    }
+
     private static IEnumerable<TruthRecord> ReadTruth(string file)
     {
         var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);

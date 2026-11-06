@@ -1,0 +1,221 @@
+{
+  "question": "Whether FX-SECT-002\u0027s sections, two a generation made and ended 64 generations one after another in the same two processes, recorded through the product by icat record under the opt-in sections profile, are each found twice - by its handles\u0027 one number and by its views\u0027 one number - each a number of its own, bound to exactly the two processes, as ADR-092 measures them, where the probe\u0027s own session watching the same run counts the sections the kernel made at an address, or whose views it gave a value, an earlier generation\u0027s section held.",
+  "scenario": "FX-SECT-002",
+  "truth": {
+    "sections": 128,
+    "generations": 64,
+    "openerRounds": 2,
+    "viewBytes": 65536
+  },
+  "profile": "sections",
+  "durationSeconds": 30,
+  "runs": [
+    {
+      "run": 1,
+      "health": {
+        "observedRecords": 1601683,
+        "admittedRecords": 440285,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 1112013,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "tier": "TopologyOnly",
+      "truthSections": 128,
+      "discoveredWithLifetime": 128,
+      "expectedMemberships": 256,
+      "resolvedMemberships": 256,
+      "falseMemberships": 0,
+      "truthOperations": 1280,
+      "observed": 1280,
+      "recordsOfOtherProcessesOnItsSections": 0,
+      "gaps": [
+        "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+      ],
+      "handleNumbers": 128,
+      "viewSectionNumbers": 128,
+      "observedByTheProbe": {
+        "question": "Where the kernel makes sections made and ended one generation after another: how many of a later generation\u0027s sections it made at an object address an earlier generation\u0027s section held, and how many whose views it gave the value an earlier generation\u0027s section\u0027s views carried - either of which a capture\u0027s records alone would join to that earlier section.",
+        "scenario": "FX-SECT-002",
+        "generations": 64,
+        "sections": 128,
+        "sectionsWithOneAddress": 128,
+        "creationsSeenAtTheirAddress": 128,
+        "openerClosesAtTheirAddress": 128,
+        "closesOfTheSectionType": 128,
+        "distinctAddresses": 122,
+        "sectionsAtAnAddressAnEarlierGenerationsSectionHeld": 6,
+        "sectionsAtTheAddressOfTheirKindInThePreviousGeneration": 0,
+        "truthMappings": 384,
+        "mappingsSeen": 384,
+        "sectionsWithOneViewValue": 128,
+        "distinctViewValues": 98,
+        "sectionsWhoseViewsCarriedAValueAnEarlierGenerationsSectionsViewsCarried": 30,
+        "sectionsWhoseViewsCarriedTheValueOfTheirKindInThePreviousGeneration": 10,
+        "viewValuesThatAreASectionsAddress": 0,
+        "mappingsAtABaseAnEarlierGenerationsViewHeldInItsProcess": 373,
+        "byKind": {
+          "memory": {
+            "sections": 64,
+            "atAnAddressAnEarlierGenerationsSectionHeld": 4,
+            "withAViewValueAnEarlierGenerationsSectionsViewsCarried": 30
+          },
+          "file": {
+            "sections": 64,
+            "atAnAddressAnEarlierGenerationsSectionHeld": 2,
+            "withAViewValueAnEarlierGenerationsSectionsViewsCarried": 0
+          }
+        },
+        "sectionType": 49,
+        "sectionClosesKept": 256,
+        "mappingRecords": 6638,
+        "eventsLost": 0
+      }
+    },
+    {
+      "run": 2,
+      "health": {
+        "observedRecords": 1556763,
+        "admittedRecords": 355301,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 1147600,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "tier": "TopologyOnly",
+      "truthSections": 128,
+      "discoveredWithLifetime": 128,
+      "expectedMemberships": 256,
+      "resolvedMemberships": 256,
+      "falseMemberships": 0,
+      "truthOperations": 1280,
+      "observed": 1280,
+      "recordsOfOtherProcessesOnItsSections": 0,
+      "gaps": [
+        "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+      ],
+      "handleNumbers": 128,
+      "viewSectionNumbers": 128,
+      "observedByTheProbe": {
+        "question": "Where the kernel makes sections made and ended one generation after another: how many of a later generation\u0027s sections it made at an object address an earlier generation\u0027s section held, and how many whose views it gave the value an earlier generation\u0027s section\u0027s views carried - either of which a capture\u0027s records alone would join to that earlier section.",
+        "scenario": "FX-SECT-002",
+        "generations": 64,
+        "sections": 128,
+        "sectionsWithOneAddress": 128,
+        "creationsSeenAtTheirAddress": 128,
+        "openerClosesAtTheirAddress": 128,
+        "closesOfTheSectionType": 128,
+        "distinctAddresses": 128,
+        "sectionsAtAnAddressAnEarlierGenerationsSectionHeld": 0,
+        "sectionsAtTheAddressOfTheirKindInThePreviousGeneration": 0,
+        "truthMappings": 384,
+        "mappingsSeen": 384,
+        "sectionsWithOneViewValue": 128,
+        "distinctViewValues": 98,
+        "sectionsWhoseViewsCarriedAValueAnEarlierGenerationsSectionsViewsCarried": 30,
+        "sectionsWhoseViewsCarriedTheValueOfTheirKindInThePreviousGeneration": 7,
+        "viewValuesThatAreASectionsAddress": 0,
+        "mappingsAtABaseAnEarlierGenerationsViewHeldInItsProcess": 373,
+        "byKind": {
+          "memory": {
+            "sections": 64,
+            "atAnAddressAnEarlierGenerationsSectionHeld": 0,
+            "withAViewValueAnEarlierGenerationsSectionsViewsCarried": 30
+          },
+          "file": {
+            "sections": 64,
+            "atAnAddressAnEarlierGenerationsSectionHeld": 0,
+            "withAViewValueAnEarlierGenerationsSectionsViewsCarried": 0
+          }
+        },
+        "sectionType": 49,
+        "sectionClosesKept": 256,
+        "mappingRecords": 5046,
+        "eventsLost": 0
+      }
+    },
+    {
+      "run": 3,
+      "health": {
+        "observedRecords": 1384262,
+        "admittedRecords": 259938,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0,
+        "gateOmissionsNotCounted": 0,
+        "gateOmissionsNoFollowedResource": 1076496,
+        "gateOmissionsBeyondBound": 0,
+        "gateOmissionsOutOfOrder": 0
+      },
+      "tier": "TopologyOnly",
+      "truthSections": 128,
+      "discoveredWithLifetime": 128,
+      "expectedMemberships": 256,
+      "resolvedMemberships": 256,
+      "falseMemberships": 0,
+      "truthOperations": 1280,
+      "observed": 1280,
+      "recordsOfOtherProcessesOnItsSections": 0,
+      "gaps": [
+        "Byte measurement: not measured; the truth workload declared no eligible item for this criterion."
+      ],
+      "handleNumbers": 128,
+      "viewSectionNumbers": 128,
+      "observedByTheProbe": {
+        "question": "Where the kernel makes sections made and ended one generation after another: how many of a later generation\u0027s sections it made at an object address an earlier generation\u0027s section held, and how many whose views it gave the value an earlier generation\u0027s section\u0027s views carried - either of which a capture\u0027s records alone would join to that earlier section.",
+        "scenario": "FX-SECT-002",
+        "generations": 64,
+        "sections": 128,
+        "sectionsWithOneAddress": 128,
+        "creationsSeenAtTheirAddress": 128,
+        "openerClosesAtTheirAddress": 128,
+        "closesOfTheSectionType": 128,
+        "distinctAddresses": 128,
+        "sectionsAtAnAddressAnEarlierGenerationsSectionHeld": 0,
+        "sectionsAtTheAddressOfTheirKindInThePreviousGeneration": 0,
+        "truthMappings": 384,
+        "mappingsSeen": 384,
+        "sectionsWithOneViewValue": 128,
+        "distinctViewValues": 97,
+        "sectionsWhoseViewsCarriedAValueAnEarlierGenerationsSectionsViewsCarried": 31,
+        "sectionsWhoseViewsCarriedTheValueOfTheirKindInThePreviousGeneration": 8,
+        "viewValuesThatAreASectionsAddress": 0,
+        "mappingsAtABaseAnEarlierGenerationsViewHeldInItsProcess": 373,
+        "byKind": {
+          "memory": {
+            "sections": 64,
+            "atAnAddressAnEarlierGenerationsSectionHeld": 0,
+            "withAViewValueAnEarlierGenerationsSectionsViewsCarried": 28
+          },
+          "file": {
+            "sections": 64,
+            "atAnAddressAnEarlierGenerationsSectionHeld": 0,
+            "withAViewValueAnEarlierGenerationsSectionsViewsCarried": 3
+          }
+        },
+        "sectionType": 49,
+        "sectionClosesKept": 256,
+        "mappingRecords": 5942,
+        "eventsLost": 0
+      }
+    }
+  ],
+  "notes": [
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once its ledger is written.",
+    "A run\u0027s health is the capture\u0027s own report: what its sources lost, what its queue dropped, and what a source\u0027s gate did not admit, by reason.",
+    "Each run\u0027s generations were watched by the probe\u0027s own private system logger too, started once the capture\u0027s session ran: it alone reads where the kernel made each section - its object\u0027s address and its views\u0027 value - and writes counts, never an address."
+  ],
+  "schema": "intercat.section-product.v1",
+  "measuredUtc": "2026-11-06T09:35:54.2145053+00:00",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0"
+}

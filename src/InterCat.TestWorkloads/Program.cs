@@ -110,6 +110,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Name = Option(args, "--name"),
         Bytes = Integer(args, "--view-bytes") ?? 65_536,
         Rounds = Integer(args, "--rounds") ?? 4,
+        Generations = Integer(args, "--generations") ?? 1,
         Seed = Integer(args, "--seed") ?? 20_261_106,
     };
 
@@ -200,6 +201,14 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         || (syncOptions.Duplicate ? 1 : 0) + (syncOptions.Generations > 1 ? 1 : 0) + (syncOptions.HeldMilliseconds > 0 ? 1 : 0) > 1))
     {
         await Console.Error.WriteLineAsync("--generations is at least one and --held-ms not negative, and --duplicate, --generations and --held-ms are three fixtures, FX-SYNC-002, FX-SYNC-003 and FX-SYNC-004: a run is one of them.")
+            .ConfigureAwait(false);
+        return 2;
+    }
+
+    // --generations runs FX-SECT-002, the two sections made and ended that many times; FX-SECT-001 makes them once.
+    if (args[0].StartsWith("section-share", StringComparison.Ordinal) && sectionOptions.Generations < 1)
+    {
+        await Console.Error.WriteLineAsync("--generations is at least one: FX-SECT-001 makes its two sections once, FX-SECT-002 that many times one after another.")
             .ConfigureAwait(false);
         return 2;
     }
@@ -419,12 +428,15 @@ static void PrintHelp()
     Console.WriteLine("      each posted message, so a copy is in flight that long and a posted message waits its turn in the");
     Console.WriteLine("      queue, long enough for a capture's start and stop to cut them. Windows only.");
     Console.WriteLine();
-    Console.WriteLine("  section-share --truth <dir> [--view-bytes n] [--rounds n] [--seed n]");
+    Console.WriteLine("  section-share --truth <dir> [--view-bytes n] [--rounds n] [--generations n] [--seed n]");
     Console.WriteLine("      FX-SECT-001: a creator makes two named sections of the session's namespace under a name of the");
     Console.WriteLine("      run's own, one backed by the paging file and one by a file of its own, maps a view of each and");
     Console.WriteLine("      writes seeded bytes into it; an opener opens each by its name and maps and unmaps a view of it that");
     Console.WriteLine("      many times, reading the creator's bytes through each. Each process logs every section it made or");
-    Console.WriteLine("      opened, every view it mapped or unmapped, with its size, and every handle it closed. Windows only.");
+    Console.WriteLine("      opened, every view it mapped or unmapped, with its size, and every handle it closed. --generations");
+    Console.WriteLine("      runs it as FX-SECT-002: the two sections made that many times one after another in the same two");
+    Console.WriteLine("      processes, each generation under names of its own, both processes unmapping and closing it before");
+    Console.WriteLine("      the next is made, so the kernel makes later sections where earlier ones were. Windows only.");
     Console.WriteLine();
     Console.WriteLine("  pipe-loopback --truth <dir> [--seed n] [--messages n] [--bytes n]");
     Console.WriteLine("      FX-PIPE-001: a seeded two-process named-pipe exchange in message mode, including one");

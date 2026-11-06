@@ -51,10 +51,12 @@ internal static class Program
         bool product = args.Contains("--product", StringComparer.Ordinal);
         if ((inspect ? 1 : 0) + (measure ? 1 : 0) + (product ? 1 : 0) != 1 || output is null)
         {
-            Console.Error.WriteLine("InterCat.SectionProbe --product --output <new directory> [--runs n] [--rounds n] [--view-bytes n] [--duration s]");
+            Console.Error.WriteLine("InterCat.SectionProbe --product --output <new directory> [--runs n] [--rounds n] [--view-bytes n] [--generations n] [--duration s]");
             Console.Error.WriteLine("  [--icat <InterCat.Cli.exe>] [--workload <InterCat.TestWorkloads.exe>]: records FX-SECT-001 through the");
             Console.Error.WriteLine("  product's own icat record under the opt-in sections profile, each run's session read into a ledger of");
             Console.Error.WriteLine("  its section records, evaluated against its truth as the product evaluates sections, then deleted.");
+            Console.Error.WriteLine("  With --generations above 1 it records FX-SECT-002, each run watched by a private system logger of the");
+            Console.Error.WriteLine("  probe's own too, which counts the sections the kernel made where an earlier generation's had been.");
             Console.Error.WriteLine("InterCat.SectionProbe --inspect --output <new directory>");
             Console.Error.WriteLine("  Reads, without enabling any, the layouts this machine registers for the kernel object manager's");
             Console.Error.WriteLine("  and memory manager's classic events, and the schema of every registered provider whose name says");
@@ -91,6 +93,7 @@ internal static class Program
                 int.Parse(Option(args, "--runs") ?? "3", CultureInfo.InvariantCulture),
                 int.Parse(Option(args, "--rounds") ?? "4", CultureInfo.InvariantCulture),
                 int.Parse(Option(args, "--view-bytes") ?? "65536", CultureInfo.InvariantCulture),
+                int.Parse(Option(args, "--generations") ?? "1", CultureInfo.InvariantCulture),
                 int.Parse(Option(args, "--duration") ?? "30", CultureInfo.InvariantCulture)).ConfigureAwait(false);
             measured["schema"] = "intercat.section-product.v1";
             measured["measuredUtc"] = DateTimeOffset.UtcNow;

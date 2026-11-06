@@ -905,6 +905,7 @@ Revision 978 binds a section handle's creation and close to the process that rai
 Revision 979 adds the opt-in sections profile (ADR-090's fourth addendum): lifecycle, the file view flag and sections' handles, all required, its class its sources' at most, Moderate, with both kernel sources' throughput regressions stated.
 Revision 980 measures a section twice, by its handles and by its views, never joining the two, and topology at most (ADR-092).
 Revision 981 measures sections through the product (ADR-092's addendum): FX-SECT-001 recorded by icat record under the sections profile three times, nothing lost, has each of its two sections found twice and bound to exactly its two processes, so sections are topology only on 10.0.26220.0-x64.
+Revision 982 adds FX-SECT-002 (ADR-092's second addendum): sections made and ended 64 generations one after another, recorded through the product three times, nothing lost, each found twice and a number of its own by its handles and by its views while the kernel gave the views of about a quarter of them a value an earlier generation's had carried - the mechanism's second instance and lifetime fixture.
 
 ## Revisions, a paragraph each, in order
 
@@ -4397,3 +4398,16 @@ numbers and its calibrated time - writes the ledger of the workload's records by
 each of the run's two sections was found twice - by its handles' one number and by every view both processes mapped and
 unmapped, among hundreds of their own - and bound to exactly its two processes. A test reproduces the tier from the first
 run's ledger, and the build's per-build coverage carries SharedSection at TopologyOnly from FX-SECT-001.
+
+Revision 982 measures sections whose lifetimes follow one another (ADR-092's second addendum), as revision 947 measured
+named synchronization objects. The workload's `section-share --generations` makes and ends FX-SECT-001's two sections
+that many times one after another in the same two processes, each generation under names of its own and unmapped and
+closed by both before the next is made, and `tools/InterCat.SectionProbe --product --generations` watches each run icat
+record records with a private system logger of its own, reading each section's object address from the creator's close
+that names it and the value its views carry from the views the truth mapped, and counting the sections the kernel made
+where an earlier generation's had been, never writing an address. In three runs through the product, machine-wide and loss-free,
+every section of 64 generations was found twice - one number by its handles and one by its views, neither another's -
+and bound to exactly the two processes, while the kernel gave the views of 30, 30 and 31 sections a value an earlier
+generation's had carried and in the first run made 6 at an address an earlier one had held. A test reproduces the
+tier from the first run's ledger and holds the probe's counts to that run; the build's per-build coverage carries the
+tier from FX-SECT-002, the mechanism's latest fixture, and the lead test now names their fixtures rather than one.

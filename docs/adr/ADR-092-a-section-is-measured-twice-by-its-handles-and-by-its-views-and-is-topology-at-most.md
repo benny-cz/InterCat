@@ -1,10 +1,10 @@
 # ADR-092: A section is measured twice, by its handles and by its views, and is topology at most
 
 - Status: accepted for M6's section discovery work package; FX-SECT-001 measured through the product, topology only on
-  10.0.26220.0-x64 (addendum)
+  10.0.26220.0-x64 (addendum); FX-SECT-002, sections made and ended in generations, each its own (second addendum)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
-- Relates to: ADR-084, ADR-088, ADR-089, ADR-090, plan M6, §14.2, R3, R18, R19, R22, P1, P3, P27, FX-SECT-001
+- Relates to: ADR-084, ADR-088, ADR-089, ADR-090, plan M6, §14.2, R3, R18, R19, R22, P1, P3, P27, FX-SECT-001, FX-SECT-002
 
 ## Context
 
@@ -66,3 +66,26 @@ evaluates it as decided here, and deletes the session, which holds every process
   of 28 truth operations a run were seen in their own processes.
 - Sections are topology only on 10.0.26220.0-x64: the build's per-build coverage carries the tier from FX-SECT-001, and a
   test reproduces it from the first run's committed ledger.
+
+## Second addendum: FX-SECT-002, sections made and ended in generations (revision 982)
+
+FX-SECT-002 runs FX-SECT-001's two processes and two sections 64 generations one after another, each generation's
+sections under names of their own, made only once the last generation's were unmapped and closed by both processes, the
+opener mapping and unmapping each section's view twice. A capture keeps no address, so a private system logger of
+`tools/InterCat.SectionProbe --product --generations` watches each run beside the product's capture: it reads each
+section's object address from the creator's close that names it and the value its views carry from the records of the
+views the truth mapped, and counts the sections of a later generation the kernel made at an address, or whose views it
+gave a value, an earlier generation's section held - counts alone, never an address, a base or a value.
+
+- In three runs through the product, machine-wide and loss-free - 440,285, 355,301, 259,938 records admitted, none
+  dropped, none undecodable - every section was found twice and bound to exactly its two processes: 128 of 128 a run
+  discovered with their lifetimes, under 128 handle numbers and 128 view section numbers, and 1,280 of 1,280 truth
+  operations a run seen and bound to their section.
+- The kernel gave the views of 30, 30 and 31 sections a value an earlier generation's section's views had carried, 88
+  of the 91 backed by the paging file, and in the first run made 6 sections at an object address an earlier
+  generation's section had held. The view gate numbers a section by its value only while a followed view holds it, and
+  the handle gate by its address from the first handle made there to the last close, so each was a section of its own.
+- The views' value was never a section's object address, and 373 of 384 mappings a run were made at a base an earlier
+  generation's view had held in its process, each a view of its own.
+- A test evaluates the first run's committed ledger against its truth and holds it to the probe's counts of the same run;
+  the build's per-build coverage takes sections' tier, topology only, from FX-SECT-002, the mechanism's latest fixture.
