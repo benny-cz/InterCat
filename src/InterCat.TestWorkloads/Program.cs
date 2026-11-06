@@ -269,6 +269,10 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
                 await SectionScenario.RunOpenerAsync(sectionOptions, cancellationToken).ConfigureAwait(false),
             "section-share" or "section-share-creator" or "section-share-opener" =>
                 await UnsupportedPlatformAsync().ConfigureAwait(false),
+            "process-package" when OperatingSystem.IsWindows() =>
+                await ProcessPackageScenario.RunAsync(new ProcessPackageOptions { TruthDirectory = truth }, cancellationToken).ConfigureAwait(false),
+            "process-package-child" => 0,
+            "process-package" => await UnsupportedPlatformAsync().ConfigureAwait(false),
             "com-loopback" when OperatingSystem.IsWindows() =>
                 await ComLoopbackScenario.RunCoordinatorAsync(comOptions, cancellationToken).ConfigureAwait(false),
             "com-loopback-server" when OperatingSystem.IsWindows() =>
@@ -429,6 +433,13 @@ static void PrintHelp()
     Console.WriteLine("      --handle-ms runs it as FX-WMSG-003: the receiver takes that many milliseconds over each copy and");
     Console.WriteLine("      each posted message, so a copy is in flight that long and a posted message waits its turn in the");
     Console.WriteLine("      queue, long enough for a capture's start and stop to cut them. Windows only.");
+    Console.WriteLine();
+    Console.WriteLine("  process-package --truth <dir>");
+    Console.WriteLine("      FX-PROC-001: two children, each created suspended so its identity is read before it runs - App");
+    Console.WriteLine("      Installer's winget through its execution alias, asked its version, in a package, and a child of the");
+    Console.WriteLine("      workload's own in none. For each it reads its package full name and application user model ID by the");
+    Console.WriteLine("      application model, and its token's elevation, integrity level and session, then runs it to its end.");
+    Console.WriteLine("      Windows only.");
     Console.WriteLine();
     Console.WriteLine("  section-share --truth <dir> [--view-bytes n] [--rounds n] [--generations n | --held-ms ms] [--seed n]");
     Console.WriteLine("      FX-SECT-001: a creator makes two named sections of the session's namespace under a name of the");

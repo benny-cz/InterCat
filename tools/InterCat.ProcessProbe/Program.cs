@@ -34,16 +34,22 @@ internal static class Program
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
-    private static int Main(string[] args)
+    private static async Task<int> Main(string[] args)
     {
         string? output = Option(args, "--output");
-        if (!args.Contains("--inspect", StringComparer.Ordinal) || output is null)
+        bool inspect = args.Contains("--inspect", StringComparer.Ordinal);
+        bool measure = args.Contains("--measure", StringComparer.Ordinal);
+        if (inspect == measure || output is null)
         {
             Console.Error.WriteLine("InterCat.ProcessProbe --inspect --output <new directory>");
             Console.Error.WriteLine("  Reads, without enabling any, the schema this machine registers for Microsoft-Windows-Kernel-Process -");
             Console.Error.WriteLine("  every event at every version, with its fields - and for every registered provider whose name says");
             Console.Error.WriteLine("  services, packages, the application model, sessions or logons, and writes each of its events that");
             Console.Error.WriteLine("  names a process beside a package, an application, a service, a session or a user.");
+            Console.Error.WriteLine("InterCat.ProcessProbe --measure --output <new directory> [--workload <InterCat.TestWorkloads.exe>]");
+            Console.Error.WriteLine("  Runs FX-PROC-001 under a real-time session of its own collecting Kernel-Process's process keyword, and");
+            Console.Error.WriteLine("  writes each child's process start against what the workload read of it before it ran, and the");
+            Console.Error.WriteLine("  session's process rundown against the package the application model gives each process it names.");
             return 2;
         }
 
@@ -55,6 +61,12 @@ internal static class Program
         }
 
         Directory.CreateDirectory(output);
+        if (measure)
+        {
+            string workload = Option(args, "--workload") ?? Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "InterCat.TestWorkloads", "bin", "Release", "net10.0", "InterCat.TestWorkloads.exe"));
+            return await Measure.RunAsync(output, workload).ConfigureAwait(false);
+        }
         var metadata = new TdhEtwMetadataSource();
         object kernelProcess = Manifest(metadata, KernelProcess, every: true);
         string[] named = [.. TraceEventProviders.GetPublishedProviders()

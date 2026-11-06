@@ -1,0 +1,113 @@
+{
+  "schema": "intercat.process-package-measurement.v1",
+  "scenario": "FX-PROC-001",
+  "question": "Whether Kernel-Process\u0027s process start and rundown, which every capture collects, carry a process\u0027s package full name and package-relative application ID, its token\u0027s elevation and integrity level and its session, as the application model and the process\u0027s token give them.",
+  "measuredUtc": "2026-11-06T12:36:23.5666361+00:00",
+  "build": "10.0.26220.0-x64",
+  "machine": "24 logical processors \u00B7 Microsoft Windows NT 10.0.26220.0",
+  "session": {
+    "mode": "real-time session of the probe\u0027s own, Kernel-Process at Informational with the process keyword (0x10)",
+    "eventsLost": 0
+  },
+  "children": [
+    {
+      "role": "packaged",
+      "startsRecorded": 1,
+      "version": 4,
+      "fields": {
+        "packageFullName": {
+          "truth": "Microsoft.DesktopAppInstaller_1.29.250.0_x64__8wekyb3d8bbwe",
+          "recorded": "Microsoft.DesktopAppInstaller_1.29.250.0_x64__8wekyb3d8bbwe",
+          "same": true
+        },
+        "packageRelativeApplicationId": {
+          "truth": "winget",
+          "recorded": "winget",
+          "same": true
+        },
+        "tokenElevationType": {
+          "truth": "2",
+          "recorded": "2",
+          "same": true
+        },
+        "tokenIsElevated": {
+          "truth": "1",
+          "recorded": "1",
+          "same": true
+        },
+        "integrityLevel": {
+          "truth": "S-1-16-12288",
+          "recorded": "S-1-16-12288",
+          "same": true
+        },
+        "session": {
+          "truth": "1",
+          "recorded": "1",
+          "same": true
+        }
+      },
+      "packageFullNameAsTdhDecodesIt": {
+        "truth": "Microsoft.DesktopAppInstaller_1.29.250.0_x64__8wekyb3d8bbwe",
+        "recorded": null,
+        "same": false
+      }
+    },
+    {
+      "role": "unpackaged",
+      "startsRecorded": 1,
+      "version": 4,
+      "fields": {
+        "packageFullName": {
+          "truth": null,
+          "recorded": null,
+          "same": true
+        },
+        "packageRelativeApplicationId": {
+          "truth": null,
+          "recorded": null,
+          "same": true
+        },
+        "tokenElevationType": {
+          "truth": "2",
+          "recorded": "2",
+          "same": true
+        },
+        "tokenIsElevated": {
+          "truth": "1",
+          "recorded": "1",
+          "same": true
+        },
+        "integrityLevel": {
+          "truth": "S-1-16-12288",
+          "recorded": "S-1-16-12288",
+          "same": true
+        },
+        "session": {
+          "truth": "1",
+          "recorded": "1",
+          "same": true
+        }
+      },
+      "packageFullNameAsTdhDecodesIt": {
+        "truth": null,
+        "recorded": null,
+        "same": true
+      }
+    }
+  ],
+  "rundown": {
+    "records": 511,
+    "versions": [
+      2
+    ],
+    "processesReadAsItRan": 510,
+    "readable": 510,
+    "packagedAgreeing": 142,
+    "unpackagedAgreeing": 368,
+    "disagreeing": 0,
+    "changedOrUnreadable": 1,
+    "withAnElevationType": 511,
+    "withAMandatoryLabel": 511,
+    "withAPackageAsTdhDecodesIt": 0
+  }
+}

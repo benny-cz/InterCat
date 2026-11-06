@@ -910,6 +910,7 @@ Revision 983 adds FX-SECT-003 (ADR-092's third addendum): sections whose handles
 Revision 984 holds sections' schema-failure case (ADR-090's fifth addendum): a capture refuses either kernel source where its records could not be read and decided, so the sections profile does not start, and `icat capabilities` says a classic group's schema is unknown where no layout is registered or measured for the build, as a capture refuses it.
 Revision 985 has a process's section records drill down exactly (ADR-092's fourth addendum): icat processes names the icat evidence command that lists them, a view a rundown names the process holding among them; sections' cost through the product is what remains of their M6 exit tests.
 Revision 987 begins M6's process enrichment with its metadata inspection (§4.2): Kernel-Process's start and rundown, which every capture collects, declare each process's package, elevation and mandatory label beside its session, and Microsoft-Windows-Services a service's status change naming the process hosting it.
+Revision 988 measures a process's package and token in its lifecycle records (ADR-093, FX-PROC-001): every Kernel-Process start and rundown carried its process's package full name and application ID - empty where it runs in none, an observed none - and its token's elevation, integrity level and session, read by the registered layout past the mandatory label's SID.
 
 ## Revisions, a paragraph each, in order
 
@@ -4459,3 +4460,14 @@ read, Microsoft-Windows-Services declares a service's status change naming the p
 control and configuration change naming the client that asked, and AppModel-Runtime a packaged application's process;
 none declares which services a process hosts at a moment. The plan's §4.2 records this as evidence of schemas on one
 machine, not of emission: a truth fixture is measured before any field is admitted.
+
+Revision 988 gives process enrichment its capability result (ADR-093, FX-PROC-001). The workload's `process-package`
+starts two children suspended - App Installer's winget through its execution alias, in a package, and a child of its own,
+in none - and reads each one's package by the application model and its token's elevation, integrity level and session
+before resuming it; `tools/InterCat.ProcessProbe --measure` runs it under a Kernel-Process session of its own, as every
+capture collects it, and asks for its process rundown, reading every running process's package by the application model
+as it runs. In three runs, nothing lost, each child's start carried every field as the workload read it, and every rundown
+record a running process's package as the application model gave it - 505, 505 and 510 processes a run, 141, 141 and 142 of them
+packaged, none disagreeing - each read by the registered layout past the mandatory label's SID, whose sub-authority count
+places what follows, where TDH's own decoding by name lost every package. An empty package is an observed none (R3); no
+record says which services a process hosts; no field of them but the session is admitted yet.
