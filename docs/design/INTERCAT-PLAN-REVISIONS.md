@@ -914,6 +914,7 @@ Revision 988 measures a process's package and token in its lifecycle records (AD
 Revision 989 admits a process's package (ADR-094): a second text of its record, placed past the image by the SID's count and the image's terminator, kept in a buffer rented from the pool and written as the projection's third form, IAP3; its source field row is the package's text, or the value 0 for none.
 Revision 990 gives each process instance its package (ADR-094's addendum): the one its earliest lifecycle record naming one names, empty where it named none; `icat processes` says it, and the derivation checkpoint keeps it from format 1.6, a reader of an earlier one reading the packages from the source-field segments it covers.
 Revision 991 measures FX-PROC-001 through the product (ADR-094's second addendum): three runs of icat record under the explore profile, nothing lost, each child's instance naming the package and session the application model and its token gave it, and every process the probe read as each capture began the package it read, none disagreeing or unknown.
+Revision 992 has the window's inspector state a process's terminal session and package beside its lineage (ADR-094's third addendum), each named, a package none where its record named none, and either not recorded where no record said.
 
 ## Revisions, a paragraph each, in order
 
@@ -4505,3 +4506,10 @@ workload's own child none; and every process the probe read by the application m
 530, 531 and 535, named the package it read, 141, 142 and 142 of them packaged, none disagreeing, none of the sessions' instances
 unknown. The fixture keeps the first run's truth and its children's instances, the bench report the three runs' counts,
 never a PID or another package the machine has installed; a test holds them to the truth.
+
+Revision 992 has the window say what a process ran in (ADR-094's third addendum). The inspector, which stated who
+started the selected process and whom it started, now states beside them the terminal session and the package its
+lifecycle records name: the session's number and the package's full name, a package none where its record named none,
+and either not recorded where no record said, three answers never given one for another (R3). The overview carries a
+process's package as its instance does, so a session reopened from its checkpoint says it too; each is said again as
+the selection moves.

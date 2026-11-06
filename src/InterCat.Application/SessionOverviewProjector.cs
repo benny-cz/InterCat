@@ -257,6 +257,7 @@ public static class SessionOverviewProjector
             CandidateRecords = activity.CandidatesOf(positions[index]),
             ParentProcessId = instance.ParentProcessId,
             TerminalSession = instance.SessionId,
+            Package = instance.PackageFullName,
             Parent = instance.Parent,
             ParentBinding = instance.ParentBinding,
             Collector = collectors.RoleOf(instance.Id),

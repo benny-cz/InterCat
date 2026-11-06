@@ -70,6 +70,44 @@ public sealed class LineageWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R3: the inspector states the terminal session and the package a process ran in beside its lineage, and a process in no package as in none")]
+    public async Task TheInspectorStatesWhatAProcessRanIn()
+    {
+        const string Package = "Microsoft.DesktopAppInstaller_1.29.250.0_x64__8wekyb3d8bbwe";
+        using var session = new TemporarySession();
+        ObservationRowV1 winget = Timed(Lifecycle(10, ObservationKind.Create, 400, 1) with { ResourceName = @"C:\Program Files\WindowsApps\winget.exe" });
+        ObservationRowV1 child = Timed(Lifecycle(20, ObservationKind.Create, 401, 2) with { ResourceName = @"C:\Tools\child.exe" });
+        Publish(session.Store, [winget, child], fields:
+        [
+            Field(winget, SourceField.ProcessSessionId, 1),
+            Field(winget, SourceField.ProcessPackageFullName, 0) with { Value = null, Text = Package },
+            Field(child, SourceField.ProcessSessionId, 1),
+            Field(child, SourceField.ProcessPackageFullName, 0),
+        ]);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        window.ApplyCaptureUpdate(new CaptureUiUpdate(CaptureUiPhase.Recording, "Recording", "A published generation.",
+            SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store)));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+
+        workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.ProcessId == 400).Id);
+        Dispatch();
+        TextBlock terminalSession = window.GetControl<TextBlock>("TerminalSessionText");
+        TextBlock package = window.GetControl<TextBlock>("PackageText");
+        Assert.True(terminalSession.IsEffectivelyVisible && package.IsEffectivelyVisible);
+        Assert.Equal<(string?, string?)>(("1", Package), (terminalSession.Text, package.Text));
+
+        // The rows are below the card's fold at this height: the inspector is scrolled to them for the render a person reads.
+        package.BringIntoView();
+        Save(window, "process-package-1456x939.png");
+        workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.ProcessId == 401).Id);
+        Dispatch();
+        Assert.Equal("None: its lifecycle record names no package it ran in", package.Text);
+        window.Close();
+    }
+
     /// <summary>Keeps what the window drew beside the tests' other renders, for a person to look at.</summary>
     private static void Save(Window window, string name)
     {

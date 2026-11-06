@@ -150,6 +150,12 @@ public sealed record ProcessNode(
     /// </summary>
     public uint? TerminalSession { get; init; }
 
+    /// <summary>
+    /// The package the process ran in, as its start or rundown named it (ADR-094): the empty string where that record named
+    /// none, an observed none, and null where no lifecycle record said (R3).
+    /// </summary>
+    public string? Package { get; init; }
+
     /// <summary>The records <see cref="Activity"/> counts.</summary>
     public long Records => Activity.Sum(entry => entry.Records);
 

@@ -8,7 +8,8 @@ namespace InterCat.Desktop;
 /// Who started the selected process, and whom it started (`entities-v1` §3's parent link). A parent is linked by its
 /// start key or by its PID and the child's creation reading, and one named but not in the capture stays a PID, never a
 /// guessed process. The inspector states both, and each is one action away: the parent as the selection, the children
-/// as a multi-selection Enter turns into their records (§6.7).
+/// as a multi-selection Enter turns into their records (§6.7). Beside them it states the terminal session and the package
+/// the process ran in, as its lifecycle records name them (ADR-094).
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -94,6 +95,26 @@ public sealed partial class WorkspaceViewModel
         }
     }
 
+    /// <summary>
+    /// The terminal session the selected process ran in, as its lifecycle records name it, or that none named one - never
+    /// guessed from its PID or its name (R3).
+    /// </summary>
+    public string TerminalSessionText => selectedProcess is not { } process ? string.Empty
+        : process.TerminalSession is { } session ? session.ToString(CultureInfo.CurrentCulture)
+        : "Not recorded: no lifecycle record of this process names it";
+
+    /// <summary>
+    /// The package the selected process ran in, as its start or rundown named it (ADR-094); none where that record named none,
+    /// an observed none; and not recorded where no lifecycle record said - three answers, never one for another (R3).
+    /// </summary>
+    public string PackageText => selectedProcess is not { } process ? string.Empty
+        : process.Package switch
+        {
+            null => "Not recorded: no lifecycle record of this process names it",
+            { Length: 0 } => "None: its lifecycle record names no package it ran in",
+            { } package => package,
+        };
+
     /// <summary>Whether the parent can be selected: the capture holds it.</summary>
     public bool CanSelectParent => ShowsLineage && ParentOfSelected is not null;
 
@@ -153,6 +174,8 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(ShowsLineage));
         OnPropertyChanged(nameof(ParentText));
         OnPropertyChanged(nameof(ChildrenText));
+        OnPropertyChanged(nameof(TerminalSessionText));
+        OnPropertyChanged(nameof(PackageText));
         OnPropertyChanged(nameof(CanSelectParent));
         OnPropertyChanged(nameof(CanSelectChildren));
         OnPropertyChanged(nameof(ParentTip));

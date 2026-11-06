@@ -1165,6 +1165,18 @@
                   <TextBlock x:Name="ChildrenText" Text="{Binding ChildrenText}" TextWrapping="Wrap"
                              AutomationProperties.Name="{Binding ChildrenText, StringFormat='Started {0}'}" />
                 </StackPanel>
+                <!-- What its lifecycle records say it ran in: its terminal session and its package (ADR-094), each one
+                     named, said to be none, or said to be unrecorded, never guessed. -->
+                <StackPanel Spacing="3" IsVisible="{Binding ShowsLineage}">
+                  <TextBlock Text="Terminal session" Classes="muted" />
+                  <TextBlock x:Name="TerminalSessionText" Text="{Binding TerminalSessionText}" TextWrapping="Wrap"
+                             AutomationProperties.Name="{Binding TerminalSessionText, StringFormat='Terminal session: {0}'}" />
+                </StackPanel>
+                <StackPanel Spacing="3" IsVisible="{Binding ShowsLineage}">
+                  <TextBlock Text="Package" Classes="muted" />
+                  <TextBlock x:Name="PackageText" Text="{Binding PackageText}" TextWrapping="Wrap"
+                             AutomationProperties.Name="{Binding PackageText, StringFormat='Package: {0}'}" />
+                </StackPanel>
                 <StackPanel Spacing="3">
                   <TextBlock Text="{Binding LevelBadge}" Classes="muted" TextWrapping="Wrap" />
                   <TextBlock Text="{Binding LevelSummary}" TextWrapping="Wrap"

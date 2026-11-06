@@ -80,3 +80,11 @@ the workload's own child none. Every process the probe read by the application m
 none of the sessions' 578, 554 and 588 instances left its package unknown. The first run's truth and its children's instances
 are kept by the fixture, and the three runs' comparisons as counts, never a PID or another package the machine has
 installed; a test holds them to the truth, and ten alterations of them are caught.
+
+## Third addendum: the window says what a process ran in (revision 992)
+
+The window's inspector states, beside a selected process's lineage, the terminal session and the package its lifecycle
+records name: the session's number and the package's full name, a package none where its record named none - an
+observed none - and either not recorded where no lifecycle record said, three answers never given one for another (R3).
+The overview carries a process's package as its instance does, so a session reopened from its checkpoint says it too, and
+each is said again as the selection moves. 6 mutations of the path are caught.
