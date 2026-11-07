@@ -59,6 +59,12 @@ public enum TruthEventKind
 public sealed record HandleDuplication(int SourceProcessId, long SourceHandle, int TargetProcessId, long TargetHandle);
 
 /// <summary>
+/// A cooperative message as the workload numbered it (ADR-104): its channel's identity, epoch and sequence, and on a
+/// consumption the reader that consumed it, as the process that published or consumed it logged them.
+/// </summary>
+public sealed record CooperativeTruth(Guid Channel, long Epoch, long Sequence, long? Consumer);
+
+/// <summary>
 /// One line of an independent truth log. It carries the scenario, the process instance that produced it,
 /// a monotonic reading, the declared and completed sizes, and the endpoint it used (section 13.1).
 /// </summary>
@@ -99,4 +105,11 @@ public sealed record TruthRecord
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public HandleDuplication? Duplication { get; init; }
+
+    /// <summary>
+    /// A cooperative message's identity: on a publication or a consumption a workload made through the SDK; null on any other
+    /// record, where it is not written, so a record of any other kind reads as it always has.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CooperativeTruth? Message { get; init; }
 }

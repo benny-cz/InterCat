@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- For a session icat record published, read as the product reads one, and its messages derived as the product derives them. -->
+    <ProjectReference Include="../../src/InterCat.Storage/InterCat.Storage.csproj" />
+    <ProjectReference Include="../../src/InterCat.Analysis/InterCat.Analysis.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- A lab probe, not a product adapter: it waits until ETW lists the capture's session running, as logman would. -->
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" />
+  </ItemGroup>
+</Project>

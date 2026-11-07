@@ -1,0 +1,167 @@
+{
+  "fixture": "FX-SDK-001",
+  "question": "Whether FX-SDK-001\u0027s ring - one producer and its readers, each saying what it publishes and consumes through InterCat\u0027s cooperative SDK - recorded through the product by icat record under the opt-in sdk profile, reads as icat messages reads it: every message the producer published at either epoch one message of the ring\u0027s channel, every reader\u0027s consumption of it one consumption, each bound to the process that logged it with the length it logged, and the one message no reader read open.",
+  "profile": "sdk",
+  "durationSeconds": 20,
+  "readers": 3,
+  "runs": [
+    {
+      "truthPublications": 161,
+      "truthConsumptions": 480,
+      "truthUnread": 1,
+      "messages": 161,
+      "publications": 161,
+      "consumptions": 480,
+      "matchedPublications": 161,
+      "matchedConsumptions": 480,
+      "states": {
+        "Consumed": 160,
+        "Unconsumed": 1,
+        "PublicationUnseen": 0,
+        "Conflicting": 0
+      },
+      "unreadOpen": true,
+      "epochs": [
+        1,
+        2
+      ],
+      "epochMessages": [
+        120,
+        41
+      ],
+      "readers": [
+        3,
+        3
+      ],
+      "openings": [
+        4,
+        4
+      ],
+      "closings": [
+        4,
+        4
+      ],
+      "named": true,
+      "records": 641,
+      "boundRecords": 641,
+      "recordsWithSourceTicks": 641,
+      "recordsNamingNoMessage": 0,
+      "run": 1,
+      "health": {
+        "observedRecords": 1304,
+        "admittedRecords": 1304,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      }
+    },
+    {
+      "truthPublications": 161,
+      "truthConsumptions": 480,
+      "truthUnread": 1,
+      "messages": 161,
+      "publications": 161,
+      "consumptions": 480,
+      "matchedPublications": 161,
+      "matchedConsumptions": 480,
+      "states": {
+        "Consumed": 160,
+        "Unconsumed": 1,
+        "PublicationUnseen": 0,
+        "Conflicting": 0
+      },
+      "unreadOpen": true,
+      "epochs": [
+        1,
+        2
+      ],
+      "epochMessages": [
+        120,
+        41
+      ],
+      "readers": [
+        3,
+        3
+      ],
+      "openings": [
+        4,
+        4
+      ],
+      "closings": [
+        4,
+        4
+      ],
+      "named": true,
+      "records": 641,
+      "boundRecords": 641,
+      "recordsWithSourceTicks": 641,
+      "recordsNamingNoMessage": 0,
+      "run": 2,
+      "health": {
+        "observedRecords": 1179,
+        "admittedRecords": 1179,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      }
+    },
+    {
+      "truthPublications": 161,
+      "truthConsumptions": 480,
+      "truthUnread": 1,
+      "messages": 161,
+      "publications": 161,
+      "consumptions": 480,
+      "matchedPublications": 161,
+      "matchedConsumptions": 480,
+      "states": {
+        "Consumed": 160,
+        "Unconsumed": 1,
+        "PublicationUnseen": 0,
+        "Conflicting": 0
+      },
+      "unreadOpen": true,
+      "epochs": [
+        1,
+        2
+      ],
+      "epochMessages": [
+        120,
+        41
+      ],
+      "readers": [
+        3,
+        3
+      ],
+      "openings": [
+        4,
+        4
+      ],
+      "closings": [
+        4,
+        4
+      ],
+      "named": true,
+      "records": 641,
+      "boundRecords": 641,
+      "recordsWithSourceTicks": 641,
+      "recordsNamingNoMessage": 0,
+      "run": 3,
+      "health": {
+        "observedRecords": 1284,
+        "admittedRecords": 1284,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      }
+    }
+  ],
+  "notes": [
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once it is read.",
+    "A run\u0027s health is the capture\u0027s own report: what its sources lost, what its queue dropped, and what was undecodable.",
+    "Counts only: no process ID, path or name of the machine is kept; the first run\u0027s truth logs and scenario are kept beside it."
+  ]
+}

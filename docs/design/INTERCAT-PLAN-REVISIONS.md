@@ -951,6 +951,7 @@ Revision 1025 begins M7 with the cooperative SDK's schema and its .NET library (
 Revision 1026 lets a capture admit the cooperative SDK's records through the opt-in sdk profile (ADR-103).
 Revision 1027 makes a file InterCat replaces wait out a reader's brief hold on it rather than lose the change.
 Revision 1028 reads the cooperative SDK's records as logical messages, which icat messages lists (ADR-104).
+Revision 1029 measures the cooperative SDK's messages through the product on FX-SDK-001's shared-memory ring (ADR-104's addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4814,3 +4815,11 @@ one names none and is counted apart (R3). Each message is consumed, open, its pu
 published twice or read twice by one reader - never guessed; a channel's epoch is named by its first opening. `icat
 messages` lists each channel's epoch and, with --channel, its messages, publishers and readers, and --json answers
 cooperative-messages-v1; 24 mutations of the path are caught.
+
+Revision 1029 measures the cooperative SDK's messages through the product (ADR-104's addendum). FX-SDK-001 is a ring of 16
+slots in a section one producer makes and three readers open, each process saying what it publishes and consumes through
+`InterCat.Sdk` and logging it by channel, epoch, sequence and reader; the producer publishes 120 messages, makes the
+channel again at epoch 2 for 40 more, and publishes one no reader reads. `tools/InterCat.SdkProbe` recorded it three times
+by `icat record --profile sdk` and read each session as `icat messages` does: nothing lost, every one of the 161
+publications and 480 consumptions matched its truth by length and process, the unread message stayed open, and the
+second epoch's sequence started at 1 again. The truth log records a message's identity; the derivation's path is unchanged.

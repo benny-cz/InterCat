@@ -31,3 +31,9 @@ with `--channel` or `--messages` a `list` of its first messages in sequence orde
 `publication`, `copiedLength` and `consumptions` (`consumer` and `record`). A record holds `processId`, `process` (the
 instance under the evidence policy, or null with `unattributed` saying why), `length`, `sourceTicks`, `seconds` (its
 session time) and its raw locator, `stream`, `sourceEpoch` and `ordinal`.
+
+## 4. Measured
+
+FX-SDK-001 (revision 1029): a shared-memory ring one producer writes and three readers read, recorded through the product
+three times, nothing lost - every publication and every reader's consumption one of the derivation's, by length and
+process, the message no reader read open, and the channel made again a second epoch.

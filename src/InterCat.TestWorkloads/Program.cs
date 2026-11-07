@@ -104,6 +104,19 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         HandleMilliseconds = Integer(args, "--handle-ms") ?? 0,
     };
 
+    var sdkRingOptions = new SdkRingOptions
+    {
+        TruthDirectory = truth,
+        Name = Option(args, "--name"),
+        Channel = Guid.TryParse(Option(args, "--channel"), out Guid channel) ? channel : Guid.Empty,
+        Readers = Integer(args, "--readers") ?? 3,
+        Messages = Integer(args, "--messages") ?? 120,
+        RestartMessages = Integer(args, "--restart-messages") ?? 40,
+        Slots = Integer(args, "--slots") ?? 16,
+        Seed = Integer(args, "--seed") ?? 20_261_107,
+        Reader = Integer(args, "--reader") ?? 0,
+    };
+
     var sectionOptions = new SectionOptions
     {
         TruthDirectory = truth,
@@ -206,6 +219,15 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         return 2;
     }
 
+    // FX-SDK-001's ring holds a cursor for at most eight readers, and every epoch publishes at least one message into a slot.
+    if (args[0].StartsWith("sdk-ring", StringComparison.Ordinal) && (sdkRingOptions.Readers is < 1 or > SdkRingOptions.MaximumReaders
+        || sdkRingOptions.Messages < 1 || sdkRingOptions.RestartMessages < 1 || sdkRingOptions.Slots < 1))
+    {
+        await Console.Error.WriteLineAsync($"--readers is from 1 to {SdkRingOptions.MaximumReaders}, and --messages, --restart-messages and --slots are at least one.")
+            .ConfigureAwait(false);
+        return 2;
+    }
+
     // --generations and --held-ms are two fixtures, FX-SECT-002 and FX-SECT-003: a run is one of them, or FX-SECT-001.
     if (args[0].StartsWith("section-share", StringComparison.Ordinal) && (sectionOptions.Generations < 1 || sectionOptions.HeldMilliseconds < 0
         || (sectionOptions.Generations > 1 && sectionOptions.HeldMilliseconds > 0)))
@@ -269,6 +291,13 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
                 await SectionScenario.RunOpenerAsync(sectionOptions, cancellationToken).ConfigureAwait(false),
             "section-share" or "section-share-creator" or "section-share-opener" =>
                 await UnsupportedPlatformAsync().ConfigureAwait(false),
+            "sdk-ring" when OperatingSystem.IsWindows() =>
+                await SdkRingScenario.RunCoordinatorAsync(sdkRingOptions, cancellationToken).ConfigureAwait(false),
+            "sdk-ring-producer" when OperatingSystem.IsWindows() =>
+                await SdkRingScenario.RunProducerAsync(sdkRingOptions, cancellationToken).ConfigureAwait(false),
+            "sdk-ring-reader" when OperatingSystem.IsWindows() =>
+                await SdkRingScenario.RunReaderAsync(sdkRingOptions, cancellationToken).ConfigureAwait(false),
+            "sdk-ring" or "sdk-ring-producer" or "sdk-ring-reader" => await UnsupportedPlatformAsync().ConfigureAwait(false),
             "process-package" when OperatingSystem.IsWindows() =>
                 await ProcessPackageScenario.RunAsync(new ProcessPackageOptions { TruthDirectory = truth }, cancellationToken).ConfigureAwait(false),
             "process-package-child" => 0,
@@ -440,6 +469,13 @@ static void PrintHelp()
     Console.WriteLine("      workload's own in none. For each it reads its package full name and application user model ID by the");
     Console.WriteLine("      application model, and its token's elevation, integrity level and session, then runs it to its end.");
     Console.WriteLine("      Windows only.");
+    Console.WriteLine();
+    Console.WriteLine("  sdk-ring --truth <dir> [--readers n] [--messages n] [--restart-messages n] [--slots n] [--seed n]");
+    Console.WriteLine("      FX-SDK-001: a producer and its readers share a ring of slots in a section of their own, each saying");
+    Console.WriteLine("      what it publishes and consumes through InterCat's cooperative SDK: every message of the channel's");
+    Console.WriteLine("      first epoch read by every reader, then the channel made again at epoch 2, its sequence from 1, and");
+    Console.WriteLine("      one last message no reader reads. Each process logs every message by its channel, epoch, sequence");
+    Console.WriteLine("      and reader, with its length. Windows only.");
     Console.WriteLine();
     Console.WriteLine("  section-share --truth <dir> [--view-bytes n] [--rounds n] [--generations n | --held-ms ms] [--seed n]");
     Console.WriteLine("      FX-SECT-001: a creator makes two named sections of the session's namespace under a name of the");

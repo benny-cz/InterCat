@@ -36,3 +36,13 @@ a new epoch, and a channel opened before the capture known from its messages.
 - The window does not show them yet; no lag or latency between a publication and its consumptions is stated; operations
   are rows of their own, with no tree by parent; no sample application or fixture measures them yet.
 - 24 mutations of the path are caught.
+
+## Addendum: measured through the product (revision 1029)
+
+FX-SDK-001 measures the derivation on a real capture: a shared-memory ring one producer writes and three readers read,
+each process saying what it publishes and consumes through `InterCat.Sdk`, recorded by `icat record --profile sdk` and
+read as `icat messages` reads it (`tools/InterCat.SdkProbe`). In three runs, nothing lost, every one of the 161 messages
+the producer published at the channel's two epochs was one message and every one of the 480 consumptions one reader's,
+each bound to the process that logged it with the length it logged; the one message no reader read stayed open, and the
+channel made again was a second epoch whose sequence started at 1 again. The derivation's path is unchanged; the fixture's
+evidence is held by its tests.

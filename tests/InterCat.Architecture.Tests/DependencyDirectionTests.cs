@@ -22,7 +22,8 @@ public sealed class DependencyDirectionTests
             ["InterCat.CaptureBroker"] = ["InterCat.Domain", "InterCat.CaptureBroker.Protocol", "InterCat.Storage", "InterCat.Capture.Windows", "InterCat.Capture.Recording"],
             ["InterCat.Desktop"] = ["InterCat.Domain", "InterCat.Application", "InterCat.Storage", "InterCat.Capture.Journal", "InterCat.CaptureBroker.Protocol"],
             ["InterCat.Cli"] = ["InterCat.Benchmarks", "InterCat.Domain", "InterCat.Storage", "InterCat.Analysis", "InterCat.Application", "InterCat.Capture.Windows", "InterCat.Capture.Journal", "InterCat.CaptureBroker.Protocol"],
-            ["InterCat.TestWorkloads"] = ["InterCat.Domain"],
+            // FX-SDK-001's ring is instrumented through the cooperative SDK, as an application would be (ADR-104).
+            ["InterCat.TestWorkloads"] = ["InterCat.Domain", "InterCat.Sdk"],
 
             // The cooperative SDK an application references: nothing of InterCat's own, so instrumenting an application
             // brings in no capture, storage or analysis code (ADR-102).

@@ -7,6 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
+    <!-- FX-SDK-001's ring says what it publishes and consumes through the cooperative SDK, as an application would. -->
+    <ProjectReference Include="../InterCat.Sdk/InterCat.Sdk.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- Kestrel, FX-HTTP-006's HTTP/2 server: HTTP/2 frames every message and compresses its heads, which only a server
