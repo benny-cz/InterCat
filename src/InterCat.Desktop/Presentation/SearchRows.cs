@@ -16,6 +16,7 @@ public sealed record SearchRow(SearchHit Hit) : IAccessibleRow
         SearchHitKind.Moment => "TIME",
         SearchHitKind.Port => "PORT",
         SearchHitKind.NearProgram => "PROGRAM",
+        SearchHitKind.Resource => "RESOURCE",
         _ => "RESULT",
     };
 
@@ -50,6 +51,7 @@ public sealed record SearchRow(SearchHit Hit) : IAccessibleRow
         SearchHitKind.Moment => "Time",
         SearchHitKind.Port => "Port",
         SearchHitKind.NearProgram => "Program",
+        SearchHitKind.Resource => "Resource",
         _ => "Result",
     };
 }

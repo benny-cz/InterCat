@@ -131,6 +131,64 @@ public sealed class ResourceHubGraphTests
         Assert.Equal(2, focused.Node(widest.Key)!.ConnectedProcesses);
     }
 
+    [Fact(DisplayName = "§6.7: a hub a search went to is drawn first, whatever the budget would draw before it, its holders kept apart, and a re-count of the drawing draws the same hubs")]
+    public void ASearchedHubIsDrawnFirst()
+    {
+        // The budget draws one hub: the widest, unless the search went to the pair's section, whose other holder is related
+        // to nothing else and would otherwise be counted in No relationships with the last process.
+        ProcessGroup group = new("g", "g.exe", LaneGrouping.Executable);
+        ProcessNode[] processes = [.. Enumerable.Range(1, 6).Select(index => Node(index, group.Key))];
+        CommunicationEdge[] edges = [Edge("a", processes[0], processes[1], 10), Edge("b", processes[2], processes[3], 10)];
+        ResourceLink widest = new(Mechanism.Synchronization, 1, false, @"\BaseNamedObjects\Ready",
+            [processes[0].Id, processes[1].Id, processes[2].Id]);
+        ResourceLink pair = new(Mechanism.SharedSection, 2, true, null, [processes[0].Id, processes[4].Id]);
+        WorkspaceSnapshot snapshot = Snapshot([group], processes, edges, [widest, pair]);
+        static string[] Hubs(GraphDisplay display) => [.. display.Nodes.Where(node => node.IsHub).Select(node => node.Key)];
+        GraphDisplayBudget one = new(8, 50, 25, HubsDrawn: 1);
+
+        GraphDisplay usual = GraphProjection.Project(snapshot, budget: one);
+        Assert.Equal([widest.Key], Hubs(usual));
+        Assert.Equal(GraphNodeKind.Quiet, usual.NodeOf(processes[4].Id)!.Kind);
+        GraphDisplay kept = GraphProjection.Project(snapshot, budget: one, keptHub: pair.Key);
+        Assert.Equal([pair.Key], Hubs(kept));
+        Assert.Equal(GraphNodeKind.Process, kept.NodeOf(processes[4].Id)!.Kind);
+        Assert.Equal([pair.Key, widest.Key], Hubs(GraphProjection.Project(snapshot, keptHub: pair.Key)));
+
+        // A key no resource of the session has keeps nothing; a re-count keeps the hub the search went to.
+        Assert.Equal([widest.Key], Hubs(GraphProjection.Project(snapshot, budget: one, keptHub: "resource:hub:object:99")));
+        Assert.Equal([pair.Key], Hubs(GraphProjection.Rescope(kept, snapshot, snapshot)));
+    }
+
+    [Fact(DisplayName = "§6.7: the search finds a resource two or more processes held by its name, the object directory it lies in or what it is, and its hit leads where its holders are drawn apart")]
+    public void TheSearchFindsAResource()
+    {
+        ProcessGroup g = new("g", "g.exe", LaneGrouping.Executable);
+        ProcessGroup h = new("h", "h.exe", LaneGrouping.Executable);
+        ProcessNode[] processes = [Node(1, g.Key), Node(2, g.Key), Node(3, h.Key)];
+        ResourceLink ready = new(Mechanism.Synchronization, 1, false, @"\Sessions\1\BaseNamedObjects\Ready",
+            [processes[0].Id, processes[1].Id]) { Records = 4 };
+        ResourceLink shared = new(Mechanism.SharedSection, 4, true, null, [processes[0].Id, processes[2].Id]) { Records = 6 };
+        WorkspaceSnapshot snapshot = Snapshot([g, h], processes, [], [ready, shared]);
+
+        // By its name's leaf: one program's processes held it, so its hit leads to that program's rung, which draws them apart.
+        SearchHit hit = Assert.Single(WorkspaceSearch.Find(snapshot, "ready").Hits);
+        Assert.Equal((SearchHitKind.Resource, ready.Key, "Ready", @"Synchronization object held by 2 processes of g.exe · \Sessions\1\BaseNamedObjects", 4L),
+            (hit.Kind, hit.Key, hit.Label, hit.Detail, hit.ObservationCount));
+        Assert.Equal([g.Key], hit.Path);
+
+        // By the object directory its name lies in.
+        Assert.Equal([ready.Key], WorkspaceSearch.Find(snapshot, "BaseNamedObjects").Hits.Select(found => found.Key));
+
+        // By what it is, where no record named it: several programs' processes held it, so its hit leads to the machine rung.
+        SearchHit section = Assert.Single(WorkspaceSearch.Find(snapshot, "mapped section").Hits);
+        Assert.Equal((shared.Key, "Mapped section 4", "Mapped section held by 2 processes", 6L),
+            (section.Key, section.Label, section.Detail, section.ObservationCount));
+        Assert.Empty(section.Path);
+        Assert.True(WorkspaceSearch.FindsResource(shared, " Mapped section 4 "));
+        Assert.False(WorkspaceSearch.FindsResource(shared, "Ready"));
+        Assert.False(WorkspaceSearch.FindsResource(ready, " "));
+    }
+
     [Fact(DisplayName = "§6.4: a hub's key names its resource, and an evidence page read by it lists exactly the records its gate numbered it in")]
     public void AHubsKeyReadsItsRecords()
     {

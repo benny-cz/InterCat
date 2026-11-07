@@ -510,7 +510,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         try
         {
             GraphDisplay projected = GraphProjection.Project(wholeSnapshot, expanded, kept, neighborhood: neighborhood,
-                openHosts: hostsOpened);
+                openHosts: hostsOpened, keptHub: keptHub);
             SetGraphProjectionProblem(null);
             return projected;
         }
@@ -2707,6 +2707,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return true;
         }
 
+        // A resource is no rung either: its hub is drawn where its holders are drawn apart, and chosen there (ADR-099). Where
+        // several programs' processes held it that is the machine rung, which no row descends to; a hub is the whole
+        // session's, so the rung is returned to as it was left, its brush kept.
+        if (row.Hit.Kind == SearchHitKind.Resource && row.Hit.Path.Count == 0)
+        {
+            if (ladder.Depth > 0) ReturnTo(0);
+            ChooseHub(row.Hit.Key);
+            SearchText = string.Empty;
+            return true;
+        }
+
         // Search covers the whole published session, not only an analysis brush. Clear that brush before opening a
         // match outside it so the hit is not silently missing from the ranked rung. The rung left keeps it.
         TimeRange? leftWith = selectedInterval;
@@ -2716,6 +2727,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             selection.Clear();
         }
         bool opened = DescendAlong(row.Hit.Path, leftWith);
+
+        // One program's processes held it: its rung draws them apart, and the hub joining them.
+        if (opened && row.Hit.Kind == SearchHitKind.Resource) ChooseHub(row.Hit.Key);
         if (opened) SearchText = string.Empty;
         return opened;
     }
@@ -2809,6 +2823,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private static readonly GraphFocus MachineFocus = new("machine", null, null, null, "Whole machine");
 
     private GraphFocus graphFocus = MachineFocus;
+
+    // The resource a search went to, whose hub the rung it was gone to draws first, whatever the budget would draw before
+    // it (ADR-099); let go when the graph's focus moves.
+    private string? keptHub;
 
     /// <summary>
     /// The graph each rung draws (§3.2): the machine rung everything; a group its members and their peers; a process
@@ -2911,6 +2929,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         if (focus.Key == graphFocus.Key && !reproject)
         {
             return;
+        }
+
+        // A hub a search went to is kept on the rung it was gone to, and let go on any other.
+        if (focus.Key != graphFocus.Key)
+        {
+            keptHub = null;
         }
 
         graphFocus = focus;

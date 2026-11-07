@@ -1,6 +1,6 @@
 # ADR-099: A resource two or more drawn processes held is a hub, joined to each by a membership with no traffic value
 
-- Status: accepted for M6's graph and resource inspectors; the window's graph draws resource hubs (revision 1007) and a chosen hub selects its own records (revision 1008)
+- Status: accepted for M6's graph and resource inspectors; the window's graph draws resource hubs (revision 1007), a chosen hub selects its own records (revision 1008) and the search finds one (revision 1009)
 - Date: 2026-11-07
 - Decision owners: InterCat maintainers
 - Relates to: ADR-092, ADR-097, ADR-098, plan §3.5, §6.3, M6, R11, P27
@@ -50,3 +50,15 @@ lists them, and an export of them names `icat evidence <directory> --channel <ke
 the same identity, its rule `resource-instances-v3`. A key of no hub's kind, or numbered 0 - the number a record carries
 where its gate gave none - names no hub. Finding a hub by the graph's search is later work. 25 mutations of the path
 are caught.
+
+## Addendum: a hub found by the search (revision 1009)
+
+The search finds a resource two or more processes held - every hub of the session, drawn or not - by its name's leaf,
+its whole name with the object directory it lies in, or, where no record named it, what it is, "Mapped section 4". Its
+hit says what it is, how many processes held it - one program's, where they were - and where its name lies, and counts
+its records. A hub is no rung: going to it leads where its holders are drawn apart - their program's rung where one
+program's processes held it, else the machine rung - and draws its hub there first, whatever the budget would draw
+before it, its holders kept apart, and chooses it. Another rung shown lets it go, and a re-count of the drawing keeps
+it. While a search is typed the graph marks a hub it finds and counts it, and a chosen resource hit rings the hub and
+its holders' nodes. Where the rung draws its holders in one node no hub joins them, and none is chosen.
+25 mutations of the path are caught.

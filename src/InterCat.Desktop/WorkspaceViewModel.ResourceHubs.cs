@@ -50,6 +50,11 @@ public sealed partial class WorkspaceViewModel
             + (appliedInterval is not null ? "; the brushed interval does not re-count it" : string.Empty));
         lines.Add("Edges: memberships, not relationships, and counted in no total; drawn thin and neutral, with no direction");
         lines.Add("Size: fixed; a resource, not a process");
+        if (SearchedLine(hub) is { } searched)
+        {
+            lines.Add(searched);
+        }
+
         return new(hub.Label, lines);
     }
 
@@ -95,6 +100,21 @@ public sealed partial class WorkspaceViewModel
         ? string.Create(CultureInfo.CurrentCulture, $"{resource.Records:N0} {(resource.Records == 1 ? "record" : "records")} of its ")
             + (resource.ByViews ? "views" : "handles") + " · holding a resource is no traffic"
         : "Its records are not in this generation";
+
+    /// <summary>
+    /// Draws the hub of the resource <paramref name="key"/> names first on the rung shown, whatever the budget would draw
+    /// before it, and chooses it where the rung draws its holders apart; where it draws them in one node no hub joins them,
+    /// and none is chosen.
+    /// </summary>
+    private void ChooseHub(string key)
+    {
+        keptHub = key;
+        RefreshGraphDisplay(reproject: true);
+        if (graphDisplay.Node(key) is { IsHub: true })
+        {
+            SelectGraphNode(key);
+        }
+    }
 
     /// <summary>How many of a hub's holders its card names before counting the rest.</summary>
     private const int HubHoldersOnCard = 6;

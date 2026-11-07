@@ -931,6 +931,7 @@ Revision 1005 answers the resource-topology basis from the derived resources (AD
 Revision 1006 groups topology answers by a fact of the processes holding each resource (ADR-098's addendum): each group's resources, sharing processes and capacity, a shared resource in each holder's group.
 Revision 1007 draws a resource two or more drawn processes held as a hub of the window's graph (ADR-099), joined to each holder by a membership with no traffic value.
 Revision 1008 gives a resource hub its own records (ADR-099's addendum): choosing one highlights, counts and lists those its gate numbered it in, and icat evidence reads them by its key.
+Revision 1009 lets the search find a resource hub (ADR-099's second addendum): by its name or what it is, its hub marked, and going to it draws the hub first and chooses it.
 
 ## Revisions, a paragraph each, in order
 
@@ -4667,3 +4668,11 @@ process they bind to. A hub's key scopes them as an RPC channel's scopes its cal
 the timeline, its card counts them as records of its views or its handles and never traffic, and E lists them. An export
 of them names the icat evidence command that lists the same records under the same identity, and icat evidence now reads
 a hub's key.
+
+Revision 1009 lets the search find a resource two or more processes held, which revision 1008 left for later (ADR-099's
+second addendum). Every hub of the session is found, drawn or not, by its name's leaf, its whole name with its object
+directory, or what it is where no record named it, and its hit says what it is, who held it and where its name lies.
+Going to it leads where its holders are drawn apart - their program's rung, or the machine rung where several programs
+held it - draws the hub there first, whatever the budget would draw before it, and chooses it; another rung lets it go,
+and a re-count of the drawing keeps it. The graph marks and counts a hub the search finds, and rings a chosen hit's hub
+and holders.

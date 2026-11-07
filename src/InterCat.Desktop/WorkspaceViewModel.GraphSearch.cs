@@ -9,10 +9,10 @@ namespace InterCat.Desktop;
 /// What a search finds in the graph (§6.7). While a search is typed, the graph marks each node holding a process it finds -
 /// by the rule its hits and the timeline's lanes are found by: a name, a PID or an address the process's connections to
 /// other hosts reached - filled where every process the node holds is found and open where only some are, and marks the
-/// Other hosts node when an address the drawn processes' connections ran to is found. Its summary counts them and a
-/// found node's card says so, so the graph shows where a search's processes are without selecting any. The hit chosen
-/// among the search's hits is ringed besides, as a find marks the match it is on among the others: the nodes that are its
-/// processes, and those holding some of them among others.
+/// Other hosts node when an address the drawn processes' connections ran to is found, and a hub when its resource is
+/// (ADR-099). Its summary counts them and a found node's card says so, so the graph shows where a search's processes are
+/// without selecting any. The hit chosen among the search's hits is ringed besides, as a find marks the match it is on
+/// among the others: the nodes that are its processes, and those holding some of them among others.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -23,7 +23,7 @@ public sealed partial class WorkspaceViewModel
     private (GraphDisplay Display, WorkspaceSnapshot Snapshot, SearchRow Hit, IReadOnlySet<string> Whole, IReadOnlySet<string> Part)?
         chosenHit;
 
-    /// <summary>The drawn nodes every process of which the search typed finds, and the Other hosts node it finds; empty while none is typed.</summary>
+    /// <summary>The drawn nodes every process of which the search typed finds, and the Other hosts node and hubs it finds; empty while none is typed.</summary>
     public IReadOnlySet<string> SearchedGraphNodeKeys => GraphSearch().Whole;
 
     /// <summary>The drawn aggregates some but not all of whose processes the search typed finds.</summary>
@@ -31,7 +31,8 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// The drawn nodes that are the processes of the hit chosen among a search's hits - a process, a group's processes, a
-    /// channel's two ends - every process each holds being one of them; empty for a moment, a port, or no hit chosen.
+    /// channel's two ends, a resource's holders and its hub - every process each holds being one of them; empty for a moment,
+    /// a port, or no hit chosen.
     /// </summary>
     public IReadOnlySet<string> ChosenHitGraphNodeKeys => ChosenHit().Whole;
 
@@ -73,6 +74,11 @@ public sealed partial class WorkspaceViewModel
         if (node.Kind == GraphNodeKind.Process)
         {
             return "Found by the search";
+        }
+
+        if (node.IsHub)
+        {
+            return "Found by the search: its resource";
         }
 
         HashSet<ProcessInstanceId> found = FoundBySearch();
@@ -120,8 +126,19 @@ public sealed partial class WorkspaceViewModel
             }
         }
 
-        graphSearch = (graphDisplay, wholeSnapshot, searchText, whole, part, found.Count);
-        return (whole, part, found.Count);
+        // A hub holds no process either: it is found when its resource is, by its name or what it is (ADR-099). The summary
+        // counts every resource the search finds with its processes, drawn as a hub or not.
+        foreach (GraphDisplayNode hub in graphDisplay.Nodes.Where(node => node.IsHub))
+        {
+            if (ResourceOf(hub.Key) is { } resource && WorkspaceSearch.FindsResource(resource, searchText))
+            {
+                whole.Add(hub.Key);
+            }
+        }
+
+        int resources = wholeSnapshot.ResourceLinks.Count(link => WorkspaceSearch.FindsResource(link, searchText));
+        graphSearch = (graphDisplay, wholeSnapshot, searchText, whole, part, found.Count + resources);
+        return (whole, part, found.Count + resources);
     }
 
     /// <summary>The drawn nodes the chosen hit's processes are, wholly and in part, worked out once for each drawing and hit.</summary>
@@ -151,11 +168,17 @@ public sealed partial class WorkspaceViewModel
             }
         }
 
+        // A resource's hit is its hub, where drawn, besides the nodes of the processes holding it.
+        if (hit.Hit.Kind == SearchHitKind.Resource && graphDisplay.Node(hit.Hit.Key) is { IsHub: true })
+        {
+            whole.Add(hit.Hit.Key);
+        }
+
         chosenHit = (graphDisplay, wholeSnapshot, hit, whole, part);
         return (whole, part);
     }
 
-    /// <summary>A hit's processes: a process's own, a group's members, a channel's two ends; none for a moment or a port.</summary>
+    /// <summary>A hit's processes: a process's own, a group's members, a channel's two ends, a resource's holders; none for a moment or a port.</summary>
     private HashSet<ProcessInstanceId> ProcessesOf(SearchHit hit)
     {
         switch (hit.Kind)
@@ -170,6 +193,8 @@ public sealed partial class WorkspaceViewModel
                 return wholeSnapshot.Edges.FirstOrDefault(candidate => candidate.Key == edge) is { } ends
                     ? [ends.SourceId, ends.TargetId]
                     : [];
+            case SearchHitKind.Resource:
+                return [.. ResourceOf(hit.Key)?.Holders ?? []];
             default:
                 return [];
         }

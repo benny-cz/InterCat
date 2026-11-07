@@ -22,6 +22,12 @@ public enum SearchHitKind
     /// the search's place (R18).
     /// </summary>
     NearProgram = 6,
+
+    /// <summary>
+    /// A resource two or more processes held - a section by its views or its handles, or a synchronization object - which
+    /// the graph draws as a hub; going to it draws its hub where its holders are drawn apart, and chooses it (ADR-099).
+    /// </summary>
+    Resource = 7,
 }
 
 /// <summary>
@@ -42,9 +48,10 @@ public sealed record SearchResult(string Query, IReadOnlyList<SearchHit> Hits, i
 /// <summary>
 /// §6.7's search (Ctrl+F) over one snapshot's metadata: executable groups by name or image path, process instances by
 /// name, PID or an address their connections to other hosts ran to (§6.3) - with its port, or a port alone, which also
-/// finds those that accepted connections at that port of their own, whoever connected - and channels by endpoint. It
-/// reads no payload and no source field beyond what the ladder already shows (§10, P16), and it is bounded: a result
-/// states how many matched beyond the hits it lists.
+/// finds those that accepted connections at that port of their own, whoever connected - channels by endpoint, and the
+/// resources two or more processes held, which the graph draws as hubs, by their names or, where no record named one, by
+/// what it is (ADR-099). It reads no payload and no source field beyond what the window already shows (§10, P16), and it is
+/// bounded: a result states how many matched beyond the hits it lists.
 /// </summary>
 public static class WorkspaceSearch
 {
@@ -154,6 +161,27 @@ public static class WorkspaceSearch
                 channel.ObservationCount, [source.GroupKey, source.Id.ToString(), channel.Key])));
         }
 
+        // A resource two or more processes held, by its name - the leaf a hub is labelled with, or the whole name with the
+        // object directory it lies in - or, where no record named it, by what it is, "Mapped section 4" (ADR-099). A hub is
+        // no rung: its hit leads where its holders are drawn apart, its program's rung where one program's processes held
+        // it and else the machine rung, and says what it is, how many held it and where its name lies.
+        foreach (ResourceLink link in snapshot.ResourceLinks)
+        {
+            int rank = Rank(text, link.Label, link.Name);
+            if (rank < 0) continue;
+            string[] programs = [.. link.Holders
+                .Select(holder => processes.TryGetValue(holder, out ProcessNode? process) ? process.GroupKey : null)
+                .OfType<string>()
+                .Distinct(StringComparer.Ordinal)];
+            int holders = link.Holders.Count;
+            string held = string.Create(CultureInfo.CurrentCulture,
+                    $"{ResourceLink.KindOf(link.Key)} held by {holders:N0} {(holders == 1 ? "process" : "processes")}")
+                + (programs.Length == 1 && groups.TryGetValue(programs[0], out ProcessGroup? program) ? " of " + program.Name : string.Empty);
+            candidates.Add((rank, new(SearchHitKind.Resource, link.Key, link.Label,
+                link.Name is { } name && ResourceNames.NamespaceOf(name) is { } directory ? held + " · " + directory : held,
+                link.Records, programs.Length == 1 ? [programs[0]] : [])));
+        }
+
         SearchHit[] ranked = [.. candidates
             .OrderBy(candidate => candidate.Rank)
             .ThenBy(candidate => candidate.Hit.Kind)
@@ -202,6 +230,17 @@ public static class WorkspaceSearch
         string text = query?.Trim() ?? string.Empty;
         return text.Length > 0
             && (RankOf(process, text, PidIn(text)) >= 0 || AddressRankOf(links, text).Rank >= 0 || ListeningRankOf(process, text) >= 0);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="query"/> finds <paramref name="link"/>'s resource, by the rule <see cref="Find"/> ranks a
+    /// resource's hit by: its name's leaf or its whole name, or what it is where no record named it (ADR-099).
+    /// </summary>
+    public static bool FindsResource(ResourceLink link, string? query)
+    {
+        ArgumentNullException.ThrowIfNull(link);
+        string text = query?.Trim() ?? string.Empty;
+        return text.Length > 0 && Rank(text, link.Label, link.Name) >= 0;
     }
 
     /// <summary>What a process's hit says where a port of its own it accepted connections at found it.</summary>

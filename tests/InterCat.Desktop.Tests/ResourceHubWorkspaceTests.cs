@@ -91,6 +91,108 @@ public sealed class ResourceHubWorkspaceTests
             scope.Reason, StringComparison.Ordinal);
     });
 
+    [Fact(DisplayName = "§6.7: the search finds a hub by its resource, marks it and rings it with its holders, and going to it from another rung chooses it where its holders are drawn apart")]
+    public void TheSearchGoesToAHub() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        Publish(session.Store, [.. rows.Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })], fields: fields);
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        string hub = Assert.Single(workspace.GraphDisplay.Nodes, node => node.IsHub).Key;
+        string writer = workspace.GraphDisplay.NodeOf(workspace.Snapshot.Processes.Single(node => node.ProcessId == 100).Id)!.Key;
+        string reader = workspace.GraphDisplay.NodeOf(workspace.Snapshot.Processes.Single(node => node.ProcessId == 200).Id)!.Key;
+
+        // Typed, the search finds the section by what it is, marks its hub, counts it and says so on the hub's card.
+        workspace.SearchText = "mapped section 4";
+        SearchRow found = Assert.Single(workspace.SearchResults);
+        Assert.Equal(("RESOURCE", "Mapped section 4", "Mapped section held by 2 processes", "4 records"),
+            (found.Kind, found.Label, found.Detail, found.Observations));
+        Assert.Equal("Resource, Mapped section 4, Mapped section held by 2 processes, 4 records. Press Enter to open.", found.AccessibleName);
+        Assert.Equal([hub], workspace.SearchedGraphNodeKeys);
+        Assert.StartsWith("1 found by the search · ", workspace.GraphSummary, StringComparison.Ordinal);
+        Assert.Equal("Found by the search: its resource", workspace.DescribeGraphHover(hub)!.Lines[^1]);
+
+        // Chosen among the hits, it is ringed with the nodes of the processes holding it.
+        workspace.SelectedSearchResult = found;
+        Assert.Equal(new[] { hub, reader, writer }.Order(StringComparer.Ordinal),
+            workspace.ChosenHitGraphNodeKeys.Order(StringComparer.Ordinal));
+
+        // Gone to from writer.exe's own rung, it is chosen on the machine rung, where both programs' processes are drawn
+        // apart, and the search is cleared.
+        Assert.True(workspace.OpenGraphNode(writer));
+        Assert.Equal(3, workspace.Crumbs.Count);
+        workspace.SearchText = "mapped section 4";
+        Assert.True(workspace.OpenSearchResult(Assert.Single(workspace.SearchResults)));
+        Assert.Single(workspace.Crumbs);
+        Assert.Equal((string.Empty, hub), (workspace.SearchText, workspace.SelectedCluster?.Key));
+        Assert.Equal("Mapped section 4", workspace.SelectionTitle);
+    });
+
+    [Fact(DisplayName = "§6.7: going to a resource whose hub the graph's budget left undrawn draws it first and chooses it")]
+    public void GoingToAnUndrawnHubDrawsIt() => SingleThreadedContext.Run(async () =>
+    {
+        // Nine more sections both processes mapped, ordered before section 4 among hubs of as many holders, so the budget's
+        // eight hubs are theirs.
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        var more = new List<ObservationRowV1>();
+        var numbered = new List<SourceFieldRowV1>();
+        ulong ordinal = 1_000;
+        for (int section = 101; section <= 109; section++)
+        {
+            for (int pid = 100; pid <= 200; pid += 100)
+            {
+                ObservationRowV1 mapped = SectionRecord(section - 80, 37, pid, pid, ordinal++, view: true);
+                more.Add(mapped);
+                numbered.AddRange([Field(mapped, SourceField.SectionNumber, section), Field(mapped, SourceField.SectionViewNumber, (section * 10L) + (pid / 100)),
+                    Field(mapped, SourceField.ViewSize, 4096), Field(mapped, SourceField.ViewInformation, 0)]);
+            }
+        }
+
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. rows.Concat(more).OrderBy(row => row.NativeTicks).ThenBy(row => row.RawRecordOrdinal)
+            .Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })], fields: [.. fields, .. numbered]);
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        const string Four = "resource:hub:mapped-section:4";
+        Assert.Equal(8, workspace.GraphDisplay.Nodes.Count(node => node.IsHub));
+        Assert.Null(workspace.GraphDisplay.Node(Four));
+
+        // Gone to, section 4's hub is drawn among the eight, first, and chosen.
+        workspace.SearchText = "mapped section 4";
+        Assert.True(workspace.OpenSearchResult(Assert.Single(workspace.SearchResults)));
+        Assert.Equal(Four, workspace.SelectedCluster?.Key);
+        Assert.Equal(Four, workspace.GraphDisplay.Nodes.First(node => node.IsHub).Key);
+        Assert.Equal(8, workspace.GraphDisplay.Nodes.Count(node => node.IsHub));
+
+        // Left for another rung, it is let go: back on the machine rung, the budget's eight are drawn again.
+        Assert.True(workspace.OpenGraphNode(workspace.GraphDisplay.NodeOf(workspace.Snapshot.Processes.Single(node => node.ProcessId == 100).Id)!.Key));
+        workspace.ReturnTo(0);
+        Assert.Null(workspace.GraphDisplay.Node(Four));
+    });
+
+    [Fact(DisplayName = "§6.7: going to a resource one program's processes held chooses its hub on that program's rung, which draws them apart")]
+    public void GoingToOneProgramsHubOpensItsRung() => SingleThreadedContext.Run(async () =>
+    {
+        // Both processes run writer.exe.
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. rows.Select(row => row with
+        {
+            SessionRelativeTicks = row.NativeTicks * 100,
+            ResourceName = row.ResourceName == @"C:\Tools\reader.exe" ? @"C:\Tools\writer.exe" : row.ResourceName,
+        })], fields: fields);
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+
+        workspace.SearchText = "mapped section 4";
+        SearchRow found = Assert.Single(workspace.SearchResults);
+        Assert.Equal("Mapped section held by 2 processes of writer.exe", found.Detail);
+        Assert.True(workspace.OpenSearchResult(found));
+        Assert.Equal(2, workspace.Crumbs.Count);
+        Assert.Equal("resource:hub:mapped-section:4", workspace.SelectedCluster?.Key);
+    });
+
     private static WorkspaceViewModel Open(TemporarySession session)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);

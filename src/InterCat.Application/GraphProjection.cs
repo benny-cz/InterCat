@@ -598,7 +598,9 @@ public static class GraphProjection
     /// <summary>
     /// Projects a snapshot for drawing. <paramref name="neighborhood"/>, when given, is the set of processes a focused rung
     /// draws (§3.2: a group's members and their peers, an instance and its peers, a channel's participants); every other
-    /// process is counted in one context node rather than drawn, and no process is omitted.
+    /// process is counted in one context node rather than drawn, and no process is omitted. <paramref name="keptHub"/>, when
+    /// given, is the key of a resource a search went to: its hub is drawn first, whatever the budget would draw before it,
+    /// as <paramref name="kept"/> keeps a process drawn on its own (ADR-099).
     /// </summary>
     public static GraphDisplay Project(
         WorkspaceSnapshot snapshot,
@@ -606,13 +608,35 @@ public static class GraphProjection
         ProcessInstanceId? kept = null,
         GraphDisplayBudget? budget = null,
         IReadOnlySet<ProcessInstanceId>? neighborhood = null,
-        bool openHosts = false)
+        bool openHosts = false,
+        string? keptHub = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         budget ??= GraphDisplayBudget.Default;
         budget.Validate();
+        snapshot = HubsFirst(snapshot, keptHub is null ? [] : [keptHub]);
         GraphDisplay folded = ProjectFolded(snapshot, expandedGroup, kept, budget, neighborhood);
         return WithHubs(openHosts ? OpenHosts(folded, snapshot, budget) : folded, snapshot, budget);
+    }
+
+    /// <summary>
+    /// <paramref name="snapshot"/> with the resources <paramref name="first"/> names ahead of the rest, in that order, and the
+    /// rest in theirs: the hubs a drawing must draw - one a search went to, or those a drawing re-counted drew - are the
+    /// first its budget takes, and their holders the first kept apart.
+    /// </summary>
+    private static WorkspaceSnapshot HubsFirst(WorkspaceSnapshot snapshot, IReadOnlyList<string> first)
+    {
+        if (first.Count == 0 || snapshot.ResourceLinks.Count == 0)
+        {
+            return snapshot;
+        }
+
+        Dictionary<string, int> place = first.Select((key, index) => (key, index))
+            .ToDictionary(entry => entry.key, entry => entry.index, StringComparer.Ordinal);
+        return snapshot with
+        {
+            ResourceLinks = [.. snapshot.ResourceLinks.OrderBy(link => place.TryGetValue(link.Key, out int index) ? index : first.Count)],
+        };
     }
 
     /// <summary>
@@ -1056,9 +1080,10 @@ public static class GraphProjection
             }
         }
 
+        // The hubs the drawing drew are re-counted, a search's kept one with the rest, whatever the budget would draw first.
         (Dictionary<ProcessInstanceId, string> assignment, Dictionary<string, Descriptor> descriptors) = Drawn(display);
-        GraphDisplay recounted = Materialize(scoped, assignment, descriptors, display.ExpandedGroup, display.Kept, display.OpenedHosts,
-            display.Nodes.Count(node => node.IsHub));
+        GraphDisplay recounted = Materialize(HubsFirst(scoped, [.. display.Nodes.Where(node => node.IsHub).Select(node => node.Key)]),
+            assignment, descriptors, display.ExpandedGroup, display.Kept, display.OpenedHosts, display.Nodes.Count(node => node.IsHub));
         if (!SameStructure(display, recounted))
         {
             throw new ArgumentException(
