@@ -9,6 +9,8 @@ namespace InterCat.SdkProbe;
 /// profile, and each run's session read as the product reads one - its logical messages derived as <c>icat messages</c>
 /// derives them - and held to the run's truth. Each run's session is deleted once read, as it holds the machine's process
 /// names; what is kept is each run's counts, the first run's truth logs and scenario, and the capture's own counters.
+/// With <c>--native</c> it records FX-SDK-002 instead (ADR-105): the native sample, saying the same through the SDK's C
+/// library, its operations held to their records too.
 /// </summary>
 internal static class Program
 {
@@ -23,6 +25,7 @@ internal static class Program
             Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]: records FX-SDK-001 through the product's own icat record under");
             Console.Error.WriteLine("  the opt-in sdk profile, each run's session read as icat messages reads one and held to its truth, then");
             Console.Error.WriteLine("  deleted. Needs elevation, and Release builds of InterCat.Cli and InterCat.TestWorkloads.");
+            Console.Error.WriteLine("  [--native <publish_consume.exe>]: records FX-SDK-002 instead, the native sample said through intercat_sdk.h.");
             Console.Error.WriteLine("InterCat.SdkProbe --overhead --output <new directory> [--rounds n] [--messages n] [--duration s]: the SDK's cost,");
             Console.Error.WriteLine("  each round a burst with no session listening and one while icat record --profile sdk records it.");
             return 2;
@@ -45,9 +48,10 @@ internal static class Program
             return 0;
         }
 
-        Dictionary<string, object?> measurement = await Product.RunAsync(icat, workload, output, runs, duration, readers).ConfigureAwait(false);
+        string? native = Option(args, "--native");
+        Dictionary<string, object?> measurement = await Product.RunAsync(icat, workload, output, runs, duration, readers, native).ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(output, "measurement.json"), JsonSerializer.Serialize(measurement, Json)).ConfigureAwait(false);
-        Console.WriteLine($"FX-SDK-001 measured through the product into {output}.");
+        Console.WriteLine($"{measurement["fixture"]} measured through the product into {output}.");
         return 0;
     }
 

@@ -9,16 +9,17 @@ using InterCat.Storage;
 namespace InterCat.SdkProbe;
 
 /// <summary>
-/// FX-SDK-001 recorded through the product: each run is the product's own <c>icat record</c> under the opt-in sdk profile,
-/// the workload started once its session runs, and the run's session read as <c>icat messages</c> reads one and held to the
-/// run's truth - every publication and every reader's consumption the workload logged, by its channel, epoch, sequence and
-/// reader, with its length and the process that logged it.
+/// FX-SDK-001, or FX-SDK-002, recorded through the product: each run is the product's own <c>icat record</c> under the
+/// opt-in sdk profile, the workload started once its session runs, and the run's session read as <c>icat messages</c>
+/// reads one and held to the run's truth - every publication and every reader's consumption the workload logged, by its
+/// channel, epoch, sequence and reader, with its length and the process that logged it; and, where the workload names
+/// its operations, each one's start and completion as the capture admitted them.
 /// </summary>
 internal static class Product
 {
     private static readonly JsonSerializerOptions TruthOptions = CreateTruthOptions();
 
-    public static async Task<Dictionary<string, object?>> RunAsync(string icat, string workload, string output, int runs, int duration, int readers)
+    public static async Task<Dictionary<string, object?>> RunAsync(string icat, string workload, string output, int runs, int duration, int readers, string? native = null)
     {
         var results = new List<Dictionary<string, object?>>();
         for (int run = 1; run <= runs; run++)
@@ -31,9 +32,13 @@ internal static class Product
                 Dictionary<string, object?> health;
                 using (Workload.Recording recording = await Workload.Recording.StartAsync(icat, session, duration).ConfigureAwait(false))
                 {
-                    using (Process started = Process.Start(new ProcessStartInfo(workload,
-                        ["sdk-ring", "--truth", truth, "--readers", readers.ToString(CultureInfo.InvariantCulture)])
-                        { UseShellExecute = false, CreateNoWindow = true }) ?? throw new InvalidOperationException("The truth workload could not be started."))
+                    // FX-SDK-002 is the native sample, said through intercat_sdk.h; FX-SDK-001 the .NET ring.
+                    ProcessStartInfo start = native is null
+                        ? new(workload, ["sdk-ring", "--truth", truth, "--readers", readers.ToString(CultureInfo.InvariantCulture)])
+                        : new(native, ["--truth", truth]);
+                    start.UseShellExecute = false;
+                    start.CreateNoWindow = true;
+                    using (Process started = Process.Start(start) ?? throw new InvalidOperationException("The truth workload could not be started."))
                     {
                         await Workload.FinishedAsync(started).ConfigureAwait(false);
                     }
@@ -57,15 +62,22 @@ internal static class Product
 
         return new()
         {
-            ["fixture"] = "FX-SDK-001",
-            ["question"] = "Whether FX-SDK-001's ring - one producer and its readers, each saying what it publishes and consumes through "
+            ["fixture"] = native is null ? "FX-SDK-001" : "FX-SDK-002",
+            ["question"] = native is not null
+                ? "Whether FX-SDK-002 - a native application saying what it publishes and consumes through intercat_sdk.h, the SDK's "
+                    + "native library - recorded through the product by icat record under the opt-in sdk profile, reads as icat messages "
+                    + "reads it, as a .NET application's does: every message it published at either epoch one message of its channel, "
+                    + "its reader's consumption of each one consumption, each bound to the process with the length it logged, and the "
+                    + "one message no reader read open; and each operation it started one start, under its parent, and one completion "
+                    + "with the status it first completed with."
+                : "Whether FX-SDK-001's ring - one producer and its readers, each saying what it publishes and consumes through "
                 + "InterCat's cooperative SDK - recorded through the product by icat record under the opt-in sdk profile, reads as "
                 + "icat messages reads it: every message the producer published at either epoch one message of the ring's channel, "
                 + "every reader's consumption of it one consumption, each bound to the process that logged it with the length it "
                 + "logged, and the one message no reader read open.",
             ["profile"] = "sdk",
             ["durationSeconds"] = duration,
-            ["readers"] = readers,
+            ["readers"] = native is null ? readers : 1,
             ["runs"] = results,
             ["notes"] = new[]
             {
@@ -80,9 +92,32 @@ internal static class Product
     private static Dictionary<string, object?> Evaluate(string session, string truth)
     {
         Guid channel;
+        string channelName;
+        string? library = null;
+        var said = new List<SaidOperation>();
         using (JsonDocument scenario = JsonDocument.Parse(File.ReadAllText(Path.Combine(truth, "scenario.json"))))
         {
             channel = scenario.RootElement.GetProperty("channel").GetGuid();
+            channelName = scenario.RootElement.GetProperty("channelName").GetString()!;
+            if (scenario.RootElement.TryGetProperty("library", out JsonElement named))
+            {
+                library = named.GetString();
+            }
+
+            // The operations a workload started, where it names them: each its identity, parent, name, status, and how
+            // many times it was completed.
+            if (scenario.RootElement.TryGetProperty("operations", out JsonElement operations))
+            {
+                foreach (JsonElement operation in operations.EnumerateArray())
+                {
+                    said.Add(new(
+                        operation.GetProperty("operation").GetGuid(),
+                        operation.GetProperty("parent").ValueKind == JsonValueKind.Null ? null : operation.GetProperty("parent").GetGuid(),
+                        operation.GetProperty("name").GetString()!,
+                        operation.GetProperty("status").GetInt64(),
+                        operation.GetProperty("completions").GetInt32()));
+                }
+            }
         }
 
         // The truth: what each process logged it published or consumed.
@@ -112,6 +147,7 @@ internal static class Product
         // The session, read as the product reads one, its readers let go once its messages are derived.
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session));
         CooperativeMessageIndex index;
+        List<AdmittedRecord> admitted;
         using (EvidenceLease lease = store.AcquireLease())
         {
             SessionManifestV1 manifest = lease.Manifest;
@@ -121,6 +157,7 @@ internal static class Product
             SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store.Root, manifest, name))];
             ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, clock, fields);
             index = CooperativeMessageIndex.Derive(segments, fields, processes);
+            admitted = Admitted(segments);
         }
 
         store.ReleaseSegmentReaders();
@@ -160,7 +197,7 @@ internal static class Product
         }
 
         (long Epoch, long Sequence)[] unread = [.. published.Where(entry => !entry.Value.Read).Select(entry => entry.Key)];
-        return new()
+        Dictionary<string, object?> evaluated = new()
         {
             ["truthPublications"] = published.Count,
             ["truthConsumptions"] = consumed.Count,
@@ -177,13 +214,103 @@ internal static class Product
             ["readers"] = channels.Select(held => held.Readers).ToArray(),
             ["openings"] = channels.Select(held => held.Openings).ToArray(),
             ["closings"] = channels.Select(held => held.Closings).ToArray(),
-            ["named"] = channels.All(held => held.Name == "fx-sdk-ring" && held.Kind == 3),
+            ["named"] = channels.All(held => held.Name == channelName),
+            ["kinds"] = channels.Select(held => held.Kind).ToArray(),
             ["records"] = records,
             ["boundRecords"] = bound,
             ["recordsWithSourceTicks"] = withSourceTicks,
             ["recordsNamingNoMessage"] = index.WithoutMessage,
         };
+
+        // The schema each process announced, where the workload names its library: one announcement or more a process -
+        // one a session enabling the provider - each read at the layout the capture knows, its library's version its last
+        // field.
+        HashSet<int> logging = [.. published.Values.Select(entry => entry.Process), .. consumed.Values.Select(entry => entry.Process)];
+        if (library is not null)
+        {
+            AdmittedRecord[] announcements = [.. admitted.Where(record => record.Event == CooperativeSdk.SdkStarted
+                && record.ProcessId is { } process && logging.Contains(process))];
+            evaluated["announcements"] = announcements.Length;
+            evaluated["announcedLibrary"] = announcements.Length > 0 && announcements.All(record => record.Name == library);
+            evaluated["processesAnnounced"] = logging.Count(process => announcements.Any(record => record.ProcessId == process));
+        }
+
+        // Each operation the workload names, held to the capture's records of it: one start, owned by the process that
+        // logged its messages, carrying its name and its parent as the related activity, and one completion with the
+        // status it was first completed with - a second completion says nothing.
+        if (said.Count > 0)
+        {
+            HashSet<Guid> named = [.. said.Select(operation => operation.Operation)];
+            AdmittedRecord[] starts = [.. admitted.Where(record => record.Event == CooperativeSdk.OperationStarted
+                && record.Identifier is { } operation && named.Contains(operation))];
+            AdmittedRecord[] completions = [.. admitted.Where(record => record.Event == CooperativeSdk.OperationCompleted
+                && record.Identifier is { } operation && named.Contains(operation))];
+            evaluated["truthOperations"] = said.Count;
+            evaluated["truthCompletionCalls"] = said.Sum(operation => operation.Completions);
+            evaluated["operationStarts"] = starts.Length;
+            evaluated["operationCompletions"] = completions.Length;
+            evaluated["matchedStarts"] = said.Count(operation =>
+                starts.Where(record => record.Identifier == operation.Operation).ToArray() is [var start]
+                && start.Name == operation.Name && start.Parent == operation.Parent
+                && start.ProcessId is { } process && logging.Contains(process));
+            evaluated["matchedCompletions"] = said.Count(operation =>
+                completions.Where(record => record.Identifier == operation.Operation).ToArray() is [var completion]
+                && completion.Status == operation.Status
+                && completion.ProcessId is { } process && logging.Contains(process));
+        }
+
+        return evaluated;
     }
+
+    /// <summary>
+    /// Every announcement of the SDK's schema, start and completion of an operation the SDK's records name, as the capture
+    /// admitted it.
+    /// </summary>
+    private static List<AdmittedRecord> Admitted(SegmentReaderV1[] segments)
+    {
+        var found = new List<AdmittedRecord>();
+        foreach (SegmentReaderV1 segment in segments)
+        {
+            SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+            SegmentColumnSlice identifiers = segment.Slice(SegmentColumnId.SourceIdentifier);
+            SegmentColumnSlice related = segment.Slice(SegmentColumnId.RelatedActivityId);
+            SegmentColumnSlice owners = segment.Slice(SegmentColumnId.OwnerProcessId);
+            SegmentColumnSlice statuses = segment.Slice(SegmentColumnId.StatusCode);
+            for (int row = 0; row < segment.RowCount; row++)
+            {
+                if ((Mechanism)mechanisms.UnsignedAt(row)!.Value != Mechanism.ApplicationSdk)
+                {
+                    continue;
+                }
+
+                (Guid provider, ushort eventId, _, _) = segment.SchemaOf(row);
+                if (provider != CooperativeSdk.ProviderId
+                    || eventId is not (CooperativeSdk.SdkStarted or CooperativeSdk.OperationStarted or CooperativeSdk.OperationCompleted))
+                {
+                    continue;
+                }
+
+                // An announcement and a start are named - by the library's version and the operation's name - and a
+                // completion carries its status.
+                bool completion = eventId == CooperativeSdk.OperationCompleted;
+                found.Add(new(
+                    eventId,
+                    identifiers.GuidAt(row),
+                    related.GuidAt(row),
+                    owners.SignedAt(row) is { } owner ? (int)owner : null,
+                    completion ? null : segment.TextValue(SegmentColumnId.ResourceName, row),
+                    completion ? statuses.SignedAt(row) : null));
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>An operation a workload says it started: its identity, its parent's where it has one, its name, the status it first completed with, and how many times it was completed.</summary>
+    private sealed record SaidOperation(Guid Operation, Guid? Parent, string Name, long Status, int Completions);
+
+    /// <summary>An announcement, or a start or a completion of an operation, as the capture admitted it.</summary>
+    private sealed record AdmittedRecord(ushort Event, Guid? Identifier, Guid? Parent, int? ProcessId, string? Name, long? Status);
 
     private static JsonSerializerOptions CreateTruthOptions()
     {

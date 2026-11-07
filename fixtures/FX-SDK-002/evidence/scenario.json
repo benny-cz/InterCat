@@ -1,0 +1,16 @@
+{
+  "scenarioId": "FX-SDK-002",
+  "channel": "9905a469-0ae1-4c10-adff-adbcb45b889c",
+  "channelName": "fx-sdk-native",
+  "messages": 100,
+  "restartMessages": 30,
+  "seed": 20261107,
+  "library": "native-1.0",
+  "closeCalls": [1, 2],
+  "unwritten": 0,
+  "operations": [
+    { "operation": "6682f879-fa12-47c6-be06-52c3cfe11a1a", "parent": null, "name": "publish-consume", "status": 0, "completions": 1 },
+    { "operation": "1e0167dd-f2be-4dad-a2a8-1a885e18a93b", "parent": "6682f879-fa12-47c6-be06-52c3cfe11a1a", "name": "epoch-1", "status": 0, "completions": 1 },
+    { "operation": "e4f90b6f-ae7d-4731-9f8f-edf710f7a5c0", "parent": "6682f879-fa12-47c6-be06-52c3cfe11a1a", "name": "epoch-2", "status": 1, "completions": 2 }
+  ]
+}

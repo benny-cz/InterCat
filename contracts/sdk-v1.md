@@ -1,7 +1,8 @@
 # Cooperative SDK contract, version 1
 
 Status: M7, revision 1025 (ADR-102)
-Owner: `InterCat.Sdk` (`InterCatSdkEventSource`, `InterCatChannel`, `InterCatOperation`)
+Owner: `InterCat.Sdk` (`InterCatSdkEventSource`, `InterCatChannel`, `InterCatOperation`); natively,
+`sdk/native/include/intercat_sdk.h` (revision 1032, ADR-105)
 Read by: a capture's `etw/eventsource/InterCat-Sdk` source, through the `sdk` profile (revision 1026, ADR-103)
 
 An application references `InterCat.Sdk` to say what OS tracing cannot see of it: the channels it carries messages
@@ -19,6 +20,12 @@ raises nothing. Before any other event, the SDK tells each session that enables 
 | Event | Id | Fields |
 |---|---|---|
 | `SdkStarted` | 1 | `processId` (int32), `schemaMajor` (int32), `schemaMinor` (int32), `ticksPerSecond` (int64, the frequency of the process's clock), `library` (the SDK's version) |
+
+A C or C++ application raises the same events through the SDK's native library, `sdk/native/include/intercat_sdk.h`
+(revision 1032, ADR-105): one header raising them through ETW's provider API under the same provider, each event's
+descriptor and fields the manifest's, held to it by a test. It holds a channel and an operation as `InterCat.Sdk` does,
+refuses what that throws for - returning `ERROR_INVALID_PARAMETER` and raising nothing - and announces the schema alike,
+its library `native-1.0` and its clock `QueryPerformanceCounter`'s. FX-SDK-002 measures it through the product.
 
 ## 2. Channels and messages
 
@@ -110,4 +117,4 @@ byte - or is measured in a narrower window; batching is not offered at this vers
 ## 9. Not defined at this version
 
 - An operation tree by parent, and the lag between a publication and its consumptions.
-- Content carried by an event, bounded and opt-in; batching; a native C/C++ library.
+- Content carried by an event, bounded and opt-in; batching.

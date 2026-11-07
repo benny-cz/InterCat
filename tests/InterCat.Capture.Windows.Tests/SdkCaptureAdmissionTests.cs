@@ -227,6 +227,61 @@ public sealed class SdkCaptureAdmissionTests
                 .. descriptor.Slots.Select(slot => string.Create(CultureInfo.InvariantCulture, $"{slot.FieldName}@{slot.Offset}:{slot.Kind}"))]);
     }
 
+    [Fact(DisplayName = "§15: the native library's header declares InterCat.Sdk's provider and every event as the SDK's manifest does - identity, version, level, opcode, task and keyword - and the schema's version, so a capture admits a native application's records alike")]
+    public void TheNativeHeaderIsTheSdksSchema()
+    {
+        string header = File.ReadAllText(Path.Combine(RepositoryRoot(), "sdk", "native", "include", "intercat_sdk.h"));
+
+        // The provider's identity, as the header spells the GUID EventSource derives from the name.
+        System.Text.RegularExpressions.Match guid = System.Text.RegularExpressions.Regex.Match(header,
+            @"intercat_sdk_provider = \{ 0x(?<a>[0-9a-f]{8}), 0x(?<b>[0-9a-f]{4}), 0x(?<c>[0-9a-f]{4}), \{ (?<d>(0x[0-9a-f]{2}(, )?){8}) \} \}");
+        Assert.True(guid.Success, "The header no longer spells its provider's identity.");
+        byte[] tail = [.. guid.Groups["d"].Value.Split(", ").Select(octet => Convert.ToByte(octet[2..], 16))];
+        var declared = new Guid(Convert.ToInt32(guid.Groups["a"].Value, 16), Convert.ToInt16(guid.Groups["b"].Value, 16),
+            Convert.ToInt16(guid.Groups["c"].Value, 16), tail);
+        Assert.Equal((EventSource.GetGuid(typeof(InterCatSdkEventSource)), CooperativeSdk.ProviderId), (declared, declared));
+
+        // Each event's descriptor: id, version, channel, level, opcode, task, keyword - as the manifest declares each.
+        XDocument manifest = XDocument.Parse(Sdk.EmbeddedManifest!);
+        XNamespace events = "http://schemas.microsoft.com/win/2004/08/events";
+        Dictionary<string, int> tasks = manifest.Descendants(events + "task")
+            .ToDictionary(task => (string)task.Attribute("name")!, task => (int)task.Attribute("value")!);
+        var opcodes = new Dictionary<string, int> { ["win:Start"] = 1, ["win:Stop"] = 2, ["win:Send"] = 9, ["win:Receive"] = 240 };
+        string[] expected =
+        [
+            .. manifest.Descendants(events + "event").Where(element => (int)element.Attribute("value")! != 0)
+                .OrderBy(element => (int)element.Attribute("value")!)
+                .Select(element => string.Join(", ",
+                    (int)element.Attribute("value")!, (int)element.Attribute("version")!, 0,
+                    (string)element.Attribute("level")! == "win:Informational" ? 4 : -1,
+                    element.Attribute("opcode") is { } opcode ? opcodes[opcode.Value] : 0,
+                    element.Attribute("task") is { } task ? tasks[task.Value] : 0,
+                    0)),
+        ];
+        string[] said =
+        [
+            .. System.Text.RegularExpressions.Regex.Matches(header, @"(?m)^#define INTERCAT_SDK_EVENT_[A-Z_]+ (?<descriptor>[0-9, ]+)\r?$")
+                .Select(match => match.Groups["descriptor"].Value),
+        ];
+        Assert.Equal(expected, said);
+
+        // The schema's version, as the header announces it.
+        Assert.Contains($"#define INTERCAT_SDK_SCHEMA_MAJOR {InterCatSdkEventSource.SchemaMajor}", header, StringComparison.Ordinal);
+        Assert.Contains($"#define INTERCAT_SDK_SCHEMA_MINOR {InterCatSdkEventSource.SchemaMinor}", header, StringComparison.Ordinal);
+    }
+
+    private static string RepositoryRoot()
+    {
+        DirectoryInfo? root = new(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "InterCat.slnx")))
+        {
+            root = root.Parent;
+        }
+
+        Assert.NotNull(root);
+        return root.FullName;
+    }
+
     private static SourceAdmissionPlan Compiled() => AdmissionPlanCompiler.Compile(Sdk, ManifestParser.Parse(Sdk.EmbeddedManifest!), 0);
 
     private static AdmittedEventPlan Plan(SourceAdmissionPlan plan, int eventId) =>

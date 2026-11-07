@@ -954,6 +954,7 @@ Revision 1028 reads the cooperative SDK's records as logical messages, which ica
 Revision 1029 measures the cooperative SDK's messages through the product on FX-SDK-001's shared-memory ring (ADR-104's addendum).
 Revision 1030 publishes the cooperative SDK's cost, M7's overhead guide (ADR-102's addendum).
 Revision 1031 holds a capture to never misreading a later version of the cooperative SDK's schema (ADR-103's addendum).
+Revision 1032 adds the cooperative SDK's native library, one C header held to the SDK's own manifest, and FX-SDK-002 (ADR-105).
 
 ## Revisions, a paragraph each, in order
 
@@ -4838,3 +4839,11 @@ the SDK's source against a later minor version of its schema, a field added at t
 opening after its name and a completion: every event's layout is as it was, each known field at its offset and the added
 one never read; and the capture's plan holds only the schema's major, so a later major's record is counted undecodable
 rather than read by another version's layout. The product's path is unchanged.
+
+Revision 1032 adds M7's native reference library and sample (ADR-105). One C header, `sdk/native/include/intercat_sdk.h`,
+raises the cooperative SDK's events through ETW's provider API under the same provider, each event's descriptor and
+fields the SDK's manifest's, which a test holds it to; it holds a channel and an operation as the .NET library does, a
+close and a completion said once, refuses what that throws for, and announces the schema alike. FX-SDK-002 records its
+sample through the product three times: nothing lost, every message and consumption its truth's by length and process,
+the unread message open, the channel made again a second epoch, and its three operations each one start under its parent
+and one completion. 19 mutations of the library are caught, by the header's test or by the fixture recorded once more.
