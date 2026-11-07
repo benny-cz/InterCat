@@ -13,6 +13,7 @@
     <Project Path="src/InterCat.Desktop/InterCat.Desktop.csproj" />
     <Project Path="src/InterCat.Cli/InterCat.Cli.csproj" />
     <Project Path="src/InterCat.TestWorkloads/InterCat.TestWorkloads.csproj" />
+    <Project Path="src/InterCat.Sdk/InterCat.Sdk.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/InterCat.AfdProbe/InterCat.AfdProbe.csproj" />
@@ -43,5 +44,6 @@
     <Project Path="tests/InterCat.Storage.Tests/InterCat.Storage.Tests.csproj" />
     <Project Path="tests/InterCat.Architecture.Tests/InterCat.Architecture.Tests.csproj" />
     <Project Path="tests/InterCat.Cli.Tests/InterCat.Cli.Tests.csproj" />
+    <Project Path="tests/InterCat.Sdk.Tests/InterCat.Sdk.Tests.csproj" />
   </Folder>
 </Solution>

@@ -947,6 +947,7 @@ Revision 1021 adds AF_UNIX sockets and window messages to the discovery demo (AD
 Revision 1022 draws the RPC edges a capture's COM calls link where it collected no ALPC (ADR-079's seventh addendum).
 Revision 1023 adds COM calls to the discovery demo (ADR-101's second addendum).
 Revision 1024 has the window offer the discovery demo (ADR-101's third addendum).
+Revision 1025 begins M7 with the cooperative SDK's schema and its .NET library (ADR-102).
 
 ## Revisions, a paragraph each, in order
 
@@ -4780,3 +4781,9 @@ host. The demo then holds every mechanism M6 promoted.
 Revision 1024 has the window offer the discovery demo (ADR-101's third addendum): Explore the discovery demo, beside
 Explore the demo in the Investigation menu, makes it once in a folder of InterCat's own beside the demo's, leaving one
 that holds anything else as it is, then opens the same one, its investigation beside the window, saying it was generated.
+
+Revision 1025 begins M7 (ADR-102, its commitment review recorded under §15.2). The SDK's schema, `sdk-v1`, is an
+EventSource in manifest format, `InterCat-Sdk`, whose events name their raising process first: channels by a shared
+identity and epoch, messages by sequence - published once and consumed once a reader - operations under parents, and the
+process's own clock at each transition, an event's version the schema's major. `InterCat.Sdk`, referencing nothing of
+InterCat's, raises it from an application; no capture admits it yet.

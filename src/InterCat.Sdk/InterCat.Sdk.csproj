@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- The provider writes each event's fields in place with WriteEventCore, so instrumenting an application costs no
+         allocation and no boxing per message (contracts/sdk-v1.md, ADR-102). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+</Project>

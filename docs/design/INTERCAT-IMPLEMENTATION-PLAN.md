@@ -2423,6 +2423,8 @@ For a shared-memory ring buffer, instrument logical publish/consume boundaries, 
 
 **Fallback:** if a high-rate path exceeds the chosen event transport, offer bounded batching or metadata-only instrumentation with explicit semantics. Never silently estimate individual message counts from sampled events. Existing applications remain usable without the SDK.
 
+**Status (revision 1025):** begun, its commitment review recorded ([review](../reviews/M7-commitment-review.md)): the SDK's schema, `sdk-v1`, is an EventSource in manifest format, `InterCat-Sdk`, whose events name their raising process first - channels by a shared identity and epoch, messages by sequence, each published once and consumed once a reader, operations under parents, each transition with the process's own clock reading - an event's version the schema's major (ADR-102); and `InterCat.Sdk`, referencing nothing of InterCat's, raises it from an application.
+
 ### M8 — Conversation reconstruction and payload decoders
 
 **Goal:** turn available fragments into navigable conversations while preserving gaps and source boundaries.
@@ -2674,6 +2676,7 @@ Required ADRs, each recorded before the corresponding implementation and each st
 | ADR-099 | A resource two or more drawn processes held is a hub, joined to each by a membership with no traffic value: a section by its views or its handles, never joined, or a named synchronization object, never an image's section nor a socket; derived only where a process made a record of a mechanism that has resources; joined once to each drawn node holding it, two or more, never to the rest of the machine; drawn after every process is placed, the most holders first within the budget, its holders kept out of No relationships; a diamond at a fixed size whose card names who held it and says holding it is no traffic (plan M6, §3.5, §6.3) |
 | ADR-100 | The capability catalog explains every mechanism, read from no machine: each mechanism EN-Mechanism names, its sources, the tier fixtures measured on each build and why it stands where it does, an unsupported one explained and never left out; a search keeps those whose words hold its text; printed, never written as a machine's report |
 | ADR-101 | The discovery demo generates what driverless discovery finds, never a measurement: a second generated investigation of one host, M5's demo unchanged, published as the demo's and the same every time, its records shaped as a capture's so every view derives from them - named objects and a section by its handles and its views first, each promoted mechanism in a revision of its own |
+| ADR-102 | The cooperative SDK is a versioned EventSource, `InterCat-Sdk`, whose records name their own process: channels by a shared identity and epoch, messages by sequence, published once and consumed once a reader, operations under parents, the process's own clock at each transition; an event's version the schema's major; a library referencing nothing of InterCat's |
 | ADR-098 | The resource-topology basis counts each resource once over its known lifetime, never its records: in scope where its first-to-last records meet the interval, open where it was made before the capture or held at its stop; `ActiveChannels` the resources, those a process filter's process held; `ActivePeers` the other processes holding one a focus held; `MappingCapacity` the largest extent each section's views mapped, once a section, never bytes moved; what no record binds disclosed and a count beside it a lower bound; a count of records, a mapping lifetime, a grouping and a directional filter unavailable; the resource rule its correlation revision (plan M6, §5.3, §21.1) |
 | ADR-070 | A decoder reads a whole part only when asked, from bytes kept with consent, within 64 KiB and 250 ms, stops at the first line its format does not allow, writes values inertly, and is never kept; the first reads HTTP/1.1 heads from WinINet's parts (plan M8, §11.2, P2) |
 | not written | Byte accounting: the canonical owner rule for a proven association (§5.3). ADR-011 fixed how a domain, a side and an unknown are stored and summed over one segment, and ADR-012 which contributions each accounting takes; which contribution owns a total once a transfer association is proven is still owed and needs the correlators |
@@ -3402,6 +3405,7 @@ src/
   InterCat.Cli/                     icat
   InterCat.Benchmarks/              the performance baseline icat bench publishes
   InterCat.TestWorkloads/           the measured fixtures' traffic and content
+  InterCat.Sdk/                     the cooperative SDK an application references to say its channels, messages and operations
 tools/
   InterCat.AlpcProbe/               whether ALPC links an RPC call to the call that served it (ADR-004)
   InterCat.WinInetProbe/            whether WinINet's capture provider records an exchange's bytes (ADR-036)
@@ -3428,6 +3432,7 @@ tests/
   InterCat.Desktop.Tests/           transforms, palette, layout determinism
   InterCat.Ui.Tests/                rendering and accessibility lane
   InterCat.Cli.Tests/               icat as a person or a script runs it
+  InterCat.Sdk.Tests/               what each of the SDK's calls raises
   InterCat.Property.Tests/          navigation, boundaries, identity
   InterCat.Architecture.Tests/      dependency direction (R19), and this layout against the solution
 bench/results/   fixtures/   contracts/   theme/   docs/adr/

@@ -22,6 +22,10 @@ public sealed class DependencyDirectionTests
             ["InterCat.Desktop"] = ["InterCat.Domain", "InterCat.Application", "InterCat.Storage", "InterCat.Capture.Journal", "InterCat.CaptureBroker.Protocol"],
             ["InterCat.Cli"] = ["InterCat.Benchmarks", "InterCat.Domain", "InterCat.Storage", "InterCat.Analysis", "InterCat.Application", "InterCat.Capture.Windows", "InterCat.Capture.Journal", "InterCat.CaptureBroker.Protocol"],
             ["InterCat.TestWorkloads"] = ["InterCat.Domain"],
+
+            // The cooperative SDK an application references: nothing of InterCat's own, so instrumenting an application
+            // brings in no capture, storage or analysis code (ADR-102).
+            ["InterCat.Sdk"] = [],
         };
 
     [Fact(DisplayName = "R19: project references follow the inward dependency map")]
