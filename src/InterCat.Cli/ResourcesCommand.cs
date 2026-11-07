@@ -132,6 +132,7 @@ internal static class ResourcesCommand
                 Listed = kept.Take(limit).Select(instance => new
                 {
                     Mechanism = instance.Mechanism.ToString(),
+                    Layer = instance.Layer.ToString(),
                     instance.Number,
                     instance.ByViews,
                     instance.Image,

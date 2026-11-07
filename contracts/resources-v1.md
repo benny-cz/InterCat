@@ -1,6 +1,6 @@
 # Resources contract, version 1
 
-Status: M6, revisions 1002 to 1004 (ADR-097)
+Status: M6, revisions 1002 to 1005 (ADR-097, ADR-098)
 Owner: `InterCat.Analysis` (`ResourceInstanceIndex`, rule `resource-instances-v3`)
 Read by: `icat resources`
 
@@ -13,6 +13,7 @@ object, a section by its handles and by its views, and an AF_UNIX socket. It is 
 | Field | Meaning |
 |---|---|
 | `mechanism` | `Synchronization` for a named synchronization object, `SharedSection` for a section by its handles or by its views, `UnixDomainSocket` for an AF_UNIX socket |
+| `layer` | The layer its records are of: `Resource` for a synchronization object's and a section's, `Transport` for an AF_UNIX socket's, which a metric's layer projection keeps or drops it by |
 | `byViews` | Whether it is a section found by its views - the number the view gate gives the value its views carry, `SectionNumber` (28) - rather than by its handles: the two numbers are never joined, so one section can be two instances (ADR-092) |
 | `image` | For a section by its views, whether they are an image's - their extra information's (`ViewInformation`, 30) high byte 0x47 - a module loaded rather than memory a process shared |
 | `views`, `largestView` | For a section by its views, how many views of it the capture saw (`SectionViewNumber`, 27), and the largest extent one mapped (`ViewSize`, 29), never bytes moved through it; zero and null for any other |
@@ -53,7 +54,8 @@ No record of these mechanisms carries a signal, a wait or a byte through shared 
 its handle records topology and never traffic (P27, ADR-084, ADR-092). A socket's sends and receives are its traffic,
 their bytes the transport's where measured (ADR-076), and a socket that carried none was idle: discovered, no traffic
 observed. A section by its views carries no traffic either: a view's size is the extent it mapped. Version 1, revision
-1002's, derived no socket, and version 2, revision 1003's, no section by its views.
+1002's, derived no socket, and version 2, revision 1003's, no section by its views. The resource-topology basis counts
+these resources, the processes sharing them and sections' capacity (`metrics-v1` §8b, revision 1005).
 
 ## 4. `icat resources`
 
@@ -66,7 +68,7 @@ rule and the binding rule, the filters, how many are listed and how many are unn
 listed with every field of §1, its namespace and leaf, and its readings in seconds after the capture's start. Revision
 1003 added `traffic` to each and `idle` to the document under this version: a reader of revision 1002's document finds
 every member it had; revision 1004 added `byViews`, `image`, `views`, `largestView` and each holder's views to each, and
-`images` and `imagesNotListed` to the document, likewise.
+`images` and `imagesNotListed` to the document, likewise, and revision 1005 `layer` to each.
 
 ## 5. Not defined at this version
 

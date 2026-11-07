@@ -31,6 +31,12 @@ public sealed record AnalysisAxes(
     /// </summary>
     public string ServiceRevision { get; init; } = ServiceBinding.Rule;
 
+    /// <summary>
+    /// The resource rule: the `correlationRevision` of an answer on the resource-topology basis, whose resources are a
+    /// derivation's result as operations are (`query-identity-v1` §4, ADR-098).
+    /// </summary>
+    public string ResourceRevision { get; init; } = ResourceInstanceIndex.Rule;
+
     /// <summary>The axes this build answers under, over segments derived by the given normalizer contract.</summary>
     public static AnalysisAxes Current(NormalizerContractVersion normalizer) => new(
         normalizer.Value,
@@ -145,9 +151,15 @@ public static class AnalysisSpecification
                     : axes.EntityRevision);
         }
 
+        // A resource is a derivation's result too, so a topology answer names its resource rule there, and reads no
+        // relation (metrics-v1 §8b).
         if (request.Basis == AnalysisBasis.LogicalOperations)
         {
             json.Token("correlationRevision", axes.OperationRevision);
+        }
+        else if (request.Basis == AnalysisBasis.ResourceTopology)
+        {
+            json.Token("correlationRevision", axes.ResourceRevision);
         }
         else if (UsesRelations(request))
         {
@@ -325,12 +337,6 @@ public static class AnalysisSpecification
     }
 
     /// <summary>
-    /// Whether answering needs records' other ends: any focus but a bare owner, a peer narrowing, a peer grouping, a
-    /// count of peers or channels, or a directional total grouped by process, whose records belong to their sender or
-    /// receiver.
-    /// When it does, the relation rule is one of the result's version axes.
-    /// </summary>
-    /// <summary>
     /// Whether the evidence policy decides anything in the answer: a process filter keeps records by their bindings,
     /// and a process or peer grouping places them by those bindings.
     /// </summary>
@@ -347,15 +353,22 @@ public static class AnalysisSpecification
     internal static bool ReadsProcesses(MetricRequest request) =>
         request.Basis == AnalysisBasis.LogicalOperations || AdmitsByPolicy(request) || UsesRelations(request);
 
+    /// <summary>
+    /// Whether answering needs records' other ends: any focus but a bare owner, a peer narrowing, a peer grouping, a
+    /// count of peers or channels, or a directional total grouped by process, whose records belong to their sender or
+    /// receiver. When it does, the relation rule is one of the result's version axes. A topology answer reads a resource's
+    /// holders, never a record's other end, so it needs none.
+    /// </summary>
     internal static bool UsesRelations(MetricRequest request)
     {
         Metric effective = request.Metric == Metric.Rate && request.RateNumerator is { } numerator ? numerator : request.Metric;
-        return request.Focus is { Role: not ProcessRole.Owner }
-            || request.Between is not null
-            || request.Peer is not null
-            || request.Grouping == LaneGrouping.Peer
-            || effective is Metric.ActivePeers or Metric.ActiveChannels
-            || (ProcessGrouping.ByInstanceFact(request.Grouping) && effective is Metric.BytesSent or Metric.BytesReceived);
+        return request.Basis != AnalysisBasis.ResourceTopology
+            && (request.Focus is { Role: not ProcessRole.Owner }
+                || request.Between is not null
+                || request.Peer is not null
+                || request.Grouping == LaneGrouping.Peer
+                || effective is Metric.ActivePeers or Metric.ActiveChannels
+                || (ProcessGrouping.ByInstanceFact(request.Grouping) && effective is Metric.BytesSent or Metric.BytesReceived));
     }
 
     /// <summary>

@@ -75,7 +75,7 @@ answers.
 |---|---|---|
 | `normalizerContract` | the normalizer contract the segments were derived under, as its integer | always |
 | `entityRevision` | the process binding rule, e.g. `process-binding-v8`; grouped by service container, it and the service binding rule joined by a colon, e.g. `process-binding-v8:service-binding-v1` | when the answer reads a process binding: a process filter, a process or peer grouping, a relation, or an operation |
-| `correlationRevision` | the relation rule, e.g. `transport-endpoint-relation-v4`; on the logical-operations basis, the operation rule, e.g. `rpc-call-operation-v1` | when the answer uses records' other ends, and for every answer on the logical-operations basis |
+| `correlationRevision` | the relation rule, e.g. `transport-endpoint-relation-v4`; on the logical-operations basis, the operation rule, e.g. `rpc-call-operation-v1`; on the resource-topology basis, the resource rule, e.g. `resource-instances-v3` | when the answer uses records' other ends, and for every answer on the logical-operations or resource-topology basis |
 | `metricsContract` | `metrics-v1` | always |
 
 Entity and correlation revisions are named by their rule while derivations are computed on demand from one generation:
@@ -95,6 +95,11 @@ depends on the operation rule and on the binding rule beneath it, and names both
 rule there. At this version such an answer reads no relation (`metrics-v1` §8a), so the axis never has to hold two
 rules; an answer that did would need a new canonicalization version. Added by plan revision 183 under this version, as
 §9 allows: no earlier specification could name an answer on that basis, since every one was unavailable before it.
+
+A resource is a derivation's result as well, so every answer on the resource-topology basis depends on the resource rule
+and names it as its `correlationRevision`. It reads no relation (`metrics-v1` §8b), and depends on the binding rule only
+where a process filter reads the processes holding each resource, so `entityRevision` is present only then. Added by plan
+revision 1005 under this version, as §9 allows: every answer on that basis was unavailable before it.
 
 A grouping by service container reads which services each instance hosted, bound by `service-binding-v1` (ADR-096), so its
 `entityRevision` names that rule after the process binding rule, joined by a colon - one axis holding the entity rules the

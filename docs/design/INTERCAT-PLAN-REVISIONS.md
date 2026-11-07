@@ -927,6 +927,7 @@ Revision 1001 lets the window group by service container and an investigation ke
 Revision 1002 derives resource instances (ADR-097, contracts/resources-v1.md): each named synchronization object and each section by its handles, the number its gate gave it from its first record to its last, named as its closes name it, held by the processes its records bind to, and listed by icat resources by namespace.
 Revision 1003 makes AF_UNIX sockets resource instances with the traffic they carried (ADR-097's addendum): icat resources --idle lists the discovered resources that carried none apart from the traffic observed, as M6 asks.
 Revision 1004 makes a section by its views a resource instance of its own (ADR-097's second addendum), never joined to its handles' number, with its views and their largest extent; an image's sections are listed only with icat resources --images.
+Revision 1005 answers the resource-topology basis from the derived resources (ADR-098): icat metric --basis resource-topology counts resources by their known lifetime, the processes sharing one with a focus and sections' capacity, never traffic.
 
 ## Revisions, a paragraph each, in order
 
@@ -4633,3 +4634,12 @@ mapped, unmapped and held by a rundown - with how many views were seen and the l
 through it. A section whose views are an image's is a module loaded rather than memory shared, and `icat resources`
 lists it only with `--images`. A resource's last record now decides its end for every mechanism: a close or an
 unmapping, or the stop's rundown, which a view's opcode tells from the start's. `resource-instances-v3` derives them.
+
+Revision 1005 answers the resource-topology basis (ADR-098, `metrics-v1` §8b), which every session had answered
+`NoResourceTopology` until resources were derived. A resource is counted once, never by its records, where its known
+lifetime meets the interval - open before its first record where it was made before the capture and after its last
+where the stop held it. `ActiveChannels` counts resources, those a process filter's process held; `ActivePeers` the other
+processes holding one a focus held; `MappingCapacity` the largest extent each section's views mapped, once a section,
+never bytes moved. A resource whose records bound to no process is disclosed and a count beside it is a lower bound, and
+a count of records, a mapping lifetime, a grouping and a directional filter are said unavailable. Each resource carries
+the layer its records are of, for a layer projection, and an answer names its resource rule as its correlation revision.

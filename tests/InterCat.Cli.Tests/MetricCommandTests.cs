@@ -127,6 +127,43 @@ public sealed class MetricCommandTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "R3: icat metric counts resources on the resource-topology basis - the resources, their ends and memberships, and the capacity their views mapped - and never traffic")]
+    public async Task ResourceTopologyIsCounted()
+    {
+        using var mapped = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        Publish(mapped.Store, rows, fields: fields);
+        mapped.Store.ReleaseSegmentReaders();
+
+        // Section 4 by its handles and sections 4 to 7 by their views, with what their records establish.
+        (InterCatExitCode code, string text, _) = await Run(["metric", mapped.Path, "--basis", "resource-topology", "--metric", "active-channels"]);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Value +5 resources\r?$", text);
+        Assert.Matches(@"(?m)^  Rules +resource-instances-v3 over process-binding-v\d+\r?$", text);
+        Assert.Matches(@"Shared section\s+5", text);
+        Assert.Matches(@"(?m)^  By their views +4 sections, 1 image's, never joined to a section by its handles\r?$", text);
+        Assert.Matches(@"(?m)^  Their ends +2 made before the capture · 1 held at the stop · 1 ended unseen\r?$", text);
+        Assert.Matches(@"(?m)^  Memberships +6 processes holding one, each pair once\r?$", text);
+        Assert.Contains("never traffic through it (P27)", Regex.Replace(text, @"\s+", " "), Ordinal);
+
+        // Capacity in a document: each section's largest view once, the rule the resources were derived under beside it.
+        (code, text, _) = await Run(["metric", mapped.Path, "--basis", "resource-topology", "--metric", "mapping-capacity", "--json"]);
+        Assert.Equal(InterCatExitCode.Success, code);
+        using (JsonDocument json = JsonDocument.Parse(text))
+        {
+            Assert.Equal((94208L, "Bytes", "resource-instances-v3"), (json.RootElement.GetProperty("value").GetInt64(),
+                json.RootElement.GetProperty("unit").GetString(), json.RootElement.GetProperty("resourceRule").GetString()));
+            JsonElement taken = json.RootElement.GetProperty("resources");
+            Assert.Equal((5L, 4L, 1L, 6L), (taken.GetProperty("taken").GetProperty("SharedSection").GetInt64(),
+                taken.GetProperty("byViews").GetInt64(), taken.GetProperty("images").GetInt64(), taken.GetProperty("memberships").GetInt64()));
+        }
+
+        // A grouped topology answer is not defined at this version, which is said, never answered as none.
+        (code, text, _) = await Run(["metric", mapped.Path, "--basis", "resource-topology", "--metric", "active-channels", "--group-by", "process"]);
+        Assert.Equal(InterCatExitCode.PermissionOrCapabilityFailure, code);
+        Assert.Matches(@"(?m)^  Reason +No derived resource answers it\r?$", text);
+    }
+
     [Fact(DisplayName = "R21: icat metric says what it cannot answer and why, never that a session without what a request needs holds nothing")]
     public async Task WhatCannotBeAnsweredIsSaid()
     {

@@ -145,8 +145,8 @@ public sealed class ResourcesCommandTests
         Assert.Equal(1, json.RootElement.GetProperty("imagesNotListed").GetInt32());
         JsonElement mapped = json.RootElement.GetProperty("listed").EnumerateArray()
             .Single(item => item.GetProperty("byViews").GetBoolean() && item.GetProperty("number").GetInt64() == 6);
-        Assert.Equal((1, 8192L, false), (mapped.GetProperty("views").GetInt32(), mapped.GetProperty("largestView").GetInt64(),
-            mapped.GetProperty("image").GetBoolean()));
+        Assert.Equal((1, 8192L, false, "Resource"), (mapped.GetProperty("views").GetInt32(), mapped.GetProperty("largestView").GetInt64(),
+            mapped.GetProperty("image").GetBoolean(), mapped.GetProperty("layer").GetString()));
         Assert.Equal((0, 1, 1), mapped.GetProperty("holders").EnumerateArray().Select(holder => (holder.GetProperty("viewsMapped").GetInt32(),
             holder.GetProperty("viewsUnmapped").GetInt32(), holder.GetProperty("viewsListed").GetInt32())).Single());
     }

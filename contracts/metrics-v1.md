@@ -2,8 +2,9 @@
 
 Status: **frozen for the source-observations basis, with process filters, grouping by process instance, executable,
 terminal session (since plan revision 404), mechanism and peer, and implemented; on the logical-operations basis, operations started, completed and failed are
-counted from RPC calls since revision 183 (§8a)**. The resource-topology basis, the rest of the logical-operations
-basis, grouping by any other entity and canonical-owner accounting are defined here as contract and reported as
+counted from RPC calls since revision 183 (§8a); on the resource-topology basis, resources, the processes sharing them
+and sections' capacity are counted since revision 1005 (§8b)**. The rest of the logical-operations and resource-topology
+bases, grouping by any other entity and canonical-owner accounting are defined here as contract and reported as
 unavailable by every session until the derivations they need exist (§12).
 
 This contract is §21.2's `metrics-v1`: contribution keys, byte domains, accounting sides, cohorts, unknown
@@ -373,7 +374,7 @@ with no value:
 |---|---|
 | `NoDerivedData` | the generation publishes no derived segment |
 | `NoLogicalOperations` | a logical-operations request no derived operation answers: a mechanism or layer no correlator derives operations for, a duration of an interval no operation measures, a count of channels, `Errors` with an accounting side, a direction a call does not have, or a filter, grouping or count of peers over a capture that collected no ALPC to link calls (§8a) |
-| `NoResourceTopology` | a resource-topology basis, before resources and memberships are derived |
+| `NoResourceTopology` | a resource-topology request no derived resource answers: a count of resources' records, a mapping lifetime, a grouping, or `sender`, `receiver` or a directional `between` (§8b); every request on that basis before revision 1005 |
 | `NoEntityBindings` | process grouping, a process filter, or a peer or channel count, on a session that does not describe its clock |
 | `NoStatusDomain` | `Errors`: §7.3 names a status domain §23 assigns no enumeration |
 | `NoTransferAssociations` | `CanonicalOwner`, before a correlator proves an association between one send record and one receive record |
@@ -478,6 +479,48 @@ beside the per-mechanism states.
 **Identity.** An answer on this basis depends on the operation rule, `rpc-call-operation-v1`, and on the binding rule its
 calls are joined under, and names both (`contracts/query-identity-v1.md` §4).
 
+## 8b. The resource-topology basis (revision 1005)
+
+A resource is a resource instance `contracts/resources-v1.md` derives (`resource-instances-v3`): a named synchronization
+object, a section by its handles or by its views - two resources, never joined (ADR-092) - or an AF_UNIX socket. Its
+records are membership and lifecycle facts, and on this basis none is traffic: a handle or a view proves who held a
+resource, never what moved through it (P27). ADR-098 records the decisions below.
+
+**A resource is counted once, by its known lifetime, never by its records.** It is in scope where its known lifetime
+meets the interval: from its first record to its last, open before the first where it was made before the capture and
+after the last where the stop's rundown held it; without an interval, every resource is. A mechanism projection keeps a
+resource of that mechanism, and a layer projection one whose records are of that layer - `Resource` for a
+synchronization object's and a section's, `Transport` for a socket's. Each resource left out is counted by why: the
+projection, the interval or the process filter.
+
+| Metric | Takes |
+|---|---|
+| `ActiveChannels` | each resource in scope, once; with `owner(P)` or `participant(P)` those P held, with `peer(P,Q)` those both held, and with `between(A,B)` either way those held by a process of each set |
+| `ActivePeers` | with `owner(P)` or `participant(P)`, the process instances other than P holding a resource P held - at any time in scope, not at once with P - never P itself |
+| `MappingCapacity` | the largest extent a view of each section by its views mapped, summed once a section however many processes mapped it: a lower bound of what it holds, never bytes moved through it (P3) |
+
+A holder is a process instance a resource's records bind to under the evidence policy. A resource a process filter
+leaves out whose records bound to no process could be the filter's, so it is disclosed by those records' reasons
+(`unresolvedCounterparts`), never counted, and the count is a lower bound beside it. A resource the focus held whose
+records bound to none may have a holder nothing names, so a count of peers is a lower bound beside those records
+(`unknownCounterparts`), and `NothingMeasured` where they are all there is. A section by its handles records no size, so
+it is an unknown contribution to a capacity; a synchronization object or a socket maps nothing and takes no part; and a
+capacity no extent is known of is `NothingMeasured`, never zero (R21, P1). An image's sections are counted and said apart.
+A count with no resource in scope is 0, stated as a count of the resources the generation derives, not a finding that
+none existed (R21).
+
+An answer carries `resourceRule` and `resources`: the resources taken, by mechanism; how many are sections by their views
+and how many an image's; how many were made before the capture, held at its stop or ended unseen; their memberships, each
+process holding each resource once; those a process filter disclosed; and every resource the generation derives.
+
+**What no derived resource answers** is `NoResourceTopology`, with what it needs: `Observations`, a count of resources'
+records rather than of resources; the `Duration` of a mapping lifetime; any grouping; and `sender`, `receiver` and a
+directional `between`, which select data that flowed one way where holding a resource is undirected.
+
+**Identity.** An answer on this basis depends on the resource rule, `resource-instances-v3`, which it names as its
+`correlationRevision`, and on the binding rule only where a process filter reads holders
+(`contracts/query-identity-v1.md` §4).
+
 ## 9. Evidence
 
 An ungrouped result may carry the first records it counted, in segment order, bounded by the request. On the
@@ -514,13 +557,13 @@ not exist yet and are answered as unavailable today.
 | A requests a 4,096-byte pipe write; a completion reports 1,024 | `RequestedIoBytes` 4,096. `BytesSent`/`CompletedIo` 1,024. `BytesSent`/`TransportObserved`: `NothingMeasured`, naming `RequestedIo` and `CompletedIo` as what was measured. |
 | An operation starts at 0.5 s and ends at 2.5 s; buckets [0,1), [1,2), [2,3) | `OperationsStarted` 1/0/0 and `OperationsCompleted` 0/0/1, each by the record that puts the call in a bucket (§8a). Overlap counts and occupied durations are owed with cohorts (§12). |
 | A 10-second window with 100 observations and a 2-second loss | Observed rate 10/s over the whole window, labelled observed; no corrected 12.5/s. The loss interval itself is owed with the coverage ledger. |
-| Two processes map one 8 MiB section | Owed: `NoResourceTopology`. |
+| Two processes map one 8 MiB section | Resource-topology basis (§8b): `ActiveChannels` 1, the section by its views, with 2 memberships; `MappingCapacity` 8 MiB; `ActivePeers` 1 from either process as `owner(P)`. No byte or rate metric is defined on the basis, and `Observations` there is `NoResourceTopology` at this version. |
 | PID 400 exits, is reused, and a late event belongs to the earlier instance | Grouped by process or filtered with `owner(P)`, the late event binds to the earlier instance by its reading, and the newer instance's total never includes it. By default the newer instance's own non-lifecycle records are unadmitted candidates; `IncludeCandidates` includes them, labelled by the selected policy. Provider start keys carried by `source-fields-v1` strengthen lifecycle identity where the source supplies them. |
 
 ## 12. Not defined at this version
 
-- Grouping by service, host, endpoint, package or channel, each of which needs an entity derivation this version does
-  not have. Grouping by terminal session is §6's since plan revision 404.
+- Grouping by host, endpoint or channel, each of which needs an entity derivation this version does not have. Grouping
+  by terminal session is §6's since plan revision 404, and by package and service container since revisions 998 and 999.
 - The canonical-owner choice itself (§5.3 rules 1–3). A relation proves which process is at a record's other end,
   not which of that process's records is the same transfer; the owner needs that per-transfer association.
 - Durations of any interval but an RPC client call and a server execution, and a latency distribution beyond the
@@ -529,3 +572,4 @@ not exist yet and are answered as unavailable today.
   end is §8a's since plan revision 228.
 - Covered-time rates, which need a source-specific valid exposure duration and a different label.
 - Aggregate cells over a boundary set (§10.3). A result here is one total, or one total per group, over one scope.
+- On the resource-topology basis, a count of resources' records, a mapping lifetime and a grouped answer (§8b).

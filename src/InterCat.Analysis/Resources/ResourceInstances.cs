@@ -41,6 +41,12 @@ public sealed record ResourceInstance
 {
     public required Mechanism Mechanism { get; init; }
 
+    /// <summary>
+    /// The layer its records are of, as its source admits them: `Resource` for a synchronization object's and a section's,
+    /// `Transport` for an AF_UNIX socket's. A layer projection keeps or drops a resource by it.
+    /// </summary>
+    public ObservationLayer Layer { get; init; } = ObservationLayer.Resource;
+
     /// <summary>The number the capture's gate gave this incarnation, never a kernel address; never zero.</summary>
     public required long Number { get; init; }
 
@@ -266,6 +272,7 @@ public sealed class ResourceInstanceIndex
         SegmentColumnSlice bytes = default;
         SegmentColumnSlice availability = default;
         SegmentColumnSlice opcodes = default;
+        SegmentColumnSlice layers = default;
         ProcessBinding[]? owners = null;
         for (int row = 0; row < segment.RowCount; row++)
         {
@@ -285,6 +292,7 @@ public sealed class ResourceInstanceIndex
                 bytes = segment.Slice(SegmentColumnId.ByteValue);
                 availability = segment.Slice(SegmentColumnId.ByteAvailability);
                 opcodes = segment.Slice(SegmentColumnId.Opcode);
+                layers = segment.Slice(SegmentColumnId.Layer);
                 owners = processes.OwnersOf(segment);
                 opened = true;
             }
@@ -293,13 +301,14 @@ public sealed class ResourceInstanceIndex
             ProcessBinding owner = owners![row] is { IsBound: true } admitted && !admitted.IsAdmittedUnder(policy)
                 ? ProcessBinding.Unresolved(ProcessBindingReason.NotAdmittedByPolicy)
                 : owners[row];
+            var layer = (ObservationLayer)layers.UnsignedAt(row)!.Value;
             if (mechanism == Mechanism.UnixDomainSocket)
             {
                 // A transfer's bytes are known where its record measured them, and unmeasured where it did not (R3).
                 socketAt[address] = sockets.Count;
                 sockets.Add(new SocketRow(
                     new Mark(ticks.SignedAt(row)!.Value, address, (ObservationKind)kinds.UnsignedAt(row)!.Value,
-                        (Direction)directions.UnsignedAt(row)!.Value),
+                        (Direction)directions.UnsignedAt(row)!.Value, layer),
                     (FieldAvailability)availability.UnsignedAt(row)!.Value == FieldAvailability.Present ? bytes.SignedAt(row) : null,
                     owner));
                 continue;
@@ -323,7 +332,7 @@ public sealed class ResourceInstanceIndex
                         ? seen
                         : drafts[(mechanism, true, viewSection)] = new() { ByViews = true };
                     views.Add(
-                        new Mark(ticks.SignedAt(row)!.Value, address, kind, (Direction)directions.UnsignedAt(row)!.Value,
+                        new Mark(ticks.SignedAt(row)!.Value, address, kind, (Direction)directions.UnsignedAt(row)!.Value, layer,
                             StartRundown: kind == ObservationKind.Inventory && opcodes.UnsignedAt(row) == ViewStartRundown),
                         null,
                         null,
@@ -355,7 +364,7 @@ public sealed class ResourceInstanceIndex
 
             Draft draft = drafts.TryGetValue((mechanism, false, number), out Draft? held) ? held : drafts[(mechanism, false, number)] = new();
             draft.Add(
-                new Mark(ticks.SignedAt(row)!.Value, address, kind, (Direction)directions.UnsignedAt(row)!.Value),
+                new Mark(ticks.SignedAt(row)!.Value, address, kind, (Direction)directions.UnsignedAt(row)!.Value, layer),
                 kind is ObservationKind.Close or ObservationKind.Inventory ? name : null,
                 carried.Type,
                 owner);
@@ -417,7 +426,8 @@ public sealed class ResourceInstanceIndex
 
     // A record's place and what it says of its instance's handles or views: a view's rundown at the session's start is an
     // inventory as the stop's is, and says nothing of the stop.
-    private readonly record struct Mark(long Ticks, RecordAddress Address, ObservationKind Kind, Direction Direction, bool StartRundown = false)
+    private readonly record struct Mark(
+        long Ticks, RecordAddress Address, ObservationKind Kind, Direction Direction, ObservationLayer Layer, bool StartRundown = false)
         : IComparable<Mark>
     {
         public int CompareTo(Mark other) => Ticks != other.Ticks ? Ticks.CompareTo(other.Ticks) : Address.CompareTo(other.Address);
@@ -540,6 +550,7 @@ public sealed class ResourceInstanceIndex
         public ResourceInstance ToInstance(Mechanism mechanism, bool byViews, long number, ProcessInstanceIndex processes, Dictionary<long, string> typeNames) => new()
         {
             Mechanism = mechanism,
+            Layer = first.Layer,
             Number = number,
             ByViews = byViews,
             Image = image,

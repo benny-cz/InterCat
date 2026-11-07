@@ -23,11 +23,13 @@ public sealed class ResourceInstanceTests
         (IReadOnlyList<ResourceInstance> resources, ProcessInstanceIndex processes) = Derive(session.Store);
         int Pid(ProcessInstanceId id) => processes.Find(id)!.ProcessId;
 
-        // By mechanism, then by number: the section, then the four synchronization objects; a zero number is none.
+        // By mechanism, then by number: the section, then the four synchronization objects; a zero number is none. Each is
+        // of the layer its handle records are, a resource's.
         Assert.Equal(
             [(Mechanism.SharedSection, 9L), (Mechanism.Synchronization, 1L), (Mechanism.Synchronization, 2L),
                 (Mechanism.Synchronization, 3L), (Mechanism.Synchronization, 4L)],
             resources.Select(resource => (resource.Mechanism, resource.Number)));
+        Assert.All(resources, resource => Assert.Equal(ObservationLayer.Resource, resource.Layer));
 
         // Made by 100, duplicated into 200, closed in each: its whole lifetime seen, named only by its closes.
         ResourceInstance ready = resources.Single(resource => resource.Number == 1);
@@ -96,8 +98,10 @@ public sealed class ResourceInstanceTests
         (IReadOnlyList<ResourceInstance> resources, ProcessInstanceIndex processes) = Derive(session.Store);
         ResourceInstance[] sockets = [.. resources.Where(resource => resource.Mechanism == Mechanism.UnixDomainSocket)];
 
-        // Each socket's records are its own: the TCP send whose connection id is 5 is none of them.
+        // Each socket's records are its own: the TCP send whose connection id is 5 is none of them. A socket is of the layer
+        // its records are, the transport's.
         Assert.Equal([(5L, 3L), (6L, 5L), (7L, 5L), (8L, 1L)], sockets.Select(socket => (socket.Number, socket.Records)));
+        Assert.All(sockets, socket => Assert.Equal(ObservationLayer.Transport, socket.Layer));
         Assert.Equal(
             [
                 (5L, new ResourceTraffic(0, 0, 0, 0, 0)), (6L, new ResourceTraffic(1, 1, 96, 120, 0)),

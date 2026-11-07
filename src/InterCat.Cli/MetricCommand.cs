@@ -19,6 +19,9 @@ internal sealed record MetricDocument
     public required string? BindingRule { get; init; }
     public required string? RelationRule { get; init; }
     public required string? OperationRule { get; init; }
+
+    /// <summary>The rule a resource-topology answer's resources were derived under; null on any other basis (metrics-v1 §8b).</summary>
+    public required string? ResourceRule { get; init; }
     public required bool Available { get; init; }
     public required MetricUnavailableDocument? Unavailable { get; init; }
     public required long? Value { get; init; }
@@ -28,6 +31,7 @@ internal sealed record MetricDocument
     public required MetricAccountingDocument? Accounting { get; init; }
     public required MetricContributionsDocument Contributions { get; init; }
     public required MetricOperationsDocument? Operations { get; init; }
+    public required MetricResourcesDocument? Resources { get; init; }
     public required MetricDistributionDocument? Distribution { get; init; }
     public required MetricExclusionsDocument Excluded { get; init; }
     public required MetricReadDocument Read { get; init; }
@@ -280,6 +284,25 @@ internal sealed record MetricOperationsDocument
     public required long Calls { get; init; }
     public required IReadOnlyDictionary<string, long> InScope { get; init; }
     public required long UnpairedFailures { get; init; }
+}
+
+/// <summary>
+/// The resources a resource-topology answer took (`metrics-v1` §8b): by mechanism, how many are sections by their views and
+/// an image's, how many were made before the capture, held at its stop or ended unseen, their memberships, those a process
+/// filter disclosed, and every resource the generation derives.
+/// </summary>
+internal sealed record MetricResourcesDocument
+{
+    public required string Rule { get; init; }
+    public required long Resources { get; init; }
+    public required IReadOnlyDictionary<string, long> Taken { get; init; }
+    public required long ByViews { get; init; }
+    public required long Images { get; init; }
+    public required long MadeBefore { get; init; }
+    public required long HeldAtStop { get; init; }
+    public required long EndUnseen { get; init; }
+    public required long Memberships { get; init; }
+    public required long Disclosed { get; init; }
 }
 
 /// <summary>A duration's distribution in nanoseconds: each statistic a duration one operation took, by nearest rank.</summary>
@@ -755,6 +778,7 @@ internal static class MetricCommand
             BindingRule = result.BindingRule,
             RelationRule = result.RelationRule,
             OperationRule = result.OperationRule,
+            ResourceRule = result.ResourceRule,
             Available = result.IsAvailable,
             Unavailable = result.IsAvailable
                 ? null
@@ -816,6 +840,21 @@ internal static class MetricCommand
                         .OrderBy(entry => entry.Key)
                         .ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
                     UnpairedFailures = operations.UnpairedFailures,
+                }
+                : null,
+            Resources = result.Resources is { } resources
+                ? new()
+                {
+                    Rule = result.ResourceRule ?? ResourceInstanceIndex.Rule,
+                    Resources = resources.Resources,
+                    Taken = resources.Taken.ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
+                    ByViews = resources.ByViews,
+                    Images = resources.Images,
+                    MadeBefore = resources.MadeBefore,
+                    HeldAtStop = resources.HeldAtStop,
+                    EndUnseen = resources.EndUnseen,
+                    Memberships = resources.Memberships,
+                    Disclosed = resources.Disclosed,
                 }
                 : null,
             Distribution = MetricDistributionDocument.From(result.Distribution),
@@ -1150,6 +1189,11 @@ internal static class MetricCommand
                 $"{RpcCallIndex.OperationRule} over {result.BindingRule ?? ProcessInstanceIndex.BindingRule}"
                 + (result.RelationRule is { } peerRule ? $", other ends by {peerRule}" : string.Empty));
         }
+        else if (request.Basis == AnalysisBasis.ResourceTopology)
+        {
+            // A resource is a derivation's result held by process instances, so a topology answer names both rules.
+            ConsoleUi.Field("Rules", $"{ResourceInstanceIndex.Rule} over {ProcessInstanceIndex.BindingRule}");
+        }
         else if (request.Focus is not null || request.Between is not null)
         {
             ConsoleUi.Field(
@@ -1254,10 +1298,13 @@ internal static class MetricCommand
                 $"{CountText.Of(document.Read.Rows, "observation")} in {CountText.Of(document.Read.Segments, "segment")}")
             + (document.Operations is { } read
                 ? string.Create(CultureInfo.CurrentCulture, $", paired into {read.Calls:N0} {(read.Calls == 1 ? "call" : "calls")}")
+                : document.Resources is { } derived
+                ? string.Create(CultureInfo.CurrentCulture, $", into {CountText.Of(derived.Resources, "resource")}")
                 : string.Empty));
 
         RenderGroups(document, result);
         RenderOperations(document, result);
+        RenderResources(result);
         RenderSides(document, result);
         RenderExclusions(document, result);
         RenderEvidence(document, result);
@@ -1306,6 +1353,41 @@ internal static class MetricCommand
     /// <summary>A count of errors, or a rate of them: the metric that counts completed calls by their status.</summary>
     private static bool IsErrorCount(MetricRequest request) =>
         (request.Metric == Metric.Rate ? request.RateNumerator : request.Metric) == Metric.Errors;
+
+    /// <summary>
+    /// The resources a resource-topology answer took, by mechanism, and what their records establish of their ends and
+    /// holders (`metrics-v1` §8b).
+    /// </summary>
+    private static void RenderResources(MetricResult result)
+    {
+        if (result.Resources is not { } resources)
+        {
+            return;
+        }
+
+        ConsoleUi.Line();
+        ConsoleUi.Line("  Resources this answer took, by mechanism:");
+        if (resources.Taken.Count == 0)
+        {
+            ConsoleUi.Line("  none");
+            return;
+        }
+
+        ConsoleUi.Table(
+            ["Mechanism", "Resources"],
+            [.. resources.Taken.Select(entry => new[] { MechanismText.Name(entry.Key), ConsoleUi.Count(entry.Value) })]);
+        if (resources.ByViews > 0)
+        {
+            ConsoleUi.Field("By their views", CountText.Of(resources.ByViews, "section")
+                + (resources.Images > 0 ? ", " + CountText.Of(resources.Images, "image's", "images'") : string.Empty)
+                + ", never joined to a section by its handles");
+        }
+
+        ConsoleUi.Field("Their ends", string.Create(CultureInfo.CurrentCulture,
+            $"{resources.MadeBefore:N0} made before the capture · {resources.HeldAtStop:N0} held at the stop · {resources.EndUnseen:N0} ended unseen"));
+        ConsoleUi.Field("Memberships", CountText.Of(resources.Memberships, "process holding one", "processes holding one")
+            + ", each pair once");
+    }
 
     /// <summary>
     /// The calls a logical-operations answer read, by what their records establish, and which of them it counted: the
@@ -1395,8 +1477,10 @@ internal static class MetricCommand
         }
 
         // Operations are counted whole, by the record that put each in scope, and a projection either keeps every call or
-        // is unavailable, so an operation answer states only what the filter and the interval left out.
+        // is unavailable, so an operation answer states only what the filter and the interval left out. A topology answer
+        // leaves out resources, each whole, by its mechanism and layer, its holders and its known lifetime.
         bool operations = result.Request.Basis == AnalysisBasis.LogicalOperations;
+        bool topology = result.Request.Basis == AnalysisBasis.ResourceTopology;
         if (!operations)
         {
             rows.Add(["outside the projection", ConsoleUi.Count(document.Excluded.ByProjection)]);
@@ -1409,17 +1493,21 @@ internal static class MetricCommand
         if (result.Request.Focus is not null || result.Request.Between is not null)
         {
             rows.Add(["outside the process filter", ConsoleUi.Count(document.Excluded.ByProcessFilter)]);
-            long undecided = document.Excluded.UnresolvedCounterparts.Values.Sum();
+            long undecided = topology ? result.Resources?.Disclosed ?? 0 : document.Excluded.UnresolvedCounterparts.Values.Sum();
             if (undecided > 0)
             {
-                rows.Add(["  of which the other end is unresolved", ConsoleUi.Count(undecided)]);
+                rows.Add([topology ? "  of which records bound to no process" : "  of which the other end is unresolved",
+                    ConsoleUi.Count(undecided)]);
             }
         }
 
-        rows.Add(["outside the interval", ConsoleUi.Count(document.Excluded.OutsideInterval)]);
+        rows.Add([topology ? "outside the interval, by their known lifetime" : "outside the interval",
+            ConsoleUi.Count(document.Excluded.OutsideInterval)]);
         ConsoleUi.Line();
-        ConsoleUi.Line(operations ? "  Calls left out of this answer:" : "  Records left out of this answer:");
-        ConsoleUi.Table(["Why", operations ? "Calls" : "Records"], rows);
+        ConsoleUi.Line(operations ? "  Calls left out of this answer:"
+            : topology ? "  Resources left out of this answer:"
+            : "  Records left out of this answer:");
+        ConsoleUi.Table(["Why", operations ? "Calls" : topology ? "Resources" : "Records"], rows);
         if (result.UnlinkedCalls.Count > 0)
         {
             // Why no link reached the calls an answer about other ends disclosed or could not attribute (operations-v1 §5c).
@@ -1513,12 +1601,20 @@ internal static class MetricCommand
 
         if (result.Unit != MeasurementUnit.Count)
         {
-            return ConsoleUi.Bytes(document.Value);
+            return ConsoleUi.Bytes(document.Value)
+                + (result.Request.Metric == Metric.MappingCapacity ? " of capacity mapped, never moved" : string.Empty);
         }
 
         long count = document.Value ?? 0;
+        bool topology = result.Request.Basis == AnalysisBasis.ResourceTopology;
         return result.Request.Metric switch
         {
+            Metric.ActiveChannels when topology =>
+                (result.UnresolvedCounterparts.Count > 0 ? "at least " : string.Empty)
+                + $"{ConsoleUi.Count(count)} {(count == 1 ? "resource" : "resources")}",
+            Metric.ActivePeers when topology =>
+                (result.UnknownContributions > 0 ? "at least " : string.Empty)
+                + $"{ConsoleUi.Count(count)} {(count == 1 ? "process holds" : "processes hold")} a resource it held",
             Metric.Observations => CountText.Of(count, "observation"),
             Metric.ActivePeers when result.Request.Grouping is not null =>
                 $"{ConsoleUi.Count(count)} {(count == 1 ? "process has" : "processes have")} at least one resolved peer",
@@ -1633,9 +1729,12 @@ internal static class MetricCommand
     /// Why a request is unavailable, as its explanation's heading: the reason's name in words, but where no operation
     /// derived answers the request it says so, rather than that the session holds no operation when it holds calls.
     /// </summary>
-    private static string Reason(string reason) => reason == nameof(MetricUnavailableReason.NoLogicalOperations)
-        ? "No derived operation answers it"
-        : Words(reason);
+    private static string Reason(string reason) => reason switch
+    {
+        nameof(MetricUnavailableReason.NoLogicalOperations) => "No derived operation answers it",
+        nameof(MetricUnavailableReason.NoResourceTopology) => "No derived resource answers it",
+        _ => Words(reason),
+    };
 
     private static void RenderMatrix(bool json)
     {
@@ -2088,6 +2187,12 @@ internal static class MetricCommand
         ConsoleUi.Line("      scope and started those whose start is; --statistic median (default), p95 or max is");
         ConsoleUi.Line("      the value and what a grouping ranks by. Calls without both records are stated as");
         ConsoleUi.Line("      censored or unpaired, never given a duration.");
+        ConsoleUi.Line("      --basis resource-topology counts resources, as icat resources lists them: each");
+        ConsoleUi.Line($"      instance {ResourceInstanceIndex.Rule} derives, in scope where its known lifetime meets");
+        ConsoleUi.Line("      the interval. active-channels counts them, those the focus held with --owner or");
+        ConsoleUi.Line("      --participant; active-peers the other processes holding one the focus held; and");
+        ConsoleUi.Line("      mapping-capacity the largest extent each section's views mapped, once a section,");
+        ConsoleUi.Line("      never bytes moved. None of it is traffic.");
         ConsoleUi.Line("      Every answer names its query identity: the SHA-256 of the canonical specification");
         ConsoleUi.Line("      over the snapshot it read (query-identity-v1). --print-canonical prints that");
         ConsoleUi.Line("      canonical form and identity without answering.");

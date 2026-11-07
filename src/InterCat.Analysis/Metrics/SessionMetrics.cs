@@ -369,7 +369,11 @@ public enum MetricUnavailableReason
     /// </summary>
     NoLogicalOperations = 1,
 
-    /// <summary>Nothing in this session derives resources or memberships yet.</summary>
+    /// <summary>
+    /// No resource this version derives answers the request: a count of resources' records, a mapping lifetime, a grouped
+    /// topology answer, or a process filter that selects data flowing one way, which no membership has
+    /// (`contracts/metrics-v1.md` §8b).
+    /// </summary>
     NoResourceTopology = 2,
 
     /// <summary>The entity bindings a peer or channel count needs do not exist yet.</summary>
@@ -805,6 +809,15 @@ public sealed record MetricResult
     /// <summary>The calls a logical-operations answer read, by state; null on any other basis.</summary>
     public MetricOperations? Operations { get; init; }
 
+    /// <summary>
+    /// The rule a resource-topology answer's resources were derived under, its `correlationRevision` (§24, I16); null on any
+    /// other basis.
+    /// </summary>
+    public string? ResourceRule { get; init; }
+
+    /// <summary>The resources a resource-topology answer took, by what their records establish; null on any other basis.</summary>
+    public MetricResources? Resources { get; init; }
+
     /// <summary>A duration answer's distribution over its cohort; null for any other metric, and when nothing was measured.</summary>
     public MetricDistribution? Distribution { get; init; }
 
@@ -1141,7 +1154,9 @@ public static partial class SessionMetrics
                     ? given
                     : null,
         };
-        if (AnalysisSpecification.ReadsProcesses(materialized))
+        // A resource's number is a source field its gate wrote, so a topology answer reads them whether or not it reads
+        // a process binding.
+        if (AnalysisSpecification.ReadsProcesses(materialized) || materialized.Basis == AnalysisBasis.ResourceTopology)
         {
             context = context with
             {
@@ -1162,6 +1177,12 @@ public static partial class SessionMetrics
         if (materialized.Basis == AnalysisBasis.LogicalOperations)
         {
             return Operations(context, cancellationToken);
+        }
+
+        // Resources are counted from the instances resource-instances-v3 derives, never from their records (§8b).
+        if (materialized.Basis == AnalysisBasis.ResourceTopology)
+        {
+            return Topology(context, cancellationToken);
         }
 
         if (materialized.Focus is not null || materialized.Between is not null)
@@ -1264,13 +1285,7 @@ public static partial class SessionMetrics
 
         if (request.Basis == AnalysisBasis.ResourceTopology)
         {
-            return Unavailable(
-                request,
-                generation,
-                MetricUnavailableReason.NoResourceTopology,
-                "Nothing in this session derives resources or memberships yet, so a topology basis has no "
-                + "rows. A resource projection built from source endpoint fields alone would establish "
-                + "identity from reusable values, which R22 forbids.");
+            return WhatTopologyNeeds(request, generation);
         }
 
         Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
