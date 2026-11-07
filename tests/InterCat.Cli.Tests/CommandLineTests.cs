@@ -1571,6 +1571,7 @@ public sealed class CommandLineTests : IDisposable
             string[][] asked =
             [
                 ["capabilities"],
+                ["capabilities", "--catalog"],
                 ["profiles"],
                 ["profiles", "explore"],
                 ["session", session.Path],

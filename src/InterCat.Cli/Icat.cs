@@ -205,6 +205,8 @@ internal static class Icat
         ConsoleUi.Line();
         ConsoleUi.Line("  icat capabilities [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("      Read-only source inventory. Starts no capture.");
+        ConsoleUi.Line("  icat capabilities --catalog [--find <text>] [--json]");
+        ConsoleUi.Line("      Explains every mechanism InterCat names, read from no machine, and searches it.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat profiles [profile] [--diagnostic-etl] [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("  icat profiles focused-transport --mechanism tcp [--pid <id> ...]");

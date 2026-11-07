@@ -941,6 +941,7 @@ Revision 1015 measures a mapping lifetime (ADR-098's third addendum): how long e
 Revision 1016 groups resource-topology answers by peer (ADR-098's fourth addendum): what a focus shared with each other process.
 Revision 1017 groups a mapping lifetime by the process holding each mapping (ADR-098's fifth addendum).
 Revision 1018 counts the resources' membership and lifecycle records on the resource-topology basis (ADR-098's sixth addendum).
+Revision 1019 adds the capability catalog: every mechanism explained, read from no machine, and searched (ADR-100).
 
 ## Revisions, a paragraph each, in order
 
@@ -4740,3 +4741,9 @@ unanswered (ADR-098's sixth addendum). The resources are taken as every answer o
 is their membership and lifecycle records - each handle's, view's and socket call's record but a socket's sends and
 receives, which are traffic - where its own reading is in the interval, whichever process it binds to. Grouped, a
 group's value is the records of the resources it takes, a partition by mechanism and overlapping by process or peer.
+
+Revision 1019 adds M6's searchable capability catalog (ADR-100). `icat capabilities --catalog` lists every mechanism
+EN-Mechanism names, read from no machine: the sources the catalog holds for it, those no profile requests, the tier
+fixtures measured on each build, and why it stands where it does, citing the decision that set it, so an unsupported
+mechanism is explained rather than left out. `--find` keeps those whose words hold its text, and `--json` writes the
+catalog as `capability-catalog-v1`; a machine's report is unchanged.

@@ -75,3 +75,16 @@ reader can recompute the tier; a criterion with a zero denominator is `not measu
 
 `reportVersion` bumps when a field is removed or its meaning changes; additive fields do not bump it.
 Consumers preserve unknown fields rather than dropping them (§26.3).
+
+## The catalog (`capability-catalog-v1`, revision 1019)
+
+`icat capabilities --catalog [--find <text>] [--json]` prints InterCat's capability catalog, read from no machine
+(ADR-100): every mechanism EN-Mechanism names but `UnknownMechanism`, in its order. It is printed, never written with
+`--output`, and a machine's report above still lists only what that machine and its build's fixtures say.
+
+| Field | Meaning |
+|---|---|
+| `contract` | `"capability-catalog-v1"`. |
+| `find` | The search asked for, or null: the entries are those whose name, mechanism, sources, fixtures, builds, tiers (by name or in words) or explanation hold it, ignoring case. |
+| `mechanisms` | How many mechanisms the catalog holds, whatever the search kept. |
+| `entries[]` | Each kept mechanism: `mechanism`, `name`, `explanation` - where it stands and why, citing the decision that set it - `sourceIds` (the catalog's sources recording it), `unrequestedSourceIds` (those that could serve it but no profile requests for it), and `measured[]`, its latest fixture evidence on each build (`mechanism`, `build`, `tier`, `fixture`, `date`, `supportTier`), the latest first. |
