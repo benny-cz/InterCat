@@ -1,0 +1,22 @@
+{
+  "scenarioId": "FX-SDK-008",
+  "role": "native",
+  "channel": "55ace3f2-a820-4f4d-96a9-0cfa922e80c1",
+  "channelName": "fx-sdk-native",
+  "messages": 100,
+  "restartMessages": 30,
+  "batch": 1,
+  "seed": 20261107,
+  "library": "native-1.2",
+  "content": true,
+  "marker": "FX-SDK-008:",
+  "recordLimit": 1024,
+  "maximumContent": 32768,
+  "closeCalls": [1, 2],
+  "unwritten": 0,
+  "operations": [
+    { "operation": "ea55e3de-9465-413b-ad5a-d192a1007f6c", "parent": null, "name": "publish-consume", "status": 0, "completions": 1 },
+    { "operation": "5056df55-1693-4aa8-b98b-e0a39ba02247", "parent": "ea55e3de-9465-413b-ad5a-d192a1007f6c", "name": "epoch-1", "status": 0, "completions": 1 },
+    { "operation": "da98907a-736d-4293-834a-b1e8b0f8021d", "parent": "ea55e3de-9465-413b-ad5a-d192a1007f6c", "name": "epoch-2", "status": 1, "completions": 2 }
+  ]
+}

@@ -358,6 +358,10 @@ SHA-256 and the SHA-256 of the prefix the record limit keeps, never its bytes: o
 their bytes were kept as the truth's, 54 whole and 75 cut to the 4,096-byte limit, each by its digest; the two longer than
 32,768 bytes were kept as none, the SDK never saying them with their bytes; a decoy publishing with its bytes beside the
 named publisher left no record and no byte in the session; and no message's byte was in any file but the content chunk.
+And on revision 1042 by FX-SDK-008, the native library's: FX-SDK-002's sample publishing its 131 messages at two epochs
+with their bytes, three runs, its truth's digests taken through Windows' own hashing - 130 contents kept as the truth's, 27
+whole and 103 cut to a 1,024-byte limit, the one past the most kept as none, the decoy leaving nothing, and no byte outside
+the content kept.
 
 ## 6. What is not defined at this version
 

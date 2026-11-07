@@ -85,3 +85,15 @@ bytes had none; the decoy left no record and no byte; and the publisher's marker
 The probe holds this through the product's own readers - `icat messages`' derivation and the content viewer's index - so no
 product path changes, and no mutation pass is run: the native library's content, whose bound and fields only a session
 reads, is held by the next fixture.
+
+## Third addendum: FX-SDK-008 holds the native library's content to a truth (revision 1042)
+
+FX-SDK-008 records FX-SDK-002's native sample publishing its 131 messages at two epochs with their bytes through
+`intercat_channel_published_content` - epoch 1's first five at the edges a capture keeps whole, cuts or never hears - and a
+.NET decoy beside it, through the product, at a record limit of 1,024 bytes. The sample's truth names each message's
+length and digests, taken through Windows' own hashing apart from the probe's, never a byte. In three runs, nothing lost,
+its messages and operations were FX-SDK-002's, and each of the 130 contents the library said was the truth's: 27 whole, 103 cut
+to the limit; the one past the most had none, and the library said it said none; the decoy left nothing, and no byte
+was outside the content kept. The library's content call is so held through the product: 7 mutations of its bound,
+its fields and its publication, each compiled into the sample and recorded once, are caught. Its scenario now names the
+library's version as the header declares it, which revision 1039 left naming `native-1.1`.

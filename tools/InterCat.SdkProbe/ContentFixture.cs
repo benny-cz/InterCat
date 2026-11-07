@@ -29,8 +29,13 @@ internal static class ContentFixture
 
     private static readonly JsonSerializerOptions TruthOptions = CreateTruthOptions();
 
-    public static async Task<Dictionary<string, object?>> RunAsync(string icat, string workload, string output, int runs, int duration, int recordLimit)
+    public static async Task<Dictionary<string, object?>> RunAsync(string icat, string workload, string output, int runs, int duration, int recordLimit,
+        string? native = null)
     {
+        // FX-SDK-008 is the native sample saying its messages with their bytes through intercat_sdk.h; FX-SDK-007 the .NET
+        // workload. The decoy is the .NET one either way.
+        string fixture = native is null ? "FX-SDK-007" : "FX-SDK-008";
+        string role = native is null ? "publisher" : "native";
         var results = new List<Dictionary<string, object?>>();
         for (int run = 1; run <= runs; run++)
         {
@@ -42,7 +47,7 @@ internal static class ContentFixture
             Process? decoy = null;
             try
             {
-                publisher = Start(workload, truth, recordLimit, decoy: false);
+                publisher = native is null ? Start(workload, truth, recordLimit, decoy: false) : StartNative(native, truth, recordLimit);
                 decoy = Start(workload, decoyTruth, recordLimit, decoy: true);
                 Dictionary<string, object?> health;
                 string[] request =
@@ -67,7 +72,7 @@ internal static class ContentFixture
                 }
 
                 Dictionary<string, object?> evaluated = Product.Evaluate(session, truth);
-                foreach ((string name, object? value) in Evaluate(session, truth, decoyTruth, recordLimit))
+                foreach ((string name, object? value) in Evaluate(session, truth, decoyTruth, recordLimit, role))
                 {
                     evaluated[name] = value;
                 }
@@ -94,14 +99,20 @@ internal static class ContentFixture
 
         return new()
         {
-            ["fixture"] = "FX-SDK-007",
-            ["question"] =
-                "Whether FX-SDK-007 - one process publishing messages with their bytes through InterCat's cooperative SDK, a decoy "
-                + "beside it doing the same - recorded through the product by icat record keeping the SDK's content under a request "
-                + "that names the publisher alone, keeps each message the SDK said with its bytes as the truth's: whole where the "
-                + "record limit holds it and cut to the limit where not, its bytes or its kept prefix the truth's by SHA-256, none "
-                + "for a message the SDK never said with them; every publication and consumption as FX-SDK-001's; nothing of the "
-                + "decoy's; and no byte of a message outside the content kept.",
+            ["fixture"] = fixture,
+            ["question"] = native is null
+                ? "Whether FX-SDK-007 - one process publishing messages with their bytes through InterCat's cooperative SDK, a decoy "
+                    + "beside it doing the same - recorded through the product by icat record keeping the SDK's content under a request "
+                    + "that names the publisher alone, keeps each message the SDK said with its bytes as the truth's: whole where the "
+                    + "record limit holds it and cut to the limit where not, its bytes or its kept prefix the truth's by SHA-256, none "
+                    + "for a message the SDK never said with them; every publication and consumption as FX-SDK-001's; nothing of the "
+                    + "decoy's; and no byte of a message outside the content kept."
+                : "Whether FX-SDK-008 - FX-SDK-002's native application publishing each message with its bytes through intercat_sdk.h, "
+                    + "a .NET decoy beside it doing the same - recorded through the product by icat record keeping the SDK's content "
+                    + "under a request that names the native process alone, keeps each message the library said with its bytes as the "
+                    + "truth's, at either epoch: whole where the record limit holds it and cut to the limit where not, by SHA-256, none "
+                    + "for a message the library never said with them; its messages and operations as FX-SDK-002's; nothing of the "
+                    + "decoy's; and no byte of a message outside the content kept.",
             ["profile"] = "content",
             ["recordLimit"] = recordLimit,
             ["sessionLimit"] = SessionLimit,
@@ -133,16 +144,35 @@ internal static class ContentFixture
         return Process.Start(start) ?? throw new InvalidOperationException("The content fixture's workload did not start.");
     }
 
-    /// <summary>The run's content, held to the publisher's truth, and the decoy's absence.</summary>
-    private static Dictionary<string, object?> Evaluate(string session, string truth, string decoyTruth, int recordLimit)
+    /// <summary>The native sample saying its messages with their bytes, waiting for its start (FX-SDK-008).</summary>
+    private static Process StartNative(string native, string truth, int recordLimit)
     {
-        (Guid channel, string marker, int publisherProcess) = Scenario(truth, "publisher");
+        var start = new ProcessStartInfo(native)
+        {
+            RedirectStandardInput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (string argument in new[] { "--truth", truth, "--content", "--record-limit", recordLimit.ToString(CultureInfo.InvariantCulture), "--wait-for-start" })
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        return Process.Start(start) ?? throw new InvalidOperationException("The native sample did not start.");
+    }
+
+    /// <summary>The run's content, held to the publisher's truth, and the decoy's absence.</summary>
+    private static Dictionary<string, object?> Evaluate(string session, string truth, string decoyTruth, int recordLimit, string role)
+    {
+        (Guid channel, string marker, int publisherProcess) = Scenario(truth, role);
         (Guid decoyChannel, string decoyMarker, int decoyProcess) = Scenario(decoyTruth, "decoy");
-        var said = new Dictionary<long, SaidContent>();
+
+        // Each message by its epoch and sequence: a truth naming no epoch says its channel's one, the first.
+        var said = new Dictionary<(long Epoch, long Sequence), SaidContent>();
         foreach (string line in File.ReadLines(Path.Combine(truth, "content.jsonl")))
         {
             SaidContent content = JsonSerializer.Deserialize<SaidContent>(line, TruthOptions)!;
-            said.Add(content.Sequence, content);
+            said.Add((content.Epoch ?? 1, content.Sequence), content);
         }
 
         // The session's content records and the content kept of each, read as the product reads them.
@@ -180,7 +210,7 @@ internal static class ContentFixture
         foreach ((ContentRecord record, SessionContentEntry? entry, byte[]? bytes) in ofChannel)
         {
             bound += record.Owner == publisherProcess ? 1 : 0;
-            if (record.Epoch != 1 || record.Sequence is not { } sequence || !said.TryGetValue(sequence, out SaidContent? truthOf)
+            if (record.Epoch is not { } epoch || record.Sequence is not { } sequence || !said.TryGetValue((epoch, sequence), out SaidContent? truthOf)
                 || entry is null || bytes is null)
             {
                 continue;
@@ -207,6 +237,10 @@ internal static class ContentFixture
             ["truthMessages"] = said.Count,
             ["truthContentsSaid"] = said.Values.Count(content => content.ContentSaid),
             ["truthPastTheMost"] = said.Values.Count(content => content.Length > 32_768),
+
+            // What the library said it said, held to the bound itself: content past the most never, and within it always.
+            ["truthSaidPastTheMost"] = said.Values.Count(content => content.ContentSaid && content.Length > 32_768),
+            ["truthUnsaidWithinTheMost"] = said.Values.Count(content => !content.ContentSaid && content.Length <= 32_768),
             ["truthWholeWithinLimit"] = said.Values.Count(content => content.ContentSaid && content.Length <= recordLimit),
             ["truthCutToLimit"] = said.Values.Count(content => content.ContentSaid && content.Length > recordLimit),
             ["contentRecords"] = ofChannel.Count,
@@ -214,8 +248,8 @@ internal static class ContentFixture
             ["fragments"] = fragments,
             ["matchedWhole"] = whole,
             ["matchedCut"] = cut,
-            ["contentForUnsaid"] = ofChannel.Count(item => item.Record.Sequence is { } sequence && said.TryGetValue(sequence, out SaidContent? truthOf)
-                && !truthOf.ContentSaid),
+            ["contentForUnsaid"] = ofChannel.Count(item => item.Record.Epoch is { } epoch && item.Record.Sequence is { } sequence
+                && said.TryGetValue((epoch, sequence), out SaidContent? truthOf) && !truthOf.ContentSaid),
             ["decoyRecords"] = decoyRecords,
             ["markerInContent"] = inContent,
             ["markerElsewhere"] = elsewhere,
@@ -363,7 +397,7 @@ internal static class ContentFixture
     }
 
     /// <summary>A message's content as the publisher logged it: its length and digests, never its bytes, and whether it was said.</summary>
-    private sealed record SaidContent(long Sequence, long Length, string Sha256, string? PrefixSha256, bool ContentSaid);
+    private sealed record SaidContent(long? Epoch, long Sequence, long Length, string Sha256, string? PrefixSha256, bool ContentSaid);
 
     /// <summary>A content record of the SDK's, as the capture admitted it.</summary>
     private sealed record ContentRecord(Guid? Channel, long? Epoch, long? Sequence, int? Owner, RawRecordId Raw);

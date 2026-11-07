@@ -1,6 +1,9 @@
 /*
  * FX-SDK-002: InterCat's cooperative SDK said from a native application through intercat_sdk.h (ADR-105); with --batch,
- * FX-SDK-006: the same messages said in batches of ten (ADR-106), the truth still logging each message by itself.
+ * FX-SDK-006: the same messages said in batches of ten (ADR-106), the truth still logging each message by itself; with
+ * --content, FX-SDK-008: each message published with its bytes (ADR-107), epoch 1's first five at the edges a capture keeps
+ * whole, cuts at --record-limit or never hears, and the truth logging each one's length, SHA-256 and kept prefix's SHA-256
+ * to content.jsonl - never a byte.
  *
  * One process opens a channel at epoch 1 and publishes 100 messages of seeded lengths, each consumed by its reader 1; makes
  * the channel again at epoch 2 for 30 more, its sequence from 1; and publishes one message no reader reads. Each epoch is
@@ -10,15 +13,18 @@
  * .NET truth workloads log theirs, and the run's parameters and operations to scenario.json. It reads no InterCat state.
  * It exits 3 if the library took an argument it should refuse, or said a message's content while no session listened.
  *
- * Usage: publish_consume.exe --truth <directory> [--batch]
+ * Usage: publish_consume.exe --truth <directory> [--batch | --content [--record-limit <n>]] [--wait-for-start]
+ * With --wait-for-start it waits for a line on its standard input before it says anything, so a capture can name it first.
  *
- * Build: gcc -O2 -municode -I ../include -o publish_consume.exe publish_consume.c -ladvapi32 -lrpcrt4
- *    or: cl /O2 /I ..\include publish_consume.c advapi32.lib rpcrt4.lib
+ * Build: gcc -O2 -municode -I ../include -o publish_consume.exe publish_consume.c -ladvapi32 -lrpcrt4 -lbcrypt
+ *    or: cl /O2 /I ..\include publish_consume.c advapi32.lib rpcrt4.lib bcrypt.lib
  */
 #define INTERCAT_SDK_IMPLEMENTATION
 #include "intercat_sdk.h"
 
+#include <bcrypt.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define EPOCH_ONE_MESSAGES 100
@@ -28,6 +34,7 @@
 #define BATCH 10
 
 static FILE *truth;
+static FILE *contents;
 static long long truth_sequence;
 static LARGE_INTEGER started;
 static unsigned long long created;
@@ -35,7 +42,12 @@ static char channel_text[37];
 static unsigned int seed = 20261107u;
 static int unwritten;
 static int batched;
+static int contented;
+static long long record_limit = 1024;
 static const char *scenario_id = "FX-SDK-002";
+
+/* The marker each message's bytes begin with, with --content, where it fits: bytes no metadata holds. */
+static const char marker[] = "FX-SDK-008:";
 
 /* The next seeded length, from 32 to 4,096 bytes. */
 static long long next_length(void)
@@ -103,12 +115,134 @@ static void log_message(const char *kind, long long epoch, long long sequence, l
         channel_text, epoch, sequence, reader);
 }
 
-/* A message published at the epoch the sample opened its channel at - its own count, never read back from the library -
- * and, unless it is left unread, consumed by reader 1. */
-static void publish(const intercat_channel *channel, long long epoch, long long sequence, int unread)
+/* The SHA-256 of length bytes as 64 lowercase hex digits, through Windows' own hashing; empty where it cannot be made. */
+static void sha256(const BYTE *bytes, ULONG length, char *hex)
+{
+    static const BYTE none = 0;
+    BCRYPT_ALG_HANDLE algorithm = NULL;
+    BCRYPT_HASH_HANDLE hash = NULL;
+    BYTE digest[32];
+    int at;
+    hex[0] = '\0';
+    if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, NULL, 0)))
+    {
+        return;
+    }
+
+    if (BCRYPT_SUCCESS(BCryptCreateHash(algorithm, &hash, NULL, 0, NULL, 0, 0))
+        && BCRYPT_SUCCESS(BCryptHashData(hash, (PUCHAR)(length != 0 ? bytes : &none), length, 0))
+        && BCRYPT_SUCCESS(BCryptFinishHash(hash, digest, sizeof digest, 0)))
+    {
+        for (at = 0; at < 32; at++)
+        {
+            snprintf(hex + 2 * at, 3, "%02x", digest[at]);
+        }
+    }
+
+    if (hash != NULL)
+    {
+        BCryptDestroyHash(hash);
+    }
+
+    BCryptCloseAlgorithmProvider(algorithm, 0);
+}
+
+/* A message's bytes, with --content: its marker, epoch and sequence where they fit, and seeded noise after, so no two
+ * messages hold the same bytes. The caller frees them. */
+static BYTE *message_bytes(long long epoch, long long sequence, long long length)
+{
+    char named[48];
+    int prefix = snprintf(named, sizeof named, "%s%lld-%06lld:", marker, epoch, sequence);
+    unsigned long long state = (((unsigned long long)epoch * 0x9E3779B97F4A7C15ull) ^ ((unsigned long long)sequence * 0xBF58476D1CE4E5B9ull)) | 1ull;
+    BYTE *bytes = (BYTE *)malloc(length > 0 ? (size_t)length : 1);
+    long long at;
+    if (bytes == NULL)
+    {
+        return NULL;
+    }
+
+    for (at = 0; at < length; at++)
+    {
+        if (at < prefix)
+        {
+            bytes[at] = (BYTE)named[at];
+            continue;
+        }
+
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        bytes[at] = (BYTE)state;
+    }
+
+    return bytes;
+}
+
+/* What the truth says of a message's content, with --content: its length, its SHA-256 and that of the prefix the record
+ * limit keeps where it is longer, and whether the library said its content - never a byte. */
+static void log_content(long long epoch, long long sequence, const BYTE *bytes, long long length, int content_said)
+{
+    char whole[65];
+    char prefix[65];
+    sha256(bytes, (ULONG)length, whole);
+    if (length > record_limit)
+    {
+        sha256(bytes, (ULONG)record_limit, prefix);
+        fprintf(contents, "{\"epoch\":%lld,\"sequence\":%lld,\"length\":%lld,\"sha256\":\"%s\",\"prefixSha256\":\"%s\",\"contentSaid\":%s}\n",
+            epoch, sequence, length, whole, prefix, content_said ? "true" : "false");
+    }
+    else
+    {
+        fprintf(contents, "{\"epoch\":%lld,\"sequence\":%lld,\"length\":%lld,\"sha256\":\"%s\",\"prefixSha256\":null,\"contentSaid\":%s}\n",
+            epoch, sequence, length, whole, content_said ? "true" : "false");
+    }
+}
+
+/* A message's length: seeded, and with --content, epoch 1's first five at the edges a capture keeps whole, cuts or never
+ * hears - nothing, the record limit and a byte past it, the most the library says and a byte past it. */
+static long long length_of(long long epoch, long long sequence)
 {
     long long length = next_length();
-    said(intercat_channel_published(channel, sequence, length, length));
+    if (contented && epoch == 1)
+    {
+        switch (sequence)
+        {
+        case 1: return 0;
+        case 2: return record_limit;
+        case 3: return record_limit + 1;
+        case 4: return INTERCAT_SDK_MAXIMUM_CONTENT;
+        case 5: return INTERCAT_SDK_MAXIMUM_CONTENT + 1;
+        default: break;
+        }
+    }
+
+    return length;
+}
+
+/* A message published at the epoch the sample opened its channel at - its own count, never read back from the library -
+ * and, unless it is left unread, consumed by reader 1; with --content, published with its bytes. */
+static void publish(const intercat_channel *channel, long long epoch, long long sequence, int unread)
+{
+    long long length = length_of(epoch, sequence);
+    if (contented)
+    {
+        int content_said = 0;
+        BYTE *bytes = message_bytes(epoch, sequence, length);
+        if (bytes == NULL)
+        {
+            unwritten++;
+            return;
+        }
+
+        said(intercat_channel_published_content(channel, sequence, bytes, (size_t)length, length, &content_said));
+        log_content(epoch, sequence, bytes, length, content_said);
+        free(bytes);
+    }
+    else
+    {
+        said(intercat_channel_published(channel, sequence, length, length));
+    }
+
     log_message("MessageSent", epoch, sequence, 0, length, unread, 0);
     if (!unread)
     {
@@ -245,6 +379,7 @@ int wmain(int argc, wchar_t **argv)
     intercat_channel channel;
     intercat_operation run, first, second;
     FILE *scenario;
+    int waiting = 0;
     for (int at = 1; at < argc; at++)
     {
         if (wcscmp(argv[at], L"--truth") == 0 && at + 1 < argc)
@@ -256,11 +391,25 @@ int wmain(int argc, wchar_t **argv)
             batched = 1;
             scenario_id = "FX-SDK-006";
         }
+        else if (wcscmp(argv[at], L"--content") == 0)
+        {
+            contented = 1;
+            scenario_id = "FX-SDK-008";
+        }
+        else if (wcscmp(argv[at], L"--record-limit") == 0 && at + 1 < argc)
+        {
+            record_limit = _wtoi64(argv[++at]);
+        }
+        else if (wcscmp(argv[at], L"--wait-for-start") == 0)
+        {
+            waiting = 1;
+        }
     }
 
-    if (directory == NULL)
+    if (directory == NULL || (batched && contented) || record_limit < 1 || record_limit > 1048576)
     {
-        fwprintf(stderr, L"--truth <directory> is required: a workload always records its own oracle.\n");
+        fwprintf(stderr, L"--truth <directory> is required: a workload always records its own oracle. --content says messages one by "
+            L"one, never in batches, and --record-limit is from 1 to 1,048,576 bytes.\n");
         return 2;
     }
 
@@ -275,12 +424,28 @@ int wmain(int argc, wchar_t **argv)
         return 3;
     }
 
+    /* With --wait-for-start, a capture names this process before it says anything: it starts once told to. */
+    if (waiting)
+    {
+        char line[16];
+        if (fgets(line, sizeof line, stdin) == NULL)
+        {
+            return 1;
+        }
+    }
+
     format_guid(&id, channel_text);
     GetProcessTimes(GetCurrentProcess(), &creation, &exited, &kernel, &user);
     created = ((unsigned long long)creation.dwHighDateTime << 32) | creation.dwLowDateTime;
     QueryPerformanceCounter(&started);
     swprintf(path, MAX_PATH, L"%ls\\truth-native.jsonl", directory);
     if (_wfopen_s(&truth, path, L"w") != 0)
+    {
+        return 1;
+    }
+
+    swprintf(path, MAX_PATH, L"%ls\\content.jsonl", directory);
+    if (contented && _wfopen_s(&contents, path, L"w") != 0)
     {
         return 1;
     }
@@ -310,6 +475,10 @@ int wmain(int argc, wchar_t **argv)
     said(intercat_operation_complete(&second, 0));
     said(intercat_operation_complete(&run, 0));
     fclose(truth);
+    if (contented)
+    {
+        fclose(contents);
+    }
 
     swprintf(path, MAX_PATH, L"%ls\\scenario.json", directory);
     if (_wfopen_s(&scenario, path, L"w") != 0)
@@ -317,11 +486,14 @@ int wmain(int argc, wchar_t **argv)
         return 1;
     }
 
+    /* The library is the header's own version, as it announces it. */
     fprintf(scenario,
-        "{\n  \"scenarioId\": \"%s\",\n  \"channel\": \"%s\",\n  \"channelName\": \"fx-sdk-native\",\n"
-        "  \"messages\": %d,\n  \"restartMessages\": %d,\n  \"batch\": %d,\n  \"seed\": 20261107,\n  \"library\": \"native-1.1\",\n"
+        "{\n  \"scenarioId\": \"%s\",\n  \"role\": \"native\",\n  \"channel\": \"%s\",\n  \"channelName\": \"fx-sdk-native\",\n"
+        "  \"messages\": %d,\n  \"restartMessages\": %d,\n  \"batch\": %d,\n  \"seed\": 20261107,\n  \"library\": \"%ls\",\n"
+        "  \"content\": %s,\n  \"marker\": \"%s\",\n  \"recordLimit\": %lld,\n  \"maximumContent\": %d,\n"
         "  \"closeCalls\": [1, 2],\n  \"unwritten\": %d,\n  \"operations\": [\n",
-        scenario_id, channel_text, EPOCH_ONE_MESSAGES, EPOCH_TWO_MESSAGES, batched ? BATCH : 1, unwritten);
+        scenario_id, channel_text, EPOCH_ONE_MESSAGES, EPOCH_TWO_MESSAGES, batched ? BATCH : 1, intercat_sdk_library,
+        contented ? "true" : "false", marker, record_limit, INTERCAT_SDK_MAXIMUM_CONTENT, unwritten);
     log_operation(scenario, &run, NULL, "publish-consume", 0, 1, 0);
     log_operation(scenario, &first, &root, "epoch-1", 0, 1, 0);
     log_operation(scenario, &second, &root, "epoch-2", 1, 2, 1);

@@ -30,7 +30,7 @@ refuses what that throws for - returning `ERROR_INVALID_PARAMETER` and raising n
 its library `native-1.0` and its clock `QueryPerformanceCounter`'s. FX-SDK-002 measures it through the product. Since
 minor 1 (revision 1036) it says batches too, `intercat_channel_published_batch` and `intercat_channel_consumed_batch`,
 its library `native-1.1`; since minor 2 (revision 1039) a message's content, `intercat_channel_published_content`, its
-library `native-1.2`.
+library `native-1.2`, which FX-SDK-008 measures through the product since revision 1042.
 
 ## 2. Channels and messages
 
@@ -168,6 +168,6 @@ messages it keeps said one by one; at 3,200,000 it kept 99.5% of them, and past 
 ## 9. Not defined at this version
 
 - An operation tree by parent, and the lag between a publication and its consumptions.
-- The SDK's content asked for through the broker or the window, and the native library's held to a truth through the
-  product: `icat record` keeps it under a request since revision 1040, and FX-SDK-007 holds the .NET library's to its
-  truth since revision 1041 (`contracts/content-v1.md` §5.2).
+- The SDK's content asked for through the broker or the window: `icat record` keeps it under a request since revision
+  1040, FX-SDK-007 and FX-SDK-008 holding both libraries' to their truths since revisions 1041 and 1042
+  (`contracts/content-v1.md` §5.2).

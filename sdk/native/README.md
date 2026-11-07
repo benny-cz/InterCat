@@ -49,10 +49,12 @@ event then lost to a session that counts it lost. A second close of a channel or
 ## Sample
 
 `samples/publish_consume.c` publishes and consumes on one channel at two epochs, under three operations, and logs what it
-said beside it as the fixture FX-SDK-002's truth; with `--batch` it says its messages in batches of ten, FX-SDK-006's:
+said beside it as the fixture FX-SDK-002's truth; with `--batch` it says its messages in batches of ten, FX-SDK-006's; with
+`--content` it publishes each with its bytes, FX-SDK-008's, its truth naming each message's length and SHA-256 - which it
+hashes through Windows' `bcrypt` - and never a byte:
 
 ```sh
-gcc -O2 -municode -I include -o publish_consume.exe samples/publish_consume.c -ladvapi32 -lrpcrt4
-cl /O2 /W4 /I include samples\publish_consume.c advapi32.lib rpcrt4.lib
-publish_consume.exe --truth <directory>
+gcc -O2 -municode -I include -o publish_consume.exe samples/publish_consume.c -ladvapi32 -lrpcrt4 -lbcrypt
+cl /O2 /W4 /I include samples\publish_consume.c advapi32.lib rpcrt4.lib bcrypt.lib
+publish_consume.exe --truth <directory> [--batch | --content [--record-limit <n>]] [--wait-for-start]
 ```

@@ -964,6 +964,7 @@ Revision 1038 publishes what the cooperative SDK's batches cost (ADR-106's third
 Revision 1039 lets the cooperative SDK say a message's content, only whole and only to a session that asks for it (ADR-107).
 Revision 1040 lets a capture keep the cooperative SDK's content under a request (ADR-107's addendum).
 Revision 1041 holds the cooperative SDK's content to a truth through the product, FX-SDK-007 (ADR-107's second addendum).
+Revision 1042 holds the native library's content to a truth through the product, FX-SDK-008 (ADR-107's third addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4928,3 +4929,11 @@ names each message's length and digests, never a byte. In three runs, nothing lo
 the truth's and every one of the 129 contents said its message's - 54 whole, 75 cut to the 4,096-byte limit, by SHA-256 - none
 of the two past the most the SDK says; the decoy left nothing, and no message's byte was outside the content kept. The
 probe reads through the product's own readers, and no product path changes.
+
+Revision 1042 qualifies the native library's content through the product (ADR-107's third addendum). FX-SDK-008 is
+FX-SDK-002's sample publishing its 131 messages with their bytes - epoch 1's first five at the edges a capture keeps
+whole, cuts or never hears - beside a .NET decoy, recorded by `icat record` keeping the SDK's content for the sample alone.
+In three runs its 130 contents were the truth's by the digests it took through Windows' own hashing, 27 whole and 103 cut to a
+1,024-byte limit; the one past the most had none; the decoy left nothing. The library's content call, which only a
+session reads, is held through the product: 7 mutations of its bound, fields and publication are caught. The sample's
+scenario names the library's version as its header declares it.
