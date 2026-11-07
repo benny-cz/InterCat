@@ -2,7 +2,8 @@
 
 - Status: accepted for M6's resource lifetimes; named synchronization objects and sections by their handles are derived
   and listed by `icat resources` (revision 1002), AF_UNIX sockets with their traffic, an idle one listed apart
-  (revision 1003), and sections by their views (revision 1004)
+  (revision 1003), sections by their views (revision 1004), and the window's inspector lists them by namespace
+  (revision 1010)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-083, ADR-084, ADR-090, ADR-092, plan M6, §7.1, §7.2, `identity-v1`, `entities-v1` §8, R3, P27
@@ -72,3 +73,15 @@ for every mechanism: a close or an unmapping seen, or the stop's rundown holding
 inventories, and only their opcodes tell the start's from the stop's: a view whose last record is the start's was
 neither seen unmapped nor listed at the stop, so its end is unseen, never said to be held. `resource-instances-v3`
 derives them. 31 mutations of the path are caught.
+
+## Third addendum: the window lists them by namespace (revision 1010)
+
+With nothing chosen on the machine rung, the inspector lists every resource of the session but an image's section, as
+`icat resources` does: named ones by the object directory their names lie in, then their leaf, those no record named
+after, and idle sockets last, apart from the traffic observed - M6's namespace-aware browsing, its discovered but idle
+resources apart. Each row says what the resource is, where its name lies, who held it, its records and, for a socket,
+what it carried or that it was idle. The first eight are named, and every one up to a hundred on request. A resource
+chosen there is its own records, read by its key as a hub's are (ADR-099) - a socket's too, now keyed
+`resource:hub:socket:{number}` - which the timeline highlights, the card counts and E lists; anything else chosen hides
+the list and lets its choice go. A session whose processes made only AF_UNIX socket records derives its resources too.
+32 mutations of the path are caught.

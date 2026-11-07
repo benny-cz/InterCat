@@ -160,6 +160,12 @@ public sealed record SessionOverviewBundle(
     public IReadOnlyList<ResourceLink> ResourceLinks { get; init; } = [];
 
     /// <summary>
+    /// Every resource of the session but an image's section, by the namespace its name lies in, idle sockets last: what the
+    /// window lists (M6). Derived where <see cref="ResourceLinks"/> are, and where a process made an AF_UNIX socket's record.
+    /// </summary>
+    public IReadOnlyList<ResourceLink> Resources { get; init; } = [];
+
+    /// <summary>
     /// The ports the session's processes accepted TCP connections at, each with who connected, the busiest first, counted
     /// as each process's <see cref="ProcessNode.ConnectionsAccepted"/> is (<see cref="ConnectionOpens.Listeners"/>): the
     /// session's listening ports, as `icat ports` lists them. Empty for an overview no session was projected for.
@@ -366,13 +372,17 @@ public static class SessionOverviewProjector
             .Select(reach => new HostLink(processes.Instances[reach.Holder].Id, reach.Mechanism, reach.Addresses, reach.Strength))
             .OrderBy(link => link.Key, StringComparer.Ordinal)];
 
-        // Each resource two or more processes held, which the graph draws as a hub joined to each of them (§6.3, ADR-099).
-        // Resources are derived only where a process made a record of a mechanism that has them, so a session whose
-        // processes made none - every Explore capture - opens no segment for them.
-        ResourceLink[] resourceLinks = nodes.Any(node => node.Activity.Any(count =>
-                count.Mechanism is Mechanism.SharedSection or Mechanism.Synchronization && count.Records > 0))
-            ? SharedResources(derivation.Resources(Segments(), Fields(), processes, policy, cancellationToken))
-            : [];
+        // Each resource two or more processes held, which the graph draws as a hub joined to each of them (§6.3, ADR-099), and
+        // every resource but an image's section, which the window lists by namespace (M6). Resources are derived only where a
+        // process made a record of a mechanism that has them, so a session whose processes made none - every Explore capture
+        // - opens no segment for them.
+        ResourceInstanceIndex? derivedResources = nodes.Any(node => node.Activity.Any(count =>
+                count.Mechanism is Mechanism.SharedSection or Mechanism.Synchronization or Mechanism.UnixDomainSocket
+                && count.Records > 0))
+            ? derivation.Resources(Segments(), Fields(), processes, policy, cancellationToken)
+            : null;
+        ResourceLink[] resourceLinks = derivedResources is null ? [] : SharedResources(derivedResources);
+        ResourceLink[] listedResources = derivedResources is null ? [] : ListedResources(derivedResources);
 
         string? channelProblem = admitted.Length > maximumChannels
             ? $"This generation has {admitted.Length:N0} admitted paired channels, above the "
@@ -529,6 +539,7 @@ public static class SessionOverviewProjector
             ConnectionOpensRecorded = ConnectionOpens.Recorded(relations),
             HostLinks = hostLinks,
             ResourceLinks = resourceLinks,
+            Resources = listedResources,
             Listeners = ConnectionOpens.Listeners(relations, policy),
             Collectors = collectors,
             Services = services,
@@ -555,19 +566,40 @@ public static class SessionOverviewProjector
         .. resources.Instances
             .Where(resource => resource.Mechanism is Mechanism.SharedSection or Mechanism.Synchronization && !resource.Image
                 && resource.Holders.Count >= 2)
-            .Select(resource => new ResourceLink(
-                resource.Mechanism,
-                resource.Number,
-                resource.ByViews,
-                resource.Name,
-                [.. resource.Holders.Select(holder => holder.Process)])
-            {
-                LargestView = resource.LargestView,
-                Records = resource.Records,
-            })
+            .Select(LinkOf)
             .OrderByDescending(link => link.Holders.Count)
             .ThenBy(link => link.Key, StringComparer.Ordinal),
     ];
+
+    /// <summary>
+    /// Every resource but an image's section, as the window lists them by namespace (M6): named ones by their object
+    /// directory, then their leaf - a name in no directory first - then those no record named, by what they are and their
+    /// key; and idle sockets last, apart from the traffic observed.
+    /// </summary>
+    internal static ResourceLink[] ListedResources(ResourceInstanceIndex resources) =>
+    [
+        .. resources.Instances
+            .Where(resource => !resource.Image)
+            .Select(LinkOf)
+            .OrderBy(link => link.Traffic is { Idle: true })
+            .ThenBy(link => link.Name is null)
+            .ThenBy(link => link.Namespace ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(link => link.Label, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(link => link.Key, StringComparer.Ordinal),
+    ];
+
+    /// <summary>One resource as the window holds it: what it is, its name, its holders, its records and a socket's traffic.</summary>
+    private static ResourceLink LinkOf(ResourceInstance resource) => new(
+        resource.Mechanism,
+        resource.Number,
+        resource.ByViews,
+        resource.Name,
+        [.. resource.Holders.Select(holder => holder.Process)])
+    {
+        LargestView = resource.LargestView,
+        Records = resource.Records,
+        Traffic = resource.Traffic,
+    };
 
     /// <summary>
     /// What the overview counts from a generation's rows: how many there are, how many have no session time, the extent

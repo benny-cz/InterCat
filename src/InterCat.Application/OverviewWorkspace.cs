@@ -65,6 +65,7 @@ public static class OverviewWorkspace
             RpcCallsPending = overview.RpcCallsPending,
             HostLinks = overview.HostLinks,
             ResourceLinks = overview.ResourceLinks,
+            Resources = overview.Resources,
             Listeners = overview.Listeners,
             ConnectionOpensRecorded = overview.ConnectionOpensRecorded,
             Recording = overview.Recording,

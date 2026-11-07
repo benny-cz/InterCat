@@ -932,6 +932,7 @@ Revision 1006 groups topology answers by a fact of the processes holding each re
 Revision 1007 draws a resource two or more drawn processes held as a hub of the window's graph (ADR-099), joined to each holder by a membership with no traffic value.
 Revision 1008 gives a resource hub its own records (ADR-099's addendum): choosing one highlights, counts and lists those its gate numbered it in, and icat evidence reads them by its key.
 Revision 1009 lets the search find a resource hub (ADR-099's second addendum): by its name or what it is, its hub marked, and going to it draws the hub first and chooses it.
+Revision 1010 lists a session's resources by namespace in the window's inspector (ADR-097's third addendum), idle sockets last, one chosen there its records.
 
 ## Revisions, a paragraph each, in order
 
@@ -4676,3 +4677,11 @@ Going to it leads where its holders are drawn apart - their program's rung, or t
 held it - draws the hub there first, whatever the budget would draw before it, and chooses it; another rung lets it go,
 and a re-count of the drawing keeps it. The graph marks and counts a hub the search finds, and rings a chosen hit's hub
 and holders.
+
+Revision 1010 brings M6's namespace-aware browsing to the window (ADR-097's third addendum). With nothing chosen on the
+machine rung, the inspector lists every resource of the session but an image's section, as `icat resources` does:
+named ones by the object directory their names lie in and their leaf, those no record named after, and idle sockets
+last, apart from the traffic observed. Each row says what it is, where its name lies, who held it, its records and a
+socket's traffic; the first eight are named, every one up to a hundred on request. A resource chosen there is its own
+records, read by its key as a hub's are - a socket now has one - which the timeline highlights, the card counts and E
+lists. A session with only AF_UNIX socket records derives its resources too.

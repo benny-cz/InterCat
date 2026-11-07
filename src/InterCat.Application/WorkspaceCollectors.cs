@@ -53,6 +53,14 @@ public static class WorkspaceCollectors
                     .Where(link => link.Holders.Count >= 2),
             ],
 
+            // A resource only InterCat's own processes held goes with them; one its records bound to no process stays.
+            Resources =
+            [
+                .. snapshot.Resources
+                    .Where(resource => resource.Holders.Count == 0 || resource.Holders.Any(holder => !aside.Contains(holder)))
+                    .Select(resource => resource with { Holders = [.. resource.Holders.Where(holder => !aside.Contains(holder))] }),
+            ],
+
             // A listener of InterCat's own goes with it; one it connected to keeps its count, as the process's own does.
             Listeners = [.. snapshot.Listeners.Where(listener => !aside.Contains(listener.Process.Id))],
             SetAside = own,

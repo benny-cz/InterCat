@@ -97,8 +97,7 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>A hub's evidence line: how many records its gate numbered it in - its views' or its handles' - none of them traffic.</summary>
     private string HubEvidence(GraphDisplayNode hub) => ResourceOf(hub.Key) is { } resource
-        ? string.Create(CultureInfo.CurrentCulture, $"{resource.Records:N0} {(resource.Records == 1 ? "record" : "records")} of its ")
-            + (resource.ByViews ? "views" : "handles") + " · holding a resource is no traffic"
+        ? ResourceEvidence(resource)
         : "Its records are not in this generation";
 
     /// <summary>

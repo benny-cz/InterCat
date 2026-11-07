@@ -91,8 +91,8 @@ internal static class EvidenceCommand
         channel = host is not null ? HostScopeKeys.Of(host) : channel;
         // A relationship's evidence key opens its records at both ends (R4): a paired TCP or UDP channel's, or an RPC
         // relationship's, channel's or call's, whose records the RPC calls name. A process's HTTP exchanges, or one of
-        // them, name their own records too, as the window's evidence rung reads them, and so does a resource hub: the records
-        // its gate numbered it in, whichever process they bind to (ADR-099).
+        // them, name their own records too, as the window's evidence rung reads them, and so does a resource - a hub, or one
+        // the inspector lists: the records its gate numbered it in, whichever process they bind to (ADR-099).
         bool rpc = RpcChannelKeys.IsRpc(channel);
         bool resource = ResourceLink.IsKey(channel);
         bool operation = rpc || resource || HttpExchangeKeys.IsHttp(channel);
@@ -290,8 +290,8 @@ internal static class EvidenceCommand
         ConsoleUi.Line("  A cursor continues after its last row, in a newer generation too; a changed scope, policy");
         ConsoleUi.Line("  or derivation asks for an explicit restart. --channel takes a relationship's evidence key: a");
         ConsoleUi.Line("  paired TCP or UDP channel's, or an RPC relationship's, which opens the calls its links join at both");
-        ConsoleUi.Line("  ends; an RPC channel's or call's key, a process's HTTP exchanges' or one exchange's, or a resource");
-        ConsoleUi.Line("  hub's, as the window's export of its records names it, opens its own records, and no such key");
+        ConsoleUi.Line("  ends; an RPC channel's or call's key, a process's HTTP exchanges' or one exchange's, or a");
+        ConsoleUi.Line("  resource's, as the window's export of its records names it, opens its own records, and no such key");
         ConsoleUi.Line("  takes --owner-process.");
         ConsoleUi.Line("  --host reads the records of every connection to one other host's address, whichever process held");
         ConsoleUi.Line("  it; who is at the address is not observed.");

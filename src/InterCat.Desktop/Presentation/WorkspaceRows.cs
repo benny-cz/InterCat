@@ -179,6 +179,18 @@ public sealed record ListenerRow(string Listener, string Detail, string Spoken) 
 }
 
 /// <summary>
+/// One resource of the session, as the inspector lists them by namespace while it describes nothing (M6): its name's leaf,
+/// or what it is and its number where no record named it, then what it is, the object directory its name lies in, who held
+/// it, its records and a socket's traffic - "Ready", "Synchronization object · \Sessions\1\BaseNamedObjects · held by
+/// writer.exe · PID 100 · 4 records".
+/// </summary>
+public sealed record ResourceRow(string Key, string Label, string Detail) : IAccessibleRow
+{
+    /// <summary>The resource read aloud, with what E does on it.</summary>
+    public string AccessibleName => $"{Label}, {Detail}. Press E to list its records.";
+}
+
+/// <summary>
 /// A process an aggregate counts, as the inspector lists it beneath the aggregate's description (§6.3): its name and PID,
 /// then its records over the scope shown, its relationships and its connections to other hosts.
 /// </summary>

@@ -3543,6 +3543,15 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
         }
     }
 
+    /// <summary>Lists every resource of the session, or the first few again; the keyboard goes to the first one newly listed.</summary>
+    private void ToggleResources(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel && viewModel.ToggleResources())
+        {
+            FocusFirstUnnamed(ResourceList, WorkspaceViewModel.ResourcesNamed);
+        }
+    }
+
     private void ChooseListedListener(object? sender, TappedEventArgs eventArgs)
     {
         if (DataContext is WorkspaceViewModel viewModel)

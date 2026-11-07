@@ -99,6 +99,14 @@ public sealed class ResourceHubGraphTests
         WorkspaceSnapshot aside = WorkspaceCollectors.SetAside(own);
         Assert.Equal([three.Key], aside.ResourceLinks.Select(link => link.Key));
         Assert.Equal(Sorted([processes[0].Id, processes[1].Id]), Sorted(aside.ResourceLinks[0].Holders));
+
+        // The inspector's resources: one only InterCat's own process held goes with it, one shared keeps its other holder,
+        // and one whose records bound to no process stays.
+        ResourceLink own3 = new(Mechanism.UnixDomainSocket, 7, false, null, [processes[3].Id]);
+        ResourceLink unbound = new(Mechanism.Synchronization, 8, false, null, []);
+        WorkspaceSnapshot listed = WorkspaceCollectors.SetAside(own with { Resources = [lone, own3, unbound] });
+        Assert.Equal([lone.Key, unbound.Key], listed.Resources.Select(resource => resource.Key));
+        Assert.Equal([processes[2].Id], listed.Resources[0].Holders);
     }
 
     [Fact(DisplayName = "§6.3: hubs are drawn the most holders first, as many as the budget allows once every process is placed, and none whose holders one drawn node or the rest of the machine holds")]
@@ -207,7 +215,54 @@ public sealed class ResourceHubGraphTests
             views.Records.Select(record => record.Observation.Kind));
         Assert.Equal(2, SessionEvidenceQuery.Read(session.Store, operationKey: "resource:hub:section:4").Records.Count);
         Assert.Throws<InvalidOperationException>(() => SessionEvidenceQuery.Read(session.Store, operationKey: "resource:hub:object:9"));
-        Assert.Throws<ArgumentException>(() => SessionEvidenceQuery.Read(session.Store, operationKey: "resource:hub:socket:9"));
+        Assert.Throws<ArgumentException>(() => SessionEvidenceQuery.Read(session.Store, operationKey: "resource:hub:pipe:9"));
+    }
+
+    [Fact(DisplayName = "§6.3: a session's resources are listed by namespace - named ones by their object directory and leaf, those no record named after, idle sockets last - every one but an image's section, each with the key E reads its records by")]
+    public void ASessionsResourcesAreListedByNamespace()
+    {
+        // Two directories' objects and a section, then the object no record named; the record numbered 0 is no resource.
+        using var objects = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = NamedObjects();
+        Publish(objects.Store, rows, fields: fields);
+        SessionOverviewBundle named = SessionOverviewProjector.Project(objects.Store);
+        Assert.Equal(["resource:hub:object:2", "resource:hub:object:3", "resource:hub:object:1", "resource:hub:section:9", "resource:hub:object:4"],
+            named.Resources.Select(resource => resource.Key));
+        Assert.Equal((@"\BaseNamedObjects\Global", "Lock", (string?)null), (named.Resources[0].Namespace, named.Resources[0].Label, named.Resources[^1].Namespace));
+        Assert.Same(named.Resources, OverviewWorkspace.From(named).Resources);
+
+        // Sockets carry their traffic, the idle one last; the object one process held is listed though it is no hub.
+        using var sockets = new TemporarySession();
+        (rows, fields) = UnixSockets();
+        Publish(sockets.Store, rows, fields: fields);
+        SessionOverviewBundle socketed = SessionOverviewProjector.Project(sockets.Store);
+        Assert.Equal(["resource:hub:object:1", "resource:hub:socket:6", "resource:hub:socket:7", "resource:hub:socket:8", "resource:hub:socket:5"],
+            socketed.Resources.Select(resource => resource.Key));
+        Assert.Empty(socketed.ResourceLinks);
+        Assert.Equal(("Unix socket 6", new ResourceTraffic(1, 1, 96, 120, 0), 5L),
+            (socketed.Resources[1].Label, socketed.Resources[1].Traffic, socketed.Resources[1].Records));
+        Assert.True(socketed.Resources[^1].Traffic!.Idle);
+        Assert.Null(socketed.Resources[0].Traffic);
+
+        // Sockets alone are resources to list: a session whose processes made no other resource's record derives them too.
+        using var socketsOnly = new TemporarySession();
+        (rows, fields) = UnixSockets();
+        HashSet<ulong> objectRecords = [.. rows.Where(row => row.Mechanism == Mechanism.Synchronization).Select(row => row.RawRecordOrdinal)];
+        Publish(socketsOnly.Store, [.. rows.Where(row => !objectRecords.Contains(row.RawRecordOrdinal))],
+            fields: [.. fields.Where(field => !objectRecords.Contains(field.RawRecordOrdinal))]);
+        Assert.Equal(4, SessionOverviewProjector.Project(socketsOnly.Store).Resources.Count);
+
+        // A socket's key reads its records - never the TCP send whose connection id is its number.
+        Assert.True(ResourceLink.TryParseKey("resource:hub:socket:5", out Mechanism mechanism, out bool byViews, out long number));
+        Assert.Equal((Mechanism.UnixDomainSocket, false, 5L, "Unix socket"), (mechanism, byViews, number, ResourceLink.KindOf("resource:hub:socket:5")));
+        Assert.Equal(3, SessionEvidenceQuery.Read(sockets.Store, operationKey: "resource:hub:socket:5").Records.Count);
+
+        // An image's section is a module loaded, never listed.
+        using var mapped = new TemporarySession();
+        (rows, fields) = MappedSections();
+        Publish(mapped.Store, rows, fields: fields);
+        Assert.Equal(["resource:hub:section:4", "resource:hub:mapped-section:4", "resource:hub:mapped-section:6", "resource:hub:mapped-section:7"],
+            SessionOverviewProjector.Project(mapped.Store).Resources.Select(resource => resource.Key));
     }
 
     [Fact(DisplayName = "§6.3: a hub holds no process, only memberships run to it and none from it, and each membership is drawn once")]
@@ -246,7 +301,7 @@ public sealed class ResourceHubGraphTests
     }
 
     /// <summary>Keys that name no hub: a socket's, a number zero or none, and a host's.</summary>
-    private static readonly string[] NoHubKeys = ["resource:hub:socket:4", "resource:hub:section:0", "resource:hub:section:x", "resource:host:10.0.0.1"];
+    private static readonly string[] NoHubKeys = ["resource:hub:pipe:4", "resource:hub:section:0", "resource:hub:section:x", "resource:host:10.0.0.1"];
 
     private static string[] Sorted(IEnumerable<ProcessInstanceId> ids) =>
         [.. ids.Select(id => id.ToString()).Order(StringComparer.Ordinal)];

@@ -1013,6 +1013,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return members.Length == 0 ? (null, null) : (new(null, members), group.Name);
         }
 
+        // A resource chosen in the inspector's list is its own records, read by its key as a hub's are (M6).
+        if (ChosenResource is { } resource)
+        {
+            return (new(null, [], resource.Key), resource.Label);
+        }
+
         return selectedProcess is { } selected ? (new(null, [selected.Id]), selected.NameWithPid) : (null, null);
     }
 
@@ -5089,6 +5095,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : SelectedCluster is { IsHost: false } ? "Selected aggregate"
         : ChosenHostAddress is not null ? "Selected host"
         : SelectedGroup is not null ? "Selected group"
+        : ChosenResource is not null ? "Selected resource"
         : RungRecords is not null ? "Records E lists"
         : "Selected process";
 
@@ -5184,6 +5191,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (SelectedCluster is { IsHub: true } chosenHub && realOverview)
             {
                 return HubEvidence(chosenHub);
+            }
+
+            // A resource chosen in the inspector's list: its own records, as E lists them and the timeline highlights them.
+            if (ChosenResource is { } listedResource && realOverview)
+            {
+                return ResourceEvidence(listedResource);
             }
 
             // An aggregate drawn in the graph stands for its processes, as a set of them chosen together does: the card
@@ -5562,6 +5575,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, new(DetailLevel.Channel, hub.Key, hub.Label),
                 $"Evidence was reached from the {rung} rung with the resource {hub.Label} chosen: exactly its records, whichever "
                 + "process they bind to.")
+            : realOverview && ChosenResource is { } resource
+            ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, new(DetailLevel.Channel, resource.Key, resource.Label),
+                $"Evidence was reached from the {rung} rung with the resource {resource.Label} chosen in its list: exactly its "
+                + "records, whichever process they bind to.")
             : realOverview && SelectedCluster is { Members.Count: > 0 } aggregate
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                 new(DetailLevel.Group, ProcessSetFilter.KeyOf(aggregate.Members), aggregate.Label),
@@ -7529,8 +7546,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         else if (propertyName == nameof(SelectionTitle))
         {
             // The listening ports listed follow what the inspector describes: the machine's with nothing chosen, a chosen
-            // program's processes' (§6.3).
+            // program's processes' (§6.3); and the session's resources show with nothing chosen on the machine rung (M6).
             FollowListenerScope();
+            FollowResources();
         }
         else if (propertyName == nameof(HasSelectedProcessLane))
         {

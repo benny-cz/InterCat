@@ -193,6 +193,87 @@ public sealed class ResourceHubWorkspaceTests
         Assert.Equal("resource:hub:mapped-section:4", workspace.SelectedCluster?.Key);
     });
 
+    [Fact(DisplayName = "§6.3: with nothing chosen on the machine rung, the inspector lists the session's resources by namespace, idle sockets last, and one chosen there is its own records, which the timeline highlights, the card counts and E lists")]
+    public void TheInspectorListsResourcesByNamespace() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = UnixSockets();
+        Publish(session.Store, [.. rows.Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })], fields: fields);
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+
+        Assert.True(workspace.ShowsResources);
+        Assert.Equal("5 resources by namespace, 1 idle listed last", workspace.ResourcesHeading);
+        Assert.Equal(
+            [
+                ("Ready", @"Synchronization object · \Sessions\1\BaseNamedObjects · held by server.exe · PID 100 · 2 records"),
+                ("Unix socket 6", "unnamed · held by server.exe · PID 100 · 5 records · 1 send, 1 receive"),
+                ("Unix socket 7", "unnamed · held by client.exe · PID 200 · 5 records · 1 send, 1 receive"),
+                ("Unix socket 8", "unnamed · held by client.exe · PID 200 · 1 record · 1 send, 0 receives"),
+                ("Unix socket 5", "unnamed · held by server.exe · PID 100 · 3 records · idle"),
+            ],
+            workspace.ResourceRows.Select(row => (row.Label, row.Detail)));
+        Assert.Equal("Unix socket 5, unnamed · held by server.exe · PID 100 · 3 records · idle. Press E to list its records.",
+            workspace.ResourceRows[^1].AccessibleName);
+        Assert.False(workspace.OffersResourcesToggle);
+        Assert.Equal("Records E lists", workspace.EvidenceHeading);
+
+        // Chosen, socket 6 is its own records: the card counts them and what it carried, and the timeline highlights them.
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 100);
+        workspace.ChosenResourceRow = workspace.ResourceRows[1];
+        Assert.Equal("resource:hub:socket:6", workspace.ChosenResourceRow?.Key);
+        Assert.Equal(("Selected resource", "5 records of its socket · 1 send, 1 receive"), (workspace.EvidenceHeading, workspace.EvidenceSummary));
+        await workspace.HighlightReady;
+        Assert.Equal(5, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
+
+        // A process chosen in the graph hides the list and lets its choice go.
+        workspace.SelectGraphNode(workspace.GraphDisplay.NodeOf(workspace.Snapshot.Processes.Single(node => node.ProcessId == 100).Id)!.Key);
+        Assert.Equal((false, 0, (ResourceRow?)null), (workspace.ShowsResources, workspace.ResourceRows.Count, workspace.ChosenResourceRow));
+        workspace.ClearSelection();
+        Assert.Equal((true, (ResourceRow?)null), (workspace.ShowsResources, workspace.ChosenResourceRow));
+
+        // Chosen again, E lists exactly its records, its filter naming the resource and why.
+        workspace.ChosenResourceRow = workspace.ResourceRows[^1];
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(3, workspace.RungRows.Count);
+        Assert.StartsWith("Records of Unix socket 5", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        Assert.False(workspace.ShowsResources);
+        FilterRow scope = Assert.Single(workspace.Filters, filter => filter.Field == "scope");
+        Assert.EndsWith("with the resource Unix socket 5 chosen in its list: exactly its records, whichever process they bind to.",
+            scope.Reason, StringComparison.Ordinal);
+    });
+
+    [Fact(DisplayName = "§6.3: the inspector names the first resources and lists every one when asked, saying where the rest are read")]
+    public void TheInspectorListsEveryResourceWhenAsked() => SingleThreadedContext.Run(async () =>
+    {
+        // Section 4's views, then nine more sections both processes mapped: thirteen resources but the image's.
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        var more = new List<ObservationRowV1>();
+        var numbered = new List<SourceFieldRowV1>();
+        ulong ordinal = 1_000;
+        for (int section = 101; section <= 109; section++)
+        {
+            ObservationRowV1 mapped = SectionRecord(section - 80, 37, 100, 100, ordinal++, view: true);
+            more.Add(mapped);
+            numbered.AddRange([Field(mapped, SourceField.SectionNumber, section), Field(mapped, SourceField.SectionViewNumber, section * 10L),
+                Field(mapped, SourceField.ViewSize, 4096), Field(mapped, SourceField.ViewInformation, 0)]);
+        }
+
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. rows.Concat(more).OrderBy(row => row.NativeTicks).ThenBy(row => row.RawRecordOrdinal)
+            .Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })], fields: [.. fields, .. numbered]);
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+
+        Assert.Equal(("13 resources by namespace", 8, true, "Show all 13 resources"),
+            (workspace.ResourcesHeading, workspace.ResourceRows.Count, workspace.OffersResourcesToggle, workspace.ResourcesToggleLabel));
+        Assert.True(workspace.ToggleResources());
+        Assert.Equal((13, "Show the first 8", string.Empty), (workspace.ResourceRows.Count, workspace.ResourcesToggleLabel, workspace.ResourcesMore));
+        Assert.False(workspace.ToggleResources());
+        Assert.Equal(8, workspace.ResourceRows.Count);
+    });
+
     private static WorkspaceViewModel Open(TemporarySession session)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);

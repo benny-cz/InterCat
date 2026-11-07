@@ -363,13 +363,14 @@ public sealed record OtherHost(string Address, int TcpConnections, int UdpFlows,
 }
 
 /// <summary>
-/// A resource two or more of the session's process instances held (§6.3's resource hubs, ADR-099): a section by its views or
-/// by its handles - two resources, never joined (ADR-092) - or a named synchronization object, never an image's section,
-/// with the processes its records bind to (`resource-instances-v3`). The graph draws it as a hub joined to each holder by a
-/// membership edge, which is undirected and carries no traffic value: holding a resource proves shared access, never what
-/// moved through it (P27).
+/// A resource of the session's process instances (`resource-instances-v3`): a section by its views or by its handles - two
+/// resources, never joined (ADR-092) - a named synchronization object or an AF_UNIX socket, never an image's section, with
+/// the processes its records bind to. The window lists every one by the namespace its name lies in (M6), and the graph draws
+/// a section or a synchronization object two or more held as a hub joined to each holder by a membership edge, which is
+/// undirected and carries no traffic value: holding a resource proves shared access, never what moved through it (§6.3's
+/// resource hubs, ADR-099, P27).
 /// </summary>
-/// <param name="Holders">The process instances its records bind to under the snapshot's policy, two or more, each once.</param>
+/// <param name="Holders">The process instances its records bind to under the snapshot's policy, each once: two or more for a hub.</param>
 public sealed record ResourceLink(
     Mechanism Mechanism,
     long Number,
@@ -380,29 +381,44 @@ public sealed record ResourceLink(
     /// <summary>For a section by its views, the largest extent one view of it mapped - its capacity, never bytes moved; null for any other.</summary>
     public long? LargestView { get; init; }
 
-    /// <summary>Its records - those its gate numbered it in, its handles' or its views' - whichever process they bind to.</summary>
+    /// <summary>Its records - those its gate numbered it in, its handles', its views' or its socket's - whichever process they bind to.</summary>
     public long Records { get; init; }
 
-    /// <summary>What every resource hub's key begins with.</summary>
+    /// <summary>
+    /// The transfers an AF_UNIX socket's records carried - its traffic, idle where it carried none; null for a section or a
+    /// synchronization object, whose records are never traffic and which is never said to be idle (R3).
+    /// </summary>
+    public ResourceTraffic? Traffic { get; init; }
+
+    /// <summary>The object directory its name lies in; null for a resource no record named, or a name in no directory.</summary>
+    public string? Namespace => Name is { } name ? ResourceNames.NamespaceOf(name) : null;
+
+    /// <summary>What every resource's key begins with, a hub's or one the window lists.</summary>
     public const string KeyPrefix = "resource:hub:";
 
     /// <summary>What every membership's key begins with.</summary>
     public const string MembershipPrefix = "membership:";
 
     /// <summary>
-    /// Its key, by what it is and its number - a mapped section's, a section's by its handles or an object's - which a
-    /// session's later generations keep, since its number is the capture's gate's.
+    /// Its key, by what it is and its number - a mapped section's, a section's by its handles, an object's or a socket's -
+    /// which a session's later generations keep, since its number is the capture's gate's.
     /// </summary>
     public string Key => $"{KeyPrefix}{Kind}:{Number}";
 
-    /// <summary>The kind its key and words name it by: a mapped section, a section by its handles, or a synchronization object.</summary>
-    private string Kind => Mechanism != Mechanism.SharedSection ? "object" : ByViews ? "mapped-section" : "section";
+    /// <summary>The kind its key names it by: a mapped section, a section by its handles, a socket or a synchronization object.</summary>
+    private string Kind => Mechanism switch
+    {
+        Mechanism.SharedSection => ByViews ? "mapped-section" : "section",
+        Mechanism.UnixDomainSocket => "socket",
+        _ => "object",
+    };
 
     /// <summary>
     /// The words a reader names it by: its name's leaf where its records named it, else what it is and its number - a mapped
-    /// section, a section or a synchronization object.
+    /// section, a section, a Unix socket or a synchronization object.
     /// </summary>
     public string Label => Name is { } name ? ResourceNames.LeafOf(name)
+        : Mechanism == Mechanism.UnixDomainSocket ? $"Unix socket {Number}"
         : Mechanism != Mechanism.SharedSection ? $"Synchronization object {Number}"
         : ByViews ? $"Mapped section {Number}"
         : $"Section {Number}";
@@ -414,8 +430,8 @@ public sealed record ResourceLink(
     public static bool IsKey(string? key) => key is not null && key.StartsWith(KeyPrefix, StringComparison.Ordinal);
 
     /// <summary>
-    /// What a hub's key names - its mechanism, whether it is a section by its views, and its number - which E reads its
-    /// records by; false for a key that names no hub.
+    /// What a resource's key names - its mechanism, whether it is a section by its views, and its number - which E reads its
+    /// records by; false for a key that names no resource.
     /// </summary>
     public static bool TryParseKey(string? key, out Mechanism mechanism, out bool byViews, out long number)
     {
@@ -440,6 +456,7 @@ public sealed record ResourceLink(
             "mapped-section" => (Mechanism.SharedSection, true),
             "section" => (Mechanism.SharedSection, false),
             "object" => (Mechanism.Synchronization, false),
+            "socket" => (Mechanism.UnixDomainSocket, false),
             _ => null,
         };
         if (named is not { } kind)
@@ -452,14 +469,15 @@ public sealed record ResourceLink(
     }
 
     /// <summary>
-    /// What a hub's key says it is, as a reader names it - a mapped section, a section or a synchronization object; null for a
-    /// key that names no hub.
+    /// What a resource's key says it is, as a reader names it - a mapped section, a section, a synchronization object or a
+    /// Unix socket; null for a key that names no resource.
     /// </summary>
     public static string? KindOf(string? key) =>
         !IsKey(key) ? null
         : key!.AsSpan(KeyPrefix.Length).StartsWith("mapped-section:", StringComparison.Ordinal) ? "Mapped section"
         : key.AsSpan(KeyPrefix.Length).StartsWith("section:", StringComparison.Ordinal) ? "Section"
         : key.AsSpan(KeyPrefix.Length).StartsWith("object:", StringComparison.Ordinal) ? "Synchronization object"
+        : key.AsSpan(KeyPrefix.Length).StartsWith("socket:", StringComparison.Ordinal) ? "Unix socket"
         : null;
 
     /// <summary>Whether a key names a membership.</summary>
@@ -848,6 +866,14 @@ public sealed record WorkspaceSnapshot(
     /// projected from a session, and for one whose processes made no record of a mechanism that has resources.
     /// </summary>
     public IReadOnlyList<ResourceLink> ResourceLinks { get; init; } = [];
+
+    /// <summary>
+    /// Every resource of the session but an image's section, over the whole session and under the policy the snapshot was
+    /// projected under, by the namespace its name lies in: named ones by their object directory and leaf, then those no
+    /// record named, and idle sockets last, apart from the traffic observed (M6). The window lists them; empty where
+    /// <see cref="ResourceLinks"/> is for want of records.
+    /// </summary>
+    public IReadOnlyList<ResourceLink> Resources { get; init; } = [];
 
     /// <summary>
     /// The ports the session's processes accepted TCP connections at, each with who connected, the busiest first, over the

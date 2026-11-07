@@ -1138,6 +1138,47 @@
                     <TextBlock Text="{Binding ListenersToggleLabel}" TextWrapping="Wrap" />
                   </Button>
                 </StackPanel>
+                <!-- M6: with nothing chosen on the machine rung, the resources its processes held, by the object directory
+                     each name lies in, those no record named after and idle sockets last, as icat resources lists them. One
+                     chosen is its own records: the timeline highlights them, the card counts them and E lists them. -->
+                <StackPanel x:Name="ResourcesPanel" Spacing="3" IsVisible="{Binding ShowsResources}">
+                  <TextBlock x:Name="ResourcesHeadingText" Text="{Binding ResourcesHeading}" Classes="muted"
+                             TextWrapping="Wrap" />
+                  <ListBox x:Name="ResourceList" ItemsSource="{Binding ResourceRows}"
+                           SelectedItem="{Binding ChosenResourceRow, Mode=TwoWay}" Background="Transparent"
+                           BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                           ScrollViewer.BringIntoViewOnFocusChange="False"
+                           AutomationProperties.Name="{Binding ResourcesListName}">
+                    <!-- Eight at most, or a hundred asked for, laid out whole within the inspector's own scroll. -->
+                    <ListBox.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel />
+                      </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.Styles>
+                      <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="6,3" />
+                        <Setter Property="MinHeight" Value="0" />
+                      </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemTemplate>
+                      <DataTemplate x:DataType="pres:ResourceRow">
+                        <StackPanel Margin="0,1" Spacing="1">
+                          <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                  <TextBlock x:Name="ResourcesMoreText" Text="{Binding ResourcesMore}" Classes="muted" FontSize="12"
+                             TextWrapping="Wrap" IsVisible="{Binding ShowsResourcesMore}" />
+                  <!-- Every resource on request, and the first few again. -->
+                  <Button x:Name="ResourcesToggleButton" Click="ToggleResources" HorizontalAlignment="Left"
+                          Margin="0,2,0,0" IsVisible="{Binding OffersResourcesToggle}"
+                          AutomationProperties.Name="{Binding ResourcesToggleLabel}">
+                    <TextBlock Text="{Binding ResourcesToggleLabel}" TextWrapping="Wrap" />
+                  </Button>
+                </StackPanel>
                 <!-- §6.8: a process's or a channel's numbers are one action from the rule behind them - how a process's
                      records were bound to it, and what the evidence policy left out, or how a channel's ends were paired. -->
                 <StackPanel Spacing="3" IsVisible="{Binding HasExplanation}">
