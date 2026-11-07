@@ -63,9 +63,9 @@ public static partial class SessionMetrics
                 "Counting resources' membership and lifecycle records is not defined at this version: a resource is counted "
                 + "once, over its known lifetime, never by its records. The source-observations basis counts the records "
                 + "themselves.",
-            Metric.Duration =>
-                "A mapping lifetime is not measured at this version: a section's views are counted and the largest extent one "
-                + "mapped is given, but no view's mapping to its unmapping is a duration yet.",
+            Metric.Duration when request.Grouping is not null =>
+                "Grouping a mapping lifetime is not defined at this version: the lifetimes are measured over every mapping in "
+                + "scope, or a focus's alone (§8b).",
             _ => null,
         };
         missing ??= request.Grouping is { } grouping && !ProcessGrouping.ByInstanceFact(grouping) && grouping != LaneGrouping.Mechanism
@@ -118,6 +118,12 @@ public static partial class SessionMetrics
             processes,
             request.EvidencePolicy,
             cancellationToken);
+
+        // A mapping lifetime is a view's, each mapping in scope by its own readings rather than its section's lifetime.
+        if (request.Metric == Metric.Duration)
+        {
+            return MappingLifetimes(context, context.Clock.Value, index);
+        }
 
         // A resource is in scope where its mechanism and layer are the projection's and its known lifetime meets the
         // interval: from its first record to its last, open before the first where it was made before the capture and after
@@ -630,6 +636,128 @@ public static partial class SessionMetrics
         }
 
         return whole with { Groups = ordered, Remainder = remainder, GroupsPartitionTotal = true, Caveats = caveats };
+    }
+
+    /// <summary>
+    /// A mapping lifetime (§8b): each mapping of a view of a section by its views - a focus's alone where one is named - whose
+    /// counted reading is in scope, its unmapping for the mappings completed in range and its mapping for those started;
+    /// measured from its mapping to its unmapping where both were seen, and stated where an end was not - mapped before the
+    /// capture, still mapped at its stop, or its unmapping unseen - never given a duration. How long a view stayed mapped,
+    /// never a byte moved through it (P27).
+    /// </summary>
+    private static MetricResult MappingLifetimes(Context context, SourceClockDescriptor clock, ResourceInstanceIndex index)
+    {
+        MetricRequest request = context.Request;
+        bool byStart = request.Cohort == OperationCohort.StartedInRange;
+        DurationStatistic statistic = request.Statistic!.Value;
+        ProcessInstanceId? focus = request.Focus?.Instance;
+        var spans = new List<(long Start, long Stop)>();
+        long censored = 0;
+        long outsideProjection = 0;
+        long outsideInterval = 0;
+        long outsideProcess = 0;
+        long unbound = 0;
+        long images = 0;
+        foreach (ResourceInstance section in index.Instances.Where(resource => resource.ByViews))
+        {
+            bool projected = (request.Mechanism is not { } mechanism || mechanism == section.Mechanism)
+                && (request.Layer is not { } layer || layer == section.Layer);
+            foreach (ResourceView mapping in section.Mappings)
+            {
+                // A mapping is in the cohort by its counted reading, its unmapping or its mapping; one the capture did not see
+                // that reading of is no member of it.
+                if ((byStart ? mapping.MappedNativeTicks : mapping.UnmappedNativeTicks) is not { } counted)
+                {
+                    continue;
+                }
+
+                if (!projected)
+                {
+                    outsideProjection++;
+                    continue;
+                }
+
+                if (request.Interval is { } interval && !interval.Contains(counted))
+                {
+                    outsideInterval++;
+                    continue;
+                }
+
+                if (focus is { } held && mapping.Holder != held)
+                {
+                    outsideProcess++;
+                    unbound += mapping.Holder is null ? 1 : 0;
+                    continue;
+                }
+
+                if (mapping is { MappedNativeTicks: { } mapped, UnmappedNativeTicks: { } unmapped })
+                {
+                    spans.Add(((long)SourceClockMath.SessionNanoseconds(clock, mapped), (long)SourceClockMath.SessionNanoseconds(clock, unmapped)));
+                    images += section.Image ? 1 : 0;
+                }
+                else
+                {
+                    censored++;
+                }
+            }
+        }
+
+        MetricDistribution? distribution = MetricDistribution.Of(spans);
+        var caveats = new List<string>
+        {
+            "A mapping lifetime runs from a view's mapping to its unmapping by one process: how long the view stayed mapped, "
+            + "never a byte moved through it (P27). A view's records pair by the view gate's number and the process they bind to.",
+            byStart
+                ? "Started in range: the mappings whose mapping is in scope."
+                : "Completed in range: the mappings whose unmapping is in scope.",
+        };
+        if (censored > 0)
+        {
+            caveats.Add($"{CountText.Of(censored, "mapping")} in scope had an end the capture did not see - mapped before it, or "
+                + "still mapped at its stop or its unmapping unseen - and " + CountText.Agree(censored, "is", "are")
+                + " stated, never given a duration.");
+        }
+
+        if (images > 0)
+        {
+            caveats.Add($"{CountText.Of(images, "mapping")} measured {CountText.Agree(images, "is", "are")} an image's view: a "
+                + "module loaded, not memory a process shared.");
+        }
+
+        if (unbound > 0)
+        {
+            caveats.Add($"{CountText.Of(unbound, "mapping")} left out bound to no process, so the focus could have held "
+                + $"{CountText.Agree(unbound, "it", "them")}: disclosed, never measured.");
+        }
+
+        MetricResult answer = context.Answer(request) with
+        {
+            ResourceRule = ResourceInstanceIndex.Rule,
+            Unit = MeasurementUnit.Nanoseconds,
+            Value = distribution?.Of(statistic),
+            Distribution = distribution,
+            KnownContributions = spans.Count,
+            UnknownContributions = censored,
+            ExcludedByProjection = outsideProjection,
+            ExcludedOutsideInterval = outsideInterval,
+            ExcludedByProcessFilter = outsideProcess,
+            BindingRule = focus is null ? null : ProcessInstanceIndex.BindingRule,
+            Caveats = caveats,
+        };
+
+        // A lifetime of nothing is not zero: with no mapping in scope measured, there is no value to report (R21).
+        return distribution is not null
+            ? answer
+            : answer with
+            {
+                Value = null,
+                Unit = null,
+                Unavailable = MetricUnavailableReason.NothingMeasured,
+                UnavailableExplanation = censored > 0
+                    ? "Every mapping in scope had an end the capture did not see, so none was measured, which is not a lifetime "
+                        + "of zero (R21)."
+                    : "No mapping of a section's view is in scope, so no lifetime was measured, which is not a lifetime of zero (R21).",
+            };
     }
 
     // The value a set of resources gives a group: how many they are; or for a capacity, the largest extent each section's

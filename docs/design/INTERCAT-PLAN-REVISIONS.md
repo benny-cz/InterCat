@@ -937,6 +937,7 @@ Revision 1011 makes Enter on a resource the inspector lists choose where it is h
 Revision 1012 lists a program's processes' resources in its inspector, chosen or opened (ADR-097's fifth addendum), one chosen there its records rather than the program's.
 Revision 1013 shows each resource's lifetime in the window (ADR-097's sixth addendum): a row's notable ends, and a hub card's first and last readings and how it began and ended.
 Revision 1014 groups resource-topology answers by mechanism (ADR-098's second addendum), each resource in one group and the groups partitioning the total.
+Revision 1015 measures a mapping lifetime (ADR-098's third addendum): how long each view of a section stayed mapped, where both its ends were seen.
 
 ## Revisions, a paragraph each, in order
 
@@ -4713,3 +4714,9 @@ addendum). A resource is a synchronization object, a section or a socket, so a c
 by mechanism puts each in exactly one group and the groups partition the total, unlike a grouping by the processes
 holding them. A capacity's one group is sections. A count of peers stays one count with its focus, as on every basis,
 and the request check admits a count of channels grouped by mechanism on this basis alone.
+
+Revision 1015 measures a mapping lifetime, which metrics-v1 §8b refused (ADR-098's third addendum). A section by its views
+pairs its views' records into mappings, by the view gate's number and the process they bind to, from a mapping or the
+start's rundown listing one to its unmapping or the stop's rundown holding it. A mapping lifetime takes them as a call's
+duration takes calls - completed or started in range, a focus's alone - and measures one only where both its ends were
+seen; one mapped before the capture or still mapped at its stop is stated, never given a duration.

@@ -1501,13 +1501,18 @@ internal static class MetricCommand
             }
         }
 
-        rows.Add([topology ? "outside the interval, by their known lifetime" : "outside the interval",
+        // A mapping lifetime leaves out mappings, each by the reading its cohort counts, where any other topology answer leaves
+        // out resources whole, by their known lifetime.
+        bool mappings = topology && result.Request.Metric == Metric.Duration;
+        rows.Add([mappings ? "outside the interval, by the reading the cohort counts"
+                : topology ? "outside the interval, by their known lifetime" : "outside the interval",
             ConsoleUi.Count(document.Excluded.OutsideInterval)]);
         ConsoleUi.Line();
         ConsoleUi.Line(operations ? "  Calls left out of this answer:"
+            : mappings ? "  Mappings left out of this answer:"
             : topology ? "  Resources left out of this answer:"
             : "  Records left out of this answer:");
-        ConsoleUi.Table(["Why", operations ? "Calls" : topology ? "Resources" : "Records"], rows);
+        ConsoleUi.Table(["Why", operations ? "Calls" : mappings ? "Mappings" : topology ? "Resources" : "Records"], rows);
         if (result.UnlinkedCalls.Count > 0)
         {
             // Why no link reached the calls an answer about other ends disclosed or could not attribute (operations-v1 §5c).
@@ -1587,8 +1592,12 @@ internal static class MetricCommand
 
         if (result.Request.Metric == Metric.Duration && result.Distribution is { } distribution)
         {
-            string calls = result.Request.DurationInterval == DurationInterval.ClientCall ? "client calls" : "served calls";
-            string cohort = result.Request.Cohort == OperationCohort.StartedInRange ? "started" : "completed";
+            bool mappings = result.Request.DurationInterval == DurationInterval.MappingLifetime;
+            string calls = mappings ? "mappings"
+                : result.Request.DurationInterval == DurationInterval.ClientCall ? "client calls" : "served calls";
+            string cohort = result.Request.Cohort == OperationCohort.StartedInRange
+                ? mappings ? "mapped" : "started"
+                : mappings ? "unmapped" : "completed";
             string statistic = result.Request.Statistic switch
             {
                 DurationStatistic.Percentile95 => "95th percentile",
@@ -2198,7 +2207,9 @@ internal static class MetricCommand
         ConsoleUi.Line("      never bytes moved. None of it is traffic. --group-by process, executable, session,");
         ConsoleUi.Line("      package or service-container ranks what each group's processes held, a shared");
         ConsoleUi.Line("      resource in each holder's group; --group-by mechanism splits them by what they are,");
-        ConsoleUi.Line("      each in one group.");
+        ConsoleUi.Line("      each in one group. --metric duration --duration mapping-lifetime measures how long each");
+        ConsoleUi.Line("      view of a section stayed mapped, from its mapping to its unmapping by one process; a");
+        ConsoleUi.Line("      view mapped before the capture or still mapped at its stop is stated, never measured.");
         ConsoleUi.Line("      Every answer names its query identity: the SHA-256 of the canonical specification");
         ConsoleUi.Line("      over the snapshot it read (query-identity-v1). --print-canonical prints that");
         ConsoleUi.Line("      canonical form and identity without answering.");

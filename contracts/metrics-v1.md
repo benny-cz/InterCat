@@ -523,12 +523,21 @@ mechanism puts each resource in exactly one group, and the groups partition the 
 sections, as an object or a socket maps nothing. A count of peers is one count with its focus, on this basis as on
 every other, and is never grouped so.
 
+**A mapping lifetime (revision 1015).** `Duration` with `MappingLifetime` measures how long each view of a section stayed
+mapped: each mapping a section by its views pairs - by the view gate's number and the process its records bind to, from a
+mapping, or the start's rundown listing one, to its unmapping or the stop's rundown holding it. `CompletedInRange` takes
+the mappings whose unmapping is in scope, `StartedInRange` those whose mapping is, and `owner(P)` P's alone; each is
+measured from its mapping to its unmapping where both were seen, and one with an end unseen - mapped before the capture,
+or still mapped at its stop - is an unknown contribution, never given a duration. The statistic is the median, the 95th
+percentile or the maximum, and nothing measured is `NothingMeasured`, never zero (R21). It is never grouped at this
+version.
+
 An answer carries `resourceRule` and `resources`: the resources taken, by mechanism; how many are sections by their views
 and how many an image's; how many were made before the capture, held at its stop or ended unseen; their memberships, each
 process holding each resource once; those a process filter disclosed; and every resource the generation derives.
 
 **What no derived resource answers** is `NoResourceTopology`, with what it needs: `Observations`, a count of resources'
-records rather than of resources; the `Duration` of a mapping lifetime; a grouping by peer; and `sender`, `receiver` and a
+records rather than of resources; a grouping by peer, and a mapping lifetime grouped by anything; and `sender`, `receiver` and a
 directional `between`, which select data that flowed one way where holding a resource is undirected.
 
 **Identity.** An answer on this basis depends on the resource rule, `resource-instances-v3`, which it names as its

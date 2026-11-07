@@ -171,6 +171,21 @@ public sealed class MetricCommandTests : IDisposable
         (code, text, _) = await Run(["metric", mapped.Path, "--basis", "resource-topology", "--metric", "mapping-capacity", "--group-by", "endpoint"]);
         Assert.Equal(InterCatExitCode.PermissionOrCapabilityFailure, code);
         Assert.Matches(@"(?m)^  Reason +No derived resource answers it\r?$", text);
+
+        // A mapping lifetime: how long each view stayed mapped, the one mapped before the capture stated, never measured; the
+        // answer says mappings, not calls, and leaves out mappings, not resources.
+        (code, text, _) = await Run(["metric", mapped.Path, "--basis", "resource-topology", "--metric", "duration", "--duration", "mapping-lifetime", "--interval", "0:31"]);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Value +\S+ \S+, the median of 1 mappings? unmapped in scope\r?$", text);
+        Assert.Contains("Mappings left out of this answer:", text, Ordinal);
+        Assert.Matches(@"outside the interval, by the reading the cohort counts\s+2", text);
+        (code, text, _) = await Run(["metric", mapped.Path, "--basis", "resource-topology", "--metric", "duration", "--duration", "mapping-lifetime", "--json"]);
+        Assert.Equal(InterCatExitCode.Success, code);
+        using (JsonDocument lifetime = JsonDocument.Parse(text))
+        {
+            Assert.Equal((1_900L, "Nanoseconds", 2L, 1L), (lifetime.RootElement.GetProperty("value").GetInt64(), lifetime.RootElement.GetProperty("unit").GetString(),
+                lifetime.RootElement.GetProperty("contributions").GetProperty("known").GetInt64(), lifetime.RootElement.GetProperty("contributions").GetProperty("unknown").GetInt64()));
+        }
     }
 
     [Fact(DisplayName = "R21: icat metric says what it cannot answer and why, never that a session without what a request needs holds nothing")]

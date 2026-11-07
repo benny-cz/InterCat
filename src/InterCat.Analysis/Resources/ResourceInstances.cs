@@ -19,6 +19,22 @@ public sealed record ResourceHolder(
     int ViewsListed = 0);
 
 /// <summary>
+/// One mapping of a section's view by one process, as its view's records pair it (`contracts/resources-v1.md` §1, ADR-092):
+/// the readings of its mapping and its unmapping where the capture saw them, whether the start's rundown listed it - mapped
+/// before the capture - and whether the stop's held it. A reading the capture did not see is null; a mapping whose two
+/// readings were both seen is the one whose lifetime is measured, never one with an end unseen.
+/// </summary>
+/// <param name="View">The number the view gate gave the view's address.</param>
+/// <param name="Holder">The process instance its records bind to under the policy; null where they bind to none.</param>
+public sealed record ResourceView(
+    long View,
+    ProcessInstanceId? Holder,
+    long? MappedNativeTicks,
+    long? UnmappedNativeTicks,
+    bool MappedBefore,
+    bool HeldAtStop);
+
+/// <summary>
 /// The transfers a resource's records carried (`contracts/resources-v1.md` §1): its sends and receives, the bytes of those
 /// whose size was recorded, and how many recorded none. A resource that carried none was idle - discovered, its traffic
 /// none observed - which a mechanism recording no transfer never says of its resources (R3).
@@ -61,6 +77,12 @@ public sealed record ResourceInstance
 
     /// <summary>For a section by its views, how many views of it the capture saw; zero for any other.</summary>
     public int Views { get; init; }
+
+    /// <summary>
+    /// For a section by its views, each mapping of one of its views by one process, in the order of its first reading: what
+    /// a mapping lifetime measures; empty for any other.
+    /// </summary>
+    public IReadOnlyList<ResourceView> Mappings { get; init; } = [];
 
     /// <summary>For a section by its views, the largest extent one of its views mapped, in bytes; null where no view's size was recorded.</summary>
     public long? LargestView { get; init; }
@@ -421,13 +443,11 @@ public sealed class ResourceInstanceIndex
                     Draft views = drafts.TryGetValue((mechanism, true, viewSection), out Draft? seen)
                         ? seen
                         : drafts[(mechanism, true, viewSection)] = new() { ByViews = true };
-                    views.Add(
-                        new Mark(ticks.SignedAt(row)!.Value, address, kind, (Direction)directions.UnsignedAt(row)!.Value, layer,
-                            StartRundown: kind == ObservationKind.Inventory && opcodes.UnsignedAt(row) == ViewStartRundown),
-                        null,
-                        null,
-                        owner);
+                    var mark = new Mark(ticks.SignedAt(row)!.Value, address, kind, (Direction)directions.UnsignedAt(row)!.Value, layer,
+                        StartRundown: kind == ObservationKind.Inventory && opcodes.UnsignedAt(row) == ViewStartRundown);
+                    views.Add(mark, null, null, owner);
                     views.View(carried.View, carried.Size, carried.Information);
+                    views.Mapping(carried.View, mark, owner);
                 }
 
                 continue;
@@ -548,6 +568,9 @@ public sealed class ResourceInstanceIndex
         private long? largestView;
         private bool image;
 
+        // Each view's records by the process they bind to - an unbound one's apart, as -1 - which pair into its mappings.
+        private readonly Dictionary<(long View, int Holder), List<Mark>> mappings = [];
+
         /// <summary>Whether its mechanism's records carry transfers: an AF_UNIX socket's.</summary>
         public bool CarriesTraffic { get; init; }
 
@@ -590,6 +613,64 @@ public sealed class ResourceInstanceIndex
             }
 
             image |= information is { } extra && (ulong)extra >> 48 == 0x47;
+        }
+
+        // A view's record kept with the others of its view and its process, to be paired into its mappings.
+        public void Mapping(long? view, Mark mark, ProcessBinding owner)
+        {
+            if (view is not { } number)
+            {
+                return;
+            }
+
+            (long, int) key = (number, owner.IsBound ? owner.Instance : -1);
+            (mappings.TryGetValue(key, out List<Mark>? marks) ? marks : mappings[key] = []).Add(mark);
+        }
+
+        // A view's records in time, paired: a mapping, or the start's rundown listing one made before the capture, opens one;
+        // its unmapping closes it, or the stop's rundown holds it. Another mapping before an unmapping leaves the open one's end
+        // unseen, and an unmapping or a stop's rundown with none open is one whose mapping the capture did not see.
+        private List<ResourceView> Paired(ProcessInstanceIndex processes)
+        {
+            var paired = new List<ResourceView>();
+            foreach (((long view, int holder), List<Mark> marks) in mappings)
+            {
+                ProcessInstanceId? process = holder >= 0 ? processes.Instances[holder].Id : null;
+                marks.Sort();
+                (long? Mapped, bool Before)? open = null;
+                foreach (Mark mark in marks)
+                {
+                    switch (mark.Kind)
+                    {
+                        case ObservationKind.Map:
+                        case ObservationKind.Inventory when mark.StartRundown:
+                            if (open is { } unclosed)
+                            {
+                                paired.Add(new(view, process, unclosed.Mapped, null, unclosed.Before, false));
+                            }
+
+                            open = mark.Kind == ObservationKind.Map ? (mark.Ticks, false) : (null, true);
+                            break;
+                        case ObservationKind.Unmap:
+                        case ObservationKind.Inventory:
+                            bool held = mark.Kind == ObservationKind.Inventory;
+                            paired.Add(open is { } closing
+                                ? new(view, process, closing.Mapped, held ? null : mark.Ticks, closing.Before, held)
+                                : new(view, process, null, held ? null : mark.Ticks, false, held));
+                            open = null;
+                            break;
+                    }
+                }
+
+                if (open is { } left)
+                {
+                    paired.Add(new(view, process, left.Mapped, null, left.Before, false));
+                }
+            }
+
+            return [.. paired
+                .OrderBy(mapping => mapping.MappedNativeTicks ?? mapping.UnmappedNativeTicks ?? long.MaxValue)
+                .ThenBy(mapping => mapping.View)];
         }
 
         public void Add(Mark mark, string? name, long? markType, ProcessBinding owner)
@@ -645,6 +726,7 @@ public sealed class ResourceInstanceIndex
             ByViews = byViews,
             Image = image,
             Views = views.Count,
+            Mappings = ByViews ? Paired(processes) : [],
             LargestView = largestView,
             TypeName = type is { } known && typeNames.TryGetValue(known, out string? named) ? named : null,
             Names = names.AsReadOnly(),

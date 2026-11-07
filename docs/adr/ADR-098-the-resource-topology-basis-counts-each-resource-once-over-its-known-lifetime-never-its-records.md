@@ -1,7 +1,8 @@
 # ADR-098: The resource-topology basis counts each resource once over its known lifetime, never its records
 
 - Status: accepted for M6's resource topology; resources, the processes sharing them and sections' capacity are counted
-  (revision 1005), grouped by a fact of the processes holding them (revision 1006) and by mechanism (revision 1014)
+  (revision 1005), grouped by a fact of the processes holding them (revision 1006) and by mechanism (revision 1014), and
+  how long a section's views stayed mapped is measured (revision 1015)
 - Date: 2026-11-07
 - Decision owners: InterCat maintainers
 - Relates to: ADR-012, ADR-032, ADR-092, ADR-097, plan §5.3, §21.1, `metrics-v1`, `query-identity-v1`, R3, R21, P1, P3, P27
@@ -69,3 +70,13 @@ processes holding them, whose groups overlap. A capacity's one group is sections
 peers stays one count with its focus, as on every basis, so it is never grouped by mechanism, and a grouping by peer is
 not defined yet. The request check admits a count of channels grouped by mechanism on this basis alone.
 11 mutations of the path are caught.
+
+## Third addendum: a mapping lifetime (revision 1015)
+
+A section by its views pairs its views' records into mappings, by the view gate's number and the process they bind to:
+a mapping, or the start's rundown listing one made before the capture, opens one; its unmapping closes it, or the stop's
+rundown holds it. A mapping lifetime is a duration over those mappings, as a call's duration is over calls: completed in
+range takes the mappings whose unmapping is in scope, started in range those whose mapping is, and a focus its own; one is
+measured from its mapping to its unmapping only where both were seen, and one mapped before the capture or still mapped at
+its stop is stated, never given a duration. How long a view stayed mapped, never a byte moved through it (P27). A grouped
+mapping lifetime is not defined yet. 19 mutations of the path are caught.

@@ -122,7 +122,7 @@ public sealed class TopologyMetricsTests
             Request(Metric.ActiveChannels) with { Between = new ProcessBetween([writer], [reader], BetweenDirection.FirstToSecond) },
             Request(Metric.MappingCapacity) with { Grouping = LaneGrouping.Endpoint },
             Request(Metric.Observations),
-            Request(Metric.Duration) with { DurationInterval = DurationInterval.MappingLifetime },
+            Request(Metric.Duration) with { DurationInterval = DurationInterval.MappingLifetime, Grouping = LaneGrouping.InstanceOnly },
         })
         {
             Assert.Equal(MetricUnavailableReason.NoResourceTopology, SessionMetrics.Evaluate(session.Store, unanswered).Unavailable);
@@ -207,6 +207,42 @@ public sealed class TopologyMetricsTests
         Assert.Equal((94208L, Mechanism.SharedSection, 94208L, 1L, true),
             (capacity.Value, sections.Mechanism!.Value, sections.Value, sections.UnknownContributions, capacity.GroupsPartitionTotal));
         Assert.DoesNotContain("entityRevision", capacity.Identity!.CanonicalSpecification, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R3: a mapping lifetime runs from a view's mapping to its unmapping, measured only where both were seen, a view mapped before the capture or still mapped at its stop stated and never given a duration")]
+    public void AMappingLifetimeIsMeasuredWhereBothEndsWereSeen()
+    {
+        // Section 4's two views, mapped at 10 and 11 and unmapped at 31 and 30: 2,100 and 1,900 ns. Section 6's view, mapped
+        // before the capture and unmapped at 50, is censored; 7's, never unmapped, and the image's, held at the stop, completed
+        // in no range.
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        Publish(session.Store, rows, fields: fields);
+        MetricRequest lifetime = Request(Metric.Duration) with { DurationInterval = DurationInterval.MappingLifetime };
+        MetricResult completed = SessionMetrics.Evaluate(session.Store, lifetime);
+        Assert.Equal(((long?)1_900, MeasurementUnit.Nanoseconds, 2L, 1L), (completed.Value, completed.Unit, completed.KnownContributions, completed.UnknownContributions));
+        Assert.Equal((1_900L, 2_100L), (completed.Distribution!.Minimum, completed.Distribution.Maximum));
+        Assert.Contains(completed.Caveats, caveat => caveat.StartsWith("1 mapping in scope had an end the capture did not see", StringComparison.Ordinal));
+        Assert.Equal((long?)2_100, SessionMetrics.Evaluate(session.Store, lifetime with { Statistic = DurationStatistic.Maximum }).Value);
+
+        // Started in range: the image's view, mapped at 12 and held at the stop, is censored with them.
+        MetricResult started = SessionMetrics.Evaluate(session.Store, lifetime with { Cohort = OperationCohort.StartedInRange });
+        Assert.Equal((2L, 1L), (started.KnownContributions, started.UnknownContributions));
+
+        // The writer's alone, and the unmappings before 31 alone.
+        ProcessInstanceId writer = Instance(session.Store, 100);
+        MetricResult writers = SessionMetrics.Evaluate(session.Store, lifetime with { Owner = writer });
+        Assert.Equal(((long?)2_100, 2L), (writers.Value, writers.ExcludedByProcessFilter));
+        MetricResult early = SessionMetrics.Evaluate(session.Store, lifetime with { Interval = new TimeRange(0, 31) });
+        Assert.Equal(((long?)1_900, 2L), (early.Value, early.ExcludedOutsideInterval));
+
+        // Nothing in scope measured is unmeasured, never a lifetime of zero.
+        MetricResult none = SessionMetrics.Evaluate(session.Store, lifetime with { Interval = new TimeRange(40, 60) });
+        Assert.Equal((MetricUnavailableReason.NothingMeasured, (long?)null, 1L), (none.Unavailable, none.Value, none.UnknownContributions));
+
+        // A projection to another mechanism leaves every mapping out by it.
+        MetricResult objects = SessionMetrics.Evaluate(session.Store, lifetime with { Mechanism = Mechanism.Synchronization });
+        Assert.Equal((MetricUnavailableReason.NothingMeasured, 3L), (objects.Unavailable, objects.ExcludedByProjection));
     }
 
     [Fact(DisplayName = "R21: a topology count beside records bound to no process is a lower bound, and a capacity no section's views measured is unmeasured, never zero")]

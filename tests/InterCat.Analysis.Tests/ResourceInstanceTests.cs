@@ -165,6 +165,46 @@ public sealed class ResourceInstanceTests
         Assert.Equal("resource-instances-v3", ResourceInstanceIndex.Rule);
     }
 
+    [Fact(DisplayName = "R3: a section's view records pair into its mappings by view and process - each mapping to its unmapping, one listed at the start mapped before, one the stop held kept open - and a reading not seen is none")]
+    public void AViewsRecordsPairIntoItsMappings()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        Publish(session.Store, rows, fields: fields);
+        (IReadOnlyList<ResourceInstance> resources, ProcessInstanceIndex processes) = Derive(session.Store);
+        (long, int?, long?, long?, bool, bool) Said(ResourceView mapping) => (mapping.View,
+            mapping.Holder is { } holder ? processes.Find(holder)!.ProcessId : null, mapping.MappedNativeTicks, mapping.UnmappedNativeTicks,
+            mapping.MappedBefore, mapping.HeldAtStop);
+        IReadOnlyList<ResourceView> Of(long number) => resources.Single(resource => resource.ByViews && resource.Number == number).Mappings;
+
+        // Section 4's two views, each process's; 5's, the image's, held at the stop; 6's listed at the start and unmapped;
+        // 7's listed at the start alone; and no section by its handles has a mapping.
+        Assert.Equal([(41L, (int?)100, (long?)10, (long?)31, false, false), (42L, (int?)200, (long?)11, (long?)30, false, false)], Of(4).Select(Said));
+        Assert.Equal([(51L, (int?)100, (long?)12, (long?)null, false, true)], Of(5).Select(Said));
+        Assert.Equal([(61L, (int?)200, (long?)null, (long?)50, true, false)], Of(6).Select(Said));
+        Assert.Equal([(71L, (int?)200, (long?)null, (long?)null, true, false)], Of(7).Select(Said));
+        Assert.Empty(resources.Single(resource => !resource.ByViews && resource.Number == 4).Mappings);
+
+        // A view mapped again before its unmapping leaves the first's end unseen, and an unmapping no mapping of is the capture's
+        // was mapped unseen.
+        using var again = new TemporarySession();
+        var twice = new List<ObservationRowV1> { Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\writer.exe" } };
+        var numbered = new List<SourceFieldRowV1>();
+        foreach ((long ticks, byte opcode, long view) in new (long, byte, long)[] { (10, 37, 91), (20, 37, 91), (30, 38, 91), (40, 38, 92) })
+        {
+            ObservationRowV1 row = SectionRecord(ticks, opcode, 100, 100, (ulong)ticks, view: true);
+            twice.Add(row);
+            numbered.AddRange([Field(row, SourceField.SectionNumber, 9), Field(row, SourceField.SectionViewNumber, view),
+                Field(row, SourceField.ViewSize, 4096), Field(row, SourceField.ViewInformation, 0)]);
+        }
+
+        Publish(again.Store, twice, fields: numbered);
+        (resources, processes) = Derive(again.Store);
+        Assert.Equal(
+            [(91L, (int?)100, (long?)10, (long?)null, false, false), (91L, (int?)100, (long?)20, (long?)30, false, false), (92L, (int?)100, (long?)null, (long?)40, false, false)],
+            Of(9).Select(Said));
+    }
+
     [Fact(DisplayName = "R3: a resource's records are exactly those its gate numbered it in - a section's views apart from its handles, and a socket's never a TCP connection's of the same number")]
     public void AResourcesRecordsAreItsNumbers()
     {
