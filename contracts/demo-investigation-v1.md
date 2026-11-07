@@ -90,9 +90,16 @@ provider, the same record for record every time, and saying it was generated as 
 Its records are shaped as a capture's are - handle records by the numbers their gates gave the objects, view records by
 the numbers their gate gave the sections and views, with their sizes and extra information, and the stop's rundown of
 the types it named - so every view derives from them as from a capture: the graph's four hubs, the inspector's six
-resources and the resource-topology basis's seven. Its ledger collects process lifecycle, synchronization and shared
-sections, nothing lost, and lists every other mechanism as not collected. AF_UNIX sockets, window messages and COM
-calls join it in revisions of their own.
+resources and the resource-topology basis's seven.
+
+Since revision 1021 the editor also connects an AF_UNIX socket, number 13, to one the indexer accepted, number 12, beside
+the indexer's listening socket, 11, which carries nothing and is idle: five requests of 512 bytes, each answered with
+4,096, the last answer's size unmeasured, every call naming its socket's owner and number. And it sends three messages to
+the preview's window, each at both ends, its start naming the preview, while the preview posts two back, each queued and
+retrieved, every end by the message's number. So the inspector lists nine resources, the sockets with their traffic and
+never as hubs, each process counts its sockets' calls and its window messages, and the resource-topology basis answers
+over ten. Its ledger collects process lifecycle, synchronization, shared sections, AF_UNIX sockets and window messages,
+nothing lost, and lists every other mechanism as not collected. COM calls join it in a revision of their own.
 
 ## 6. Not defined at this version
 

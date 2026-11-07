@@ -11,7 +11,7 @@ namespace InterCat.Application.Tests;
 /// </summary>
 public sealed class DiscoveryDemoTests
 {
-    [Fact(DisplayName = "§14: the discovery demo's host shares named objects and a section, by its handles and by its views, which its views find as a capture's resources - hubs, listed resources, their ends and the resource-topology basis - and says it was generated")]
+    [Fact(DisplayName = "§14: the discovery demo's host shares named objects and a section, by its handles and by its views, talks over AF_UNIX sockets and sends window messages, which its views find as a capture's - hubs, listed resources, their ends and traffic, each process's records and the resource-topology basis - and says it was generated")]
     public void TheDiscoveryDemoHoldsSharedResources()
     {
         string folder = Folder();
@@ -62,8 +62,25 @@ public sealed class DiscoveryDemoTests
             Dictionary<string, ResourceLink> listed = overview.Resources.ToDictionary(link => link.Key, StringComparer.Ordinal);
             Assert.Equal(
                 ["resource:hub:mapped-section:3", "resource:hub:mapped-section:5", "resource:hub:object:1", "resource:hub:object:2",
-                    "resource:hub:object:3", "resource:hub:section:7"],
+                    "resource:hub:object:3", "resource:hub:section:7", "resource:hub:socket:11", "resource:hub:socket:12",
+                    "resource:hub:socket:13"],
                 listed.Keys.Order(StringComparer.Ordinal));
+
+            // The sockets are never hubs: the indexer's listening one carried nothing - idle - and the editor's and the
+            // indexer's accepted one carried the five requests and their answers, the last answer's size unmeasured.
+            Assert.True(listed["resource:hub:socket:11"].Traffic!.Idle);
+            Assert.Equal(new ResourceTraffic(5, 5, 2_560, 16_384, 1), listed["resource:hub:socket:13"].Traffic);
+            Assert.Equal(new ResourceTraffic(5, 5, 20_480, 2_560, 0), listed["resource:hub:socket:12"].Traffic);
+            Assert.Equal((Id("editor.exe"), Id("indexer.exe")),
+                (Assert.Single(listed["resource:hub:socket:13"].Holders), Assert.Single(listed["resource:hub:socket:12"].Holders)));
+
+            // Each process's records of each mechanism: the sockets' calls, and the window messages the editor sent the
+            // preview's window - four ends each - and the two the preview posted back, two ends each.
+            long Records(string name, Mechanism mechanism) =>
+                overview.Nodes.Single(node => node.Name == name).Activity.Where(count => count.Mechanism == mechanism).Sum(count => count.Records);
+            Assert.Equal((13L, 16L), (Records("editor.exe", Mechanism.UnixDomainSocket), Records("indexer.exe", Mechanism.UnixDomainSocket)));
+            Assert.Equal((8L, 8L, 0L), (Records("editor.exe", Mechanism.WindowMessage), Records("preview.exe", Mechanism.WindowMessage),
+                Records("indexer.exe", Mechanism.WindowMessage)));
             Assert.Equal((ResourceEnd.HeldAtStop, true, @"\Sessions\1\BaseNamedObjects"),
                 (listed["resource:hub:object:2"].End, listed["resource:hub:object:2"].MadeInCapture, listed["resource:hub:object:2"].Namespace));
             Assert.Equal((ResourceEnd.HeldAtStop, ResourceEnd.Closed, ResourceEnd.Closed),
@@ -72,10 +89,10 @@ public sealed class DiscoveryDemoTests
                 (listed["resource:hub:mapped-section:5"].MadeInCapture, listed["resource:hub:mapped-section:5"].End,
                     Assert.Single(listed["resource:hub:mapped-section:5"].Holders)));
 
-            // The resource-topology basis answers over them: seven resources, the module's among them, its capacity said
-            // apart; and the editor's and the preview's mappings measured, the indexer's begun before the capture stated.
+            // The resource-topology basis answers over them: ten resources, the module's and the sockets among them, its capacity
+            // said apart; and the editor's and the preview's mappings measured, the indexer's begun before the capture stated.
             MetricResult resources = SessionMetrics.Evaluate(store, new MetricRequest { Basis = AnalysisBasis.ResourceTopology, Metric = Metric.ActiveChannels });
-            Assert.Equal(7L, resources.Value);
+            Assert.Equal(10L, resources.Value);
             MetricResult capacity = SessionMetrics.Evaluate(store, new MetricRequest { Basis = AnalysisBasis.ResourceTopology, Metric = Metric.MappingCapacity });
             Assert.Equal(4_194_304L + 1_048_576 + 131_072, capacity.Value);
             MetricResult lifetimes = SessionMetrics.Evaluate(store, new MetricRequest
@@ -87,9 +104,12 @@ public sealed class DiscoveryDemoTests
             Assert.Equal(((long?)45_800_000_000L, 2L, 1L), (lifetimes.Value, lifetimes.KnownContributions, lifetimes.UnknownContributions));
             store.ReleaseSegmentReaders();
 
-            // Its capture collected both mechanisms, nothing lost.
-            Assert.All(new[] { Mechanism.ProcessLifecycle, Mechanism.Synchronization, Mechanism.SharedSection }, mechanism =>
+            // Its capture collected each mechanism it holds, nothing lost, and no other.
+            Assert.All(new[] { Mechanism.ProcessLifecycle, Mechanism.Synchronization, Mechanism.SharedSection, Mechanism.UnixDomainSocket,
+                Mechanism.WindowMessage }, mechanism =>
                 Assert.Equal(CoverageState.Covered, overview.MechanismCoverage.Single(entry => entry.Mechanism == mechanism).State));
+            Assert.All(new[] { Mechanism.Tcp, Mechanism.NamedPipe, Mechanism.ComCall }, mechanism =>
+                Assert.Equal(CoverageState.NotCollected, overview.MechanismCoverage.Single(entry => entry.Mechanism == mechanism).State));
 
             // The investigation holds it, names its host and notes what it is.
             InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(made.WorkspacePath);

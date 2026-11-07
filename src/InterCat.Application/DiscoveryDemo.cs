@@ -9,9 +9,10 @@ namespace InterCat.Application;
 public sealed record DiscoveryDemoResult(string Directory, string WorkspacePath, string Session);
 
 /// <summary>
-/// The discovery demo (`contracts/demo-investigation-v1.md` §6, ADR-101): one generated host whose processes share what
-/// driverless discovery finds - named synchronization objects, and sections by their handles and by their views - so the
-/// graph's hubs, the inspector's resources, their records and the resource-topology basis can be tried without capturing.
+/// The discovery demo (`contracts/demo-investigation-v1.md` §5, ADR-101): one generated host whose processes share what
+/// driverless discovery finds - named synchronization objects, sections by their handles and by their views, AF_UNIX sockets
+/// and window messages - so the graph's hubs, the inspector's resources, their records, a socket's traffic and idleness, a
+/// process's window messages and the resource-topology basis can be tried without capturing.
 /// Like the demo, nothing in it was captured and no value in it is evidence about Windows: its records come from the demo's
 /// provider, its session is published under the demo's source identity, which every view states, and it is the same,
 /// record for record, every time it is made.
@@ -56,7 +57,9 @@ public static class DiscoveryDemo
         InvestigationWorkspace.Alias(making, member.HostId, "demo workstation", made);
         InvestigationWorkspace.AddNote(making, DemoInvestigation.Disclosure + " Its editor shares a named event with its "
             + "indexer and a named semaphore and a section with its preview, which maps the section's view beside the editor's; "
-            + "the editor alone holds a mutex, and the indexer a view mapped before the capture began. None of it is traffic.",
+            + "the editor alone holds a mutex, and the indexer a view mapped before the capture began. None of that is traffic. "
+            + "The editor also sends requests to the indexer over an AF_UNIX socket beside an idle one, and messages to the "
+            + "preview's window, which posts two back.",
             at: null, made);
         File.Move(making, workspace);
         return new(full, workspace, session);
@@ -107,6 +110,19 @@ public static class DiscoveryDemo
         new(121, "section-view-unmapped", Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Unmap, Direction.DirectionNotApplicable, 38),
         new(122, "section-view-start-rundown", Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Inventory, Direction.DirectionNotApplicable, 39),
         new(123, "section-view-stop-rundown", Mechanism.SharedSection, ObservationLayer.Resource, ObservationKind.Inventory, Direction.DirectionNotApplicable, 40),
+        new(130, "unix-socket-created", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Open, Direction.DirectionNotApplicable, 0),
+        new(131, "unix-socket-bound", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Bind, Direction.DirectionNotApplicable, 0),
+        new(132, "unix-socket-connected", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Connect, Direction.Outbound, 0),
+        new(133, "unix-socket-accepted", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Accept, Direction.Inbound, 0),
+        new(134, "unix-socket-sent", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Send, Direction.Outbound, 0),
+        new(135, "unix-socket-received", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Receive, Direction.Inbound, 0),
+        new(136, "unix-socket-closed", Mechanism.UnixDomainSocket, ObservationLayer.Transport, ObservationKind.Close, Direction.DirectionNotApplicable, 0),
+        new(140, "window-message-posted", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.Send, Direction.Outbound, 0),
+        new(141, "window-message-sent", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Outbound, 0),
+        new(142, "window-message-post-retrieved", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.Receive, Direction.Inbound, 0),
+        new(143, "window-message-send-retrieved", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Inbound, 0),
+        new(144, "window-message-send-returned", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Outbound, 0),
+        new(145, "window-message-send-handled", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Inbound, 0),
     ];
 
     private sealed record Record(ObservationRowV1 Row, (SourceField Field, long Value)[] Fields);
@@ -250,7 +266,51 @@ public static class DiscoveryDemo
             // A module the editor loaded, an image's view, held at the stop.
             View(0.12, 120, Editor, Editor, 9, 91, 131_072, ImageView),
             View(59.90, 123, SystemProcess, Editor, 9, 91, 131_072, ImageView),
+
+            // The indexer's listening AF_UNIX socket, bound and closed with nothing through it: idle.
+            Socket(0.30, 130, Indexer, 11),
+            Socket(0.31, 131, Indexer, 11),
+            Socket(59.0, 136, Indexer, 11),
+
+            // The socket the indexer accepted the editor's connection on, and the editor's, each closed after the exchange.
+            Socket(4.99, 130, Editor, 13),
+            Socket(5.00, 130, Indexer, 12),
+            Socket(5.00, 132, Editor, 13),
+            Socket(5.01, 133, Indexer, 12),
+            Socket(40.0, 136, Indexer, 12),
+            Socket(40.1, 136, Editor, 13),
         };
+
+        // Five requests the editor sends the indexer over its socket, each answered; the last answer's size went unmeasured.
+        for (int request = 0; request < 5; request++)
+        {
+            double at = 6.0 * (request + 1);
+            records.Add(Socket(at, 134, Editor, 13, 512));
+            records.Add(Socket(at + 0.001, 135, Indexer, 12, 512));
+            records.Add(Socket(at + 0.010, 134, Indexer, 12, 4_096));
+            records.Add(Socket(at + 0.011, 135, Editor, 13, request < 4 ? 4_096 : null));
+        }
+
+        // Three messages the editor sends to the preview's window, each at both ends - its start naming the preview - and two
+        // the preview posts to the editor's, each queued and retrieved; numbered by rank, as the gate numbers them.
+        long message = 0;
+        for (int sent = 1; sent <= 3; sent++)
+        {
+            double at = 10.0 * sent;
+            message++;
+            records.Add(Message(at, 141, Editor, message, receiver: Preview));
+            records.Add(Message(at + 0.0005, 143, Preview, message));
+            records.Add(Message(at + 0.0010, 145, Preview, message));
+            records.Add(Message(at + 0.0012, 144, Editor, message));
+        }
+
+        for (int posted = 0; posted < 2; posted++)
+        {
+            double at = 15.0 + (10.0 * posted);
+            message++;
+            records.Add(Message(at, 140, Preview, message));
+            records.Add(Message(at + 0.002, 142, Editor, message));
+        }
 
         // In time order, numbered in it as a journal numbers what it admits.
         return [.. records.OrderBy(record => record.Row.NativeTicks).ThenBy(record => record.Row.EventId)
@@ -291,6 +351,36 @@ public static class DiscoveryDemo
             (SourceField.ViewSize, size),
             (SourceField.ViewInformation, information),
         ]);
+
+    // An AF_UNIX socket's call, naming the process that owns the socket and the number its gate gave it; a send or a receive
+    // its bytes where the record measured them, transport-observed on the side it took.
+    private static Record Socket(double seconds, ushort eventId, int owner, long number, long? bytes = null)
+    {
+        ObservationRowV1 row = Row(seconds, eventId, owner, owner);
+        if (row.Kind is ObservationKind.Send or ObservationKind.Receive)
+        {
+            bool sent = row.Kind == ObservationKind.Send;
+            row = row with
+            {
+                ByteValue = bytes,
+                ByteDomain = InterCat.Domain.ByteDomain.TransportObserved,
+                AccountingSide = sent ? InterCat.Domain.AccountingSide.SendSide : InterCat.Domain.AccountingSide.ReceiveSide,
+                MeasurementUnit = InterCat.Domain.MeasurementUnit.Bytes,
+                ByteAvailability = bytes is null ? FieldAvailability.NotExposed : FieldAvailability.Present,
+                MeasurementQuality = bytes is null ? QualityLevel.UnknownQuality : QualityLevel.Proven,
+            };
+        }
+
+        return new(row, [(SourceField.ConnectionId, number)]);
+    }
+
+    // One end of a window message, raised in its process, by the message's number; a send's start names the process whose
+    // window receives it.
+    private static Record Message(double seconds, ushort eventId, int raisedBy, long number, int? receiver = null) =>
+        new(Row(seconds, eventId, raisedBy, null),
+            receiver is { } peer
+                ? [(SourceField.WindowMessageNumber, number), (SourceField.PeerProcessId, peer)]
+                : [(SourceField.WindowMessageNumber, number)]);
 
     /// <summary>What every record shares: the demo provider, one stream, its descriptor's facts, the session time its reading gives.</summary>
     private static ObservationRowV1 Row(double seconds, ushort eventId, int raisedBy, int? owner)

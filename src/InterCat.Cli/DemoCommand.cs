@@ -132,7 +132,7 @@ internal static class DemoCommand
         ConsoleUi.Line("  Its sessions are the same, record for record, every time it is written.");
         ConsoleUi.Line();
         ConsoleUi.Line("  --discovery writes the discovery demo instead: one host whose processes share named");
-        ConsoleUi.Line("  synchronization objects and a section, by its handles and by its views, as a capture of");
-        ConsoleUi.Line("  them would find them.");
+        ConsoleUi.Line("  synchronization objects and a section, by its handles and by its views, talk over AF_UNIX");
+        ConsoleUi.Line("  sockets and send window messages, as a capture of them would find them.");
     }
 }

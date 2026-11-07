@@ -943,6 +943,7 @@ Revision 1017 groups a mapping lifetime by the process holding each mapping (ADR
 Revision 1018 counts the resources' membership and lifecycle records on the resource-topology basis (ADR-098's sixth addendum).
 Revision 1019 adds the capability catalog: every mechanism explained, read from no machine, and searched (ADR-100).
 Revision 1020 adds the discovery demo: one generated host sharing named objects and a section (ADR-101).
+Revision 1021 adds AF_UNIX sockets and window messages to the discovery demo (ADR-101's addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4755,3 +4756,9 @@ handles and by its views - with its preview, beside a mutex the editor alone hol
 a module's view. Its records are shaped as a capture's, so the graph draws four hubs, the inspector lists six resources
 and the resource-topology basis answers over seven; it is published as the demo's and the same every time, and M5's
 demo is unchanged.
+
+Revision 1021 adds AF_UNIX sockets and window messages to the discovery demo (ADR-101's addendum). The editor connects
+a socket to one the indexer accepted, beside the indexer's idle listening socket, and sends five requests, each answered,
+the last answer's size unmeasured; and it sends three messages to the preview's window, which posts two back. Their
+records are shaped as a capture's, so the inspector lists the sockets with their traffic and never as hubs, each process
+counts its calls and messages, and the resource-topology basis answers over ten resources.

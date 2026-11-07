@@ -1,6 +1,7 @@
 # ADR-101: The discovery demo generates what driverless discovery finds, never a measurement
 
-- Status: accepted for M6's synthetic investigations; named synchronization objects and sections (revision 1020)
+- Status: accepted for M6's synthetic investigations; named synchronization objects and sections (revision 1020), AF_UNIX
+  sockets and window messages (revision 1021)
 - Date: 2026-11-07
 - Decision owners: InterCat maintainers
 - Relates to: ADR-084, ADR-092, ADR-097, ADR-098, ADR-099, `demo-investigation-v1`, plan M5, M6, R3, P27
@@ -35,3 +36,13 @@ cost.
 - A person can try hubs, the resources list, a resource's records and the resource-topology basis with no capture.
 - The window offers the discovery demo in a later revision; until then `icat demo --discovery` writes it.
 - 13 mutations of the path are caught.
+
+## Addendum: AF_UNIX sockets and window messages (revision 1021)
+
+The editor connects an AF_UNIX socket to one the indexer accepted beside the indexer's listening socket, which carries
+nothing and is idle; it sends five requests and the indexer answers each, the last answer's size unmeasured, every call
+naming the socket's owner and the number its gate gave the socket. It sends three messages to the preview's window, each
+at both ends with its start naming the preview, and the preview posts two back, each queued and retrieved, every end by
+the message's number. The sockets are listed with their traffic, never hubs; each process counts its sockets' calls and
+its window messages; and the resource-topology basis answers over ten resources. COM calls join it next.
+9 mutations of the path are caught.

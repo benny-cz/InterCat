@@ -451,7 +451,8 @@ internal static class Icat
         ConsoleUi.Line("  icat demo <directory> [--discovery] [--json]");
         ConsoleUi.Line("      Writes InterCat's generated demo: two hosts' sessions and the investigation that holds");
         ConsoleUi.Line("      them, aligned, or with --discovery one host whose processes share named objects and a");
-        ConsoleUi.Line("      section. Nothing in either was captured, and every view of it says so.");
+        ConsoleUi.Line("      section, talk over AF_UNIX sockets and send window messages. Nothing in either was");
+        ConsoleUi.Line("      captured, and every view of it says so.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat verify <tcp|udp> --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
         ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");
