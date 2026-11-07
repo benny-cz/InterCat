@@ -114,12 +114,13 @@ public sealed class TopologyMetricsTests
         Assert.Equal(1L, capacity.UnknownReasons[FieldAvailability.NotExposed]);
         Assert.Contains(capacity.Caveats, caveat => caveat.StartsWith("1 section of it is an image's, 4,096 bytes", StringComparison.Ordinal));
 
-        // A membership has no direction, and counting records, a mapping lifetime and a grouping are not defined yet.
+        // A membership has no direction, and counting records, a mapping lifetime and a grouping by anything but a fact of the
+        // processes holding a resource are not defined yet.
         foreach (MetricRequest unanswered in new[]
         {
             Request(Metric.ActiveChannels) with { Sender = writer },
             Request(Metric.ActiveChannels) with { Between = new ProcessBetween([writer], [reader], BetweenDirection.FirstToSecond) },
-            Request(Metric.ActiveChannels) with { Grouping = LaneGrouping.InstanceOnly },
+            Request(Metric.MappingCapacity) with { Grouping = LaneGrouping.Mechanism },
             Request(Metric.Observations),
             Request(Metric.Duration) with { DurationInterval = DurationInterval.MappingLifetime },
         })
@@ -131,6 +132,44 @@ public sealed class TopologyMetricsTests
         Assert.Contains("\"correlationRevision\":\"resource-instances-v3\"", all.Identity!.CanonicalSpecification, StringComparison.Ordinal);
         Assert.DoesNotContain("entityRevision", all.Identity.CanonicalSpecification, StringComparison.Ordinal);
         Assert.Contains("\"entityRevision\"", writers.Identity!.CanonicalSpecification, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R3: a grouped topology answer counts each group's resources, peers and capacity, a shared resource in each holder's group, and never adds the groups up")]
+    public void GroupsOverlapByWhatTheirProcessesHeld()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        Publish(session.Store, rows, fields: fields);
+        ProcessInstanceId writer = Instance(session.Store, 100);
+        ProcessInstanceId reader = Instance(session.Store, 200);
+        Dictionary<ProcessInstanceId, long?> ByProcess(MetricResult result) =>
+            result.Groups.ToDictionary(group => group.Process!.Id, group => group.Value);
+
+        // Each held three resources, section 4's views among them both: five in all, the groups overlapping.
+        MetricResult channels = SessionMetrics.Evaluate(session.Store, Request(Metric.ActiveChannels) with { Grouping = LaneGrouping.InstanceOnly });
+        Assert.Equal((5L, false), (channels.Value, channels.GroupsPartitionTotal));
+        Assert.Equal(new Dictionary<ProcessInstanceId, long?> { [writer] = 3, [reader] = 3 }, ByProcess(channels));
+        Assert.Equal(ProcessInstanceIndex.BindingRule, channels.BindingRule);
+
+        // Each shares a resource with the other alone: two processes share one in all.
+        MetricResult peers = SessionMetrics.Evaluate(session.Store, Request(Metric.ActivePeers) with { Grouping = LaneGrouping.InstanceOnly });
+        Assert.Equal(2L, peers.Value);
+        Assert.Equal(new Dictionary<ProcessInstanceId, long?> { [writer] = 1, [reader] = 1 }, ByProcess(peers));
+
+        // Each one's sections' capacity, section 4's in both, once in the total; the writer's section by its handles recorded
+        // no size.
+        MetricResult capacity = SessionMetrics.Evaluate(session.Store, Request(Metric.MappingCapacity) with { Grouping = LaneGrouping.InstanceOnly });
+        Assert.Equal((94208L, MeasurementUnit.Bytes), (capacity.Value, capacity.Unit));
+        Assert.Equal(new Dictionary<ProcessInstanceId, long?> { [writer] = 65536 + 4096, [reader] = 65536 + 8192 + 16384 }, ByProcess(capacity));
+        Assert.Equal(1L, capacity.Groups.Single(group => group.Process!.Id == writer).UnknownContributions);
+
+        // The rest past one row is one exact answer over the union of what it holds, never a sum of overlapping ones.
+        MetricResult top = SessionMetrics.Evaluate(session.Store, Request(Metric.ActiveChannels) with
+        {
+            Grouping = LaneGrouping.Executable,
+            RequestedRows = 1,
+        });
+        Assert.Equal((1, 3L, 1), (top.Groups.Count, top.Remainder!.Value, top.Remainder.GroupsMerged));
     }
 
     [Fact(DisplayName = "R21: a topology count beside records bound to no process is a lower bound, and a capacity no section's views measured is unmeasured, never zero")]
@@ -158,9 +197,37 @@ public sealed class TopologyMetricsTests
         Assert.Equal((0L, 1L), (held.Value, held.Resources!.Disclosed));
         Assert.Equal(1L, held.UnresolvedCounterparts[ProcessBindingReason.BeforeFirstEvidence]);
 
+        // Grouped, the membership no record binds is no group's, counted by why; a process sharing nothing, with no record
+        // bound to none, has no peer, never an unmeasured count.
+        MetricResult grouped = SessionMetrics.Evaluate(session.Store, Request(Metric.ActiveChannels) with { Grouping = LaneGrouping.InstanceOnly });
+        MetricGroup unattributed = Assert.Single(grouped.Unattributed);
+        Assert.Equal((ProcessBindingReason.BeforeFirstEvidence, 1L), (unattributed.Reason!.Value, unattributed.UnknownContributions));
+        Assert.Equal([(100, 3L), (300, 2L), (200, 1L)], grouped.Groups.Select(group => (group.Process!.ProcessId, group.Value!.Value)));
+        MetricResult groupedPeers = SessionMetrics.Evaluate(session.Store, Request(Metric.ActivePeers) with { Grouping = LaneGrouping.InstanceOnly });
+        Assert.Equal(0L, groupedPeers.Groups.Single(group => group.Process!.ProcessId == 300).Value);
+        Assert.Equal(1L, groupedPeers.Groups.Single(group => group.Process!.ProcessId == 100).UnknownContributions);
+
+        // Grouped, a capacity is still a section's alone: 100's section by its handles, whose size no record states.
+        MetricResult groupedCapacity = SessionMetrics.Evaluate(session.Store, Request(Metric.MappingCapacity) with { Grouping = LaneGrouping.InstanceOnly });
+        Assert.Equal(MetricUnavailableReason.NothingMeasured, groupedCapacity.Unavailable);
+        MetricGroup mapper = Assert.Single(groupedCapacity.Groups);
+        Assert.Equal((100, (long?)null, 1L), (mapper.Process!.ProcessId, mapper.Value, mapper.UnknownContributions));
+
         // No section here was found by its views, so no capacity is known: unmeasured, never zero.
         MetricResult capacity = SessionMetrics.Evaluate(session.Store, Request(Metric.MappingCapacity));
         Assert.Equal((MetricUnavailableReason.NothingMeasured, (long?)null, 1L), (capacity.Unavailable, capacity.Value, capacity.UnknownContributions));
+
+        // Grouped by executable where only 100's lifecycle record names its image, 200's and 300's memberships are no
+        // group's, counted by why beside the one no record binds.
+        using var named = new TemporarySession();
+        Publish(named.Store,
+            [.. rows.Select(row => row is { Mechanism: Mechanism.ProcessLifecycle, OwnerProcessId: 100 } ? row with { ResourceName = @"C:\Tools\maker.exe" } : row)],
+            fields: fields);
+        MetricResult byExecutable = SessionMetrics.Evaluate(named.Store, Request(Metric.ActiveChannels) with { Grouping = LaneGrouping.Executable });
+        Assert.Equal(3L, Assert.Single(byExecutable.Groups).Value);
+        Assert.Equal(
+            [(ProcessBindingReason.BeforeFirstEvidence, 1L), (ProcessBindingReason.ExecutableUnknown, 3L)],
+            byExecutable.Unattributed.Select(group => (group.Reason!.Value, group.UnknownContributions)).Order());
     }
 
     private static MetricRequest Request(Metric metric) => new() { Basis = AnalysisBasis.ResourceTopology, Metric = metric };

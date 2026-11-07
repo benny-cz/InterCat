@@ -3,7 +3,7 @@
 Status: **frozen for the source-observations basis, with process filters, grouping by process instance, executable,
 terminal session (since plan revision 404), mechanism and peer, and implemented; on the logical-operations basis, operations started, completed and failed are
 counted from RPC calls since revision 183 (§8a); on the resource-topology basis, resources, the processes sharing them
-and sections' capacity are counted since revision 1005 (§8b)**. The rest of the logical-operations and resource-topology
+and sections' capacity are counted since revision 1005, and grouped by a fact of their holders since revision 1006 (§8b)**. The rest of the logical-operations and resource-topology
 bases, grouping by any other entity and canonical-owner accounting are defined here as contract and reported as
 unavailable by every session until the derivations they need exist (§12).
 
@@ -374,7 +374,7 @@ with no value:
 |---|---|
 | `NoDerivedData` | the generation publishes no derived segment |
 | `NoLogicalOperations` | a logical-operations request no derived operation answers: a mechanism or layer no correlator derives operations for, a duration of an interval no operation measures, a count of channels, `Errors` with an accounting side, a direction a call does not have, or a filter, grouping or count of peers over a capture that collected no ALPC to link calls (§8a) |
-| `NoResourceTopology` | a resource-topology request no derived resource answers: a count of resources' records, a mapping lifetime, a grouping, or `sender`, `receiver` or a directional `between` (§8b); every request on that basis before revision 1005 |
+| `NoResourceTopology` | a resource-topology request no derived resource answers: a count of resources' records, a mapping lifetime, a grouping by mechanism or peer, or `sender`, `receiver` or a directional `between` (§8b); every request on that basis before revision 1005 |
 | `NoEntityBindings` | process grouping, a process filter, or a peer or channel count, on a session that does not describe its clock |
 | `NoStatusDomain` | `Errors`: §7.3 names a status domain §23 assigns no enumeration |
 | `NoTransferAssociations` | `CanonicalOwner`, before a correlator proves an association between one send record and one receive record |
@@ -509,12 +509,21 @@ capacity no extent is known of is `NothingMeasured`, never zero (R21, P1). An im
 A count with no resource in scope is 0, stated as a count of the resources the generation derives, not a finding that
 none existed (R21).
 
+**Grouped (revision 1006).** By process, executable, terminal session, package or service container, each group's value
+is taken over the resources its processes held: their count, the other processes holding one of them, or their sections'
+capacity. A resource the processes of several groups held counts in each, so the groups overlap and do not partition the
+total - the ungrouped count or capacity, and for `ActivePeers` the number of distinct processes sharing a resource with
+another - and a remainder is the answer over the union of the groups it merges. A membership no group can take, a record
+bound to no process or a process without the grouping's fact, is unattributed by its reason. A group whose processes
+shared nothing, every record of what they held bound, has no peer; where a record bound to none could name one and nothing
+else does, it is unmeasured.
+
 An answer carries `resourceRule` and `resources`: the resources taken, by mechanism; how many are sections by their views
 and how many an image's; how many were made before the capture, held at its stop or ended unseen; their memberships, each
 process holding each resource once; those a process filter disclosed; and every resource the generation derives.
 
 **What no derived resource answers** is `NoResourceTopology`, with what it needs: `Observations`, a count of resources'
-records rather than of resources; the `Duration` of a mapping lifetime; any grouping; and `sender`, `receiver` and a
+records rather than of resources; the `Duration` of a mapping lifetime; a grouping by mechanism or by peer; and `sender`, `receiver` and a
 directional `between`, which select data that flowed one way where holding a resource is undirected.
 
 **Identity.** An answer on this basis depends on the resource rule, `resource-instances-v3`, which it names as its
@@ -572,4 +581,4 @@ not exist yet and are answered as unavailable today.
   end is §8a's since plan revision 228.
 - Covered-time rates, which need a source-specific valid exposure duration and a different label.
 - Aggregate cells over a boundary set (§10.3). A result here is one total, or one total per group, over one scope.
-- On the resource-topology basis, a count of resources' records, a mapping lifetime and a grouped answer (§8b).
+- On the resource-topology basis, a count of resources' records, a mapping lifetime and a grouping by mechanism or peer (§8b).

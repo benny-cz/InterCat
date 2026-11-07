@@ -68,9 +68,9 @@ public static partial class SessionMetrics
                 + "mapped is given, but no view's mapping to its unmapping is a duration yet.",
             _ => null,
         };
-        missing ??= request.Grouping is not null
-            ? "A grouped topology answer is not defined at this version: resources are counted in total or for one process "
-                + "focus. icat resources lists each resource with the processes holding it."
+        missing ??= request.Grouping is { } grouping && !ProcessGrouping.ByInstanceFact(grouping)
+            ? $"Grouping resources by {grouping} is not defined at this version: they are grouped by a fact of the processes "
+                + "holding them - each process, its executable, its session, its package or its service container (§8b)."
             : null;
         string? directed = request.Focus is { Role: ProcessRole.Sender or ProcessRole.Receiver } focus ? $"{Role(focus.Role)}(P)"
             : request.Between is { Direction: not BetweenDirection.Either } ? "A directional between(A,B)"
@@ -205,6 +205,11 @@ public static partial class SessionMetrics
         {
             caveats.Add("A topology answer counts resources, not records, so it lists no record. icat resources lists each "
                 + "resource with the processes holding it and its ends.");
+        }
+
+        if (request.Grouping is { } byProcess)
+        {
+            return GroupedTopology(context, byProcess, processes, taken, answer, caveats);
         }
 
         return request.Metric switch
@@ -390,5 +395,220 @@ public static partial class SessionMetrics
         }
 
         return summed with { Value = capacity, Caveats = caveats };
+    }
+
+    /// <summary>
+    /// A topology answer grouped by a fact of each process (§8b): each group's resources - those one of its processes held -
+    /// the other processes holding one of them, or their sections' capacity. A resource several groups' processes held
+    /// counts in each, so the groups overlap and do not add up to the total, which is the count or the capacity over every
+    /// resource taken. A membership no group can take - a record bound to no process, or a process without the grouping's
+    /// fact - is unattributed by its reason.
+    /// </summary>
+    private static MetricResult GroupedTopology(
+        Context context,
+        LaneGrouping grouping,
+        ProcessInstanceIndex processes,
+        List<ResourceInstance> taken,
+        MetricResult answer,
+        List<string> caveats)
+    {
+        MetricRequest request = context.Request;
+        ServiceMatch? services = ServicesOf(context, processes);
+        if (ProcessGrouping.Underived(processes, grouping, services) is { } underived)
+        {
+            return Unavailable(request, context.Generation, MetricUnavailableReason.GroupingNotDerived, underived);
+        }
+
+        bool peers = request.Metric == Metric.ActivePeers;
+        bool capacity = request.Metric == Metric.MappingCapacity;
+
+        // A capacity is a section's: no other resource takes part, in any group.
+        List<ResourceInstance> counted = capacity ? [.. taken.Where(resource => resource.Mechanism == Mechanism.SharedSection)] : taken;
+        var tallies = new Dictionary<string, DistinctTally>(StringComparer.Ordinal);
+        var unattributed = new Dictionary<ProcessBindingReason, long>();
+        var sharers = new HashSet<int>();
+        for (int at = 0; at < counted.Count; at++)
+        {
+            ResourceInstance resource = counted[at];
+            Add(unattributed, resource.Unbound);
+            foreach (ResourceHolder holder in resource.Holders)
+            {
+                ProcessInstance instance = processes.Instances[processes.PositionOf(holder.Process)];
+                if (ProcessGrouping.Unattributable(instance, grouping, services) is { } ungrouped)
+                {
+                    unattributed[ungrouped] = unattributed.GetValueOrDefault(ungrouped) + 1;
+                    continue;
+                }
+
+                string key = ProcessGrouping.KeyOf(instance, grouping, services);
+                if (!tallies.TryGetValue(key, out DistinctTally? tally))
+                {
+                    tally = grouping switch
+                    {
+                        LaneGrouping.Executable => new(key, MetricGroupKind.Executable) { Executable = instance.ImagePath },
+                        LaneGrouping.UserSession => new(key, MetricGroupKind.UserSession) { Session = instance.SessionId },
+                        LaneGrouping.Package => new(key, MetricGroupKind.Package) { Package = instance.PackageFullName },
+                        LaneGrouping.ServiceContainer => services!.ContainerOf(instance.Id) is { } hosted
+                            ? new(key, MetricGroupKind.ServiceContainer) { Process = instance, Services = hosted }
+                            : new(key, MetricGroupKind.Executable) { Executable = instance.ImagePath },
+                        _ => new(key, MetricGroupKind.ProcessInstance) { Process = instance },
+                    };
+                    tallies[key] = tally;
+                }
+
+                if (!peers)
+                {
+                    tally.Elements.Add(at);
+                    continue;
+                }
+
+                // A process's peers are the other processes holding what it held; a record bound to none may be one more.
+                foreach (ResourceHolder other in resource.Holders.Where(other => other.Process != holder.Process))
+                {
+                    int peer = processes.PositionOf(other.Process);
+                    tally.Elements.Add(peer);
+                    tally.Known++;
+                    sharers.Add(peer);
+                }
+
+                foreach ((ProcessBindingReason reason, long records) in resource.Unbound)
+                {
+                    tally.UnknownReasons[reason] = tally.UnknownReasons.GetValueOrDefault(reason) + records;
+                }
+            }
+        }
+
+        // Each group's value: its resources counted, its peers counted - none where nothing it held binds another holder
+        // and no record of it binds to none, unmeasured where one does - or its sections' capacity.
+        MetricGroup GroupOf(DistinctTally tally) => peers
+            ? tally.ToGroup() with { Value = tally.Elements.Count > 0 || tally.UnknownReasons.Count == 0 ? tally.Elements.Count : null }
+            : Measured(tally.ToGroup() with { Bindings = new Dictionary<RelationStrength, long>() }, [.. tally.Elements.Select(at => counted[at])], capacity);
+        List<(DistinctTally Tally, MetricGroup Group)> built = [.. tallies.Values.Select(tally => (tally, GroupOf(tally)))];
+        List<(DistinctTally Tally, MetricGroup Group)> ordered =
+        [
+            .. built.Where(entry => entry.Group.Value is not null)
+                .OrderByDescending(entry => entry.Group.Value)
+                .ThenBy(entry => entry.Tally.StableKey, StringComparer.Ordinal)
+                .Select((entry, index) => (entry.Tally, entry.Group with { Rank = index + 1 })),
+            .. built.Where(entry => entry.Group.Value is null).OrderBy(entry => entry.Tally.StableKey, StringComparer.Ordinal),
+        ];
+
+        // The rest past the rows asked for is one exact answer over the union of what they hold, never a sum of overlapping ones.
+        MetricGroup? remainder = null;
+        if (request.RequestedRows is { } rows && ordered.Count > rows)
+        {
+            List<(DistinctTally Tally, MetricGroup Group)> rest = [.. ordered.Skip(rows)];
+            var union = new HashSet<int>(rest.SelectMany(entry => entry.Tally.Elements));
+            long restUnknown = rest.Sum(entry => entry.Group.UnknownContributions);
+            remainder = peers
+                ? new MetricGroup
+                {
+                    Kind = MetricGroupKind.Remainder,
+                    Value = union.Count > 0 || restUnknown == 0 ? union.Count : null,
+                    KnownContributions = rest.Sum(entry => entry.Group.KnownContributions),
+                    UnknownContributions = restUnknown,
+                    GroupsMerged = rest.Count,
+                }
+                : Measured(new MetricGroup { Kind = MetricGroupKind.Remainder, GroupsMerged = rest.Count },
+                    [.. union.Select(at => counted[at])], capacity);
+            ordered = [.. ordered.Take(rows)];
+        }
+
+        MetricGroup whole = peers
+            ? new MetricGroup
+            {
+                Kind = MetricGroupKind.Remainder,
+                Value = sharers.Count,
+                KnownContributions = tallies.Values.Sum(tally => tally.Known),
+                UnknownContributions = tallies.Values.Sum(tally => tally.UnknownReasons.Values.Sum()),
+            }
+            : Measured(new MetricGroup { Kind = MetricGroupKind.Remainder }, counted, capacity);
+        caveats.Add(peers
+            ? "Two processes holding one resource are each other's peers, so each counts in the other's group: the groups overlap "
+                + "and do not add up to the total, the number of distinct processes sharing a resource with another."
+            : capacity
+            ? "A section several groups' processes mapped counts its capacity in each group: the groups overlap and do not add up "
+                + "to the total, the capacity of every section in scope, once each."
+            : "A resource several groups' processes held counts in each group: the groups overlap and do not add up to the total, "
+                + "the number of distinct resources in scope.");
+        long unbound = unattributed.Values.Sum();
+        if (unbound > 0)
+        {
+            caveats.Add($"{CountText.Of(unbound, "membership")} {CountText.Agree(unbound, "is", "are")} no group's "
+                + $"({Reasons(unattributed)}): a record bound to no process, or a process without the grouping's fact, held "
+                + $"{CountText.Agree(unbound, "it", "them")}.");
+        }
+
+        MetricResult grouped = answer with
+        {
+            Value = whole.Value,
+            Unit = capacity ? MeasurementUnit.Bytes : MeasurementUnit.Count,
+            KnownContributions = whole.KnownContributions,
+            UnknownContributions = whole.UnknownContributions,
+            UnknownReasons = capacity && whole.UnknownContributions > 0
+                ? new Dictionary<FieldAvailability, long> { [FieldAvailability.NotExposed] = whole.UnknownContributions }
+                : new Dictionary<FieldAvailability, long>(),
+            Groups = [.. ordered.Select(entry => entry.Group)],
+            Remainder = remainder,
+            Unattributed =
+            [
+                .. unattributed.OrderBy(entry => entry.Key).Select(entry => new MetricGroup
+                {
+                    Kind = MetricGroupKind.Unattributed,
+                    Reason = entry.Key,
+                    UnknownContributions = entry.Value,
+                }),
+            ],
+            GroupsPartitionTotal = false,
+            BindingRule = ProcessInstanceIndex.BindingRule,
+            Caveats = caveats,
+        };
+
+        // A capacity no extent is known of, or a count of peers where only records bound to no process could name one, is
+        // unmeasured, its groups beside it, never zero (R21, P1).
+        string? unmeasured = capacity && whole.Value is null
+            ? "No section in scope was found by its views with the extent one mapped, so no capacity is known, which is not a "
+                + "capacity of zero (R21, P1)."
+            : peers && sharers.Count == 0 && whole.UnknownContributions > 0
+            ? "No process is bound to a resource another process held, and records of those resources bound to none: each "
+                + "may be another holder's, so the count is unmeasured rather than zero (R21, P1)."
+            : null;
+        return unmeasured is null
+            ? grouped
+            : grouped with
+            {
+                Value = null,
+                Unit = null,
+                Unavailable = MetricUnavailableReason.NothingMeasured,
+                UnavailableExplanation = unmeasured,
+            };
+    }
+
+    // The value a set of resources gives a group: how many they are; or for a capacity, the largest extent each section's
+    // views mapped, summed once a section, those that recorded none unknown - unmeasured where none is known.
+    private static MetricGroup Measured(MetricGroup group, List<ResourceInstance> resources, bool capacity)
+    {
+        if (!capacity)
+        {
+            return group with { Value = resources.Count, KnownContributions = resources.Count, UnknownContributions = 0 };
+        }
+
+        long sum = 0;
+        long known = 0;
+        long unsized = 0;
+        foreach (ResourceInstance section in resources)
+        {
+            if (section is { ByViews: true, LargestView: { } extent })
+            {
+                sum = SegmentMeasurement.AddBytes(sum, extent);
+                known++;
+            }
+            else
+            {
+                unsized++;
+            }
+        }
+
+        return group with { Value = known > 0 ? sum : null, KnownContributions = known, UnknownContributions = unsized };
     }
 }

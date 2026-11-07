@@ -1612,6 +1612,9 @@ internal static class MetricCommand
             Metric.ActiveChannels when topology =>
                 (result.UnresolvedCounterparts.Count > 0 ? "at least " : string.Empty)
                 + $"{ConsoleUi.Count(count)} {(count == 1 ? "resource" : "resources")}",
+            Metric.ActivePeers when topology && result.Request.Grouping is not null =>
+                (result.UnknownContributions > 0 ? "at least " : string.Empty)
+                + $"{ConsoleUi.Count(count)} {(count == 1 ? "process shares" : "processes share")} a resource with another",
             Metric.ActivePeers when topology =>
                 (result.UnknownContributions > 0 ? "at least " : string.Empty)
                 + $"{ConsoleUi.Count(count)} {(count == 1 ? "process holds" : "processes hold")} a resource it held",
@@ -2192,7 +2195,9 @@ internal static class MetricCommand
         ConsoleUi.Line("      the interval. active-channels counts them, those the focus held with --owner or");
         ConsoleUi.Line("      --participant; active-peers the other processes holding one the focus held; and");
         ConsoleUi.Line("      mapping-capacity the largest extent each section's views mapped, once a section,");
-        ConsoleUi.Line("      never bytes moved. None of it is traffic.");
+        ConsoleUi.Line("      never bytes moved. None of it is traffic. --group-by process, executable, session,");
+        ConsoleUi.Line("      package or service-container ranks what each group's processes held, a shared");
+        ConsoleUi.Line("      resource in each holder's group.");
         ConsoleUi.Line("      Every answer names its query identity: the SHA-256 of the canonical specification");
         ConsoleUi.Line("      over the snapshot it read (query-identity-v1). --print-canonical prints that");
         ConsoleUi.Line("      canonical form and identity without answering.");

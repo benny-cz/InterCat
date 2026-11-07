@@ -1,7 +1,7 @@
 # ADR-098: The resource-topology basis counts each resource once over its known lifetime, never its records
 
 - Status: accepted for M6's resource topology; resources, the processes sharing them and sections' capacity are counted
-  (revision 1005)
+  (revision 1005), and grouped by a fact of the processes holding them (revision 1006)
 - Date: 2026-11-07
 - Decision owners: InterCat maintainers
 - Relates to: ADR-012, ADR-032, ADR-092, ADR-097, plan §5.3, §21.1, `metrics-v1`, `query-identity-v1`, R3, R21, P1, P3, P27
@@ -49,3 +49,14 @@ whether each end was witnessed, its holders and, for a section by its views, the
   by mechanism and what their records establish beside the number.
 - Grouped topology answers, a mapping lifetime's duration and a count of records wait for revisions of their own. 31
   mutations of the path are caught.
+
+## Addendum: grouped by a fact of the processes holding them (revision 1006)
+
+A topology answer groups by process, executable, terminal session, package or service container, each group's value
+taken over the resources its processes held: how many, the other processes holding one of them, or their sections'
+capacity. A resource the processes of several groups held counts in each, as a channel between two processes counts in
+both of theirs, so the groups overlap and the total is the ungrouped answer - for peers, the distinct processes sharing a
+resource with another - and a remainder answers over the union of the groups it merges. A membership no group can take -
+a record bound to no process, or a process without the grouping's fact - is unattributed by why. A group whose processes
+shared nothing has no peer where every record of what they held bound, and is unmeasured where a record bound to none
+is all that could name one. A grouping by mechanism or peer is not defined yet. 13 mutations of the path are caught.

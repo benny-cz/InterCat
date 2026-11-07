@@ -3835,6 +3835,7 @@
         "R3: a generation without a calibration states none, and two are refused",
         "R3: a group with only unknown contributions is unmeasured, never ranked below a measured zero",
         "R3: a grouped rate divides every group by the same whole interval",
+        "R3: a grouped topology answer counts each group's resources, peers and capacity, a shared resource in each holder's group, and never adds the groups up",
         "R3: a later holder of a reused PID holds a resource only as a candidate, which the default policy counts by that reason and includes when asked",
         "R3: a live recording publishes its clock against the wall clock when it starts and stops, and its boot",
         "R3: a lower bound reads at least, in the window as on the command line",
