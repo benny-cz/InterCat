@@ -126,9 +126,10 @@ public sealed class TimelineFocus
         }
 
         if (operationKey is not null && (channelKey is not null || ownerProcesses.Count > 0
-            || (!RpcChannelKeys.IsRpc(operationKey) && !HttpExchangeKeys.IsHttp(operationKey))))
+            || (!RpcChannelKeys.IsRpc(operationKey) && !HttpExchangeKeys.IsHttp(operationKey) && !ResourceLink.IsKey(operationKey))))
         {
-            throw new ArgumentException("An operation focus names an RPC channel or call, or HTTP exchanges, alone.", nameof(operationKey));
+            throw new ArgumentException("An operation focus names an RPC channel or call, HTTP exchanges, or a resource hub, alone.",
+                nameof(operationKey));
         }
 
         if (end is not (null or 0 or 1))
@@ -1214,9 +1215,12 @@ internal sealed class FocusRows
 
         // An RPC channel's or call's records, or HTTP exchanges', are the ones the generation's calls or exchanges group:
         // once they are paired, named without opening a segment, and kept for the generation's next zoom of them (P25).
+        // A resource hub's records are those its gate numbered it in (ADR-099).
         OperationRecords? operationRecords = focus.OperationKey is not { } operation ? null
             : (HttpExchangeKeys.IsHttp(operation)
                 ? SessionHttpExchanges.RecordsOf(store, manifest, generation.OnDemand, operation, policy, cancellationToken)
+                : ResourceLink.IsKey(operation)
+                ? SessionResources.RecordsOf(manifest, generation.OnDemand, generation.FieldsOnDemand, operation, policy, cancellationToken)
                 : SessionRpcCalls.RecordsOf(store, manifest, generation.OnDemand, operation, policy, cancellationToken))
                 ?? throw new InvalidOperationException("The focused operation is not in this generation under the evidence policy.");
 

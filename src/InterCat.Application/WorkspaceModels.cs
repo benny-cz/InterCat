@@ -380,6 +380,9 @@ public sealed record ResourceLink(
     /// <summary>For a section by its views, the largest extent one view of it mapped - its capacity, never bytes moved; null for any other.</summary>
     public long? LargestView { get; init; }
 
+    /// <summary>Its records - those its gate numbered it in, its handles' or its views' - whichever process they bind to.</summary>
+    public long Records { get; init; }
+
     /// <summary>What every resource hub's key begins with.</summary>
     public const string KeyPrefix = "resource:hub:";
 
@@ -409,6 +412,44 @@ public sealed record ResourceLink(
 
     /// <summary>Whether a key names a resource hub.</summary>
     public static bool IsKey(string? key) => key is not null && key.StartsWith(KeyPrefix, StringComparison.Ordinal);
+
+    /// <summary>
+    /// What a hub's key names - its mechanism, whether it is a section by its views, and its number - which E reads its
+    /// records by; false for a key that names no hub.
+    /// </summary>
+    public static bool TryParseKey(string? key, out Mechanism mechanism, out bool byViews, out long number)
+    {
+        mechanism = default;
+        byViews = false;
+        number = 0;
+        if (!IsKey(key))
+        {
+            return false;
+        }
+
+        int colon = key!.LastIndexOf(':');
+        if (colon < KeyPrefix.Length
+            || !long.TryParse(key.AsSpan(colon + 1), System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out long parsed) || parsed == 0)
+        {
+            return false;
+        }
+
+        (Mechanism Mechanism, bool ByViews)? named = key[KeyPrefix.Length..colon] switch
+        {
+            "mapped-section" => (Mechanism.SharedSection, true),
+            "section" => (Mechanism.SharedSection, false),
+            "object" => (Mechanism.Synchronization, false),
+            _ => null,
+        };
+        if (named is not { } kind)
+        {
+            return false;
+        }
+
+        (mechanism, byViews, number) = (kind.Mechanism, kind.ByViews, parsed);
+        return true;
+    }
 
     /// <summary>
     /// What a hub's key says it is, as a reader names it - a mapped section, a section or a synchronization object; null for a

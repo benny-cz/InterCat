@@ -86,9 +86,15 @@ public sealed partial class WorkspaceViewModel
                     ? string.Create(CultureInfo.CurrentCulture, $" and {resource.Holders.Count - HubHoldersOnCard:N0} more")
                     : string.Empty)
             : Counted(hub.ConnectedProcesses, "drawn process", "drawn processes");
-        return $"{kind} held by {holders}: holding it proves they shared it, never what moved through it. It stands for no "
-            + "process, so it selects no records of its own, and E lists the rung's.";
+        return $"{kind} held by {holders}: holding it proves they shared it, never what moved through it. E lists its records, "
+            + "whichever process they bind to.";
     }
+
+    /// <summary>A hub's evidence line: how many records its gate numbered it in - its views' or its handles' - none of them traffic.</summary>
+    private string HubEvidence(GraphDisplayNode hub) => ResourceOf(hub.Key) is { } resource
+        ? string.Create(CultureInfo.CurrentCulture, $"{resource.Records:N0} {(resource.Records == 1 ? "record" : "records")} of its ")
+            + (resource.ByViews ? "views" : "handles") + " · holding a resource is no traffic"
+        : "Its records are not in this generation";
 
     /// <summary>How many of a hub's holders its card names before counting the rest.</summary>
     private const int HubHoldersOnCard = 6;

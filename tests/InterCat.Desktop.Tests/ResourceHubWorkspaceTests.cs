@@ -19,9 +19,10 @@ public sealed class ResourceHubWorkspaceTests
     [Fact(DisplayName = "§6.3: the window draws a section two processes mapped as a hub between them, and its cards say what it is, who held it and that holding it is no traffic")]
     public void TheWindowSaysWhatAHubIs() => SingleThreadedContext.Run(async () =>
     {
+        // The sections with their readings placed in session time, as a capture's are, so the timeline can count them.
         using var session = new TemporarySession();
         (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
-        Publish(session.Store, rows, fields: fields);
+        Publish(session.Store, [.. rows.Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })], fields: fields);
         using WorkspaceViewModel workspace = Open(session);
         await workspace.LayoutReady;
         GraphDisplay drawn = workspace.GraphDisplay;
@@ -67,16 +68,27 @@ public sealed class ResourceHubWorkspaceTests
             ],
             edgeCard.Lines);
 
-        // Chosen, it says what it is and who held it; it stands for no process, so E lists the rung's records, as the
-        // inspector's evidence line says.
+        // Chosen, it says what it is and who held it, its card counts its own records - its views' - and the timeline
+        // highlights exactly them.
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 100);
         workspace.SelectGraphNode(hub.Key);
         Assert.Equal("Mapped section 4", workspace.SelectionTitle);
         Assert.Equal("Mapped section held by writer.exe · PID 100, reader.exe · PID 200: holding it proves they shared it, never "
-            + "what moved through it. It stands for no process, so it selects no records of its own, and E lists the rung's.",
-            workspace.SelectionSubtitle);
-        Assert.Equal("Selected resource", workspace.EvidenceHeading);
-        Assert.True(workspace.ShowsEvidenceLine);
+            + "what moved through it. E lists its records, whichever process they bind to.", workspace.SelectionSubtitle);
+        Assert.Equal(("Selected resource", "4 records of its views · holding a resource is no traffic"),
+            (workspace.EvidenceHeading, workspace.EvidenceSummary));
         Assert.Same(workspace.GraphDisplay.Node(hub.Key), workspace.SelectedCluster);
+        await workspace.HighlightReady;
+        Assert.Equal(4, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
+
+        // E lists exactly them, its filter naming the resource and why.
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(4, workspace.RungRows.Count);
+        Assert.StartsWith("Records of Mapped section 4", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        FilterRow scope = Assert.Single(workspace.Filters, filter => filter.Field == "scope");
+        Assert.EndsWith("with the resource Mapped section 4 chosen: exactly its records, whichever process they bind to.",
+            scope.Reason, StringComparison.Ordinal);
     });
 
     private static WorkspaceViewModel Open(TemporarySession session)

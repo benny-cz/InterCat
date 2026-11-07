@@ -39,4 +39,30 @@ public sealed record SessionResources(
             generation.OnDemand, generation.FieldsOnDemand, processes, policy, cancellationToken);
         return new(manifest.SessionId, manifest.Generation, clock, processes, resources.Instances);
     }
+
+    /// <summary>
+    /// The records of the resource a hub's key names (ADR-099) - those its gate numbered it in, whichever process they bind
+    /// to - by segment and row, which E lists and the timeline highlights; null where none is in this generation. Gathered
+    /// once per key and kept with the generation, as an RPC channel's records are (P25).
+    /// </summary>
+    internal static OperationRecords? RecordsOf(
+        SessionManifestV1 manifest,
+        IReadOnlyList<SegmentReaderV1> segments,
+        IReadOnlyList<SegmentReaderV1> fieldSegments,
+        string resourceKey,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken) =>
+        SessionDerivationCache.For(manifest).Operation(resourceKey, policy, () =>
+        {
+            if (!ResourceLink.TryParseKey(resourceKey, out Mechanism mechanism, out bool byViews, out long number))
+            {
+                throw new ArgumentException("This key names no resource hub.", nameof(resourceKey));
+            }
+
+            IReadOnlyList<string> names = SessionSegments.Names(manifest);
+            OperationRecords records = OperationRecords.Of(
+                ResourceInstanceIndex.RecordsOf(segments, fieldSegments, mechanism, byViews, number, cancellationToken)
+                    .Select(record => (names[record.Segment], record.Row)));
+            return records.Count == 0 ? null : records;
+        });
 }

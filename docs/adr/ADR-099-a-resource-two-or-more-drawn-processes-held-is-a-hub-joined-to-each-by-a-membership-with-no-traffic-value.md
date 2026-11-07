@@ -1,6 +1,6 @@
 # ADR-099: A resource two or more drawn processes held is a hub, joined to each by a membership with no traffic value
 
-- Status: accepted for M6's graph and resource inspectors; the window's graph draws resource hubs (revision 1007)
+- Status: accepted for M6's graph and resource inspectors; the window's graph draws resource hubs (revision 1007) and a chosen hub selects its own records (revision 1008)
 - Date: 2026-11-07
 - Decision owners: InterCat maintainers
 - Relates to: ADR-092, ADR-097, ADR-098, plan §3.5, §6.3, M6, R11, P27
@@ -39,3 +39,14 @@ synchronization objects, sections by their handles and by their views, and AF_UN
   rung's. Listing a hub's own records and finding one by a search are later work, as is keeping the resources in the
   derivation checkpoint, so a reopened resource capture opens its segments for them once.
 - 22 mutations of the path are caught.
+
+## Addendum: a hub's own records (revision 1008)
+
+Choosing a hub selects its own records: those of its mechanism whose source field carries the number its gate gave it -
+a section's views by the number they carry and its handles by theirs, never joined (ADR-092) - whichever process they
+bind to. Its key, `resource:hub:{mapped-section|section|object}:{number}`, scopes them as an RPC channel's key scopes its
+calls: the timeline highlights them, the card counts them as records of its views or its handles and never traffic, E
+lists them, and an export of them names `icat evidence <directory> --channel <key>`, which lists the same records under
+the same identity, its rule `resource-instances-v3`. A key of no hub's kind, or numbered 0 - the number a record carries
+where its gate gave none - names no hub. Finding a hub by the graph's search is later work. 25 mutations of the path
+are caught.

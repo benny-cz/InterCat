@@ -930,6 +930,7 @@ Revision 1004 makes a section by its views a resource instance of its own (ADR-0
 Revision 1005 answers the resource-topology basis from the derived resources (ADR-098): icat metric --basis resource-topology counts resources by their known lifetime, the processes sharing one with a focus and sections' capacity, never traffic.
 Revision 1006 groups topology answers by a fact of the processes holding each resource (ADR-098's addendum): each group's resources, sharing processes and capacity, a shared resource in each holder's group.
 Revision 1007 draws a resource two or more drawn processes held as a hub of the window's graph (ADR-099), joined to each holder by a membership with no traffic value.
+Revision 1008 gives a resource hub its own records (ADR-099's addendum): choosing one highlights, counts and lists those its gate numbered it in, and icat evidence reads them by its key.
 
 ## Revisions, a paragraph each, in order
 
@@ -4658,3 +4659,11 @@ diamond joined to each holder's node by a membership - neutral, thin, constant, 
 and re-counted by no brush - never an image's section nor a socket. Hubs come after every process is placed, the most
 holders first, as many of eight as the budget allows, and their holders are kept out of No relationships. Resources are
 derived only where a process made a record of a mechanism that has them, so an Explore session opens no segment for them.
+
+Revision 1008 gives a resource hub its own records, which revision 1007 left to the rung (ADR-099's addendum). A
+resource's records are those of its mechanism whose source field carries the number its gate gave it - a section's views
+by theirs and its handles by theirs, never joined, and a socket's never a TCP connection's of the same number - whichever
+process they bind to. A hub's key scopes them as an RPC channel's scopes its calls: choosing the hub highlights them on
+the timeline, its card counts them as records of its views or its handles and never traffic, and E lists them. An export
+of them names the icat evidence command that lists the same records under the same identity, and icat evidence now reads
+a hub's key.

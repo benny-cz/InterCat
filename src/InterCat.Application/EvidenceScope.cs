@@ -161,7 +161,9 @@ public static class EvidenceScopes
             {
                 case DetailLevel.Machine:
                     return Whole(interval, time);
-                case DetailLevel.Channel when RpcChannelKeys.IsRpc(filter.Key) || HttpExchangeKeys.IsHttp(filter.Key):
+                case DetailLevel.Channel when RpcChannelKeys.IsRpc(filter.Key) || HttpExchangeKeys.IsHttp(filter.Key)
+                    || ResourceLink.IsKey(filter.Key):
+                    // A resource hub's records are its own as an RPC channel's are: those its gate numbered it in (ADR-099).
                     return new($"Records of {filter.Value}{time}", null, [], interval, null) { OperationKey = filter.Key };
                 case DetailLevel.Operation when RpcChannelKeys.IsRpc(filter.Key) || HttpExchangeKeys.IsHttp(filter.Key):
                     // A call or an exchange is one entity: its records are all of its own wherever the view is zoomed.

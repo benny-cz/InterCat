@@ -1000,7 +1000,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         if (SelectedCluster is { } cluster)
         {
-            return cluster.Members.Count == 0 ? (null, null) : (new(null, cluster.Members), cluster.Label);
+            // A resource hub's records are its own, read by its key as an RPC channel's are (ADR-099).
+            return cluster.IsHub ? (new(null, [], cluster.Key), cluster.Label)
+                : cluster.Members.Count == 0 ? (null, null) : (new(null, cluster.Members), cluster.Label);
         }
 
         if (SelectedGroup is { } group)
@@ -5070,11 +5072,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// With nothing selected in a published session, the rung's own records, as E reads them over the scope the rows count
     /// (§6.4, I5): "Every admitted record in this session", "Records owned by the 2 instances of client.exe". Null with a
     /// selection, in the tour, and at the evidence rung, whose records are listed already. The Other hosts node chosen
-    /// stands for no process and no one host, and a resource hub for no process, so neither selects records of its own and
-    /// E still lists the rung's; a host drawn on its own, or one chosen in its list, selects its connections'.
+    /// stands for no process and no one host, so it selects no records of its own and E still lists the rung's; a host
+    /// drawn on its own, or one chosen in its list, selects its connections', and a resource hub its own records.
     /// </summary>
     private string? RungRecords => realOverview && !IsEvidenceRung && selectedProcess is null && !HasMultiSelection
-        && selectedRelationship is null && SelectedCluster is null or { Kind: GraphNodeKind.OtherHosts or GraphNodeKind.SharedResource }
+        && selectedRelationship is null && SelectedCluster is null or { Kind: GraphNodeKind.OtherHosts }
         && SelectedGroup is null
         && ChosenRow is null && ChosenHostAddress is null
             ? CellRecords(ScopeInterval ?? ladder.Current.Viewport)
@@ -5152,6 +5154,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (ChosenHostAddress is { } host && ReadsHostRecords)
             {
                 return HostEvidence(host);
+            }
+
+            // A resource hub chosen: its own records, as E lists them and the timeline highlights them, none of them traffic.
+            if (SelectedCluster is { IsHub: true } chosenHub && realOverview)
+            {
+                return HubEvidence(chosenHub);
             }
 
             // An aggregate drawn in the graph stands for its processes, as a set of them chosen together does: the card
@@ -5526,6 +5534,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 new(DetailLevel.ProcessInstance, member.Id.ToString(), member.NameWithPid),
                 $"Evidence was reached from the {rung} rung with {member.NameWithPid} chosen among the processes "
                 + $"{SelectedCluster?.Label} counts.")
+            : realOverview && SelectedCluster is { IsHub: true } hub
+            ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, new(DetailLevel.Channel, hub.Key, hub.Label),
+                $"Evidence was reached from the {rung} rung with the resource {hub.Label} chosen: exactly its records, whichever "
+                + "process they bind to.")
             : realOverview && SelectedCluster is { Members.Count: > 0 } aggregate
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                 new(DetailLevel.Group, ProcessSetFilter.KeyOf(aggregate.Members), aggregate.Label),

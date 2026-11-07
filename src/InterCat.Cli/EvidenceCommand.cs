@@ -91,9 +91,11 @@ internal static class EvidenceCommand
         channel = host is not null ? HostScopeKeys.Of(host) : channel;
         // A relationship's evidence key opens its records at both ends (R4): a paired TCP or UDP channel's, or an RPC
         // relationship's, channel's or call's, whose records the RPC calls name. A process's HTTP exchanges, or one of
-        // them, name their own records too, as the window's evidence rung reads them.
+        // them, name their own records too, as the window's evidence rung reads them, and so does a resource hub: the records
+        // its gate numbered it in, whichever process they bind to (ADR-099).
         bool rpc = RpcChannelKeys.IsRpc(channel);
-        bool operation = rpc || HttpExchangeKeys.IsHttp(channel);
+        bool resource = ResourceLink.IsKey(channel);
+        bool operation = rpc || resource || HttpExchangeKeys.IsHttp(channel);
         SessionEvidencePage page;
         SessionClock clock = SessionClock.Session(TimeZoneInfo.Local);
         (long Ticks, string Said, DateTimeOffset? Utc)? from = null;
@@ -164,7 +166,8 @@ internal static class EvidenceCommand
         ConsoleUi.Field("Query", page.QueryIdentity);
         ConsoleUi.Field("Rows on page", ConsoleUi.Count(page.Records.Count));
         if (host is not null) ConsoleUi.Field("Host", host.Trim() + ", its connections whichever process held them");
-        else if (channel is not null) ConsoleUi.Field(rpc ? "RPC key" : operation ? "HTTP key" : "Paired channel", channel);
+        else if (channel is not null)
+            ConsoleUi.Field(rpc ? "RPC key" : resource ? "Resource key" : operation ? "HTTP key" : "Paired channel", channel);
         if (policy != EvidencePolicy.IncludeCorrelated) ConsoleUi.Field("Evidence policy", policy.ToString());
         if (page.End is { } side) ConsoleUi.Field("Channel end", side == 0 ? "0, its first end" : "1, its second end");
         if (page.Mechanism is { } kind) ConsoleUi.Field("Mechanism", MechanismText.Name(kind));
@@ -287,8 +290,9 @@ internal static class EvidenceCommand
         ConsoleUi.Line("  A cursor continues after its last row, in a newer generation too; a changed scope, policy");
         ConsoleUi.Line("  or derivation asks for an explicit restart. --channel takes a relationship's evidence key: a");
         ConsoleUi.Line("  paired TCP or UDP channel's, or an RPC relationship's, which opens the calls its links join at both");
-        ConsoleUi.Line("  ends; an RPC channel's or call's key, or a process's HTTP exchanges' or one exchange's, opens its");
-        ConsoleUi.Line("  own records, and no such key takes --owner-process.");
+        ConsoleUi.Line("  ends; an RPC channel's or call's key, a process's HTTP exchanges' or one exchange's, or a resource");
+        ConsoleUi.Line("  hub's, as the window's export of its records names it, opens its own records, and no such key");
+        ConsoleUi.Line("  takes --owner-process.");
         ConsoleUi.Line("  --host reads the records of every connection to one other host's address, whichever process held");
         ConsoleUi.Line("  it; who is at the address is not observed.");
         ConsoleUi.Line("  --owner-process selects rows canonically owned by that instance, not possible peer rows;");

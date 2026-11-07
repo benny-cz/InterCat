@@ -563,6 +563,7 @@ public static class SessionOverviewProjector
                 [.. resource.Holders.Select(holder => holder.Process)])
             {
                 LargestView = resource.LargestView,
+                Records = resource.Records,
             })
             .OrderByDescending(link => link.Holders.Count)
             .ThenBy(link => link.Key, StringComparer.Ordinal),

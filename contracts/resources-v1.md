@@ -57,6 +57,13 @@ observed. A section by its views carries no traffic either: a view's size is the
 1002's, derived no socket, and version 2, revision 1003's, no section by its views. The resource-topology basis counts
 these resources, the processes sharing them and sections' capacity (`metrics-v1` §8b, revision 1005).
 
+A resource's records are those of its mechanism whose source field carries its number - a section's views by the number
+they carry and its handles by theirs, a socket's by its own and never a TCP connection's of the same number - whichever
+process they bind to; 0 is no number and names none. A resource two or more processes held, other than an image's section
+or a socket, is the window's hub (ADR-099), keyed `resource:hub:{mapped-section|section|object}:{number}`, and its key
+scopes its records as an RPC channel's scopes its calls: `icat evidence --channel` reads them by it, a page of them
+taking `resource-instances-v3` as its rule in its identity (revision 1008).
+
 ## 4. `icat resources`
 
 `icat resources <session> [--mechanism synchronization|section|socket] [--namespace <directory>] [--idle] [--images] [--limit <n>] [--json]` lists
@@ -74,4 +81,4 @@ every member it had; revision 1004 added `byViews`, `image`, `views`, `largestVi
 
 - Named pipes, ALPC ports and listening TCP endpoints.
 - An AF_UNIX socket's path, which no record names, and the socket at its other end, which none names either (ADR-072).
-- The window's browsing of resources by namespace, and a resource drawn on the graph.
+- The window's browsing of resources by namespace, and finding a hub by the graph's search.

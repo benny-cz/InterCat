@@ -235,11 +235,12 @@ public static class SessionEvidenceQuery
     private static void RequireOneScope(string? channelKey, ProcessInstanceId[] owners, string? operationKey)
     {
         if (operationKey is null) return;
-        if (!RpcChannelKeys.IsRpc(operationKey) && !HttpExchangeKeys.IsHttp(operationKey))
-            throw new ArgumentException("This key names no RPC channel, call or relationship, and no HTTP exchanges.", nameof(operationKey));
-        if (channelKey is not null || owners.Length > 0)
-            throw new ArgumentException("An RPC channel, call or relationship, or HTTP exchanges, scope their own records; name one alone.",
+        if (!RpcChannelKeys.IsRpc(operationKey) && !HttpExchangeKeys.IsHttp(operationKey) && !ResourceLink.IsKey(operationKey))
+            throw new ArgumentException("This key names no RPC channel, call or relationship, no HTTP exchanges and no resource hub.",
                 nameof(operationKey));
+        if (channelKey is not null || owners.Length > 0)
+            throw new ArgumentException("An RPC channel, call or relationship, HTTP exchanges, or a resource hub, scope their own "
+                + "records; name one alone.", nameof(operationKey));
     }
 
     /// <summary>
@@ -401,6 +402,14 @@ public static class SessionEvidenceQuery
                 ?? throw new InvalidOperationException("These HTTP exchanges are not in the current generation under the "
                     + "evidence policy. Return to the process and select them again.");
         }
+        else if (operationKey is not null && ResourceLink.IsKey(operationKey))
+        {
+            // A resource hub's records are those its gate numbered it in, whichever process they bind to (ADR-099).
+            operationRecords = SessionResources.RecordsOf(manifest, generation!.OnDemand, generation.FieldsOnDemand, operationKey,
+                    policy, cancellationToken)
+                ?? throw new InvalidOperationException("This resource is not in the current generation. Return to the graph and "
+                    + "choose it again.");
+        }
         else if (operationKey is not null)
         {
             operationRecords = SessionRpcCalls.RecordsOf(store, manifest, generation!.OnDemand, operationKey, policy, cancellationToken)
@@ -546,7 +555,9 @@ public static class SessionEvidenceQuery
             : "all-time";
         string relationRule = channelKey is null ? "unscoped" : TransportRelationIndex.RelationRule;
         string bindingRule = owners.Length == 0 && operationKey is null ? "unscoped" : ProcessInstanceIndex.BindingRule;
-        string rule = HttpExchangeKeys.IsHttp(operationKey) ? HttpExchangeIndex.GroupingRule : RpcCallIndex.OperationRule;
+        string rule = HttpExchangeKeys.IsHttp(operationKey) ? HttpExchangeIndex.GroupingRule
+            : ResourceLink.IsKey(operationKey) ? ResourceInstanceIndex.Rule
+            : RpcCallIndex.OperationRule;
         string operationScope = operationKey is null ? string.Empty : $"|{rule}|{operationKey.Length}:{operationKey}";
         string captures = string.Join(",", segments.Select(segment => segment.CaptureId.Value.ToString("N"))
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));

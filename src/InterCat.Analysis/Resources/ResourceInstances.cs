@@ -196,6 +196,96 @@ public sealed class ResourceInstanceIndex
             .Select(entry => entry.Value.ToInstance(entry.Key.Mechanism, entry.Key.ByViews, entry.Key.Number, processes, typeNames))]);
     }
 
+    /// <summary>
+    /// The records of one resource instance - those of <paramref name="mechanism"/> whose source field carries
+    /// <paramref name="number"/>, the number its gate gave it - by segment and row, each segment's in its order: what E lists
+    /// as exactly a resource's records (ADR-099). A section by its views is read by the number its views carry, one by its
+    /// handles by its handles', never the two joined (ADR-092); zero is no number, and names no record.
+    /// </summary>
+    public static IReadOnlyList<(int Segment, int Row)> RecordsOf(
+        IReadOnlyList<SegmentReaderV1> segments,
+        IReadOnlyList<SegmentReaderV1> fieldSegments,
+        Mechanism mechanism,
+        bool byViews,
+        long number,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(fieldSegments);
+        SourceField field = mechanism switch
+        {
+            Mechanism.Synchronization => SourceField.SynchronizationObjectNumber,
+            Mechanism.SharedSection => byViews ? SourceField.SectionNumber : SourceField.SectionObjectNumber,
+            Mechanism.UnixDomainSocket => SourceField.ConnectionId,
+            _ => throw new ArgumentOutOfRangeException(nameof(mechanism), mechanism, "No resource of this mechanism is derived."),
+        };
+        if (number == 0)
+        {
+            return [];
+        }
+
+        // The records whose field carries the number, by their address; then each one's row in its observation segment,
+        // of its mechanism alone, since a TCP record's connection id shares the field with a socket's number.
+        var addresses = new HashSet<RecordAddress>();
+        foreach (SegmentReaderV1 segment in fieldSegments)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SegmentColumnSlice codes = segment.Slice(SegmentColumnId.SourceField);
+            bool opened = false;
+            Locator locator = default;
+            SegmentColumnSlice values = default;
+            for (int row = 0; row < segment.RowCount; row++)
+            {
+                if ((SourceField)(ushort)codes.UnsignedAt(row)!.Value != field)
+                {
+                    continue;
+                }
+
+                if (!opened)
+                {
+                    locator = new Locator(segment);
+                    values = segment.Slice(SegmentColumnId.FieldValue);
+                    opened = true;
+                }
+
+                if (values.SignedAt(row) == number)
+                {
+                    addresses.Add(locator.At(row));
+                }
+            }
+        }
+
+        var records = new List<(int Segment, int Row)>();
+        for (int index = 0; index < segments.Count && addresses.Count > 0; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SegmentReaderV1 segment = segments[index];
+            SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+            bool opened = false;
+            Locator locator = default;
+            for (int row = 0; row < segment.RowCount; row++)
+            {
+                if ((Mechanism)mechanisms.UnsignedAt(row)!.Value != mechanism)
+                {
+                    continue;
+                }
+
+                if (!opened)
+                {
+                    locator = new Locator(segment);
+                    opened = true;
+                }
+
+                if (addresses.Contains(locator.At(row)))
+                {
+                    records.Add((index, row));
+                }
+            }
+        }
+
+        return records;
+    }
+
     // The numbers and types the source-field segments carry, by the record they belong to.
     private static Dictionary<RecordAddress, Carried> ReadFields(IReadOnlyList<SegmentReaderV1> fieldSegments, CancellationToken cancellationToken)
     {

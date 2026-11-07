@@ -165,6 +165,48 @@ public sealed class ResourceInstanceTests
         Assert.Equal("resource-instances-v3", ResourceInstanceIndex.Rule);
     }
 
+    [Fact(DisplayName = "R3: a resource's records are exactly those its gate numbered it in - a section's views apart from its handles, and a socket's never a TCP connection's of the same number")]
+    public void AResourcesRecordsAreItsNumbers()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        Publish(session.Store, rows, fields: fields);
+        SessionManifestV1 manifest = session.Store.Current!;
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(session.Store, manifest, name))];
+        SegmentReaderV1[] fieldSegments = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(session.Store, manifest, name))];
+        ObservationKind[] KindsOf(IReadOnlyList<(int Segment, int Row)> records) =>
+            [.. records.Select(record => (ObservationKind)segments[record.Segment].Slice(SegmentColumnId.ObservationKind).UnsignedAt(record.Row)!.Value)];
+
+        // Section 4's views - two mapped, two unmapped - and apart from them its handles' creation and close.
+        Assert.Equal([ObservationKind.Map, ObservationKind.Map, ObservationKind.Unmap, ObservationKind.Unmap],
+            KindsOf(ResourceInstanceIndex.RecordsOf(segments, fieldSegments, Mechanism.SharedSection, true, 4)));
+        Assert.Equal([ObservationKind.Open, ObservationKind.Close],
+            KindsOf(ResourceInstanceIndex.RecordsOf(segments, fieldSegments, Mechanism.SharedSection, false, 4)));
+        Assert.Empty(ResourceInstanceIndex.RecordsOf(segments, fieldSegments, Mechanism.Synchronization, false, 4));
+        Assert.Empty(ResourceInstanceIndex.RecordsOf(segments, fieldSegments, Mechanism.SharedSection, true, 0));
+
+        // Socket 5's three records, never the TCP send whose connection id is 5 too.
+        using var sockets = new TemporarySession();
+        (rows, fields) = UnixSockets();
+        Publish(sockets.Store, rows, fields: fields);
+        manifest = sockets.Store.Current!;
+        segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(sockets.Store, manifest, name))];
+        fieldSegments = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(sockets.Store, manifest, name))];
+        Assert.Equal(3, ResourceInstanceIndex.RecordsOf(segments, fieldSegments, Mechanism.UnixDomainSocket, false, 5).Count);
+
+        // Object 1's four handle records, never section 9's; and none for the 0 a record carries where its gate gave none.
+        using var objects = new TemporarySession();
+        (rows, fields) = NamedObjects();
+        Publish(objects.Store, rows, fields: fields);
+        manifest = objects.Store.Current!;
+        segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(objects.Store, manifest, name))];
+        fieldSegments = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(objects.Store, manifest, name))];
+        Assert.Equal([ObservationKind.Open, ObservationKind.Open, ObservationKind.Close, ObservationKind.Close],
+            KindsOf(ResourceInstanceIndex.RecordsOf(segments, fieldSegments, Mechanism.Synchronization, false, 1)));
+        Assert.Empty(ResourceInstanceIndex.RecordsOf(segments, fieldSegments, Mechanism.Synchronization, false, 0));
+        Assert.Equal(2, ResourceInstanceIndex.RecordsOf(segments, fieldSegments, Mechanism.SharedSection, false, 9).Count);
+    }
+
     [Fact(DisplayName = "R3: a later holder of a reused PID holds a resource only as a candidate, which the default policy counts by that reason and includes when asked")]
     public void ACandidateHolderIsCountedByThePolicy()
     {

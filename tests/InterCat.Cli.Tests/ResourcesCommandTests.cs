@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using InterCat.Analysis.Tests;
+using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -149,6 +150,35 @@ public sealed class ResourcesCommandTests
             mapped.GetProperty("image").GetBoolean(), mapped.GetProperty("layer").GetString()));
         Assert.Equal((0, 1, 1), mapped.GetProperty("holders").EnumerateArray().Select(holder => (holder.GetProperty("viewsMapped").GetInt32(),
             holder.GetProperty("viewsUnmapped").GetInt32(), holder.GetProperty("viewsListed").GetInt32())).Single());
+    }
+
+    [Fact(DisplayName = "R18: icat evidence lists a resource hub's own records by its key, the command the window's export of them names, under the window's query identity")]
+    public async Task EvidenceListsAHubsRecordsByItsKey()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        Publish(session.Store, rows, fields: fields);
+        ResourceLink hub = Assert.Single(SessionOverviewProjector.Project(session.Store).ResourceLinks);
+        SessionEvidencePage window = SessionEvidenceQuery.Read(session.Store, operationKey: hub.Key);
+        Assert.Equal("icat evidence <directory> --channel " + hub.Key, EvidenceQuery.Command(window, EvidencePolicy.IncludeCorrelated));
+        session.Store.ReleaseSegmentReaders();
+
+        // The command the export names lists the section's views - both processes' - under the window's page's identity.
+        (InterCatExitCode code, string output, _) = await Run("evidence", session.Path, "--channel", hub.Key, "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        using JsonDocument json = JsonDocument.Parse(output);
+        JsonElement page = json.RootElement.GetProperty("page");
+        Assert.Equal((4, 4L, hub.Key, window.QueryIdentity),
+            (page.GetProperty("records").GetArrayLength(), hub.Records, page.GetProperty("operationKey").GetString(),
+                page.GetProperty("queryIdentity").GetString()));
+        (code, output, _) = await Run("evidence", session.Path, "--channel", hub.Key);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches($@"(?m)^  Resource key +{Regex.Escape(hub.Key)}\r?$", output);
+
+        // Its records are its own, whichever process they bind to: no owner process narrows them.
+        (code, _, string said) = await Run("evidence", session.Path, "--channel", hub.Key, "--owner-process", hub.Holders[0].ToString()!);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("name one alone", said, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "R21: icat resources says a session whose only resources are an image's sections lists them only with --images, never that its records number none")]

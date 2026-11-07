@@ -131,6 +131,27 @@ public sealed class ResourceHubGraphTests
         Assert.Equal(2, focused.Node(widest.Key)!.ConnectedProcesses);
     }
 
+    [Fact(DisplayName = "§6.4: a hub's key names its resource, and an evidence page read by it lists exactly the records its gate numbered it in")]
+    public void AHubsKeyReadsItsRecords()
+    {
+        Assert.True(ResourceLink.TryParseKey("resource:hub:mapped-section:4", out Mechanism mechanism, out bool byViews, out long number));
+        Assert.Equal((Mechanism.SharedSection, true, 4L), (mechanism, byViews, number));
+        Assert.True(ResourceLink.TryParseKey("resource:hub:object:12", out mechanism, out byViews, out number));
+        Assert.Equal((Mechanism.Synchronization, false, 12L), (mechanism, byViews, number));
+        Assert.All(NoHubKeys, key => Assert.False(ResourceLink.TryParseKey(key, out _, out _, out _)));
+
+        // Section 4's views by their key, its handles by theirs: never joined, each its own records.
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        Publish(session.Store, rows, fields: fields);
+        SessionEvidencePage views = SessionEvidenceQuery.Read(session.Store, operationKey: "resource:hub:mapped-section:4");
+        Assert.Equal([ObservationKind.Map, ObservationKind.Map, ObservationKind.Unmap, ObservationKind.Unmap],
+            views.Records.Select(record => record.Observation.Kind));
+        Assert.Equal(2, SessionEvidenceQuery.Read(session.Store, operationKey: "resource:hub:section:4").Records.Count);
+        Assert.Throws<InvalidOperationException>(() => SessionEvidenceQuery.Read(session.Store, operationKey: "resource:hub:object:9"));
+        Assert.Throws<ArgumentException>(() => SessionEvidenceQuery.Read(session.Store, operationKey: "resource:hub:socket:9"));
+    }
+
     [Fact(DisplayName = "§6.3: a hub holds no process, only memberships run to it and none from it, and each membership is drawn once")]
     public void ImpossibleHubsAreRefused()
     {
@@ -165,6 +186,9 @@ public sealed class ResourceHubGraphTests
         Assert.Throws<ArgumentException>(() => GraphProjection.Project(Snapshot([group], processes, [],
             [new ResourceLink(Mechanism.Synchronization, 1, false, null, [processes[0].Id, third])])));
     }
+
+    /// <summary>Keys that name no hub: a socket's, a number zero or none, and a host's.</summary>
+    private static readonly string[] NoHubKeys = ["resource:hub:socket:4", "resource:hub:section:0", "resource:hub:section:x", "resource:host:10.0.0.1"];
 
     private static string[] Sorted(IEnumerable<ProcessInstanceId> ids) =>
         [.. ids.Select(id => id.ToString()).Order(StringComparer.Ordinal)];
