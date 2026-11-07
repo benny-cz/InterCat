@@ -1,0 +1,284 @@
+{
+  "question": "What the cooperative SDK costs an application: a burst of publications and consumptions on one thread with no session listening, each call its enabled check, beside the same burst while icat record records it under the opt-in sdk profile, each call an event - and, paced, the rate up to which the capture kept every message, each call a batch of 64 messages (ADR-106).",
+  "batch": 64,
+  "messages": 12800000,
+  "callsPerBurst": 400000,
+  "rounds": 5,
+  "disabled": {
+    "medianNanosecondsPerCall": 78.6115,
+    "medianCallsPerSecond": 12720785.126858028,
+    "medianNanosecondsPerMessage": 2.456609375,
+    "medianMessagesPerSecond": 407065124.0594569,
+    "bursts": [
+      {
+        "listened": false,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 42866900,
+        "nanosecondsPerCall": 107.16725,
+        "callsPerSecond": 9331208.928100703,
+        "nanosecondsPerMessage": 3.3489765625,
+        "messagesPerSecond": 298598685.6992225
+      },
+      {
+        "listened": false,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 30183400,
+        "nanosecondsPerCall": 75.4585,
+        "callsPerSecond": 13252317.499022642,
+        "nanosecondsPerMessage": 2.358078125,
+        "messagesPerSecond": 424074159.96872455
+      },
+      {
+        "listened": false,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 30558800,
+        "nanosecondsPerCall": 76.397,
+        "callsPerSecond": 13089519.221958978,
+        "nanosecondsPerMessage": 2.38740625,
+        "messagesPerSecond": 418864615.1026873
+      },
+      {
+        "listened": false,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 31444600,
+        "nanosecondsPerCall": 78.6115,
+        "callsPerSecond": 12720785.126858028,
+        "nanosecondsPerMessage": 2.456609375,
+        "messagesPerSecond": 407065124.0594569
+      },
+      {
+        "listened": false,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 33270600,
+        "nanosecondsPerCall": 83.1765,
+        "callsPerSecond": 12022626.583229639,
+        "nanosecondsPerMessage": 2.599265625,
+        "messagesPerSecond": 384724050.66334844
+      }
+    ]
+  },
+  "enabled": {
+    "medianNanosecondsPerCall": 890.74725,
+    "medianCallsPerSecond": 1122652.9186590249,
+    "medianNanosecondsPerMessage": 27.8358515625,
+    "medianMessagesPerSecond": 35924893.397088796,
+    "keptWhole": 0,
+    "bursts": [
+      {
+        "listened": true,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 410935000,
+        "nanosecondsPerCall": 1027.3375,
+        "callsPerSecond": 973389.9521822187,
+        "nanosecondsPerMessage": 32.104296875,
+        "messagesPerSecond": 31148478.469830997,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 400506,
+          "admittedRecords": 290894,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 109612,
+          "undecodableRecords": 0
+        },
+        "messageEvents": 25600000,
+        "recordedMessageEvents": 18585088
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 373273000,
+        "nanosecondsPerCall": 933.1825,
+        "callsPerSecond": 1071601.7499256576,
+        "nanosecondsPerMessage": 29.161953125,
+        "messagesPerSecond": 34291255.997621045,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 400442,
+          "admittedRecords": 274440,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 126002,
+          "undecodableRecords": 0
+        },
+        "messageEvents": 25600000,
+        "recordedMessageEvents": 17536640
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 305389100,
+        "nanosecondsPerCall": 763.47275,
+        "callsPerSecond": 1309804.4429221605,
+        "nanosecondsPerMessage": 23.8585234375,
+        "messagesPerSecond": 41913742.173509136,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 400456,
+          "admittedRecords": 288184,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 112272,
+          "undecodableRecords": 0
+        },
+        "messageEvents": 25600000,
+        "recordedMessageEvents": 18414592
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 352478600,
+        "nanosecondsPerCall": 881.1965,
+        "callsPerSecond": 1134820.6671270258,
+        "nanosecondsPerMessage": 27.537390625,
+        "messagesPerSecond": 36314261.348064825,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 400453,
+          "admittedRecords": 294933,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 105520,
+          "undecodableRecords": 0
+        },
+        "messageEvents": 25600000,
+        "recordedMessageEvents": 18846912
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 356298900,
+        "nanosecondsPerCall": 890.74725,
+        "callsPerSecond": 1122652.9186590249,
+        "nanosecondsPerMessage": 27.8358515625,
+        "messagesPerSecond": 35924893.397088796,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 400431,
+          "admittedRecords": 292028,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 108403,
+          "undecodableRecords": 0
+        },
+        "messageEvents": 25600000,
+        "recordedMessageEvents": 18662208
+      }
+    ]
+  },
+  "paced": {
+    "seconds": 4,
+    "highestRateKeptWhole": 50000,
+    "highestMessageRateKeptWhole": 1600000,
+    "bursts": [
+      {
+        "listened": true,
+        "targetCallsPerSecond": 50000,
+        "calls": 200000,
+        "elapsedNanoseconds": 4000492500,
+        "nanosecondsPerCall": 20002.4625,
+        "callsPerSecond": 49993.844507894966,
+        "nanosecondsPerMessage": 625.076953125,
+        "messagesPerSecond": 1599803.024252639,
+        "health": {
+          "exitCode": 0,
+          "lossFree": true,
+          "observedRecords": 200483,
+          "admittedRecords": 200483,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 0,
+          "undecodableRecords": 0
+        },
+        "messageEvents": 12800000,
+        "recordedMessageEvents": 12800000
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 100000,
+        "calls": 400000,
+        "elapsedNanoseconds": 4000406300,
+        "nanosecondsPerCall": 10001.01575,
+        "callsPerSecond": 99989.84353164327,
+        "nanosecondsPerMessage": 312.5317421875,
+        "messagesPerSecond": 3199674.9930125847,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 400446,
+          "admittedRecords": 398480,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 1966,
+          "undecodableRecords": 0
+        },
+        "messageEvents": 25600000,
+        "recordedMessageEvents": 25474176
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 200000,
+        "calls": 800000,
+        "elapsedNanoseconds": 4000373700,
+        "nanosecondsPerCall": 5000.467125,
+        "callsPerSecond": 199981.31674548305,
+        "nanosecondsPerMessage": 156.26459765625,
+        "messagesPerSecond": 6399402.135855458,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 800471,
+          "admittedRecords": 462082,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 338389,
+          "undecodableRecords": 0
+        },
+        "messageEvents": 51200000,
+        "recordedMessageEvents": 29543488
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 400000,
+        "calls": 1600000,
+        "elapsedNanoseconds": 4000390200,
+        "nanosecondsPerCall": 2500.243875,
+        "callsPerSecond": 399960.9838060297,
+        "nanosecondsPerMessage": 78.13262109375,
+        "messagesPerSecond": 12798751.481792951,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 1600445,
+          "admittedRecords": 433028,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 1167417,
+          "undecodableRecords": 0
+        },
+        "messageEvents": 102400000,
+        "recordedMessageEvents": 27685504
+      }
+    ]
+  },
+  "notes": [
+    "A burst is one process opening one channel and, on one thread, publishing and consuming each message as fast as the SDK takes the calls, or held to a paced schedule.",
+    "A recorded burst\u0027s recorded calls are the publications and consumptions the session it published holds, as icat messages derives them; a capture that could not keep them all says so in its health, as icat record does, and is never read as having kept them.",
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once read."
+  ]
+}

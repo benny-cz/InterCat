@@ -10,7 +10,8 @@ namespace InterCat.SdkProbe;
 /// <summary>
 /// The cooperative SDK's cost, as M7's overhead guide states it: rounds of one burst with no session listening - each call
 /// its enabled check alone - beside one while the product's own <c>icat record</c> records it under the opt-in sdk profile,
-/// each call an event, every one of the enabled burst's calls looked for in the session it published.
+/// each call an event, every one of the enabled burst's messages looked for in the session it published. With a batch, each
+/// call says that many messages (ADR-106), and the bursts and the paced rates are the same calls saying more messages.
 /// </summary>
 internal static class Overhead
 {
@@ -22,7 +23,8 @@ internal static class Overhead
     /// <summary>How long a paced burst lasts, in seconds.</summary>
     private const int PacedSeconds = 4;
 
-    public static async Task<Dictionary<string, object?>> RunAsync(string icat, string workload, string output, int rounds, int messages, int duration)
+    public static async Task<Dictionary<string, object?>> RunAsync(string icat, string workload, string output, int rounds, int messages, int duration,
+        int batch = 1)
     {
         var disabled = new List<Dictionary<string, object?>>();
         var enabled = new List<Dictionary<string, object?>>();
@@ -31,7 +33,7 @@ internal static class Overhead
             string folder = Path.Combine(output, "round-" + round.ToString(CultureInfo.InvariantCulture));
 
             // With no session listening: the burst's cost is its enabled checks.
-            Dictionary<string, object?> quiet = await BurstAsync(workload, Path.Combine(folder, "disabled"), messages, 0).ConfigureAwait(false);
+            Dictionary<string, object?> quiet = await BurstAsync(workload, Path.Combine(folder, "disabled"), messages, 0, batch).ConfigureAwait(false);
             if (quiet["listened"] is true)
             {
                 throw new InvalidOperationException("A session listened to the SDK during a burst meant to run with none: another capture runs.");
@@ -40,15 +42,16 @@ internal static class Overhead
             disabled.Add(quiet);
 
             // While the product records it, as fast as the SDK takes the calls: every call an event.
-            enabled.Add(await RecordedAsync(icat, workload, Path.Combine(folder, "enabled"), messages, 0, duration).ConfigureAwait(false));
+            enabled.Add(await RecordedAsync(icat, workload, Path.Combine(folder, "enabled"), messages, 0, duration, batch).ConfigureAwait(false));
         }
 
-        // The same, paced: the rate a capture keeps whole is the highest at which it kept every call.
+        // The same, paced: the rate a capture keeps whole is the highest at which it kept every message. A paced burst is
+        // as many calls as single messages' would be, each saying a batch's messages.
         var paced = new List<Dictionary<string, object?>>();
         foreach (int rate in Rates)
         {
             paced.Add(await RecordedAsync(icat, workload, Path.Combine(output, "paced-" + rate.ToString(CultureInfo.InvariantCulture)),
-                rate * PacedSeconds / 2, rate, duration).ConfigureAwait(false));
+                rate * PacedSeconds / 2 * batch, rate, duration, batch).ConfigureAwait(false));
         }
 
         int[] keptWhole = [.. paced.Where(Whole).Select(burst => (int)burst["targetCallsPerSecond"]!)];
@@ -56,20 +59,26 @@ internal static class Overhead
         {
             ["question"] = "What the cooperative SDK costs an application: a burst of publications and consumptions on one thread with "
                 + "no session listening, each call its enabled check, beside the same burst while icat record records it under the "
-                + "opt-in sdk profile, each call an event - and, paced, the rate up to which the capture kept every call.",
+                + "opt-in sdk profile, each call an event - and, paced, the rate up to which the capture kept every message"
+                + (batch == 1 ? "." : string.Create(CultureInfo.InvariantCulture, $", each call a batch of {batch} messages (ADR-106).")),
+            ["batch"] = batch,
             ["messages"] = messages,
-            ["callsPerBurst"] = 2L * messages,
+            ["callsPerBurst"] = 2L * messages / batch,
             ["rounds"] = rounds,
             ["disabled"] = new Dictionary<string, object?>
             {
                 ["medianNanosecondsPerCall"] = Median(disabled, "nanosecondsPerCall"),
                 ["medianCallsPerSecond"] = Median(disabled, "callsPerSecond"),
+                ["medianNanosecondsPerMessage"] = Median(disabled, "nanosecondsPerMessage"),
+                ["medianMessagesPerSecond"] = Median(disabled, "messagesPerSecond"),
                 ["bursts"] = disabled,
             },
             ["enabled"] = new Dictionary<string, object?>
             {
                 ["medianNanosecondsPerCall"] = Median(enabled, "nanosecondsPerCall"),
                 ["medianCallsPerSecond"] = Median(enabled, "callsPerSecond"),
+                ["medianNanosecondsPerMessage"] = Median(enabled, "nanosecondsPerMessage"),
+                ["medianMessagesPerSecond"] = Median(enabled, "messagesPerSecond"),
                 ["keptWhole"] = enabled.Count(Whole),
                 ["bursts"] = enabled,
             },
@@ -77,6 +86,7 @@ internal static class Overhead
             {
                 ["seconds"] = PacedSeconds,
                 ["highestRateKeptWhole"] = keptWhole.Length == 0 ? null : keptWhole.Max(),
+                ["highestMessageRateKeptWhole"] = keptWhole.Length == 0 ? null : (long)keptWhole.Max() * batch / 2,
                 ["bursts"] = paced,
             },
             ["notes"] = new[]
@@ -88,12 +98,16 @@ internal static class Overhead
         };
     }
 
-    /// <summary>Whether a recorded burst's capture kept every call, and said it lost nothing.</summary>
+    /// <summary>
+    /// Whether a recorded burst's capture kept every message - each one's publication and consumption, a batch's each of its
+    /// messages - and said it lost nothing.
+    /// </summary>
     private static bool Whole(Dictionary<string, object?> burst) =>
-        (long)burst["recordedCalls"]! == (long)burst["calls"]! && ((Dictionary<string, object?>)burst["health"]!)["lossFree"] is true;
+        (long)burst["recordedMessageEvents"]! == (long)burst["messageEvents"]! && ((Dictionary<string, object?>)burst["health"]!)["lossFree"] is true;
 
     /// <summary>A burst while the product records it, with what the capture said and kept of it.</summary>
-    private static async Task<Dictionary<string, object?>> RecordedAsync(string icat, string workload, string folder, int messages, int rate, int duration)
+    private static async Task<Dictionary<string, object?>> RecordedAsync(string icat, string workload, string folder, int messages, int rate, int duration,
+        int batch)
     {
         string session = Path.Combine(Path.GetTempPath(), "sdk-overhead-" + Guid.NewGuid().ToString("N")[..8]);
         try
@@ -102,7 +116,7 @@ internal static class Overhead
             Dictionary<string, object?> health;
             using (Workload.Recording recording = await Workload.Recording.StartAsync(icat, session, duration).ConfigureAwait(false))
             {
-                recorded = await BurstAsync(workload, folder, messages, rate).ConfigureAwait(false);
+                recorded = await BurstAsync(workload, folder, messages, rate, batch).ConfigureAwait(false);
                 health = await recording.FinishAsync().ConfigureAwait(false);
             }
 
@@ -112,7 +126,8 @@ internal static class Overhead
             }
 
             recorded["health"] = health;
-            recorded["recordedCalls"] = RecordedCalls(session);
+            recorded["messageEvents"] = 2L * messages;
+            recorded["recordedMessageEvents"] = RecordedMessageEvents(session);
             return recorded;
         }
         finally
@@ -124,10 +139,11 @@ internal static class Overhead
         }
     }
 
-    private static async Task<Dictionary<string, object?>> BurstAsync(string workload, string folder, int messages, int rate)
+    private static async Task<Dictionary<string, object?>> BurstAsync(string workload, string folder, int messages, int rate, int batch)
     {
         using (Process started = Process.Start(new ProcessStartInfo(workload,
-            ["sdk-burst", "--truth", folder, "--messages", messages.ToString(CultureInfo.InvariantCulture), "--calls-per-second", rate.ToString(CultureInfo.InvariantCulture)])
+            ["sdk-burst", "--truth", folder, "--messages", messages.ToString(CultureInfo.InvariantCulture), "--calls-per-second", rate.ToString(CultureInfo.InvariantCulture),
+                "--batch", batch.ToString(CultureInfo.InvariantCulture)])
             { UseShellExecute = false, CreateNoWindow = true }) ?? throw new InvalidOperationException("The burst could not be started."))
         {
             await Workload.FinishedAsync(started).ConfigureAwait(false);
@@ -143,11 +159,16 @@ internal static class Overhead
             ["elapsedNanoseconds"] = root.GetProperty("elapsedNanoseconds").GetInt64(),
             ["nanosecondsPerCall"] = root.GetProperty("nanosecondsPerCall").GetDouble(),
             ["callsPerSecond"] = root.GetProperty("callsPerSecond").GetDouble(),
+            ["nanosecondsPerMessage"] = root.GetProperty("nanosecondsPerMessage").GetDouble(),
+            ["messagesPerSecond"] = root.GetProperty("messagesPerSecond").GetDouble(),
         };
     }
 
-    /// <summary>The publications and consumptions the session holds, as icat messages derives them.</summary>
-    private static long RecordedCalls(string session)
+    /// <summary>
+    /// The publications and consumptions of messages the session holds, as icat messages derives them: each message of a run
+    /// a batch said counted, as its publication and each consumption of it.
+    /// </summary>
+    private static long RecordedMessageEvents(string session)
     {
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session));
         long calls;
@@ -159,7 +180,7 @@ internal static class Overhead
             SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store.Root, manifest, name))];
             SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store.Root, manifest, name))];
             CooperativeMessageIndex index = CooperativeMessageIndex.Derive(segments, fields, ProcessInstanceIndex.Derive(segments, clock, fields));
-            calls = index.Messages.Sum(message => (long)message.Publications + message.Consumptions.Count);
+            calls = index.Messages.Sum(message => message.Count * ((long)message.Publications + message.Consumptions.Count));
         }
 
         store.ReleaseSegmentReaders();

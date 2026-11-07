@@ -33,7 +33,8 @@ internal static class Program
             Console.Error.WriteLine("  [--batch n]: the ring's messages said in batches of n, FX-SDK-005, or with --native the sample's in batches of");
             Console.Error.WriteLine("  ten, FX-SDK-006.");
             Console.Error.WriteLine("InterCat.SdkProbe --overhead --output <new directory> [--rounds n] [--messages n] [--duration s]: the SDK's cost,");
-            Console.Error.WriteLine("  each round a burst with no session listening and one while icat record --profile sdk records it.");
+            Console.Error.WriteLine("  each round a burst with no session listening and one while icat record --profile sdk records it; with");
+            Console.Error.WriteLine("  --batch n each call says a batch of n messages, the messages a whole number of batches.");
             return 2;
         }
 
@@ -48,7 +49,7 @@ internal static class Program
         if (args.Contains("--overhead", StringComparer.Ordinal))
         {
             Dictionary<string, object?> overhead = await Overhead.RunAsync(icat, workload, output, Integer(args, "--rounds") ?? 5,
-                Integer(args, "--messages") ?? 200_000, duration).ConfigureAwait(false);
+                Integer(args, "--messages") ?? 200_000, duration, Integer(args, "--batch") ?? 1).ConfigureAwait(false);
             await Overhead.WriteAsync(output, overhead).ConfigureAwait(false);
             Console.WriteLine($"The SDK's overhead measured into {output}.");
             return 0;

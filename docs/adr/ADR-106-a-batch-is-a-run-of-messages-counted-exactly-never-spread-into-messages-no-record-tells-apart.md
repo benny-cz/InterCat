@@ -59,3 +59,11 @@ batch said and every reader's consumption of it one consumption, by process; eac
 truth's lengths of its messages summed; the 161 and 131 messages were 21 and 14 rows, never spread into messages no record
 tells apart; and the message each said alone, which no reader read, stayed open. The native library's batch calls, whose
 fields no unit test reads, are held by FX-SDK-006. The cost of saying messages in batches is measured next.
+
+## Addendum: what a batch costs (revision 1038)
+
+`tools/InterCat.SdkProbe --overhead --batch 64` measured the SDK's bursts with each call a batch of 64 messages, the
+same 400,000 calls a burst as the single messages' measure: a batch's call costs a median 78.6 ns with no session listening and
+890.7 ns while `icat record` records it - 2.5 and 27.8 ns a message, published and consumed. Paced, a capture kept every
+message up to 1,600,000 a second, 50,000 calls, 32 times the messages it keeps said one by one; at 100,000 calls it kept
+99.5% of them, saying what it lost (`bench/results/sdk-batch-overhead-20261107T191534Z/overhead.json`). The product's path is unchanged.

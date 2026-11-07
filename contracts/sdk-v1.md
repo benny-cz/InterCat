@@ -132,7 +132,18 @@ messages published and consumed - for four seconds; at 200,000 it kept
 498,107 of 800,000, and unpaced 73 to 82%. Past what it
 keeps, the capture says it lost records and is never read as whole: a count it states is never estimated from what it
 kept. An application raising more than that from one capture's view says its logical boundaries - a message, never each
-byte - or is measured in a narrower window; batching is not offered at this version.
+byte - in batches (§2), or is measured in a narrower window.
+
+Said in batches of 64 (revision 1038, `bench/results/sdk-batch-overhead-20261107T191534Z/overhead.json`), the same bursts' calls -
+each now a batch published or consumed - cost about what a message's do, shared by its messages:
+
+| While | A batch's call costs (median) | A message costs, published and consumed |
+|---|---|---|
+| No session listens | 78.6 ns | 2.5 ns |
+| `icat record --profile sdk` records it | 890.7 ns | 27.8 ns |
+
+Paced, a capture kept every message up to 1,600,000 a second - 50,000 calls - for four seconds, 32 times the
+messages it keeps said one by one; at 3,200,000 it kept 99.5% of them, and past that what it could, saying what it lost.
 
 ## 9. Not defined at this version
 

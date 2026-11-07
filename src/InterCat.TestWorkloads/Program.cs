@@ -123,6 +123,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         TruthDirectory = truth,
         Messages = Integer(args, "--messages") ?? 1_000_000,
         CallsPerSecond = Integer(args, "--calls-per-second") ?? 0,
+        Batch = Integer(args, "--batch") ?? 1,
     };
 
     var sdkStreamOptions = new SdkStreamOptions
@@ -252,9 +253,11 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         return 2;
     }
 
-    if (args[0] == "sdk-burst" && (sdkBurstOptions.Messages < 1 || sdkBurstOptions.CallsPerSecond < 0))
+    if (args[0] == "sdk-burst" && (sdkBurstOptions.Messages < 1 || sdkBurstOptions.CallsPerSecond < 0
+        || sdkBurstOptions.Batch is < 1 or > 65_536 || sdkBurstOptions.Messages % sdkBurstOptions.Batch != 0))
     {
-        await Console.Error.WriteLineAsync("--messages is at least one, and --calls-per-second not negative.").ConfigureAwait(false);
+        await Console.Error.WriteLineAsync("--messages is at least one, --calls-per-second not negative, and --batch from 1 to 65,536, the messages a whole number of batches.")
+            .ConfigureAwait(false);
         return 2;
     }
 
@@ -527,9 +530,10 @@ static void PrintHelp()
     Console.WriteLine("      and reader, with its length. --batch runs it as FX-SDK-005: the producer publishes, and each reader");
     Console.WriteLine("      consumes, that many messages in one batch, the last message still alone. Windows only.");
     Console.WriteLine();
-    Console.WriteLine("  sdk-burst --truth <dir> [--messages n] [--calls-per-second n]");
+    Console.WriteLine("  sdk-burst --truth <dir> [--messages n] [--calls-per-second n] [--batch n]");
     Console.WriteLine("      The cooperative SDK's cost: one thread publishes and consumes each message of a burst as fast as");
     Console.WriteLine("      the SDK takes the calls, and writes how long they took and whether a session listened to burst.json.");
+    Console.WriteLine("      --batch says that many messages in each call, a batch published in one and consumed in one.");
     Console.WriteLine();
     Console.WriteLine("  sdk-stream --truth <dir> [--transport pipe|socket] [--messages n] [--restart-messages n] [--per-write n]");
     Console.WriteLine("      [--read-bytes n] [--seed n]");

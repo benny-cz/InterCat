@@ -3735,6 +3735,7 @@
         "R21: a call's other end reads in words, and one with no ALPC record to follow never says what the capture collected",
         "R21: a candidate peer channel stays unattributed until the caller admits candidate bindings",
         "R21: a capture of a burst it could not keep whole says it lost records, never that it kept every call - and paced at up to 100,000 calls a second it kept every one",
+        "R21: a capture of batches it could not keep whole says it lost records, never that it kept every message - and paced at 50,000 calls a second, 1,600,000 messages, it kept every one",
         "R21: a capture that collected a mechanism otherwise than the other states no change of it",
         "R21: a capture that did not collect RPC ranks by records under a call ranking, and says why",
         "R21: a capture whose sources collected a mechanism otherwise in one interval states no change of it",

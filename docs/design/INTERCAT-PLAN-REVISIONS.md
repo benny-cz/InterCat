@@ -960,6 +960,7 @@ Revision 1034 lists the cooperative SDK's logical messages in the window, read a
 Revision 1035 keys a batch of the cooperative SDK as a run of messages, counted exactly and never spread into messages no record tells apart (ADR-106).
 Revision 1036 has both of the cooperative SDK's libraries raise batches at the schema's minor 1, and a capture admit them (ADR-106's addendum).
 Revision 1037 measures the cooperative SDK's batches through the product, FX-SDK-005 and FX-SDK-006 (ADR-106's second addendum).
+Revision 1038 publishes what the cooperative SDK's batches cost (ADR-106's third addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4893,3 +4894,9 @@ itself with its batch; recorded three times each, nothing lost, every message of
 by process, each batch's lengths together its messages' summed, and each run one row - 21 and 14 rows for 161 and 131
 messages. The probe holds each message of a run to its own truth. The product's path is unchanged; the cost of batches
 follows.
+
+Revision 1038 publishes the cost of M7's batches (ADR-106's third addendum). The SDK's bursts, each call a batch of 64
+messages and as many calls as the single messages' measure, cost a median 78.6 ns a call with no session listening and
+890.7 ns while a capture records them - 2.5 and 27.8 ns a message published and consumed. Paced, a capture kept every
+message up to 1,600,000 a second, 32 times what it keeps said one by one, and at 3,200,000 99.5%, saying what it lost.
+The burst workload and the probe take a batch; the product's path is unchanged.
