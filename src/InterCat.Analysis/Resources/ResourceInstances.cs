@@ -125,6 +125,13 @@ public sealed record ResourceInstance
 
     public required long Records { get; init; }
 
+    /// <summary>
+    /// Its membership and lifecycle records - every record of it but a socket's sends and receives, which are traffic - whose
+    /// reading is in the range its derivation counted them in, or every one where it was given none
+    /// (<see cref="ResourceInstanceIndex.RecordsCountedIn"/>): what `Observations` counts on the resource-topology basis.
+    /// </summary>
+    public long MembershipRecords { get; init; }
+
     /// <summary>The name a person reads it by: the first its records gave; null where none named it.</summary>
     public string? Name => Names.Count > 0 ? Names[0] : null;
 }
@@ -165,10 +172,20 @@ public sealed class ResourceInstanceIndex
     // before the capture. The stop's, 40, lists a view held at the stop; a handle's rundown, at the stop alone, is 39 too.
     private const ulong ViewStartRundown = 39;
 
-    private ResourceInstanceIndex(IReadOnlyList<ResourceInstance> instances) => Instances = instances;
+    private ResourceInstanceIndex(IReadOnlyList<ResourceInstance> instances, TimeRange? recordsCountedIn)
+    {
+        Instances = instances;
+        RecordsCountedIn = recordsCountedIn;
+    }
 
     /// <summary>Every instance, by mechanism and then by number.</summary>
     public IReadOnlyList<ResourceInstance> Instances { get; }
+
+    /// <summary>
+    /// The range each instance's <see cref="ResourceInstance.MembershipRecords"/> counts the records read in; null where it
+    /// counts every one.
+    /// </summary>
+    public TimeRange? RecordsCountedIn { get; }
 
     /// <summary>
     /// The resource instances of the generation whose observation <paramref name="segments"/> and source-field
@@ -180,6 +197,21 @@ public sealed class ResourceInstanceIndex
         IReadOnlyList<SegmentReaderV1> fieldSegments,
         ProcessInstanceIndex processes,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default) =>
+        Derive(segments, fieldSegments, processes, policy, null, cancellationToken);
+
+    /// <summary>
+    /// The resource instances as <see cref="Derive(IReadOnlyList{SegmentReaderV1}, IReadOnlyList{SegmentReaderV1}, ProcessInstanceIndex, EvidencePolicy, CancellationToken)"/>
+    /// derives them, each one's membership and lifecycle records counted where their readings are in
+    /// <paramref name="recordsIn"/>, or every one where it is null: a count of records over an interval reads each record's
+    /// own reading, in the pass that derives the instances.
+    /// </summary>
+    public static ResourceInstanceIndex Derive(
+        IReadOnlyList<SegmentReaderV1> segments,
+        IReadOnlyList<SegmentReaderV1> fieldSegments,
+        ProcessInstanceIndex processes,
+        EvidencePolicy policy,
+        TimeRange? recordsIn,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(segments);
@@ -193,7 +225,7 @@ public sealed class ResourceInstanceIndex
         foreach (SegmentReaderV1 segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Collect(segment, fields, processes, policy, drafts, typeNames, sockets, socketAt);
+            Collect(segment, fields, processes, policy, recordsIn, drafts, typeNames, sockets, socketAt);
         }
 
         // A socket's number is the source field its gate writes over the socket's address, read for its rows alone; a row
@@ -208,16 +240,18 @@ public sealed class ResourceInstanceIndex
 
             Draft draft = drafts.TryGetValue((Mechanism.UnixDomainSocket, false, number), out Draft? held)
                 ? held
-                : drafts[(Mechanism.UnixDomainSocket, false, number)] = new() { CarriesTraffic = true };
+                : drafts[(Mechanism.UnixDomainSocket, false, number)] = new() { CarriesTraffic = true, Counting = recordsIn };
             draft.Add(socket.Mark, null, null, socket.Owner);
             draft.Transfer(socket.Mark.Kind, socket.Bytes);
         }
 
-        return new([.. drafts
-            .OrderBy(entry => entry.Key.Mechanism)
-            .ThenBy(entry => entry.Key.ByViews)
-            .ThenBy(entry => entry.Key.Number)
-            .Select(entry => entry.Value.ToInstance(entry.Key.Mechanism, entry.Key.ByViews, entry.Key.Number, processes, typeNames))]);
+        return new(
+            [.. drafts
+                .OrderBy(entry => entry.Key.Mechanism)
+                .ThenBy(entry => entry.Key.ByViews)
+                .ThenBy(entry => entry.Key.Number)
+                .Select(entry => entry.Value.ToInstance(entry.Key.Mechanism, entry.Key.ByViews, entry.Key.Number, processes, typeNames))],
+            recordsIn);
     }
 
     /// <summary>
@@ -372,6 +406,7 @@ public sealed class ResourceInstanceIndex
         Dictionary<RecordAddress, Carried> fields,
         ProcessInstanceIndex processes,
         EvidencePolicy policy,
+        TimeRange? recordsIn,
         Dictionary<(Mechanism, bool, long), Draft> drafts,
         Dictionary<long, string> typeNames,
         List<SocketRow> sockets,
@@ -444,7 +479,7 @@ public sealed class ResourceInstanceIndex
                 {
                     Draft views = drafts.TryGetValue((mechanism, true, viewSection), out Draft? seen)
                         ? seen
-                        : drafts[(mechanism, true, viewSection)] = new() { ByViews = true };
+                        : drafts[(mechanism, true, viewSection)] = new() { ByViews = true, Counting = recordsIn };
                     var mark = new Mark(ticks.SignedAt(row)!.Value, address, kind, (Direction)directions.UnsignedAt(row)!.Value, layer,
                         StartRundown: kind == ObservationKind.Inventory && opcodes.UnsignedAt(row) == ViewStartRundown);
                     views.Add(mark, null, null, owner);
@@ -474,7 +509,9 @@ public sealed class ResourceInstanceIndex
                 continue;
             }
 
-            Draft draft = drafts.TryGetValue((mechanism, false, number), out Draft? held) ? held : drafts[(mechanism, false, number)] = new();
+            Draft draft = drafts.TryGetValue((mechanism, false, number), out Draft? held)
+                ? held
+                : drafts[(mechanism, false, number)] = new() { Counting = recordsIn };
             draft.Add(
                 new Mark(ticks.SignedAt(row)!.Value, address, kind, (Direction)directions.UnsignedAt(row)!.Value, layer),
                 kind is ObservationKind.Close or ObservationKind.Inventory ? name : null,
@@ -560,6 +597,7 @@ public sealed class ResourceInstanceIndex
         private Mark first;
         private Mark last;
         private long records;
+        private long membership;
         private long? type;
         private long sends;
         private long receives;
@@ -580,6 +618,9 @@ public sealed class ResourceInstanceIndex
 
         /// <summary>Whether its records are views': a section by its views.</summary>
         public bool ByViews { get; init; }
+
+        /// <summary>The range its membership and lifecycle records are counted in; null to count every one.</summary>
+        public TimeRange? Counting { get; init; }
 
         // A send or a receive, its bytes where its record measured them.
         public void Transfer(ObservationKind kind, long? bytes)
@@ -695,6 +736,15 @@ public sealed class ResourceInstanceIndex
             }
 
             records++;
+
+            // A membership or lifecycle record is any of its records but a socket's send or receive, which is traffic; it is
+            // counted where its reading is in the range asked for, whichever process it binds to.
+            if (mark.Kind is not (ObservationKind.Send or ObservationKind.Receive)
+                && (Counting is not { } range || range.Contains(mark.Ticks)))
+            {
+                membership++;
+            }
+
             type ??= markType;
             if (!string.IsNullOrEmpty(name) && !names.Contains(name, StringComparer.Ordinal))
             {
@@ -755,6 +805,7 @@ public sealed class ResourceInstanceIndex
             Traffic = CarriesTraffic ? new(sends, receives, bytesSent, bytesReceived, unmeasured) : null,
             Unbound = unbound,
             Records = records,
+            MembershipRecords = membership,
         };
     }
 

@@ -1182,7 +1182,8 @@ public static partial class SessionMetrics
             return Operations(context, cancellationToken);
         }
 
-        // Resources are counted from the instances resource-instances-v3 derives, never from their records (§8b).
+        // Resources are counted from the instances resource-instances-v3 derives - and a count of observations from their
+        // membership and lifecycle records - never from the records the source-observations basis counts (§8b).
         if (materialized.Basis == AnalysisBasis.ResourceTopology)
         {
             return Topology(context, cancellationToken);

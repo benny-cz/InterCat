@@ -3,7 +3,8 @@
 - Status: accepted for M6's resource topology; resources, the processes sharing them and sections' capacity are counted
   (revision 1005), grouped by a fact of the processes holding them (revision 1006) and by mechanism (revision 1014), and
   how long a section's views stayed mapped is measured (revision 1015); grouped by peer (revision 1016); a mapping
-  lifetime grouped by the process holding each mapping (revision 1017)
+  lifetime grouped by the process holding each mapping (revision 1017); and their membership and lifecycle records
+  counted (revision 1018)
 - Date: 2026-11-07
 - Decision owners: InterCat maintainers
 - Relates to: ADR-012, ADR-032, ADR-092, ADR-097, plan §5.3, §21.1, `metrics-v1`, `query-identity-v1`, R3, R21, P1, P3, P27
@@ -100,3 +101,16 @@ parts of the total's, and a remainder is the statistic over the union of the map
 statistics. A view's records keep why they bound to no process, so a mapping no group can take - bound to none, or held
 by a process without the grouping's fact - is unattributed by that reason, and still measured. Grouped by mechanism or
 by peer, a mapping lifetime is not defined. 17 mutations of the path are caught.
+
+## Sixth addendum: the resources' records (revision 1018)
+
+§5.3's matrix answers `Observations` on this basis over membership and lifecycle records, which decision 6 left for
+later. The resources are taken as every answer on the basis takes them - by projection, known lifetime and, with a
+process filter, their holders - and the count is their records: a handle made, duplicated, closed or held at the stop,
+a view mapped, unmapped or listed by a rundown, and a socket's create, bind, connect, accept and close, each where its
+own reading is in the interval, whichever process it binds to. A socket's sends and receives are traffic, which the
+source-observations basis counts, so they are never membership. A resource is still never counted by its records;
+its records are what this count is, and those of a resource in scope read outside the interval are left out and said.
+Grouped, a group's value is the records of the resources it takes - by mechanism a partition, by a fact of the
+processes or by peer overlapping, as a count of resources groups. The derivation counts each resource's records in the
+interval in the pass that derives it, so no record is kept. 15 mutations of the path are caught.

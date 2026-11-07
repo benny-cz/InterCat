@@ -498,6 +498,7 @@ projection, the interval or the process filter.
 | `ActiveChannels` | each resource in scope, once; with `owner(P)` or `participant(P)` those P held, with `peer(P,Q)` those both held, and with `between(A,B)` either way those held by a process of each set |
 | `ActivePeers` | with `owner(P)` or `participant(P)`, the process instances other than P holding a resource P held - at any time in scope, not at once with P - never P itself |
 | `MappingCapacity` | the largest extent a view of each section by its views mapped, summed once a section however many processes mapped it: a lower bound of what it holds, never bytes moved through it (P3) |
+| `Observations` | the membership and lifecycle records of the resources `ActiveChannels` takes - every record of one but a socket's sends and receives, which are traffic - each where its own reading is in the interval, whichever process it binds to (revision 1018) |
 
 A holder is a process instance a resource's records bind to under the evidence policy. A resource a process filter
 leaves out whose records bound to no process could be the filter's, so it is disclosed by those records' reasons
@@ -543,13 +544,20 @@ a group whose every mapping had an end unseen is unmeasured, after them. A media
 are not parts of the total's, and a remainder is the statistic over the union of the mappings it merges. A mapping bound
 to no process, or held by one without the grouping's fact, is unattributed by its reason, and still measured.
 
+**Records (revision 1018).** `Observations` counts the membership and lifecycle records of the resources taken: a
+handle made, duplicated, closed or held at the stop, a view mapped, unmapped or listed by a rundown, and a socket's
+create, bind, connect, accept and close, each where its own reading is in the interval, whichever process it binds to.
+A socket's sends and receives are traffic, which the source-observations basis counts. The records of a resource in
+scope read outside the interval are left out and said. Grouped, a group's value is the records of the resources it
+takes: by mechanism the groups partition the total, and by a fact of the processes or by peer they overlap.
+
 An answer carries `resourceRule` and `resources`: the resources taken, by mechanism; how many are sections by their views
 and how many an image's; how many were made before the capture, held at its stop or ended unseen; their memberships, each
 process holding each resource once; those a process filter disclosed; and every resource the generation derives.
 
-**What no derived resource answers** is `NoResourceTopology`, with what it needs: `Observations`, a count of resources'
-records rather than of resources; a mapping lifetime grouped by mechanism or by peer; and `sender`, `receiver` and a
-directional `between`, which select data that flowed one way where holding a resource is undirected.
+**What no derived resource answers** is `NoResourceTopology`, with what it needs: a grouping by anything but mechanism,
+peer or a fact of the processes holding a resource; a mapping lifetime grouped by mechanism or by peer; and `sender`,
+`receiver` and a directional `between`, which select data that flowed one way where holding a resource is undirected.
 
 **Identity.** An answer on this basis depends on the resource rule, `resource-instances-v3`, which it names as its
 `correlationRevision`, and on the binding rule only where a process filter reads holders

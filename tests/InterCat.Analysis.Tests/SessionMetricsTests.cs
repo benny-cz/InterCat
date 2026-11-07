@@ -530,8 +530,11 @@ public sealed class SessionMetricsTests
         Assert.Equal(MetricUnavailableReason.NoStatusDomain, errors.Unavailable);
         Assert.Contains("assigns no enumeration", errors.UnavailableExplanation!, StringComparison.Ordinal);
 
+        // On the resource-topology basis a count of records is the derived resources' records: none here, which is said to be
+        // a count of what the generation derives, never a finding that no process held a resource (R21).
         MetricResult topology = Evaluate(session.Store, AnalysisBasis.ResourceTopology, Metric.Observations);
-        Assert.Equal(MetricUnavailableReason.NoResourceTopology, topology.Unavailable);
+        Assert.Equal((long?)0, topology.Value);
+        Assert.Contains(topology.Caveats, caveat => caveat.Contains("not a finding that none was made", StringComparison.Ordinal));
     }
 
     [Fact(DisplayName = "I11: a metric answers over every segment of the generation, and projects by layer")]

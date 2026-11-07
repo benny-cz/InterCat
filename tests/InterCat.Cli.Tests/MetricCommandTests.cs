@@ -158,6 +158,11 @@ public sealed class MetricCommandTests : IDisposable
                 taken.GetProperty("byViews").GetInt64(), taken.GetProperty("images").GetInt64(), taken.GetProperty("memberships").GetInt64()));
         }
 
+        // Their records: what shows each holding one, never traffic.
+        (code, text, _) = await Run(["metric", mapped.Path, "--basis", "resource-topology", "--metric", "observations"]);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Value +11 membership and lifecycle records of the resources in scope\r?$", text);
+
         // Grouped by process, each held three of the five; grouped by mechanism, each is in one group, the groups adding up;
         // grouped by endpoint, which no resource has, it is not defined at this version, which is said, never answered as none.
         (code, text, _) = await Run(["metric", mapped.Path, "--basis", "resource-topology", "--metric", "active-channels", "--group-by", "process"]);

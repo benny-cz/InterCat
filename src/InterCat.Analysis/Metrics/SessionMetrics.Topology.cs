@@ -46,8 +46,9 @@ public sealed record MetricResources
 /// Answers on the resource-topology basis (`contracts/metrics-v1.md` §8b, ADR-098). A resource is an instance
 /// `resource-instances-v3` derives - a named synchronization object, a section by its handles or by its views, an AF_UNIX
 /// socket - in scope where its known lifetime meets the request's interval, and counted once, never by its records. A count
-/// of the processes sharing one reads its holders, and a capacity the largest extent its views mapped. None of it is
-/// traffic: a handle or a view proves who held a resource, never what moved through it (P27).
+/// of the processes sharing one reads its holders, a capacity the largest extent its views mapped, and a count of
+/// observations its membership and lifecycle records, each read in scope. None of it is traffic: a handle or a view proves
+/// who held a resource, never what moved through it (P27).
 /// </summary>
 public static partial class SessionMetrics
 {
@@ -59,10 +60,6 @@ public static partial class SessionMetrics
     {
         string? missing = request.Metric switch
         {
-            Metric.Observations =>
-                "Counting resources' membership and lifecycle records is not defined at this version: a resource is counted "
-                + "once, over its known lifetime, never by its records. The source-observations basis counts the records "
-                + "themselves.",
             Metric.Duration when request.Grouping is { } grouped && !ProcessGrouping.ByInstanceFact(grouped) =>
                 $"Grouping a mapping lifetime by {grouped} is not defined at this version: it is grouped by a fact of the "
                 + "process holding each mapping - each process, its executable, its session, its package or its service "
@@ -86,7 +83,7 @@ public static partial class SessionMetrics
         return missing is null ? null : Unavailable(request, generation, MetricUnavailableReason.NoResourceTopology, missing);
     }
 
-    /// <summary>Counts the resources a topology request takes, the processes sharing them, or their capacity (§8b).</summary>
+    /// <summary>Counts the resources a topology request takes, their records, the processes sharing them, or their capacity (§8b).</summary>
     private static MetricResult Topology(Context context, CancellationToken cancellationToken)
     {
         MetricRequest request = context.Request;
@@ -114,11 +111,14 @@ public static partial class SessionMetrics
                 + "from this generation's process grouping; a PID alone is not an instance identity.");
         }
 
+        // A count of records reads each one's own reading against the interval, in the pass that derives the resources.
+        bool records = request.Metric == Metric.Observations;
         ResourceInstanceIndex index = ResourceInstanceIndex.Derive(
             [.. context.Segments.Select(segment => segment.Reader)],
             context.FieldSegments,
             processes,
             request.EvidencePolicy,
+            records ? request.Interval : null,
             cancellationToken);
 
         // A mapping lifetime is a view's, each mapping in scope by its own readings rather than its section's lifetime.
@@ -193,14 +193,33 @@ public static partial class SessionMetrics
 
         var caveats = new List<string>
         {
-            "Each resource is one instance resource-instances-v3 derives, counted once over its known lifetime, never by its "
-            + "records: a handle or a view proves which processes held it, never traffic through it (P27). A section found by "
-            + "its handles and by its views is two resources, as no record joins them (ADR-092).",
+            records
+                ? "Each record counted is a membership or lifecycle record of a resource resource-instances-v3 derives - a handle "
+                    + "made, duplicated, closed or held at the stop, a view mapped, unmapped or listed by a rundown, or a socket's "
+                    + "create, bind, connect, accept or close - whichever process it binds to; a socket's sends and receives are "
+                    + "traffic, which the source-observations basis counts. A record proves which process held a resource, never "
+                    + "traffic through it (P27)."
+                : "Each resource is one instance resource-instances-v3 derives, counted once over its known lifetime, never by "
+                    + "its records: a handle or a view proves which processes held it, never traffic through it (P27). A section "
+                    + "found by its handles and by its views is two resources, as no record joins them (ADR-092).",
         };
         if (request.Interval is not null)
         {
             caveats.Add("A resource is in scope where its known lifetime meets the interval: from its first record to its last, "
-                + "open before the first where it was made before the capture and after the last where the stop's rundown held it.");
+                + "open before the first where it was made before the capture and after the last where the stop's rundown held it."
+                + (records ? " Of its records, those read in the interval count." : string.Empty));
+        }
+
+        // The records of a resource in scope read outside the interval are left out, each by its own reading.
+        long readOutside = records && index.RecordsCountedIn is not null
+            ? taken.Sum(resource => resource.Records - (resource.Traffic?.Sends ?? 0) - (resource.Traffic?.Receives ?? 0)
+                - resource.MembershipRecords)
+            : 0;
+        if (readOutside > 0)
+        {
+            caveats.Add($"{CountText.Of(readOutside, "membership or lifecycle record")} of the resources in scope "
+                + $"{CountText.Agree(readOutside, "was", "were")} read outside the interval and "
+                + $"{CountText.Agree(readOutside, "is", "are")} left out.");
         }
 
         if (unresolvedResources > 0)
@@ -212,8 +231,11 @@ public static partial class SessionMetrics
 
         if (context.EvidenceLimit > 0)
         {
-            caveats.Add("A topology answer counts resources, not records, so it lists no record. icat resources lists each "
-                + "resource with the processes holding it and its ends.");
+            caveats.Add(records
+                ? "A count of resources' records lists none of them here. icat evidence --channel lists one resource's records "
+                    + "by its key, as the window's export of them names it."
+                : "A topology answer counts resources, not records, so it lists no record. icat resources lists each "
+                    + "resource with the processes holding it and its ends.");
         }
 
         if (request.Grouping == LaneGrouping.Mechanism)
@@ -237,6 +259,7 @@ public static partial class SessionMetrics
             Metric.ActiveChannels => ResourceCount(answer, taken, caveats),
             Metric.ActivePeers => MembershipPeers(answer, taken, request.Focus!.Value.Instance, caveats),
             Metric.MappingCapacity => Capacity(answer, taken, caveats),
+            Metric.Observations => RecordCount(answer, taken, caveats),
             _ => Unavailable(request, context.Generation, MetricUnavailableReason.NoResourceTopology,
                 $"{request.Metric} is not answered on the resource-topology basis at this version."),
         };
@@ -283,6 +306,42 @@ public static partial class SessionMetrics
             Caveats = caveats,
         };
     }
+
+    // Observations on the topology basis: the membership and lifecycle records of the resources taken, each read in scope by
+    // its own reading, whichever process it binds to. None is a count of the records of the resources this generation
+    // derives, not a finding that no process held one (R21).
+    private static MetricResult RecordCount(MetricResult answer, List<ResourceInstance> taken, List<string> caveats)
+    {
+        long records = taken.Sum(resource => resource.MembershipRecords);
+        if (records == 0)
+        {
+            caveats.Add("No membership or lifecycle record of a resource this generation derives is in scope. That is a count of "
+                + "derived resources' records, not a finding that none was made: a capture records them only under a profile "
+                + "admitting their sources (R21).");
+        }
+
+        if (answer.UnresolvedCounterparts.Count > 0)
+        {
+            caveats.Add($"At least {records:N0}: the records of the resources disclosed above may be the filter's too.");
+        }
+
+        return answer with
+        {
+            Value = records,
+            Unit = MeasurementUnit.Count,
+            KnownContributions = records,
+            Caveats = caveats,
+        };
+    }
+
+    // The ungrouped answer a grouped one's groups are parts or overlapping parts of: its resources, its records or its
+    // sections' capacity.
+    private static MetricResult Whole(Metric metric, MetricResult answer, List<ResourceInstance> taken, List<string> caveats) => metric switch
+    {
+        Metric.MappingCapacity => Capacity(answer, taken, caveats),
+        Metric.Observations => RecordCount(answer, taken, caveats),
+        _ => ResourceCount(answer, taken, caveats),
+    };
 
     // ActivePeers on the topology basis: the process instances other than the focus holding a resource it holds. A resource
     // taken whose records bound to no process may have a holder nothing here names, so the count is a lower bound beside
@@ -419,10 +478,10 @@ public static partial class SessionMetrics
 
     /// <summary>
     /// A topology answer grouped by a fact of each process (§8b): each group's resources - those one of its processes held -
-    /// the other processes holding one of them, or their sections' capacity. A resource several groups' processes held
-    /// counts in each, so the groups overlap and do not add up to the total, which is the count or the capacity over every
-    /// resource taken. A membership no group can take - a record bound to no process, or a process without the grouping's
-    /// fact - is unattributed by its reason.
+    /// their records, the other processes holding one of them, or their sections' capacity. A resource several groups'
+    /// processes held counts in each, so the groups overlap and do not add up to the total, which is the count, the records
+    /// or the capacity over every resource taken. A membership no group can take - a record bound to no process, or a
+    /// process without the grouping's fact - is unattributed by its reason.
     /// </summary>
     private static MetricResult GroupedTopology(
         Context context,
@@ -502,7 +561,7 @@ public static partial class SessionMetrics
         // and no record of it binds to none, unmeasured where one does - or its sections' capacity.
         MetricGroup GroupOf(DistinctTally tally) => peers
             ? tally.ToGroup() with { Value = tally.Elements.Count > 0 || tally.UnknownReasons.Count == 0 ? tally.Elements.Count : null }
-            : Measured(tally.ToGroup() with { Bindings = new Dictionary<RelationStrength, long>() }, [.. tally.Elements.Select(at => counted[at])], capacity);
+            : Measured(tally.ToGroup() with { Bindings = new Dictionary<RelationStrength, long>() }, [.. tally.Elements.Select(at => counted[at])], request.Metric);
         List<(DistinctTally Tally, MetricGroup Group)> built = [.. tallies.Values.Select(tally => (tally, GroupOf(tally)))];
         List<(DistinctTally Tally, MetricGroup Group)> ordered =
         [
@@ -530,7 +589,7 @@ public static partial class SessionMetrics
                     GroupsMerged = rest.Count,
                 }
                 : Measured(new MetricGroup { Kind = MetricGroupKind.Remainder, GroupsMerged = rest.Count },
-                    [.. union.Select(at => counted[at])], capacity);
+                    [.. union.Select(at => counted[at])], request.Metric);
             ordered = [.. ordered.Take(rows)];
         }
 
@@ -542,13 +601,16 @@ public static partial class SessionMetrics
                 KnownContributions = tallies.Values.Sum(tally => tally.Known),
                 UnknownContributions = tallies.Values.Sum(tally => tally.UnknownReasons.Values.Sum()),
             }
-            : Measured(new MetricGroup { Kind = MetricGroupKind.Remainder }, counted, capacity);
+            : Measured(new MetricGroup { Kind = MetricGroupKind.Remainder }, counted, request.Metric);
         caveats.Add(peers
             ? "Two processes holding one resource are each other's peers, so each counts in the other's group: the groups overlap "
                 + "and do not add up to the total, the number of distinct processes sharing a resource with another."
             : capacity
             ? "A section several groups' processes mapped counts its capacity in each group: the groups overlap and do not add up "
                 + "to the total, the capacity of every section in scope, once each."
+            : request.Metric == Metric.Observations
+            ? "A resource several groups' processes held counts its records in each group, whichever process each binds to: the "
+                + "groups overlap and do not add up to the total, the records of every resource in scope, once each."
             : "A resource several groups' processes held counts in each group: the groups overlap and do not add up to the total, "
                 + "the number of distinct resources in scope.");
         long unbound = unattributed.Values.Sum();
@@ -605,24 +667,28 @@ public static partial class SessionMetrics
     }
 
     /// <summary>
-    /// A topology answer grouped by mechanism (§8b): each mechanism's resources in scope, or for a capacity its sections'.
-    /// A resource is of one mechanism, so the groups partition the total - the resources in scope, or every section's
-    /// capacity once - and a capacity has one group, sections, as nothing else maps. A count of peers grouped so is refused
-    /// before it reaches here, as on every basis: a count of peers needs a focus, and with one it is one count.
+    /// A topology answer grouped by mechanism (§8b): each mechanism's resources in scope, their records, or for a capacity
+    /// its sections'. A resource is of one mechanism, so the groups partition the total - the resources in scope, their
+    /// records, or every section's capacity once - and a capacity has one group, sections, as nothing else maps. A count of
+    /// peers grouped so is refused before it reaches here, as on every basis: a count of peers needs a focus, and with one
+    /// it is one count.
     /// </summary>
     private static MetricResult MechanismTopology(MetricRequest request, List<ResourceInstance> taken, MetricResult answer, List<string> caveats)
     {
         bool capacity = request.Metric == Metric.MappingCapacity;
         caveats.Add(capacity
             ? "Grouped by mechanism, a capacity is its sections' alone: a synchronization object or a socket maps nothing."
+            : request.Metric == Metric.Observations
+            ? "Grouped by mechanism, each record is of one resource, of one mechanism, so the groups partition the total, the "
+                + "records in scope."
             : "Grouped by mechanism, each resource is of one, so the groups partition the total, the number of resources in scope.");
-        MetricResult whole = capacity ? Capacity(answer, taken, caveats) : ResourceCount(answer, taken, caveats);
+        MetricResult whole = Whole(request.Metric, answer, taken, caveats);
         List<ResourceInstance> counted = capacity ? [.. taken.Where(resource => resource.Mechanism == Mechanism.SharedSection)] : taken;
         List<MetricGroup> built =
         [
             .. counted.GroupBy(resource => resource.Mechanism)
                 .Select(mechanism => Measured(new MetricGroup { Kind = MetricGroupKind.Mechanism, Mechanism = mechanism.Key },
-                    [.. mechanism], capacity)),
+                    [.. mechanism], request.Metric)),
         ];
         List<MetricGroup> ordered =
         [
@@ -639,7 +705,7 @@ public static partial class SessionMetrics
         {
             HashSet<Mechanism?> rest = [.. ordered.Skip(rows).Select(group => group.Mechanism)];
             remainder = Measured(new MetricGroup { Kind = MetricGroupKind.Remainder, GroupsMerged = rest.Count },
-                [.. counted.Where(resource => rest.Contains(resource.Mechanism))], capacity);
+                [.. counted.Where(resource => rest.Contains(resource.Mechanism))], request.Metric);
             ordered = [.. ordered.Take(rows)];
         }
 
@@ -681,6 +747,10 @@ public static partial class SessionMetrics
             ? "Grouped by peer, each group is the capacity of the sections the focus and that process both mapped: a section three "
                 + "processes mapped counts in both of the focus's peers' groups, so the groups overlap and do not add up to the "
                 + "total, the focus's capacity."
+            : request.Metric == Metric.Observations
+            ? "Grouped by peer, each group is the records of the resources the focus and that process both held, whichever process "
+                + "each binds to: a resource three processes held counts its records in both of the focus's peers' groups, so the "
+                + "groups overlap and do not add up to the total, the records of the focus's resources."
             : "Grouped by peer, each group is the resources the focus and that process both held: a resource three processes held "
                 + "counts in both of the focus's peers' groups, so the groups overlap and do not add up to the total, the focus's "
                 + "resources.");
@@ -690,13 +760,13 @@ public static partial class SessionMetrics
                 + $"held by no other process, so {CountText.Agree(alone, "it is", "they are")} in no peer's group.");
         }
 
-        MetricResult whole = capacity ? Capacity(answer, taken, caveats) : ResourceCount(answer, taken, caveats);
+        MetricResult whole = Whole(request.Metric, answer, taken, caveats);
         List<MetricGroup> built =
         [
             .. shared.Select(entry => Measured(
                 new MetricGroup { Kind = MetricGroupKind.ProcessInstance, Process = processes.Instances[processes.PositionOf(entry.Key)] },
                 entry.Value,
-                capacity)),
+                request.Metric)),
         ];
         List<MetricGroup> ordered =
         [
@@ -713,7 +783,7 @@ public static partial class SessionMetrics
         {
             HashSet<ProcessInstanceId> rest = [.. ordered.Skip(rows).Select(group => group.Process!.Id)];
             remainder = Measured(new MetricGroup { Kind = MetricGroupKind.Remainder, GroupsMerged = rest.Count },
-                [.. counted.Where(resource => resource.Holders.Any(holder => rest.Contains(holder.Process)))], capacity);
+                [.. counted.Where(resource => resource.Holders.Any(holder => rest.Contains(holder.Process)))], request.Metric);
             ordered = [.. ordered.Take(rows)];
         }
 
@@ -990,11 +1060,18 @@ public static partial class SessionMetrics
             };
     }
 
-    // The value a set of resources gives a group: how many they are; or for a capacity, the largest extent each section's
-    // views mapped, summed once a section, those that recorded none unknown - unmeasured where none is known.
-    private static MetricGroup Measured(MetricGroup group, List<ResourceInstance> resources, bool capacity)
+    // The value a set of resources gives a group: how many they are; for a count of records, their membership and lifecycle
+    // records in scope; or for a capacity, the largest extent each section's views mapped, summed once a section, those that
+    // recorded none unknown - unmeasured where none is known.
+    private static MetricGroup Measured(MetricGroup group, List<ResourceInstance> resources, Metric metric)
     {
-        if (!capacity)
+        if (metric == Metric.Observations)
+        {
+            long records = resources.Sum(resource => resource.MembershipRecords);
+            return group with { Value = records, KnownContributions = records, UnknownContributions = 0 };
+        }
+
+        if (metric != Metric.MappingCapacity)
         {
             return group with { Value = resources.Count, KnownContributions = resources.Count, UnknownContributions = 0 };
         }

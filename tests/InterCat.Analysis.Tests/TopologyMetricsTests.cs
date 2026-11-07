@@ -49,13 +49,15 @@ public sealed class TopologyMetricsTests
         MetricResult peers = SessionMetrics.Evaluate(session.Store, Request(Metric.ActivePeers) with { Owner = Instance(session.Store, 100) });
         Assert.Equal(1L, peers.Value);
 
-        // Traffic is no topology metric, and counting a resource's records is not defined at this version.
+        // Traffic is no topology metric; the section's records are its four views' mappings and unmappings, which say who held
+        // it and never what moved.
         Assert.NotNull((Request(Metric.BytesSent) with
         {
             ByteDomain = ByteDomain.TransportObserved,
             AccountingSide = AccountingSide.SendSide,
         }).Check());
-        Assert.Equal(MetricUnavailableReason.NoResourceTopology, SessionMetrics.Evaluate(session.Store, Request(Metric.Observations)).Unavailable);
+        MetricResult records = SessionMetrics.Evaluate(session.Store, Request(Metric.Observations));
+        Assert.Equal(((long?)4, MeasurementUnit.Count), (records.Value, records.Unit));
     }
 
     [Fact(DisplayName = "R3: a topology answer takes each resource whole, by its mechanism and layer, its known lifetime and its holders, and says what its records establish")]
@@ -114,15 +116,14 @@ public sealed class TopologyMetricsTests
         Assert.Equal(1L, capacity.UnknownReasons[FieldAvailability.NotExposed]);
         Assert.Contains(capacity.Caveats, caveat => caveat.StartsWith("1 section of it is an image's, 4,096 bytes", StringComparison.Ordinal));
 
-        // A membership has no direction, and counting records, a grouping by anything but a resource's mechanism, a focus's
-        // peers or a fact of the processes holding it, and a mapping lifetime grouped by anything but a fact of its holder are
-        // not defined yet.
+        // A membership has no direction, and a grouping by anything but a resource's mechanism, a focus's peers or a fact of
+        // the processes holding it, and a mapping lifetime grouped by anything but a fact of its holder, are not defined yet.
         foreach (MetricRequest unanswered in new[]
         {
             Request(Metric.ActiveChannels) with { Sender = writer },
             Request(Metric.ActiveChannels) with { Between = new ProcessBetween([writer], [reader], BetweenDirection.FirstToSecond) },
             Request(Metric.MappingCapacity) with { Grouping = LaneGrouping.Endpoint },
-            Request(Metric.Observations),
+            Request(Metric.Observations) with { Grouping = LaneGrouping.Endpoint },
             Request(Metric.Duration) with { DurationInterval = DurationInterval.MappingLifetime, Grouping = LaneGrouping.Mechanism },
             Request(Metric.Duration) with { DurationInterval = DurationInterval.MappingLifetime, Owner = writer, Grouping = LaneGrouping.Peer },
         })
@@ -358,6 +359,66 @@ public sealed class TopologyMetricsTests
         MetricGroup only = Assert.Single(censored.Groups);
         Assert.Equal((MetricUnavailableReason.NothingMeasured, reader, (long?)null, (int?)null, 1L),
             (censored.Unavailable, only.Process!.Id, only.Value, only.Rank, only.UnknownContributions));
+    }
+
+    [Fact(DisplayName = "R3: observations on the resource-topology basis are the membership and lifecycle records of the resources in scope, each by its own reading, whichever process it binds to, and never a socket's sends or receives")]
+    public void ObservationsAreTheResourcesRecords()
+    {
+        // Section 4's four view records, the image's mapping and its stop's rundown, section 6's start rundown and unmapping,
+        // section 7's start rundown, and section 4's handles' creation and close: 11. View 81's record names no section, so
+        // it is no resource's.
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        Publish(session.Store, rows, fields: fields);
+        ProcessInstanceId writer = Instance(session.Store, 100);
+        ProcessInstanceId reader = Instance(session.Store, 200);
+        MetricResult all = SessionMetrics.Evaluate(session.Store, Request(Metric.Observations));
+        Assert.Equal(((long?)11, MeasurementUnit.Count, 11L, ResourceInstanceIndex.Rule),
+            (all.Value, all.Unit, all.KnownContributions, all.ResourceRule));
+        Assert.Equal(5L, all.Resources!.Taken[Mechanism.SharedSection]);
+
+        // In [0, 31) every resource is in scope, and of their records those read in it count: the rundowns at 2 and 3, the
+        // mappings at 10, 11 and 12, the handle made at 15 and the unmapping at 30. The four read later are left out, said.
+        MetricResult early = SessionMetrics.Evaluate(session.Store, Request(Metric.Observations) with { Interval = new TimeRange(0, 31) });
+        Assert.Equal((long?)7, early.Value);
+        Assert.Contains(early.Caveats, caveat => caveat.StartsWith(
+            "4 membership or lifecycle records of the resources in scope were read outside the interval", StringComparison.Ordinal));
+
+        // The writer's resources' records, whichever process each binds to: section 4's views' four, the reader's two among
+        // them, the image's two and its handles' two.
+        Assert.Equal((long?)8, SessionMetrics.Evaluate(session.Store, Request(Metric.Observations) with { Owner = writer }).Value);
+
+        // Grouped by process, a resource both held counts its records in both groups; by mechanism, each record is in one;
+        // by the writer's peer, the records of what both held; and the rest past one row is its resources' records.
+        MetricResult grouped = SessionMetrics.Evaluate(session.Store, Request(Metric.Observations) with { Grouping = LaneGrouping.InstanceOnly });
+        Assert.Equal(((long?)11, false), (grouped.Value, grouped.GroupsPartitionTotal));
+        Assert.Equal([(writer, 8L), (reader, 7L)], grouped.Groups.Select(group => (group.Process!.Id, group.Value!.Value)));
+        Assert.Contains(grouped.Caveats, caveat => caveat.Contains("counts its records in each group", StringComparison.Ordinal));
+        MetricResult top = SessionMetrics.Evaluate(session.Store, Request(Metric.Observations) with
+        {
+            Grouping = LaneGrouping.InstanceOnly,
+            RequestedRows = 1,
+        });
+        Assert.Equal((1, (long?)7, 1), (top.Groups.Count, top.Remainder!.Value, top.Remainder.GroupsMerged));
+        MetricResult byMechanism = SessionMetrics.Evaluate(session.Store, Request(Metric.Observations) with { Grouping = LaneGrouping.Mechanism });
+        Assert.Equal((Mechanism.SharedSection, 11L, true),
+            (Assert.Single(byMechanism.Groups).Mechanism!.Value, byMechanism.Groups[0].Value!.Value, byMechanism.GroupsPartitionTotal));
+        MetricResult byPeer = SessionMetrics.Evaluate(session.Store, Request(Metric.Observations) with
+        {
+            Owner = writer,
+            Grouping = LaneGrouping.Peer,
+        });
+        Assert.Equal(((long?)8, reader, 4L), (byPeer.Value, Assert.Single(byPeer.Groups).Process!.Id, byPeer.Groups[0].Value!.Value));
+
+        // A socket's sends and receives are traffic, never membership: sockets 5, 6 and 7 count their three calls each, 8 its
+        // one send none, and the object its two handles.
+        using var sockets = new TemporarySession();
+        (rows, fields) = UnixSockets();
+        Publish(sockets.Store, rows, fields: fields);
+        MetricResult calls = SessionMetrics.Evaluate(sockets.Store, Request(Metric.Observations) with { Grouping = LaneGrouping.Mechanism });
+        Assert.Equal((long?)11, calls.Value);
+        Assert.Equal([(Mechanism.UnixDomainSocket, 9L), (Mechanism.Synchronization, 2L)],
+            calls.Groups.Select(group => (group.Mechanism!.Value, group.Value!.Value)));
     }
 
     [Fact(DisplayName = "R21: a topology count beside records bound to no process is a lower bound, and a capacity no section's views measured is unmeasured, never zero")]

@@ -1629,6 +1629,9 @@ internal static class MetricCommand
             Metric.ActivePeers when topology =>
                 (result.UnknownContributions > 0 ? "at least " : string.Empty)
                 + $"{ConsoleUi.Count(count)} {(count == 1 ? "process holds" : "processes hold")} a resource it held",
+            Metric.Observations when topology =>
+                (result.UnresolvedCounterparts.Count > 0 ? "at least " : string.Empty)
+                + $"{ConsoleUi.Count(count)} membership and lifecycle {(count == 1 ? "record" : "records")} of the resources in scope",
             Metric.Observations => CountText.Of(count, "observation"),
             Metric.ActivePeers when result.Request.Grouping is not null =>
                 $"{ConsoleUi.Count(count)} {(count == 1 ? "process has" : "processes have")} at least one resolved peer",
@@ -2204,9 +2207,11 @@ internal static class MetricCommand
         ConsoleUi.Line("      --basis resource-topology counts resources, as icat resources lists them: each");
         ConsoleUi.Line($"      instance {ResourceInstanceIndex.Rule} derives, in scope where its known lifetime meets");
         ConsoleUi.Line("      the interval. active-channels counts them, those the focus held with --owner or");
-        ConsoleUi.Line("      --participant; active-peers the other processes holding one the focus held; and");
-        ConsoleUi.Line("      mapping-capacity the largest extent each section's views mapped, once a section,");
-        ConsoleUi.Line("      never bytes moved. None of it is traffic. --group-by process, executable, session,");
+        ConsoleUi.Line("      --participant; active-peers the other processes holding one the focus held;");
+        ConsoleUi.Line("      observations their membership and lifecycle records - a handle's, a view's, a socket's");
+        ConsoleUi.Line("      calls but its sends and receives - each read in the interval; and mapping-capacity");
+        ConsoleUi.Line("      the largest extent each section's views mapped, once a section, never bytes moved.");
+        ConsoleUi.Line("      None of it is traffic. --group-by process, executable, session,");
         ConsoleUi.Line("      package or service-container ranks what each group's processes held, a shared");
         ConsoleUi.Line("      resource in each holder's group; --group-by mechanism splits them by what they are,");
         ConsoleUi.Line("      each in one group; and --group-by peer, with --owner or --participant, ranks what the");
