@@ -763,6 +763,17 @@ public static class WindowsSourceCatalog
     private static readonly AdmittedFieldIntent SdkOperation = new("operation", FieldRole.CorrelationKey,
         Notes: "The operation's identity, unique to it. Its parent is the record's related activity, ETW's own link (ADR-102).");
 
+    private static readonly AdmittedFieldIntent SdkFirstSequence = new("firstSequence", FieldRole.CorrelationKey,
+        SourceField: SourceField.MessageSequence,
+        Notes: "The first sequence of a batch's run within its channel's epoch: its messages are this and the next ones (ADR-106).");
+
+    private static readonly AdmittedFieldIntent SdkCount = new("count", FieldRole.Unclassified, SourceField: SourceField.MessageCount,
+        Notes: "How many consecutive messages the batch says, up to 65,536: each its own sequence, none spread from another (ADR-106).");
+
+    private static readonly AdmittedFieldIntent SdkBatchLength = new("logicalLength", FieldRole.ByteCount, MeasurementUnit.Bytes,
+        Domain.ByteDomain.ApplicationPayload,
+        Notes: "The batch's messages' lengths together, as the application states them: never split among its messages (I11).");
+
     /// <summary>
     /// Sources that are not Windows capabilities but what an application cooperating says of itself: the cooperative SDK's
     /// (ADR-103). A profile can request one, and <see cref="Find"/> resolves it, but the machine's capability report never lists
@@ -858,6 +869,32 @@ public static class WindowsSourceCatalog
                     SdkProcess,
                     SdkOperation,
                     new("status", FieldRole.Status, Notes: "0 the operation's success; any other value a failure in the application's own code."),
+                    SdkTicks,
+                ]),
+                new(InterCatSdkEventSource.MessagesPublishedId, InterCatSdkEventSource.EventVersion, "Messages published in a batch",
+                    Mechanism.ApplicationSdk, ObservationLayer.Application, ObservationKind.Send, Direction.Outbound,
+                [
+                    SdkProcess,
+                    SdkChannel,
+                    SdkEpoch,
+                    SdkFirstSequence,
+                    SdkCount,
+                    SdkBatchLength,
+                    new("copiedLength", FieldRole.Unclassified, SourceField: SourceField.CopiedLength,
+                        Notes: "The bytes the publisher copied for the batch's messages together, -1 where it says it does not know them."),
+                    SdkTicks,
+                ]),
+                new(InterCatSdkEventSource.MessagesConsumedId, InterCatSdkEventSource.EventVersion, "Messages consumed in a batch",
+                    Mechanism.ApplicationSdk, ObservationLayer.Application, ObservationKind.Receive, Direction.Inbound,
+                [
+                    SdkProcess,
+                    SdkChannel,
+                    SdkEpoch,
+                    SdkFirstSequence,
+                    SdkCount,
+                    new("consumer", FieldRole.CorrelationKey, SourceField: SourceField.ConsumerNumber,
+                        Notes: "The reader that consumed the batch's messages: one consumption of each."),
+                    SdkBatchLength,
                     SdkTicks,
                 ]),
             ],

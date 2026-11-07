@@ -36,9 +36,12 @@ extern "C" {
 #endif
 
 /* The schema this library raises: a change an earlier reader could misread bumps the major, a field added at an event's
- * end the minor (contracts/sdk-v1.md section 5). */
+ * end, or an event added, the minor (contracts/sdk-v1.md section 5). Minor 1 adds the batches. */
 #define INTERCAT_SDK_SCHEMA_MAJOR 1
-#define INTERCAT_SDK_SCHEMA_MINOR 0
+#define INTERCAT_SDK_SCHEMA_MINOR 1
+
+/* The most messages one batch says. */
+#define INTERCAT_SDK_MAXIMUM_BATCH 65536
 
 /* Each event's descriptor as InterCat.Sdk's manifest declares it: id, version, channel, level, opcode, task, keyword. */
 #define INTERCAT_SDK_EVENT_SDK_STARTED 1, 1, 0, 4, 0, 65533, 0
@@ -48,6 +51,8 @@ extern "C" {
 #define INTERCAT_SDK_EVENT_MESSAGE_CONSUMED 5, 1, 0, 4, 240, 0, 0
 #define INTERCAT_SDK_EVENT_OPERATION_STARTED 6, 1, 0, 4, 1, 0, 0
 #define INTERCAT_SDK_EVENT_OPERATION_COMPLETED 7, 1, 0, 4, 2, 0, 0
+#define INTERCAT_SDK_EVENT_MESSAGES_PUBLISHED 8, 1, 0, 4, 9, 0, 0
+#define INTERCAT_SDK_EVENT_MESSAGES_CONSUMED 9, 1, 0, 4, 240, 0, 0
 
 /* What a channel carries its messages through, as the application says (contracts/sdk-v1.md section 2). */
 typedef enum intercat_channel_kind
@@ -98,6 +103,18 @@ ULONG intercat_channel_published(const intercat_channel *channel, LONGLONG seque
  * and the message was still published once. */
 ULONG intercat_channel_consumed(const intercat_channel *channel, LONGLONG sequence, LONGLONG logical_length, LONGLONG consumer);
 
+/* Says the count consecutive messages from first on were published together - a batch, each still its own sequence,
+ * published once - with their logical lengths and the bytes copied for them together (-1 where not known): one call for
+ * what count calls of intercat_channel_published would say, no message's own length said. A count from 1 to
+ * INTERCAT_SDK_MAXIMUM_BATCH whose run stays within the sequences a LONGLONG holds. */
+ULONG intercat_channel_published_batch(const intercat_channel *channel, LONGLONG first, LONGLONG count, LONGLONG logical_length,
+    LONGLONG copied_length);
+
+/* Says reader consumer consumed the count consecutive messages from first on together - one consumption of each - with
+ * their logical lengths together. */
+ULONG intercat_channel_consumed_batch(const intercat_channel *channel, LONGLONG first, LONGLONG count, LONGLONG logical_length,
+    LONGLONG consumer);
+
 /* Closes the process's use of the channel's epoch, saying so once: a second close says nothing. */
 ULONG intercat_channel_close(intercat_channel *channel);
 
@@ -117,7 +134,7 @@ ULONG intercat_operation_complete(intercat_operation *operation, LONGLONG status
 
 /* {82c69482-41a7-5887-ff73-c02a5012c044}: the identity EventSource derives from the provider's name, InterCat-Sdk. */
 static const GUID intercat_sdk_provider = { 0x82c69482, 0x41a7, 0x5887, { 0xff, 0x73, 0xc0, 0x2a, 0x50, 0x12, 0xc0, 0x44 } };
-static const wchar_t intercat_sdk_library[] = L"native-1.0";
+static const wchar_t intercat_sdk_library[] = L"native-1.1";
 static REGHANDLE intercat_sdk_handle;
 
 static void intercat_sdk_announce(void)
@@ -358,6 +375,72 @@ ULONG intercat_operation_complete(intercat_operation *operation, LONGLONG status
     EventDataDescCreate(&data[2], &status, sizeof status);
     EventDataDescCreate(&data[3], &ticks.QuadPart, sizeof ticks.QuadPart);
     return EventWrite(intercat_sdk_handle, &descriptor, 4, data);
+}
+
+/* Whether a batch is one the SDK says: a count from 1 to the most, a length not negative, a run within a LONGLONG. */
+static int intercat_sdk_batch(LONGLONG first, LONGLONG count, LONGLONG logical_length)
+{
+    return count >= 1 && count <= INTERCAT_SDK_MAXIMUM_BATCH && logical_length >= 0 && first <= MAXLONGLONG - (count - 1);
+}
+
+ULONG intercat_channel_published_batch(const intercat_channel *channel, LONGLONG first, LONGLONG count, LONGLONG logical_length,
+    LONGLONG copied_length)
+{
+    static const EVENT_DESCRIPTOR descriptor = { INTERCAT_SDK_EVENT_MESSAGES_PUBLISHED };
+    LONG process;
+    LARGE_INTEGER ticks;
+    EVENT_DATA_DESCRIPTOR data[8];
+    if (channel == NULL || !intercat_sdk_batch(first, count, logical_length) || copied_length < -1)
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    if (!EventEnabled(intercat_sdk_handle, &descriptor))
+    {
+        return ERROR_SUCCESS;
+    }
+
+    process = (LONG)GetCurrentProcessId();
+    QueryPerformanceCounter(&ticks);
+    EventDataDescCreate(&data[0], &process, sizeof process);
+    EventDataDescCreate(&data[1], &channel->id, sizeof channel->id);
+    EventDataDescCreate(&data[2], &channel->epoch, sizeof channel->epoch);
+    EventDataDescCreate(&data[3], &first, sizeof first);
+    EventDataDescCreate(&data[4], &count, sizeof count);
+    EventDataDescCreate(&data[5], &logical_length, sizeof logical_length);
+    EventDataDescCreate(&data[6], &copied_length, sizeof copied_length);
+    EventDataDescCreate(&data[7], &ticks.QuadPart, sizeof ticks.QuadPart);
+    return EventWrite(intercat_sdk_handle, &descriptor, 8, data);
+}
+
+ULONG intercat_channel_consumed_batch(const intercat_channel *channel, LONGLONG first, LONGLONG count, LONGLONG logical_length,
+    LONGLONG consumer)
+{
+    static const EVENT_DESCRIPTOR descriptor = { INTERCAT_SDK_EVENT_MESSAGES_CONSUMED };
+    LONG process;
+    LARGE_INTEGER ticks;
+    EVENT_DATA_DESCRIPTOR data[8];
+    if (channel == NULL || !intercat_sdk_batch(first, count, logical_length))
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    if (!EventEnabled(intercat_sdk_handle, &descriptor))
+    {
+        return ERROR_SUCCESS;
+    }
+
+    process = (LONG)GetCurrentProcessId();
+    QueryPerformanceCounter(&ticks);
+    EventDataDescCreate(&data[0], &process, sizeof process);
+    EventDataDescCreate(&data[1], &channel->id, sizeof channel->id);
+    EventDataDescCreate(&data[2], &channel->epoch, sizeof channel->epoch);
+    EventDataDescCreate(&data[3], &first, sizeof first);
+    EventDataDescCreate(&data[4], &count, sizeof count);
+    EventDataDescCreate(&data[5], &consumer, sizeof consumer);
+    EventDataDescCreate(&data[6], &logical_length, sizeof logical_length);
+    EventDataDescCreate(&data[7], &ticks.QuadPart, sizeof ticks.QuadPart);
+    return EventWrite(intercat_sdk_handle, &descriptor, 8, data);
 }
 
 #endif /* INTERCAT_SDK_IMPLEMENTATION */

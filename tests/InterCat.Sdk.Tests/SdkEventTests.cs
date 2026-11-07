@@ -141,6 +141,46 @@ public sealed class SdkEventTests
         Assert.Throws<ArgumentOutOfRangeException>(() => InterCatChannel.Open(Frames, "frames", (InterCatChannelKind)9));
     }
 
+    [Fact(DisplayName = "§15: a batch says its run in one event - its first sequence, its count and its messages' lengths together, a reader's consumption of each - at the schema's minor 1, and a call refuses a batch no SDK says")]
+    public void ABatchSaysItsRunInOneEvent()
+    {
+        using var recorder = new Recorder();
+        recorder.EnableEvents(InterCatSdkEventSource.Log, EventLevel.Verbose);
+        int process = Environment.ProcessId;
+        long before = Stopwatch.GetTimestamp();
+        using (InterCatChannel channel = InterCatChannel.Open(Frames, "frames", InterCatChannelKind.SharedMemory, epoch: 3))
+        {
+            channel.PublishedBatch(101, 64, logicalLength: 32_768, copiedLength: 33_024);
+            channel.ConsumedBatch(101, 64, logicalLength: 32_768, consumer: 2);
+            channel.PublishedBatch(165, 1, logicalLength: 0);
+        }
+
+        EventWrittenEventArgs[] raised = recorder.Raised();
+        EventWrittenEventArgs[] batches = [.. raised.Where(written => written.EventId is InterCatSdkEventSource.MessagesPublishedId
+            or InterCatSdkEventSource.MessagesConsumedId)];
+        Assert.Equal(["MessagesPublished", "MessagesConsumed", "MessagesPublished"], batches.Select(written => written.EventName));
+        Assert.Equal<object?>([process, Frames, 3L, 101L, 64L, 32_768L, 33_024L], batches[0].Payload!.Take(7));
+        Assert.Equal<object?>([process, Frames, 3L, 101L, 64L, 2L, 32_768L], batches[1].Payload!.Take(7));
+        Assert.Equal<object?>([process, Frames, 3L, 165L, 1L, 0L, -1L], batches[2].Payload!.Take(7));
+        Assert.All(batches, written =>
+        {
+            Assert.Equal(InterCatSdkEventSource.EventVersion, written.Version);
+            Assert.InRange((long)written.Payload![^1]!, before, Stopwatch.GetTimestamp());
+        });
+        Assert.Equal(1, InterCatSdkEventSource.SchemaMinor);
+
+        // A batch of no message or of more than the most, a negative length or copy, or a run past the last sequence a long
+        // holds is refused, with or without a session.
+        using InterCatChannel quiet = InterCatChannel.Open(Frames, "frames", InterCatChannelKind.Pipe);
+        Assert.Throws<ArgumentOutOfRangeException>(() => quiet.PublishedBatch(1, 0, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => quiet.PublishedBatch(1, InterCatChannel.MaximumBatch + 1, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => quiet.ConsumedBatch(1, 2, -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => quiet.PublishedBatch(1, 2, 1, copiedLength: -2));
+        Assert.Throws<ArgumentOutOfRangeException>(() => quiet.ConsumedBatch(long.MaxValue, 2, 1));
+        quiet.PublishedBatch(long.MaxValue - 1, 2, 1);
+        quiet.ConsumedBatch(1, InterCatChannel.MaximumBatch, 0);
+    }
+
     [Fact(DisplayName = "§15: the provider's manifest, which a capture's catalog reads, declares each of the schema's events by its name, identity, opcode and version, and each event's text as its last field")]
     public void TheManifestDeclaresTheSchema()
     {
@@ -155,7 +195,7 @@ public sealed class SdkEventTests
         Assert.Equal(
             [(1, "SdkStarted", null), (2, "ChannelOpened", "win:Start"), (3, "ChannelClosed", "win:Stop"),
                 (4, "MessagePublished", "win:Send"), (5, "MessageConsumed", "win:Receive"), (6, "OperationStarted", "win:Start"),
-                (7, "OperationCompleted", "win:Stop")],
+                (7, "OperationCompleted", "win:Stop"), (8, "MessagesPublished", "win:Send"), (9, "MessagesConsumed", "win:Receive")],
             declared
                 .Select(element => ((int)element.Attribute("value")!, (string)element.Attribute("symbol")!, (string?)element.Attribute("opcode")))
                 .OrderBy(declaration => declaration.Item1));

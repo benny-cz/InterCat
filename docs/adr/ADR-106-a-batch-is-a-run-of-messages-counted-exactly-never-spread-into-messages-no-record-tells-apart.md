@@ -36,3 +36,16 @@ that made one object of each of its messages would grow with the messages, past 
 - No source raises a batch yet: the SDK's batch events, the capture's admission of them, a measured fixture and their
   cost follow; until then a batch record is read only from test generations.
 - 20 mutations of the keying, the sweep, the counts, the words, the command line and the window are caught.
+
+## Addendum: the SDK raises batches, and a capture admits them (revision 1036)
+
+The schema's minor 1 adds a batch's two events, `MessagesPublished` (8, Send) and `MessagesConsumed` (9, Receive): each
+names its process first, then its channel, epoch, first sequence and count, the messages' lengths together and, of a
+publication, the bytes copied for them together, every field at a fixed offset. `InterCat.Sdk` raises them through
+`PublishedBatch` and `ConsumedBatch`, the native library through `intercat_channel_published_batch` and
+`intercat_channel_consumed_batch`, each refusing a batch of no message or more than 65,536, a negative length, a copy
+below -1 or a run past the last sequence a long holds. A capture admits each as an application record: its count the
+source field `MessageCount`, its first sequence `MessageSequence`, its lengths together its application payload. A
+capture built before minor 1 counts their records undecodable, never misreads them. The header's descriptors and
+version stay the manifest's, which a test holds. 19 mutations of the events, the calls, their refusals, the
+admission and the header are caught; a batch recorded through the product follows.

@@ -25,7 +25,7 @@ public sealed class SdkCaptureAdmissionTests
 
     private static WindowsSourceDefinition Sdk => WindowsSourceCatalog.Find(WindowsSourceCatalog.CooperativeSdkSourceId)!;
 
-    [Fact(DisplayName = "§15: the SDK's layout is read from the type that raises it, each of its seven events an application record at a fixed offset, owned by the process its payload names")]
+    [Fact(DisplayName = "§15: the SDK's layout is read from the type that raises it, each of its nine events an application record at a fixed offset, owned by the process its payload names")]
     public void TheLayoutComesFromTheSdk()
     {
         // What an application cooperating says, not a capability of Windows: found, but never in the machine's report.
@@ -42,7 +42,8 @@ public sealed class SdkCaptureAdmissionTests
                 (1, ObservationKind.Inventory, Direction.DirectionNotApplicable), (2, ObservationKind.Open, Direction.DirectionNotApplicable),
                 (3, ObservationKind.Close, Direction.DirectionNotApplicable), (4, ObservationKind.Send, Direction.Outbound),
                 (5, ObservationKind.Receive, Direction.Inbound), (6, ObservationKind.RequestStart, Direction.DirectionNotApplicable),
-                (7, ObservationKind.RequestEnd, Direction.DirectionNotApplicable),
+                (7, ObservationKind.RequestEnd, Direction.DirectionNotApplicable), (8, ObservationKind.Send, Direction.Outbound),
+                (9, ObservationKind.Receive, Direction.Inbound),
             ],
             plan.Events.Select(descriptor => (descriptor.EventId, descriptor.Kind, descriptor.Direction)).OrderBy(descriptor => descriptor.EventId));
         Assert.All(plan.Events, descriptor =>
@@ -78,6 +79,27 @@ public sealed class SdkCaptureAdmissionTests
         Assert.Equal(60, published.MinimumBodyLength);
         Assert.Equal(SourceField.ConsumerNumber,
             Plan(plan, InterCatSdkEventSource.MessageConsumedId).Slots.Single(slot => slot.FieldName == "consumer").SourceField);
+
+        // A batch: its first sequence the message sequence, its count a source field of its own, its messages' lengths
+        // together the record's application payload, and its reader where it is a consumption (ADR-106).
+        AdmittedEventPlan batch = Plan(plan, InterCatSdkEventSource.MessagesPublishedId);
+        Assert.Equal(
+            [
+                ("processId", FieldRole.ProcessAttribution, AdmittedSlotKind.Numeric, 0, (SourceField?)null),
+                ("channel", FieldRole.CorrelationKey, AdmittedSlotKind.Identifier, 4, null),
+                ("epoch", FieldRole.CorrelationKey, AdmittedSlotKind.Numeric, 20, SourceField.ChannelEpoch),
+                ("firstSequence", FieldRole.CorrelationKey, AdmittedSlotKind.Numeric, 28, SourceField.MessageSequence),
+                ("count", FieldRole.Unclassified, AdmittedSlotKind.Numeric, 36, SourceField.MessageCount),
+                ("logicalLength", FieldRole.ByteCount, AdmittedSlotKind.Numeric, 44, null),
+                ("copiedLength", FieldRole.Unclassified, AdmittedSlotKind.Numeric, 52, SourceField.CopiedLength),
+                ("sourceTicks", FieldRole.Timing, AdmittedSlotKind.Numeric, 60, SourceField.SourceTicks),
+            ],
+            batch.Slots.Select(slot => (slot.FieldName, slot.Role, slot.Kind, slot.Offset, slot.SourceField)));
+        Assert.Equal(68, batch.MinimumBodyLength);
+        Assert.Equal(
+            [("firstSequence", SourceField.MessageSequence), ("count", SourceField.MessageCount), ("consumer", SourceField.ConsumerNumber)],
+            Plan(plan, InterCatSdkEventSource.MessagesConsumedId).Slots.Where(slot => slot.FieldName is "firstSequence" or "count" or "consumer")
+                .Select(slot => (slot.FieldName, slot.SourceField!.Value)));
 
         // The announcement's minor version and clock frequency, a channel's kind, and each text - the library's version, a
         // channel's or an operation's name - read as the record's name after every fixed field.
@@ -195,6 +217,10 @@ public sealed class SdkCaptureAdmissionTests
             ((int)CooperativeSdk.SdkStarted, (int)CooperativeSdk.ChannelOpened, (int)CooperativeSdk.ChannelClosed,
                 (int)CooperativeSdk.MessagePublished, (int)CooperativeSdk.MessageConsumed, (int)CooperativeSdk.OperationStarted,
                 (int)CooperativeSdk.OperationCompleted));
+
+        // A batch's events, and the most messages one says, as the SDK raises and bounds them (ADR-106).
+        Assert.Equal((InterCatSdkEventSource.MessagesPublishedId, InterCatSdkEventSource.MessagesConsumedId, (long)InterCatChannel.MaximumBatch),
+            ((int)CooperativeSdk.MessagesPublished, (int)CooperativeSdk.MessagesConsumed, CooperativeSdk.MaximumBatch));
     }
 
     [Fact(DisplayName = "§24: a capture keeps a later minor version's added field unread and safe - each event's known fields at the offsets it knows, a longer record read no further - and holds no descriptor of a later major version, whose records stay undecodable, never misread")]

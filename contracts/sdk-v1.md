@@ -27,7 +27,9 @@ A C or C++ application raises the same events through the SDK's native library, 
 (revision 1032, ADR-105): one header raising them through ETW's provider API under the same provider, each event's
 descriptor and fields the manifest's, held to it by a test. It holds a channel and an operation as `InterCat.Sdk` does,
 refuses what that throws for - returning `ERROR_INVALID_PARAMETER` and raising nothing - and announces the schema alike,
-its library `native-1.0` and its clock `QueryPerformanceCounter`'s. FX-SDK-002 measures it through the product.
+its library `native-1.0` and its clock `QueryPerformanceCounter`'s. FX-SDK-002 measures it through the product. Since
+minor 1 (revision 1036) it says batches too, `intercat_channel_published_batch` and `intercat_channel_consumed_batch`,
+its library `native-1.1`.
 
 ## 2. Channels and messages
 
@@ -37,6 +39,8 @@ its library `native-1.0` and its clock `QueryPerformanceCounter`'s. FX-SDK-002 m
 | `ChannelClosed` | 3 | Stop | `processId`, `channel`, `epoch` |
 | `MessagePublished` | 4 | Send | `processId`, `channel`, `epoch`, `sequence` (int64), `logicalLength`, `copiedLength` (-1 where unknown), `sourceTicks` |
 | `MessageConsumed` | 5 | Receive | `processId`, `channel`, `epoch`, `sequence`, `consumer` (the reader's identity), `logicalLength`, `sourceTicks` |
+| `MessagesPublished` | 8 | Send | `processId`, `channel`, `epoch`, `firstSequence`, `count` (1 to 65,536), `logicalLength` and `copiedLength` (the messages' together, -1 where unknown), `sourceTicks` |
+| `MessagesConsumed` | 9 | Receive | `processId`, `channel`, `epoch`, `firstSequence`, `count`, `consumer`, `logicalLength` (together), `sourceTicks` |
 
 A channel is the identity every process using it names alike. A message is its channel's epoch and sequence: published
 once, when committed where readers can take it, and consumed once by each reader, so a message three readers consume
@@ -44,7 +48,10 @@ is one publication and three consumptions, never three writes. A sequence is uni
 or a channel made again, opens a new epoch. Its logical length is the application's; the bytes copied are beside it
 where the publisher knows them. A publication with no consumption stays open - not consumed as far as anything said -
 and a channel opened before a session enabled the provider is known from its messages alone. Boundaries are logical:
-a ring buffer's publish and consume, never each load or store of its memory. Over a byte stream - a pipe or a socket - a
+a ring buffer's publish and consume, never each load or store of its memory. A batch (minor 1, revision 1036, ADR-106)
+says a run of up to 65,536 consecutive messages in one event - `PublishedBatch` and `ConsumedBatch` - each still its own
+sequence, published once and consumed once a reader, their lengths and copies said together and never one by one: one
+call for what as many single calls would say, for an application faster than a capture keeps single events. Over a byte stream - a pipe or a socket - a
 message is the application's frame: a write may carry several and a message may span reads, and the bytes its frame
 copied into the stream are beside its logical length (revision 1033, FX-SDK-003 and FX-SDK-004).
 
@@ -75,7 +82,9 @@ was raised, which may be later where the application batches.
 
 An event's version is the schema's major. A minor adds fields at an event's end only - after its text, where it has
 one - which a reader of an earlier minor keeps unread; a major is a change an earlier reader could misread, raised at a
-new event version, which such a reader admits as unknown rather than misreads (plan §24 `sdkSchema`).
+new event version, which such a reader admits as unknown rather than misreads (plan §24 `sdkSchema`). A minor may add
+events as well, as minor 1 adds the batches: a capture built before them holds no descriptor of them, and counts their
+records undecodable, never reads them as another event.
 
 A capture holds this to its own schema, the SDK's it was built with (revision 1031): a later minor's record is read at the
 offsets the capture knows, each known field where it was and its added field past them unread, never what the record
@@ -96,6 +105,8 @@ payload names (ADR-103):
 | `MessageConsumed` | Receive, inbound | `channel` | - | `logicalLength`, application payload, receive side | `ChannelEpoch`, `MessageSequence`, `ConsumerNumber`, `SourceTicks` |
 | `OperationStarted` | RequestStart | `operation` | `name` | - | `SourceTicks` |
 | `OperationCompleted` | RequestEnd | `operation` | - | - | `SourceTicks`; `status` is the record's status |
+| `MessagesPublished` | Send, outbound | `channel` | - | `logicalLength` together, application payload, send side | `ChannelEpoch`, `MessageSequence` (its first), `MessageCount`, `CopiedLength`, `SourceTicks` |
+| `MessagesConsumed` | Receive, inbound | `channel` | - | `logicalLength` together, application payload, receive side | `ChannelEpoch`, `MessageSequence` (its first), `MessageCount`, `ConsumerNumber`, `SourceTicks` |
 
 An operation's parent is the record's related activity. A copied length is kept as the publisher said it, -1 included.
 
@@ -125,5 +136,4 @@ byte - or is measured in a narrower window; batching is not offered at this vers
 ## 9. Not defined at this version
 
 - An operation tree by parent, and the lag between a publication and its consumptions.
-- Content carried by an event, bounded and opt-in; a batch's events, whose runs the derivation keys already (revision
-  1035, ADR-106).
+- Content carried by an event, bounded and opt-in.

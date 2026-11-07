@@ -958,6 +958,7 @@ Revision 1032 adds the cooperative SDK's native library, one C header held to th
 Revision 1033 measures the cooperative SDK's sample pipe and socket applications, FX-SDK-003 and FX-SDK-004 (ADR-104's second addendum), and fixes the schema's announcement to a session listening as an application starts (ADR-102's addendum).
 Revision 1034 lists the cooperative SDK's logical messages in the window, read and said as `icat messages` reads and says them (ADR-104's third addendum).
 Revision 1035 keys a batch of the cooperative SDK as a run of messages, counted exactly and never spread into messages no record tells apart (ADR-106).
+Revision 1036 has both of the cooperative SDK's libraries raise batches at the schema's minor 1, and a capture admit them (ADR-106's addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4876,3 +4877,11 @@ ends within it; counts are exact over runs, a batch's lengths counted once, and 
 than the messages a batch says (R8). The rule is `cooperative-message-v2`, which keys a generation without batches as v1
 did; `icat messages` and the window say a run as one row. 20 mutations are caught. The SDK's batch events, the capture's
 admission of them and their cost follow.
+
+Revision 1036 adds M7's batch events (ADR-106's addendum). The schema's minor 1 adds `MessagesPublished` and
+`MessagesConsumed`: a run of up to 65,536 consecutive messages from a first sequence, their lengths and copies together,
+every field at a fixed offset. `InterCat.Sdk`'s `PublishedBatch` and `ConsumedBatch` raise them, and the native library's
+two batch calls alike, each refusing a batch no SDK says; a capture admits each as an application record, its count the
+source field `MessageCount`, and a capture of an earlier minor counts their records undecodable rather than misread them.
+19 mutations of the events, the calls, their refusals, the admission and the native header are caught. A batch recorded
+through the product, and its cost, follow.

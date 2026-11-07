@@ -113,7 +113,13 @@ static int refuses(void)
         && intercat_channel_consumed(&channel, 1, -1, 1) == ERROR_INVALID_PARAMETER
         && intercat_channel_close(NULL) == ERROR_INVALID_PARAMETER
         && intercat_operation_start(&operation, NULL, NULL) == ERROR_INVALID_PARAMETER
-        && intercat_operation_complete(NULL, 0) == ERROR_INVALID_PARAMETER;
+        && intercat_operation_complete(NULL, 0) == ERROR_INVALID_PARAMETER
+        && intercat_channel_published_batch(&channel, 1, 0, 1, -1) == ERROR_INVALID_PARAMETER
+        && intercat_channel_published_batch(&channel, 1, INTERCAT_SDK_MAXIMUM_BATCH + 1, 1, -1) == ERROR_INVALID_PARAMETER
+        && intercat_channel_published_batch(&channel, 1, 2, -1, -1) == ERROR_INVALID_PARAMETER
+        && intercat_channel_published_batch(&channel, 1, 2, 1, -2) == ERROR_INVALID_PARAMETER
+        && intercat_channel_consumed_batch(&channel, MAXLONGLONG, 2, 1, 1) == ERROR_INVALID_PARAMETER
+        && intercat_channel_consumed_batch(NULL, 1, 2, 1, 1) == ERROR_INVALID_PARAMETER;
 }
 
 /* One operation as scenario.json names it: the identity the library made for it, the parent the sample started it under
@@ -226,7 +232,7 @@ int wmain(int argc, wchar_t **argv)
 
     fprintf(scenario,
         "{\n  \"scenarioId\": \"FX-SDK-002\",\n  \"channel\": \"%s\",\n  \"channelName\": \"fx-sdk-native\",\n"
-        "  \"messages\": %d,\n  \"restartMessages\": %d,\n  \"seed\": 20261107,\n  \"library\": \"native-1.0\",\n"
+        "  \"messages\": %d,\n  \"restartMessages\": %d,\n  \"seed\": 20261107,\n  \"library\": \"native-1.1\",\n"
         "  \"closeCalls\": [1, 2],\n  \"unwritten\": %d,\n  \"operations\": [\n",
         channel_text, EPOCH_ONE_MESSAGES, EPOCH_TWO_MESSAGES, unwritten);
     log_operation(scenario, &run, NULL, "publish-consume", 0, 1, 0);

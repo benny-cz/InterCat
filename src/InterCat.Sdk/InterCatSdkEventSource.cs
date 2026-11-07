@@ -23,8 +23,11 @@ public sealed class InterCatSdkEventSource : EventSource
     /// <summary>The schema's major version: a change a reader of an earlier one could misread bumps it.</summary>
     public const int SchemaMajor = 1;
 
-    /// <summary>The schema's minor version: fields added at the end of an event, which an earlier reader keeps unread.</summary>
-    public const int SchemaMinor = 0;
+    /// <summary>
+    /// The schema's minor version: fields added at the end of an event, which an earlier reader keeps unread, or events
+    /// added, which it counts as records it cannot read, never misreads. Minor 1 adds the batches (ADR-106).
+    /// </summary>
+    public const int SchemaMinor = 1;
 
     /// <summary>The version every event is declared at, the schema's major one.</summary>
     public const byte EventVersion = SchemaMajor;
@@ -49,6 +52,12 @@ public sealed class InterCatSdkEventSource : EventSource
 
     /// <summary>An operation completed, with its status.</summary>
     public const int OperationCompletedId = 7;
+
+    /// <summary>A run of consecutive messages published together - a batch - from a sequence on (ADR-106).</summary>
+    public const int MessagesPublishedId = 8;
+
+    /// <summary>A run of consecutive messages consumed together by one reader - a batch (ADR-106).</summary>
+    public const int MessagesConsumedId = 9;
 
     private InterCatSdkEventSource()
         : base(EventSourceSettings.EtwManifestEventFormat)
@@ -199,6 +208,46 @@ public sealed class InterCatSdkEventSource : EventSource
         Set(data, 2, &status, sizeof(long));
         Set(data, 3, &sourceTicks, sizeof(long));
         WriteEventCore(OperationCompletedId, 4, data);
+    }
+
+    /// <summary>
+    /// A batch published: <paramref name="count"/> consecutive messages of a channel's epoch from
+    /// <paramref name="firstSequence"/> on, each committed where its readers can take it, their logical lengths and the bytes
+    /// copied for them together (-1 where the publisher does not know them), and the process's clock reading at the commit.
+    /// Each message is still its own sequence, published once.
+    /// </summary>
+    [Event(MessagesPublishedId, Level = EventLevel.Informational, Opcode = EventOpcode.Send, Version = EventVersion)]
+    public unsafe void MessagesPublished(int processId, Guid channel, long epoch, long firstSequence, long count, long logicalLength, long copiedLength, long sourceTicks)
+    {
+        EventData* data = stackalloc EventData[8];
+        Set(data, 0, &processId, sizeof(int));
+        Set(data, 1, &channel, sizeof(Guid));
+        Set(data, 2, &epoch, sizeof(long));
+        Set(data, 3, &firstSequence, sizeof(long));
+        Set(data, 4, &count, sizeof(long));
+        Set(data, 5, &logicalLength, sizeof(long));
+        Set(data, 6, &copiedLength, sizeof(long));
+        Set(data, 7, &sourceTicks, sizeof(long));
+        WriteEventCore(MessagesPublishedId, 8, data);
+    }
+
+    /// <summary>
+    /// A batch consumed by one reader, <paramref name="consumer"/>: <paramref name="count"/> consecutive messages of a
+    /// channel's epoch from <paramref name="firstSequence"/> on, their logical lengths together - one consumption of each.
+    /// </summary>
+    [Event(MessagesConsumedId, Level = EventLevel.Informational, Opcode = EventOpcode.Receive, Version = EventVersion)]
+    public unsafe void MessagesConsumed(int processId, Guid channel, long epoch, long firstSequence, long count, long consumer, long logicalLength, long sourceTicks)
+    {
+        EventData* data = stackalloc EventData[8];
+        Set(data, 0, &processId, sizeof(int));
+        Set(data, 1, &channel, sizeof(Guid));
+        Set(data, 2, &epoch, sizeof(long));
+        Set(data, 3, &firstSequence, sizeof(long));
+        Set(data, 4, &count, sizeof(long));
+        Set(data, 5, &consumer, sizeof(long));
+        Set(data, 6, &logicalLength, sizeof(long));
+        Set(data, 7, &sourceTicks, sizeof(long));
+        WriteEventCore(MessagesConsumedId, 8, data);
     }
 
     private static unsafe void Set(EventData* data, int index, void* value, int size)
