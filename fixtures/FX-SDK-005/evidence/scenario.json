@@ -1,0 +1,19 @@
+{
+  "scenarioId": "FX-SDK-005",
+  "channel": "01ec13de-88ca-4ca2-8b1e-072c809eaecc",
+  "channelName": "fx-sdk-batches",
+  "name": "Local\\InterCat-FX-SDK-005-95a1987bc5ca4982879020e01853bdf1",
+  "readers": 3,
+  "messages": 120,
+  "restartMessages": 40,
+  "slots": 16,
+  "batch": 8,
+  "seed": 20261107,
+  "epochs": 2,
+  "producerExitCode": 0,
+  "readerExitCodes": [
+    0,
+    0,
+    0
+  ]
+}

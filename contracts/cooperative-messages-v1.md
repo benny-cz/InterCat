@@ -48,7 +48,9 @@ three times, nothing lost - every publication and every reader's consumption one
 process, the message no reader read open, and the channel made again a second epoch. FX-SDK-002 (revision 1032) measures
 a native application's, said through the SDK's C library, its operations included; FX-SDK-003 and FX-SDK-004 (revision
 1033) a client's framed messages to a server over a named pipe and a loopback TCP connection, every message one message,
-never a write or a read.
+never a write or a read. FX-SDK-005 and FX-SDK-006 (revision 1037) say FX-SDK-001's ring and FX-SDK-002's native messages in
+batches: every message one message of the run its batch said, each batch's lengths together its messages' summed, and
+each run one row.
 
 ## 5. The window
 

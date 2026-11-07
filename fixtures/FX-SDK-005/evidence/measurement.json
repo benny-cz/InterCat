@@ -1,0 +1,198 @@
+{
+  "fixture": "FX-SDK-005",
+  "question": "Whether FX-SDK-005\u0027s ring - one producer and its readers saying what they publish and consume in batches of 8, each a run of messages in one call of InterCat\u0027s cooperative SDK - recorded through the product by icat record under the opt-in sdk profile, reads as icat messages reads it: every message the producer published at either epoch one message of a run its batch said, every reader\u0027s consumption of each one consumption, each batch\u0027s lengths together the truth\u0027s lengths of its messages summed, each bound to the process that logged it, and the one message said alone that no reader read open.",
+  "profile": "sdk",
+  "durationSeconds": 20,
+  "readers": 3,
+  "batch": 8,
+  "runs": [
+    {
+      "truthPublications": 161,
+      "truthConsumptions": 480,
+      "truthUnread": 1,
+      "messages": 161,
+      "rows": 21,
+      "runs": 20,
+      "messagesInBatches": 160,
+      "publications": 161,
+      "consumptions": 480,
+      "matchedPublications": 161,
+      "matchedCopies": 1,
+      "matchedConsumptions": 480,
+      "states": {
+        "Consumed": 160,
+        "Unconsumed": 1,
+        "PublicationUnseen": 0,
+        "Conflicting": 0
+      },
+      "unreadOpen": true,
+      "epochs": [
+        1,
+        2
+      ],
+      "epochMessages": [
+        120,
+        41
+      ],
+      "readers": [
+        3,
+        3
+      ],
+      "openings": [
+        4,
+        4
+      ],
+      "closings": [
+        4,
+        4
+      ],
+      "named": true,
+      "kinds": [
+        3,
+        3
+      ],
+      "records": 81,
+      "boundRecords": 81,
+      "recordsWithSourceTicks": 81,
+      "recordsNamingNoMessage": 0,
+      "run": 1,
+      "health": {
+        "exitCode": 0,
+        "lossFree": true,
+        "observedRecords": 554,
+        "admittedRecords": 554,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      }
+    },
+    {
+      "truthPublications": 161,
+      "truthConsumptions": 480,
+      "truthUnread": 1,
+      "messages": 161,
+      "rows": 21,
+      "runs": 20,
+      "messagesInBatches": 160,
+      "publications": 161,
+      "consumptions": 480,
+      "matchedPublications": 161,
+      "matchedCopies": 1,
+      "matchedConsumptions": 480,
+      "states": {
+        "Consumed": 160,
+        "Unconsumed": 1,
+        "PublicationUnseen": 0,
+        "Conflicting": 0
+      },
+      "unreadOpen": true,
+      "epochs": [
+        1,
+        2
+      ],
+      "epochMessages": [
+        120,
+        41
+      ],
+      "readers": [
+        3,
+        3
+      ],
+      "openings": [
+        4,
+        4
+      ],
+      "closings": [
+        4,
+        4
+      ],
+      "named": true,
+      "kinds": [
+        3,
+        3
+      ],
+      "records": 81,
+      "boundRecords": 81,
+      "recordsWithSourceTicks": 81,
+      "recordsNamingNoMessage": 0,
+      "run": 2,
+      "health": {
+        "exitCode": 0,
+        "lossFree": true,
+        "observedRecords": 796,
+        "admittedRecords": 796,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      }
+    },
+    {
+      "truthPublications": 161,
+      "truthConsumptions": 480,
+      "truthUnread": 1,
+      "messages": 161,
+      "rows": 21,
+      "runs": 20,
+      "messagesInBatches": 160,
+      "publications": 161,
+      "consumptions": 480,
+      "matchedPublications": 161,
+      "matchedCopies": 1,
+      "matchedConsumptions": 480,
+      "states": {
+        "Consumed": 160,
+        "Unconsumed": 1,
+        "PublicationUnseen": 0,
+        "Conflicting": 0
+      },
+      "unreadOpen": true,
+      "epochs": [
+        1,
+        2
+      ],
+      "epochMessages": [
+        120,
+        41
+      ],
+      "readers": [
+        3,
+        3
+      ],
+      "openings": [
+        4,
+        4
+      ],
+      "closings": [
+        4,
+        4
+      ],
+      "named": true,
+      "kinds": [
+        3,
+        3
+      ],
+      "records": 81,
+      "boundRecords": 81,
+      "recordsWithSourceTicks": 81,
+      "recordsNamingNoMessage": 0,
+      "run": 3,
+      "health": {
+        "exitCode": 0,
+        "lossFree": true,
+        "observedRecords": 619,
+        "admittedRecords": 619,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      }
+    }
+  ],
+  "notes": [
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once it is read.",
+    "A run\u0027s health is the capture\u0027s own report: what its sources lost, what its queue dropped, and what was undecodable.",
+    "Counts only: no process ID, path or name of the machine is kept; the first run\u0027s truth logs and scenario are kept beside it."
+  ]
+}

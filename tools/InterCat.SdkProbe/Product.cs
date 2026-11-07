@@ -20,17 +20,18 @@ internal static class Product
     private static readonly JsonSerializerOptions TruthOptions = CreateTruthOptions();
 
     public static async Task<Dictionary<string, object?>> RunAsync(string icat, string workload, string output, int runs, int duration, int readers,
-        string? native = null, string? transport = null)
+        string? native = null, string? transport = null, int batch = 1)
     {
-        // FX-SDK-002 is the native sample, said through intercat_sdk.h; FX-SDK-003 and FX-SDK-004 the .NET stream over a pipe
-        // and a socket; FX-SDK-001 the .NET ring.
-        string fixture = native is not null ? "FX-SDK-002" : transport switch
+        // FX-SDK-002 is the native sample, said through intercat_sdk.h, and FX-SDK-006 the same said in batches; FX-SDK-003 and
+        // FX-SDK-004 the .NET stream over a pipe and a socket; FX-SDK-001 the .NET ring, and FX-SDK-005 the ring in batches.
+        string fixture = native is not null ? (batch > 1 ? "FX-SDK-006" : "FX-SDK-002") : transport switch
         {
-            "pipe" => "FX-SDK-003",
-            "socket" => "FX-SDK-004",
-            null => "FX-SDK-001",
-            _ => throw new ArgumentException("A stream's transport is pipe or socket.", nameof(transport)),
+            "pipe" when batch == 1 => "FX-SDK-003",
+            "socket" when batch == 1 => "FX-SDK-004",
+            null => batch > 1 ? "FX-SDK-005" : "FX-SDK-001",
+            _ => throw new ArgumentException("A stream's transport is pipe or socket, its messages each said alone.", nameof(transport)),
         };
+        string[] batched = batch > 1 ? ["--batch", batch.ToString(CultureInfo.InvariantCulture)] : [];
         var results = new List<Dictionary<string, object?>>();
         for (int run = 1; run <= runs; run++)
         {
@@ -42,9 +43,10 @@ internal static class Product
                 Dictionary<string, object?> health;
                 using (Workload.Recording recording = await Workload.Recording.StartAsync(icat, session, duration).ConfigureAwait(false))
                 {
-                    ProcessStartInfo start = native is not null ? new(native, ["--truth", truth])
+                    // The native sample's batches are its own, of ten; the ring's are as many as asked.
+                    ProcessStartInfo start = native is not null ? new(native, ["--truth", truth, .. batch > 1 ? ["--batch"] : Array.Empty<string>()])
                         : transport is not null ? new(workload, ["sdk-stream", "--truth", truth, "--transport", transport])
-                        : new(workload, ["sdk-ring", "--truth", truth, "--readers", readers.ToString(CultureInfo.InvariantCulture)]);
+                        : new(workload, ["sdk-ring", "--truth", truth, "--readers", readers.ToString(CultureInfo.InvariantCulture), .. batched]);
                     start.UseShellExecute = false;
                     start.CreateNoWindow = true;
                     using (Process started = Process.Start(start) ?? throw new InvalidOperationException("The truth workload could not be started."))
@@ -89,6 +91,19 @@ internal static class Product
                     + "a read, with the logical length and the framed bytes it logged, the server's consumption of each one consumption, "
                     + "each bound to the process that logged it, the one message the server read and never consumed open; and each "
                     + "operation one start - the server's under the client's, whose identity its first frame carried - and one completion.",
+                "FX-SDK-005" =>
+                    $"Whether FX-SDK-005's ring - one producer and its readers saying what they publish and consume in batches of {batch}, "
+                    + "each a run of messages in one call of InterCat's cooperative SDK - recorded through the product by icat record "
+                    + "under the opt-in sdk profile, reads as icat messages reads it: every message the producer published at either "
+                    + "epoch one message of a run its batch said, every reader's consumption of each one consumption, each batch's "
+                    + "lengths together the truth's lengths of its messages summed, each bound to the process that logged it, and the "
+                    + "one message said alone that no reader read open.",
+                "FX-SDK-006" =>
+                    "Whether FX-SDK-006 - FX-SDK-002's native application saying its messages in batches of ten through intercat_sdk.h's "
+                    + "batch calls - recorded through the product by icat record under the opt-in sdk profile, reads as icat messages "
+                    + "reads it: every message one message of a run its batch said, its reader's consumption of each one consumption, "
+                    + "each batch's lengths together the truth's lengths of its messages summed, each bound to the process, the one "
+                    + "message said alone that no reader read open, and its operations as FX-SDK-002's.",
                 _ =>
                     "Whether FX-SDK-001's ring - one producer and its readers, each saying what it publishes and consumes through "
                     + "InterCat's cooperative SDK - recorded through the product by icat record under the opt-in sdk profile, reads as "
@@ -98,7 +113,8 @@ internal static class Product
             },
             ["profile"] = "sdk",
             ["durationSeconds"] = duration,
-            ["readers"] = fixture == "FX-SDK-001" ? readers : 1,
+            ["readers"] = fixture is "FX-SDK-001" or "FX-SDK-005" ? readers : 1,
+            ["batch"] = batch > 1 && native is not null ? 10 : batch,
             ["runs"] = results,
             ["notes"] = new[]
             {
@@ -196,18 +212,25 @@ internal static class Product
         int withSourceTicks = 0;
         foreach (CooperativeMessage message in messages)
         {
+            // A message, or a run said in batches: each of its sequences held to the truth by itself.
+            long[] sequences = [.. Enumerable.Range(0, (int)message.Count).Select(at => message.Sequence + at)];
             if (message.Publication is { } publication)
             {
                 records++;
                 bound += publication.Process.IsBound ? 1 : 0;
                 withSourceTicks += publication.SourceTicks is null ? 0 : 1;
-                if (published.TryGetValue((message.Epoch, message.Sequence), out var logged)
-                    && logged.Length == publication.Length && logged.Process == publication.ProcessId)
+                foreach (long sequence in sequences)
                 {
-                    matchedPublications++;
+                    if (published.TryGetValue((message.Epoch, sequence), out var logged) && logged.Process == publication.ProcessId
+                        && Stated(publication, message, logged.Length,
+                            each => published.TryGetValue((message.Epoch, each), out var other) ? other.Length : null))
+                    {
+                        matchedPublications++;
 
-                    // The bytes the publisher copied for it, beside its logical length, as it logged them.
-                    matchedCopies += logged.Copied == message.CopiedLength ? 1 : 0;
+                        // The bytes the publisher copied for a message said alone, beside its logical length, as it logged them;
+                        // a batch's are said together and never split among its messages.
+                        matchedCopies += publication.Batch is null && logged.Copied == message.CopiedLength ? 1 : 0;
+                    }
                 }
             }
 
@@ -216,10 +239,15 @@ internal static class Product
                 records++;
                 bound += consumption.Record.Process.IsBound ? 1 : 0;
                 withSourceTicks += consumption.Record.SourceTicks is null ? 0 : 1;
-                if (consumed.TryGetValue((message.Epoch, message.Sequence, consumption.Consumer), out var logged)
-                    && logged.Length == consumption.Record.Length && logged.Process == consumption.Record.ProcessId)
+                foreach (long sequence in sequences)
                 {
-                    matchedConsumptions++;
+                    if (consumed.TryGetValue((message.Epoch, sequence, consumption.Consumer), out var logged)
+                        && logged.Process == consumption.Record.ProcessId
+                        && Stated(consumption.Record, message, logged.Length,
+                            each => consumed.TryGetValue((message.Epoch, each, consumption.Consumer), out var other) ? other.Length : null))
+                    {
+                        matchedConsumptions++;
+                    }
                 }
             }
         }
@@ -230,14 +258,19 @@ internal static class Product
             ["truthPublications"] = published.Count,
             ["truthConsumptions"] = consumed.Count,
             ["truthUnread"] = unread.Length,
-            ["messages"] = messages.Length,
-            ["publications"] = messages.Sum(message => message.Publications),
-            ["consumptions"] = messages.Sum(message => message.Consumptions.Count),
+            ["messages"] = messages.Sum(message => message.Count),
+            ["rows"] = messages.Length,
+            ["runs"] = messages.Count(message => message.Count > 1),
+            ["messagesInBatches"] = messages.Where(message => message.Publication?.Batch is not null).Sum(message => message.Count),
+            ["publications"] = messages.Sum(message => message.Publications * message.Count),
+            ["consumptions"] = messages.Sum(message => message.Consumptions.Count * message.Count),
             ["matchedPublications"] = matchedPublications,
             ["matchedCopies"] = matchedCopies,
             ["matchedConsumptions"] = matchedConsumptions,
-            ["states"] = Enum.GetValues<CooperativeMessageState>().ToDictionary(state => state.ToString(), state => messages.Count(message => message.State == state)),
-            ["unreadOpen"] = unread.All(key => messages.Any(message => (message.Epoch, message.Sequence) == key && message.State == CooperativeMessageState.Unconsumed)),
+            ["states"] = Enum.GetValues<CooperativeMessageState>().ToDictionary(state => state.ToString(),
+                state => messages.Where(message => message.State == state).Sum(message => message.Count)),
+            ["unreadOpen"] = unread.All(key => messages.Any(message => message.Epoch == key.Epoch && message.Sequence <= key.Sequence
+                && key.Sequence < message.Sequence + message.Count && message.State == CooperativeMessageState.Unconsumed)),
             ["epochs"] = channels.Select(held => held.Epoch).ToArray(),
             ["epochMessages"] = channels.Select(held => held.Messages).ToArray(),
             ["readers"] = channels.Select(held => held.Readers).ToArray(),
@@ -290,6 +323,37 @@ internal static class Product
         }
 
         return evaluated;
+    }
+
+    /// <summary>
+    /// Whether a record states the length the truth logged: a message said alone its own; a batch, where the run is its whole
+    /// batch, its messages' together - the truth's lengths of the run's sequences summed. A run a batch was split into says
+    /// no length of its own to hold.
+    /// </summary>
+    private static bool Stated(CooperativeMessageRecord record, CooperativeMessage message, long own, Func<long, long?> logged)
+    {
+        if (record.Batch is null)
+        {
+            return own == record.Length;
+        }
+
+        if (message.Count != record.Batch)
+        {
+            return false;
+        }
+
+        long total = 0;
+        for (long at = 0; at < message.Count; at++)
+        {
+            if (logged(message.Sequence + at) is not { } length)
+            {
+                return false;
+            }
+
+            total += length;
+        }
+
+        return total == record.Length;
     }
 
     /// <summary>

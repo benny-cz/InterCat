@@ -1,5 +1,6 @@
 /*
- * FX-SDK-002: InterCat's cooperative SDK said from a native application through intercat_sdk.h (ADR-105).
+ * FX-SDK-002: InterCat's cooperative SDK said from a native application through intercat_sdk.h (ADR-105); with --batch,
+ * FX-SDK-006: the same messages said in batches of ten (ADR-106), the truth still logging each message by itself.
  *
  * One process opens a channel at epoch 1 and publishes 100 messages of seeded lengths, each consumed by its reader 1; makes
  * the channel again at epoch 2 for 30 more, its sequence from 1; and publishes one message no reader reads. Each epoch is
@@ -8,6 +9,8 @@
  * its channel, epoch, sequence and reader, with its length - to truth-native.jsonl in the directory --truth names, as the
  * .NET truth workloads log theirs, and the run's parameters and operations to scenario.json. It reads no InterCat state.
  * It exits 3 if the library took an argument it should refuse.
+ *
+ * Usage: publish_consume.exe --truth <directory> [--batch]
  *
  * Build: gcc -O2 -municode -I ../include -o publish_consume.exe publish_consume.c -ladvapi32 -lrpcrt4
  *    or: cl /O2 /I ..\include publish_consume.c advapi32.lib rpcrt4.lib
@@ -21,6 +24,9 @@
 #define EPOCH_ONE_MESSAGES 100
 #define EPOCH_TWO_MESSAGES 30
 
+/* How many messages a batch says, with --batch: each epoch's messages are a whole number of batches. */
+#define BATCH 10
+
 static FILE *truth;
 static long long truth_sequence;
 static LARGE_INTEGER started;
@@ -28,6 +34,8 @@ static unsigned long long created;
 static char channel_text[37];
 static unsigned int seed = 20261107u;
 static int unwritten;
+static int batched;
+static const char *scenario_id = "FX-SDK-002";
 
 /* The next seeded length, from 32 to 4,096 bytes. */
 static long long next_length(void)
@@ -51,13 +59,16 @@ static void said(ULONG status)
     }
 }
 
-/* One truth record of a message, as the .NET truth workloads write a TruthRecord. */
-static void log_message(const char *kind, long long epoch, long long sequence, long long consumer, long long length, int unread)
+/* One truth record of a message, as the .NET truth workloads write a TruthRecord: call names the batch it was said in, by
+ * its first sequence, or is 0 where it was said alone. */
+static void log_message(const char *kind, long long epoch, long long sequence, long long consumer, long long length, int unread,
+    long long call)
 {
     LARGE_INTEGER now;
     SYSTEMTIME utc;
     char reader[24];
     char completed[24];
+    char batch[24];
     QueryPerformanceCounter(&now);
     GetSystemTime(&utc);
 
@@ -73,13 +84,22 @@ static void log_message(const char *kind, long long epoch, long long sequence, l
         snprintf(completed, sizeof completed, "%lld", length);
     }
 
+    if (call > 0)
+    {
+        snprintf(batch, sizeof batch, "%lld", call);
+    }
+    else
+    {
+        snprintf(batch, sizeof batch, "null");
+    }
+
     fprintf(truth,
-        "{\"scenarioId\":\"FX-SDK-002\",\"role\":\"native\",\"sequence\":%lld,\"kind\":\"%s\",\"processId\":%lu,"
+        "{\"scenarioId\":\"%s\",\"role\":\"native\",\"sequence\":%lld,\"kind\":\"%s\",\"processId\":%lu,"
         "\"processStartFileTime\":%llu,\"monotonicTicks\":%lld,\"recordedUtc\":\"%04u-%02u-%02uT%02u:%02u:%02u.%03uZ\","
-        "\"callId\":null,\"localPort\":null,\"remotePort\":null,\"resourceName\":\"fx-sdk-native\",\"declaredBytes\":%lld,"
+        "\"callId\":%s,\"localPort\":null,\"remotePort\":null,\"resourceName\":\"fx-sdk-native\",\"declaredBytes\":%lld,"
         "\"completedBytes\":%s,\"status\":%s,\"message\":{\"channel\":\"%s\",\"epoch\":%lld,\"sequence\":%lld,\"consumer\":%s}}\n",
-        ++truth_sequence, kind, GetCurrentProcessId(), created, now.QuadPart - started.QuadPart, utc.wYear, utc.wMonth, utc.wDay,
-        utc.wHour, utc.wMinute, utc.wSecond, utc.wMilliseconds, length, completed, unread ? "\"unread\"" : "null",
+        scenario_id, ++truth_sequence, kind, GetCurrentProcessId(), created, now.QuadPart - started.QuadPart, utc.wYear, utc.wMonth,
+        utc.wDay, utc.wHour, utc.wMinute, utc.wSecond, utc.wMilliseconds, batch, length, completed, unread ? "\"unread\"" : "null",
         channel_text, epoch, sequence, reader);
 }
 
@@ -89,11 +109,54 @@ static void publish(const intercat_channel *channel, long long epoch, long long 
 {
     long long length = next_length();
     said(intercat_channel_published(channel, sequence, length, length));
-    log_message("MessageSent", epoch, sequence, 0, length, unread);
+    log_message("MessageSent", epoch, sequence, 0, length, unread, 0);
     if (!unread)
     {
         said(intercat_channel_consumed(channel, sequence, length, 1));
-        log_message("MessageReceived", epoch, sequence, 1, length, 0);
+        log_message("MessageReceived", epoch, sequence, 1, length, 0, 0);
+    }
+}
+
+/* A batch of BATCH messages from first on, published in one call - their lengths and copies together - and consumed by
+ * reader 1 in one call; the truth logs each message by itself, with the batch as its call. */
+static void publish_batch(const intercat_channel *channel, long long epoch, long long first)
+{
+    long long lengths[BATCH];
+    long long total = 0;
+    int at;
+    for (at = 0; at < BATCH; at++)
+    {
+        lengths[at] = next_length();
+        total += lengths[at];
+    }
+
+    said(intercat_channel_published_batch(channel, first, BATCH, total, total));
+    for (at = 0; at < BATCH; at++)
+    {
+        log_message("MessageSent", epoch, first + at, 0, lengths[at], 0, first);
+    }
+
+    said(intercat_channel_consumed_batch(channel, first, BATCH, total, 1));
+    for (at = 0; at < BATCH; at++)
+    {
+        log_message("MessageReceived", epoch, first + at, 1, lengths[at], 0, first);
+    }
+}
+
+/* Each message of an epoch, from 1 to count: alone, or in batches of BATCH. */
+static void publish_epoch(const intercat_channel *channel, long long epoch, long long count)
+{
+    long long sequence;
+    for (sequence = 1; sequence <= count; sequence += batched ? BATCH : 1)
+    {
+        if (batched)
+        {
+            publish_batch(channel, epoch, sequence);
+        }
+        else
+        {
+            publish(channel, epoch, sequence, 0);
+        }
     }
 }
 
@@ -156,12 +219,16 @@ int wmain(int argc, wchar_t **argv)
     intercat_channel channel;
     intercat_operation run, first, second;
     FILE *scenario;
-    long long sequence;
-    for (int at = 1; at + 1 < argc; at++)
+    for (int at = 1; at < argc; at++)
     {
-        if (wcscmp(argv[at], L"--truth") == 0)
+        if (wcscmp(argv[at], L"--truth") == 0 && at + 1 < argc)
         {
-            directory = argv[at + 1];
+            directory = argv[++at];
+        }
+        else if (wcscmp(argv[at], L"--batch") == 0)
+        {
+            batched = 1;
+            scenario_id = "FX-SDK-006";
         }
     }
 
@@ -199,10 +266,7 @@ int wmain(int argc, wchar_t **argv)
     /* Epoch 1: every message published and consumed by reader 1. */
     said(intercat_operation_start(&first, L"epoch-1", &root));
     said(intercat_channel_open(&channel, &id, L"fx-sdk-native", INTERCAT_CHANNEL_OTHER, 1));
-    for (sequence = 1; sequence <= EPOCH_ONE_MESSAGES; sequence++)
-    {
-        publish(&channel, 1, sequence, 0);
-    }
+    publish_epoch(&channel, 1, EPOCH_ONE_MESSAGES);
 
     said(intercat_channel_close(&channel));
     said(intercat_operation_complete(&first, 0));
@@ -211,10 +275,7 @@ int wmain(int argc, wchar_t **argv)
      * epoch's operation, whose second completion says nothing. */
     said(intercat_operation_start(&second, L"epoch-2", &root));
     said(intercat_channel_open(&channel, &id, L"fx-sdk-native", INTERCAT_CHANNEL_OTHER, 2));
-    for (sequence = 1; sequence <= EPOCH_TWO_MESSAGES; sequence++)
-    {
-        publish(&channel, 2, sequence, 0);
-    }
+    publish_epoch(&channel, 2, EPOCH_TWO_MESSAGES);
 
     publish(&channel, 2, EPOCH_TWO_MESSAGES + 1, 1);
     said(intercat_channel_close(&channel));
@@ -231,10 +292,10 @@ int wmain(int argc, wchar_t **argv)
     }
 
     fprintf(scenario,
-        "{\n  \"scenarioId\": \"FX-SDK-002\",\n  \"channel\": \"%s\",\n  \"channelName\": \"fx-sdk-native\",\n"
-        "  \"messages\": %d,\n  \"restartMessages\": %d,\n  \"seed\": 20261107,\n  \"library\": \"native-1.1\",\n"
+        "{\n  \"scenarioId\": \"%s\",\n  \"channel\": \"%s\",\n  \"channelName\": \"fx-sdk-native\",\n"
+        "  \"messages\": %d,\n  \"restartMessages\": %d,\n  \"batch\": %d,\n  \"seed\": 20261107,\n  \"library\": \"native-1.1\",\n"
         "  \"closeCalls\": [1, 2],\n  \"unwritten\": %d,\n  \"operations\": [\n",
-        channel_text, EPOCH_ONE_MESSAGES, EPOCH_TWO_MESSAGES, unwritten);
+        scenario_id, channel_text, EPOCH_ONE_MESSAGES, EPOCH_TWO_MESSAGES, batched ? BATCH : 1, unwritten);
     log_operation(scenario, &run, NULL, "publish-consume", 0, 1, 0);
     log_operation(scenario, &first, &root, "epoch-1", 0, 1, 0);
     log_operation(scenario, &second, &root, "epoch-2", 1, 2, 1);

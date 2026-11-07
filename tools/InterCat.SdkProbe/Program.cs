@@ -30,6 +30,8 @@ internal static class Program
             Console.Error.WriteLine("  [--native <publish_consume.exe>]: records FX-SDK-002 instead, the native sample said through intercat_sdk.h.");
             Console.Error.WriteLine("  [--transport pipe|socket]: records FX-SDK-003 or FX-SDK-004 instead, a client's framed messages to a server");
             Console.Error.WriteLine("  over a named pipe or a loopback TCP connection.");
+            Console.Error.WriteLine("  [--batch n]: the ring's messages said in batches of n, FX-SDK-005, or with --native the sample's in batches of");
+            Console.Error.WriteLine("  ten, FX-SDK-006.");
             Console.Error.WriteLine("InterCat.SdkProbe --overhead --output <new directory> [--rounds n] [--messages n] [--duration s]: the SDK's cost,");
             Console.Error.WriteLine("  each round a burst with no session listening and one while icat record --profile sdk records it.");
             return 2;
@@ -54,13 +56,16 @@ internal static class Program
 
         string? native = Option(args, "--native");
         string? transport = Option(args, "--transport");
-        if (transport is not (null or "pipe" or "socket") || (native is not null && transport is not null))
+        int batch = Integer(args, "--batch") ?? 1;
+        if (transport is not (null or "pipe" or "socket") || (native is not null && transport is not null) || batch < 1
+            || (transport is not null && batch > 1))
         {
-            Console.Error.WriteLine("--transport is pipe or socket, and a run records the native sample or a stream, never both.");
+            Console.Error.WriteLine("--transport is pipe or socket, a run records the native sample or a stream, never both, and --batch, "
+                + "at least one, is the ring's or the native sample's.");
             return 2;
         }
 
-        Dictionary<string, object?> measurement = await Product.RunAsync(icat, workload, output, runs, duration, readers, native, transport)
+        Dictionary<string, object?> measurement = await Product.RunAsync(icat, workload, output, runs, duration, readers, native, transport, batch)
             .ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(output, "measurement.json"), JsonSerializer.Serialize(measurement, Json)).ConfigureAwait(false);
         Console.WriteLine($"{measurement["fixture"]} measured through the product into {output}.");

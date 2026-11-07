@@ -8,13 +8,34 @@ using InterCat.Sdk;
 
 namespace InterCat.TestWorkloads;
 
-/// <summary>Parameters of one FX-SDK-001 run: the ring's readers, its two epochs' messages, and its slots.</summary>
+/// <summary>
+/// Parameters of one FX-SDK-001 or FX-SDK-005 run: the ring's readers, its two epochs' messages, its slots, and how many
+/// messages one batch says.
+/// </summary>
 internal sealed record SdkRingOptions
 {
     public const string ScenarioId = "FX-SDK-001";
 
+    /// <summary>The fixture whose messages the producer and its readers say in batches.</summary>
+    public const string BatchedScenarioId = "FX-SDK-005";
+
     /// <summary>The name every process gives the ring's channel as it opens it.</summary>
     public const string ChannelName = "fx-sdk-ring";
+
+    /// <summary>The name the ring's channel goes by where its messages are said in batches.</summary>
+    public const string BatchedChannelName = "fx-sdk-batches";
+
+    /// <summary>
+    /// How many messages the producer publishes, and each reader consumes, in one batch: 1 says each alone (FX-SDK-001);
+    /// more says FX-SDK-005's batches, each epoch's messages a whole number of them.
+    /// </summary>
+    public int Batch { get; init; } = 1;
+
+    /// <summary>The fixture the run is.</summary>
+    public string Fixture => Batch > 1 ? BatchedScenarioId : ScenarioId;
+
+    /// <summary>The name every process gives the ring's channel in this run.</summary>
+    public string Label => Batch > 1 ? BatchedChannelName : ChannelName;
 
     /// <summary>The most readers the ring's header holds a cursor for.</summary>
     public const int MaximumReaders = 8;
@@ -94,7 +115,7 @@ internal static class SdkRingScenario
             ?? throw new InvalidOperationException("The workload executable path could not be resolved.");
         SdkRingOptions run = options with
         {
-            Name = $@"Local\InterCat-{SdkRingOptions.ScenarioId}-{Guid.NewGuid():N}",
+            Name = $@"Local\InterCat-{options.Fixture}-{Guid.NewGuid():N}",
             Channel = Guid.NewGuid(),
         };
         using Process producer = StartChild(executable, "sdk-ring-producer", run);
@@ -127,14 +148,15 @@ internal static class SdkRingScenario
 
             var summary = new
             {
-                scenarioId = SdkRingOptions.ScenarioId,
+                scenarioId = options.Fixture,
                 channel = run.Channel,
-                channelName = SdkRingOptions.ChannelName,
+                channelName = options.Label,
                 name = run.Name,
                 run.Readers,
                 run.Messages,
                 run.RestartMessages,
                 run.Slots,
+                run.Batch,
                 run.Seed,
                 epochs = Epochs,
                 producerExitCode = producer.ExitCode,
@@ -157,7 +179,7 @@ internal static class SdkRingScenario
     public static async Task<int> RunProducerAsync(SdkRingOptions options, CancellationToken cancellationToken)
     {
         string name = options.Name ?? throw new InvalidOperationException("The producer takes the ring's name from --name.");
-        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-producer.jsonl"), SdkRingOptions.ScenarioId, "producer");
+        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, "truth-producer.jsonl"), options.Fixture, "producer");
         truth.Write(TruthEventKind.ProcessStarted);
         using MemoryMappedFile ring = MemoryMappedFile.CreateNew(name, HeaderBytes + ((long)options.Slots * SlotBytes));
         using MemoryMappedViewAccessor view = ring.CreateViewAccessor();
@@ -182,7 +204,7 @@ internal static class SdkRingScenario
         }
 
         string role = string.Create(CultureInfo.InvariantCulture, $"reader-{options.Reader}");
-        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, $"truth-{role}.jsonl"), SdkRingOptions.ScenarioId, role);
+        await using var truth = new TruthLog(Path.Combine(options.TruthDirectory, $"truth-{role}.jsonl"), options.Fixture, role);
         truth.Write(TruthEventKind.ProcessStarted);
         using MemoryMappedFile ring = MemoryMappedFile.OpenExisting(name);
         using MemoryMappedViewAccessor view = ring.CreateViewAccessor();
@@ -210,16 +232,25 @@ internal static class SdkRingScenario
                 Volatile.Write(ref header[CountWord], count);
                 Volatile.Write(ref header[PublishedWord], epoch << 32);
                 Volatile.Write(ref header[EpochWord], epoch);
-                using InterCatChannel channel = InterCatChannel.Open(options.Channel, SdkRingOptions.ChannelName, InterCatChannelKind.SharedMemory, epoch);
-                for (long sequence = 1; sequence <= count; sequence++)
+                using InterCatChannel channel = InterCatChannel.Open(options.Channel, options.Label, InterCatChannelKind.SharedMemory, epoch);
+                for (long sequence = 1; sequence <= count; sequence += options.Batch)
                 {
-                    // A slot is written again only once every reader consumed what it held.
-                    if (sequence > options.Slots && !WaitConsumed(header, options.Readers, (epoch << 32) | (sequence - options.Slots)))
+                    // A slot is written again only once every reader consumed what it held: the batch's last slot's, and so
+                    // each before it.
+                    long last = sequence + options.Batch - 1;
+                    if (last > options.Slots && !WaitConsumed(header, options.Readers, (epoch << 32) | (last - options.Slots)))
                     {
                         return false;
                     }
 
-                    Publish(ring, header, options, channel, truth, epoch, sequence, random.Next(64, SlotBytes - 16 + 1), read: true);
+                    if (options.Batch == 1)
+                    {
+                        Publish(ring, header, options, channel, truth, epoch, sequence, random.Next(64, SlotBytes - 16 + 1), read: true);
+                    }
+                    else
+                    {
+                        PublishBatch(ring, header, options, channel, truth, epoch, sequence, random);
+                    }
                 }
 
                 // The epoch ends once every reader consumed all of it.
@@ -255,8 +286,38 @@ internal static class SdkRingScenario
         // The message is committed - where its readers can take it - once its sequence is published, after its bytes.
         Volatile.Write(ref header[PublishedWord], (epoch << 32) | sequence);
         channel.Published(sequence, length, copiedLength: length);
-        truth.Write(TruthEventKind.MessageSent, declaredBytes: length, completedBytes: length, resourceName: SdkRingOptions.ChannelName,
+        truth.Write(TruthEventKind.MessageSent, declaredBytes: length, completedBytes: length, resourceName: options.Label,
             status: read ? null : "unread", message: new(options.Channel, epoch, sequence, null));
+    }
+
+    /// <summary>
+    /// A batch: each of its messages written into its slot, then all committed together - the batch's last sequence published
+    /// after every one's bytes - and said in one call, their lengths together; the truth logs each message by itself, with
+    /// the batch it was said in as its call.
+    /// </summary>
+    private static unsafe void PublishBatch(byte* ring, long* header, SdkRingOptions options, InterCatChannel channel, TruthLog truth, long epoch,
+        long first, Random random)
+    {
+        int[] lengths = new int[options.Batch];
+        long total = 0;
+        for (int at = 0; at < options.Batch; at++)
+        {
+            long sequence = first + at;
+            int length = lengths[at] = random.Next(64, SlotBytes - 16 + 1);
+            byte* slot = ring + HeaderBytes + ((sequence - 1) % options.Slots * SlotBytes);
+            *(long*)slot = sequence;
+            *(int*)(slot + 8) = length;
+            new Span<byte>(slot + 16, length).Fill(unchecked((byte)sequence));
+            total += length;
+        }
+
+        Volatile.Write(ref header[PublishedWord], (epoch << 32) | (first + options.Batch - 1));
+        channel.PublishedBatch(first, options.Batch, total, copiedLength: total);
+        for (int at = 0; at < options.Batch; at++)
+        {
+            truth.Write(TruthEventKind.MessageSent, callId: first, declaredBytes: lengths[at], completedBytes: lengths[at], resourceName: options.Label,
+                message: new(options.Channel, epoch, first + at, null));
+        }
     }
 
     private static unsafe void Attach(MemoryMappedViewAccessor view, int reader)
@@ -306,11 +367,13 @@ internal static class SdkRingScenario
 
                 epoch = next;
                 long count = Volatile.Read(ref header[CountWord]);
-                using InterCatChannel channel = InterCatChannel.Open(options.Channel, SdkRingOptions.ChannelName, InterCatChannelKind.SharedMemory, epoch);
-                for (long sequence = 1; sequence <= count; sequence++)
+                using InterCatChannel channel = InterCatChannel.Open(options.Channel, options.Label, InterCatChannelKind.SharedMemory, epoch);
+                for (long sequence = 1; sequence <= count; sequence += options.Batch)
                 {
+                    // A batch is taken once its last message is committed, all of its slots then holding its messages.
+                    long last = sequence + options.Batch - 1;
                     waited.Restart();
-                    while (Volatile.Read(ref header[PublishedWord]) < ((epoch << 32) | sequence))
+                    while (Volatile.Read(ref header[PublishedWord]) < ((epoch << 32) | last))
                     {
                         if (waited.Elapsed > Patience)
                         {
@@ -320,19 +383,39 @@ internal static class SdkRingScenario
                         spinner.SpinOnce();
                     }
 
-                    byte* slot = ring + HeaderBytes + ((sequence - 1) % options.Slots * SlotBytes);
-                    int length = *(int*)(slot + 8);
-
-                    // A slot holding another message than the one published was written again before this reader read it.
-                    if (*(long*)slot != sequence)
+                    int[] lengths = new int[options.Batch];
+                    long total = 0;
+                    for (int at = 0; at < options.Batch; at++)
                     {
-                        return false;
+                        byte* slot = ring + HeaderBytes + ((sequence + at - 1) % options.Slots * SlotBytes);
+
+                        // A slot holding another message than the one published was written again before this reader read it.
+                        if (*(long*)slot != sequence + at)
+                        {
+                            return false;
+                        }
+
+                        lengths[at] = *(int*)(slot + 8);
+                        total += lengths[at];
                     }
 
-                    channel.Consumed(sequence, length, consumer: options.Reader);
-                    truth.Write(TruthEventKind.MessageReceived, declaredBytes: length, resourceName: SdkRingOptions.ChannelName,
-                        message: new(options.Channel, epoch, sequence, options.Reader));
-                    Volatile.Write(ref header[CursorWords + options.Reader - 1], (epoch << 32) | sequence);
+                    // Each message alone, or the batch in one call; the truth logs each message by itself either way.
+                    if (options.Batch == 1)
+                    {
+                        channel.Consumed(sequence, lengths[0], consumer: options.Reader);
+                    }
+                    else
+                    {
+                        channel.ConsumedBatch(sequence, options.Batch, total, consumer: options.Reader);
+                    }
+
+                    for (int at = 0; at < options.Batch; at++)
+                    {
+                        truth.Write(TruthEventKind.MessageReceived, callId: options.Batch == 1 ? null : sequence, declaredBytes: lengths[at],
+                            resourceName: options.Label, message: new(options.Channel, epoch, sequence + at, options.Reader));
+                    }
+
+                    Volatile.Write(ref header[CursorWords + options.Reader - 1], (epoch << 32) | last);
                 }
             }
         }
@@ -379,6 +462,7 @@ internal static class SdkRingScenario
             "--messages", options.Messages.ToString(CultureInfo.InvariantCulture),
             "--restart-messages", options.RestartMessages.ToString(CultureInfo.InvariantCulture),
             "--slots", options.Slots.ToString(CultureInfo.InvariantCulture),
+            "--batch", options.Batch.ToString(CultureInfo.InvariantCulture),
             "--seed", options.Seed.ToString(CultureInfo.InvariantCulture),
             "--reader", options.Reader.ToString(CultureInfo.InvariantCulture),
         })

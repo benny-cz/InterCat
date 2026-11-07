@@ -51,7 +51,8 @@ and a channel opened before a session enabled the provider is known from its mes
 a ring buffer's publish and consume, never each load or store of its memory. A batch (minor 1, revision 1036, ADR-106)
 says a run of up to 65,536 consecutive messages in one event - `PublishedBatch` and `ConsumedBatch` - each still its own
 sequence, published once and consumed once a reader, their lengths and copies said together and never one by one: one
-call for what as many single calls would say, for an application faster than a capture keeps single events. Over a byte stream - a pipe or a socket - a
+call for what as many single calls would say, for an application faster than a capture keeps single events.
+FX-SDK-005 and FX-SDK-006 (revision 1037) measure batches of both libraries through the product. Over a byte stream - a pipe or a socket - a
 message is the application's frame: a write may carry several and a message may span reads, and the bytes its frame
 copied into the stream are beside its logical length (revision 1033, FX-SDK-003 and FX-SDK-004).
 

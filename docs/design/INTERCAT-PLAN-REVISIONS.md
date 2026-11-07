@@ -959,6 +959,7 @@ Revision 1033 measures the cooperative SDK's sample pipe and socket applications
 Revision 1034 lists the cooperative SDK's logical messages in the window, read and said as `icat messages` reads and says them (ADR-104's third addendum).
 Revision 1035 keys a batch of the cooperative SDK as a run of messages, counted exactly and never spread into messages no record tells apart (ADR-106).
 Revision 1036 has both of the cooperative SDK's libraries raise batches at the schema's minor 1, and a capture admit them (ADR-106's addendum).
+Revision 1037 measures the cooperative SDK's batches through the product, FX-SDK-005 and FX-SDK-006 (ADR-106's second addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4885,3 +4886,10 @@ two batch calls alike, each refusing a batch no SDK says; a capture admits each 
 source field `MessageCount`, and a capture of an earlier minor counts their records undecodable rather than misread them.
 19 mutations of the events, the calls, their refusals, the admission and the native header are caught. A batch recorded
 through the product, and its cost, follow.
+
+Revision 1037 measures M7's batches through the product (ADR-106's second addendum). FX-SDK-005 says FX-SDK-001's ring in
+batches of eight, and FX-SDK-006 FX-SDK-002's native application in batches of ten, their truth logging every message by
+itself with its batch; recorded three times each, nothing lost, every message of every batch was one message of its run
+by process, each batch's lengths together its messages' summed, and each run one row - 21 and 14 rows for 161 and 131
+messages. The probe holds each message of a run to its own truth. The product's path is unchanged; the cost of batches
+follows.

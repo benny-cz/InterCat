@@ -113,6 +113,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Messages = Integer(args, "--messages") ?? 120,
         RestartMessages = Integer(args, "--restart-messages") ?? 40,
         Slots = Integer(args, "--slots") ?? 16,
+        Batch = Integer(args, "--batch") ?? 1,
         Seed = Integer(args, "--seed") ?? 20_261_107,
         Reader = Integer(args, "--reader") ?? 0,
     };
@@ -239,11 +240,14 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         return 2;
     }
 
-    // FX-SDK-001's ring holds a cursor for at most eight readers, and every epoch publishes at least one message into a slot.
+    // FX-SDK-001's ring holds a cursor for at most eight readers, and every epoch publishes at least one message into a slot;
+    // FX-SDK-005's batches each fit the ring, and each epoch's messages are a whole number of them.
     if (args[0].StartsWith("sdk-ring", StringComparison.Ordinal) && (sdkRingOptions.Readers is < 1 or > SdkRingOptions.MaximumReaders
-        || sdkRingOptions.Messages < 1 || sdkRingOptions.RestartMessages < 1 || sdkRingOptions.Slots < 1))
+        || sdkRingOptions.Messages < 1 || sdkRingOptions.RestartMessages < 1 || sdkRingOptions.Slots < 1
+        || sdkRingOptions.Batch < 1 || sdkRingOptions.Batch > sdkRingOptions.Slots
+        || sdkRingOptions.Messages % sdkRingOptions.Batch != 0 || sdkRingOptions.RestartMessages % sdkRingOptions.Batch != 0))
     {
-        await Console.Error.WriteLineAsync($"--readers is from 1 to {SdkRingOptions.MaximumReaders}, and --messages, --restart-messages and --slots are at least one.")
+        await Console.Error.WriteLineAsync($"--readers is from 1 to {SdkRingOptions.MaximumReaders}, --messages, --restart-messages and --slots are at least one, and --batch from one to --slots, each epoch's messages a whole number of batches.")
             .ConfigureAwait(false);
         return 2;
     }
@@ -515,12 +519,13 @@ static void PrintHelp()
     Console.WriteLine("      application model, and its token's elevation, integrity level and session, then runs it to its end.");
     Console.WriteLine("      Windows only.");
     Console.WriteLine();
-    Console.WriteLine("  sdk-ring --truth <dir> [--readers n] [--messages n] [--restart-messages n] [--slots n] [--seed n]");
+    Console.WriteLine("  sdk-ring --truth <dir> [--readers n] [--messages n] [--restart-messages n] [--slots n] [--batch n] [--seed n]");
     Console.WriteLine("      FX-SDK-001: a producer and its readers share a ring of slots in a section of their own, each saying");
     Console.WriteLine("      what it publishes and consumes through InterCat's cooperative SDK: every message of the channel's");
     Console.WriteLine("      first epoch read by every reader, then the channel made again at epoch 2, its sequence from 1, and");
     Console.WriteLine("      one last message no reader reads. Each process logs every message by its channel, epoch, sequence");
-    Console.WriteLine("      and reader, with its length. Windows only.");
+    Console.WriteLine("      and reader, with its length. --batch runs it as FX-SDK-005: the producer publishes, and each reader");
+    Console.WriteLine("      consumes, that many messages in one batch, the last message still alone. Windows only.");
     Console.WriteLine();
     Console.WriteLine("  sdk-burst --truth <dir> [--messages n] [--calls-per-second n]");
     Console.WriteLine("      The cooperative SDK's cost: one thread publishes and consumes each message of a burst as fast as");

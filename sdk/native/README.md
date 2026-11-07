@@ -21,6 +21,8 @@ intercat_channel ring;
 intercat_channel_open(&ring, &ring_id, L"telemetry", INTERCAT_CHANNEL_SHARED_MEMORY, 1);
 intercat_channel_published(&ring, sequence, length, copied);   /* once, when committed where readers can take it */
 intercat_channel_consumed(&ring, sequence, length, reader);    /* once by each reader */
+intercat_channel_published_batch(&ring, first, count, total, copied);  /* a run of up to 65,536 messages, said once */
+intercat_channel_consumed_batch(&ring, first, count, total, reader);
 intercat_channel_close(&ring);
 
 intercat_operation work;
@@ -41,7 +43,7 @@ event then lost to a session that counts it lost. A second close of a channel or
 ## Sample
 
 `samples/publish_consume.c` publishes and consumes on one channel at two epochs, under three operations, and logs what it
-said beside it as the fixture FX-SDK-002's truth:
+said beside it as the fixture FX-SDK-002's truth; with `--batch` it says its messages in batches of ten, FX-SDK-006's:
 
 ```sh
 gcc -O2 -municode -I include -o publish_consume.exe samples/publish_consume.c -ladvapi32 -lrpcrt4

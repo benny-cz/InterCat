@@ -49,3 +49,13 @@ source field `MessageCount`, its first sequence `MessageSequence`, its lengths t
 capture built before minor 1 counts their records undecodable, never misreads them. The header's descriptors and
 version stay the manifest's, which a test holds. 19 mutations of the events, the calls, their refusals, the
 admission and the header are caught; a batch recorded through the product follows.
+
+## Addendum: batches measured through the product (revision 1037)
+
+FX-SDK-005 says FX-SDK-001's ring in batches of eight through `InterCat.Sdk`, and FX-SDK-006 FX-SDK-002's native
+application in batches of ten through the C library, each workload's truth logging every message by itself
+(`tools/InterCat.SdkProbe --batch`). In three runs of each, nothing lost, every message was one message of the run its
+batch said and every reader's consumption of it one consumption, by process; each batch's lengths together were the
+truth's lengths of its messages summed; the 161 and 131 messages were 21 and 14 rows, never spread into messages no record
+tells apart; and the message each said alone, which no reader read, stayed open. The native library's batch calls, whose
+fields no unit test reads, are held by FX-SDK-006. The cost of saying messages in batches is measured next.
