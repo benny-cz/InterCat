@@ -124,9 +124,12 @@ payload names (ADR-103):
 | `OperationCompleted` | RequestEnd | `operation` | - | - | `SourceTicks`; `status` is the record's status |
 | `MessagesPublished` | Send, outbound | `channel` | - | `logicalLength` together, application payload, send side | `ChannelEpoch`, `MessageSequence` (its first), `MessageCount`, `CopiedLength`, `SourceTicks` |
 | `MessagesConsumed` | Receive, inbound | `channel` | - | `logicalLength` together, application payload, receive side | `ChannelEpoch`, `MessageSequence` (its first), `MessageCount`, `ConsumerNumber`, `SourceTicks` |
+| `MessageContent` | Inventory, outbound | `channel` | - | - (its publication says its length) | `ChannelEpoch`, `MessageSequence`; its bytes kept as content |
 
 An operation's parent is the record's related activity. A copied length is kept as the publisher said it, -1 included.
-A capture admits no `MessageContent` at this version, and the `sdk` profile asks for none (§2).
+The `sdk` profile admits no `MessageContent` and asks for none (§2). A capture keeping the SDK's content under a request
+admits it (revision 1040, `contracts/content-v1.md` §5.2): an inventory of the message's bytes rather than a transfer,
+its bytes kept as content beside the journal, for the processes the request names alone.
 
 ## 7. Messages
 
@@ -165,5 +168,5 @@ messages it keeps said one by one; at 3,200,000 it kept 99.5% of them, and past 
 ## 9. Not defined at this version
 
 - An operation tree by parent, and the lag between a publication and its consumptions.
-- A capture keeping a message's content: its admission under a scoped content request (`contracts/content-v1.md` §5.1),
-  its process scope and what it costs. The SDK says it since minor 2 (§2).
+- A fixture holding a capture of the SDK's content to a truth, and its content asked for through the broker or the
+  window: `icat record` keeps it under a request since revision 1040 (`contracts/content-v1.md` §5.2).

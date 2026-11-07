@@ -69,7 +69,7 @@ public sealed class SdkCaptureTests
         }
     }
 
-    [Fact(DisplayName = "R18: icat profiles sdk compiles the SDK's source from the manifest it carries, includes it beside lifecycle, and states no measured cost, as none is measured")]
+    [Fact(DisplayName = "R18: icat profiles sdk compiles the SDK's source from the manifest it carries, includes it beside lifecycle, and states the source's measured cost with its evidence, the profile's own still unmeasured")]
     public async Task ItsPreviewIncludesTheSdk()
     {
         (InterCatExitCode code, string preview) = await Run("profiles", "sdk");
@@ -77,7 +77,11 @@ public sealed class SdkCaptureTests
         string words = System.Text.RegularExpressions.Regex.Replace(preview, @"\s+", " ");
         Assert.Contains("Requested profile sdk", words, StringComparison.Ordinal);
         Assert.Contains("Can start exactly yes", words, StringComparison.Ordinal);
-        Assert.Matches(@"etw/eventsource/InterCat-Sdk\s+required\s+included\s+unmeasured", preview);
+
+        // The source's cost is what keeping its content cost, every one of its events recorded (ADR-107's addendum): low.
+        Assert.Matches(@"etw/eventsource/InterCat-Sdk\s+required\s+included\s+low", preview);
+        Assert.Contains("etw/eventsource/InterCat-Sdk: overhead evidence bench/results/sdk-content-impact-20261107T203409Z/impact.json",
+            words, StringComparison.Ordinal);
         Assert.DoesNotContain("Measured cost", preview, StringComparison.Ordinal);
     }
 

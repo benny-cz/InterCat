@@ -45,6 +45,12 @@ public static class CooperativeSdk
     public const ushort MessagesConsumed = 9;
 
     /// <summary>
+    /// A message's content, its whole bytes, said right after its publication only to a session asking for it, and kept only
+    /// by a capture keeping the SDK's content under a request (ADR-107).
+    /// </summary>
+    public const ushort MessageContent = 10;
+
+    /// <summary>
     /// The most messages one batch says: a record saying more names no message, as no SDK raises one, and its run is never
     /// spread past what the schema bounds.
     /// </summary>

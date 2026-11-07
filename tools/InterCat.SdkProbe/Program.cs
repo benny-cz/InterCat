@@ -35,6 +35,9 @@ internal static class Program
             Console.Error.WriteLine("InterCat.SdkProbe --overhead --output <new directory> [--rounds n] [--messages n] [--duration s]: the SDK's cost,");
             Console.Error.WriteLine("  each round a burst with no session listening and one while icat record --profile sdk records it; with");
             Console.Error.WriteLine("  --batch n each call says a batch of n messages, the messages a whole number of batches.");
+            Console.Error.WriteLine("InterCat.SdkProbe --content-impact --output <new directory> [--pairs n] [--messages n]: what keeping the");
+            Console.Error.WriteLine("  SDK's content costs the machine, bursts publishing with their bytes in pairs with and without a session");
+            Console.Error.WriteLine("  scoped to the burst asking for content, then a decoy beside a named burst; writes impact.json.");
             return 2;
         }
 
@@ -46,6 +49,15 @@ internal static class Program
         int duration = Integer(args, "--duration") ?? 40;
         int readers = Integer(args, "--readers") ?? 3;
         Directory.CreateDirectory(output);
+        if (args.Contains("--content-impact", StringComparer.Ordinal))
+        {
+            Dictionary<string, object?> impact = await ContentImpact.MeasureAsync(workload, Integer(args, "--messages") ?? 100_000,
+                Integer(args, "--pairs") ?? 7).ConfigureAwait(false);
+            await File.WriteAllTextAsync(Path.Combine(output, "impact.json"), JsonSerializer.Serialize(impact, Json)).ConfigureAwait(false);
+            Console.WriteLine($"What keeping the SDK's content costs measured into {output}.");
+            return 0;
+        }
+
         if (args.Contains("--overhead", StringComparer.Ordinal))
         {
             Dictionary<string, object?> overhead = await Overhead.RunAsync(icat, workload, output, Integer(args, "--rounds") ?? 5,

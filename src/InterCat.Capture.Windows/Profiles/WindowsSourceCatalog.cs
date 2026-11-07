@@ -66,6 +66,12 @@ public sealed record AdmittedEventIntent(
     /// does (ADR-035's addendum). A classic intent's event id is 0, as its header has it.
     /// </summary>
     public int? Opcode { get; init; }
+
+    /// <summary>
+    /// Whether the descriptor is admitted only where the capture keeps its source's content: what it says is a content
+    /// field's, so anywhere else its records would say nothing of their own, and none is asked for (ADR-107).
+    /// </summary>
+    public bool ContentOnly { get; init; }
 }
 
 /// <summary>
@@ -83,6 +89,14 @@ public sealed record WindowsSourceDefinition
     public required string Level { get; init; }
     public required ulong MatchAnyKeyword { get; init; }
     public ulong MatchAllKeyword { get; init; }
+
+    /// <summary>
+    /// The keywords a capture asks for beside <see cref="MatchAnyKeyword"/> only where it keeps this source's content - an
+    /// admitted descriptor holds a content field - and never otherwise (ADR-107); 0 for a source whose content events are
+    /// under its keywords already.
+    /// </summary>
+    public ulong ContentKeywords { get; init; }
+
     public required IReadOnlyList<string> RequestedKeywords { get; init; }
     public bool SupportsCaptureSideProcessFilter { get; init; }
     public ValidatedContentSourceContract? ContentContract { get; init; }
@@ -755,6 +769,13 @@ public static class WindowsSourceCatalog
     public const ulong CooperativeSdkMetadataKeywords =
         EventSourceSessionKeywords | (0x0000_0000_FFFF_FFFF & ~(ulong)InterCatSdkEventSource.Keywords.Content);
 
+    /// <summary>
+    /// What keeping the SDK's content cost the machine, measured as WinINet's capture impact was (ADR-107's addendum): a
+    /// burst of 100,000 messages published with their 256 bytes at 50,000 calls a second, with and without a session scoped
+    /// to it asking for content, a median 0.016 CPU percentage points and 0.1% of the burst's time.
+    /// </summary>
+    public const string CooperativeSdkContentImpact = "bench/results/sdk-content-impact-20261107T203409Z/impact.json";
+
     private static readonly AdmittedFieldIntent SdkProcess = new("processId", FieldRole.ProcessAttribution,
         Notes: "The process that raised the event, which names itself first in each one: the record's owner, never its header (ADR-102).");
 
@@ -807,18 +828,38 @@ public static class WindowsSourceCatalog
             RequiredPrivilege = PrivilegeRequirement.Administrator,
             Level = "win:Informational",
             MatchAnyKeyword = CooperativeSdkMetadataKeywords,
+            ContentKeywords = (ulong)InterCatSdkEventSource.Keywords.Content,
             RequestedKeywords = [],
-            SupportsCaptureSideProcessFilter = false,
+
+            // Measured (ADR-107's addendum): under a session's process filter a decoy beside the named process reached the
+            // session with no record, and was never asked to say anything.
+            SupportsCaptureSideProcessFilter = true,
+            ContentContract = new ValidatedContentSourceContract(
+                [InterCatSdkEventSource.MessageContentId],
+                ["content"],
+                [ContentEvidenceClassification.ApplicationPayload],
+                EnforcesProcessScopeBeforePersistence: true,
+                EnforcesChannelScopeBeforePersistence: false,
+                "contracts/sdk-v1.md; contracts/content-v1.md §5.2; " + CooperativeSdkContentImpact,
+                OverheadClass.Low,
+                CooperativeSdkContentImpact)
+            {
+                ContentStatement = "An application says its own messages' bytes as it holds them, above any encryption of the "
+                    + "channel it sends them over, so a message it encrypts on the wire is kept as its plaintext: each message "
+                    + "it publishes with its bytes, up to 32,768 of them, on every channel of the processes named.",
+            },
             FilteringNotes =
                 "Every instrumented application raises it, each event naming the process that raised it: what one says is its own "
-                + "assertion, kept as metadata. A message's content is under a keyword of its own, which this source never asks "
-                + "for, so no application builds it for the capture.",
+                + "assertion, kept as metadata. A message's content is under a keyword of its own, asked for only by a capture "
+                + "keeping it under a request, for the processes it names alone; no other capture asks for it, so no "
+                + "application builds it for one.",
             StartupBehaviour =
                 "Each instrumented process announces its schema and its clock's frequency as the session enables the provider; "
                 + "a channel opened before the capture is known from its messages alone.",
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Experimental,
-            Overhead = OverheadClass.Unmeasured,
+            Overhead = OverheadClass.Low,
+            OverheadEvidence = CooperativeSdkContentImpact,
             EmbeddedManifest = System.Diagnostics.Tracing.EventSource.GenerateManifest(typeof(InterCatSdkEventSource), string.Empty),
             AdmittedEvents =
             [
@@ -913,6 +954,27 @@ public static class WindowsSourceCatalog
                     SdkBatchLength,
                     SdkTicks,
                 ]),
+
+                // A message's content, beside its publication: a statement of its bytes rather than a transfer, so no send is
+                // counted twice; admitted only where the capture keeps the SDK's content (ADR-107).
+                new(InterCatSdkEventSource.MessageContentId, InterCatSdkEventSource.EventVersion, "Message content",
+                    Mechanism.ApplicationSdk, ObservationLayer.Application, ObservationKind.Inventory, Direction.Outbound,
+                [
+                    SdkProcess,
+                    SdkChannel,
+                    SdkEpoch,
+                    SdkSequence,
+                    new("content", FieldRole.Content,
+                        Notes: "The message's whole bytes as the application holds them, sized by the count before them: up to "
+                            + "32,768, a longer message's never said (ADR-107).")
+                    {
+                        ContentClassification = ContentEvidenceClassification.ApplicationPayload,
+                        ContentEncoding = ContentFieldEncoding.Binary,
+                    },
+                ])
+                {
+                    ContentOnly = true,
+                },
             ],
             Notes =
             [

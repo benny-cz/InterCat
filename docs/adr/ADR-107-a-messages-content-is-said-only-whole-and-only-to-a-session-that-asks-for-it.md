@@ -56,3 +56,19 @@ only to the sessions whose own keywords match.
   reads the bytes by their own size, and the native call's bound and fields only by a session: the fixture recording
   content through the product holds them, as FX-SDK-006 held the native batches' fields. An ETW reader found every
   content of this revision's measure its count and then the bytes sent.
+
+## Addendum: a capture keeps the SDK's content under a request (revision 1040)
+
+A capture keeps what an application says of its messages' bytes only under a scoped content request naming the SDK's
+source and its processes, as WinINet's are kept (`contracts/content-v1.md` §5.2). The content event is compiled only
+where the capture keeps the source's content - a descriptor the catalog marks content-only - and the provider is asked
+for content's keyword only where an admitted descriptor holds a content field, so the `sdk` profile still asks for
+neither. Its record is an inventory of the message's bytes, not a send, so no send is counted twice. The source holds
+its process scope by the session's process filter, measured: a decoy publishing with its bytes beside a named burst
+reached the session with no record and was never asked to say anything. Keeping it costs a median 0.016 CPU percentage
+points and 0.1% of a burst's time - 100,000 messages of 256 bytes at 50,000 calls a second, every one of
+700,000 contents read and none lost (`bench/results/sdk-content-impact-20261107T203409Z`): Low. `icat record --mechanism sdk` and `icat profiles`
+take the request; recorded live through the product, a burst's 200 messages kept whole. 18 mutations of the
+compiler, the requests' keywords, the catalog, the domain and the command line are caught, the product catching
+revision 1039's mutation of a content's count field, which only a reader of ETW sees. A fixture holding it to a truth,
+and the broker and the window asking for it, follow.

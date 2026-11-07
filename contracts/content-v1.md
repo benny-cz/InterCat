@@ -4,7 +4,8 @@ Status: **implemented** in plan revisions 234 to 239 (ADR-036, ADR-037): the chu
 lifetime in the store, its readers and viewer (§4), and the capture paths that write one (§5): InterCat's own content
 fixture, and WinINet's HTTP exchanges for the processes a request names. Since revision 444 an evidence follow mirrors
 it with its journal chunk (§2, ADR-047), and since revision 779 `icat content --find` searches it when a person asks
-(§4).
+(§4). Since revision 1040 a capture keeps what an application says through InterCat's SDK under a request too (§5.2,
+ADR-107).
 
 A content chunk holds the content a capture kept of the records of one journal chunk: the bytes a validated source
 recorded as a message's content, each with what a person needs to read it honestly (§11.2, I21). It is restricted
@@ -243,9 +244,9 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
 
 A capture keeps content only under a reviewed scoped content policy, which names the sources whose content it keeps,
 and only of a source whose catalog entry carries a validated content contract naming the events and fields that hold
-it; every other source of the same capture keeps metadata only. At this version there are two: InterCat's own content
-fixture, under `scoped-content-fixture-v1`, and WinINet's capture of HTTP exchanges under a request (§5.1). The
-fixture:
+it; every other source of the same capture keeps metadata only. At this version there are three: InterCat's own content
+fixture, under `scoped-content-fixture-v1`, WinINet's capture of HTTP exchanges under a request (§5.1), and since
+revision 1040 what an application says through InterCat's SDK, under a request too (§5.2). The fixture:
 
 | | |
 |---|---|
@@ -332,6 +333,25 @@ revision 893: FX-HTTP-012's 64 requests eight at once through a proxy that chall
 recorded over HTTP and over TLS, each kept a challenge and its answer as an exchange each - over TLS a CONNECT and the
 CONNECT then carrying the proxy's credentials - 68 and 132 whole, and every part `icat content --part` saved matched
 the server's bytes of its leg or its log of a CONNECT, 265 of 265 and 390 of 390 that held any.
+
+### 5.2 The cooperative SDK's content (revision 1040, ADR-107)
+
+`icat record --profile content --source etw/eventsource/InterCat-Sdk --mechanism sdk` keeps what the processes it names
+say of their own messages through InterCat's SDK (`contracts/sdk-v1.md` §2): each message they publish with its bytes.
+
+| | |
+|---|---|
+| Source | `etw/eventsource/InterCat-Sdk`, event 10 `MessageContent`: a message's whole bytes, raised right after its publication only to a session asking for the keyword `Content` |
+| Layout | `processId` i32, `channel` GUID, `epoch` i64, `sequence` i64, `contentSize` u32, then that many bytes of `content`; read from the type that raises it |
+| Kept as | `ApplicationPayload`, encoding binary, one message a record, offset 0. The record is an inventory of the message's bytes beside its publication, which says its length, so no byte is counted as sent twice; the SDK says a message of at most 32,768 bytes, and a request's record limit may cut it |
+| Scope | the named processes, by the session's process filter, each held open while the capture runs; every channel of theirs (`*`). Measured: a decoy publishing with its bytes beside a named burst reached the session with no record, and was never asked to say anything |
+| Keywords | only where a request keeps its content, the provider is asked for EventSource's keywords and every one of the SDK's, content's included (0xF000_FFFF_FFFF), and for its content event beside the rest; no other capture asks for either |
+| Impact | Low: a median 0.016 CPU pp and 0.1% of a burst's time - 100,000 messages of 256 bytes at 50,000 calls a second, every one of 700,000 contents read and none lost (`bench/results/sdk-content-impact-20261107T203409Z`) |
+| Encryption | none stated: an application says its own messages' bytes as it holds them, above any encryption of the channel it sends them over. A request says so before it records |
+| Recorded by | `icat record` alone at this version: neither the broker nor the window asks for it |
+
+Recorded live on revision 1040 through the product: a burst publishing 200 messages with their 256 bytes, its process
+named, kept all 200 whole, 51,200 bytes, beside its 603 records, and nothing was lost.
 
 ## 6. What is not defined at this version
 

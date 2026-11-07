@@ -342,8 +342,8 @@ public static class CaptureProfileCatalog
             "Content",
             AdmissionMode.ScopedContent,
             "A bounded request compiles only for a source whose content contract, process scope and impact are proven - "
-                + "WinINet's HTTP exchanges (ADR-037) - and records through icat record, or through the broker from your own "
-                + "processes alone (ADR-049).",
+                + "WinINet's HTTP exchanges (ADR-037), and what an application says through InterCat's SDK (ADR-107) - and "
+                + "records through icat record, or, for WinINet's, through the broker from your own processes alone (ADR-049).",
             requestPreviewAvailable: true),
         // A flight recorder is a way of keeping a capture, not a profile of its own: a rolling capture keeps the newest
         // stretch of session time (ADR-045), states from when it holds every record, and keeps what a pin covers.

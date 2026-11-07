@@ -121,7 +121,7 @@ internal static class ProfilesCommand
         Mechanism? mechanism = ParseMechanism(mechanismText);
         if (mechanismText is not null && mechanism is null)
         {
-            ConsoleUi.Failure(CommandLine.Expects("--mechanism", mechanismText, ["tcp", "udp", "rpc", "http"])
+            ConsoleUi.Failure(CommandLine.Expects("--mechanism", mechanismText, ["tcp", "udp", "rpc", "http", "sdk"])
                 + " Which of them a profile can capture is checked per profile.");
             return InterCatExitCode.InvalidInvocation;
         }
@@ -595,6 +595,7 @@ internal static class ProfilesCommand
             "udp" => Mechanism.Udp,
             "rpc" => Mechanism.Rpc,
             "http" => Mechanism.Http,
+            "sdk" => Mechanism.ApplicationSdk,
             _ => null,
         };
     }

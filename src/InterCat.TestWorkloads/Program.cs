@@ -125,6 +125,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         CallsPerSecond = Integer(args, "--calls-per-second") ?? 0,
         Batch = Integer(args, "--batch") ?? 1,
         Content = args.Contains("--content", StringComparer.Ordinal),
+        WaitForStart = args.Contains("--wait-for-start", StringComparer.Ordinal),
     };
 
     var sdkStreamOptions = new SdkStreamOptions
@@ -533,11 +534,12 @@ static void PrintHelp()
     Console.WriteLine("      and reader, with its length. --batch runs it as FX-SDK-005: the producer publishes, and each reader");
     Console.WriteLine("      consumes, that many messages in one batch, the last message still alone. Windows only.");
     Console.WriteLine();
-    Console.WriteLine("  sdk-burst --truth <dir> [--messages n] [--calls-per-second n] [--batch n | --content]");
+    Console.WriteLine("  sdk-burst --truth <dir> [--messages n] [--calls-per-second n] [--batch n | --content] [--wait-for-start]");
     Console.WriteLine("      The cooperative SDK's cost: one thread publishes and consumes each message of a burst as fast as");
     Console.WriteLine("      the SDK takes the calls, and writes how long they took and whether a session listened to burst.json.");
     Console.WriteLine("      --batch says that many messages in each call, a batch published in one and consumed in one;");
     Console.WriteLine("      --content publishes each message with its bytes, said where a session asks, and counts those said.");
+    Console.WriteLine("      --wait-for-start waits for a line on standard input first, so a session can name the process.");
     Console.WriteLine();
     Console.WriteLine("  sdk-stream --truth <dir> [--transport pipe|socket] [--messages n] [--restart-messages n] [--per-write n]");
     Console.WriteLine("      [--read-bytes n] [--seed n]");

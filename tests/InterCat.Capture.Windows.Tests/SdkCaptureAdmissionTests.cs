@@ -225,9 +225,11 @@ public sealed class SdkCaptureAdmissionTests
                 (int)CooperativeSdk.MessagePublished, (int)CooperativeSdk.MessageConsumed, (int)CooperativeSdk.OperationStarted,
                 (int)CooperativeSdk.OperationCompleted));
 
-        // A batch's events, and the most messages one says, as the SDK raises and bounds them (ADR-106).
+        // A batch's events, and the most messages one says, as the SDK raises and bounds them (ADR-106); a message's content
+        // (ADR-107).
         Assert.Equal((InterCatSdkEventSource.MessagesPublishedId, InterCatSdkEventSource.MessagesConsumedId, (long)InterCatChannel.MaximumBatch),
             ((int)CooperativeSdk.MessagesPublished, (int)CooperativeSdk.MessagesConsumed, CooperativeSdk.MaximumBatch));
+        Assert.Equal(InterCatSdkEventSource.MessageContentId, (int)CooperativeSdk.MessageContent);
     }
 
     [Fact(DisplayName = "§24: a capture keeps a later minor version's added field unread and safe - each event's known fields at the offsets it knows, a longer record read no further - and holds no descriptor of a later major version, whose records stay undecodable, never misread")]

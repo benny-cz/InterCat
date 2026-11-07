@@ -962,6 +962,7 @@ Revision 1036 has both of the cooperative SDK's libraries raise batches at the s
 Revision 1037 measures the cooperative SDK's batches through the product, FX-SDK-005 and FX-SDK-006 (ADR-106's second addendum).
 Revision 1038 publishes what the cooperative SDK's batches cost (ADR-106's third addendum).
 Revision 1039 lets the cooperative SDK say a message's content, only whole and only to a session that asks for it (ADR-107).
+Revision 1040 lets a capture keep the cooperative SDK's content under a request (ADR-107's addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4910,3 +4911,11 @@ content's, 0xF000_FFFF_FFFE: measured, a session asking for 0xFFFF_FFFE heard no
 profile's keywords the SDK said no content. A capture enables only the events it admits, so a later minor's events never
 reach an earlier one, which corrects what revision 1036 said of batches. 22 mutations are caught; a capture keeping the
 content follows.
+
+Revision 1040 lets a capture keep M7's content (ADR-107's addendum). A scoped content request naming the SDK's source
+and its processes - `icat record --profile content --source etw/eventsource/InterCat-Sdk --mechanism sdk` - keeps the
+bytes of each message they publish with them, as `content-v1` §5.2 states: the content event compiled and its keyword
+asked for there alone, its record an inventory of the bytes beside the publication. The source holds its process scope by
+the session's process filter and keeping its content costs the machine little, both measured as WinINet's were: a decoy
+beside a named burst never reached the session, and a median 0.016 CPU percentage points, Low. Recorded live, a burst's
+200 messages were kept whole. 18 mutations are caught, the product catching revision 1039's of a content's count field.

@@ -102,19 +102,20 @@ internal static class RecordCommand
             "TCP" => Mechanism.Tcp,
             "UDP" => Mechanism.Udp,
             "HTTP" => Mechanism.Http,
+            "SDK" => Mechanism.ApplicationSdk,
             _ => (Mechanism)0,
         };
         bool mechanismFits = profile switch
         {
             CaptureProfileKind.FocusedTransport => mechanism is Mechanism.Tcp or Mechanism.Udp,
-            CaptureProfileKind.Content => mechanism is not null and not (Mechanism)0,
+            CaptureProfileKind.Content => mechanism is Mechanism.Http or Mechanism.ApplicationSdk,
             _ => mechanism is null,
         };
         if (!mechanismFits)
         {
             ConsoleUi.Failure(
-                "--mechanism tcp or udp names the transport of --profile focused-transport, and http the messages a content "
-                + "request keeps; no other profile takes one.");
+                "--mechanism tcp or udp names the transport of --profile focused-transport, and http or sdk the messages a "
+                + "content request keeps - WinINet's or an application's said through InterCat's SDK; no other profile takes one.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -471,7 +472,7 @@ internal static class RecordCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat record <new-session-dir> [--profile " + string.Join("|", Profiles) + "]");
-        ConsoleUi.Line("            [--mechanism tcp|udp|http] [--duration <seconds>] [--publish-every <seconds>] [--evidence-only] [--json]");
+        ConsoleUi.Line("            [--mechanism tcp|udp|http|sdk] [--duration <seconds>] [--publish-every <seconds>] [--evidence-only] [--json]");
         ConsoleUi.Line("            content: " + ContentRequestOptions.Synopsis);
         ConsoleUi.Line("                     " + ContentRequestOptions.Limits);
         ConsoleUi.Line();
@@ -485,6 +486,9 @@ internal static class RecordCommand
         ConsoleUi.Line("  publishes once, when it stops. Its coverage ledger is published with the last generation.");
         ConsoleUi.Line("  While it records, compact, checkpoint, rederive and retain refuse to publish into its session,");
         ConsoleUi.Line("  which would end the recording.");
+        ConsoleUi.Line("  --profile content keeps the messages of the processes --pid names: WinINet's HTTP buffers with");
+        ConsoleUi.Line("  --mechanism http, or with --source etw/eventsource/InterCat-Sdk --mechanism sdk what an application");
+        ConsoleUi.Line("  says through InterCat's SDK - the bytes of each message it publishes with them, up to the limits.");
         ConsoleUi.Line("  --evidence-only publishes the admitted evidence alone - journal chunks with the content kept of");
         ConsoleUi.Line("  their records, plan and ledger - and derives nothing in the elevated process; icat follow");
         ConsoleUi.Line("  derives the session from it, mirroring the content with its chunks (ADR-027).");

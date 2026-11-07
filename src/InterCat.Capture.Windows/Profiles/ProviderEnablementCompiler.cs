@@ -61,13 +61,16 @@ public static class ProviderEnablementCompiler
                 processIds = [.. requestedIds.Order()];
             }
 
+            // A source's content keywords are asked for only where the capture keeps its content: an admitted descriptor holds
+            // a content field (ADR-107).
+            bool keepsContent = plan.Events.Any(descriptor => descriptor.Slots.Any(slot => slot.Kind == AdmittedSlotKind.Content));
             requests.Add(new()
             {
                 SourceId = definition.SourceId,
                 ProviderName = definition.ProviderName,
                 ProviderGuid = plan.ProviderGuid,
                 Level = ResolveLevel(definition.Level),
-                MatchAnyKeyword = definition.MatchAnyKeyword,
+                MatchAnyKeyword = definition.MatchAnyKeyword | (keepsContent ? definition.ContentKeywords : 0),
                 MatchAllKeyword = definition.MatchAllKeyword,
                 EventIdsToEnable = [.. plan.Events.Select(item => item.EventId).Distinct().Order()],
                 EventIdsToDisable = definition.DeniedEventIds,

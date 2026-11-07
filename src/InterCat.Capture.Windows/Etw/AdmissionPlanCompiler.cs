@@ -41,6 +41,13 @@ public static class AdmissionPlanCompiler
 
         foreach (AdmittedEventIntent intent in definition.AdmittedEvents)
         {
+            // A descriptor that says nothing but its content is admitted only where the capture keeps its source's content:
+            // anywhere else its records would reach the capture for nothing (ADR-107).
+            if (intent.ContentOnly && !bodyPolicy.KeepsContentOf(definition.SourceId))
+            {
+                continue;
+            }
+
             var versions = new List<ProviderSchemaEvent>();
             foreach (ProviderSchemaEvent candidate in schema.Events)
             {

@@ -31,6 +31,12 @@ internal sealed record SdkBurstOptions
     /// said one by one only.
     /// </summary>
     public bool Content { get; init; }
+
+    /// <summary>
+    /// Whether the burst waits for a line on its standard input before it says anything: a session scoping itself to this
+    /// process names it first, as a capture keeping content must, and then lets it start.
+    /// </summary>
+    public bool WaitForStart { get; init; }
 }
 
 /// <summary>
@@ -50,6 +56,11 @@ internal static class SdkBurstScenario
     public static async Task<int> RunAsync(SdkBurstOptions options, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(options.TruthDirectory);
+        if (options.WaitForStart)
+        {
+            _ = await Console.In.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         bool listened = InterCatSdkEventSource.Log.IsEnabled();
 
         // A paced burst holds each step to its place on the schedule, spinning until it is due; an unpaced one never waits.

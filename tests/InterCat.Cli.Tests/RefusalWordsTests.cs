@@ -162,7 +162,7 @@ public sealed class RefusalWordsTests : IDisposable
         { ["profiles", "focused-transport", "--pid", "x"], "--pid expects a process id; 'x' is not one." },
         { ["profiles", "focused-transport", "--pid", "5", "--pid", "5"], "--pid 5 is given more than once; give it once." },
         { ["profiles", "focused-transport", "--mechanism", "smtp"],
-            "--mechanism expects tcp, udp, rpc or http; 'smtp' is not one. Which of them a profile can capture is checked per profile." },
+            "--mechanism expects tcp, udp, rpc, http or sdk; 'smtp' is not one. Which of them a profile can capture is checked per profile." },
         { ["profiles", "content", "--retention", "forever"], "--retention expects stop-at-limit; 'forever' is not one." },
         { ["profiles", "content", "--inspection", "full"], "--inspection expects disabled or hex-text; 'full' is not one." },
         { ["profiles", "content", "--channel", "a", "--channel", "a"], "--channel a is given more than once; give it once." },
