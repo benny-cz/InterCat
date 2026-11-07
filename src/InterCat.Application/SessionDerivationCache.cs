@@ -161,6 +161,10 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     private bool operationIndexRead;
     private SessionContentIndex? content;
 
+    // The resources each evidence policy admitted their holders under, derived in full once per policy: no checkpoint holds
+    // them and no later generation extends them yet.
+    private readonly Dictionary<EvidencePolicy, ResourceInstanceIndex> resources = [];
+
     // The records the last few operation scopes asked for named, most recent first: each zoom or page of a busy channel's
     // calls otherwise gathered them anew from its pairs.
     private readonly List<(string Key, EvidencePolicy Policy, OperationRecords? Records)> operations = [];
@@ -265,6 +269,34 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
 
     /// <summary>Whether the relations were built from this generation's checkpoint, as it stands or extended.</summary>
     internal bool RelationsFromCheckpoint { get; private set; }
+
+    /// <summary>
+    /// The generation's resource instances (`resource-instances-v3`, ADR-097), their holders <paramref name="processes"/>'
+    /// instances as <paramref name="policy"/> admits them: derived from every segment once per policy and kept with the
+    /// generation. No checkpoint holds them and a later generation derives its own, which a capture's resource profiles make
+    /// a cost a session without their records never pays (ADR-099).
+    /// </summary>
+    public ResourceInstanceIndex Resources(
+        IReadOnlyList<SegmentReaderV1> segments,
+        IReadOnlyList<SegmentReaderV1> fields,
+        ProcessInstanceIndex processes,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            if (resources.TryGetValue(policy, out ResourceInstanceIndex? kept))
+            {
+                return kept;
+            }
+        }
+
+        ResourceInstanceIndex derived = ResourceInstanceIndex.Derive(segments, fields, processes, policy, cancellationToken);
+        lock (gate)
+        {
+            return resources.TryAdd(policy, derived) ? derived : resources[policy];
+        }
+    }
 
     public ProcessInstanceIndex Processes(
         IOwnedDirectory directory,

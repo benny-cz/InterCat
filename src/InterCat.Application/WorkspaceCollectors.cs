@@ -45,6 +45,14 @@ public static class WorkspaceCollectors
             Evidence = [.. snapshot.Evidence.Where(mark => keptOperations.Contains(mark.OperationKey))],
             HostLinks = [.. snapshot.HostLinks.Where(link => !aside.Contains(link.Process))],
 
+            // A resource InterCat's own process held is held by the rest still, and a hub while two of them hold it.
+            ResourceLinks =
+            [
+                .. snapshot.ResourceLinks
+                    .Select(link => link with { Holders = [.. link.Holders.Where(holder => !aside.Contains(holder))] })
+                    .Where(link => link.Holders.Count >= 2),
+            ],
+
             // A listener of InterCat's own goes with it; one it connected to keeps its count, as the process's own does.
             Listeners = [.. snapshot.Listeners.Where(listener => !aside.Contains(listener.Process.Id))],
             SetAside = own,

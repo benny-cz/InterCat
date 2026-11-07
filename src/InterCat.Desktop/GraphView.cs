@@ -76,6 +76,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private static Dashes PartlyChosenHitDashes => Current.PartlyChosenHitDashes;
     private static Dashes ContextDashes => Current.ContextDashes;
     private static Pen ContextRimPen => Current.ContextRimPen;
+    private static Pen MembershipPen => Current.MembershipPen;
 
     /// <summary>A press moves this far before it is a drag that pins, so a slightly unsteady click still only selects.</summary>
     private const double DragThreshold = 4;
@@ -188,6 +189,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             LeaderPen = new(MutedTextBrush, 1);
             ComparisonMarkPen = new(TextBrush, 1.25);
             SharedComparisonDashes = new(ComparisonMarkPen, 2, 1.6);
+            MembershipPen = new(MutedTextBrush, 1.25);
         }
 
         public IBrush NodeBrush { get; }
@@ -223,6 +225,11 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         public Dashes SharedComparisonDashes { get; }
 
+        /// <summary>
+        /// A membership of a resource hub: neutral ink at the thinnest constant stroke, solid and headless, since holding a
+        /// resource carries no mechanism's traffic, no magnitude and no direction (§6.3).
+        /// </summary>
+        public Pen MembershipPen { get; }
 
         /// <summary>Mechanism fills and edge pens, cached per semantic key within this mode.</summary>
         public Dictionary<Mechanism, SolidColorBrush> MechanismBrushes { get; } = [];
@@ -448,9 +455,55 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// further toward a corner, and any other node's disc.
     /// </summary>
     internal static double Reach(GraphDisplayNode node, double radius, Point center, Point end, Point toward) =>
-        node.Kind is GraphNodeKind.OtherHosts or GraphNodeKind.Host
-            ? SquareReach(radius, center, end, toward)
-            : DiscReach(radius, center, end);
+        node.Kind is GraphNodeKind.OtherHosts or GraphNodeKind.Host ? SquareReach(radius, center, end, toward)
+        : node.IsHub ? DiamondReach(radius, center, end, toward)
+        : DiscReach(radius, center, end);
+
+    /// <summary>
+    /// How far a resource hub's diamond, its corners <paramref name="radius"/> from <paramref name="center"/>, reaches along a
+    /// line from <paramref name="end"/> toward <paramref name="toward"/>: to its side, nearer than a corner. Nothing where the
+    /// line starts outside it, or goes nowhere.
+    /// </summary>
+    internal static double DiamondReach(double radius, Point center, Point end, Point toward)
+    {
+        Vector along = toward - end;
+        double length = along.Length;
+        double inside = radius - Math.Abs(end.X - center.X) - Math.Abs(end.Y - center.Y);
+        if (length == 0 || inside < 0)
+        {
+            return 0;
+        }
+
+        return inside / ((Math.Abs(along.X) + Math.Abs(along.Y)) / length);
+    }
+
+    /// <summary>Each resource hub's diamond by its radius, its corners on the axes: built once, drawn under a translation (R11).</summary>
+    private static readonly Dictionary<double, StreamGeometry> HubDiamonds = [];
+
+    // A resource hub: a diamond on the node's face in a muted stroke - a resource, never a process nor several of them (§6.3).
+    private static void DrawHub(DrawingContext context, Point point, double radius, bool focused)
+    {
+        double quantized = Math.Round(radius, 1);
+        if (!HubDiamonds.TryGetValue(quantized, out StreamGeometry? diamond))
+        {
+            diamond = new StreamGeometry();
+            using (StreamGeometryContext figures = diamond.Open())
+            {
+                figures.BeginFigure(new Point(0, -quantized), isFilled: true);
+                figures.LineTo(new Point(quantized, 0));
+                figures.LineTo(new Point(0, quantized));
+                figures.LineTo(new Point(-quantized, 0));
+                figures.EndFigure(isClosed: true);
+            }
+
+            HubDiamonds[quantized] = diamond;
+        }
+
+        using (context.PushTransform(Matrix.CreateTranslation(point.X, point.Y)))
+        {
+            context.DrawGeometry(NodeBrush, focused ? FocusPen : MutedPen, diamond);
+        }
+    }
 
     /// <summary>
     /// How far a disc of <paramref name="radius"/> at <paramref name="center"/> reaches along an edge whose lane ends at
@@ -781,9 +834,10 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             }
 
             // Hue states the mechanism, thickness states magnitude and the dash pattern states evidence quality. No
-            // channel carries two meanings, and none of them is colour alone (section 6.6, R14).
-            Pen pen = EdgePen(edge.Mechanism, ThicknessOf(edge, edgeScale));
-            (double On, double Off)? pattern = EvidencePattern(edge.Strength);
+            // channel carries two meanings, and none of them is colour alone (section 6.6, R14). A membership of a resource
+            // hub states none of them: it is drawn neutral, thin and solid, holding a resource being no traffic (§6.3).
+            Pen pen = edge.Membership ? MembershipPen : EdgePen(edge.Mechanism, ThicknessOf(edge, edgeScale));
+            (double On, double Off)? pattern = edge.Membership ? null : EvidencePattern(edge.Strength);
 
             // Under a brushed interval an edge with no records in it steps back rather than vanishing: the relationship
             // exists in the session, it is only quiet in the range being ranked (§3.4, §6.4). A relationship that leads
@@ -898,6 +952,11 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             {
                 // Other hosts and each host it was opened into: a resource, drawn square with a globe inside.
                 DrawOtherHosts(context, point, radius, node.Key == focused);
+            }
+            else if (node.IsHub)
+            {
+                // A resource two or more drawn processes held: a diamond, neither a process's disc nor a stack of several.
+                DrawHub(context, point, radius, node.Key == focused);
             }
             else if (node.Kind == GraphNodeKind.Context)
             {
@@ -2148,6 +2207,16 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 $"{toward} {node.ConnectedProcesses:N0} {(node.ConnectedProcesses == 1 ? "process" : "processes")}");
         }
 
+        if (node.IsHub)
+        {
+            // A hub says what it is where its name does not, and how many drawn processes held it: shared, not traffic.
+            string held = string.Create(CultureInfo.CurrentCulture,
+                $"held by {node.ConnectedProcesses:N0} {(node.ConnectedProcesses == 1 ? "process" : "processes")}");
+            return ResourceLink.KindOf(node.Key) is { } kind && !node.Label.StartsWith(kind, StringComparison.Ordinal)
+                ? $"{kind} · {held}"
+                : held;
+        }
+
         string members = string.Create(CultureInfo.CurrentCulture,
             $"{node.Members.Count:N0} {(node.Members.Count == 1 ? "process" : "processes")}");
         return node.Kind == GraphNodeKind.Quiet || node.Relationships == 0
@@ -2157,10 +2226,10 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     }
 
     /// <summary>
-    /// The keyboard's order: busiest first, then by name, so arrows walk from what matters most. The hosts Other hosts was
-    /// opened into come after every process and aggregate, the busiest first, and then Other hosts, since they are
-    /// resources the processes' connections run to; a focused rung's context node comes last, however much the rest of the
-    /// machine holds, so the keyboard starts on the focus itself.
+    /// The keyboard's order: busiest first, then by name, so arrows walk from what matters most. The resource hubs and the
+    /// hosts Other hosts was opened into come after every process and aggregate, the busiest first, and then Other hosts,
+    /// since they are resources the processes held or their connections ran to; a focused rung's context node comes last,
+    /// however much the rest of the machine holds, so the keyboard starts on the focus itself.
     /// </summary>
     internal static IReadOnlyList<GraphDisplayNode> Traversal(GraphDisplay display) =>
     [
@@ -2169,7 +2238,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             {
                 GraphNodeKind.Context => 3,
                 GraphNodeKind.OtherHosts => 2,
-                GraphNodeKind.Host => 1,
+                GraphNodeKind.Host or GraphNodeKind.SharedResource => 1,
                 _ => 0,
             })
             .ThenByDescending(node => node.Observations)

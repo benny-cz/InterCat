@@ -363,6 +363,69 @@ public sealed record OtherHost(string Address, int TcpConnections, int UdpFlows,
 }
 
 /// <summary>
+/// A resource two or more of the session's process instances held (§6.3's resource hubs, ADR-099): a section by its views or
+/// by its handles - two resources, never joined (ADR-092) - or a named synchronization object, never an image's section,
+/// with the processes its records bind to (`resource-instances-v3`). The graph draws it as a hub joined to each holder by a
+/// membership edge, which is undirected and carries no traffic value: holding a resource proves shared access, never what
+/// moved through it (P27).
+/// </summary>
+/// <param name="Holders">The process instances its records bind to under the snapshot's policy, two or more, each once.</param>
+public sealed record ResourceLink(
+    Mechanism Mechanism,
+    long Number,
+    bool ByViews,
+    string? Name,
+    IReadOnlyList<ProcessInstanceId> Holders)
+{
+    /// <summary>For a section by its views, the largest extent one view of it mapped - its capacity, never bytes moved; null for any other.</summary>
+    public long? LargestView { get; init; }
+
+    /// <summary>What every resource hub's key begins with.</summary>
+    public const string KeyPrefix = "resource:hub:";
+
+    /// <summary>What every membership's key begins with.</summary>
+    public const string MembershipPrefix = "membership:";
+
+    /// <summary>
+    /// Its key, by what it is and its number - a mapped section's, a section's by its handles or an object's - which a
+    /// session's later generations keep, since its number is the capture's gate's.
+    /// </summary>
+    public string Key => $"{KeyPrefix}{Kind}:{Number}";
+
+    /// <summary>The kind its key and words name it by: a mapped section, a section by its handles, or a synchronization object.</summary>
+    private string Kind => Mechanism != Mechanism.SharedSection ? "object" : ByViews ? "mapped-section" : "section";
+
+    /// <summary>
+    /// The words a reader names it by: its name's leaf where its records named it, else what it is and its number - a mapped
+    /// section, a section or a synchronization object.
+    /// </summary>
+    public string Label => Name is { } name ? ResourceNames.LeafOf(name)
+        : Mechanism != Mechanism.SharedSection ? $"Synchronization object {Number}"
+        : ByViews ? $"Mapped section {Number}"
+        : $"Section {Number}";
+
+    /// <summary>The key of one holder's membership: what a membership edge names as what it draws.</summary>
+    public string MembershipKey(ProcessInstanceId holder) => $"{MembershipPrefix}{Key}:{holder}";
+
+    /// <summary>Whether a key names a resource hub.</summary>
+    public static bool IsKey(string? key) => key is not null && key.StartsWith(KeyPrefix, StringComparison.Ordinal);
+
+    /// <summary>
+    /// What a hub's key says it is, as a reader names it - a mapped section, a section or a synchronization object; null for a
+    /// key that names no hub.
+    /// </summary>
+    public static string? KindOf(string? key) =>
+        !IsKey(key) ? null
+        : key!.AsSpan(KeyPrefix.Length).StartsWith("mapped-section:", StringComparison.Ordinal) ? "Mapped section"
+        : key.AsSpan(KeyPrefix.Length).StartsWith("section:", StringComparison.Ordinal) ? "Section"
+        : key.AsSpan(KeyPrefix.Length).StartsWith("object:", StringComparison.Ordinal) ? "Synchronization object"
+        : null;
+
+    /// <summary>Whether a key names a membership.</summary>
+    public static bool IsMembershipKey(string? key) => key is not null && key.StartsWith(MembershipPrefix, StringComparison.Ordinal);
+}
+
+/// <summary>
 /// A relationship between two processes, as strong as its weakest evidence, carrying the rule that derived it and what it
 /// rests on (R4), so the edge it draws can always be explained.
 /// </summary>
@@ -737,6 +800,13 @@ public sealed record WorkspaceSnapshot(
     /// session.
     /// </summary>
     public IReadOnlyList<HostLink> HostLinks { get; init; } = [];
+
+    /// <summary>
+    /// The resources two or more of its processes held over the whole session, under the policy the snapshot was projected
+    /// under, the most holders first: what the graph draws as resource hubs (§6.3, ADR-099). Empty for a snapshot not
+    /// projected from a session, and for one whose processes made no record of a mechanism that has resources.
+    /// </summary>
+    public IReadOnlyList<ResourceLink> ResourceLinks { get; init; } = [];
 
     /// <summary>
     /// The ports the session's processes accepted TCP connections at, each with who connected, the busiest first, over the

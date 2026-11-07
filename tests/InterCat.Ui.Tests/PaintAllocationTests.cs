@@ -101,6 +101,33 @@ public sealed class PaintAllocationTests
         Assert.True(report.Count == 0, string.Join(Environment.NewLine, report));
     }
 
+    [AvaloniaFact(DisplayName = "R11: a repaint of a graph drawing a resource hub and its memberships allocates nothing of its own, the hub under the pointer or not")]
+    public async Task AHubRepaintAllocatesNothingOfItsOwn()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        Publish(session.Store, rows, fields: fields);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+            Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await Settle(window, workspace);
+        var report = new List<string>();
+
+        // The section both processes mapped, drawn as a diamond joined to each by a membership; then under the pointer.
+        GraphDisplayNode hub = Assert.Single(workspace.GraphDisplay.Nodes, node => node.IsHub);
+        Assert.Equal(2, workspace.GraphDisplay.Edges.Count(edge => edge.Membership));
+        Measure(window, "a hub", report);
+        GraphView graph = window.GetControl<GraphView>("GraphSurface");
+        window.MouseMove(graph.TranslatePoint(graph.PointOf(hub.Key)!.Value, window)!.Value);
+        await Settle(window, workspace);
+        Measure(window, "a hub hovered", report);
+
+        window.Close();
+        Assert.True(report.Count == 0, string.Join(Environment.NewLine, report));
+    }
+
     [AvaloniaFact(DisplayName = "R11: a repaint of a zoomed timeline drawn as density allocates nothing of its own, on every rung, a cell beside the pointer or not, on records and on bytes")]
     public async Task ADensityRepaintAllocatesNothingOfItsOwn()
     {

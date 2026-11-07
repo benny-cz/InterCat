@@ -4319,6 +4319,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 + DescribeContextRelationships(cluster) + ". Esc returns to the wider graph.",
             GraphNodeKind.OtherHosts => DescribeOtherHosts(cluster),
             GraphNodeKind.Host => DescribeHost(cluster),
+            GraphNodeKind.SharedResource => DescribeHub(cluster),
             GraphNodeKind.OtherHostsOnly => $"{members} whose only drawn activity is their connections to other hosts, the less "
                 + "busy of those that have no relationship, counted in one node rather than drawn one by one around Other "
                 + "hosts. They are listed below, and Enter on one opens its rung, which lists its connections.",
@@ -4371,6 +4372,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         if (drawnDisplay.Node(key) is { Kind: GraphNodeKind.Host } host)
         {
             return DescribeHostHover(host, drawnDisplay);
+        }
+
+        if (drawnDisplay.Node(key) is { IsHub: true } resourceHub)
+        {
+            return DescribeHubHover(resourceHub);
         }
 
         if (drawnDisplay.Node(key) is { } node)
@@ -4472,6 +4478,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         if (drawn.ToHosts)
         {
             return DescribeHostEdgeHover(drawn, drawnDisplay);
+        }
+
+        if (drawn.Membership)
+        {
+            return DescribeMembershipHover(drawn, drawnDisplay);
         }
 
         long edgeScale = GraphEncoding.EdgeScale(drawnDisplay);
@@ -5048,6 +5059,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : ChosenRow is { } row ? "Selected " + ChosenRowNoun(row.Row)
         : OpenedChannel is { } opened ? opened.Heading
         : ChosenMember is not null ? "Selected process"
+        : SelectedCluster is { IsHub: true } ? "Selected resource"
         : SelectedCluster is { IsHost: false } ? "Selected aggregate"
         : ChosenHostAddress is not null ? "Selected host"
         : SelectedGroup is not null ? "Selected group"
@@ -5058,11 +5070,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// With nothing selected in a published session, the rung's own records, as E reads them over the scope the rows count
     /// (§6.4, I5): "Every admitted record in this session", "Records owned by the 2 instances of client.exe". Null with a
     /// selection, in the tour, and at the evidence rung, whose records are listed already. The Other hosts node chosen
-    /// stands for no process and no one host, so it selects no records of its own and E still lists the rung's; a host
-    /// drawn on its own, or one chosen in its list, selects its connections'.
+    /// stands for no process and no one host, and a resource hub for no process, so neither selects records of its own and
+    /// E still lists the rung's; a host drawn on its own, or one chosen in its list, selects its connections'.
     /// </summary>
     private string? RungRecords => realOverview && !IsEvidenceRung && selectedProcess is null && !HasMultiSelection
-        && selectedRelationship is null && SelectedCluster is null or { Kind: GraphNodeKind.OtherHosts } && SelectedGroup is null
+        && selectedRelationship is null && SelectedCluster is null or { Kind: GraphNodeKind.OtherHosts or GraphNodeKind.SharedResource }
+        && SelectedGroup is null
         && ChosenRow is null && ChosenHostAddress is null
             ? CellRecords(ScopeInterval ?? ladder.Current.Viewport)
                 ?? EvidenceScopes.Resolve(Snapshot, ladder.Current with { Viewport = ScopeInterval ?? ladder.Current.Viewport },

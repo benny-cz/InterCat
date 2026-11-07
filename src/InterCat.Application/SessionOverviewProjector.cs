@@ -152,6 +152,14 @@ public sealed record SessionOverviewBundle(
     public IReadOnlyList<HostLink> HostLinks { get; init; } = [];
 
     /// <summary>
+    /// The resources two or more of the session's processes held, whose binding <see cref="Policy"/> admits, the most holders
+    /// first: what the graph draws as resource hubs (§6.3, ADR-099). Derived only where a process made a record of a
+    /// mechanism that has resources, so a session with none opens no segment for them; empty for an overview no session
+    /// was projected for.
+    /// </summary>
+    public IReadOnlyList<ResourceLink> ResourceLinks { get; init; } = [];
+
+    /// <summary>
     /// The ports the session's processes accepted TCP connections at, each with who connected, the busiest first, counted
     /// as each process's <see cref="ProcessNode.ConnectionsAccepted"/> is (<see cref="ConnectionOpens.Listeners"/>): the
     /// session's listening ports, as `icat ports` lists them. Empty for an overview no session was projected for.
@@ -358,6 +366,14 @@ public static class SessionOverviewProjector
             .Select(reach => new HostLink(processes.Instances[reach.Holder].Id, reach.Mechanism, reach.Addresses, reach.Strength))
             .OrderBy(link => link.Key, StringComparer.Ordinal)];
 
+        // Each resource two or more processes held, which the graph draws as a hub joined to each of them (§6.3, ADR-099).
+        // Resources are derived only where a process made a record of a mechanism that has them, so a session whose
+        // processes made none - every Explore capture - opens no segment for them.
+        ResourceLink[] resourceLinks = nodes.Any(node => node.Activity.Any(count =>
+                count.Mechanism is Mechanism.SharedSection or Mechanism.Synchronization && count.Records > 0))
+            ? SharedResources(derivation.Resources(Segments(), Fields(), processes, policy, cancellationToken))
+            : [];
+
         string? channelProblem = admitted.Length > maximumChannels
             ? $"This generation has {admitted.Length:N0} admitted paired channels, above the "
                 + $"{maximumChannels:N0}-channel overview bound. The graph and timeline remain available; "
@@ -471,7 +487,8 @@ public static class SessionOverviewProjector
         (string? pinned, IReadOnlyList<RetentionPin> pins) = PinsOf(store);
         return new SessionOverviewBundle(
             $"session:{manifest.SessionId:N}:generation:{manifest.Generation}:digest:{manifest.Digest}"
-                + $":relation:{TransportRelationIndex.RelationRule}:policy:{policy}" + (pending ? ":rpc:pending" : string.Empty),
+                + $":relation:{TransportRelationIndex.RelationRule}:policy:{policy}" + (pending ? ":rpc:pending" : string.Empty)
+                + (resourceLinks.Length > 0 ? $":resource:{ResourceInstanceIndex.Rule}" : string.Empty),
             manifest.SessionId,
             manifest.Generation,
             extent,
@@ -511,6 +528,7 @@ public static class SessionOverviewProjector
             Census = census,
             ConnectionOpensRecorded = ConnectionOpens.Recorded(relations),
             HostLinks = hostLinks,
+            ResourceLinks = resourceLinks,
             Listeners = ConnectionOpens.Listeners(relations, policy),
             Collectors = collectors,
             Services = services,
@@ -526,6 +544,29 @@ public static class SessionOverviewProjector
 
         SegmentsOnDemand Fields() => openedFields ??= new(store, manifest, SessionSegments.FieldNames(manifest));
     }
+
+    /// <summary>
+    /// The resources two or more process instances held, as the graph draws them (ADR-099): never an image's section - a
+    /// module loaded, not memory a process shared - nor an AF_UNIX socket, an endpoint whose other end no record names; the
+    /// most holders first, then by key.
+    /// </summary>
+    internal static ResourceLink[] SharedResources(ResourceInstanceIndex resources) =>
+    [
+        .. resources.Instances
+            .Where(resource => resource.Mechanism is Mechanism.SharedSection or Mechanism.Synchronization && !resource.Image
+                && resource.Holders.Count >= 2)
+            .Select(resource => new ResourceLink(
+                resource.Mechanism,
+                resource.Number,
+                resource.ByViews,
+                resource.Name,
+                [.. resource.Holders.Select(holder => holder.Process)])
+            {
+                LargestView = resource.LargestView,
+            })
+            .OrderByDescending(link => link.Holders.Count)
+            .ThenBy(link => link.Key, StringComparer.Ordinal),
+    ];
 
     /// <summary>
     /// What the overview counts from a generation's rows: how many there are, how many have no session time, the extent

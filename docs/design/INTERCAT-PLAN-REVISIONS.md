@@ -929,6 +929,7 @@ Revision 1003 makes AF_UNIX sockets resource instances with the traffic they car
 Revision 1004 makes a section by its views a resource instance of its own (ADR-097's second addendum), never joined to its handles' number, with its views and their largest extent; an image's sections are listed only with icat resources --images.
 Revision 1005 answers the resource-topology basis from the derived resources (ADR-098): icat metric --basis resource-topology counts resources by their known lifetime, the processes sharing one with a focus and sections' capacity, never traffic.
 Revision 1006 groups topology answers by a fact of the processes holding each resource (ADR-098's addendum): each group's resources, sharing processes and capacity, a shared resource in each holder's group.
+Revision 1007 draws a resource two or more drawn processes held as a hub of the window's graph (ADR-099), joined to each holder by a membership with no traffic value.
 
 ## Revisions, a paragraph each, in order
 
@@ -4650,3 +4651,10 @@ session, package or service container: each group's count of the resources its p
 holding one of them, or of their sections' capacity. A shared resource counts in each holder's group, so the groups
 overlap and do not partition the total, and a remainder answers over the union of the groups it merges; a membership
 no group can take is unattributed by why. Grouping by mechanism or peer stays undefined.
+
+Revision 1007 draws resource hubs in the window's graph (ADR-099), as §6.3 and §3.5 ask now that sections are admitted.
+A section by its views or its handles, or a named synchronization object, that two or more drawn processes held is a
+diamond joined to each holder's node by a membership - neutral, thin, constant, solid and headless, counted in no total
+and re-counted by no brush - never an image's section nor a socket. Hubs come after every process is placed, the most
+holders first, as many of eight as the budget allows, and their holders are kept out of No relationships. Resources are
+derived only where a process made a record of a mechanism that has them, so an Explore session opens no segment for them.

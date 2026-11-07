@@ -3106,6 +3106,7 @@
       "R11": [
         "R11: a publication ranked by bytes with its table shown reads its bytes once, for the ranking and the table alike, and its edges' traffic only at the rung it shows",
         "R11: a repaint of a call or exchange lane allocates nothing of its own, as bars or as density, a mark under the pointer or not",
+        "R11: a repaint of a graph drawing a resource hub and its memberships allocates nothing of its own, the hub under the pointer or not",
         "R11: a repaint of a zoomed timeline drawn as density allocates nothing of its own, on every rung, a cell beside the pointer or not, on records and on bytes",
         "R11: a repaint of the timeline, graph, minimap and hover layer allocates nothing of its own, on every rung",
         "R11: a repaint while the graph's nodes move and a ring settles allocates nothing of its own",
