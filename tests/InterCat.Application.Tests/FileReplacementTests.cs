@@ -37,7 +37,7 @@ public sealed class FileReplacementTests : IDisposable
         using (Hold(destination))
         {
             replacing = OnItsOwnThread(() => FileReplacement.Move(staged, destination, overwrite: true));
-            await Task.Delay(300);
+            await OnItsOwnThread(() => Thread.Sleep(300));
             Assert.False(replacing.IsCompleted, "The replace did not wait for the reader to let go.");
         }
 
@@ -53,7 +53,7 @@ public sealed class FileReplacementTests : IDisposable
         using (Hold(staged))
         {
             replacing = OnItsOwnThread(() => FileReplacement.Move(staged, destination, overwrite: true));
-            await Task.Delay(300);
+            await OnItsOwnThread(() => Thread.Sleep(300));
             Assert.False(replacing.IsCompleted, "The replace did not wait for the staged file's reader to let go.");
         }
 
@@ -98,7 +98,7 @@ public sealed class FileReplacementTests : IDisposable
         using (Hold(workspace))
         {
             noting = OnItsOwnThread(() => InvestigationWorkspace.AddNote(workspace, "kept through a read", null, Now));
-            await Task.Delay(300);
+            await OnItsOwnThread(() => Thread.Sleep(300));
             Assert.False(noting.IsCompleted, "The change did not wait for the read to end.");
         }
 

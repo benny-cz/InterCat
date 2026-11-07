@@ -52,10 +52,11 @@ public sealed class ApplicationSettingsTests : IDisposable
         Task<ApplicationSettings> choosing;
         using (new FileStream(SettingsPath, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
-            // The choice is made on a thread of its own, as the window's settings menu makes it beside the read.
+            // The choice is made on a thread of its own, as the window's settings menu makes it beside the read, and the read
+            // is held on another for as long: neither waits on a timer of the pool's, which the full suites keep busy.
             choosing = Task.Factory.StartNew(() => store.SaveTheme(ThemeMode.Light), CancellationToken.None,
                 TaskCreationOptions.LongRunning, TaskScheduler.Default);
-            await Task.Delay(300);
+            await Task.Factory.StartNew(() => Thread.Sleep(300), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             Assert.False(choosing.IsCompleted, "The choice did not wait for the read to end.");
         }
 

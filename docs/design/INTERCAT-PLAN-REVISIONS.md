@@ -950,6 +950,7 @@ Revision 1024 has the window offer the discovery demo (ADR-101's third addendum)
 Revision 1025 begins M7 with the cooperative SDK's schema and its .NET library (ADR-102).
 Revision 1026 lets a capture admit the cooperative SDK's records through the opt-in sdk profile (ADR-103).
 Revision 1027 makes a file InterCat replaces wait out a reader's brief hold on it rather than lose the change.
+Revision 1028 reads the cooperative SDK's records as logical messages, which icat messages lists (ADR-104).
 
 ## Revisions, a paragraph each, in order
 
@@ -4805,3 +4806,11 @@ file, or a scanner reading what was just written, and was lost with "access deni
 now move their staged file through one replace that waits up to two seconds for either file's holder to let go, and
 refuses at once what no hold explains - a file kept where it is not to be replaced, or a staged file that is not there.
 7 mutations of the path are caught.
+
+Revision 1028 reads what a capture admits of the cooperative SDK as logical messages (ADR-104). A record is the SDK's by its
+provider, which the domain names as the SDK's type declares it, since the content fixture shares the mechanism and its
+event numbers. A message is its channel's identity, epoch and sequence, a consumption one reader's, and a record lacking
+one names none and is counted apart (R3). Each message is consumed, open, its publication unseen, or conflicting -
+published twice or read twice by one reader - never guessed; a channel's epoch is named by its first opening. `icat
+messages` lists each channel's epoch and, with --channel, its messages, publishers and readers, and --json answers
+cooperative-messages-v1; 24 mutations of the path are caught.

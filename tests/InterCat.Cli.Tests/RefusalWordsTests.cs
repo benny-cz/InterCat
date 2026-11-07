@@ -57,6 +57,9 @@ public sealed class RefusalWordsTests : IDisposable
         { ["checkpoint"], "A published session directory is required: icat checkpoint <directory>." },
         { ["exchanges"], "A session directory is required: icat exchanges <directory>." },
         { ["exchanges", "{nowhere}"], "No session directory at {nowhere}." },
+        { ["messages", "{nowhere}"], "No session directory at {nowhere}." },
+        { ["messages", "{session}", "--channel", "frames"], "--channel expects a channel's identity, a GUID; 'frames' is not one." },
+        { ["messages", "{session}", "--messages", "lots"], "--messages expects a number of messages per channel up to 10,000; 'lots' is not one." },
         { ["operations"], "A session directory is required: icat operations <directory>." },
         { ["processes"], "A session directory is required: icat processes <directory>." },
         { ["session"], "A session directory is required: icat session <directory>." },
@@ -203,6 +206,7 @@ public sealed class RefusalWordsTests : IDisposable
     {
         { ["evidence", "{session}"] },
         { ["exchanges", "{session}"] },
+        { ["messages", "{session}"] },
         { ["links", "{session}", "--process", "100"] },
         { ["metric", "{session}", "--metric", "observations"] },
         { ["operations", "{session}"] },
@@ -371,7 +375,7 @@ public sealed class RefusalWordsTests : IDisposable
     public static TheoryData<string[]> JsonRuns => new()
     {
         { ["channels", "{session}", "--json"] }, { ["compact", "{session}", "--check", "--json"] }, { ["evidence", "{session}", "--json"] },
-        { ["exchanges", "{session}", "--json"] }, { ["hosts", "{session}", "--json"] },
+        { ["exchanges", "{session}", "--json"] }, { ["hosts", "{session}", "--json"] }, { ["messages", "{session}", "--json"] },
         { ["metric", "{session}", "--metric", "observations", "--json"] }, { ["operations", "{session}", "--json"] },
         { ["overview", "{session}", "--json"] }, { ["patterns", "{session}", "--json"] }, { ["pin", "{session}", "--json"] },
         { ["processes", "{session}", "--json"] }, { ["programs", "{session}", "--json"] }, { ["session", "{session}", "--json"] },

@@ -27,7 +27,7 @@ public sealed class CommandLineTests : IDisposable
     [
         "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
         "hosts", "programs", "ports", "resources", "patterns", "links", "waits", "outliers", "evidence", "timeline", "compare", "export", "package", "raw", "content", "recover", "staging",
-        "retain", "pin", "compact", "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench",
+        "retain", "pin", "compact", "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "messages", "workspace", "verify", "bench",
         "support", "demo",
     ];
 
@@ -166,7 +166,7 @@ public sealed class CommandLineTests : IDisposable
                     ["outliers", named, "--interval", "100:110"], ["compare", named, "--baseline", "0:10", "--interval", "10:20"],
                     ["evidence", named], ["timeline", named, "--interval", "0:10"],
                     ["export", named, "--output", Path.Combine(written, "rows.csv")], ["processes", named], ["operations", named],
-                    ["exchanges", named], ["metric", named, "--metric", "observations"], ["raw", named, .. record],
+                    ["exchanges", named], ["messages", named], ["metric", named, "--metric", "observations"], ["raw", named, .. record],
                     ["content", named, .. record], ["content", named, "--find", "x"],
                     ["package", named, "--redacted", "--output", written], ["retain", named, "--release-content"],
                     ["rederive", named], ["compact", named], ["checkpoint", named], ["recover", named], ["pin", named],
@@ -209,7 +209,7 @@ public sealed class CommandLineTests : IDisposable
                 ["evidence", folder], ["timeline", folder, "--interval", "0:10"],
                 ["compare", folder, "--baseline", "0:10", "--interval", "10:20"],
                 ["export", folder, "--output", Path.Combine(package, "rows.csv")], ["processes", folder], ["operations", folder],
-                ["exchanges", folder], ["metric", folder, "--metric", "observations"], ["raw", folder, .. record],
+                ["exchanges", folder], ["messages", folder], ["metric", folder, "--metric", "observations"], ["raw", folder, .. record],
                 ["content", folder, .. record], ["content", folder, "--find", "x"], ["package", folder, "--redacted", "--output", package],
                 ["retain", folder, "--release-content"], ["retain", folder, "--release-journal-before-record", "1"],
                 ["retain", folder, "--release-before", "1 s"],
@@ -344,7 +344,7 @@ public sealed class CommandLineTests : IDisposable
                 ["patterns", damaged], ["links", damaged, "--process", "100"], ["waits", damaged],
                 ["outliers", damaged, "--interval", "100:110"], ["compare", damaged, "--baseline", "0:10", "--interval", "10:20"],
                 ["channels", damaged], ["hosts", damaged], ["programs", damaged], ["ports", damaged], ["evidence", damaged],
-                ["timeline", damaged, "--interval", "0:10"], ["processes", damaged], ["operations", damaged], ["exchanges", damaged],
+                ["timeline", damaged, "--interval", "0:10"], ["processes", damaged], ["operations", damaged], ["exchanges", damaged], ["messages", damaged],
                 ["metric", damaged, "--metric", "observations"], ["content", damaged, "--find", "x"],
             })
             {
@@ -709,6 +709,7 @@ public sealed class CommandLineTests : IDisposable
         {
             (["operations", tcp.Path, "--json"], root => root.GetProperty("coverage"), [("Rpc", "NotCollected"), ("Alpc", "NotCollected")]),
             (["exchanges", tcp.Path, "--json"], root => root.GetProperty("coverage"), [("Http", "NotCollected")]),
+            (["messages", tcp.Path, "--json"], root => root.GetProperty("coverage"), [("ApplicationSdk", "NotCollected")]),
             (["channels", tcp.Path, "--json"], root => root.GetProperty("page").GetProperty("coverage"), [("Tcp", "Covered"), ("Udp", "NotCollected")]),
         })
         {
@@ -1582,6 +1583,7 @@ public sealed class CommandLineTests : IDisposable
                 ["processes", session.Path],
                 ["operations", session.Path],
                 ["exchanges", session.Path],
+                ["messages", session.Path],
                 ["metric", session.Path, "--metric", "observations"],
                 ["metric", session.Path, "--metric", "bytes-sent", "--byte-domain", "TransportObserved", "--side", "send", "--group-by", "process"],
                 ["metric", "--matrix"],

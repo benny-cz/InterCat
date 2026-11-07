@@ -52,7 +52,7 @@ internal static class Icat
         "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
         "hosts", "programs", "ports", "resources", "patterns", "links", "waits", "outliers", "evidence", "timeline", "compare", "export",
         "package", "raw", "content", "recover", "staging", "retain", "pin", "compact", "checkpoint", "follow", "metric",
-        "processes", "operations", "exchanges", "workspace", "verify", "support", "demo", "bench",
+        "processes", "operations", "exchanges", "messages", "workspace", "verify", "support", "demo", "bench",
     ];
 
     private static async Task<InterCatExitCode> DispatchAsync(string[] args, CancellationToken cancellationToken)
@@ -117,6 +117,7 @@ internal static class Icat
                 "processes" => await ProcessesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "operations" => await OperationsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "exchanges" => await ExchangesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "messages" => await MessagesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "workspace" => await WorkspaceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "support" => await SupportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -439,6 +440,11 @@ internal static class Icat
         ConsoleUi.Line("      exchanges, what was recorded of each part, and how long each took, never their content unless");
         ConsoleUi.Line("      --decode reads what the listed exchanges' heads say from content kept with consent to inspect");
         ConsoleUi.Line("      it. --output writes the listing as JSON or, with --format csv or a .csv path, as a table.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat messages <directory> [--channel <id>] [--messages <n>] [--json]");
+        ConsoleUi.Line("      Lists what applications instrumented with InterCat's SDK said of their channels: each");
+        ConsoleUi.Line("      channel's epoch and its messages, each published once and consumed once by each reader,");
+        ConsoleUi.Line("      counted as consumed, open, consumed with no publication recorded, or conflicting.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat workspace <new|add|show|relink|alias|align|compare|correlate|timeline|join|same-host");
         ConsoleUi.Line("                 |translate|note|view|comparison|package> <workspace> ... [--json]");

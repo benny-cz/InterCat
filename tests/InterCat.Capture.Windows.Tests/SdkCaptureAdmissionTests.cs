@@ -178,6 +178,20 @@ public sealed class SdkCaptureAdmissionTests
             MechanismCatalog.Entries.Single(entry => entry.Mechanism == Mechanism.ApplicationSdk).SourceIds);
     }
 
+    [Fact(DisplayName = "§15: the domain names the SDK's provider and events as the SDK's own type declares them, so a derivation reads its records without the library an application ships")]
+    public void TheDomainNamesTheSdkAsItDeclaresItself()
+    {
+        Assert.Equal((InterCatSdkEventSource.ProviderName, EventSource.GetGuid(typeof(InterCatSdkEventSource))),
+            (CooperativeSdk.ProviderName, CooperativeSdk.ProviderId));
+        Assert.Equal(
+            (InterCatSdkEventSource.SdkStartedId, InterCatSdkEventSource.ChannelOpenedId, InterCatSdkEventSource.ChannelClosedId,
+                InterCatSdkEventSource.MessagePublishedId, InterCatSdkEventSource.MessageConsumedId,
+                InterCatSdkEventSource.OperationStartedId, InterCatSdkEventSource.OperationCompletedId),
+            ((int)CooperativeSdk.SdkStarted, (int)CooperativeSdk.ChannelOpened, (int)CooperativeSdk.ChannelClosed,
+                (int)CooperativeSdk.MessagePublished, (int)CooperativeSdk.MessageConsumed, (int)CooperativeSdk.OperationStarted,
+                (int)CooperativeSdk.OperationCompleted));
+    }
+
     private static SourceAdmissionPlan Compiled() => AdmissionPlanCompiler.Compile(Sdk, ManifestParser.Parse(Sdk.EmbeddedManifest!), 0);
 
     private static AdmittedEventPlan Plan(SourceAdmissionPlan plan, int eventId) =>

@@ -79,7 +79,13 @@ payload names (ADR-103):
 
 An operation's parent is the record's related activity. A copied length is kept as the publisher said it, -1 included.
 
-## 7. Not defined at this version
+## 7. Messages
 
-- A derivation of logical messages from what a capture admits: a publication paired with its consumptions.
+What a capture admits is read as logical messages (revision 1028, ADR-104, `contracts/cooperative-messages-v1.md`): each its
+channel's epoch and sequence, its publication and each reader's consumption, said consumed, open, its publication unseen,
+or conflicting; `icat messages` lists them.
+
+## 8. Not defined at this version
+
+- An operation tree by parent, and the lag between a publication and its consumptions.
 - Content carried by an event, bounded and opt-in; batching; a native C/C++ library.

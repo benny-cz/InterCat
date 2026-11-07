@@ -395,6 +395,46 @@ internal static class TestSessions
     };
 
     /// <summary>
+    /// A record of the cooperative SDK's provider as a capture admits it (ADR-103): owned by the process its payload names,
+    /// <paramref name="process"/>, its channel the record's identifier, a publication or a consumption measuring its logical
+    /// length as application payload; its session time a thousand times its reading. Its epoch, sequence and reader are
+    /// source fields.
+    /// </summary>
+    public static ObservationRowV1 SdkRecord(long ticks, ushort eventId, int process, ulong ordinal, Guid? channel, long? length = null)
+    {
+        bool published = eventId == CooperativeSdk.MessagePublished;
+        bool transfer = published || eventId == CooperativeSdk.MessageConsumed;
+        return Transfer(ticks, published ? ObservationKind.Send : ObservationKind.Receive,
+            published ? AccountingSide.SendSide : AccountingSide.ReceiveSide, length, process, ordinal) with
+        {
+            FactKey = FactKey.Create("source-observation"),
+            ProviderId = CooperativeSdk.ProviderId,
+            EventId = eventId,
+            DescriptorVersion = 1,
+            SchemaFingerprint = "sha256:" + new string('5', 64),
+            Opcode = 0,
+            Mechanism = Mechanism.ApplicationSdk,
+            Layer = ObservationLayer.Application,
+            Kind = eventId switch
+            {
+                CooperativeSdk.ChannelOpened => ObservationKind.Open,
+                CooperativeSdk.ChannelClosed => ObservationKind.Close,
+                CooperativeSdk.MessagePublished => ObservationKind.Send,
+                _ => ObservationKind.Receive,
+            },
+            Direction = !transfer ? Direction.DirectionNotApplicable : published ? Direction.Outbound : Direction.Inbound,
+            SourceIdentifier = channel,
+            ByteValue = transfer ? length : null,
+            ByteDomain = transfer ? ByteDomain.ApplicationPayload : null,
+            AccountingSide = transfer ? (published ? AccountingSide.SendSide : AccountingSide.ReceiveSide) : null,
+            MeasurementUnit = transfer ? MeasurementUnit.Bytes : null,
+            ByteAvailability = transfer ? FieldAvailability.Present : FieldAvailability.NotApplicable,
+            MeasurementQuality = transfer ? QualityLevel.Proven : QualityLevel.UnknownQuality,
+            SessionRelativeTicks = ticks * 1_000,
+        };
+    }
+
+    /// <summary>
     /// An ALPC send or receive the thread <paramref name="thread"/> of <paramref name="process"/> made, as a classic kernel
     /// record names it: ALPC's class, id 0, version 2 and its opcode (ADR-035). Its message id is a source field.
     /// </summary>
