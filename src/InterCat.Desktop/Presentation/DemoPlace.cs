@@ -26,13 +26,29 @@ internal static class DemoPlace
     /// The demo investigation to open under <paramref name="root"/>: the first of its folders that holds one, or one made in
     /// the first that is free.
     /// </summary>
-    public static string Ensure(string root, CancellationToken cancellationToken = default)
+    public static string Ensure(string root, CancellationToken cancellationToken = default) => Ensure(
+        root, "demo", DemoInvestigation.WorkspaceFileName,
+        folder => DemoInvestigation.Create(folder, cancellationToken).WorkspacePath,
+        "demo");
+
+    /// <summary>
+    /// The discovery demo's investigation to open under <paramref name="root"/> (ADR-101): the first of its own folders -
+    /// `discovery`, then `discovery-2` and on - that holds one, or one made in the first that is free.
+    /// </summary>
+    public static string EnsureDiscovery(string root, CancellationToken cancellationToken = default) => Ensure(
+        root, "discovery", DiscoveryDemo.WorkspaceFileName,
+        folder => DiscoveryDemo.Create(folder, cancellationToken).WorkspacePath,
+        "discovery demo");
+
+    // The investigation a demo keeps in the first of its folders under root that holds one, or makes in the first that holds
+    // nothing; a folder holding anything else is left as it is.
+    private static string Ensure(string root, string name, string workspaceFile, Func<string, string> create, string what)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
         for (int index = 1; index <= MaximumFolders; index++)
         {
-            string folder = Path.Combine(root, index == 1 ? "demo" : string.Create(CultureInfo.InvariantCulture, $"demo-{index}"));
-            string workspace = Path.Combine(folder, DemoInvestigation.WorkspaceFileName);
+            string folder = Path.Combine(root, index == 1 ? name : string.Create(CultureInfo.InvariantCulture, $"{name}-{index}"));
+            string workspace = Path.Combine(folder, workspaceFile);
             if (File.Exists(workspace))
             {
                 return workspace;
@@ -40,10 +56,10 @@ internal static class DemoPlace
 
             if (!File.Exists(folder) && (!Directory.Exists(folder) || !Directory.EnumerateFileSystemEntries(folder).Any()))
             {
-                return DemoInvestigation.Create(folder, cancellationToken).WorkspacePath;
+                return create(folder);
             }
         }
 
-        throw new IOException($"Every demo folder in {root} holds something else; remove one to make the demo again.");
+        throw new IOException($"Every {what} folder in {root} holds something else; remove one to make the {what} again.");
     }
 }

@@ -73,6 +73,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
     /// <summary>The demo is being made or opened, so a second click does not start another.</summary>
     private bool exploringDemo;
 
+    /// <summary>The discovery demo is being made or opened, so a second click does not start another.</summary>
+    private bool exploringDiscovery;
+
     /// <summary>Where the demo is kept and made (§14 M5); InterCat's own folder beside its sessions unless a test says.</summary>
     internal string? DemoRoot { get; set; }
 
@@ -271,6 +274,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
     private const string Stopping = "The capture is stopping, and what it published is being saved.";
     private const string ForgetDoes = "Stop offering to finish this capture; the session and the evidence stay";
     private const string DemoDoes = "Open InterCat's generated demo investigation of two hosts; nothing in it was captured";
+    private const string DiscoveryDemoDoes = "Open InterCat's generated discovery demo of one host whose processes share named "
+        + "objects and a section, talk over AF_UNIX sockets, send window messages and make COM calls; nothing in it was captured";
 
     /// <summary>The finish's work off the window's thread while one runs, which a close that stops it waits.</summary>
     private (Task Work, CloseStop Stop)? finishWork;
@@ -439,6 +444,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
         // The session's actions say from the first frame what they do, or why not: none is offered before a session is.
         Offering.Offer(StopCaptureButton, null, StopDoes);
         OfferDemo();
+        OfferDiscoveryDemo();
         UpdateEvidenceAction();
 
         // The operating system's light or dark setting (§26.2) reaches the resources on its own; the canvases and the
@@ -1938,6 +1944,50 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow, I
         Offering.Offer(ExploreDemoButton, opening, DemoDoes);
         Offering.Offer(ExploreDemoItem, opening, DemoDoes);
     }
+
+    private void ExploreDiscoveryDemo(object? sender, RoutedEventArgs eventArgs) => ExploreDiscoveryDemoAsync().Watched();
+
+    /// <summary>
+    /// Opens InterCat's generated discovery demo (ADR-101) beside this window, making it the first time in a folder of
+    /// InterCat's own beside the demo's, and says what it is; null when it could not be, which the card then says.
+    /// </summary>
+    internal async Task<InvestigationWindow?> ExploreDiscoveryDemoAsync()
+    {
+        if (exploringDiscovery || closed)
+        {
+            return null;
+        }
+
+        exploringDiscovery = true;
+        OfferDiscoveryDemo();
+        try
+        {
+            string root = DemoRoot ?? DemoPlace.Root();
+            string workspace = await Task.Run(() => DemoPlace.EnsureDiscovery(root));
+            if (closed)
+            {
+                return null;
+            }
+
+            CaptureDetail.Text = DemoInvestigation.Disclosure + " The discovery demo's investigation is open beside this window; "
+                + "open its session from there.";
+            return ShowInvestigation(workspace);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            if (!closed) CaptureDetail.Text = "The discovery demo could not be opened: " + exception.Message;
+            return null;
+        }
+        finally
+        {
+            exploringDiscovery = false;
+            OfferDiscoveryDemo();
+        }
+    }
+
+    /// <summary>Offers the discovery demo in the Investigation menu, or says it is being opened.</summary>
+    private void OfferDiscoveryDemo() =>
+        Offering.Offer(ExploreDiscoveryDemoItem, exploringDiscovery ? "The discovery demo is being opened." : null, DiscoveryDemoDoes);
 
     private void OpenOriginalRecord(object? sender, RoutedEventArgs eventArgs) => OpenOriginalRecord();
 

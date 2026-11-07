@@ -441,6 +441,7 @@
                   <MenuItem x:Name="NewInvestigationItem" Header="New investigation…" Click="NewInvestigation"
                             AutomationProperties.HelpText="Start a new investigation file" />
                   <MenuItem x:Name="ExploreDemoItem" Header="Explore the demo" Click="ExploreDemo" />
+                  <MenuItem x:Name="ExploreDiscoveryDemoItem" Header="Explore the discovery demo" Click="ExploreDiscoveryDemo" />
                 </MenuFlyout>
               </Button.Flyout>
             </Button>

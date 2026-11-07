@@ -1,7 +1,7 @@
 # ADR-101: The discovery demo generates what driverless discovery finds, never a measurement
 
 - Status: accepted for M6's synthetic investigations; named synchronization objects and sections (revision 1020), AF_UNIX
-  sockets and window messages (revision 1021), COM calls (revision 1023)
+  sockets and window messages (revision 1021), COM calls (revision 1023); the window offers it (revision 1024)
 - Date: 2026-11-07
 - Decision owners: InterCat maintainers
 - Relates to: ADR-084, ADR-092, ADR-097, ADR-098, ADR-099, `demo-investigation-v1`, plan M5, M6, R3, P27
@@ -34,7 +34,7 @@ cost.
 ## Consequences
 
 - A person can try hubs, the resources list, a resource's records and the resource-topology basis with no capture.
-- The window offers the discovery demo in a later revision; until then `icat demo --discovery` writes it.
+- The window's Investigation menu offers it since revision 1024, beside the demo; `icat demo --discovery` writes it too.
 - 13 mutations of the path are caught.
 
 ## Addendum: AF_UNIX sockets and window messages (revision 1021)
@@ -56,3 +56,12 @@ naming the process at its other end. `com-call-link-v1` links each call's ends, 
 through them with no ALPC record, and the graph draws the editor's RPC edge to the host as revision 1022 draws what COM
 calls link. With it the demo holds each mechanism M6 promoted.
 5 mutations of the path are caught.
+
+## Third addendum: the window offers it (revision 1024)
+
+The window's Investigation menu offers Explore the discovery demo beside Explore the demo. The first time it makes the
+discovery demo in a folder of InterCat's own beside the demo's - `discovery`, or `discovery-2` and on where one holds
+anything else, which is left as it is - and later it opens the same one; it opens its investigation beside the window and
+says, where the capture card states what happened, that InterCat generated it. While it is being made a second click
+starts nothing.
+7 mutations of the path are caught.

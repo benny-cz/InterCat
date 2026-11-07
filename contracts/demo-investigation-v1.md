@@ -108,6 +108,11 @@ its other end's process - so `com-call-link-v1` links them, `rpc-call-peer-v2` s
 ALPC record, and the graph draws the editor's RPC edge to the host. Its ledger collects RPC and COM calls besides, and
 the demo then holds every mechanism M6 promoted.
 
+Since revision 1024 the window's Investigation menu offers it as Explore the discovery demo, as §4 offers the demo: the
+first time in a folder of InterCat's own beside the demo's, `discovery`, or the first of `discovery-2` to
+`discovery-100` that holds it or nothing where one holds anything else, and later the same one; it opens its
+investigation beside the window and says, where the capture card states what happened, what it is in the words of §3.
+
 ## 6. Not defined at this version
 
 - A demo of RPC, ALPC, pipes or content. Their records need more than a transfer's fields; until a demo carries them,

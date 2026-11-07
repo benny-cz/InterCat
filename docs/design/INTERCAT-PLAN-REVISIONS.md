@@ -946,6 +946,7 @@ Revision 1020 adds the discovery demo: one generated host sharing named objects 
 Revision 1021 adds AF_UNIX sockets and window messages to the discovery demo (ADR-101's addendum).
 Revision 1022 draws the RPC edges a capture's COM calls link where it collected no ALPC (ADR-079's seventh addendum).
 Revision 1023 adds COM calls to the discovery demo (ADR-101's second addendum).
+Revision 1024 has the window offer the discovery demo (ADR-101's third addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4775,3 +4776,7 @@ Revision 1023 adds COM calls to the discovery demo (ADR-101's second addendum): 
 makes, each carried by an RPC call at both ends as COM-Perf records them beside RPC, so `com-call-link-v1` links them,
 `rpc-call-peer-v2` serves each call through them with no ALPC record, and the graph draws the editor's RPC edge to the
 host. The demo then holds every mechanism M6 promoted.
+
+Revision 1024 has the window offer the discovery demo (ADR-101's third addendum): Explore the discovery demo, beside
+Explore the demo in the Investigation menu, makes it once in a folder of InterCat's own beside the demo's, leaving one
+that holds anything else as it is, then opens the same one, its investigation beside the window, saying it was generated.

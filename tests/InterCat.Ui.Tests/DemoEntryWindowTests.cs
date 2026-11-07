@@ -110,6 +110,60 @@ public sealed class DemoEntryWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§14: Explore the discovery demo makes it once, in a folder of its own beside the demo's, opens its investigation saying it was generated, and leaves a folder holding anything else as it is")]
+    public async Task ExploringTheDiscoveryDemoOpensItsInvestigation()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "intercat-discovery-entry-" + Guid.NewGuid().ToString("N"));
+        var window = new MainWindow { Width = 1_080, Height = 700, DemoRoot = root };
+        try
+        {
+            window.Show();
+
+            // Offered in the Investigation menu, named for what it opens; while it is being made, a second click starts nothing.
+            MenuItem item = window.GetControl<MenuItem>("ExploreDiscoveryDemoItem");
+            Assert.Equal("Explore the discovery demo", item.Header);
+            Assert.Contains("nothing in it was captured", Offers.Offered(item), StringComparison.Ordinal);
+            Task<InvestigationWindow?> opening = window.ExploreDiscoveryDemoAsync();
+            Assert.Equal("The discovery demo is being opened.", Offers.WhyNot(item));
+            Task<InvestigationWindow?> second = window.ExploreDiscoveryDemoAsync();
+            Assert.True(second.IsCompleted);
+            Assert.Null(await second);
+
+            // It makes the discovery demo in its own folder and opens its investigation, saying what it is.
+            InvestigationWindow first = Assert.IsType<InvestigationWindow>(await opening);
+            string workspace = Path.Combine(root, "discovery", DiscoveryDemo.WorkspaceFileName);
+            Assert.Equal(workspace, first.WorkspacePath);
+            Assert.StartsWith(DemoInvestigation.Disclosure + " The discovery demo's", window.GetControl<TextBlock>("CaptureDetail").Text,
+                StringComparison.Ordinal);
+            Assert.Contains("nothing in it was captured", Offers.Offered(item), StringComparison.Ordinal);
+            string made = InvestigationWorkspace.Read(workspace).WorkspaceId.ToString();
+            first.Close();
+
+            // Later it opens the same one, beside the demo's folder rather than in it.
+            InvestigationWindow demo = Assert.IsType<InvestigationWindow>(await window.ExploreDemoAsync());
+            demo.Close();
+            InvestigationWindow again = Assert.IsType<InvestigationWindow>(await window.ExploreDiscoveryDemoAsync());
+            Assert.Equal((workspace, made), (again.WorkspacePath, InvestigationWorkspace.Read(workspace).WorkspaceId.ToString()));
+            Assert.Equal(["demo", "discovery"], Directory.EnumerateDirectories(root).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+            again.Close();
+
+            // A folder of that name holding anything else is left as it is, and the next free one takes the discovery demo.
+            string held = Path.Combine(root, "held");
+            Directory.CreateDirectory(Path.Combine(held, "discovery"));
+            File.WriteAllText(Path.Combine(held, "discovery", "notes.txt"), "mine");
+            window.DemoRoot = held;
+            InvestigationWindow beside = Assert.IsType<InvestigationWindow>(await window.ExploreDiscoveryDemoAsync());
+            Assert.Equal(Path.Combine(held, "discovery-2", DiscoveryDemo.WorkspaceFileName), beside.WorkspacePath);
+            Assert.Equal(["notes.txt"], Directory.EnumerateFileSystemEntries(Path.Combine(held, "discovery")).Select(Path.GetFileName));
+            beside.Close();
+        }
+        finally
+        {
+            window.Close();
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§6.1: with a session opened the card drops its first-run guidance and empty lines and says in a line which generation is open, so the smallest window's ranked list keeps two rows and the start of a third, and the demo waits in the Investigation menu")]
     public async Task TheDemoLeavesTheRankedListItsRoom()
     {
