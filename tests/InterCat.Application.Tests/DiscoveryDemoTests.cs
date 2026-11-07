@@ -11,7 +11,7 @@ namespace InterCat.Application.Tests;
 /// </summary>
 public sealed class DiscoveryDemoTests
 {
-    [Fact(DisplayName = "§14: the discovery demo's host shares named objects and a section, by its handles and by its views, talks over AF_UNIX sockets and sends window messages, which its views find as a capture's - hubs, listed resources, their ends and traffic, each process's records and the resource-topology basis - and says it was generated")]
+    [Fact(DisplayName = "§14: the discovery demo's host shares named objects and a section, by its handles and by its views, talks over AF_UNIX sockets, sends window messages and makes COM calls, which its views find as a capture's - hubs, listed resources, their ends and traffic, each process's records, the RPC edge its COM calls link and the resource-topology basis - and says it was generated")]
     public void TheDiscoveryDemoHoldsSharedResources()
     {
         string folder = Folder();
@@ -27,7 +27,7 @@ public sealed class DiscoveryDemoTests
             Assert.True(overview.Demo);
             Assert.All(new[] { StoreDependencyKind.Index, StoreDependencyKind.CaptureFinalization, StoreDependencyKind.ClockCalibration },
                 kind => Assert.Contains(manifest.Dependencies, dependency => dependency.Kind == kind));
-            Assert.Equal(["editor.exe", "indexer.exe", "preview.exe"],
+            Assert.Equal(["comhost.exe", "editor.exe", "indexer.exe", "preview.exe"],
                 overview.Nodes.Select(node => node.Name).Order(StringComparer.Ordinal));
             ProcessInstanceId Id(string name) => overview.Nodes.Single(node => node.Name == name).Id;
 
@@ -81,6 +81,17 @@ public sealed class DiscoveryDemoTests
             Assert.Equal((13L, 16L), (Records("editor.exe", Mechanism.UnixDomainSocket), Records("indexer.exe", Mechanism.UnixDomainSocket)));
             Assert.Equal((8L, 8L, 0L), (Records("editor.exe", Mechanism.WindowMessage), Records("preview.exe", Mechanism.WindowMessage),
                 Records("indexer.exe", Mechanism.WindowMessage)));
+
+            // The editor's four COM calls to the COM host, each a COM call and the RPC call carrying it at both ends: linked
+            // with no ALPC record, so the graph draws the editor's RPC edge to the host, of the RPC records at its two ends.
+            Assert.Equal((8L, 8L, 8L, 8L), (Records("editor.exe", Mechanism.ComCall), Records("comhost.exe", Mechanism.ComCall),
+                Records("editor.exe", Mechanism.Rpc), Records("comhost.exe", Mechanism.Rpc)));
+            CommunicationEdge calls = Assert.Single(overview.Edges, edge => edge.Mechanism == Mechanism.Rpc);
+            Assert.Equal(16L, calls.ObservationCount);
+            Assert.Equal(new HashSet<ProcessInstanceId> { Id("editor.exe"), Id("comhost.exe") }, [calls.SourceId, calls.TargetId]);
+            Assert.Equal((4, 0), calls.SourceId == Id("editor.exe")
+                ? (calls.SourceConnected, calls.TargetConnected)
+                : (calls.TargetConnected, calls.SourceConnected));
             Assert.Equal((ResourceEnd.HeldAtStop, true, @"\Sessions\1\BaseNamedObjects"),
                 (listed["resource:hub:object:2"].End, listed["resource:hub:object:2"].MadeInCapture, listed["resource:hub:object:2"].Namespace));
             Assert.Equal((ResourceEnd.HeldAtStop, ResourceEnd.Closed, ResourceEnd.Closed),
@@ -106,9 +117,9 @@ public sealed class DiscoveryDemoTests
 
             // Its capture collected each mechanism it holds, nothing lost, and no other.
             Assert.All(new[] { Mechanism.ProcessLifecycle, Mechanism.Synchronization, Mechanism.SharedSection, Mechanism.UnixDomainSocket,
-                Mechanism.WindowMessage }, mechanism =>
+                Mechanism.WindowMessage, Mechanism.Rpc, Mechanism.ComCall }, mechanism =>
                 Assert.Equal(CoverageState.Covered, overview.MechanismCoverage.Single(entry => entry.Mechanism == mechanism).State));
-            Assert.All(new[] { Mechanism.Tcp, Mechanism.NamedPipe, Mechanism.ComCall }, mechanism =>
+            Assert.All(new[] { Mechanism.Tcp, Mechanism.NamedPipe, Mechanism.Alpc }, mechanism =>
                 Assert.Equal(CoverageState.NotCollected, overview.MechanismCoverage.Single(entry => entry.Mechanism == mechanism).State));
 
             // The investigation holds it, names its host and notes what it is.

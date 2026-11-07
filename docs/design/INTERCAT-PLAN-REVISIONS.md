@@ -945,6 +945,7 @@ Revision 1019 adds the capability catalog: every mechanism explained, read from 
 Revision 1020 adds the discovery demo: one generated host sharing named objects and a section (ADR-101).
 Revision 1021 adds AF_UNIX sockets and window messages to the discovery demo (ADR-101's addendum).
 Revision 1022 draws the RPC edges a capture's COM calls link where it collected no ALPC (ADR-079's seventh addendum).
+Revision 1023 adds COM calls to the discovery demo (ADR-101's second addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4769,3 +4770,8 @@ Revision 1022 has the graph draw the RPC edges a capture's COM calls link (ADR-0
 and a brush still drew them only where the capture collected ALPC, which the COM calls profile does not request. A
 ledger or a plan naming a collected COM call descriptor now counts as one naming ALPC's, each edge counting the RPC call
 records at its two ends.
+
+Revision 1023 adds COM calls to the discovery demo (ADR-101's second addendum): a COM host serves four calls the editor
+makes, each carried by an RPC call at both ends as COM-Perf records them beside RPC, so `com-call-link-v1` links them,
+`rpc-call-peer-v2` serves each call through them with no ALPC record, and the graph draws the editor's RPC edge to the
+host. The demo then holds every mechanism M6 promoted.

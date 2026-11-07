@@ -99,7 +99,14 @@ the preview's window, each at both ends, its start naming the preview, while the
 retrieved, every end by the message's number. So the inspector lists nine resources, the sockets with their traffic and
 never as hubs, each process counts its sockets' calls and its window messages, and the resource-topology basis answers
 over ten. Its ledger collects process lifecycle, synchronization, shared sections, AF_UNIX sockets and window messages,
-nothing lost, and lists every other mechanism as not collected. COM calls join it in a revision of their own.
+nothing lost, and lists every other mechanism as not collected.
+
+Since revision 1023 a fourth process, `comhost.exe` (PID 6400), serves four COM calls the editor makes on IDispatch,
+each carried by an RPC call at both ends - the editor's COM call and the RPC call of its activity on one thread, the
+host's RPC call around the host's COM call on its thread, the host's carrying the editor's activity, each start naming
+its other end's process - so `com-call-link-v1` links them, `rpc-call-peer-v2` serves each call through them with no
+ALPC record, and the graph draws the editor's RPC edge to the host. Its ledger collects RPC and COM calls besides, and
+the demo then holds every mechanism M6 promoted.
 
 ## 6. Not defined at this version
 

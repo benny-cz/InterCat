@@ -1,7 +1,7 @@
 # ADR-101: The discovery demo generates what driverless discovery finds, never a measurement
 
 - Status: accepted for M6's synthetic investigations; named synchronization objects and sections (revision 1020), AF_UNIX
-  sockets and window messages (revision 1021)
+  sockets and window messages (revision 1021), COM calls (revision 1023)
 - Date: 2026-11-07
 - Decision owners: InterCat maintainers
 - Relates to: ADR-084, ADR-092, ADR-097, ADR-098, ADR-099, `demo-investigation-v1`, plan M5, M6, R3, P27
@@ -46,3 +46,13 @@ at both ends with its start naming the preview, and the preview posts two back, 
 the message's number. The sockets are listed with their traffic, never hubs; each process counts its sockets' calls and
 its window messages; and the resource-topology basis answers over ten resources. COM calls join it next.
 9 mutations of the path are caught.
+
+## Second addendum: COM calls (revision 1023)
+
+A fourth process, `comhost.exe`, serves four COM calls the editor makes, each carried by an RPC call at both ends as
+COM-Perf records them beside RPC (ADR-079): the editor's COM call and the RPC call of its activity on one thread, and
+the host's RPC call around the host's COM call on its thread, the host's carrying the editor's activity, each start
+naming the process at its other end. `com-call-link-v1` links each call's ends, `rpc-call-peer-v2` serves each RPC call
+through them with no ALPC record, and the graph draws the editor's RPC edge to the host as revision 1022 draws what COM
+calls link. With it the demo holds each mechanism M6 promoted.
+5 mutations of the path are caught.

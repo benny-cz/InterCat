@@ -133,6 +133,6 @@ internal static class DemoCommand
         ConsoleUi.Line();
         ConsoleUi.Line("  --discovery writes the discovery demo instead: one host whose processes share named");
         ConsoleUi.Line("  synchronization objects and a section, by its handles and by its views, talk over AF_UNIX");
-        ConsoleUi.Line("  sockets and send window messages, as a capture of them would find them.");
+        ConsoleUi.Line("  sockets, send window messages and make COM calls, as a capture of them would find them.");
     }
 }

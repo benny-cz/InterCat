@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using InterCat.Domain;
@@ -10,9 +11,10 @@ public sealed record DiscoveryDemoResult(string Directory, string WorkspacePath,
 
 /// <summary>
 /// The discovery demo (`contracts/demo-investigation-v1.md` §5, ADR-101): one generated host whose processes share what
-/// driverless discovery finds - named synchronization objects, sections by their handles and by their views, AF_UNIX sockets
-/// and window messages - so the graph's hubs, the inspector's resources, their records, a socket's traffic and idleness, a
-/// process's window messages and the resource-topology basis can be tried without capturing.
+/// driverless discovery finds - named synchronization objects, sections by their handles and by their views, AF_UNIX
+/// sockets, window messages and COM calls - so the graph's hubs and the RPC edge its COM calls link, the inspector's
+/// resources, their records, a socket's traffic and idleness, a process's window messages and the resource-topology basis
+/// can be tried without capturing.
 /// Like the demo, nothing in it was captured and no value in it is evidence about Windows: its records come from the demo's
 /// provider, its session is published under the demo's source identity, which every view states, and it is the same,
 /// record for record, every time it is made.
@@ -58,8 +60,8 @@ public static class DiscoveryDemo
         InvestigationWorkspace.AddNote(making, DemoInvestigation.Disclosure + " Its editor shares a named event with its "
             + "indexer and a named semaphore and a section with its preview, which maps the section's view beside the editor's; "
             + "the editor alone holds a mutex, and the indexer a view mapped before the capture began. None of that is traffic. "
-            + "The editor also sends requests to the indexer over an AF_UNIX socket beside an idle one, and messages to the "
-            + "preview's window, which posts two back.",
+            + "The editor also sends requests to the indexer over an AF_UNIX socket beside an idle one, messages to the "
+            + "preview's window, which posts two back, and COM calls to the COM host, each carried by an RPC call at both ends.",
             at: null, made);
         File.Move(making, workspace);
         return new(full, workspace, session);
@@ -78,7 +80,11 @@ public static class DiscoveryDemo
     private const int Editor = 6_100;
     private const int Indexer = 6_200;
     private const int Preview = 6_300;
+    private const int ComHost = 6_400;
     private const int SystemProcess = 4;
+
+    // The interface the editor's COM calls target: IDispatch's IID, which its COM and RPC calls' starts name.
+    private static readonly Guid Dispatch = Guid.Parse("00020400-0000-0000-c000-000000000046");
 
     private const string IndexReady = @"\Sessions\1\BaseNamedObjects\IndexReady";
     private const string SingleInstance = @"\Sessions\1\BaseNamedObjects\EditorSingleInstance";
@@ -123,6 +129,14 @@ public static class DiscoveryDemo
         new(143, "window-message-send-retrieved", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Inbound, 0),
         new(144, "window-message-send-returned", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Outbound, 0),
         new(145, "window-message-send-handled", Mechanism.WindowMessage, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Inbound, 0),
+        new(150, "rpc-client-call-started", Mechanism.Rpc, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Outbound, 1),
+        new(151, "rpc-client-call-stopped", Mechanism.Rpc, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Outbound, 2),
+        new(152, "rpc-server-call-started", Mechanism.Rpc, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Inbound, 1),
+        new(153, "rpc-server-call-stopped", Mechanism.Rpc, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Inbound, 2),
+        new(160, "com-client-call-started", Mechanism.ComCall, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Outbound, 1),
+        new(161, "com-client-call-stopped", Mechanism.ComCall, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Outbound, 2),
+        new(162, "com-server-call-started", Mechanism.ComCall, ObservationLayer.Application, ObservationKind.RequestStart, Direction.Inbound, 1),
+        new(163, "com-server-call-stopped", Mechanism.ComCall, ObservationLayer.Application, ObservationKind.RequestEnd, Direction.Inbound, 2),
     ];
 
     private sealed record Record(ObservationRowV1 Row, (SourceField Field, long Value)[] Fields);
@@ -224,6 +238,7 @@ public static class DiscoveryDemo
             Lifecycle(0.0, 3, Indexer, @"C:\Program Files\InterCat Demo\indexer.exe"),
             Lifecycle(0.10, 1, Editor, @"C:\Program Files\InterCat Demo\editor.exe"),
             Lifecycle(0.20, 1, Preview, @"C:\Program Files\InterCat Demo\preview.exe"),
+            Lifecycle(0.40, 1, ComHost, @"C:\Program Files\InterCat Demo\comhost.exe"),
             Lifecycle(50.0, 2, Preview, null),
 
             // A named event the editor makes and duplicates into the indexer, which closes it; the editor holds it at the stop.
@@ -312,6 +327,24 @@ public static class DiscoveryDemo
             records.Add(Message(at + 0.002, 142, Editor, message));
         }
 
+        // Four COM calls the editor makes to the COM host, each carried by an RPC call at both ends as COM-Perf records them
+        // beside RPC: the editor's COM call and the RPC call of its activity on its thread, and the host's RPC call around
+        // the host's COM call on its thread, the host's carrying the editor's activity, each start naming its other end.
+        for (int call = 1; call <= 4; call++)
+        {
+            double at = 30.0 + (3.0 * call);
+            Guid made = Derived(string.Create(CultureInfo.InvariantCulture, $"activity|editor|{call}"));
+            Guid served = Derived(string.Create(CultureInfo.InvariantCulture, $"activity|comhost|{call}"));
+            records.Add(Com(at, 160, Editor, made, call, ComHost));
+            records.Add(Rpc(at + 0.0005, 150, Editor, made));
+            records.Add(Rpc(at + 0.009, 152, ComHost, served));
+            records.Add(Com(at + 0.010, 162, ComHost, made, call, Editor));
+            records.Add(Com(at + 0.060, 163, ComHost, made, call, null));
+            records.Add(Rpc(at + 0.061, 153, ComHost, served));
+            records.Add(Com(at + 0.100, 161, Editor, made, call, null));
+            records.Add(Rpc(at + 0.1005, 151, Editor, made));
+        }
+
         // In time order, numbered in it as a journal numbers what it admits.
         return [.. records.OrderBy(record => record.Row.NativeTicks).ThenBy(record => record.Row.EventId)
             .Select((record, index) => record with { Row = record.Row with { RawRecordOrdinal = (ulong)(index + 1) } })];
@@ -372,6 +405,41 @@ public static class DiscoveryDemo
         }
 
         return new(row, [(SourceField.ConnectionId, number)]);
+    }
+
+    // An RPC call's start or stop, raised in its process on its thread under its activity: a start names the interface and
+    // carries the procedure, and a stop its status.
+    private static Record Rpc(double seconds, ushort eventId, int raisedBy, Guid activity)
+    {
+        ObservationRowV1 row = Row(seconds, eventId, raisedBy, null);
+        bool start = row.Kind == ObservationKind.RequestStart;
+        row = row with
+        {
+            ActivityId = activity,
+            SourceIdentifier = start ? Dispatch : null,
+            StatusCode = start ? null : 0,
+            StatusAvailability = start ? FieldAvailability.NotApplicable : FieldAvailability.Present,
+        };
+        return new(row, start ? [(SourceField.RpcProcedureNumber, 6)] : []);
+    }
+
+    // A COM call's start or stop, raised in its process on its thread: a start names the interface, the method and the
+    // process at the call's other end, a stop its HRESULT, and each its trace number; the server's carries the client's
+    // activity.
+    private static Record Com(double seconds, ushort eventId, int raisedBy, Guid activity, long trace, int? other)
+    {
+        ObservationRowV1 row = Row(seconds, eventId, raisedBy, null);
+        bool start = row.Kind == ObservationKind.RequestStart;
+        row = row with
+        {
+            ActivityId = activity,
+            SourceIdentifier = start ? Dispatch : null,
+            StatusCode = start ? null : 0,
+            StatusAvailability = start ? FieldAvailability.NotApplicable : FieldAvailability.Present,
+        };
+        return new(row, other is { } peer
+            ? [(SourceField.ComCallTraceId, trace), (SourceField.PeerProcessId, peer), (SourceField.ComMethodNumber, 6)]
+            : [(SourceField.ComCallTraceId, trace)]);
     }
 
     // One end of a window message, raised in its process, by the message's number; a send's start names the process whose
