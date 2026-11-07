@@ -4307,6 +4307,7 @@
         "R3: icat waits lists the time inside each caller's calls, the most first, with the server's own time over linked calls",
         "R3: icat waits says what no time is said for, and refuses what it cannot list",
         "R3: impact summaries use the median without hiding signed observations",
+        "R3: markers one way only bound two clocks' offset from one side, and markers that leave no offset contradict one another - neither aligns anything, the missing side never defaulted, and each says why",
         "R3: no time is said for a call whose span is not validated, or whose caller the evidence policy does not admit, and each is counted by why",
         "R3: observations on the resource-topology basis are the membership and lifecycle records of the resources in scope, each by its own reading, whichever process it binds to, and never a socket's sends or receives",
         "R3: on a build none measured the file view flag is refused - the machine registers no layout at the version the build raises, and none is measured for it - and where the machine registers that version its registration is read, nothing said to be measured",

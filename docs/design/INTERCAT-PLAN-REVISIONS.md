@@ -966,6 +966,7 @@ Revision 1040 lets a capture keep the cooperative SDK's content under a request 
 Revision 1041 holds the cooperative SDK's content to a truth through the product, FX-SDK-007 (ADR-107's second addendum).
 Revision 1042 holds the native library's content to a truth through the product, FX-SDK-008 (ADR-107's third addendum).
 Revision 1043 records M7's release review: its exit gate is met.
+Revision 1044 orders two captures by the operations one started under the other's, bounding their clocks' offset (ADR-108).
 
 ## Revisions, a paragraph each, in order
 
@@ -4946,3 +4947,12 @@ section stays topology, claiming no byte (FX-SECT-001), the SDK's cost and throu
 later minor's added field stays unread. Every deliverable is built, the content opt-in last (ADR-107). The SDK's content
 asked for through the broker and the window, a message's content from its message, an operation tree by parent, and a
 later minor said to an earlier capture are named as refinements, none an exit test.
+
+Revision 1044 begins §8.2's shared-marker alignment, which waited on a marker both captures record (ADR-108). The
+cooperative SDK makes an operation's identity in the call that says its start, so an operation one capture recorded
+starting under one the other recorded starting is a record known to follow the other's - by the SDK's own word, never a
+measured delay or a guessed pairing; a message is no such marker, its publication said after its commit. Such pairs both
+ways bound the offset between the two clocks, midway between the tightest each way, a stated drift widening each by its
+distance from the anchor; one way alone, or pairs leaving no offset, align nothing and say why (R3). A capture's starts
+are read from its records as a capture admits them, a parent's earliest start the one held. 19 mutations are caught. The
+workspace's revision of it, its command, the window and a qualification follow.

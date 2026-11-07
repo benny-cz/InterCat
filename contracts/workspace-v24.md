@@ -493,7 +493,8 @@ member could not be copied.
 
 ## 9. Not defined at this version
 
-- Alignment from shared markers (§8.2's third mode), which needs a marker both captures record; none records one yet.
+- Alignment from shared markers (§8.2's third mode) as a revision of the file: since revision 1044 the cooperative SDK's
+  operations give two captures' orderings and the bound they set (ADR-108), which no revision states yet.
 - Pins of the investigation's own: a note pinned at an instant is its pin, and each session's graph keeps its pins in
   that session's layout (§7).
 - Deduplicating two captures' records of one event: an overlap is flagged, and nothing is merged.
