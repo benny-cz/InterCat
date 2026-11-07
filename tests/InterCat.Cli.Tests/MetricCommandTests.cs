@@ -186,6 +186,12 @@ public sealed class MetricCommandTests : IDisposable
             Assert.Equal((1_900L, "Nanoseconds", 2L, 1L), (lifetime.RootElement.GetProperty("value").GetInt64(), lifetime.RootElement.GetProperty("unit").GetString(),
                 lifetime.RootElement.GetProperty("contributions").GetProperty("known").GetInt64(), lifetime.RootElement.GetProperty("contributions").GetProperty("unknown").GetInt64()));
         }
+
+        // Grouped by process, each group's median beside how many of its mappings were measured: the reader's one of two.
+        (code, text, _) = await Run(["metric", mapped.Path, "--basis", "resource-topology", "--metric", "duration", "--duration", "mapping-lifetime", "--group-by", "process"]);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Rank +Process instance +Value +Mappings measured +Bound as\r?$", text);
+        Assert.Matches(@"(?m)^  2 .+ 1 of 2 ", text);
     }
 
     [Fact(DisplayName = "R21: icat metric says what it cannot answer and why, never that a session without what a request needs holds nothing")]

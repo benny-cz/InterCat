@@ -3840,6 +3840,7 @@
         "R3: a later holder of a reused PID holds a resource only as a candidate, which the default policy counts by that reason and includes when asked",
         "R3: a live recording publishes its clock against the wall clock when it starts and stops, and its boot",
         "R3: a lower bound reads at least, in the window as on the command line",
+        "R3: a mapping lifetime grouped by a fact of the process holding each mapping ranks each group's statistic, the longest first, each mapping in exactly one group, one no process holds in its reason's, and the groups' values never added up",
         "R3: a mapping lifetime runs from a view's mapping to its unmapping, measured only where both were seen, a view mapped before the capture or still mapped at its stop stated and never given a duration",
         "R3: a mapping's uncertainty adds its bounds, combines its random parts in quadrature, and is unknown when any part is",
         "R3: a matched observation without bytes stays unknown",

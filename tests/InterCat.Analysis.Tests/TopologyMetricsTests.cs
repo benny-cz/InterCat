@@ -114,15 +114,17 @@ public sealed class TopologyMetricsTests
         Assert.Equal(1L, capacity.UnknownReasons[FieldAvailability.NotExposed]);
         Assert.Contains(capacity.Caveats, caveat => caveat.StartsWith("1 section of it is an image's, 4,096 bytes", StringComparison.Ordinal));
 
-        // A membership has no direction, and counting records, a mapping lifetime and a grouping by anything but a resource's
-        // mechanism or a fact of the processes holding it are not defined yet.
+        // A membership has no direction, and counting records, a grouping by anything but a resource's mechanism, a focus's
+        // peers or a fact of the processes holding it, and a mapping lifetime grouped by anything but a fact of its holder are
+        // not defined yet.
         foreach (MetricRequest unanswered in new[]
         {
             Request(Metric.ActiveChannels) with { Sender = writer },
             Request(Metric.ActiveChannels) with { Between = new ProcessBetween([writer], [reader], BetweenDirection.FirstToSecond) },
             Request(Metric.MappingCapacity) with { Grouping = LaneGrouping.Endpoint },
             Request(Metric.Observations),
-            Request(Metric.Duration) with { DurationInterval = DurationInterval.MappingLifetime, Grouping = LaneGrouping.InstanceOnly },
+            Request(Metric.Duration) with { DurationInterval = DurationInterval.MappingLifetime, Grouping = LaneGrouping.Mechanism },
+            Request(Metric.Duration) with { DurationInterval = DurationInterval.MappingLifetime, Owner = writer, Grouping = LaneGrouping.Peer },
         })
         {
             Assert.Equal(MetricUnavailableReason.NoResourceTopology, SessionMetrics.Evaluate(session.Store, unanswered).Unavailable);
@@ -278,6 +280,84 @@ public sealed class TopologyMetricsTests
         // A projection to another mechanism leaves every mapping out by it.
         MetricResult objects = SessionMetrics.Evaluate(session.Store, lifetime with { Mechanism = Mechanism.Synchronization });
         Assert.Equal((MetricUnavailableReason.NothingMeasured, 3L), (objects.Unavailable, objects.ExcludedByProjection));
+    }
+
+    [Fact(DisplayName = "R3: a mapping lifetime grouped by a fact of the process holding each mapping ranks each group's statistic, the longest first, each mapping in exactly one group, one no process holds in its reason's, and the groups' values never added up")]
+    public void AMappingLifetimeGroupsByItsHolder()
+    {
+        // Beside the mapped sections, 300, created at 15, maps section 8's view 91 from 20 to 25, 500 ns; and its PID maps view
+        // 92 from 5 to 8, before 300's creation, bound to no process: 300 ns.
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = MappedSections();
+        (ObservationRowV1 Row, long View)[] added =
+        [
+            (SectionRecord(5, 37, 300, 300, 100, view: true), 92),
+            (SectionRecord(8, 38, 300, 300, 101, view: true), 92),
+            (SectionRecord(20, 37, 300, 300, 102, view: true), 91),
+            (SectionRecord(25, 38, 300, 300, 103, view: true), 91),
+        ];
+        using var session = new TemporarySession();
+        Publish(
+            session.Store,
+            [
+                .. rows.Append(Lifecycle(15, ObservationKind.Create, 300, 104) with { ResourceName = @"C:\Tools\late.exe" })
+                    .Concat(added.Select(entry => entry.Row))
+                    .OrderBy(row => row.NativeTicks)
+                    .ThenBy(row => row.RawRecordOrdinal),
+            ],
+            fields:
+            [
+                .. fields,
+                .. added.SelectMany(entry => new[]
+                {
+                    Field(entry.Row, SourceField.SectionNumber, 8),
+                    Field(entry.Row, SourceField.SectionViewNumber, entry.View),
+                    Field(entry.Row, SourceField.ViewSize, 4096),
+                    Field(entry.Row, SourceField.ViewInformation, 0),
+                }),
+            ]);
+        ProcessInstanceId writer = Instance(session.Store, 100);
+        ProcessInstanceId reader = Instance(session.Store, 200);
+        ProcessInstanceId late = Instance(session.Store, 300);
+        MetricRequest lifetime = Request(Metric.Duration) with { DurationInterval = DurationInterval.MappingLifetime };
+
+        // Each process's mappings: the writer's 2,100 ns, the reader's 1,900 ns beside section 6's view, mapped before the
+        // capture and censored, and 300's 500 ns; the view no process holds is its reason's, measured. The total is the median
+        // of all four, never a statistic of the groups'.
+        MetricResult grouped = SessionMetrics.Evaluate(session.Store, lifetime with { Grouping = LaneGrouping.InstanceOnly });
+        Assert.Equal(((long?)500, 4L, 1L, false, ProcessInstanceIndex.BindingRule),
+            (grouped.Value, grouped.KnownContributions, grouped.UnknownContributions, grouped.GroupsPartitionTotal, grouped.BindingRule));
+        Assert.Equal(
+            [(writer, 2_100L, 1, 1L, 0L), (reader, 1_900L, 2, 1L, 1L), (late, 500L, 3, 1L, 0L)],
+            grouped.Groups.Select(group => (group.Process!.Id, group.Value!.Value, group.Rank!.Value, group.KnownContributions, group.UnknownContributions)));
+        Assert.Equal((1L, 1_900L), (grouped.Groups[1].Distribution!.Count, grouped.Groups[1].Distribution!.Maximum));
+        MetricGroup unbound = Assert.Single(grouped.Unattributed);
+        Assert.Equal((ProcessBindingReason.BeforeFirstEvidence, (long?)300, 1L, 0L),
+            (unbound.Reason!.Value, unbound.Value, unbound.KnownContributions, unbound.UnknownContributions));
+        Assert.Contains(grouped.Caveats, caveat => caveat.StartsWith("Groups are ranked by their median, the longest first.", StringComparison.Ordinal));
+        Assert.Contains(grouped.Caveats, caveat => caveat.StartsWith("1 mapping is no group's, by reason (BeforeFirstEvidence 1)", StringComparison.Ordinal));
+
+        // Started in range, by executable: the image's view, mapped at 12 and held at the stop, is censored in the writer's.
+        MetricResult started = SessionMetrics.Evaluate(session.Store, lifetime with
+        {
+            Cohort = OperationCohort.StartedInRange,
+            Grouping = LaneGrouping.Executable,
+        });
+        Assert.Equal(
+            [(@"C:\Tools\writer.exe", 2_100L, 1L), (@"C:\Tools\reader.exe", 1_900L, 0L), (@"C:\Tools\late.exe", 500L, 0L)],
+            started.Groups.Select(group => (group.Executable!, group.Value!.Value, group.UnknownContributions)));
+
+        // The rest past one row is one answer over the union of its mappings, the reader's 1,900 and 300's 500 ns: their
+        // median is 500, never a sum or the largest of the groups' statistics.
+        MetricResult top = SessionMetrics.Evaluate(session.Store, lifetime with { Grouping = LaneGrouping.InstanceOnly, RequestedRows = 1 });
+        MetricGroup rest = top.Remainder!;
+        Assert.Equal((1, (long?)500, 2L, 1L, 2), (top.Groups.Count, rest.Value, rest.KnownContributions, rest.UnknownContributions, rest.GroupsMerged));
+        Assert.Equal((2L, 500L, 1_900L), (rest.Distribution!.Count, rest.Distribution.Minimum, rest.Distribution.Maximum));
+
+        // A group whose every mapping had an end unseen is unmeasured and never ranked, as is the answer.
+        MetricResult censored = SessionMetrics.Evaluate(session.Store, lifetime with { Grouping = LaneGrouping.InstanceOnly, Interval = new TimeRange(40, 60) });
+        MetricGroup only = Assert.Single(censored.Groups);
+        Assert.Equal((MetricUnavailableReason.NothingMeasured, reader, (long?)null, (int?)null, 1L),
+            (censored.Unavailable, only.Process!.Id, only.Value, only.Rank, only.UnknownContributions));
     }
 
     [Fact(DisplayName = "R21: a topology count beside records bound to no process is a lower bound, and a capacity no section's views measured is unmeasured, never zero")]

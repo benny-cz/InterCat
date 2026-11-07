@@ -529,20 +529,26 @@ mapping, or the start's rundown listing one, to its unmapping or the stop's rund
 the mappings whose unmapping is in scope, `StartedInRange` those whose mapping is, and `owner(P)` P's alone; each is
 measured from its mapping to its unmapping where both were seen, and one with an end unseen - mapped before the capture,
 or still mapped at its stop - is an unknown contribution, never given a duration. The statistic is the median, the 95th
-percentile or the maximum, and nothing measured is `NothingMeasured`, never zero (R21). It is never grouped at this
-version.
+percentile or the maximum, and nothing measured is `NothingMeasured`, never zero (R21). It groups by a fact of the
+process holding each mapping (revision 1017), below.
 
 **By peer (revision 1016).** With `owner(P)` or `participant(P)`, each process instance other than P holding a resource P
 held is a group: the resources both held, or the capacity of the sections both mapped. A resource three processes held
 counts in both of P's peers' groups, so the groups overlap and do not add up to the total, P's own; one no other process
 held is in no group; and a record bound to no process could be another peer's, unattributed by its reason.
 
+**A mapping lifetime grouped (revision 1017).** By process, executable, terminal session, package or service container,
+each mapping is in exactly one group, its holder's, and each group's value is its mappings' statistic, the longest first;
+a group whose every mapping had an end unseen is unmeasured, after them. A median does not add, so the groups' values
+are not parts of the total's, and a remainder is the statistic over the union of the mappings it merges. A mapping bound
+to no process, or held by one without the grouping's fact, is unattributed by its reason, and still measured.
+
 An answer carries `resourceRule` and `resources`: the resources taken, by mechanism; how many are sections by their views
 and how many an image's; how many were made before the capture, held at its stop or ended unseen; their memberships, each
 process holding each resource once; those a process filter disclosed; and every resource the generation derives.
 
 **What no derived resource answers** is `NoResourceTopology`, with what it needs: `Observations`, a count of resources'
-records rather than of resources; a mapping lifetime grouped by anything; and `sender`, `receiver` and a
+records rather than of resources; a mapping lifetime grouped by mechanism or by peer; and `sender`, `receiver` and a
 directional `between`, which select data that flowed one way where holding a resource is undirected.
 
 **Identity.** An answer on this basis depends on the resource rule, `resource-instances-v3`, which it names as its

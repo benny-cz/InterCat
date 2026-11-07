@@ -1014,10 +1014,12 @@ internal static class MetricCommand
         }
 
         // Measurement availability is a property of byte slots; a count has none, so the column is left out rather
-        // than shown as a meaningless 100%. A duration's statistic is read beside how many calls it was read from, so a
-        // group of three calls is not mistaken for a busy channel's tail.
+        // than shown as a meaningless 100%. A duration's statistic is read beside how many calls or mappings it was read
+        // from, so a group of three calls is not mistaken for a busy channel's tail.
         bool measures = result.TakenSides.Count > 0 || result.Request.Metric == Metric.Duration;
-        string measuredHeader = result.Request.Metric == Metric.Duration ? "Calls measured" : "Measured on";
+        string measuredHeader = result.Request.Metric != Metric.Duration ? "Measured on"
+            : result.Request.DurationInterval == DurationInterval.MappingLifetime ? "Mappings measured"
+            : "Calls measured";
         IReadOnlyList<string> headers = (byProcess, measures) switch
         {
             (true, true) => ["Rank", groupHeader, "Value", measuredHeader, "Bound as"],
@@ -2211,7 +2213,8 @@ internal static class MetricCommand
         ConsoleUi.Line("      focus shared with each other process. --metric duration --duration mapping-lifetime");
         ConsoleUi.Line("      measures how long each view of a section stayed mapped, from its mapping to its");
         ConsoleUi.Line("      unmapping by one process; a view mapped before the capture or still mapped at its stop");
-        ConsoleUi.Line("      is stated, never measured.");
+        ConsoleUi.Line("      is stated, never measured. --group-by process, executable, session, package or");
+        ConsoleUi.Line("      service-container ranks each group's mappings by the statistic, the longest first.");
         ConsoleUi.Line("      Every answer names its query identity: the SHA-256 of the canonical specification");
         ConsoleUi.Line("      over the snapshot it read (query-identity-v1). --print-canonical prints that");
         ConsoleUi.Line("      canonical form and identity without answering.");

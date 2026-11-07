@@ -939,6 +939,7 @@ Revision 1013 shows each resource's lifetime in the window (ADR-097's sixth adde
 Revision 1014 groups resource-topology answers by mechanism (ADR-098's second addendum), each resource in one group and the groups partitioning the total.
 Revision 1015 measures a mapping lifetime (ADR-098's third addendum): how long each view of a section stayed mapped, where both its ends were seen.
 Revision 1016 groups resource-topology answers by peer (ADR-098's fourth addendum): what a focus shared with each other process.
+Revision 1017 groups a mapping lifetime by the process holding each mapping (ADR-098's fifth addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4726,3 +4727,9 @@ Revision 1016 groups resource-topology answers by peer, which metrics-v1 §8b le
 addendum). With a focus, each other process instance holding a resource the focus held is a group, its value the
 resources both held or the capacity of the sections both mapped. The groups overlap, a resource no other process held is
 in none and said, and a record bound to no process is unattributed by its reason, as it could be another peer's.
+
+Revision 1017 groups a mapping lifetime by a fact of the process holding each mapping, which metrics-v1 §8b left
+undefined (ADR-098's fifth addendum). Each mapping is in exactly one group, its holder's, each group's value its
+mappings' statistic, the longest first, and the remainder is the statistic over the union of its mappings, never a sum.
+A view's records now keep why they bound to no process, so a mapping no group can take is unattributed by that reason
+and still measured; grouped by mechanism or by peer it is not defined.

@@ -56,7 +56,8 @@ their bytes the transport's where measured (ADR-076), and a socket that carried 
 observed. A section by its views carries no traffic either: a view's size is the extent it mapped. Version 1, revision
 1002's, derived no socket, and version 2, revision 1003's, no section by its views. The resource-topology basis counts
 these resources, the processes sharing them and sections' capacity (`metrics-v1` §8b, revision 1005), and since revision 1015 how long each view stayed mapped: a section by
-its views pairs its views' records, by view and process, into mappings, each from its mapping to its unmapping.
+its views pairs its views' records, by view and process, into mappings, each from its mapping to its unmapping; one
+whose records bind to no process keeps why, the reason a mapping lifetime grouped by its holder gives it (revision 1017).
 
 A resource's records are those of its mechanism whose source field carries its number - a section's views by the number
 they carry and its handles by theirs, a socket's by its own and never a TCP connection's of the same number - whichever

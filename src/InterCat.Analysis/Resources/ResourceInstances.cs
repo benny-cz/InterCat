@@ -26,13 +26,15 @@ public sealed record ResourceHolder(
 /// </summary>
 /// <param name="View">The number the view gate gave the view's address.</param>
 /// <param name="Holder">The process instance its records bind to under the policy; null where they bind to none.</param>
+/// <param name="Unbound">Why its records bind to no process instance, where they bind to none; null where they bind.</param>
 public sealed record ResourceView(
     long View,
     ProcessInstanceId? Holder,
     long? MappedNativeTicks,
     long? UnmappedNativeTicks,
     bool MappedBefore,
-    bool HeldAtStop);
+    bool HeldAtStop,
+    ProcessBindingReason? Unbound = null);
 
 /// <summary>
 /// The transfers a resource's records carried (`contracts/resources-v1.md` §1): its sends and receives, the bytes of those
@@ -568,8 +570,10 @@ public sealed class ResourceInstanceIndex
         private long? largestView;
         private bool image;
 
-        // Each view's records by the process they bind to - an unbound one's apart, as -1 - which pair into its mappings.
+        // Each view's records by the process they bind to - an unbound one's apart, as -1 - which pair into its mappings; and
+        // why an unbound view's first record bound to none.
         private readonly Dictionary<(long View, int Holder), List<Mark>> mappings = [];
+        private readonly Dictionary<long, ProcessBindingReason> unboundViews = [];
 
         /// <summary>Whether its mechanism's records carry transfers: an AF_UNIX socket's.</summary>
         public bool CarriesTraffic { get; init; }
@@ -625,6 +629,10 @@ public sealed class ResourceInstanceIndex
 
             (long, int) key = (number, owner.IsBound ? owner.Instance : -1);
             (mappings.TryGetValue(key, out List<Mark>? marks) ? marks : mappings[key] = []).Add(mark);
+            if (!owner.IsBound)
+            {
+                unboundViews.TryAdd(number, owner.Reason);
+            }
         }
 
         // A view's records in time, paired: a mapping, or the start's rundown listing one made before the capture, opens one;
@@ -636,6 +644,7 @@ public sealed class ResourceInstanceIndex
             foreach (((long view, int holder), List<Mark> marks) in mappings)
             {
                 ProcessInstanceId? process = holder >= 0 ? processes.Instances[holder].Id : null;
+                ProcessBindingReason? unbound = holder < 0 && unboundViews.TryGetValue(view, out ProcessBindingReason why) ? why : null;
                 marks.Sort();
                 (long? Mapped, bool Before)? open = null;
                 foreach (Mark mark in marks)
@@ -646,7 +655,7 @@ public sealed class ResourceInstanceIndex
                         case ObservationKind.Inventory when mark.StartRundown:
                             if (open is { } unclosed)
                             {
-                                paired.Add(new(view, process, unclosed.Mapped, null, unclosed.Before, false));
+                                paired.Add(new(view, process, unclosed.Mapped, null, unclosed.Before, false, unbound));
                             }
 
                             open = mark.Kind == ObservationKind.Map ? (mark.Ticks, false) : (null, true);
@@ -655,8 +664,8 @@ public sealed class ResourceInstanceIndex
                         case ObservationKind.Inventory:
                             bool held = mark.Kind == ObservationKind.Inventory;
                             paired.Add(open is { } closing
-                                ? new(view, process, closing.Mapped, held ? null : mark.Ticks, closing.Before, held)
-                                : new(view, process, null, held ? null : mark.Ticks, false, held));
+                                ? new(view, process, closing.Mapped, held ? null : mark.Ticks, closing.Before, held, unbound)
+                                : new(view, process, null, held ? null : mark.Ticks, false, held, unbound));
                             open = null;
                             break;
                     }
@@ -664,7 +673,7 @@ public sealed class ResourceInstanceIndex
 
                 if (open is { } left)
                 {
-                    paired.Add(new(view, process, left.Mapped, null, left.Before, false));
+                    paired.Add(new(view, process, left.Mapped, null, left.Before, false, unbound));
                 }
             }
 

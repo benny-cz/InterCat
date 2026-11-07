@@ -63,9 +63,10 @@ public static partial class SessionMetrics
                 "Counting resources' membership and lifecycle records is not defined at this version: a resource is counted "
                 + "once, over its known lifetime, never by its records. The source-observations basis counts the records "
                 + "themselves.",
-            Metric.Duration when request.Grouping is not null =>
-                "Grouping a mapping lifetime is not defined at this version: the lifetimes are measured over every mapping in "
-                + "scope, or a focus's alone (§8b).",
+            Metric.Duration when request.Grouping is { } grouped && !ProcessGrouping.ByInstanceFact(grouped) =>
+                $"Grouping a mapping lifetime by {grouped} is not defined at this version: it is grouped by a fact of the "
+                + "process holding each mapping - each process, its executable, its session, its package or its service "
+                + "container (§8b).",
             _ => null,
         };
         missing ??= request.Grouping is { } grouping && !ProcessGrouping.ByInstanceFact(grouping)
@@ -123,7 +124,7 @@ public static partial class SessionMetrics
         // A mapping lifetime is a view's, each mapping in scope by its own readings rather than its section's lifetime.
         if (request.Metric == Metric.Duration)
         {
-            return MappingLifetimes(context, context.Clock.Value, index);
+            return MappingLifetimes(context, context.Clock.Value, index, processes);
         }
 
         // A resource is in scope where its mechanism and layer are the projection's and its known lifetime meets the
@@ -742,9 +743,59 @@ public static partial class SessionMetrics
     /// capture, still mapped at its stop, or its unmapping unseen - never given a duration. How long a view stayed mapped,
     /// never a byte moved through it (P27).
     /// </summary>
-    private static MetricResult MappingLifetimes(Context context, SourceClockDescriptor clock, ResourceInstanceIndex index)
+    private static MetricResult MappingLifetimes(
+        Context context,
+        SourceClockDescriptor clock,
+        ResourceInstanceIndex index,
+        ProcessInstanceIndex processes)
     {
         MetricRequest request = context.Request;
+        LaneGrouping? grouping = request.Grouping;
+        ServiceMatch? services = grouping is null ? null : ServicesOf(context, processes);
+        if (grouping is { } fact && ProcessGrouping.Underived(processes, fact, services) is { } underived)
+        {
+            return Unavailable(request, context.Generation, MetricUnavailableReason.GroupingNotDerived, underived);
+        }
+
+        // Grouped, each mapping is its holder's group's - in exactly one - and one no group can take is in its reason's, its
+        // lifetime still measured: a mapping bound to no process is no less a mapping, only no group's.
+        var tallies = new Dictionary<string, (MetricGroup Group, List<(long Start, long Stop)> Spans, long Censored)>(StringComparer.Ordinal);
+        void Tally(ResourceView mapping, (long Start, long Stop)? span, LaneGrouping by)
+        {
+            ProcessInstance? instance = mapping.Holder is { } holder ? processes.Instances[processes.PositionOf(holder)] : null;
+            ProcessBindingReason? why = instance is null
+                ? mapping.Unbound ?? ProcessBindingReason.NoOwner
+                : ProcessGrouping.Unattributable(instance, by, services);
+            string key = why is { } reason ? $"unattributed/{(int)reason:D3}" : ProcessGrouping.KeyOf(instance!, by, services);
+            if (!tallies.TryGetValue(key, out (MetricGroup Group, List<(long Start, long Stop)> Spans, long Censored) tally))
+            {
+                MetricGroup group = why is { } unattributed
+                    ? new() { Kind = MetricGroupKind.Unattributed, Reason = unattributed }
+                    : by switch
+                    {
+                        LaneGrouping.Executable => new() { Kind = MetricGroupKind.Executable, Executable = instance!.ImagePath },
+                        LaneGrouping.UserSession => new() { Kind = MetricGroupKind.UserSession, TerminalSession = instance!.SessionId },
+                        LaneGrouping.Package => new() { Kind = MetricGroupKind.Package, Package = instance!.PackageFullName },
+                        LaneGrouping.ServiceContainer => services!.ContainerOf(instance!.Id) is { } hosted
+                            ? new() { Kind = MetricGroupKind.ServiceContainer, Process = instance, Services = hosted }
+                            : new() { Kind = MetricGroupKind.Executable, Executable = instance.ImagePath },
+                        _ => new() { Kind = MetricGroupKind.ProcessInstance, Process = instance },
+                    };
+                tally = (group, [], 0);
+            }
+
+            if (span is { } measured)
+            {
+                tally.Spans.Add(measured);
+            }
+            else
+            {
+                tally.Censored++;
+            }
+
+            tallies[key] = tally;
+        }
+
         bool byStart = request.Cohort == OperationCohort.StartedInRange;
         DurationStatistic statistic = request.Statistic!.Value;
         ProcessInstanceId? focus = request.Focus?.Instance;
@@ -787,14 +838,22 @@ public static partial class SessionMetrics
                     continue;
                 }
 
-                if (mapping is { MappedNativeTicks: { } mapped, UnmappedNativeTicks: { } unmapped })
+                (long Start, long Stop)? span = mapping is { MappedNativeTicks: { } mapped, UnmappedNativeTicks: { } unmapped }
+                    ? ((long)SourceClockMath.SessionNanoseconds(clock, mapped), (long)SourceClockMath.SessionNanoseconds(clock, unmapped))
+                    : null;
+                if (span is { } measured)
                 {
-                    spans.Add(((long)SourceClockMath.SessionNanoseconds(clock, mapped), (long)SourceClockMath.SessionNanoseconds(clock, unmapped)));
+                    spans.Add(measured);
                     images += section.Image ? 1 : 0;
                 }
                 else
                 {
                     censored++;
+                }
+
+                if (grouping is { } by)
+                {
+                    Tally(mapping, span, by);
                 }
             }
         }
@@ -841,6 +900,80 @@ public static partial class SessionMetrics
             BindingRule = focus is null ? null : ProcessInstanceIndex.BindingRule,
             Caveats = caveats,
         };
+
+        // Grouped, each group is its mappings' statistic, the longest first, and one whose every mapping had an end unseen is
+        // unmeasured, after them; a median does not add, so the groups' values are not parts of the total's, and the rest past
+        // the rows asked for is one answer over the union of their mappings, never a sum of statistics.
+        if (grouping is not null)
+        {
+            List<(string Key, MetricGroup Group, List<(long Start, long Stop)> Spans)> built =
+            [
+                .. tallies.Select(entry =>
+                {
+                    MetricDistribution? lifetimes = MetricDistribution.Of(entry.Value.Spans);
+                    return (entry.Key, entry.Value.Group with
+                    {
+                        Value = lifetimes?.Of(statistic),
+                        KnownContributions = entry.Value.Spans.Count,
+                        UnknownContributions = entry.Value.Censored,
+                        Distribution = lifetimes,
+                    }, entry.Value.Spans);
+                }),
+            ];
+            List<(string Key, MetricGroup Group, List<(long Start, long Stop)> Spans)> attributed =
+                [.. built.Where(entry => entry.Group.Kind != MetricGroupKind.Unattributed)];
+            List<(string Key, MetricGroup Group, List<(long Start, long Stop)> Spans)> ordered =
+            [
+                .. attributed.Where(entry => entry.Group.Value is not null)
+                    .OrderByDescending(entry => entry.Group.Value)
+                    .ThenBy(entry => entry.Key, StringComparer.Ordinal)
+                    .Select((entry, rank) => (entry.Key, entry.Group with { Rank = rank + 1 }, entry.Spans)),
+                .. attributed.Where(entry => entry.Group.Value is null).OrderBy(entry => entry.Key, StringComparer.Ordinal),
+            ];
+            MetricGroup? remainder = null;
+            if (request.RequestedRows is { } rows && ordered.Count > rows)
+            {
+                List<(string Key, MetricGroup Group, List<(long Start, long Stop)> Spans)> rest = [.. ordered.Skip(rows)];
+                MetricDistribution? merged = MetricDistribution.Of([.. rest.SelectMany(entry => entry.Spans)]);
+                remainder = new MetricGroup
+                {
+                    Kind = MetricGroupKind.Remainder,
+                    Value = merged?.Of(statistic),
+                    KnownContributions = rest.Sum(entry => entry.Group.KnownContributions),
+                    UnknownContributions = rest.Sum(entry => entry.Group.UnknownContributions),
+                    GroupsMerged = rest.Count,
+                    Distribution = merged,
+                };
+                ordered = [.. ordered.Take(rows)];
+            }
+
+            List<MetricGroup> unattributed =
+            [
+                .. built.Where(entry => entry.Group.Kind == MetricGroupKind.Unattributed)
+                    .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+                    .Select(entry => entry.Group),
+            ];
+            caveats.Add($"Groups are ranked by their {Words(statistic)}, the longest first. Each mapping is in exactly one group, "
+                + "its holder's, but a median or a percentile does not add, so the groups' values are not parts of the total's.");
+            long ungrouped = unattributed.Sum(group => group.KnownContributions + group.UnknownContributions);
+            if (ungrouped > 0)
+            {
+                Dictionary<ProcessBindingReason, long> reasons = unattributed.ToDictionary(
+                    group => group.Reason!.Value,
+                    group => group.KnownContributions + group.UnknownContributions);
+                caveats.Add($"{CountText.Of(ungrouped, "mapping")} {CountText.Agree(ungrouped, "is", "are")} no group's, by "
+                    + $"reason ({Reasons(reasons)}): bound to no process, or held by one without the grouping's fact; each is "
+                    + "still measured, never put in the nearest group (P6).");
+            }
+
+            answer = answer with
+            {
+                Groups = [.. ordered.Select(entry => entry.Group)],
+                Remainder = remainder,
+                Unattributed = unattributed,
+                BindingRule = ProcessInstanceIndex.BindingRule,
+            };
+        }
 
         // A lifetime of nothing is not zero: with no mapping in scope measured, there is no value to report (R21).
         return distribution is not null

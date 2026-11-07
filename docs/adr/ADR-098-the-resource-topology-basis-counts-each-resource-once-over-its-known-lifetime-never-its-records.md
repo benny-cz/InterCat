@@ -2,7 +2,8 @@
 
 - Status: accepted for M6's resource topology; resources, the processes sharing them and sections' capacity are counted
   (revision 1005), grouped by a fact of the processes holding them (revision 1006) and by mechanism (revision 1014), and
-  how long a section's views stayed mapped is measured (revision 1015); grouped by peer (revision 1016)
+  how long a section's views stayed mapped is measured (revision 1015); grouped by peer (revision 1016); a mapping
+  lifetime grouped by the process holding each mapping (revision 1017)
 - Date: 2026-11-07
 - Decision owners: InterCat maintainers
 - Relates to: ADR-012, ADR-032, ADR-092, ADR-097, plan §5.3, §21.1, `metrics-v1`, `query-identity-v1`, R3, R21, P1, P3, P27
@@ -89,3 +90,13 @@ processes held counts in both of P's peers' groups, so the groups overlap and do
 resources or capacity; one no other process held is in no group, and is said; and a record of one bound to no process
 could be another peer's, so it is unattributed by its reason. A count of peers is still one count, never grouped.
 7 mutations of the path are caught.
+
+## Fifth addendum: a mapping lifetime grouped by its holder (revision 1017)
+
+A mapping lifetime groups by process, executable, terminal session, package or service container. Each mapping is its
+holder's, so it is in exactly one group, and each group's value is its mappings' statistic, the longest first; a group
+whose every mapping had an end unseen is unmeasured, after them. A median does not add, so the groups' values are not
+parts of the total's, and a remainder is the statistic over the union of the mappings it merges, never a sum of
+statistics. A view's records keep why they bound to no process, so a mapping no group can take - bound to none, or held
+by a process without the grouping's fact - is unattributed by that reason, and still measured. Grouped by mechanism or
+by peer, a mapping lifetime is not defined. 17 mutations of the path are caught.
