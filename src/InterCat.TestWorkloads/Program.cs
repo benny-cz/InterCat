@@ -117,6 +117,13 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Reader = Integer(args, "--reader") ?? 0,
     };
 
+    var sdkBurstOptions = new SdkBurstOptions
+    {
+        TruthDirectory = truth,
+        Messages = Integer(args, "--messages") ?? 1_000_000,
+        CallsPerSecond = Integer(args, "--calls-per-second") ?? 0,
+    };
+
     var sectionOptions = new SectionOptions
     {
         TruthDirectory = truth,
@@ -228,6 +235,12 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         return 2;
     }
 
+    if (args[0] == "sdk-burst" && (sdkBurstOptions.Messages < 1 || sdkBurstOptions.CallsPerSecond < 0))
+    {
+        await Console.Error.WriteLineAsync("--messages is at least one, and --calls-per-second not negative.").ConfigureAwait(false);
+        return 2;
+    }
+
     // --generations and --held-ms are two fixtures, FX-SECT-002 and FX-SECT-003: a run is one of them, or FX-SECT-001.
     if (args[0].StartsWith("section-share", StringComparison.Ordinal) && (sectionOptions.Generations < 1 || sectionOptions.HeldMilliseconds < 0
         || (sectionOptions.Generations > 1 && sectionOptions.HeldMilliseconds > 0)))
@@ -298,6 +311,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
             "sdk-ring-reader" when OperatingSystem.IsWindows() =>
                 await SdkRingScenario.RunReaderAsync(sdkRingOptions, cancellationToken).ConfigureAwait(false),
             "sdk-ring" or "sdk-ring-producer" or "sdk-ring-reader" => await UnsupportedPlatformAsync().ConfigureAwait(false),
+            "sdk-burst" => await SdkBurstScenario.RunAsync(sdkBurstOptions, cancellationToken).ConfigureAwait(false),
             "process-package" when OperatingSystem.IsWindows() =>
                 await ProcessPackageScenario.RunAsync(new ProcessPackageOptions { TruthDirectory = truth }, cancellationToken).ConfigureAwait(false),
             "process-package-child" => 0,
@@ -476,6 +490,10 @@ static void PrintHelp()
     Console.WriteLine("      first epoch read by every reader, then the channel made again at epoch 2, its sequence from 1, and");
     Console.WriteLine("      one last message no reader reads. Each process logs every message by its channel, epoch, sequence");
     Console.WriteLine("      and reader, with its length. Windows only.");
+    Console.WriteLine();
+    Console.WriteLine("  sdk-burst --truth <dir> [--messages n] [--calls-per-second n]");
+    Console.WriteLine("      The cooperative SDK's cost: one thread publishes and consumes each message of a burst as fast as");
+    Console.WriteLine("      the SDK takes the calls, and writes how long they took and whether a session listened to burst.json.");
     Console.WriteLine();
     Console.WriteLine("  section-share --truth <dir> [--view-bytes n] [--rounds n] [--generations n | --held-ms ms] [--seed n]");
     Console.WriteLine("      FX-SECT-001: a creator makes two named sections of the session's namespace under a name of the");

@@ -23,6 +23,8 @@ internal static class Program
             Console.Error.WriteLine("  [--workload <InterCat.TestWorkloads.exe>]: records FX-SDK-001 through the product's own icat record under");
             Console.Error.WriteLine("  the opt-in sdk profile, each run's session read as icat messages reads one and held to its truth, then");
             Console.Error.WriteLine("  deleted. Needs elevation, and Release builds of InterCat.Cli and InterCat.TestWorkloads.");
+            Console.Error.WriteLine("InterCat.SdkProbe --overhead --output <new directory> [--rounds n] [--messages n] [--duration s]: the SDK's cost,");
+            Console.Error.WriteLine("  each round a burst with no session listening and one while icat record --profile sdk records it.");
             return 2;
         }
 
@@ -34,6 +36,15 @@ internal static class Program
         int duration = Integer(args, "--duration") ?? 40;
         int readers = Integer(args, "--readers") ?? 3;
         Directory.CreateDirectory(output);
+        if (args.Contains("--overhead", StringComparer.Ordinal))
+        {
+            Dictionary<string, object?> overhead = await Overhead.RunAsync(icat, workload, output, Integer(args, "--rounds") ?? 5,
+                Integer(args, "--messages") ?? 200_000, duration).ConfigureAwait(false);
+            await Overhead.WriteAsync(output, overhead).ConfigureAwait(false);
+            Console.WriteLine($"The SDK's overhead measured into {output}.");
+            return 0;
+        }
+
         Dictionary<string, object?> measurement = await Product.RunAsync(icat, workload, output, runs, duration, readers).ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(output, "measurement.json"), JsonSerializer.Serialize(measurement, Json)).ConfigureAwait(false);
         Console.WriteLine($"FX-SDK-001 measured through the product into {output}.");

@@ -1,0 +1,241 @@
+{
+  "question": "What the cooperative SDK costs an application: a burst of publications and consumptions on one thread with no session listening, each call its enabled check, beside the same burst while icat record records it under the opt-in sdk profile, each call an event - and, paced, the rate up to which the capture kept every call.",
+  "messages": 200000,
+  "callsPerBurst": 400000,
+  "rounds": 5,
+  "disabled": {
+    "medianNanosecondsPerCall": 48.53375,
+    "medianCallsPerSecond": 20604218.713781647,
+    "bursts": [
+      {
+        "listened": false,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 18655500,
+        "nanosecondsPerCall": 46.63875,
+        "callsPerSecond": 21441397.979148243
+      },
+      {
+        "listened": false,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 23883200,
+        "nanosecondsPerCall": 59.708,
+        "callsPerSecond": 16748174.44898506
+      },
+      {
+        "listened": false,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 19413500,
+        "nanosecondsPerCall": 48.53375,
+        "callsPerSecond": 20604218.713781647
+      },
+      {
+        "listened": false,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 24473500,
+        "nanosecondsPerCall": 61.18375,
+        "callsPerSecond": 16344209.042433653
+      },
+      {
+        "listened": false,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 16918100,
+        "nanosecondsPerCall": 42.29525,
+        "callsPerSecond": 23643316.92093084
+      }
+    ]
+  },
+  "enabled": {
+    "medianNanosecondsPerCall": 960.56675,
+    "medianCallsPerSecond": 1041052.0663972598,
+    "keptWhole": 0,
+    "bursts": [
+      {
+        "listened": true,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 324463700,
+        "nanosecondsPerCall": 811.15925,
+        "callsPerSecond": 1232803.5462826812,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 400605,
+          "admittedRecords": 303295,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 97310,
+          "undecodableRecords": 0
+        },
+        "recordedCalls": 302690
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 397517000,
+        "nanosecondsPerCall": 993.7925,
+        "callsPerSecond": 1006246.2737442675,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 400624,
+          "admittedRecords": 296973,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 103651,
+          "undecodableRecords": 0
+        },
+        "recordedCalls": 296349
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 433504900,
+        "nanosecondsPerCall": 1083.76225,
+        "callsPerSecond": 922711.600261035,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 400604,
+          "admittedRecords": 329144,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 71460,
+          "undecodableRecords": 0
+        },
+        "recordedCalls": 328540
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 384226700,
+        "nanosecondsPerCall": 960.56675,
+        "callsPerSecond": 1041052.0663972598,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 400596,
+          "admittedRecords": 303990,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 96606,
+          "undecodableRecords": 0
+        },
+        "recordedCalls": 303424
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 0,
+        "calls": 400000,
+        "elapsedNanoseconds": 348521300,
+        "nanosecondsPerCall": 871.30325,
+        "callsPerSecond": 1147706.0369050615,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 400451,
+          "admittedRecords": 292184,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 108267,
+          "undecodableRecords": 0
+        },
+        "recordedCalls": 291734
+      }
+    ]
+  },
+  "paced": {
+    "seconds": 4,
+    "highestRateKeptWhole": 100000,
+    "bursts": [
+      {
+        "listened": true,
+        "targetCallsPerSecond": 50000,
+        "calls": 200000,
+        "elapsedNanoseconds": 4000173600,
+        "nanosecondsPerCall": 20000.868,
+        "callsPerSecond": 49997.830094173914,
+        "health": {
+          "exitCode": 0,
+          "lossFree": true,
+          "observedRecords": 200453,
+          "admittedRecords": 200453,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 0,
+          "undecodableRecords": 0
+        },
+        "recordedCalls": 200000
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 100000,
+        "calls": 400000,
+        "elapsedNanoseconds": 4000371000,
+        "nanosecondsPerCall": 10000.9275,
+        "callsPerSecond": 99990.72586017646,
+        "health": {
+          "exitCode": 0,
+          "lossFree": true,
+          "observedRecords": 400830,
+          "admittedRecords": 400830,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 0,
+          "undecodableRecords": 0
+        },
+        "recordedCalls": 400000
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 200000,
+        "calls": 800000,
+        "elapsedNanoseconds": 4000231300,
+        "nanosecondsPerCall": 5000.289125,
+        "callsPerSecond": 199988.43566870745,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 800486,
+          "admittedRecords": 498582,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 301904,
+          "undecodableRecords": 0
+        },
+        "recordedCalls": 498107
+      },
+      {
+        "listened": true,
+        "targetCallsPerSecond": 400000,
+        "calls": 1600000,
+        "elapsedNanoseconds": 4000309700,
+        "nanosecondsPerCall": 2500.1935625,
+        "callsPerSecond": 399969.0323976666,
+        "health": {
+          "exitCode": 1,
+          "lossFree": false,
+          "observedRecords": 1600453,
+          "admittedRecords": 503715,
+          "providerReportedEventLoss": 0,
+          "consumerReportedBufferLoss": 0,
+          "applicationDrops": 1096738,
+          "undecodableRecords": 0
+        },
+        "recordedCalls": 503264
+      }
+    ]
+  },
+  "notes": [
+    "A burst is one process opening one channel and, on one thread, publishing and consuming each message as fast as the SDK takes the calls, or held to a paced schedule.",
+    "A recorded burst\u0027s recorded calls are the publications and consumptions the session it published holds, as icat messages derives them; a capture that could not keep them all says so in its health, as icat record does, and is never read as having kept them.",
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once read."
+  ]
+}

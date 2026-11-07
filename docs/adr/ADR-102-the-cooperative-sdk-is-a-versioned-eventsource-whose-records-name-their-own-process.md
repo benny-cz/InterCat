@@ -50,3 +50,12 @@ capture's catalog reads its layout from (ADR-036).
   source and profile follow, and no view derives logical messages until their derivation does.
 - Content, batching, a native C/C++ library and the samples M7 names are not defined at this revision.
 - 19 mutations of the path are caught.
+
+## Addendum: its cost, measured (revision 1030)
+
+`tools/InterCat.SdkProbe --overhead` measured what the SDK costs an application (`bench/results/sdk-overhead-20261107T144235Z/overhead.json`): with no session
+listening a call costs a median 48.5 ns, its checks alone; while `icat record --profile sdk` records it,
+960.6 ns, an event written, about 1,041,052 calls a second from one
+thread. A capture kept every call paced up to 100,000 calls a second; faster, it dropped what its queue could not
+hold and said so - never whole where it was not. That is M7's overhead guide, in `contracts/sdk-v1.md` §8: say logical
+boundaries, and know the rate a capture keeps; batching, the fallback M7 names past it, is not offered yet.

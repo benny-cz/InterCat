@@ -85,7 +85,24 @@ What a capture admits is read as logical messages (revision 1028, ADR-104, `cont
 channel's epoch and sequence, its publication and each reader's consumption, said consumed, open, its publication unseen,
 or conflicting; `icat messages` lists them.
 
-## 8. Not defined at this version
+## 8. Cost
+
+Measured on one machine by `tools/InterCat.SdkProbe --overhead` (revision 1030, `bench/results/sdk-overhead-20261107T144235Z/overhead.json`), each burst one thread
+publishing and consuming as fast as the SDK takes the calls, five rounds:
+
+| While | A call costs (median) | Calls a second, one thread |
+|---|---|---|
+| No session listens | 48.5 ns - its argument checks and the enabled check | about 20,604,219 |
+| `icat record --profile sdk` records it | 960.6 ns - an ETW event written | about 1,041,052 |
+
+A capture keeps what it can take. Paced, it kept every call up to 100,000 calls a second - 50,000
+messages published and consumed - for four seconds; at 200,000 it kept
+498,107 of 800,000, and unpaced 73 to 82%. Past what it
+keeps, the capture says it lost records and is never read as whole: a count it states is never estimated from what it
+kept. An application raising more than that from one capture's view says its logical boundaries - a message, never each
+byte - or is measured in a narrower window; batching is not offered at this version.
+
+## 9. Not defined at this version
 
 - An operation tree by parent, and the lag between a publication and its consumptions.
 - Content carried by an event, bounded and opt-in; batching; a native C/C++ library.

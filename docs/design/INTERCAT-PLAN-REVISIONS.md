@@ -952,6 +952,7 @@ Revision 1026 lets a capture admit the cooperative SDK's records through the opt
 Revision 1027 makes a file InterCat replaces wait out a reader's brief hold on it rather than lose the change.
 Revision 1028 reads the cooperative SDK's records as logical messages, which icat messages lists (ADR-104).
 Revision 1029 measures the cooperative SDK's messages through the product on FX-SDK-001's shared-memory ring (ADR-104's addendum).
+Revision 1030 publishes the cooperative SDK's cost, M7's overhead guide (ADR-102's addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4823,3 +4824,10 @@ channel again at epoch 2 for 40 more, and publishes one no reader reads. `tools/
 by `icat record --profile sdk` and read each session as `icat messages` does: nothing lost, every one of the 161
 publications and 480 consumptions matched its truth by length and process, the unread message stayed open, and the
 second epoch's sequence started at 1 again. The truth log records a message's identity; the derivation's path is unchanged.
+
+Revision 1030 publishes what the cooperative SDK costs (ADR-102's addendum, `contracts/sdk-v1.md` §8). The `sdk-burst`
+workload publishes and consumes on one thread as fast as the SDK takes the calls, or paced; `tools/InterCat.SdkProbe
+--overhead` measured five rounds with no session listening (a median 48.5 ns a call) and while `icat record
+--profile sdk` recorded them (960.6 ns), and paced bursts from 50,000 to 400,000 calls a second: a capture
+kept every call up to 100,000 a second, and past that dropped what its queue could not hold and said so, never
+whole where it was not. The probe reads a capture that published a partial result as a measurement of what it lost.
