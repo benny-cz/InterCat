@@ -36,12 +36,19 @@ extern "C" {
 #endif
 
 /* The schema this library raises: a change an earlier reader could misread bumps the major, a field added at an event's
- * end, or an event added, the minor (contracts/sdk-v1.md section 5). Minor 1 adds the batches. */
+ * end, or an event added, the minor (contracts/sdk-v1.md section 5). Minor 1 adds the batches, minor 2 a message's
+ * content. */
 #define INTERCAT_SDK_SCHEMA_MAJOR 1
-#define INTERCAT_SDK_SCHEMA_MINOR 1
+#define INTERCAT_SDK_SCHEMA_MINOR 2
 
 /* The most messages one batch says. */
 #define INTERCAT_SDK_MAXIMUM_BATCH 65536
+
+/* The most bytes of a message said as its content: a longer message is published without it, never said in part. */
+#define INTERCAT_SDK_MAXIMUM_CONTENT 32768
+
+/* The keyword a session asks for to hear a message's content, the one event under it (ADR-107). */
+#define INTERCAT_SDK_KEYWORD_CONTENT 0x1
 
 /* Each event's descriptor as InterCat.Sdk's manifest declares it: id, version, channel, level, opcode, task, keyword. */
 #define INTERCAT_SDK_EVENT_SDK_STARTED 1, 1, 0, 4, 0, 65533, 0
@@ -53,6 +60,7 @@ extern "C" {
 #define INTERCAT_SDK_EVENT_OPERATION_COMPLETED 7, 1, 0, 4, 2, 0, 0
 #define INTERCAT_SDK_EVENT_MESSAGES_PUBLISHED 8, 1, 0, 4, 9, 0, 0
 #define INTERCAT_SDK_EVENT_MESSAGES_CONSUMED 9, 1, 0, 4, 240, 0, 0
+#define INTERCAT_SDK_EVENT_MESSAGE_CONTENT 10, 1, 0, 4, 0, 65524, 1
 
 /* What a channel carries its messages through, as the application says (contracts/sdk-v1.md section 2). */
 typedef enum intercat_channel_kind
@@ -99,6 +107,13 @@ ULONG intercat_channel_open(intercat_channel *channel, const GUID *id, const wch
  * the bytes copied for it where the publisher knows them (-1 where not). */
 ULONG intercat_channel_published(const intercat_channel *channel, LONGLONG sequence, LONGLONG logical_length, LONGLONG copied_length);
 
+/* Says the message at a sequence was published, as intercat_channel_published says one, its logical length the length
+ * bytes message holds - and its content too, right after: those bytes, only where a session asks for content and they are
+ * at most INTERCAT_SDK_MAXIMUM_CONTENT (ADR-107). Where said is not NULL, *said is set to whether its content was said.
+ * message may be NULL only where length is 0. */
+ULONG intercat_channel_published_content(const intercat_channel *channel, LONGLONG sequence, const void *message, size_t length,
+    LONGLONG copied_length, int *said);
+
 /* Says reader consumer consumed the message at a sequence, of its logical length: each reader of one message says so once,
  * and the message was still published once. */
 ULONG intercat_channel_consumed(const intercat_channel *channel, LONGLONG sequence, LONGLONG logical_length, LONGLONG consumer);
@@ -134,7 +149,7 @@ ULONG intercat_operation_complete(intercat_operation *operation, LONGLONG status
 
 /* {82c69482-41a7-5887-ff73-c02a5012c044}: the identity EventSource derives from the provider's name, InterCat-Sdk. */
 static const GUID intercat_sdk_provider = { 0x82c69482, 0x41a7, 0x5887, { 0xff, 0x73, 0xc0, 0x2a, 0x50, 0x12, 0xc0, 0x44 } };
-static const wchar_t intercat_sdk_library[] = L"native-1.1";
+static const wchar_t intercat_sdk_library[] = L"native-1.2";
 static REGHANDLE intercat_sdk_handle;
 
 static void intercat_sdk_announce(void)
@@ -257,6 +272,50 @@ ULONG intercat_channel_published(const intercat_channel *channel, LONGLONG seque
     EventDataDescCreate(&data[5], &copied_length, sizeof copied_length);
     EventDataDescCreate(&data[6], &ticks.QuadPart, sizeof ticks.QuadPart);
     return EventWrite(intercat_sdk_handle, &descriptor, 7, data);
+}
+
+ULONG intercat_channel_published_content(const intercat_channel *channel, LONGLONG sequence, const void *message, size_t length,
+    LONGLONG copied_length, int *said)
+{
+    static const EVENT_DESCRIPTOR descriptor = { INTERCAT_SDK_EVENT_MESSAGE_CONTENT };
+    static const BYTE none = 0;
+    LONG process;
+    ULONG size;
+    ULONG status;
+    EVENT_DATA_DESCRIPTOR data[6];
+    if (said != NULL)
+    {
+        *said = 0;
+    }
+
+    if ((message == NULL && length != 0) || (ULONGLONG)length > (ULONGLONG)MAXLONGLONG)
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    /* Its publication is said as any other's, refusing what that refuses; its content only whole, and only to a session
+     * that asks for it. */
+    status = intercat_channel_published(channel, sequence, (LONGLONG)length, copied_length);
+    if (status != ERROR_SUCCESS || length > INTERCAT_SDK_MAXIMUM_CONTENT || !EventEnabled(intercat_sdk_handle, &descriptor))
+    {
+        return status;
+    }
+
+    process = (LONG)GetCurrentProcessId();
+    size = (ULONG)length;
+    EventDataDescCreate(&data[0], &process, sizeof process);
+    EventDataDescCreate(&data[1], &channel->id, sizeof channel->id);
+    EventDataDescCreate(&data[2], &channel->epoch, sizeof channel->epoch);
+    EventDataDescCreate(&data[3], &sequence, sizeof sequence);
+    EventDataDescCreate(&data[4], &size, sizeof size);
+    EventDataDescCreate(&data[5], size != 0 ? message : &none, size);
+    status = EventWrite(intercat_sdk_handle, &descriptor, 6, data);
+    if (status == ERROR_SUCCESS && said != NULL)
+    {
+        *said = 1;
+    }
+
+    return status;
 }
 
 ULONG intercat_channel_consumed(const intercat_channel *channel, LONGLONG sequence, LONGLONG logical_length, LONGLONG consumer)

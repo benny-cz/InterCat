@@ -200,6 +200,13 @@ public sealed class SdkCaptureAdmissionTests
         Assert.Contains(compiled.SourceDecisions, decision => decision.SourceId == WindowsSourceCatalog.CooperativeSdkSourceId
             && decision.State == ProfileSourceDecisionState.Included);
 
+        // It asks the SDK's provider for EventSource's own keywords, without which it hears none of the SDK's events, and every
+        // keyword the SDK may define but content's; and it enables no content event, so no application builds a message's
+        // content for it (ADR-107).
+        ProviderEnablementRequest sdk = Assert.Single(compiled.Providers, provider => provider.SourceId == WindowsSourceCatalog.CooperativeSdkSourceId);
+        Assert.Equal((0x0000_F000_FFFF_FFFEUL, 0UL), (sdk.MatchAnyKeyword, sdk.MatchAnyKeyword & (ulong)InterCatSdkEventSource.Keywords.Content));
+        Assert.Equal(Enumerable.Range(1, 9), sdk.EventIdsToEnable);
+
         // The capability catalog names it as the source that records what an application says of itself.
         Assert.Equal([WindowsSourceCatalog.CooperativeSdkSourceId],
             MechanismCatalog.Entries.Single(entry => entry.Mechanism == Mechanism.ApplicationSdk).SourceIds);
@@ -272,6 +279,8 @@ public sealed class SdkCaptureAdmissionTests
         XNamespace events = "http://schemas.microsoft.com/win/2004/08/events";
         Dictionary<string, int> tasks = manifest.Descendants(events + "task")
             .ToDictionary(task => (string)task.Attribute("name")!, task => (int)task.Attribute("value")!);
+        Dictionary<string, ulong> keywords = manifest.Descendants(events + "keyword")
+            .ToDictionary(keyword => (string)keyword.Attribute("name")!, keyword => Convert.ToUInt64((string)keyword.Attribute("mask")!, 16));
         var opcodes = new Dictionary<string, int> { ["win:Start"] = 1, ["win:Stop"] = 2, ["win:Send"] = 9, ["win:Receive"] = 240 };
         string[] expected =
         [
@@ -282,7 +291,9 @@ public sealed class SdkCaptureAdmissionTests
                     (string)element.Attribute("level")! == "win:Informational" ? 4 : -1,
                     element.Attribute("opcode") is { } opcode ? opcodes[opcode.Value] : 0,
                     element.Attribute("task") is { } task ? tasks[task.Value] : 0,
-                    0)),
+                    element.Attribute("keywords") is { } named
+                        ? named.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Aggregate(0UL, (mask, name) => mask | keywords[name])
+                        : 0UL)),
         ];
         string[] said =
         [
@@ -291,9 +302,13 @@ public sealed class SdkCaptureAdmissionTests
         ];
         Assert.Equal(expected, said);
 
-        // The schema's version, as the header announces it.
+        // The schema's version, as the header announces it, and the bounds and keyword its calls share with InterCat.Sdk's.
         Assert.Contains($"#define INTERCAT_SDK_SCHEMA_MAJOR {InterCatSdkEventSource.SchemaMajor}", header, StringComparison.Ordinal);
         Assert.Contains($"#define INTERCAT_SDK_SCHEMA_MINOR {InterCatSdkEventSource.SchemaMinor}", header, StringComparison.Ordinal);
+        Assert.Contains($"#define INTERCAT_SDK_MAXIMUM_BATCH {InterCatChannel.MaximumBatch}", header, StringComparison.Ordinal);
+        Assert.Contains($"#define INTERCAT_SDK_MAXIMUM_CONTENT {InterCatChannel.MaximumContent}", header, StringComparison.Ordinal);
+        Assert.Contains(string.Create(CultureInfo.InvariantCulture, $"#define INTERCAT_SDK_KEYWORD_CONTENT 0x{(ulong)InterCatSdkEventSource.Keywords.Content:x}"),
+            header, StringComparison.Ordinal);
     }
 
     private static string RepositoryRoot()

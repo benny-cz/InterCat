@@ -124,6 +124,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         Messages = Integer(args, "--messages") ?? 1_000_000,
         CallsPerSecond = Integer(args, "--calls-per-second") ?? 0,
         Batch = Integer(args, "--batch") ?? 1,
+        Content = args.Contains("--content", StringComparer.Ordinal),
     };
 
     var sdkStreamOptions = new SdkStreamOptions
@@ -254,9 +255,10 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
     }
 
     if (args[0] == "sdk-burst" && (sdkBurstOptions.Messages < 1 || sdkBurstOptions.CallsPerSecond < 0
-        || sdkBurstOptions.Batch is < 1 or > 65_536 || sdkBurstOptions.Messages % sdkBurstOptions.Batch != 0))
+        || sdkBurstOptions.Batch is < 1 or > 65_536 || sdkBurstOptions.Messages % sdkBurstOptions.Batch != 0
+        || (sdkBurstOptions.Content && sdkBurstOptions.Batch != 1)))
     {
-        await Console.Error.WriteLineAsync("--messages is at least one, --calls-per-second not negative, and --batch from 1 to 65,536, the messages a whole number of batches.")
+        await Console.Error.WriteLineAsync("--messages is at least one, --calls-per-second not negative, and --batch from 1 to 65,536, the messages a whole number of batches; --content says messages one by one.")
             .ConfigureAwait(false);
         return 2;
     }
@@ -350,6 +352,7 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
                 await SdkStreamScenario.RunClientAsync(sdkStreamOptions, cancellationToken).ConfigureAwait(false),
             "sdk-stream" or "sdk-stream-server" or "sdk-stream-client" => await UnsupportedPlatformAsync().ConfigureAwait(false),
             "sdk-first-use" => await SdkFirstUseScenario.RunAsync(truth, cancellationToken).ConfigureAwait(false),
+            "sdk-content" => await SdkContentScenario.RunAsync(truth, cancellationToken).ConfigureAwait(false),
             "process-package" when OperatingSystem.IsWindows() =>
                 await ProcessPackageScenario.RunAsync(new ProcessPackageOptions { TruthDirectory = truth }, cancellationToken).ConfigureAwait(false),
             "process-package-child" => 0,
@@ -530,10 +533,11 @@ static void PrintHelp()
     Console.WriteLine("      and reader, with its length. --batch runs it as FX-SDK-005: the producer publishes, and each reader");
     Console.WriteLine("      consumes, that many messages in one batch, the last message still alone. Windows only.");
     Console.WriteLine();
-    Console.WriteLine("  sdk-burst --truth <dir> [--messages n] [--calls-per-second n] [--batch n]");
+    Console.WriteLine("  sdk-burst --truth <dir> [--messages n] [--calls-per-second n] [--batch n | --content]");
     Console.WriteLine("      The cooperative SDK's cost: one thread publishes and consumes each message of a burst as fast as");
     Console.WriteLine("      the SDK takes the calls, and writes how long they took and whether a session listened to burst.json.");
-    Console.WriteLine("      --batch says that many messages in each call, a batch published in one and consumed in one.");
+    Console.WriteLine("      --batch says that many messages in each call, a batch published in one and consumed in one;");
+    Console.WriteLine("      --content publishes each message with its bytes, said where a session asks, and counts those said.");
     Console.WriteLine();
     Console.WriteLine("  sdk-stream --truth <dir> [--transport pipe|socket] [--messages n] [--restart-messages n] [--per-write n]");
     Console.WriteLine("      [--read-bytes n] [--seed n]");
@@ -547,6 +551,12 @@ static void PrintHelp()
     Console.WriteLine("  sdk-first-use --truth <dir>");
     Console.WriteLine("      The cooperative SDK's first use under a listener already listening, as under a capture running as an");
     Console.WriteLine("      application starts: writes each schema announcement's library, and the SDK's, to first-use.json.");
+    Console.WriteLine();
+    Console.WriteLine("  sdk-content --truth <dir>");
+    Console.WriteLine("      The cooperative SDK's content in a process of its own: messages published with their bytes while");
+    Console.WriteLine("      nothing listens, under a listener asking for every keyword but content, and with one asking for");
+    Console.WriteLine("      content beside it; writes what each call returned and each listener heard, as lengths and SHA-256");
+    Console.WriteLine("      digests, to content.json.");
     Console.WriteLine();
     Console.WriteLine("  section-share --truth <dir> [--view-bytes n] [--rounds n] [--generations n | --held-ms ms] [--seed n]");
     Console.WriteLine("      FX-SECT-001: a creator makes two named sections of the session's namespace under a name of the");

@@ -8,7 +8,7 @@
  * is completed again and its channel closed again, which say nothing. It logs every message it published or consumed - by
  * its channel, epoch, sequence and reader, with its length - to truth-native.jsonl in the directory --truth names, as the
  * .NET truth workloads log theirs, and the run's parameters and operations to scenario.json. It reads no InterCat state.
- * It exits 3 if the library took an argument it should refuse.
+ * It exits 3 if the library took an argument it should refuse, or said a message's content while no session listened.
  *
  * Usage: publish_consume.exe --truth <directory> [--batch]
  *
@@ -160,13 +160,23 @@ static void publish_epoch(const intercat_channel *channel, long long epoch, long
     }
 }
 
-/* Every argument InterCat.Sdk throws for, the library refuses, raising nothing. */
+/* Every argument InterCat.Sdk throws for, the library refuses, raising nothing and saying no content. */
 static int refuses(void)
 {
     static const GUID id = { 0x1, 0, 0, { 0, 0, 0, 0, 0, 0, 0, 0 } };
+    static const BYTE bytes[1] = { 7 };
     intercat_channel channel;
     intercat_operation operation;
+    int said = 1;
     memset(&channel, 0, sizeof channel);
+    if (intercat_channel_published_content(NULL, 1, bytes, sizeof bytes, -1, &said) != ERROR_INVALID_PARAMETER || said != 0
+        || (said = 1, intercat_channel_published_content(&channel, 1, NULL, 1, -1, &said)) != ERROR_INVALID_PARAMETER || said != 0
+        || (said = 1, intercat_channel_published_content(&channel, 1, bytes, sizeof bytes, -2, &said)) != ERROR_INVALID_PARAMETER
+        || said != 0)
+    {
+        return 0;
+    }
+
     return intercat_channel_open(&channel, &id, L"refused", INTERCAT_CHANNEL_OTHER, 0) == ERROR_INVALID_PARAMETER
         && intercat_channel_open(&channel, &id, L"refused", (intercat_channel_kind)4, 1) == ERROR_INVALID_PARAMETER
         && intercat_channel_open(&channel, &id, NULL, INTERCAT_CHANNEL_OTHER, 1) == ERROR_INVALID_PARAMETER
@@ -183,6 +193,22 @@ static int refuses(void)
         && intercat_channel_published_batch(&channel, 1, 2, 1, -2) == ERROR_INVALID_PARAMETER
         && intercat_channel_consumed_batch(&channel, MAXLONGLONG, 2, 1, 1) == ERROR_INVALID_PARAMETER
         && intercat_channel_consumed_batch(NULL, 1, 2, 1, 1) == ERROR_INVALID_PARAMETER;
+}
+
+/* While no session listens, a message's content is never said: nothing asks for it. Under a session, it is that session's
+ * to hear or not, which a capture of it states. */
+static int unheard(void)
+{
+    static const GUID id = { 0x2, 0, 0, { 0, 0, 0, 0, 0, 0, 0, 0 } };
+    static const BYTE bytes[3] = { 1, 2, 3 };
+    intercat_channel channel;
+    int said = 1;
+    memset(&channel, 0, sizeof channel);
+    channel.id = id;
+    channel.epoch = 1;
+    return intercat_sdk_listened()
+        || (intercat_channel_published_content(&channel, 1, bytes, sizeof bytes, -1, &said) == ERROR_SUCCESS && said == 0
+            && intercat_channel_published_content(&channel, 2, NULL, 0, -1, NULL) == ERROR_SUCCESS);
 }
 
 /* One operation as scenario.json names it: the identity the library made for it, the parent the sample started it under
@@ -244,7 +270,7 @@ int wmain(int argc, wchar_t **argv)
         return 1;
     }
 
-    if (!refuses())
+    if (!refuses() || !unheard())
     {
         return 3;
     }

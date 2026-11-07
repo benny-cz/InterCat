@@ -29,7 +29,8 @@ descriptor and fields the manifest's, held to it by a test. It holds a channel a
 refuses what that throws for - returning `ERROR_INVALID_PARAMETER` and raising nothing - and announces the schema alike,
 its library `native-1.0` and its clock `QueryPerformanceCounter`'s. FX-SDK-002 measures it through the product. Since
 minor 1 (revision 1036) it says batches too, `intercat_channel_published_batch` and `intercat_channel_consumed_batch`,
-its library `native-1.1`.
+its library `native-1.1`; since minor 2 (revision 1039) a message's content, `intercat_channel_published_content`, its
+library `native-1.2`.
 
 ## 2. Channels and messages
 
@@ -41,6 +42,7 @@ its library `native-1.1`.
 | `MessageConsumed` | 5 | Receive | `processId`, `channel`, `epoch`, `sequence`, `consumer` (the reader's identity), `logicalLength`, `sourceTicks` |
 | `MessagesPublished` | 8 | Send | `processId`, `channel`, `epoch`, `firstSequence`, `count` (1 to 65,536), `logicalLength` and `copiedLength` (the messages' together, -1 where unknown), `sourceTicks` |
 | `MessagesConsumed` | 9 | Receive | `processId`, `channel`, `epoch`, `firstSequence`, `count`, `consumer`, `logicalLength` (together), `sourceTicks` |
+| `MessageContent` | 10 | Info, keyword `Content` | `processId`, `channel`, `epoch`, `sequence`, `contentSize` (uint32), `content` (that many bytes) |
 
 A channel is the identity every process using it names alike. A message is its channel's epoch and sequence: published
 once, when committed where readers can take it, and consumed once by each reader, so a message three readers consume
@@ -55,6 +57,18 @@ call for what as many single calls would say, for an application faster than a c
 FX-SDK-005 and FX-SDK-006 (revision 1037) measure batches of both libraries through the product. Over a byte stream - a pipe or a socket - a
 message is the application's frame: a write may carry several and a message may span reads, and the bytes its frame
 copied into the stream are beside its logical length (revision 1033, FX-SDK-003 and FX-SDK-004).
+
+A message's content (minor 2, revision 1039, ADR-107) is an event of its own, `MessageContent`, raised right after its
+publication, which says its length as any other's does: the message's whole bytes as the application holds them, at
+most 32,768 of them - a longer message is published without its content, which is never said in part. `Published` with
+the message's bytes says it, and natively `intercat_channel_published_content`, each saying whether it did. It is under
+the keyword `Content` (0x1), which no other event has, and said only where a session asks for it. An EventSource marks
+every event it raises with keywords of its own, 0xF000_0000_0000, so a session asking for keywords hears the SDK's
+events only by asking for those too: InterCat's `sdk` profile asks for 0xF000_FFFF_FFFE, every keyword but content's,
+and its applications build no content for it. A session asking for no keyword asks for all, content included. Measured
+on revision 1039, 50 messages published with their bytes under each: a session asking for 0xFFFF_FFFE heard none of the
+SDK's events; under 0xF000_FFFF_FFFE every publication, the SDK saying no content; under 0xF000_FFFF_FFFF every content
+too, each its count and then the bytes sent.
 
 ## 3. Operations
 
@@ -84,8 +98,10 @@ was raised, which may be later where the application batches.
 An event's version is the schema's major. A minor adds fields at an event's end only - after its text, where it has
 one - which a reader of an earlier minor keeps unread; a major is a change an earlier reader could misread, raised at a
 new event version, which such a reader admits as unknown rather than misreads (plan §24 `sdkSchema`). A minor may add
-events as well, as minor 1 adds the batches: a capture built before them holds no descriptor of them, and counts their
-records undecodable, never reads them as another event.
+events as well, as minor 1 adds the batches and minor 2 a message's content: a capture built before them holds no
+descriptor of them and enables only the events it admits, so their records never reach it, never read as another event.
+Measured on revision 1039: a capture admitting the SDK's events 1 to 9 received none of 50 contents another session
+made the SDK raise, and counted none as not admitted. What such an event says is missing from that capture.
 
 A capture holds this to its own schema, the SDK's it was built with (revision 1031): a later minor's record is read at the
 offsets the capture knows, each known field where it was and its added field past them unread, never what the record
@@ -110,6 +126,7 @@ payload names (ADR-103):
 | `MessagesConsumed` | Receive, inbound | `channel` | - | `logicalLength` together, application payload, receive side | `ChannelEpoch`, `MessageSequence` (its first), `MessageCount`, `ConsumerNumber`, `SourceTicks` |
 
 An operation's parent is the record's related activity. A copied length is kept as the publisher said it, -1 included.
+A capture admits no `MessageContent` at this version, and the `sdk` profile asks for none (§2).
 
 ## 7. Messages
 
@@ -148,4 +165,5 @@ messages it keeps said one by one; at 3,200,000 it kept 99.5% of them, and past 
 ## 9. Not defined at this version
 
 - An operation tree by parent, and the lag between a publication and its consumptions.
-- Content carried by an event, bounded and opt-in.
+- A capture keeping a message's content: its admission under a scoped content request (`contracts/content-v1.md` §5.1),
+  its process scope and what it costs. The SDK says it since minor 2 (§2).

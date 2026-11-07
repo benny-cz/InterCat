@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.Tracing;
 
 namespace InterCat.Sdk;
 
@@ -28,6 +29,12 @@ public sealed class InterCatChannel : IDisposable
 {
     /// <summary>The most messages one batch says (ADR-106).</summary>
     public const int MaximumBatch = 65_536;
+
+    /// <summary>
+    /// The most bytes of a message the SDK says as its content (ADR-107): a longer message is published without its content,
+    /// which is never said in part.
+    /// </summary>
+    public const int MaximumContent = 32_768;
 
     private int closed;
 
@@ -79,6 +86,32 @@ public sealed class InterCatChannel : IDisposable
         {
             log.MessagePublished(Environment.ProcessId, Id, Epoch, sequence, logicalLength, copiedLength, Stopwatch.GetTimestamp());
         }
+    }
+
+    /// <summary>
+    /// Says the message <paramref name="message"/> holds was published at <paramref name="sequence"/>, as
+    /// <see cref="Published(long, long, long)"/> says one, its logical length the bytes it holds - and its content too, right
+    /// after: those bytes, only where a session asks for content and they are at most <see cref="MaximumContent"/>
+    /// (ADR-107). Returns whether its content was said.
+    /// </summary>
+    public bool Published(long sequence, ReadOnlySpan<byte> message, long copiedLength = -1)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(copiedLength, -1);
+        InterCatSdkEventSource log = InterCatSdkEventSource.Log;
+        if (!log.IsEnabled())
+        {
+            return false;
+        }
+
+        int processId = Environment.ProcessId;
+        log.MessagePublished(processId, Id, Epoch, sequence, message.Length, copiedLength, Stopwatch.GetTimestamp());
+        if (message.Length > MaximumContent || !log.IsEnabled(EventLevel.Informational, InterCatSdkEventSource.Keywords.Content))
+        {
+            return false;
+        }
+
+        log.Content(processId, Id, Epoch, sequence, message);
+        return true;
     }
 
     /// <summary>

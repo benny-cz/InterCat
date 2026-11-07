@@ -961,6 +961,7 @@ Revision 1035 keys a batch of the cooperative SDK as a run of messages, counted 
 Revision 1036 has both of the cooperative SDK's libraries raise batches at the schema's minor 1, and a capture admit them (ADR-106's addendum).
 Revision 1037 measures the cooperative SDK's batches through the product, FX-SDK-005 and FX-SDK-006 (ADR-106's second addendum).
 Revision 1038 publishes what the cooperative SDK's batches cost (ADR-106's third addendum).
+Revision 1039 lets the cooperative SDK say a message's content, only whole and only to a session that asks for it (ADR-107).
 
 ## Revisions, a paragraph each, in order
 
@@ -4900,3 +4901,12 @@ messages and as many calls as the single messages' measure, cost a median 78.6 n
 890.7 ns while a capture records them - 2.5 and 27.8 ns a message published and consumed. Paced, a capture kept every
 message up to 1,600,000 a second, 32 times what it keeps said one by one, and at 3,200,000 99.5%, saying what it lost.
 The burst workload and the probe take a batch; the product's path is unchanged.
+
+Revision 1039 begins M7's content opt-in (ADR-107). Both libraries say a message's content at the schema's minor 2: an
+event of its own, `MessageContent`, right after the message's publication, its whole bytes up to 32,768 - a longer
+message is published without it - under a keyword of its own, `Content`, said only where a session asks for it. An
+EventSource marks every event with keywords of its own, so the `sdk` profile asks for those and every keyword but
+content's, 0xF000_FFFF_FFFE: measured, a session asking for 0xFFFF_FFFE heard none of the SDK's events, and under the
+profile's keywords the SDK said no content. A capture enables only the events it admits, so a later minor's events never
+reach an earlier one, which corrects what revision 1036 said of batches. 22 mutations are caught; a capture keeping the
+content follows.

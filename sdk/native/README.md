@@ -20,6 +20,7 @@ intercat_sdk_start();
 intercat_channel ring;
 intercat_channel_open(&ring, &ring_id, L"telemetry", INTERCAT_CHANNEL_SHARED_MEMORY, 1);
 intercat_channel_published(&ring, sequence, length, copied);   /* once, when committed where readers can take it */
+intercat_channel_published_content(&ring, sequence, bytes, length, copied, &said);  /* or so, with its content where asked */
 intercat_channel_consumed(&ring, sequence, length, reader);    /* once by each reader */
 intercat_channel_published_batch(&ring, first, count, total, copied);  /* a run of up to 65,536 messages, said once */
 intercat_channel_consumed_batch(&ring, first, count, total, reader);
@@ -35,6 +36,11 @@ intercat_sdk_stop();
 A channel's identity is the one every process using it names alike; its epoch starts at 1, and a channel made again,
 or a sequence that wraps, opens the next. A message's boundaries are logical: a ring buffer's publish and consume, never
 each load or store of its memory.
+
+A message published with its bytes is said as any other, its length theirs, and its content right after - the bytes
+themselves - only where a session asks for content, under the keyword `INTERCAT_SDK_KEYWORD_CONTENT`, and only whole: a
+message longer than `INTERCAT_SDK_MAXIMUM_CONTENT` (32,768 bytes) is published without it. `said` tells whether it was,
+and a session that asks for no content never hears it (ADR-107).
 
 Every call that says something returns `ERROR_SUCCESS` - said, or no session listening to say it to -,
 `ERROR_INVALID_PARAMETER` for an argument the SDK refuses, raising nothing, or the error `EventWrite` returned, the

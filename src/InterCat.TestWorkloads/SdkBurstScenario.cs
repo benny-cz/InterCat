@@ -25,6 +25,12 @@ internal sealed record SdkBurstOptions
     /// in one call and consumed in one (ADR-106), the burst's messages a whole number of batches.
     /// </summary>
     public int Batch { get; init; } = 1;
+
+    /// <summary>
+    /// Whether each message is published with its bytes, its content said where a session asks for it (ADR-107); messages
+    /// said one by one only.
+    /// </summary>
+    public bool Content { get; init; }
 }
 
 /// <summary>
@@ -48,6 +54,13 @@ internal static class SdkBurstScenario
 
         // A paced burst holds each step to its place on the schedule, spinning until it is due; an unpaced one never waits.
         int batch = options.Batch;
+        byte[] message = new byte[MessageBytes];
+        for (int index = 0; index < message.Length; index++)
+        {
+            message[index] = unchecked((byte)(index * 7));
+        }
+
+        long contentSaid = 0;
         double ticksPerStep = options.CallsPerSecond == 0 ? 0 : 2.0 * Stopwatch.Frequency / options.CallsPerSecond;
         long started = Stopwatch.GetTimestamp();
         using (InterCatChannel channel = InterCatChannel.Open(Guid.NewGuid(), "sdk-burst", InterCatChannelKind.Other))
@@ -61,7 +74,12 @@ internal static class SdkBurstScenario
                     Thread.SpinWait(16);
                 }
 
-                if (batch == 1)
+                if (options.Content)
+                {
+                    contentSaid += channel.Published(sequence, message, copiedLength: MessageBytes) ? 1 : 0;
+                    channel.Consumed(sequence, MessageBytes, consumer: 1);
+                }
+                else if (batch == 1)
                 {
                     channel.Published(sequence, MessageBytes, copiedLength: MessageBytes);
                     channel.Consumed(sequence, MessageBytes, consumer: 1);
@@ -83,6 +101,8 @@ internal static class SdkBurstScenario
             listened,
             options.Messages,
             batch,
+            content = options.Content,
+            contentSaid,
             targetCallsPerSecond = options.CallsPerSecond,
             calls,
             events = listened ? calls + 2 : 0,

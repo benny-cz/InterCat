@@ -1,0 +1,58 @@
+# ADR-107: A message's content is said only whole, and only to a session that asks for it
+
+- Status: accepted for M7's content opt-in; both libraries say a message's content at the schema's minor 2, and a capture
+  keeping no content never asks for it (revision 1039); a capture keeping it under a request, its fixtures and its cost
+  follow
+- Date: 2026-11-07
+- Decision owners: InterCat maintainers
+- Relates to: ADR-036, ADR-037, ADR-102, ADR-103, ADR-105, plan §15 M7, §11.2, `contracts/sdk-v1.md`,
+  `contracts/content-v1.md`, I21, R17
+
+## Context
+
+M7 asks for optional bounded content in the SDK's schema and an explicit opt-in to it, beside size and count metadata that
+never requires it. InterCat keeps content only under a reviewed scoped policy, of a source whose content contract is
+validated, and a fragment is a message whole, its prefix cut by the record limit, or omitted at the session limit: a
+prefix is never shown as a whole message, and a content field's length is the message's (`content-v1`, I21). Saying
+content costs an application: a capture that keeps none should cost it nothing more, and what one session asks for must
+not change what another hears. EventSource raises an event wherever any session's keywords enable it; ETW then delivers it
+only to the sessions whose own keywords match.
+
+## Decision
+
+1. **A message's content is an event of its own, 10 `MessageContent`**, raised right after the message's publication,
+   which is raised as before: `processId`, `channel`, `epoch`, `sequence`, then the bytes, sized by the count before them.
+   A publication that carried its content would be filtered from a session keeping none, and lost to it, whenever
+   another session asked for content.
+2. **Content is under a keyword of its own, `Content` (0x1)**, which no other event has, and a session hears a content
+   only by asking for it. An EventSource marks every event it raises with keywords of its own, 0xF000_0000_0000, so a
+   session asking for keywords hears the SDK's events only by asking for those too: a capture keeping no content asks for
+   them and every keyword the SDK may define but content's, 0xF000_FFFF_FFFE, and its applications build no content for
+   it. Measured on this revision, a workload publishing 50 messages with their bytes under each: a session asking for
+   0xFFFF_FFFE heard none of the SDK's events; under 0xF000_FFFF_FFFE every publication and no content, the SDK saying
+   none; under 0xF000_FFFF_FFFF every content too. A session asking for no keyword asks for all, content included.
+3. **Content is said only whole**, at most 32,768 bytes: a longer message is published without it, since `content-v1`
+   states no prefix a source cut. A capture's record limit may still cut it, and says so.
+4. **Both libraries say it**: `InterCatChannel.Published(sequence, bytes, copied)`, its logical length the bytes', says
+   whether its content was said; natively `intercat_channel_published_content`, which refuses what the .NET call throws
+   for and sets `said`. The schema's minor is 2 and the native library `native-1.2`. A capture of an earlier minor
+   enables only the events it admits, so it never receives a content.
+5. **Opting in is the application's and the capture's both**: an application says the content of the messages it
+   publishes with their bytes, and a session hears it only by asking. What it says is its assertion of its own message's
+   bytes, `content-v1`'s `ApplicationPayload`.
+
+## Consequences
+
+- A capture under the `sdk` profile reads an application that says content as before: every publication, and no content
+  built for it.
+- No capture keeps the SDK's content yet: its admission under a scoped content request - the content contract, the
+  process scope, the measured impact and fixtures of both libraries - follows (`contracts/sdk-v1.md` §9).
+- A capture built before an event was added enables only the events it admits, so that event's records never reach it:
+  measured here, a capture admitting the SDK's events 1 to 9 received none of 50 contents another session made the SDK
+  raise, and counted none as not admitted. What revision 1036 said of a capture of an earlier minor - that it counts a
+  batch's records undecodable - is so corrected: they are missing from it, never misread.
+- 22 mutations of the content event, its keyword and call, the schema's minor, the `sdk` profile's keywords and the
+  native header and call are caught. A content's count field is read only through ETW, as a listener in the process
+  reads the bytes by their own size, and the native call's bound and fields only by a session: the fixture recording
+  content through the product holds them, as FX-SDK-006 held the native batches' fields. An ETW reader found every
+  content of this revision's measure its count and then the bytes sent.

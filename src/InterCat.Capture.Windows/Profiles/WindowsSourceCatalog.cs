@@ -740,6 +740,21 @@ public static class WindowsSourceCatalog
     /// <summary>The cooperative SDK's source: what applications instrumented with InterCat's SDK raise of themselves (ADR-103).</summary>
     public const string CooperativeSdkSourceId = "etw/eventsource/InterCat-Sdk";
 
+    /// <summary>
+    /// The keywords an EventSource marks every event it raises with, for sessions of its own: a session asking for keywords
+    /// hears an EventSource's events only by asking for these too. Measured on revision 1039: a session asking the SDK's
+    /// provider for 0xFFFFFFFE heard none of its events, one asking for 0xF000FFFFFFFE every one (ADR-107).
+    /// </summary>
+    public const ulong EventSourceSessionKeywords = 0x0000_F000_0000_0000;
+
+    /// <summary>
+    /// The keywords a capture keeping no content asks the SDK's provider for: EventSource's own, and every one the SDK may
+    /// define but content's, so no application builds a message's content for it (ADR-107). Every other event of the SDK's
+    /// has no keyword of the SDK's, so every such session hears it.
+    /// </summary>
+    public const ulong CooperativeSdkMetadataKeywords =
+        EventSourceSessionKeywords | (0x0000_0000_FFFF_FFFF & ~(ulong)InterCatSdkEventSource.Keywords.Content);
+
     private static readonly AdmittedFieldIntent SdkProcess = new("processId", FieldRole.ProcessAttribution,
         Notes: "The process that raised the event, which names itself first in each one: the record's owner, never its header (ADR-102).");
 
@@ -791,12 +806,13 @@ public static class WindowsSourceCatalog
             Mechanisms = [Mechanism.ApplicationSdk],
             RequiredPrivilege = PrivilegeRequirement.Administrator,
             Level = "win:Informational",
-            MatchAnyKeyword = 0,
+            MatchAnyKeyword = CooperativeSdkMetadataKeywords,
             RequestedKeywords = [],
             SupportsCaptureSideProcessFilter = false,
             FilteringNotes =
                 "Every instrumented application raises it, each event naming the process that raised it: what one says is its own "
-                + "assertion, kept as metadata, and none carries message content.",
+                + "assertion, kept as metadata. A message's content is under a keyword of its own, which this source never asks "
+                + "for, so no application builds it for the capture.",
             StartupBehaviour =
                 "Each instrumented process announces its schema and its clock's frequency as the session enables the provider; "
                 + "a channel opened before the capture is known from its messages alone.",

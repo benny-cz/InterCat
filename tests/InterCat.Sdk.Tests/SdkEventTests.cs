@@ -74,23 +74,7 @@ public sealed class SdkEventTests
         string truth = Path.Combine(Path.GetTempPath(), "sdk-first-use-" + Guid.NewGuid().ToString("N"));
         try
         {
-            var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            foreach (string argument in new[] { Path.Combine(AppContext.BaseDirectory, "InterCat.TestWorkloads.dll"), "sdk-first-use", "--truth", truth })
-            {
-                start.ArgumentList.Add(argument);
-            }
-
-            using Process workload = Process.Start(start) ?? throw new InvalidOperationException("The workload did not start.");
-            Task<string> output = workload.StandardOutput.ReadToEndAsync();
-            string error = await workload.StandardError.ReadToEndAsync();
-            await workload.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(120));
-            Assert.True(workload.ExitCode == 0, $"The workload exited with {workload.ExitCode}: {await output} {error}");
+            await RunWorkloadAsync("sdk-first-use", truth);
 
             // Every announcement it heard names the library, as the SDK names it - never nothing.
             using JsonDocument heard = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(truth, "first-use.json")));
@@ -100,6 +84,100 @@ public sealed class SdkEventTests
             string?[] announced = [.. heard.RootElement.GetProperty("announced").EnumerateArray().Select(element => element.GetString())];
             Assert.NotEmpty(announced);
             Assert.All(announced, said => Assert.Equal(library, said));
+        }
+        finally
+        {
+            if (Directory.Exists(truth))
+            {
+                Directory.Delete(truth, recursive: true);
+            }
+        }
+    }
+
+    [Fact(DisplayName = "§15: a message published with its bytes is said with its content right after its publication - its whole bytes, at the schema's minor 2 - up to the most the SDK says, a longer one published without it, and a call refuses a copy no message could have")]
+    public void AMessagesContentFollowsItsPublication()
+    {
+        using var recorder = new Recorder();
+        recorder.EnableEvents(InterCatSdkEventSource.Log, EventLevel.Verbose);
+        int process = Environment.ProcessId;
+        byte[] within = Message(11, 300);
+        byte[] past = Message(12, InterCatChannel.MaximumContent + 1);
+        byte[] most = Message(13, InterCatChannel.MaximumContent);
+        bool[] said;
+        using (InterCatChannel channel = InterCatChannel.Open(Frames, "frames", InterCatChannelKind.Pipe, epoch: 4))
+        {
+            said = [channel.Published(11, within, copiedLength: 304), channel.Published(12, past), channel.Published(13, most), channel.Published(14, [])];
+        }
+
+        // Its content is said where it fits whole, never in part.
+        Assert.Equal([true, false, true, true], said);
+        Assert.Equal((32_768, 2), (InterCatChannel.MaximumContent, InterCatSdkEventSource.SchemaMinor));
+        EventWrittenEventArgs[] raised = [.. recorder.Raised().Where(written => written.EventId is InterCatSdkEventSource.MessagePublishedId
+            or InterCatSdkEventSource.MessageContentId)];
+        Assert.Equal(
+            [(4, 11L), (10, 11L), (4, 12L), (4, 13L), (10, 13L), (4, 14L), (10, 14L)],
+            raised.Select(written => (written.EventId, (long)written.Payload![3]!)));
+
+        // Each publication says its length, the bytes it holds, and the copy where given; each content the bytes themselves,
+        // under the content keyword alone, at the schema's major.
+        Assert.Equal([300L, InterCatChannel.MaximumContent + 1L, InterCatChannel.MaximumContent, 0L],
+            raised.Where(written => written.EventId == InterCatSdkEventSource.MessagePublishedId).Select(written => (long)written.Payload![4]!));
+        Assert.Equal<object?>([process, Frames, 4L, 11L, 300L, 304L], raised[0].Payload!.Take(6));
+        Assert.Equal(-1L, raised[2].Payload![5]);
+        EventWrittenEventArgs[] contents = [.. raised.Where(written => written.EventId == InterCatSdkEventSource.MessageContentId)];
+        Assert.Equal(["processId", "channel", "epoch", "sequence", "content"], contents[0].PayloadNames!);
+        Assert.Equal<object?>([process, Frames, 4L, 11L], contents[0].Payload!.Take(4));
+        Assert.Equal([within, most, []], contents.Select(written => (byte[])written.Payload![4]!));
+        Assert.All(contents, written =>
+        {
+            // Its keywords the SDK's Content and, past the SDK's own, the session keywords EventSource marks every event with.
+            Assert.Equal(("MessageContent", (long)InterCatSdkEventSource.Keywords.Content, EventLevel.Informational, InterCatSdkEventSource.EventVersion),
+                (written.EventName, (long)written.Keywords & 0xFFFF_FFFF, written.Level, written.Version));
+        });
+
+        // A copy no message could have is refused, with or without a session.
+        using InterCatChannel quiet = InterCatChannel.Open(Frames, "frames", InterCatChannelKind.Socket);
+        Assert.Throws<ArgumentOutOfRangeException>(() => quiet.Published(15, within, copiedLength: -2));
+    }
+
+    [Fact(DisplayName = "§15: a message's content is said only to a session asking for it - never while nothing listens, nor to one keeping no content, which hears every publication beside one asking - in a process no listener enabled before")]
+    public async Task ContentIsNeverSaidUnasked()
+    {
+        // A process of its own: a listener enables an EventSource's keywords for the life of its process, so this one, whose
+        // listeners asked for content already, cannot show what is said where none asks.
+        string truth = Path.Combine(Path.GetTempPath(), "sdk-content-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await RunWorkloadAsync("sdk-content", truth);
+            using JsonDocument heard = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(truth, "content.json")));
+            JsonElement root = heard.RootElement;
+            Assert.Equal(InterCatChannel.MaximumContent, root.GetProperty("maximumContent").GetInt32());
+
+            // What each call says of itself: its content said only where a listener asked for it and the message fits.
+            JsonElement[] calls = [.. root.GetProperty("calls").EnumerateArray()];
+            Assert.Equal(
+                [("unheard", false), ("metadata", false), ("content", true), ("past the most", false), ("the most", true), ("empty", true)],
+                calls.Select(call => (call.GetProperty("name").GetString()!, call.GetProperty("said").GetBoolean())));
+
+            // A listener keeping no content hears every publication made while it listened, its length the message's, and
+            // no content - even beside one asking for it.
+            Assert.Equal(
+                calls.Skip(1).Select(call => (InterCatSdkEventSource.MessagePublishedId, call.GetProperty("sequence").GetInt64(), (long)call.GetProperty("length").GetInt32())),
+                root.GetProperty("metadataHeard").EnumerateArray()
+                    .Select(said => (said.GetProperty("id").GetInt32(), said.GetProperty("sequence").GetInt64(), said.GetProperty("logicalLength").GetInt64())));
+
+            // One asking for content hears each publication, then each content the call said, the message's own bytes.
+            Dictionary<long, JsonElement> bySequence = calls.ToDictionary(call => call.GetProperty("sequence").GetInt64());
+            JsonElement[] content = [.. root.GetProperty("contentHeard").EnumerateArray()];
+            Assert.Equal(
+                [(4, 3L), (10, 3L), (4, 4L), (4, 5L), (10, 5L), (4, 6L), (10, 6L)],
+                content.Select(said => (said.GetProperty("id").GetInt32(), said.GetProperty("sequence").GetInt64())));
+            Assert.All(content.Where(said => said.GetProperty("id").GetInt32() == InterCatSdkEventSource.MessageContentId), said =>
+            {
+                JsonElement call = bySequence[said.GetProperty("sequence").GetInt64()];
+                Assert.Equal((call.GetProperty("length").GetInt32(), call.GetProperty("sha256").GetString()),
+                    (said.GetProperty("contentLength").GetInt32(), said.GetProperty("contentSha256").GetString()));
+            });
         }
         finally
         {
@@ -167,7 +245,7 @@ public sealed class SdkEventTests
             Assert.Equal(InterCatSdkEventSource.EventVersion, written.Version);
             Assert.InRange((long)written.Payload![^1]!, before, Stopwatch.GetTimestamp());
         });
-        Assert.Equal(1, InterCatSdkEventSource.SchemaMinor);
+        Assert.InRange(InterCatSdkEventSource.SchemaMinor, 1, int.MaxValue);
 
         // A batch of no message or of more than the most, a negative length or copy, or a run past the last sequence a long
         // holds is refused, with or without a session.
@@ -195,11 +273,29 @@ public sealed class SdkEventTests
         Assert.Equal(
             [(1, "SdkStarted", null), (2, "ChannelOpened", "win:Start"), (3, "ChannelClosed", "win:Stop"),
                 (4, "MessagePublished", "win:Send"), (5, "MessageConsumed", "win:Receive"), (6, "OperationStarted", "win:Start"),
-                (7, "OperationCompleted", "win:Stop"), (8, "MessagesPublished", "win:Send"), (9, "MessagesConsumed", "win:Receive")],
+                (7, "OperationCompleted", "win:Stop"), (8, "MessagesPublished", "win:Send"), (9, "MessagesConsumed", "win:Receive"),
+                (10, "MessageContent", null)],
             declared
                 .Select(element => ((int)element.Attribute("value")!, (string)element.Attribute("symbol")!, (string?)element.Attribute("opcode")))
                 .OrderBy(declaration => declaration.Item1));
         Assert.All(declared, element => Assert.Equal("1", (string)element.Attribute("version")!));
+
+        // A message's content alone is under a keyword, Content, so a session hears it only by asking (ADR-107); its bytes are
+        // its last field, sized by the count before them.
+        Assert.Equal([(10, "Content")],
+            declared.Where(element => element.Attribute("keywords") is not null)
+                .Select(element => ((int)element.Attribute("value")!, (string)element.Attribute("keywords")!)));
+        // Beside it, the manifest declares only the session keywords EventSource keeps for itself, past every one of the SDK's.
+        Dictionary<string, ulong> keywords = provider.Descendants(ns + "keyword")
+            .ToDictionary(keyword => (string)keyword.Attribute("name")!, keyword => Convert.ToUInt64((string)keyword.Attribute("mask")!, 16));
+        Assert.Equal((ulong)InterCatSdkEventSource.Keywords.Content, keywords["Content"]);
+        Assert.All(keywords.Where(keyword => keyword.Key != "Content"), keyword => Assert.Equal(0UL, keyword.Value & 0xFFFF_FFFFUL));
+        XElement content = provider.Descendants(ns + "template")
+            .Single(template => (string)template.Attribute("tid")! == (string)declared.Single(element => (int)element.Attribute("value")! == 10).Attribute("template")!);
+        Assert.Equal(
+            [("processId", "win:Int32", null), ("channel", "win:GUID", null), ("epoch", "win:Int64", null), ("sequence", "win:Int64", null),
+                ("contentSize", "win:UInt32", null), ("content", "win:Binary", "contentSize")],
+            content.Elements(ns + "data").Select(field => ((string)field.Attribute("name")!, (string)field.Attribute("inType")!, (string?)field.Attribute("length"))));
 
         // A capture reads each field at a fixed offset, which only a field before any text has: an event's text is its last.
         XElement[] texts =
@@ -236,6 +332,40 @@ public sealed class SdkEventTests
         Assert.All(raised.Where(written => written.EventId == InterCatSdkEventSource.OperationStartedId), written =>
             Assert.Equal(Guid.Empty, written.RelatedActivityId));
         Assert.All(raised, written => Assert.Equal(before, written.ActivityId));
+    }
+
+    /// <summary>A message's bytes, made from its sequence, so no two messages here hold the same.</summary>
+    private static byte[] Message(long sequence, int length)
+    {
+        var message = new byte[length];
+        for (int index = 0; index < length; index++)
+        {
+            message[index] = unchecked((byte)((index * 13) + sequence));
+        }
+
+        return message;
+    }
+
+    /// <summary>Runs a workload verb of the SDK's in a process of its own, writing its truth to <paramref name="truth"/>.</summary>
+    private static async Task RunWorkloadAsync(string verb, string truth)
+    {
+        var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (string argument in new[] { Path.Combine(AppContext.BaseDirectory, "InterCat.TestWorkloads.dll"), verb, "--truth", truth })
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using Process workload = Process.Start(start) ?? throw new InvalidOperationException("The workload did not start.");
+        Task<string> output = workload.StandardOutput.ReadToEndAsync();
+        string error = await workload.StandardError.ReadToEndAsync();
+        await workload.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(120));
+        Assert.True(workload.ExitCode == 0, $"The workload exited with {workload.ExitCode}: {await output} {error}");
     }
 
     /// <summary>

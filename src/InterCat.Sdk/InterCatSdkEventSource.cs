@@ -25,9 +25,10 @@ public sealed class InterCatSdkEventSource : EventSource
 
     /// <summary>
     /// The schema's minor version: fields added at the end of an event, which an earlier reader keeps unread, or events
-    /// added, which it counts as records it cannot read, never misreads. Minor 1 adds the batches (ADR-106).
+    /// added, which it counts as records it cannot read, never misreads. Minor 1 adds the batches (ADR-106), minor 2 a
+    /// message's content (ADR-107).
     /// </summary>
-    public const int SchemaMinor = 1;
+    public const int SchemaMinor = 2;
 
     /// <summary>The version every event is declared at, the schema's major one.</summary>
     public const byte EventVersion = SchemaMajor;
@@ -58,6 +59,9 @@ public sealed class InterCatSdkEventSource : EventSource
 
     /// <summary>A run of consecutive messages consumed together by one reader - a batch (ADR-106).</summary>
     public const int MessagesConsumedId = 9;
+
+    /// <summary>A message's content, its whole bytes, said only to a session that asks for content (ADR-107).</summary>
+    public const int MessageContentId = 10;
 
     private InterCatSdkEventSource()
         : base(EventSourceSettings.EtwManifestEventFormat)
@@ -250,10 +254,54 @@ public sealed class InterCatSdkEventSource : EventSource
         WriteEventCore(MessagesConsumedId, 8, data);
     }
 
+    /// <summary>
+    /// The content of the message at <paramref name="sequence"/> of a channel's epoch, as the application holds it: its whole
+    /// bytes, raised right after its publication, which says its length, and only to a session that asks for
+    /// <see cref="Keywords.Content"/> (ADR-107). A message's content is never said in part.
+    /// </summary>
+    [Event(MessageContentId, Level = EventLevel.Informational, Keywords = Keywords.Content, Version = EventVersion)]
+    public void MessageContent(int processId, Guid channel, long epoch, long sequence, byte[] content) =>
+        Content(processId, channel, epoch, sequence, content);
+
+    /// <summary>
+    /// Raises <see cref="MessageContent"/> from the bytes where the application holds them, copying none: the count of them,
+    /// then the bytes, as the manifest declares a binary field sized by the field before it.
+    /// </summary>
+    [NonEvent]
+    internal unsafe void Content(int processId, Guid channel, long epoch, long sequence, ReadOnlySpan<byte> content)
+    {
+        int size = content.Length;
+        byte none = 0;
+        fixed (byte* bytes = content)
+        {
+            EventData* data = stackalloc EventData[6];
+            Set(data, 0, &processId, sizeof(int));
+            Set(data, 1, &channel, sizeof(Guid));
+            Set(data, 2, &epoch, sizeof(long));
+            Set(data, 3, &sequence, sizeof(long));
+            Set(data, 4, &size, sizeof(int));
+            Set(data, 5, size == 0 ? &none : bytes, size);
+            WriteEventCore(MessageContentId, 6, data);
+        }
+    }
+
     private static unsafe void Set(EventData* data, int index, void* value, int size)
     {
         data[index].DataPointer = (IntPtr)value;
         data[index].Size = size;
+    }
+
+    /// <summary>
+    /// The provider's keywords (`contracts/sdk-v1.md` §2). Every event but a message's content has none, so every session
+    /// enabling the provider hears it; a session hears content only by asking for <see cref="Content"/>.
+    /// </summary>
+    public static class Keywords
+    {
+        /// <summary>
+        /// A message's content: the one event under it, raised only where a session asks for it and the application gives the
+        /// message's bytes (ADR-107). A capture that keeps no content asks for every keyword but this one.
+        /// </summary>
+        public const EventKeywords Content = (EventKeywords)0x1;
     }
 
     /// <summary>
