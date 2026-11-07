@@ -67,7 +67,8 @@ or, where no record named it, what it is, and going to it draws the hub, first w
 it (revision 1009). Every resource but an image's section is keyed so, a socket `resource:hub:socket:{number}`, and the
 window's inspector lists them with nothing chosen on the machine rung, by namespace - named ones by their object
 directory and leaf, those no record named after, idle sockets last - one chosen there its records (revision 1010), and
-Enter on one chooses its hub or the processes holding it (revision 1011).
+Enter on one chooses its hub or the processes holding it (revision 1011). A program's inspector, chosen or opened,
+lists the resources its processes held the same way (revision 1012).
 
 ## 4. `icat resources`
 
@@ -86,4 +87,3 @@ every member it had; revision 1004 added `byViews`, `image`, `views`, `largestVi
 
 - Named pipes, ALPC ports and listening TCP endpoints.
 - An AF_UNIX socket's path, which no record names, and the socket at its other end, which none names either (ADR-072).
-- A program's resources listed in its inspector.

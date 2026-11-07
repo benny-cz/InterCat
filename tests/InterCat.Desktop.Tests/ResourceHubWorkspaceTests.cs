@@ -272,6 +272,11 @@ public sealed class ResourceHubWorkspaceTests
         Assert.Equal((13, "Show the first 8", string.Empty), (workspace.ResourceRows.Count, workspace.ResourcesToggleLabel, workspace.ResourcesMore));
         Assert.False(workspace.ToggleResources());
         Assert.Equal(8, workspace.ResourceRows.Count);
+
+        // Every one asked for on the machine's list is the machine's alone: writer.exe's eleven are named eight at first.
+        Assert.True(workspace.ToggleResources());
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "writer.exe");
+        Assert.Equal((8, "Show all 11 resources"), (workspace.ResourceRows.Count, workspace.ResourcesToggleLabel));
     });
 
     [Fact(DisplayName = "§6.3: Enter on a listed resource chooses where it is held - the process holding it, or its hub, on the machine rung or its holders' program's where the machine rung draws them as one node - and Esc comes back to its row")]
@@ -369,6 +374,63 @@ public sealed class ResourceHubWorkspaceTests
             Assert.Equal(shared.Key, workspace.ComeBackFromResource()?.Key);
             Assert.Equal((1, shared.Key, (string?)null), (workspace.Crumbs.Count, workspace.ChosenResourceRow?.Key, workspace.SelectedCluster?.Key));
         }
+    });
+
+    [Fact(DisplayName = "§6.3: a program chosen or opened lists the resources its processes held, one chosen there its own records rather than the program's, and Esc from Enter on one comes back to the program")]
+    public void AProgramListsItsProcessesResources() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = UnixSockets();
+        Publish(session.Store, [.. rows.Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })], fields: fields);
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+
+        // server.exe chosen: its object and its two sockets, the idle one last, under the program's own heading.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
+        Assert.True(workspace.ShowsResources);
+        Assert.Equal("3 resources its processes held, by namespace, 1 idle listed last", workspace.ResourcesHeading);
+        Assert.Equal(["Ready", "Unix socket 6", "Unix socket 5"], workspace.ResourceRows.Select(row => row.Label));
+        Assert.StartsWith("3 resources its processes held, by namespace, 1 idle listed last: the resources its processes held, by",
+            workspace.ResourcesListName, StringComparison.Ordinal);
+
+        // A socket chosen there is its own records rather than the program's: the card counts them, the timeline highlights them.
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 100);
+        workspace.ChosenResourceRow = workspace.ResourceRows[1];
+        Assert.Equal(("Selected resource", "5 records of its socket · 1 send, 1 receive"), (workspace.EvidenceHeading, workspace.EvidenceSummary));
+        await workspace.HighlightReady;
+        Assert.Equal(5, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
+
+        // Enter chooses server.exe's process; Esc comes back to the program, the socket chosen in its list again.
+        Assert.True(workspace.ChooseResource(workspace.ResourceRows[1]));
+        Assert.Equal((100, false), (workspace.SelectedProcess?.ProcessId, workspace.ShowsResources));
+        ResourceHop? back = workspace.ComeBackFromResource();
+        Assert.Equal("resource:hub:socket:6", back?.Key);
+        Assert.NotNull(back?.Program);
+        Assert.Equal(("3 resources its processes held, by namespace, 1 idle listed last", "resource:hub:socket:6", (int?)null),
+            (workspace.ResourcesHeading, workspace.ChosenResourceRow?.Key, workspace.SelectedProcess?.ProcessId));
+
+        // client.exe chosen instead lets the choice go and lists its own; server.exe chosen again has none chosen.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
+        Assert.Equal(["Unix socket 7", "Unix socket 8"], workspace.ResourceRows.Select(row => row.Label));
+        Assert.Null(workspace.ChosenResourceRow);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
+        Assert.Null(workspace.ChosenResourceRow);
+
+        // server.exe opened: its rung describes it, and lists its processes' resources too.
+        Assert.True(workspace.Descend());
+        Assert.Equal("3 resources its processes held, by namespace, 1 idle listed last", workspace.ResourcesHeading);
+
+        // writer.exe opened, whose section's other holder its rung leaves to its own: Enter on the section, which that rung
+        // draws no hub for, chooses the processes holding it together.
+        using var mapped = new TemporarySession();
+        (rows, fields) = MappedSections();
+        Publish(mapped.Store, [.. rows.Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })], fields: fields);
+        using WorkspaceViewModel opened = Open(mapped);
+        await opened.LayoutReady;
+        opened.SelectedRung = opened.RungRows.Single(row => row.Label == "writer.exe");
+        Assert.True(opened.Descend());
+        Assert.True(opened.ChooseResource(opened.ResourceRows.Single(row => row.Key == "resource:hub:mapped-section:4")));
+        Assert.Equal((true, (string?)null), (opened.HasMultiSelection, opened.SelectedCluster?.Key));
     });
 
     private static WorkspaceViewModel Open(TemporarySession session)

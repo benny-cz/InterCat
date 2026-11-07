@@ -934,6 +934,7 @@ Revision 1008 gives a resource hub its own records (ADR-099's addendum): choosin
 Revision 1009 lets the search find a resource hub (ADR-099's second addendum): by its name or what it is, its hub marked, and going to it draws the hub first and chooses it.
 Revision 1010 lists a session's resources by namespace in the window's inspector (ADR-097's third addendum), idle sockets last, one chosen there its records.
 Revision 1011 makes Enter on a resource the inspector lists choose where it is held, its hub or the processes holding it, with Esc back to its row (ADR-097's fourth addendum).
+Revision 1012 lists a program's processes' resources in its inspector, chosen or opened (ADR-097's fifth addendum), one chosen there its records rather than the program's.
 
 ## Revisions, a paragraph each, in order
 
@@ -4693,3 +4694,9 @@ rung draws them as that program's one node, first whatever the budget - else the
 holding it together. Esc comes back along that way to the resource's row, chosen again, and a way the selection or the
 ladder has since left is let go. Each row says what Enter chooses. It also fixes revision 1010's list, which stayed on
 screen beside the first choice made while it showed.
+
+Revision 1012 lists a program's resources in its inspector (ADR-097's fifth addendum). While the inspector describes a
+program, chosen or opened, it lists the resources its processes held - shared with other programs' too - by namespace,
+as the program's listening ports are listed. A resource chosen there is its own records rather than the program's, and
+Esc from Enter on one comes back to the program. Each scope's list keeps its own choice and its own every-one-listed,
+and where a rung draws no hub for a resource two processes held, Enter chooses the processes holding it together.

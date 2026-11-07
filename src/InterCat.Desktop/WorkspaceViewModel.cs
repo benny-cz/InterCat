@@ -998,6 +998,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return (new(null, [member.Id]), member.NameWithPid);
         }
 
+        // A resource chosen in the inspector's list is its own records, read by its key as a hub's are - the program the list
+        // is for still described beside it (M6).
+        if (ChosenResource is { } resource)
+        {
+            return (new(null, [], resource.Key), resource.Label);
+        }
+
         if (SelectedCluster is { } cluster)
         {
             // A resource hub's records are its own, read by its key as an RPC channel's are (ADR-099).
@@ -1011,12 +1018,6 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 .Where(process => string.Equals(process.GroupKey, group.Key, StringComparison.Ordinal))
                 .Select(process => process.Id)];
             return members.Length == 0 ? (null, null) : (new(null, members), group.Name);
-        }
-
-        // A resource chosen in the inspector's list is its own records, read by its key as a hub's are (M6).
-        if (ChosenResource is { } resource)
-        {
-            return (new(null, [], resource.Key), resource.Label);
         }
 
         return selectedProcess is { } selected ? (new(null, [selected.Id]), selected.NameWithPid) : (null, null);
@@ -5091,11 +5092,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : ChosenRow is { } row ? "Selected " + ChosenRowNoun(row.Row)
         : OpenedChannel is { } opened ? opened.Heading
         : ChosenMember is not null ? "Selected process"
-        : SelectedCluster is { IsHub: true } ? "Selected resource"
+        : ChosenResource is not null || SelectedCluster is { IsHub: true } ? "Selected resource"
         : SelectedCluster is { IsHost: false } ? "Selected aggregate"
         : ChosenHostAddress is not null ? "Selected host"
         : SelectedGroup is not null ? "Selected group"
-        : ChosenResource is not null ? "Selected resource"
         : RungRecords is not null ? "Records E lists"
         : "Selected process";
 

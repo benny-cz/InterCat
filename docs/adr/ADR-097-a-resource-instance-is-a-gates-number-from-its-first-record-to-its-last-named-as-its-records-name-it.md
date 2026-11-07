@@ -3,7 +3,8 @@
 - Status: accepted for M6's resource lifetimes; named synchronization objects and sections by their handles are derived
   and listed by `icat resources` (revision 1002), AF_UNIX sockets with their traffic, an idle one listed apart
   (revision 1003), sections by their views (revision 1004), and the window's inspector lists them by namespace
-  (revision 1010), Enter on one choosing where it is held (revision 1011)
+  (revision 1010), Enter on one choosing where it is held (revision 1011), and a program's in its inspector
+  (revision 1012)
 - Date: 2026-11-06
 - Decision owners: InterCat maintainers
 - Relates to: ADR-083, ADR-084, ADR-090, ADR-092, plan M6, §7.1, §7.2, `identity-v1`, `entities-v1` §8, R3, P27
@@ -95,3 +96,13 @@ along that way: nothing chosen, the machine rung shown again, the resource chose
 keyboard on its row; a way the selection or the ladder has since left is let go. Each row says what Enter on it
 chooses. Revision 1010's list stayed on screen beside the first choice made while it showed, its hiding never said to
 the window; it now hides. 19 mutations of the path are caught.
+
+## Fifth addendum: a program's resources in its inspector (revision 1012)
+
+While the inspector describes a program, chosen or opened, it lists the resources its processes held - shared with other
+programs' processes too - by namespace as the machine's list does, under a heading that says whose, as the program's
+listening ports are listed. A resource chosen there is its own records rather than the program's, and Esc from Enter on
+one comes back to the program, the resource chosen again. Each scope's list is its own: another program's, or the
+machine's, lets its choice and its every-one-listed go. Where a rung draws no hub for a resource two processes held -
+its other holder left to its own rung - Enter chooses the processes holding it together.
+15 mutations of the path are caught.
