@@ -37,11 +37,13 @@ internal static partial class Workload
     {
         private readonly Process process;
         private readonly Task<string> output;
+        private readonly string session;
 
-        private Recording(Process process, Task<string> output)
+        private Recording(Process process, Task<string> output, string session)
         {
             this.process = process;
             this.output = output;
+            this.session = session;
         }
 
         /// <summary>Starts the capture and returns once its session runs, so the workload starts inside it.</summary>
@@ -77,10 +79,9 @@ internal static partial class Workload
                 throw new InvalidOperationException($"icat record --profile sdk never announced its session. {said}");
             }
 
-            var recording = new Recording(process, output);
-
             // The name is announced before the session starts: wait until ETW lists it running.
             string sessionName = named.Task.Result;
+            var recording = new Recording(process, output, sessionName);
             var waited = Stopwatch.StartNew();
             while (!TraceEventSession.GetActiveSessionNames().Contains(sessionName, StringComparer.OrdinalIgnoreCase))
             {
@@ -127,11 +128,22 @@ internal static partial class Workload
             };
         }
 
+        /// <summary>
+        /// Lets a capture a failed run leaves behind end as it would, its duration out; one that will not is killed, and its
+        /// ETW session - which outlives the process that owned it - is stopped by its name, so no session of a run is left
+        /// listening to slow the machine or tell a later run's processes their schema again.
+        /// </summary>
         public void Dispose()
         {
-            if (!process.HasExited)
+            if (!process.WaitForExit(TimeSpan.FromMinutes(3)))
             {
                 process.Kill(entireProcessTree: true);
+                process.WaitForExit();
+                if (TraceEventSession.GetActiveSessionNames().Contains(session, StringComparer.OrdinalIgnoreCase))
+                {
+                    using var orphan = new TraceEventSession(session, TraceEventSessionOptions.Attach);
+                    orphan.Stop(noThrow: true);
+                }
             }
 
             process.Dispose();

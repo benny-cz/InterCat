@@ -2432,6 +2432,102 @@
         "R3: FX-SDK-002's message no reader read stays open, never said consumed, and the channel made again is a second epoch whose sequence starts at 1 again, as a .NET application's",
         "R3: FX-SDK-002's operations recorded through the product: each one start, its parent the start's related activity and a root's none, never the empty identity, and one completion with the status it first completed with - a second completion, and a channel's second close, say nothing"
       ]
+    },
+    {
+      "id": "FX-SDK-003",
+      "title": "A client's framed messages to a server over a named pipe in byte mode, said through the cooperative SDK",
+      "scenario": "Plan M7's sample pipe application (ADR-104's second addendum): a client connects to a server over a named pipe in byte mode and writes 100 messages of seeded lengths, each framed by its length and sequence, one to three to a write, which the server reads 700 bytes at a time and consumes as each frame completes, each process saying what it publishes and consumes through InterCat.Sdk; the connection is the channel's epoch 1 and an operation of the client's, whose identity its first frame carries and under which the server starts its own. The client connects again for epoch 2, its sequence from 1, writes 30 more and one last message the server reads and never consumes. Recorded through the product by icat record under the opt-in sdk profile and read as icat messages reads it.",
+      "milestone": "M7",
+      "mechanism": "ApplicationSdk",
+      "backlog": [
+        "IC-004",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [
+          "R3"
+        ],
+        "invariants": [],
+        "prohibitions": [
+          "P4"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads sdk-stream --transport pipe, under tools/InterCat.SdkProbe --transport pipe",
+        "seed": 20261107,
+        "log": "fixtures/FX-SDK-003/evidence/truth-client.jsonl",
+        "independence": "Each process logs every message it published or consumed by its channel, epoch, sequence and reader, with its length and its frame's bytes, as it does so, and the operations it started, the server's parent as the connection's first frame named it; neither reads InterCat state, and the product's capture reads the SDK's records apart from both."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-SDK-003/evidence/measurement.json",
+        "note": "Three runs through the product, nothing lost: every one of the 131 messages the client published - 100 at epoch 1, 31 at epoch 2 - one message of its channel, by its logical length, its frame's bytes and its process, and each of the server's 130 consumptions one consumption; 130 consumed and the one the server read and never consumed open; the channel two epochs, each opened and closed by both processes, named and of the kind they opened it with; four operations, each one start - the server's under the client's - and one completion with its status; each process's schema announced. The first run's 48 and 17 writes and 346 and 108 reads carried its two epochs' messages: neither a write nor a read is a message."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-07",
+          "result": "Measured by tools/InterCat.SdkProbe --transport pipe from the elevated shell, three runs of icat record --profile sdk: 1184, 1093, 854 records delivered and admitted, nothing lost, dropped or undecodable; each run's 131 publications, 130 consumptions and 4 operations matched the truth."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The client's and the server's truth logs and scenario of the first run - messages by the run's own channel, epoch, sequence and reader, with their lengths and frames, connections by their loopback ports or the run's pipe, and operations by their identities, parents, names and statuses - and the measurement's counters of the three runs, never a path or a process name of the machine."
+      },
+      "tests": [
+        "P4: FX-SDK-003 and FX-SDK-004 recorded through the product: a message over a pipe or a socket is one message, never a write or a read - every message the client published at either connection's epoch the truth's by its logical length, the bytes its frame copied and its process, and the server's consumption of each one consumption, nothing lost",
+        "R3: FX-SDK-003's and FX-SDK-004's message the server read and never consumed stays open, never said consumed, and the client's second connection is a second epoch whose sequence starts at 1 again",
+        "R3: FX-SDK-003's and FX-SDK-004's operations recorded through the product: each connection a client's operation under none, never the empty identity, and the server's under it, as the connection's first frame named it - each one start owned by its side's process, its parent the start's related activity, and one completion with its status"
+      ]
+    },
+    {
+      "id": "FX-SDK-004",
+      "title": "A client's framed messages to a server over a loopback TCP connection, said through the cooperative SDK",
+      "scenario": "Plan M7's sample socket application (ADR-104's second addendum): a client connects to a server over a loopback TCP connection and writes 100 messages of seeded lengths, each framed by its length and sequence, one to three to a write, which the server reads 700 bytes at a time and consumes as each frame completes, each process saying what it publishes and consumes through InterCat.Sdk; the connection is the channel's epoch 1 and an operation of the client's, whose identity its first frame carries and under which the server starts its own. The client connects again for epoch 2, its sequence from 1, writes 30 more and one last message the server reads and never consumes. Recorded through the product by icat record under the opt-in sdk profile and read as icat messages reads it.",
+      "milestone": "M7",
+      "mechanism": "ApplicationSdk",
+      "backlog": [
+        "IC-004",
+        "IC-012"
+      ],
+      "covers": {
+        "rules": [
+          "R3"
+        ],
+        "invariants": [],
+        "prohibitions": [
+          "P4"
+        ]
+      },
+      "truth": {
+        "generator": "src/InterCat.TestWorkloads sdk-stream --transport socket, under tools/InterCat.SdkProbe --transport socket",
+        "seed": 20261107,
+        "log": "fixtures/FX-SDK-004/evidence/truth-client.jsonl",
+        "independence": "Each process logs every message it published or consumed by its channel, epoch, sequence and reader, with its length and its frame's bytes, as it does so, and the operations it started, the server's parent as the connection's first frame named it; neither reads InterCat state, and the product's capture reads the SDK's records apart from both."
+      },
+      "expected": {
+        "artifact": "fixtures/FX-SDK-004/evidence/measurement.json",
+        "note": "Three runs through the product, nothing lost: every one of the 131 messages the client published - 100 at epoch 1, 31 at epoch 2 - one message of its channel, by its logical length, its frame's bytes and its process, and each of the server's 130 consumptions one consumption; 130 consumed and the one the server read and never consumed open; the channel two epochs, each opened and closed by both processes, named and of the kind they opened it with; four operations, each one start - the server's under the client's - and one completion with its status; each process's schema announced. The first run's 48 and 17 writes and 323 and 100 reads carried its two epochs' messages: neither a write nor a read is a message."
+      },
+      "environment": [
+        {
+          "build": "10.0.26220.0-x64",
+          "supportTier": "Primary",
+          "date": "2026-11-07",
+          "result": "Measured by tools/InterCat.SdkProbe --transport socket from the elevated shell, three runs of icat record --profile sdk: 920, 893, 1028 records delivered and admitted, nothing lost, dropped or undecodable; each run's 131 publications, 130 consumptions and 4 operations matched the truth."
+        }
+      ],
+      "provenance": {
+        "adapter": "windows-etw-inventory-0.8.0",
+        "shareable": true,
+        "contents": "The client's and the server's truth logs and scenario of the first run - messages by the run's own channel, epoch, sequence and reader, with their lengths and frames, connections by their loopback ports or the run's pipe, and operations by their identities, parents, names and statuses - and the measurement's counters of the three runs, never a path or a process name of the machine."
+      },
+      "tests": [
+        "P4: FX-SDK-003 and FX-SDK-004 recorded through the product: a message over a pipe or a socket is one message, never a write or a read - every message the client published at either connection's epoch the truth's by its logical length, the bytes its frame copied and its process, and the server's consumption of each one consumption, nothing lost",
+        "R3: FX-SDK-003's and FX-SDK-004's message the server read and never consumed stays open, never said consumed, and the client's second connection is a second epoch whose sequence starts at 1 again",
+        "R3: FX-SDK-003's and FX-SDK-004's operations recorded through the product: each connection a client's operation under none, never the empty identity, and the server's under it, as the connection's first frame named it - each one start owned by its side's process, its parent the start's related activity, and one completion with its status"
+      ]
     }
   ],
   "retired": [
@@ -3108,6 +3204,7 @@
         "P4: FX-RPC-002's calls over TCP are counted once - 256 client calls paired by activity id, the endpoint mapper's 512 records pairing with nothing, and every byte the 8 connections' beneath them",
         "P4: FX-SDK-001 recorded through the product: a message three readers consume is one message and three consumptions, never three - every message the ring's producer published at either epoch and every reader's consumption of it the truth's, by length and process, nothing lost",
         "P4: FX-SDK-002 recorded through the product: a native application's messages, said through the SDK's C library, read as a .NET application's do - every message it published at either epoch one message and its reader's consumption of each one consumption, the truth's by length and process, nothing lost",
+        "P4: FX-SDK-003 and FX-SDK-004 recorded through the product: a message over a pipe or a socket is one message, never a write or a read - every message the client published at either connection's epoch the truth's by its logical length, the bytes its frame copied and its process, and the server's consumption of each one consumption, nothing lost",
         "P4: a COM call is carried by one RPC call - at the client the one of its activity, at the server the one around it on its thread - and one naming another procedure, none or two carry nothing, each with its reason",
         "P4: started, completed and failed calls are counted from the calls, never from the records beneath them",
         "P4: what no derived operation can answer is unavailable with its reason, never a zero"
@@ -3911,6 +4008,8 @@
         "R3: FX-SDK-001's message no reader read stays open, never said consumed, and the ring made again is a second epoch whose sequence starts at 1 again, never one message with the first's",
         "R3: FX-SDK-002's message no reader read stays open, never said consumed, and the channel made again is a second epoch whose sequence starts at 1 again, as a .NET application's",
         "R3: FX-SDK-002's operations recorded through the product: each one start, its parent the start's related activity and a root's none, never the empty identity, and one completion with the status it first completed with - a second completion, and a channel's second close, say nothing",
+        "R3: FX-SDK-003's and FX-SDK-004's message the server read and never consumed stays open, never said consumed, and the client's second connection is a second epoch whose sequence starts at 1 again",
+        "R3: FX-SDK-003's and FX-SDK-004's operations recorded through the product: each connection a client's operation under none, never the empty identity, and the server's under it, as the connection's first frame named it - each one start owned by its side's process, its parent the start's related activity, and one completion with its status",
         "R3: a COM-Perf whose schema does not admit a field com-call-link-v1 pairs, carries or links its calls by is refused, never admitted to state calls from a value never observed - the COM calls profile does not start, and icat capabilities says its schema is unknown",
         "R3: a COM-Perf whose schema lacks a call's HRESULT, which no rule decides by, is admitted, the call's answer then unknown",
         "R3: a COM-Perf whose schema registers no client call stop is refused, its calls never left open at capture end for want of a stop it could not have recorded",

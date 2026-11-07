@@ -955,6 +955,7 @@ Revision 1029 measures the cooperative SDK's messages through the product on FX-
 Revision 1030 publishes the cooperative SDK's cost, M7's overhead guide (ADR-102's addendum).
 Revision 1031 holds a capture to never misreading a later version of the cooperative SDK's schema (ADR-103's addendum).
 Revision 1032 adds the cooperative SDK's native library, one C header held to the SDK's own manifest, and FX-SDK-002 (ADR-105).
+Revision 1033 measures the cooperative SDK's sample pipe and socket applications, FX-SDK-003 and FX-SDK-004 (ADR-104's second addendum), and fixes the schema's announcement to a session listening as an application starts (ADR-102's addendum).
 
 ## Revisions, a paragraph each, in order
 
@@ -4847,3 +4848,14 @@ close and a completion said once, refuses what that throws for, and announces th
 sample through the product three times: nothing lost, every message and consumption its truth's by length and process,
 the unread message open, the channel made again a second epoch, and its three operations each one start under its parent
 and one completion. 19 mutations of the library are caught, by the header's test or by the fixture recorded once more.
+
+Revision 1033 adds M7's sample pipe and socket applications (ADR-104's second addendum). A client writes framed messages
+to a server over a named pipe, and over a loopback TCP connection, one to three to a write, which the server reads 700
+bytes at a time, both saying what they publish and consume through the SDK; each connection is an epoch and an operation
+of the client's, whose identity its first frame carries and under which the server starts its own. FX-SDK-003 and
+FX-SDK-004 record them through the product three times each: nothing lost, every message one message - never a write or
+a read - by its logical length, its frame's bytes and its process, the message read and never consumed open, the second
+connection a second epoch, and each server's operation under the client's. They found that a session listening as a
+.NET process first used the SDK was told the schema with no library version, read from a static the provider is made
+before; it is read apart since (ADR-102's addendum), a test making the provider under a listener in a process of its own,
+and 4 mutations of the fix are caught. A probe run that failed left its capture's ETW session running; it now stops it.

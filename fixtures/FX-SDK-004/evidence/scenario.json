@@ -1,0 +1,56 @@
+{
+  "scenarioId": "FX-SDK-004",
+  "transport": "socket",
+  "channel": "7e3fa94e-1e89-4e61-8210-3cfe29bc971b",
+  "channelName": "fx-sdk-socket",
+  "library": "1.0.0.0",
+  "messages": 100,
+  "restartMessages": 30,
+  "messagesPerWrite": 3,
+  "readBytes": 700,
+  "seed": 20261107,
+  "epochs": 2,
+  "writes": [
+    48,
+    17
+  ],
+  "reads": [
+    323,
+    100
+  ],
+  "readNeverConsumed": 1,
+  "operations": [
+    {
+      "operation": "02f3740f-699b-48f2-b9cf-0a55676dcdd5",
+      "parent": null,
+      "name": "connection-1",
+      "status": 0,
+      "completions": 1,
+      "role": "client"
+    },
+    {
+      "operation": "b6e089f3-8a5a-4c0c-b559-0a534cb0fca1",
+      "parent": null,
+      "name": "connection-2",
+      "status": 0,
+      "completions": 1,
+      "role": "client"
+    },
+    {
+      "operation": "62c80c10-31d5-4f30-ae55-d447454f5698",
+      "parent": "02f3740f-699b-48f2-b9cf-0a55676dcdd5",
+      "name": "serve-1",
+      "status": 0,
+      "completions": 1,
+      "role": "server"
+    },
+    {
+      "operation": "2b02e9f4-a24d-4674-aab5-a19423cb00ae",
+      "parent": "b6e089f3-8a5a-4c0c-b559-0a534cb0fca1",
+      "name": "serve-2",
+      "status": 1,
+      "completions": 1,
+      "role": "server"
+    }
+  ]
+}

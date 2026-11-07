@@ -59,3 +59,12 @@ listening a call costs a median 48.5 ns, its checks alone; while `icat record --
 thread. A capture kept every call paced up to 100,000 calls a second; faster, it dropped what its queue could not
 hold and said so - never whole where it was not. That is M7's overhead guide, in `contracts/sdk-v1.md` §8: say logical
 boundaries, and know the rate a capture keeps; batching, the fallback M7 names past it, is not offered yet.
+
+## Addendum: the announcement a session already listening hears (revision 1033)
+
+FX-SDK-003 and FX-SDK-004 found that a session listening as a .NET process first used the SDK - a capture running as an
+application starts, the usual case - was told the schema with no library version: the provider is made as its type's
+statics are set, a listening session enables it as it is made, and the announcement read the version from a static not
+yet set. The version is read apart from the provider's statics since, and a test makes the provider under a listener in
+a process of its own and finds the announcement names it; 4 mutations of the fix are caught. FX-SDK-001 did not
+read the announcement, so its evidence stands.

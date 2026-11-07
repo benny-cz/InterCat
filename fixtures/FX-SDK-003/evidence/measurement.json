@@ -1,0 +1,215 @@
+{
+  "fixture": "FX-SDK-003",
+  "question": "Whether FX-SDK-003 - a client writing framed messages to a server over a named pipe, a few to a write, read a few hundred bytes at a time, each process saying what it publishes and consumes through InterCat\u0027s cooperative SDK - recorded through the product by icat record under the opt-in sdk profile, reads as icat messages reads it: every message the client published at either connection\u0027s epoch one message, never a write or a read, with the logical length and the framed bytes it logged, the server\u0027s consumption of each one consumption, each bound to the process that logged it, the one message the server read and never consumed open; and each operation one start - the server\u0027s under the client\u0027s, whose identity its first frame carried - and one completion.",
+  "profile": "sdk",
+  "durationSeconds": 20,
+  "readers": 1,
+  "runs": [
+    {
+      "truthPublications": 131,
+      "truthConsumptions": 130,
+      "truthUnread": 1,
+      "messages": 131,
+      "publications": 131,
+      "consumptions": 130,
+      "matchedPublications": 131,
+      "matchedCopies": 131,
+      "matchedConsumptions": 130,
+      "states": {
+        "Consumed": 130,
+        "Unconsumed": 1,
+        "PublicationUnseen": 0,
+        "Conflicting": 0
+      },
+      "unreadOpen": true,
+      "epochs": [
+        1,
+        2
+      ],
+      "epochMessages": [
+        100,
+        31
+      ],
+      "readers": [
+        1,
+        1
+      ],
+      "openings": [
+        2,
+        2
+      ],
+      "closings": [
+        2,
+        2
+      ],
+      "named": true,
+      "kinds": [
+        1,
+        1
+      ],
+      "records": 261,
+      "boundRecords": 261,
+      "recordsWithSourceTicks": 261,
+      "recordsNamingNoMessage": 0,
+      "announcements": 2,
+      "announcedLibrary": true,
+      "processesAnnounced": 2,
+      "truthOperations": 4,
+      "truthCompletionCalls": 4,
+      "operationStarts": 4,
+      "operationCompletions": 4,
+      "matchedStarts": 4,
+      "matchedCompletions": 4,
+      "run": 1,
+      "health": {
+        "exitCode": 0,
+        "lossFree": true,
+        "observedRecords": 1184,
+        "admittedRecords": 1184,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      }
+    },
+    {
+      "truthPublications": 131,
+      "truthConsumptions": 130,
+      "truthUnread": 1,
+      "messages": 131,
+      "publications": 131,
+      "consumptions": 130,
+      "matchedPublications": 131,
+      "matchedCopies": 131,
+      "matchedConsumptions": 130,
+      "states": {
+        "Consumed": 130,
+        "Unconsumed": 1,
+        "PublicationUnseen": 0,
+        "Conflicting": 0
+      },
+      "unreadOpen": true,
+      "epochs": [
+        1,
+        2
+      ],
+      "epochMessages": [
+        100,
+        31
+      ],
+      "readers": [
+        1,
+        1
+      ],
+      "openings": [
+        2,
+        2
+      ],
+      "closings": [
+        2,
+        2
+      ],
+      "named": true,
+      "kinds": [
+        1,
+        1
+      ],
+      "records": 261,
+      "boundRecords": 261,
+      "recordsWithSourceTicks": 261,
+      "recordsNamingNoMessage": 0,
+      "announcements": 2,
+      "announcedLibrary": true,
+      "processesAnnounced": 2,
+      "truthOperations": 4,
+      "truthCompletionCalls": 4,
+      "operationStarts": 4,
+      "operationCompletions": 4,
+      "matchedStarts": 4,
+      "matchedCompletions": 4,
+      "run": 2,
+      "health": {
+        "exitCode": 0,
+        "lossFree": true,
+        "observedRecords": 1093,
+        "admittedRecords": 1093,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      }
+    },
+    {
+      "truthPublications": 131,
+      "truthConsumptions": 130,
+      "truthUnread": 1,
+      "messages": 131,
+      "publications": 131,
+      "consumptions": 130,
+      "matchedPublications": 131,
+      "matchedCopies": 131,
+      "matchedConsumptions": 130,
+      "states": {
+        "Consumed": 130,
+        "Unconsumed": 1,
+        "PublicationUnseen": 0,
+        "Conflicting": 0
+      },
+      "unreadOpen": true,
+      "epochs": [
+        1,
+        2
+      ],
+      "epochMessages": [
+        100,
+        31
+      ],
+      "readers": [
+        1,
+        1
+      ],
+      "openings": [
+        2,
+        2
+      ],
+      "closings": [
+        2,
+        2
+      ],
+      "named": true,
+      "kinds": [
+        1,
+        1
+      ],
+      "records": 261,
+      "boundRecords": 261,
+      "recordsWithSourceTicks": 261,
+      "recordsNamingNoMessage": 0,
+      "announcements": 2,
+      "announcedLibrary": true,
+      "processesAnnounced": 2,
+      "truthOperations": 4,
+      "truthCompletionCalls": 4,
+      "operationStarts": 4,
+      "operationCompletions": 4,
+      "matchedStarts": 4,
+      "matchedCompletions": 4,
+      "run": 3,
+      "health": {
+        "exitCode": 0,
+        "lossFree": true,
+        "observedRecords": 854,
+        "admittedRecords": 854,
+        "providerReportedEventLoss": 0,
+        "consumerReportedBufferLoss": 0,
+        "applicationDrops": 0,
+        "undecodableRecords": 0
+      }
+    }
+  ],
+  "notes": [
+    "Each capture is the product\u0027s own icat record process, recording into a scratch session that is deleted once it is read.",
+    "A run\u0027s health is the capture\u0027s own report: what its sources lost, what its queue dropped, and what was undecodable.",
+    "Counts only: no process ID, path or name of the machine is kept; the first run\u0027s truth logs and scenario are kept beside it."
+  ]
+}

@@ -19,8 +19,18 @@ internal static class Product
 {
     private static readonly JsonSerializerOptions TruthOptions = CreateTruthOptions();
 
-    public static async Task<Dictionary<string, object?>> RunAsync(string icat, string workload, string output, int runs, int duration, int readers, string? native = null)
+    public static async Task<Dictionary<string, object?>> RunAsync(string icat, string workload, string output, int runs, int duration, int readers,
+        string? native = null, string? transport = null)
     {
+        // FX-SDK-002 is the native sample, said through intercat_sdk.h; FX-SDK-003 and FX-SDK-004 the .NET stream over a pipe
+        // and a socket; FX-SDK-001 the .NET ring.
+        string fixture = native is not null ? "FX-SDK-002" : transport switch
+        {
+            "pipe" => "FX-SDK-003",
+            "socket" => "FX-SDK-004",
+            null => "FX-SDK-001",
+            _ => throw new ArgumentException("A stream's transport is pipe or socket.", nameof(transport)),
+        };
         var results = new List<Dictionary<string, object?>>();
         for (int run = 1; run <= runs; run++)
         {
@@ -32,10 +42,9 @@ internal static class Product
                 Dictionary<string, object?> health;
                 using (Workload.Recording recording = await Workload.Recording.StartAsync(icat, session, duration).ConfigureAwait(false))
                 {
-                    // FX-SDK-002 is the native sample, said through intercat_sdk.h; FX-SDK-001 the .NET ring.
-                    ProcessStartInfo start = native is null
-                        ? new(workload, ["sdk-ring", "--truth", truth, "--readers", readers.ToString(CultureInfo.InvariantCulture)])
-                        : new(native, ["--truth", truth]);
+                    ProcessStartInfo start = native is not null ? new(native, ["--truth", truth])
+                        : transport is not null ? new(workload, ["sdk-stream", "--truth", truth, "--transport", transport])
+                        : new(workload, ["sdk-ring", "--truth", truth, "--readers", readers.ToString(CultureInfo.InvariantCulture)]);
                     start.UseShellExecute = false;
                     start.CreateNoWindow = true;
                     using (Process started = Process.Start(start) ?? throw new InvalidOperationException("The truth workload could not be started."))
@@ -62,22 +71,34 @@ internal static class Product
 
         return new()
         {
-            ["fixture"] = native is null ? "FX-SDK-001" : "FX-SDK-002",
-            ["question"] = native is not null
-                ? "Whether FX-SDK-002 - a native application saying what it publishes and consumes through intercat_sdk.h, the SDK's "
+            ["fixture"] = fixture,
+            ["question"] = fixture switch
+            {
+                "FX-SDK-002" =>
+                    "Whether FX-SDK-002 - a native application saying what it publishes and consumes through intercat_sdk.h, the SDK's "
                     + "native library - recorded through the product by icat record under the opt-in sdk profile, reads as icat messages "
                     + "reads it, as a .NET application's does: every message it published at either epoch one message of its channel, "
                     + "its reader's consumption of each one consumption, each bound to the process with the length it logged, and the "
                     + "one message no reader read open; and each operation it started one start, under its parent, and one completion "
-                    + "with the status it first completed with."
-                : "Whether FX-SDK-001's ring - one producer and its readers, each saying what it publishes and consumes through "
-                + "InterCat's cooperative SDK - recorded through the product by icat record under the opt-in sdk profile, reads as "
-                + "icat messages reads it: every message the producer published at either epoch one message of the ring's channel, "
-                + "every reader's consumption of it one consumption, each bound to the process that logged it with the length it "
-                + "logged, and the one message no reader read open.",
+                    + "with the status it first completed with.",
+                "FX-SDK-003" or "FX-SDK-004" =>
+                    $"Whether {fixture} - a client writing framed messages to a server over a {(transport == "socket" ? "loopback TCP connection" : "named pipe")}, "
+                    + "a few to a write, read a few hundred bytes at a time, each process saying what it publishes and consumes through "
+                    + "InterCat's cooperative SDK - recorded through the product by icat record under the opt-in sdk profile, reads as icat "
+                    + "messages reads it: every message the client published at either connection's epoch one message, never a write or "
+                    + "a read, with the logical length and the framed bytes it logged, the server's consumption of each one consumption, "
+                    + "each bound to the process that logged it, the one message the server read and never consumed open; and each "
+                    + "operation one start - the server's under the client's, whose identity its first frame carried - and one completion.",
+                _ =>
+                    "Whether FX-SDK-001's ring - one producer and its readers, each saying what it publishes and consumes through "
+                    + "InterCat's cooperative SDK - recorded through the product by icat record under the opt-in sdk profile, reads as "
+                    + "icat messages reads it: every message the producer published at either epoch one message of the ring's channel, "
+                    + "every reader's consumption of it one consumption, each bound to the process that logged it with the length it "
+                    + "logged, and the one message no reader read open.",
+            },
             ["profile"] = "sdk",
             ["durationSeconds"] = duration,
-            ["readers"] = native is null ? readers : 1,
+            ["readers"] = fixture == "FX-SDK-001" ? readers : 1,
             ["runs"] = results,
             ["notes"] = new[]
             {
@@ -104,8 +125,8 @@ internal static class Product
                 library = named.GetString();
             }
 
-            // The operations a workload started, where it names them: each its identity, parent, name, status, and how
-            // many times it was completed.
+            // The operations a workload started, where it names them: each its identity, parent, name, status, how many
+            // times it was completed, and where it says so, the side - the role of its truth log - that started it.
             if (scenario.RootElement.TryGetProperty("operations", out JsonElement operations))
             {
                 foreach (JsonElement operation in operations.EnumerateArray())
@@ -115,19 +136,22 @@ internal static class Product
                         operation.GetProperty("parent").ValueKind == JsonValueKind.Null ? null : operation.GetProperty("parent").GetGuid(),
                         operation.GetProperty("name").GetString()!,
                         operation.GetProperty("status").GetInt64(),
-                        operation.GetProperty("completions").GetInt32()));
+                        operation.GetProperty("completions").GetInt32(),
+                        operation.TryGetProperty("role", out JsonElement role) ? role.GetString() : null));
                 }
             }
         }
 
-        // The truth: what each process logged it published or consumed.
-        var published = new Dictionary<(long Epoch, long Sequence), (long Length, bool Read, int Process)>();
+        // The truth: what each process logged it published or consumed, and which process each truth log's role is.
+        var published = new Dictionary<(long Epoch, long Sequence), (long Length, long? Copied, bool Read, int Process)>();
         var consumed = new Dictionary<(long Epoch, long Sequence, long Consumer), (long Length, int Process)>();
+        var roles = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (string file in Directory.EnumerateFiles(truth, "truth-*.jsonl"))
         {
             foreach (string line in File.ReadLines(file))
             {
                 TruthRecord record = JsonSerializer.Deserialize<TruthRecord>(line, TruthOptions)!;
+                roles.TryAdd(record.Role, record.ProcessId);
                 if (record.Message is not { } message || message.Channel != channel)
                 {
                     continue;
@@ -135,7 +159,7 @@ internal static class Product
 
                 if (record.Kind == TruthEventKind.MessageSent)
                 {
-                    published.Add((message.Epoch, message.Sequence), (record.DeclaredBytes!.Value, record.Status != "unread", record.ProcessId));
+                    published.Add((message.Epoch, message.Sequence), (record.DeclaredBytes!.Value, record.CompletedBytes, record.Status != "unread", record.ProcessId));
                 }
                 else if (record.Kind == TruthEventKind.MessageReceived)
                 {
@@ -165,6 +189,7 @@ internal static class Product
         CooperativeChannel[] channels = [.. index.Channels.Where(held => held.Channel == channel)];
 
         int matchedPublications = 0;
+        int matchedCopies = 0;
         int matchedConsumptions = 0;
         int records = 0;
         int bound = 0;
@@ -180,6 +205,9 @@ internal static class Product
                     && logged.Length == publication.Length && logged.Process == publication.ProcessId)
                 {
                     matchedPublications++;
+
+                    // The bytes the publisher copied for it, beside its logical length, as it logged them.
+                    matchedCopies += logged.Copied == message.CopiedLength ? 1 : 0;
                 }
             }
 
@@ -206,6 +234,7 @@ internal static class Product
             ["publications"] = messages.Sum(message => message.Publications),
             ["consumptions"] = messages.Sum(message => message.Consumptions.Count),
             ["matchedPublications"] = matchedPublications,
+            ["matchedCopies"] = matchedCopies,
             ["matchedConsumptions"] = matchedConsumptions,
             ["states"] = Enum.GetValues<CooperativeMessageState>().ToDictionary(state => state.ToString(), state => messages.Count(message => message.State == state)),
             ["unreadOpen"] = unread.All(key => messages.Any(message => (message.Epoch, message.Sequence) == key && message.State == CooperativeMessageState.Unconsumed)),
@@ -235,9 +264,10 @@ internal static class Product
             evaluated["processesAnnounced"] = logging.Count(process => announcements.Any(record => record.ProcessId == process));
         }
 
-        // Each operation the workload names, held to the capture's records of it: one start, owned by the process that
-        // logged its messages, carrying its name and its parent as the related activity, and one completion with the
-        // status it was first completed with - a second completion says nothing.
+        // Each operation the workload names, held to the capture's records of it: one start, owned by the process of the
+        // side that started it - or, where the workload names no side, by one that logged its messages - carrying its name
+        // and its parent as the related activity, and one completion with the status it was first completed with - a
+        // second completion says nothing.
         if (said.Count > 0)
         {
             HashSet<Guid> named = [.. said.Select(operation => operation.Operation)];
@@ -245,18 +275,18 @@ internal static class Product
                 && record.Identifier is { } operation && named.Contains(operation))];
             AdmittedRecord[] completions = [.. admitted.Where(record => record.Event == CooperativeSdk.OperationCompleted
                 && record.Identifier is { } operation && named.Contains(operation))];
+            bool Owned(SaidOperation operation, AdmittedRecord record) => record.ProcessId is { } process
+                && (operation.Role is { } role ? roles.TryGetValue(role, out int side) && side == process : logging.Contains(process));
             evaluated["truthOperations"] = said.Count;
             evaluated["truthCompletionCalls"] = said.Sum(operation => operation.Completions);
             evaluated["operationStarts"] = starts.Length;
             evaluated["operationCompletions"] = completions.Length;
             evaluated["matchedStarts"] = said.Count(operation =>
                 starts.Where(record => record.Identifier == operation.Operation).ToArray() is [var start]
-                && start.Name == operation.Name && start.Parent == operation.Parent
-                && start.ProcessId is { } process && logging.Contains(process));
+                && start.Name == operation.Name && start.Parent == operation.Parent && Owned(operation, start));
             evaluated["matchedCompletions"] = said.Count(operation =>
                 completions.Where(record => record.Identifier == operation.Operation).ToArray() is [var completion]
-                && completion.Status == operation.Status
-                && completion.ProcessId is { } process && logging.Contains(process));
+                && completion.Status == operation.Status && Owned(operation, completion));
         }
 
         return evaluated;
@@ -306,8 +336,11 @@ internal static class Product
         return found;
     }
 
-    /// <summary>An operation a workload says it started: its identity, its parent's where it has one, its name, the status it first completed with, and how many times it was completed.</summary>
-    private sealed record SaidOperation(Guid Operation, Guid? Parent, string Name, long Status, int Completions);
+    /// <summary>
+    /// An operation a workload says it started: its identity, its parent's where it has one, its name, the status it first
+    /// completed with, how many times it was completed, and the side that started it where the workload names one.
+    /// </summary>
+    private sealed record SaidOperation(Guid Operation, Guid? Parent, string Name, long Status, int Completions, string? Role);
 
     /// <summary>An announcement, or a start or a completion of an operation, as the capture admitted it.</summary>
     private sealed record AdmittedRecord(ushort Event, Guid? Identifier, Guid? Parent, int? ProcessId, string? Name, long? Status);

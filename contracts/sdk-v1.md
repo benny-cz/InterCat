@@ -15,7 +15,9 @@ The provider is an EventSource in manifest format named `InterCat-Sdk`, its iden
 is Informational, raised at the schema's major version, and names first the process that raised it: a record's owner is
 its payload's, never its header's. An event's text, where it has one, is its last field, so a capture reads every other
 field at a fixed offset, a bounded read (R9). While no session enables the provider, a call costs an enabled check and
-raises nothing. Before any other event, the SDK tells each session that enables it which schema it raises:
+raises nothing. Before any other event, the SDK tells each session that enables it which schema it raises - a session
+already listening as a process first uses the SDK, as a capture running as an application starts, as one enabling it
+later (revision 1033):
 
 | Event | Id | Fields |
 |---|---|---|
@@ -42,7 +44,9 @@ is one publication and three consumptions, never three writes. A sequence is uni
 or a channel made again, opens a new epoch. Its logical length is the application's; the bytes copied are beside it
 where the publisher knows them. A publication with no consumption stays open - not consumed as far as anything said -
 and a channel opened before a session enabled the provider is known from its messages alone. Boundaries are logical:
-a ring buffer's publish and consume, never each load or store of its memory.
+a ring buffer's publish and consume, never each load or store of its memory. Over a byte stream - a pipe or a socket - a
+message is the application's frame: a write may carry several and a message may span reads, and the bytes its frame
+copied into the stream are beside its logical length (revision 1033, FX-SDK-003 and FX-SDK-004).
 
 ## 3. Operations
 
@@ -55,6 +59,10 @@ An operation's parent, where it has one, is its start's related activity, which 
 start under no parent has none. An operation completes once; a second completion says nothing. No start or stop of the
 SDK's begins or ends one of the runtime's tracked activities, so the activity an event is raised under is its thread's
 own.
+
+A parent may be another process's operation, its identity carried by the application itself - as a stream's first
+frame carries the client's, under which the server starts its own (FX-SDK-003, FX-SDK-004): an assertion of both
+applications, whose authenticity is theirs.
 
 ## 4. Clock
 

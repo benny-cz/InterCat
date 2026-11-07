@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Tracing;
+using System.Text.Json;
 using System.Xml.Linq;
 using InterCat.Sdk;
 using Xunit;
@@ -63,6 +64,50 @@ public sealed class SdkEventTests
         // A transition's reading is the process's own clock at it.
         Assert.All(new[] { raised[2], raised[3], raised[4], raised[5] }, written =>
             Assert.InRange((long)written.Payload![written.PayloadNames!.IndexOf("sourceTicks")]!, before, Stopwatch.GetTimestamp()));
+    }
+
+    [Fact(DisplayName = "§15: a session listening before a process first uses the SDK - a capture already running as an application starts - is told the schema with the library's version, as one enabling it later is")]
+    public async Task AnEarlyListenerHearsTheLibrary()
+    {
+        // A process of its own, whose first use of the SDK comes under a listener already listening: this one has made its
+        // provider already, and a process holds one provider of a name.
+        string truth = Path.Combine(Path.GetTempPath(), "sdk-first-use-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            foreach (string argument in new[] { Path.Combine(AppContext.BaseDirectory, "InterCat.TestWorkloads.dll"), "sdk-first-use", "--truth", truth })
+            {
+                start.ArgumentList.Add(argument);
+            }
+
+            using Process workload = Process.Start(start) ?? throw new InvalidOperationException("The workload did not start.");
+            Task<string> output = workload.StandardOutput.ReadToEndAsync();
+            string error = await workload.StandardError.ReadToEndAsync();
+            await workload.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(120));
+            Assert.True(workload.ExitCode == 0, $"The workload exited with {workload.ExitCode}: {await output} {error}");
+
+            // Every announcement it heard names the library, as the SDK names it - never nothing.
+            using JsonDocument heard = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(truth, "first-use.json")));
+            string library = heard.RootElement.GetProperty("library").GetString()!;
+            Assert.Equal(InterCatSdkEventSource.Library, library);
+            Assert.NotEqual(string.Empty, library);
+            string?[] announced = [.. heard.RootElement.GetProperty("announced").EnumerateArray().Select(element => element.GetString())];
+            Assert.NotEmpty(announced);
+            Assert.All(announced, said => Assert.Equal(library, said));
+        }
+        finally
+        {
+            if (Directory.Exists(truth))
+            {
+                Directory.Delete(truth, recursive: true);
+            }
+        }
     }
 
     [Fact(DisplayName = "§15: a channel's close and an operation's completion are said once however often asked, a publication's unknown copy is -1, and a call refuses what no message could be")]

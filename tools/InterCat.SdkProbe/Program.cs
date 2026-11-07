@@ -10,7 +10,9 @@ namespace InterCat.SdkProbe;
 /// derives them - and held to the run's truth. Each run's session is deleted once read, as it holds the machine's process
 /// names; what is kept is each run's counts, the first run's truth logs and scenario, and the capture's own counters.
 /// With <c>--native</c> it records FX-SDK-002 instead (ADR-105): the native sample, saying the same through the SDK's C
-/// library, its operations held to their records too.
+/// library, its operations held to their records too. With <c>--transport pipe</c> or <c>socket</c> it records FX-SDK-003
+/// or FX-SDK-004: a client's framed messages to a server over a named pipe or a loopback TCP connection, its operations and
+/// the bytes each message's frame copied held to their records as well.
 /// </summary>
 internal static class Program
 {
@@ -26,6 +28,8 @@ internal static class Program
             Console.Error.WriteLine("  the opt-in sdk profile, each run's session read as icat messages reads one and held to its truth, then");
             Console.Error.WriteLine("  deleted. Needs elevation, and Release builds of InterCat.Cli and InterCat.TestWorkloads.");
             Console.Error.WriteLine("  [--native <publish_consume.exe>]: records FX-SDK-002 instead, the native sample said through intercat_sdk.h.");
+            Console.Error.WriteLine("  [--transport pipe|socket]: records FX-SDK-003 or FX-SDK-004 instead, a client's framed messages to a server");
+            Console.Error.WriteLine("  over a named pipe or a loopback TCP connection.");
             Console.Error.WriteLine("InterCat.SdkProbe --overhead --output <new directory> [--rounds n] [--messages n] [--duration s]: the SDK's cost,");
             Console.Error.WriteLine("  each round a burst with no session listening and one while icat record --profile sdk records it.");
             return 2;
@@ -49,7 +53,15 @@ internal static class Program
         }
 
         string? native = Option(args, "--native");
-        Dictionary<string, object?> measurement = await Product.RunAsync(icat, workload, output, runs, duration, readers, native).ConfigureAwait(false);
+        string? transport = Option(args, "--transport");
+        if (transport is not (null or "pipe" or "socket") || (native is not null && transport is not null))
+        {
+            Console.Error.WriteLine("--transport is pipe or socket, and a run records the native sample or a stream, never both.");
+            return 2;
+        }
+
+        Dictionary<string, object?> measurement = await Product.RunAsync(icat, workload, output, runs, duration, readers, native, transport)
+            .ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(output, "measurement.json"), JsonSerializer.Serialize(measurement, Json)).ConfigureAwait(false);
         Console.WriteLine($"{measurement["fixture"]} measured through the product into {output}.");
         return 0;

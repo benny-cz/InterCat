@@ -124,6 +124,19 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         CallsPerSecond = Integer(args, "--calls-per-second") ?? 0,
     };
 
+    var sdkStreamOptions = new SdkStreamOptions
+    {
+        TruthDirectory = truth,
+        Transport = Option(args, "--transport") ?? "pipe",
+        Endpoint = Option(args, "--endpoint"),
+        Channel = Guid.TryParse(Option(args, "--channel"), out Guid streamChannel) ? streamChannel : Guid.Empty,
+        Messages = Integer(args, "--messages") ?? 100,
+        RestartMessages = Integer(args, "--restart-messages") ?? 30,
+        MessagesPerWrite = Integer(args, "--per-write") ?? 3,
+        ReadBytes = Integer(args, "--read-bytes") ?? 700,
+        Seed = Integer(args, "--seed") ?? 20_261_107,
+    };
+
     var sectionOptions = new SectionOptions
     {
         TruthDirectory = truth,
@@ -241,6 +254,16 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
         return 2;
     }
 
+    // FX-SDK-003 is the pipe and FX-SDK-004 the socket; every epoch carries a message, every write one, and a read a header.
+    if (args[0].StartsWith("sdk-stream", StringComparison.Ordinal) && (sdkStreamOptions.Transport is not ("pipe" or "socket")
+        || sdkStreamOptions.Messages < 1 || sdkStreamOptions.RestartMessages < 1 || sdkStreamOptions.MessagesPerWrite < 1
+        || sdkStreamOptions.ReadBytes < SdkStreamOptions.HeaderBytes))
+    {
+        await Console.Error.WriteLineAsync($"--transport is pipe or socket, --messages, --restart-messages and --per-write are at least one, and --read-bytes at least {SdkStreamOptions.HeaderBytes}.")
+            .ConfigureAwait(false);
+        return 2;
+    }
+
     // --generations and --held-ms are two fixtures, FX-SECT-002 and FX-SECT-003: a run is one of them, or FX-SECT-001.
     if (args[0].StartsWith("section-share", StringComparison.Ordinal) && (sectionOptions.Generations < 1 || sectionOptions.HeldMilliseconds < 0
         || (sectionOptions.Generations > 1 && sectionOptions.HeldMilliseconds > 0)))
@@ -312,6 +335,14 @@ static async Task<int> RunAsync(string[] args, CancellationToken cancellationTok
                 await SdkRingScenario.RunReaderAsync(sdkRingOptions, cancellationToken).ConfigureAwait(false),
             "sdk-ring" or "sdk-ring-producer" or "sdk-ring-reader" => await UnsupportedPlatformAsync().ConfigureAwait(false),
             "sdk-burst" => await SdkBurstScenario.RunAsync(sdkBurstOptions, cancellationToken).ConfigureAwait(false),
+            "sdk-stream" when OperatingSystem.IsWindows() =>
+                await SdkStreamScenario.RunCoordinatorAsync(sdkStreamOptions, cancellationToken).ConfigureAwait(false),
+            "sdk-stream-server" when OperatingSystem.IsWindows() =>
+                await SdkStreamScenario.RunServerAsync(sdkStreamOptions, cancellationToken).ConfigureAwait(false),
+            "sdk-stream-client" when OperatingSystem.IsWindows() =>
+                await SdkStreamScenario.RunClientAsync(sdkStreamOptions, cancellationToken).ConfigureAwait(false),
+            "sdk-stream" or "sdk-stream-server" or "sdk-stream-client" => await UnsupportedPlatformAsync().ConfigureAwait(false),
+            "sdk-first-use" => await SdkFirstUseScenario.RunAsync(truth, cancellationToken).ConfigureAwait(false),
             "process-package" when OperatingSystem.IsWindows() =>
                 await ProcessPackageScenario.RunAsync(new ProcessPackageOptions { TruthDirectory = truth }, cancellationToken).ConfigureAwait(false),
             "process-package-child" => 0,
@@ -494,6 +525,19 @@ static void PrintHelp()
     Console.WriteLine("  sdk-burst --truth <dir> [--messages n] [--calls-per-second n]");
     Console.WriteLine("      The cooperative SDK's cost: one thread publishes and consumes each message of a burst as fast as");
     Console.WriteLine("      the SDK takes the calls, and writes how long they took and whether a session listened to burst.json.");
+    Console.WriteLine();
+    Console.WriteLine("  sdk-stream --truth <dir> [--transport pipe|socket] [--messages n] [--restart-messages n] [--per-write n]");
+    Console.WriteLine("      [--read-bytes n] [--seed n]");
+    Console.WriteLine("      FX-SDK-003 over a named pipe, FX-SDK-004 over a loopback TCP connection: a client writes framed");
+    Console.WriteLine("      messages to a server, a few to a write, which reads a few hundred bytes at a time, each saying");
+    Console.WriteLine("      what it publishes and consumes through InterCat's cooperative SDK: each connection an epoch of the");
+    Console.WriteLine("      channel and an operation of the client's, under which the server starts its own, and at the");
+    Console.WriteLine("      second's end one message the server reads and never consumes. Each process logs every message by");
+    Console.WriteLine("      its channel, epoch, sequence and reader, with its length. Windows only.");
+    Console.WriteLine();
+    Console.WriteLine("  sdk-first-use --truth <dir>");
+    Console.WriteLine("      The cooperative SDK's first use under a listener already listening, as under a capture running as an");
+    Console.WriteLine("      application starts: writes each schema announcement's library, and the SDK's, to first-use.json.");
     Console.WriteLine();
     Console.WriteLine("  section-share --truth <dir> [--view-bytes n] [--rounds n] [--generations n | --held-ms ms] [--seed n]");
     Console.WriteLine("      FX-SECT-001: a creator makes two named sections of the session's namespace under a name of the");

@@ -58,8 +58,11 @@ public sealed class InterCatSdkEventSource : EventSource
     /// <summary>The one instance a process raises the SDK's events through.</summary>
     public static InterCatSdkEventSource Log { get; } = new();
 
-    /// <summary>The library's version, as the SDK announces it.</summary>
-    public static string Library { get; } = typeof(InterCatSdkEventSource).Assembly.GetName().Version?.ToString() ?? string.Empty;
+    /// <summary>
+    /// The library's version, as the SDK announces it. It is read from a type of its own, so the announcement a session
+    /// already listening hears as <see cref="Log"/> is made - before this type's own statics are - names it too.
+    /// </summary>
+    public static string Library => LibraryVersion.Value;
 
     /// <summary>A session enabling the provider is told which schema this SDK raises, before any other event.</summary>
     protected override void OnEventCommand(EventCommandEventArgs command)
@@ -202,5 +205,14 @@ public sealed class InterCatSdkEventSource : EventSource
     {
         data[index].DataPointer = (IntPtr)value;
         data[index].Size = size;
+    }
+
+    /// <summary>
+    /// The library's version, held apart from the provider's statics: a session listening when a process first uses the
+    /// SDK enables the provider as <see cref="Log"/> is constructed, and the announcement it hears is made then.
+    /// </summary>
+    private static class LibraryVersion
+    {
+        public static readonly string Value = typeof(InterCatSdkEventSource).Assembly.GetName().Version?.ToString() ?? string.Empty;
     }
 }

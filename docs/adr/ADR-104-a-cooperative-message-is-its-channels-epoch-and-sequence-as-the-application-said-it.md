@@ -46,3 +46,13 @@ the producer published at the channel's two epochs was one message and every one
 each bound to the process that logged it with the length it logged; the one message no reader read stayed open, and the
 channel made again was a second epoch whose sequence started at 1 again. The derivation's path is unchanged; the fixture's
 evidence is held by its tests.
+
+## Addendum: measured over a pipe and a socket (revision 1033)
+
+FX-SDK-003 and FX-SDK-004 measure the derivation where a message is the application's frame of a byte stream: a client
+writes framed messages to a server over a named pipe, and over a loopback TCP connection, one to three to a write, which
+the server reads 700 bytes at a time (`tools/InterCat.SdkProbe --transport`). In three runs of each, nothing lost, every
+one of the 131 messages the client published was one message - never a write or a read - by its logical length, its
+frame's bytes and its process, and each of the server's 130 consumptions one consumption; the message the server read
+and never consumed stayed open; the client's second connection was a second epoch; and each server's operation started
+under the client's, whose identity the connection's first frame carried. The derivation's path is unchanged.

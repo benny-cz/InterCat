@@ -4,6 +4,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/InterCat.Sdk/InterCat.Sdk.csproj" />
+    <!-- A process of its own whose first use of the SDK comes under a listener: sdk-first-use. -->
+    <ProjectReference Include="../../src/InterCat.TestWorkloads/InterCat.TestWorkloads.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
