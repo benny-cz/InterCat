@@ -140,7 +140,8 @@ public static class SessionIntervalQuery
         CoverageLedgerV1? ledger = SessionSegments.CoverageLedger(store.Root, manifest);
         TimeRange? native = RankingScope.NativeInterval(clock, interval);
 
-        // An RPC edge counts its links' call records the interval holds, as the overview draws it (operations-v1 §5c).
+        // An RPC edge counts its links' call records the interval holds, as the overview draws it where the capture collected
+        // ALPC or COM calls (operations-v1 §5c).
         long rpcRecords = 0;
         if (native is { } range && RpcPeerEdges.Collected(store.Root, manifest, ledger))
         {

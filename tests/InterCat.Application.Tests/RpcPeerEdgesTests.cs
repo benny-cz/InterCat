@@ -58,6 +58,55 @@ public sealed class RpcPeerEdgesTests
             key => key.StartsWith(RpcPeerEdges.KeyPrefix, StringComparison.Ordinal));
     }
 
+    [Fact(DisplayName = "§7.4: a capture that collected COM calls and no ALPC draws the RPC edge its COM calls link, counted by the call records at its two ends, as a brush and a kept checkpoint do - while recording by its plan - and one that collected neither draws none")]
+    public void ComCallsLinkAnRpcEdge()
+    {
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedComCalls();
+        using var session = new TemporarySession();
+        Publish(session.Store, rows, fields: fields, coverage: RpcLedger(alpc: false, com: true));
+
+        // Two calls, each an RPC call at both ends carrying a COM call; the COM records link them and are not counted.
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        CommunicationEdge edge = Assert.Single(overview.Edges, candidate => candidate.Mechanism == Mechanism.Rpc);
+        ProcessInstanceId client = overview.Nodes.Single(node => node.ProcessId == 400).Id;
+        Assert.Equal(8L, edge.ObservationCount);
+        Assert.Equal((2, 0), edge.SourceId == client ? (edge.SourceConnected, edge.TargetConnected) : (edge.TargetConnected, edge.SourceConnected));
+        Assert.True(overview.Census!.RpcLinked);
+        Assert.Contains(overview.Caveats, caveat => caveat.StartsWith("RPC edges join a process", StringComparison.Ordinal));
+
+        // A brush holding the first call counts its four records.
+        Assert.Equal(4, SessionIntervalQuery.Count(session.Store, new TimeRange(0, 1_500)).EdgeRecords[edge.Key]);
+
+        // The same records under a ledger that collected neither ALPC nor COM calls draw none.
+        using var neither = new TemporarySession();
+        Publish(neither.Store, rows, fields: fields, coverage: RpcLedger(alpc: false));
+        Assert.DoesNotContain(SessionProjection(neither).Edges, candidate => candidate.Mechanism == Mechanism.Rpc);
+
+        // A COM calls capture still recording draws them by the plan it admitted COM calls under.
+        using var recording = new TemporarySession();
+        Publish(recording.Store, rows, fields: fields, plan: Plan(Mechanism.ProcessLifecycle, Mechanism.Rpc, Mechanism.ComCall));
+        Assert.Equal(8, Assert.Single(SessionProjection(recording).Edges, candidate => candidate.Mechanism == Mechanism.Rpc).ObservationCount);
+
+        // A finished one keeps its links with its overview, the pair's total its two calls' eight records, so its first view
+        // follows no call.
+        SessionDerivationCache.Clear();
+        using var kept = new TemporarySession();
+        Publish(kept.Store, rows, fields: fields, coverage: RpcLedger(alpc: false, com: true));
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(kept.Store, Committed).Outcome);
+        (OverviewCounts counts, _) = SessionOverviewIndex.Read(
+            SessionSegments.ReadVerified(kept.Store.Root, SessionOverviewIndex.NamedBy(kept.Store.Current!)!, SessionOverviewIndex.MaximumBytes),
+            kept.Store.Current!.SessionId);
+        RpcPeerLinkTotal total = Assert.Single(counts.RpcLinks!);
+        Assert.Equal((8L, 2L), (total.Records, total.FirstCalls + total.SecondCalls));
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(kept.Path));
+        Assert.Equal(8, Assert.Single(SessionOverviewProjector.Project(reopened).Edges, candidate => candidate.Mechanism == Mechanism.Rpc).ObservationCount);
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+        reopened.ReleaseSegmentReaders();
+
+        static SessionOverviewBundle SessionProjection(TemporarySession held) => SessionOverviewProjector.Project(held.Store);
+    }
+
     [Fact(DisplayName = "§7.4: a capture still recording draws RPC edges once the plan it records under admits ALPC, before its ledger says what it collected")]
     public void ALiveCaptureDrawsRpcEdgesByItsPlan()
     {

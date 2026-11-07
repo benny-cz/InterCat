@@ -43,7 +43,9 @@ and as weak as the weaker binding of its two calls, and a link one of whose call
 They are held before any evidence policy, which the projection applies to them as it does to relations, so the graph's
 RPC edges come from them and no call is paired or followed before the first view. A generation whose ledger names no
 collected ALPC holds none. Since plan revision 543 a generation with no ledger - its capture never finished - holds
-them when the normalizer plan it retains admits an ALPC descriptor (`normalizer-plan-v1`).
+them when the normalizer plan it retains admits an ALPC descriptor (`normalizer-plan-v1`). Since plan revision 1022 a
+ledger or a plan naming a collected COM call descriptor is read as one naming ALPC's, as its COM calls link its RPC
+calls (`operations-v1` §5c).
 
 Since minor 2 (plan revision 289) it also holds the **lane bytes**: for each main column and each mechanism it counts
 records of there, what those records' transport-observed measurements sent under sender accounting, received under

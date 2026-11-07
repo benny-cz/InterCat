@@ -5,7 +5,8 @@
   and since revision 918 the opt-in COM calls profile collects COM-Perf beside RPC, and since revision 919 COM calls
   measured through it carry ExperimentalEvidence (ADR-080), and since revision 923 a COM-Perf whose schema lacks a field
   the rule decides by is refused (its fifth addendum), and since revision 926 a nested call is measured a call of its own
-  (its sixth addendum); since
+  (its sixth addendum), and since revision 1022 the graph draws the RPC edges a capture's COM calls link where it
+  collected no ALPC (its seventh addendum); since
   revision 914 a COM call's records bind to the process that raised them (ADR-077's fifth addendum), and since revision
   915 COM-Perf's call events are admitted, the process at a call's other end a source field of its own (its addendum)
 - Date: 2026-11-04
@@ -234,3 +235,14 @@ COM gives a nested call an activity of its own, so no served call or activity ho
 ambiguous. The rule is unchanged, and its assumption is now this measurement (`contracts/com-calls-v1.md` §6). The
 first paced run is committed under `fixtures/FX-COM-004/evidence/`, and a test reproduces it. COM calls' ambiguity case,
 which M6's exit asks for, remains: nesting is not one.
+
+## Addendum: the graph draws what COM calls link (revision 1022)
+
+Since revision 917 a client RPC call carrying a COM call `com-call-link-v1` links is served by the RPC call carrying the
+server's, with no ALPC record, and `icat operations` and the logical-operations basis read it so. The graph's RPC edges,
+the RPC links a persisted overview keeps and a brush's edge counts were still drawn only where the capture collected
+ALPC, which the COM calls profile does not request, so a COM calls capture drew no RPC edge though its own caveat named
+the COM call a call carries. They are now drawn where the capture collected ALPC or COM calls - by its ledger, or while
+it records by the plan it admits under - each edge counting the RPC call records at its two ends, the COM records that
+link them its evidence and never a second count. A capture that collected neither still reads nothing for them.
+6 mutations of the path are caught.

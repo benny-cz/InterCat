@@ -2151,13 +2151,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : RpcCallsFollowing(brief: false) is { Length: > 0 } following ? GraphSummary + "." + following : GraphSummary;
 
     /// <summary>
-    /// What the graph says while the session's RPC calls are still being followed through ALPC (S3): a clause after its
-    /// summary, or a sentence after its scope, each with its own separator. Empty once they are followed, and for a view
+    /// What the graph says while the session's RPC calls are still being followed through ALPC and COM (S3): a clause after
+    /// its summary, or a sentence after its scope, each with its own separator. Empty once they are followed, and for a view
     /// whose session had none to follow.
     /// </summary>
     private string RpcCallsFollowing(bool brief) => !realOverview || !wholeSnapshot.RpcCallsPending ? string.Empty
         : brief ? " · RPC calls still being followed"
-        : " Which process called which over RPC is still being followed through ALPC; those edges are drawn when it is done.";
+        : " Which process called which over RPC is still being followed through ALPC and COM; those edges are drawn when it is "
+            + "done.";
 
     /// <summary>
     /// Why the machine's graph draws no relationship, said beneath it where the empty pane would otherwise be read as a

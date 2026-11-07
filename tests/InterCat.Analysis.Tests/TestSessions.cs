@@ -469,7 +469,7 @@ internal static class TestSessions
     /// An import's one-epoch ledger that collected RPC's call start, and ALPC's send when <paramref name="alpc"/> says so:
     /// what decides whether a generation's RPC calls are followed to their other ends (ADR-034).
     /// </summary>
-    public static CoverageLedgerV1 RpcLedger(bool alpc) => new()
+    public static CoverageLedgerV1 RpcLedger(bool alpc, bool com = false) => new()
     {
         Contract = CoverageLedgerV1.ContractName,
         Epochs =
@@ -491,6 +491,16 @@ internal static class TestSessions
                             {
                                 ProviderId = AlpcClass, ProviderName = "Kernel ALPC", EventId = 0, Version = 2, Opcode = 33,
                                 Mechanism = Mechanism.Alpc,
+                            },
+                        }
+                        : [],
+                    .. com
+                        ? new[]
+                        {
+                            new CoverageCollectedV1
+                            {
+                                ProviderId = ComPerfProvider, ProviderName = "Microsoft-Windows-COM-Perf", EventId = 39, Version = 1,
+                                Mechanism = Mechanism.ComCall,
                             },
                         }
                         : [],
@@ -542,6 +552,64 @@ internal static class TestSessions
                     .Select(start => Field(start, SourceField.RpcProcedureNumber, 7)),
                 .. messages.Select((message, index) => Field(message, SourceField.AlpcMessageId, 21 + (index / 2))),
             ]);
+    }
+
+    /// <summary>The interface a COM call targets in <see cref="LinkedComCalls"/>: IDispatch's IID.</summary>
+    public static readonly Guid DispatchInterface = Guid.Parse("00020400-0000-0000-c000-000000000046");
+
+    /// <summary>
+    /// Two COM calls the process with PID 400 makes to the one with PID 700, each carried by an RPC call at both ends and
+    /// linked under `com-call-link-v1` with no ALPC record, as COM-Perf records them beside RPC (ADR-079): the client's COM
+    /// call and the RPC call of its activity on one thread, and the server's RPC call around the server's COM call on its
+    /// thread, the server's carrying the client's activity, each start naming the other end's process.
+    /// </summary>
+    public static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) LinkedComCalls()
+    {
+        var rows = new List<ObservationRowV1> { Lifecycle(1, ObservationKind.Create, 400, 1), Lifecycle(2, ObservationKind.Inventory, 700, 2) };
+        var fields = new List<SourceFieldRowV1>();
+        ulong ordinal = 10;
+        void Com(long ticks, ObservationKind kind, Direction direction, int process, Guid activity, long trace, int? peer)
+        {
+            bool start = kind == ObservationKind.RequestStart;
+            ObservationRowV1 row = ComCall(ticks, kind, direction, process, ordinal++, activity, start ? DispatchInterface : null,
+                start ? null : 0);
+            rows.Add(row);
+            fields.Add(Field(row, SourceField.ComCallTraceId, trace));
+            if (peer is { } other)
+            {
+                fields.Add(Field(row, SourceField.PeerProcessId, other));
+                fields.Add(Field(row, SourceField.ComMethodNumber, 6));
+            }
+        }
+
+        void Rpc(long ticks, ObservationKind kind, Direction direction, int process, Guid activity)
+        {
+            bool start = kind == ObservationKind.RequestStart;
+            ObservationRowV1 row = RpcCall(ticks, kind, direction, process, ordinal++, activity, start ? DispatchInterface : null,
+                start ? null : 0);
+            rows.Add(row);
+            if (start)
+            {
+                fields.Add(Field(row, SourceField.RpcProcedureNumber, 6));
+            }
+        }
+
+        for (int call = 0; call < 2; call++)
+        {
+            long at = 100 + (2_000L * call);
+            Guid called = RpcActivity(100 + call);
+            Guid served = RpcActivity(200 + call);
+            Com(at, ObservationKind.RequestStart, Direction.Outbound, 400, called, call + 1, 700);
+            Rpc(at + 5, ObservationKind.RequestStart, Direction.Outbound, 400, called);
+            Rpc(at + 90, ObservationKind.RequestStart, Direction.Inbound, 700, served);
+            Com(at + 100, ObservationKind.RequestStart, Direction.Inbound, 700, called, call + 1, 400);
+            Com(at + 600, ObservationKind.RequestEnd, Direction.Inbound, 700, called, call + 1, null);
+            Rpc(at + 610, ObservationKind.RequestEnd, Direction.Inbound, 700, served);
+            Com(at + 1_000, ObservationKind.RequestEnd, Direction.Outbound, 400, called, call + 1, null);
+            Rpc(at + 1_005, ObservationKind.RequestEnd, Direction.Outbound, 400, called);
+        }
+
+        return ([.. rows.OrderBy(row => row.NativeTicks).ThenBy(row => row.RawRecordOrdinal)], [.. fields]);
     }
 
     /// <summary>The processes of <see cref="PatternRows"/>: two browsers, a server, a resolver and an agent.</summary>

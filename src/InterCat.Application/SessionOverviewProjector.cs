@@ -330,18 +330,18 @@ public static class SessionOverviewProjector
                     : [.. group.Select(ConnectionOpens.AcceptingPort).OfType<ushort>().Distinct().Order()],
             })];
 
-        // The processes a served RPC call joins, when the capture collected ALPC to follow calls through (operations-v1
-        // §5c): from the links a persisted overview kept, or followed here when it kept none. A session without ALPC
-        // reads nothing for them, so its first view opens no segment on their account.
+        // The processes a served RPC call joins, when the capture collected ALPC or the COM calls they carry to follow calls
+        // through (operations-v1 §5c): from the links a persisted overview kept, or followed here when it kept none. A
+        // session with neither reads nothing for them, so its first view opens no segment on their account.
         // Links an overview kept before it kept their callers (overview-index-v1 minor 6) say nothing of who called, and an
         // overview never changes an answer: their calls are followed again, as where it kept no links.
         // A view that does not wait for them draws them only from links kept or already followed (S3): following every call
-        // reads every segment's ALPC records, which a session still being recorded keeps no summary of.
-        bool alpc = RpcPeerEdges.Collected(store.Root, manifest, coverage);
+        // reads every segment's ALPC and COM call records, which a session still being recorded keeps no summary of.
+        bool linking = RpcPeerEdges.Collected(store.Root, manifest, coverage);
         RpcPeerIndex? followed = derivation.DerivedRpcPeers;
         bool keptLinks = counted.RpcLinks is { } kept && RpcPeerEdges.NameCallers(kept);
-        bool pending = alpc && !keptLinks && followed is null && !followRpcCalls;
-        RpcPeerEdge[] rpc = !alpc || pending ? []
+        bool pending = linking && !keptLinks && followed is null && !followRpcCalls;
+        RpcPeerEdge[] rpc = !linking || pending ? []
             : keptLinks ? [.. RpcPeerEdges.Of(counted.RpcLinks!, policy)]
             : [.. RpcPeerEdges.Of(followed ?? derivation.RpcPeers(store.Root, Segments(), clock, Fields(), cancellationToken), policy)];
         edges = [.. edges, .. rpc.Select(edge => new CommunicationEdge(
@@ -362,7 +362,7 @@ public static class SessionOverviewProjector
             relations.Census(Mechanism.Tcp, policy),
             relations.Census(Mechanism.Udp, policy),
             nodes.Sum(node => node.Activity.Where(count => count.Mechanism == Mechanism.Rpc).Sum(count => count.Records)),
-            alpc);
+            linking);
 
         // Each process's connections to other hosts, address by address, which the graph draws to one node of its own as
         // resources are drawn: with no traffic value, naming where they ran and never who is at their other ends (§6.3, P7).
@@ -422,8 +422,8 @@ public static class SessionOverviewProjector
             }),
             .. (!pending ? [] : new[]
             {
-                "Which process called which over RPC is still being followed through ALPC, so the graph draws no RPC edge "
-                    + "yet: it draws them once every call has been linked to the call that served it.",
+                "Which process called which over RPC is still being followed through ALPC and COM, so the graph draws no RPC "
+                    + "edge yet: it draws them once every call has been linked to the call that served it.",
             }),
             "An edge's source and target are a stable display order, not a claim about direction: which process made its "
                 + "connections is said only where the capture saw them open (relations-v1 section 5), which called which over "

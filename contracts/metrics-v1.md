@@ -424,7 +424,7 @@ carried no status is unmeasured and sorts after the ranked groups. A rate divide
 A projection onto `Rpc` or the application layer keeps every call.
 
 **A call's other end (revision 228).** `operations-v1` §5c links a client call to the server call that served it, when
-its capture collected ALPC. A call's other end is the process of the call it is linked to: a client call's server, and
+its capture collected ALPC or, since revision 917, the COM calls it carries. A call's other end is the process of the call it is linked to: a client call's server, and
 a served call's client. The filters and groupings of §5 and §6 read it as they read a record's:
 
 - `participant(P)` keeps the calls P made and those whose other end is P; `peer(P,Q)` narrows a focus to the calls whose

@@ -18,7 +18,7 @@ namespace InterCat.Ui.Tests;
 public sealed class RpcCallsFollowingWindowTests
 {
     private const string Brief = "RPC calls still being followed";
-    private const string Sentence = "Which process called which over RPC is still being followed through ALPC";
+    private const string Sentence = "Which process called which over RPC is still being followed through ALPC and COM";
 
     [AvaloniaFact(DisplayName = "S3: a session's first view draws its graph without waiting for its RPC calls, says they are still being followed, and draws their edges once they are, keeping the process chosen and the policy chosen meanwhile")]
     public async Task AFirstViewDrawsTheCallsOnceFollowed()

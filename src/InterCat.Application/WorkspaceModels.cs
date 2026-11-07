@@ -876,7 +876,7 @@ public sealed record WorkspaceSnapshot(
     public RelationshipCensus? Census { get; init; }
 
     /// <summary>
-    /// Whether the session's RPC calls were still being followed through ALPC when it was projected, so its graph draws no
+    /// Whether the session's RPC calls were still being followed through ALPC and COM when it was projected, so its graph draws no
     /// RPC edge yet (<see cref="SessionOverviewBundle.RpcCallsPending"/>).
     /// </summary>
     public bool RpcCallsPending { get; init; }

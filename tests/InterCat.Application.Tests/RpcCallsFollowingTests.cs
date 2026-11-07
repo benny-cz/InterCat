@@ -16,7 +16,7 @@ namespace InterCat.Application.Tests;
 [Collection(SharedDerivationCache.Name)]
 public sealed class RpcCallsFollowingTests
 {
-    private const string Following = "Which process called which over RPC is still being followed through ALPC";
+    private const string Following = "Which process called which over RPC is still being followed through ALPC and COM";
 
     [Fact(DisplayName = "S3: a first view that does not wait for a live session's RPC calls opens only its newest chunk's segments, draws no RPC edge and says they are still being followed; following them draws what waiting drew")]
     public void AFirstViewDoesNotWaitForRpcCalls()

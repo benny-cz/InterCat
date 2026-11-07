@@ -35,7 +35,7 @@ A row is either
 
 - a **relationship between two processes** the overview draws: paired TCP incarnations and UDP flows whose two ends both
   belong to the capture's processes (`relations-v1` §5), and RPC calls linked to the calls that served them where the
-  capture collected ALPC (`operations-v1` §5c), keyed by the relationship's key; or
+  capture collected ALPC or COM calls (`operations-v1` §5c), keyed by the relationship's key; or
 - one process's **connections over one transport to one other host's address**, as the census counts them (`relations-v1`
   §5d) - the connections the graph draws to its Other hosts node - keyed `hosts:<transport>:<instance>@<address>`. Who is
   at the address is not observed (P7).

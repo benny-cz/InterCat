@@ -36,31 +36,37 @@ internal sealed record RpcPeerLinkTotal(ProcessInstanceId First, ProcessInstance
 }
 
 /// <summary>
-/// The graph's RPC edges: the process instances a served RPC call joins, drawn when the capture collected ALPC to follow
-/// calls through (`contracts/operations-v1.md` §5c). ALPC is the evidence that links two calls, never a second count of
-/// them: an edge counts the call records at its two ends, as a TCP edge counts the records at its two ends (§5.1).
+/// The graph's RPC edges: the process instances a served RPC call joins, drawn when the capture collected what links calls
+/// to follow them through - ALPC, or the COM calls they carry (`contracts/operations-v1.md` §5c, `rpc-call-peer-v2`). The
+/// links are the evidence that joins two calls, never a second count of them: an edge counts the call records at its two
+/// ends, as a TCP edge counts the records at its two ends (§5.1).
 /// </summary>
 internal static class RpcPeerEdges
 {
     public const string KeyPrefix = "rpc:";
 
     /// <summary>
-    /// Whether a generation's capture collected ALPC, the only evidence an RPC edge rests on, by its coverage ledger. A
-    /// capture that did not reads nothing for them, so its first view opens no segment on their account.
+    /// Whether a generation's capture collected what an RPC edge rests on, by its coverage ledger: ALPC, whose one message
+    /// links a call to the call that served it, or COM calls, the server's carrying the client's activity, which link the
+    /// RPC calls carrying them with no ALPC record (ADR-079's third addendum). A capture that collected neither reads nothing
+    /// for them, so its first view opens no segment on their account.
     /// </summary>
     public static bool Collected(CoverageLedgerV1? ledger) =>
-        ledger is not null && ledger.Epochs.Any(epoch => epoch.Collected.Any(descriptor => descriptor.Mechanism == Mechanism.Alpc));
+        ledger is not null && ledger.Epochs.Any(epoch => epoch.Collected.Any(descriptor => Links(descriptor.Mechanism)));
 
     /// <summary>
-    /// Whether a generation's capture collects ALPC: by its coverage ledger once one is published, with a capture's last
-    /// chunk; before then - while the capture records, or when it never finished - by the plan it admitted its records
-    /// under, published with its first (<see cref="CaptureAdmissions"/>). A live RPC peers capture's graph draws its calls'
-    /// other ends as they arrive, rather than only once it is saved.
+    /// Whether a generation's capture collects what links its calls: by its coverage ledger once one is published, with a
+    /// capture's last chunk; before then - while the capture records, or when it never finished - by the plan it admitted
+    /// its records under, published with its first (<see cref="CaptureAdmissions"/>). A live RPC peers or COM calls
+    /// capture's graph draws its calls' other ends as they arrive, rather than only once it is saved.
     /// </summary>
     public static bool Collected(IOwnedDirectory directory, SessionManifestV1 manifest, CoverageLedgerV1? ledger) =>
         ledger is not null
             ? Collected(ledger)
-            : CaptureAdmissions.Of(directory, manifest)?.Contains(Mechanism.Alpc) == true;
+            : CaptureAdmissions.Of(directory, manifest)?.Any(Links) == true;
+
+    // A mechanism whose records link an RPC call to the call that served it: ALPC's messages, or the COM calls they carry.
+    private static bool Links(Mechanism mechanism) => mechanism is Mechanism.Alpc or Mechanism.ComCall;
 
     /// <summary>
     /// The edges between process instances whose two bindings <paramref name="policy"/> admits, each keyed by its instance

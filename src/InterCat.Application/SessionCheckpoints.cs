@@ -145,8 +145,8 @@ public static class SessionCheckpoints
             counts = counts with { PeerBindings = SessionPeerRanking.KeptBindings(segments, processes, relations, cancellationToken) };
             _ = store.GiveBackReaderColumns();
 
-            // A capture that collected ALPC keeps its RPC links with the overview, so its first view follows no call
-            // (overview-index-v1 §3); one that did not keeps none. Its calls' other ends are followed over calls held
+            // A capture that collected ALPC or COM calls keeps its RPC links with the overview, so its first view follows no
+            // call (overview-index-v1 §3); one that collected neither keeps none. Its calls' other ends are followed over calls held
             // whole, and so are calls this generation holds already; any other generation's are paired as the operation
             // index is written, which holds the calls in flight rather than every one (revision 882).
             bool linked = RpcPeerEdges.Collected(store.Root, manifest, SessionSegments.CoverageLedger(store.Root, manifest));
